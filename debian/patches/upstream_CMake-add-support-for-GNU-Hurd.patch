@@ -1,0 +1,142 @@
+From 099e0fff61f080e2d628c8f472df78f6fd2f5234 Mon Sep 17 00:00:00 2001
+From: Pino Toscano <toscano.pino@tiscali.it>
+Date: Sun, 21 Nov 2021 08:59:56 +0100
+Subject: [PATCH] CMake: add support for GNU/Hurd
+
+Add a "HURD" CMake platform specification, so it can be properly
+checked in the build system.
+
+Set QT_DEFAULT_MKSPEC to the existing hurd-g++ mkspec.
+
+Hurd supports $ORIGIN in RPATH, so enable it.
+
+Hurd uses X11, so add it to the X11_SUPPORTED list.
+
+Enable few more feature checks that apply to Hurd as well: either
+because they are provided by GNU libc itself, or because they are
+implemented on Hurd.
+
+Check and set the ELF interpreter, as it is a common functionality of
+the GNU toolchain.
+
+Change-Id: Id347033560bbc5a2a4e2c3abb493c948c002b40e
+Reviewed-by: Edward Welbourne <edward.welbourne@qt.io>
+Reviewed-by: Joerg Bornemann <joerg.bornemann@qt.io>
+Reviewed-by: Qt CI Bot <qt_ci_bot@qt-project.org>
+Reviewed-by: Alexandru Croitor <alexandru.croitor@qt.io>
+---
+ cmake/QtBuild.cmake           | 2 ++
+ cmake/QtPlatformSupport.cmake | 1 +
+ cmake/QtRpathHelpers.cmake    | 2 +-
+ src/corelib/CMakeLists.txt    | 2 +-
+ src/corelib/configure.cmake   | 8 ++++----
+ src/gui/configure.cmake       | 2 +-
+ 6 files changed, 10 insertions(+), 7 deletions(-)
+
+diff --git a/cmake/QtBuild.cmake b/cmake/QtBuild.cmake
+index b06dec60d8..d267f560c1 100644
+--- a/cmake/QtBuild.cmake
++++ b/cmake/QtBuild.cmake
+@@ -362,6 +362,8 @@ elseif(SOLARIS)
+              set(QT_DEFAULT_MKSPEC solaris-cc)
+         endif()
+     endif()
++elseif(HURD)
++    set(QT_DEFAULT_MKSPEC hurd-g++)
+ endif()
+ 
+ if(NOT QT_QMAKE_TARGET_MKSPEC)
+diff --git a/cmake/QtPlatformSupport.cmake b/cmake/QtPlatformSupport.cmake
+index f39bf0e780..a10e7226eb 100644
+--- a/cmake/QtPlatformSupport.cmake
++++ b/cmake/QtPlatformSupport.cmake
+@@ -18,6 +18,7 @@ qt_set01(FREEBSD CMAKE_SYSTEM_NAME STREQUAL "FreeBSD") # FIXME: How to identify
+ qt_set01(NETBSD CMAKE_SYSTEM_NAME STREQUAL "NetBSD") # FIXME: How to identify this?
+ qt_set01(WASM CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR EMSCRIPTEN)
+ qt_set01(SOLARIS CMAKE_SYSTEM_NAME STREQUAL "SunOS")
++qt_set01(HURD CMAKE_SYSTEM_NAME STREQUAL "GNU")
+ 
+ qt_set01(BSD APPLE OR OPENBSD OR FREEBSD OR NETBSD)
+ 
+diff --git a/cmake/QtRpathHelpers.cmake b/cmake/QtRpathHelpers.cmake
+index 6e3414b50f..cbe33a6b77 100644
+--- a/cmake/QtRpathHelpers.cmake
++++ b/cmake/QtRpathHelpers.cmake
+@@ -20,7 +20,7 @@ function(qt_compute_relative_rpath_base rpath install_location out_var)
+     # needed in the .prf files, but for CMake we need to prepend them ourselves.
+     if(APPLE)
+         set(rpath_rel_base "@loader_path")
+-    elseif(LINUX OR SOLARIS OR FREEBSD)
++    elseif(LINUX OR SOLARIS OR FREEBSD OR HURD)
+         set(rpath_rel_base "$ORIGIN")
+     else()
+         message(WARNING "No known RPATH_REL_BASE for target platform.")
+diff --git a/src/corelib/CMakeLists.txt b/src/corelib/CMakeLists.txt
+index c1259150ab..be4bc7b2de 100644
+--- a/src/corelib/CMakeLists.txt
++++ b/src/corelib/CMakeLists.txt
+@@ -339,7 +339,7 @@ set_property(TARGET Core APPEND PROPERTY
+     PRIVATE_HEADER "${CMAKE_CURRENT_BINARY_DIR}/global/qconfig_p.h")
+ 
+ # Find ELF interpreter and define a macro for that:
+-if (LINUX AND NOT CMAKE_CROSSCOMPILING AND BUILD_SHARED_LIBS)
++if ((LINUX OR HURD) AND NOT CMAKE_CROSSCOMPILING AND BUILD_SHARED_LIBS)
+     if (NOT DEFINED ELF_INTERPRETER)
+         execute_process(COMMAND ${CMAKE_COMMAND} -E env LC_ALL=C readelf -l /bin/ls
+                         RESULT_VARIABLE readelf_ok
+diff --git a/src/corelib/configure.cmake b/src/corelib/configure.cmake
+index 08d1e0d976..71e237ae9c 100644
+--- a/src/corelib/configure.cmake
++++ b/src/corelib/configure.cmake
+@@ -578,7 +578,7 @@ qt_feature("glib" PUBLIC PRIVATE
+ qt_feature_definition("glib" "QT_NO_GLIB" NEGATE VALUE "1")
+ qt_feature("glibc" PRIVATE
+     LABEL "GNU libc"
+-    AUTODETECT LINUX
++    AUTODETECT ( LINUX OR HURD )
+     CONDITION TEST_glibc
+ )
+ qt_feature("icu" PRIVATE
+@@ -612,7 +612,7 @@ qt_feature("system-libb2" PRIVATE
+ # Currently only used by QTemporaryFile; linkat() exists on Android, but hardlink creation fails due to security rules
+ qt_feature("linkat" PRIVATE
+     LABEL "linkat()"
+-    AUTODETECT LINUX AND NOT ANDROID
++    AUTODETECT ( LINUX AND NOT ANDROID ) OR HURD
+     CONDITION TEST_linkat
+ )
+ qt_feature("std-atomic64" PUBLIC
+@@ -669,7 +669,7 @@ qt_feature("qqnx_pps" PRIVATE
+ )
+ qt_feature("renameat2" PRIVATE
+     LABEL "renameat2()"
+-    CONDITION LINUX AND TEST_renameat2
++    CONDITION ( LINUX OR HURD ) AND TEST_renameat2
+ )
+ qt_feature("slog2" PRIVATE
+     LABEL "slog2"
+@@ -677,7 +677,7 @@ qt_feature("slog2" PRIVATE
+ )
+ qt_feature("statx" PRIVATE
+     LABEL "statx() in libc"
+-    CONDITION LINUX AND TEST_statx
++    CONDITION ( LINUX OR HURD ) AND TEST_statx
+ )
+ qt_feature("syslog" PRIVATE
+     LABEL "syslog"
+diff --git a/src/gui/configure.cmake b/src/gui/configure.cmake
+index f5d26977af..b4625c77b4 100644
+--- a/src/gui/configure.cmake
++++ b/src/gui/configure.cmake
+@@ -25,7 +25,7 @@ set_property(CACHE INPUT_libpng PROPERTY STRINGS undefined no qt system)
+ 
+ 
+ #### Libraries
+-qt_set01(X11_SUPPORTED LINUX OR HPUX OR FREEBSD OR NETBSD OR OPENBSD OR SOLARIS) # special case
++qt_set01(X11_SUPPORTED LINUX OR HPUX OR FREEBSD OR NETBSD OR OPENBSD OR SOLARIS OR HURD) # special case
+ qt_find_package(ATSPI2 PROVIDED_TARGETS PkgConfig::ATSPI2 MODULE_NAME gui QMAKE_LIB atspi)
+ qt_find_package(DirectFB PROVIDED_TARGETS PkgConfig::DirectFB MODULE_NAME gui QMAKE_LIB directfb)
+ qt_find_package(Libdrm PROVIDED_TARGETS Libdrm::Libdrm MODULE_NAME gui QMAKE_LIB drm)
+-- 
+2.34.1
+

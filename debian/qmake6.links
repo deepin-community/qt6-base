@@ -1,0 +1,5 @@
+# qmake and qmake6 are identical files. We want people to use qmake6,
+# so we do not install qmake. Instead, qmake is a symbolic link pointing to qmake6.
+usr/lib/qt6/bin/qmake6 usr/lib/qt6/bin/qmake
+# On public path we want qmake6.
+usr/lib/qt6/bin/qmake6 usr/bin/qmake6

@@ -1,0 +1,451 @@
+Source: qt6-base
+Priority: optional
+Maintainer: Deepin Developer <deepin-dev@deepin.org>
+Uploaders: Deepin Packages Builder <packages@deepin.org>
+Build-Depends: cmake (>= 3.18~),
+               debhelper-compat (= 13),
+               default-libmysqlclient-dev,
+               dh-exec,
+               firebird-dev [kfreebsd-any linux-any],
+               libatspi2.0-dev,
+               libb2-dev,
+               libcups2-dev,
+               libdbus-1-dev,
+               libdouble-conversion-dev,
+               libdrm-dev [linux-any],
+               libfontconfig-dev,
+               libfreetype-dev,
+               libgbm-dev [linux-any],
+               libgl-dev,
+               libgl1-mesa-dev,
+               libgles-dev,
+               libglib2.0-dev,
+               libglu1-mesa-dev | libglu-dev,
+               libgtk-3-dev,
+               libharfbuzz-dev,
+               libicu-dev,
+               libinput-dev [linux-any],
+               libjpeg-dev,
+               libkrb5-dev,
+               liblttng-ust-dev [linux-any],
+               libmd4c-dev,
+               libmd4c-html0-dev,
+               libmtdev-dev [linux-any],
+               libpcre2-dev,
+               libpng-dev,
+               libpq-dev,
+               libproxy-dev,
+               libsctp-dev [linux-any],
+               libsqlite3-dev,
+               libssl-dev,
+               libsystemd-dev [linux-any],
+               libts-dev,
+               libudev-dev [linux-any],
+               libvulkan-dev [linux-any],
+               libwayland-dev [linux-any],
+               libx11-dev,
+               libx11-xcb-dev,
+               libxcb-glx0-dev,
+               libxcb-icccm4-dev,
+               libxcb-image0-dev,
+               libxcb-keysyms1-dev,
+               libxcb-randr0-dev,
+               libxcb-render-util0-dev,
+               libxcb-render0-dev,
+               libxcb-shape0-dev,
+               libxcb-shm0-dev,
+               libxcb-sync-dev,
+               libxcb-util-dev,
+               libxcb-xfixes0-dev,
+               libxcb-xinerama0-dev,
+               libxcb-xinput-dev,
+               libxcb-xkb-dev,
+               libxcb1-dev,
+               libxext-dev,
+               libxfixes-dev,
+               libxi-dev,
+               libxkbcommon-dev,
+               libxkbcommon-x11-dev,
+               libxrender-dev,
+               libzstd-dev,
+               ninja-build,
+               pkg-config,
+               pkg-kde-tools (>= 0.15.17~),
+               unixodbc-dev,
+               zlib1g-dev,
+Standards-Version: 4.6.0
+Section: libs
+Homepage: https://www.qt.io/developers/
+Rules-Requires-Root: no
+
+Package: libqt6core6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Provides: qt6-base-abi (= 6.2.4)
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 core module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtCore module contains core non-GUI functionality.
+
+Package: libqt6concurrent6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 concurrent module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtConcurrent module contains functionality to support concurrent execution
+ of program code.
+
+Package: libqt6dbus6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 D-Bus module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtDBus module is a Unix-only library that you can use to make Inter-Process
+ Communication using the D-Bus protocol.
+ .
+ Applications using the QtDBus module can provide services to other, remote
+ applications by exporting objects, as well as use services exported by those
+ applications by placing calls and accessing properties.
+
+Package: libqt6gui6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: fontconfig, ${misc:Depends}, ${shlibs:Depends}
+Breaks: qt6-qpa-plugins (<< 6.2.4~)
+Replaces: qt6-qpa-plugins (<< 6.2.4~)
+Recommends: qt6-gtk-platformtheme
+Description: Qt 6 GUI module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtGui module extends QtCore with GUI functionality.
+
+Package: qt6-qpa-plugins
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: fontconfig, ${misc:Depends}, ${shlibs:Depends}
+Breaks: libqt6gui6 (<< 6.2.4~), libqt6network6 (<< 6.2.4~)
+Description: Qt 6 EGL plugins
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains QPA-related plugins.
+
+Package: qt6-gtk-platformtheme
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 GTK+ 3 platform theme
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package provides the GTK+ 3 platform theme, which makes Qt use
+ native icon themes, fonts, and dialogs on GTK-based environments.
+
+Package: qt6-xdgdesktopportal-platformtheme
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 XDG Desktop Portal platform theme
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package provides the XDG Desktop portal platform theme, which makes
+ Qt use native file dialogs on Flatpak/Snap based environments.
+
+Package: libqt6opengl6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 OpenGL module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtOpenGL module offers classes that make it easy to use OpenGL in Qt
+ applications.
+ .
+ OpenGL is a standard API for rendering 3D graphics. OpenGL only deals with 3D
+ rendering and provides little or no support for GUI programming issues.
+
+Package: libqt6openglwidgets6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 OpenGL widgets module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtOpenGL module offers classes that make it easy to use OpenGL in Qt
+ applications.
+ .
+ OpenGL is a standard API for rendering 3D graphics. OpenGL only deals with 3D
+ rendering and provides little or no support for GUI programming issues.
+ .
+ The OpenGL widgets module provides the widget for rendering OpenGL graphics.
+
+Package: libqt6network6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${libssl:Depends}, ${misc:Depends}, ${shlibs:Depends}
+Breaks: qt6-qpa-plugins (<< 6.2.4~)
+Replaces: qt6-qpa-plugins (<< 6.2.4~)
+Description: Qt 6 network module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtNetwork module offers classes that allow you to write TCP/IP clients and
+ servers. It provides classes to make network programming easier and portable.
+
+Package: libqt6sql6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Recommends: libqt6sql6-sqlite | libqt6sql6-mysql | libqt6sql6-odbc | libqt6sql6-psql | libqt6sql6-ibase,
+Description: Qt 6 SQL module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtSql module helps you provide seamless database integration to your Qt
+ applications.
+
+Package: libqt6sql6-mysql
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 MySQL database driver
+ This package contains the MySQL plugin for Qt 6.
+ .
+ Install it if you intend to use or write Qt programs that are to access a
+ MySQL DB.
+
+Package: libqt6sql6-odbc
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 ODBC database driver
+ This package contains the ODBC plugin for Qt 6.
+ .
+ Install it if you intend to use or write Qt programs that are to access an
+ ODBC DB.
+
+Package: libqt6sql6-psql
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 PostgreSQL database driver
+ This package contains the PostgreSQL plugin for Qt 6.
+ .
+ Install it if you intend to use or write Qt programs that are to access a
+ PostgreSQL DB.
+
+Package: libqt6sql6-sqlite
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 SQLite 3 database driver
+ This package contains the SQLite 3 plugin for Qt 6.
+ .
+ Install it if you intend to use or write Qt programs that are to access an
+ SQLite 3 DB.
+
+Package: libqt6sql6-ibase
+Architecture: kfreebsd-any linux-any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 Firebird database driver
+ This package contains the Firebird plugin for Qt 6.
+ .
+ Install it if you intend to use or write Qt programs that are to access a
+ Firebird/InterBase DB.
+
+Package: libqt6test6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 test module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtTest module provides classes for unit testing Qt applications and
+ libraries.
+
+Package: libqt6widgets6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 widgets module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtWidgets module extends QtGui with C++ widget functionality.
+
+Package: libqt6xml6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 XML module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtXml module provides a stream reader and writer for XML documents,
+ and C++ implementations of SAX and DOM.
+
+Package: libqt6printsupport6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Recommends: libcups2
+Description: Qt 6 print support module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ The QtPrintSupport module provides classes to make printing easier and
+ portable.
+
+Package: qt6-base-dev
+Section: libdevel
+Architecture: any
+Multi-Arch: same
+Depends: libgl-dev,
+         libglx-dev,
+         libopengl-dev,
+         libqt6concurrent6 (= ${binary:Version}),
+         libqt6core6 (= ${binary:Version}),
+         libqt6dbus6 (= ${binary:Version}),
+         libqt6gui6 (= ${binary:Version}),
+         libqt6network6 (= ${binary:Version}),
+         libqt6openglwidgets6 (= ${binary:Version}),
+         libqt6printsupport6 (= ${binary:Version}),
+         libqt6sql6 (= ${binary:Version}),
+         libqt6test6 (= ${binary:Version}),
+         libqt6widgets6 (= ${binary:Version}),
+         libqt6xml6 (= ${binary:Version}),
+         qmake6 (= ${binary:Version}),
+         qt6-base-dev-tools (= ${binary:Version}),
+         qt6-qpa-plugins (= ${binary:Version}),
+         ${misc:Depends},
+Recommends: libqt6opengl6-dev (= ${binary:Version})
+Description: Qt 6 base development files
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the header development files used for building
+ Qt 6 applications.
+ .
+ If you are interested in packaging Qt 6 stuff please take a look at
+ https://qt-kde-team.pages.debian.net/packagingqtbasedstuff.html
+
+Package: qt6-base-private-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends: libfontconfig-dev,
+         libinput-dev [linux-any],
+         libxkbcommon-dev,
+         qt6-base-dev (= ${binary:Version}),
+         ${misc:Depends},
+Description: Qt 6 base private development files
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the private header development files for building some
+ Qt 6 applications like the Qt Creator QML Designer plugin.
+ .
+ Use at your own risk.
+
+Package: qt6-base-dev-tools
+Architecture: any
+Multi-Arch: foreign
+Section: devel
+Depends: qtchooser (>= 55-gc9562a1-1~),
+         ${misc:Depends},
+         ${perl:Depends},
+         ${shlibs:Depends},
+Description: Qt 6 base development programs
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the development programs used for building Qt 6
+ applications, such as moc, qdbuscpp2xml, qdbusxml2cpp, rcc,
+ syncqt and uic.
+ .
+ We do not recommend depending on this package directly. Please depend
+ on qt6-base-dev instead.
+
+Package: libqt6opengl6-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends: libqt6opengl6 (= ${binary:Version}),
+         qt6-base-dev (= ${binary:Version}),
+         ${misc:Depends},
+Description: Qt 6 OpenGL library development files
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the development files needed to build Qt 6 applications
+ using the QtOpenGL library.
+
+Package: qmake6-bin
+Architecture: any
+Multi-Arch: foreign
+Section: devel
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 qmake Makefile generator tool — binary file
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the binary file for the qmake buildsystem. Do not
+ install this package directly, use qmake6 instead.
+
+Package: qmake6
+Architecture: any
+Multi-Arch: same
+Section: devel
+Depends: qmake6-bin (= ${binary:Version}),
+         qtchooser (>= 55-gc9562a1-1~),
+         ${misc:Depends},
+         ${perl:Depends},
+         ${shlibs:Depends},
+Description: Qt 6 qmake Makefile generator tool
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the Qt 6 qmake, a tool that helps simplify
+ the build process for development project across different platforms.
+ qmake automates the generation of Makefiles so that only a few lines of
+ information are needed to create each Makefile. qmake can be used for any
+ software project, whether it is written using Qt or not.
+ .
+ Qt 6 qmake requires a platform and a compiler description file which contains
+ many default values used to generate appropriate Makefiles.
+ .
+ This package contains also these platform specifications.

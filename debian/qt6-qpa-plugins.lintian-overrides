@@ -1,0 +1,14 @@
+# libQt6EglFSDeviceIntegration, libQt6EglFsKmsGbmSupport, libQt6EglFsKmsSupport
+# and libQt6XcbQpa are actually private libraries *only* used by their
+# respective platforms plugins.
+# Sadly instead of being installed into a proper place like
+# /usr/lib/<arch-triplet>/qt6/ they are being installed into /usr/lib/.
+# We are still shipping the headers but they only contain the version and
+# the only binaries that depend on them are shipped within this very same
+# binary package, so it's safe to override these Lintian warnings.
+qt6-qpa-plugins: lacks-ldconfig-trigger usr/lib/*/libQt6XcbQpa.so.6.*
+qt6-qpa-plugins: package-name-doesnt-match-sonames libQt6EglFSDeviceIntegration6 libQt6EglFsKmsGbmSupport6 libQt6EglFsKmsSupport6 libQt6XcbQpa6
+qt6-qpa-plugins: no-shlibs usr/lib/*/libQt6EglFSDeviceIntegration.so.6.*
+qt6-qpa-plugins: no-shlibs usr/lib/*/libQt6EglFsKmsGbmSupport.so.6.*
+qt6-qpa-plugins: no-shlibs usr/lib/*/libQt6EglFsKmsSupport.so.6.*
+qt6-qpa-plugins: no-shlibs usr/lib/*/libQt6XcbQpa.so.6.*

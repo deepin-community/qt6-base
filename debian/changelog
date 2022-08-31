@@ -1,0 +1,5 @@
+qt6-base (6.2.4-1+dde) stable; urgency=medium
+
+  * ['Rebuild  against by  current gcc 11.2']
+
+ -- Deepin Packages Builder <packages@deepin.org>  Wed, 31 Aug 2022 14:51:55 +0800

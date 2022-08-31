@@ -1,0 +1,16 @@
+[Paths]
+Prefix=/usr
+ArchData=lib/@DEB_HOST_MULTIARCH@/qt6
+Binaries=lib/qt6/bin
+Data=share/qt6
+Documentation=share/qt6/doc
+Headers=include/@DEB_HOST_MULTIARCH@/qt6
+HostBinaries=lib/qt6/bin
+HostData=lib/@DEB_HOST_MULTIARCH@/qt6
+HostLibraries=lib/@DEB_HOST_MULTIARCH@
+Libraries=lib/@DEB_HOST_MULTIARCH@
+LibraryExecutables=lib/qt6/libexec
+Plugins=lib/@DEB_HOST_MULTIARCH@/qt6/plugins
+Qml2Imports=lib/@DEB_HOST_MULTIARCH@/qt6/qml
+Settings=/etc/xdg
+Translations=share/qt6/translations

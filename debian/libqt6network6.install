@@ -1,0 +1,5 @@
+#!/usr/bin/dh-exec
+usr/lib/${DEB_HOST_MULTIARCH}/libQt6Network.so.*
+[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/networkinformation/libqnetworkmanager.so
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/tls/libqcertonlybackend.so
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/tls/libqopensslbackend.so

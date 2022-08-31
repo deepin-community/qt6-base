@@ -1,0 +1,10 @@
+# Binary data crafted to be used during tests
+qt6-base source: source-is-missing tests/auto/corelib/plugin/qpluginloader/elftest/corrupt2.elf64.so
+qt6-base source: source-is-missing tests/auto/corelib/plugin/qpluginloader/elftest/corrupt3.elf64.so
+qt6-base source: source-is-missing tests/auto/corelib/plugin/qpluginloader/elftest/debugobj.so
+qt6-base source: binary-with-bad-dynamic-table [tests/auto/corelib/plugin/qpluginloader/elftest/debugobj.so]
+
+# These are not static libraries, despite the .a extension
+qt6-base source: unpack-message-for-orig * ar failed for */tests/auto/corelib/io/qdir/types/a.a
+qt6-base source: unpack-message-for-orig * ar failed for */tests/auto/corelib/io/qdir/types/b.a
+qt6-base source: unpack-message-for-orig * ar failed for */tests/auto/corelib/io/qdir/types/c.a

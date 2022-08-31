@@ -1,0 +1,50 @@
+# SymbolsHelper-Confirmed: 6.2.0 amd64
+libQt6OpenGLWidgets.so.6 libqt6openglwidgets6 #MINVER#
+| libqt6openglwidgets6 #MINVER#, qt6-base-abi (= 6.2.4)
+* Build-Depends-Package: qt6-base-dev
+ Qt_6.0@Qt_6.0 6.1.2
+ Qt_6.1@Qt_6.1 6.1.2
+ Qt_6.2@Qt_6.2 6.2.0
+ Qt_6@Qt_6 6.1.2
+ (symver)Qt_6_PRIVATE_API 0 1
+ _ZN13QOpenGLWidget10paintEventEP11QPaintEvent@Qt_6 6.1.2
+ _ZN13QOpenGLWidget11doneCurrentEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget11makeCurrentEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget11qt_metacastEPKc@Qt_6 6.1.2
+ _ZN13QOpenGLWidget11resizeEventEP12QResizeEvent@Qt_6 6.1.2
+ _ZN13QOpenGLWidget12frameSwappedEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget12initializeGLEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget13aboutToResizeEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget14aboutToComposeEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget15grabFramebufferEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget16setTextureFormatEj@Qt_6 6.1.2
+ _ZN13QOpenGLWidget16staticMetaObjectE@Qt_6 6.1.2
+ _ZN13QOpenGLWidget17setUpdateBehaviorENS_14UpdateBehaviorE@Qt_6 6.1.2
+ _ZN13QOpenGLWidget5eventEP6QEvent@Qt_6 6.1.2
+ _ZN13QOpenGLWidget7paintGLEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget7resizedEv@Qt_6 6.1.2
+ _ZN13QOpenGLWidget8resizeGLEii@Qt_6 6.1.2
+ _ZN13QOpenGLWidget9setFormatERK14QSurfaceFormat@Qt_6 6.1.2
+ _ZN13QOpenGLWidgetC1EP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
+ _ZN13QOpenGLWidgetC2EP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
+ _ZN13QOpenGLWidgetD0Ev@Qt_6 6.1.2
+ _ZN13QOpenGLWidgetD1Ev@Qt_6 6.1.2
+ _ZN13QOpenGLWidgetD2Ev@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget10metaObjectEv@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget10redirectedEP6QPoint@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget11paintEngineEv@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget13textureFormatEv@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget14updateBehaviorEv@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget24defaultFramebufferObjectEv@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget6formatEv@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget6metricEN12QPaintDevice17PaintDeviceMetricE@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget7contextEv@Qt_6 6.1.2
+ _ZNK13QOpenGLWidget7isValidEv@Qt_6 6.1.2
+ _ZTI13QOpenGLWidget@Qt_6 6.1.2
+ _ZTS13QOpenGLWidget@Qt_6 6.1.2
+ _ZTV13QOpenGLWidget@Qt_6 6.1.2
+ (c++)"non-virtual thunk to QOpenGLWidget::metric(QPaintDevice::PaintDeviceMetric) const@Qt_6" 6.1.2
+ (c++)"non-virtual thunk to QOpenGLWidget::paintEngine() const@Qt_6" 6.1.2
+ (c++)"non-virtual thunk to QOpenGLWidget::redirected(QPoint*) const@Qt_6" 6.1.2
+ (c++)"non-virtual thunk to QOpenGLWidget::~QOpenGLWidget()@Qt_6" 6.1.2

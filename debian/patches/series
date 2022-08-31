@@ -1,0 +1,17 @@
+# fixed in 6.3
+upstream_QStorageInfo-limit-Linux-only-code-with-Q_OS_LINUX.patch
+
+# fixed in 6.3.1
+upstream_Explicitly-check-for-atomic-addition.patch
+upstream_Hardcode-atomic_LIB-as-latomic.patch
+
+# fixed in 6.4
+upstream_CMake-add-support-for-GNU-Hurd.patch
+upstream_QProcess-Unix-fallback-on-_POSIX_PIPE_BUF-w-missing-.patch
+upstream_Hurd-enable-XOPEN-largefile-APIs.patch
+upstream_Avoid-a-stack-buffer-when-not-needed.patch
+upstream_QFileSystemEngine-canonicalName-Unix-clean-up-contro.patch
+
+# Debian specific
+remove_privacy_breaches.diff
+build_path_embedded_qtbuildinternalsextra_cmake.patch

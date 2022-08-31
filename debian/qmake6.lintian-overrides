@@ -1,0 +1,2 @@
+# Configuration file with common mkspec bits for BSD systems
+qmake6: extra-license-file usr/lib/*/qt6/mkspecs/common/bsd/bsd.conf
