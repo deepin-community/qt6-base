@@ -427,10 +427,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK9QSqlQuery8isSelectEv@Qt_6 6.1.2
  _ZNK9QSqlQuery9lastErrorEv@Qt_6 6.1.2
  _ZNK9QSqlQuery9lastQueryEv@Qt_6 6.1.2
- (optional=templinst)_ZNSt8_Rb_treeIiSt4pairIKi7QStringESt10_Select1stIS3_ESt4lessIiESaIS3_EE8_M_eraseEPSt13_Rb_tree_nodeIS3_E@Qt_6 6.2.4
  (optional=templinst)_ZNSt8_Rb_treeIiSt4pairIKiiESt10_Select1stIS2_ESt4lessIiESaIS2_EE16_M_insert_uniqueIS2_EES0_ISt17_Rb_tree_iteratorIS2_EbEOT_@Qt_6 6.1.2
- (optional=templinst)_ZNSt8_Rb_treeIiSt4pairIKiiESt10_Select1stIS2_ESt4lessIiESaIS2_EE7_M_copyINS8_11_Alloc_nodeEEEPSt13_Rb_tree_nodeIS2_EPKSC_PSt18_Rb_tree_node_baseRT_@Qt_6 6.2.4
- (optional=templinst)_ZNSt8_Rb_treeIiSt4pairIKiiESt10_Select1stIS2_ESt4lessIiESaIS2_EE8_M_eraseEPSt13_Rb_tree_nodeIS2_E@Qt_6 6.2.4
  _ZTI10QSqlDriver@Qt_6 6.1.2
  _ZTI10QSqlResult@Qt_6 6.1.2
  _ZTI14QSqlQueryModel@Qt_6 6.1.2
