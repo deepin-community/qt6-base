@@ -1,3 +1,9 @@
+qt6-base (6.2.4.1-1+dde) stable; urgency=medium
+
+  * Update symbols.
+
+ -- Lu YaNing <luyaning@uniontech.com>  Mon, 19 Sep 2022 10:12:17 +0800
+
 qt6-base (6.2.4-1+dde) stable; urgency=medium
 
   * ['Rebuild  against by  current gcc 11.2']
