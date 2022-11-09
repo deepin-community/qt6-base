@@ -1,0 +1,60 @@
+---
+name: BUG Report | 缺陷报告
+description: Qt package BUG report
+labels: []
+assignees: []
+body:
+- type: markdown
+  attributes:
+    value: |
+      **Thanks for taking a minute to file a bug report! 感谢抽出时间汇报 BUG 缺陷**
+
+      A valid bug report should let someone other than you be able to reproduce the same issue, so please provide as much details as possible.
+      一个有效的缺陷汇报应当能够使一个你之外的人可以根据所提供的信息有效的复现问题。所以请提供尽可能详细的信息。
+
+- type: textarea
+  attributes:
+    label: SUMMARY | 简述发现的问题
+    description: |
+      describe the bug you want to report
+      在这里描述你遇到的 BUG
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: Qt VERSION | 复现问题 Qt 版本
+    description: |
+      which Qt version is required to reproduce the bug?
+      在这里描述与之相关的 Qt 版本信息
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: DESCRIPTION | 问题详细描述
+    description: |
+      describe details of the bug
+      在这里提供对要汇报的问题的详细描述
+
+- type: textarea
+  attributes:
+    label: STEPS TO REPRODUCE | 复现步骤
+    description: |
+      describe the steps to reproduce the specific bug
+      在这里描述复现 BUG 的操作步骤
+    placeholder: |
+      1. ...
+      2. ...
+      3. ...
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: MINIMAL DEMO PROJECT | 最小示例项目
+    description: |
+      provide a minimal, reproducible example to reproduce the bug (you can upload attachment)
+      提供一个可供复现问题的最小示例应用（可以上传附件）
+
+...
