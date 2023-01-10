@@ -1,3 +1,9 @@
+qt6-base (6.2.4.2-1+dde) UNRELEASED; urgency=medium
+
+  * remove forkfd_pidfd in riscv64
+
+ -- Han Gao <gaohan@iscas.ac.cn>  Tue, 10 Jan 2023 23:36:30 +0800
+
 qt6-base (6.2.4.1-1+dde) stable; urgency=medium
 
   * Update symbols.
