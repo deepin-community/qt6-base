@@ -1,3 +1,9 @@
+qt6-base (6.4.2-1+dde) UNRELEASED; urgency=medium
+
+   * New upstream version 6.4.2.
+
+ -- Lu YaNing <luyaning@uniontech.com>  Wed, 11 Jan 2023 10:05:38 +0800
+
 qt6-base (6.2.4.1-1+dde) stable; urgency=medium
 
   * Update symbols.

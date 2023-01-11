@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QTest>
 #include <QStandardPaths>
@@ -56,11 +31,12 @@
 #endif
 #include <qplatformdefs.h>
 #include <qdebug.h>
-#if defined(Q_OS_WIN)
-#include "../../../network-settings.h"
-#endif
 #include <private/qfileinfo_p.h>
 #include "../../../../shared/filesystem.h"
+
+#if defined(Q_OS_MACOS)
+#include <Foundation/Foundation.h>
+#endif
 
 #if defined(Q_OS_VXWORKS)
 #define Q_NO_SYMLINKS
@@ -72,6 +48,8 @@ extern Q_CORE_EXPORT int qt_ntfs_permission_lookup;
 QT_END_NAMESPACE
 bool IsUserAdmin();
 #endif
+
+using namespace Qt::StringLiterals;
 
 inline bool qIsLikelyToBeFat(const QString &path)
 {
@@ -217,6 +195,9 @@ private slots:
 
     void isShortcut_data();
     void isShortcut();
+
+    void isAlias_data();
+    void isAlias();
 
     void link_data();
     void link();
@@ -399,7 +380,7 @@ void tst_QFileInfo::isDir_data()
     //QTest::newRow("drive 2") << "t:s" << false;
 #endif
 #if defined(Q_OS_WIN)
-    const QString uncRoot = QStringLiteral("//") + QtNetworkSettings::winServerName();
+    const QString uncRoot = QStringLiteral("//") + QTest::uncServerName();
     QTest::newRow("unc 1") << uncRoot << true;
     QTest::newRow("unc 2") << uncRoot + QLatin1Char('/') << true;
     QTest::newRow("unc 3") << uncRoot + "/testshare" << true;
@@ -442,7 +423,7 @@ void tst_QFileInfo::isRoot_data()
 #endif
 
 #if defined(Q_OS_WIN)
-    const QString uncRoot = QStringLiteral("//") + QtNetworkSettings::winServerName();
+    const QString uncRoot = QStringLiteral("//") + QTest::uncServerName();
     QTest::newRow("unc 1") << uncRoot << true;
     QTest::newRow("unc 2") << uncRoot + QLatin1Char('/') << true;
     QTest::newRow("unc 3") << uncRoot + "/testshare" << false;
@@ -486,7 +467,7 @@ void tst_QFileInfo::exists_data()
     QTest::newRow("simple dir with slash") << (m_resourcesDir + QLatin1Char('/')) << true;
 
 #if defined(Q_OS_WIN)
-    const QString uncRoot = QStringLiteral("//") + QtNetworkSettings::winServerName();
+    const QString uncRoot = QStringLiteral("//") + QTest::uncServerName();
     QTest::newRow("unc 1") << uncRoot << true;
     QTest::newRow("unc 2") << uncRoot + QLatin1Char('/') << true;
     QTest::newRow("unc 3") << uncRoot + "/testshare" << true;
@@ -1201,7 +1182,7 @@ void tst_QFileInfo::fileTimes()
     QCOMPARE(fileInfo.birthTime(), birthTime); // mustn't have changed
     QVERIFY(readTime.isValid());
 
-#if defined(Q_OS_QNX) || (defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED))
+#if defined(Q_OS_QNX) || defined(Q_OS_ANDROID)
     noAccessTime = true;
 #elif defined(Q_OS_WIN)
     //In Vista the last-access timestamp is not updated when the file is accessed/touched (by default).
@@ -1343,6 +1324,57 @@ void tst_QFileInfo::isShortcut()
 
     QFileInfo fi(path);
     QCOMPARE(fi.isShortcut(), isShortcut);
+}
+
+void tst_QFileInfo::isAlias_data()
+{
+    QFile::remove("symlink");
+    QFile::remove("file-alias");
+    QFile::remove("directory-alias");
+
+    QTest::addColumn<QString>("path");
+    QTest::addColumn<bool>("isAlias");
+
+    QFile regularFile(m_sourceFile);
+    QTest::newRow("regular-file") << regularFile.fileName() << false;
+    QTest::newRow("directory") << QDir::currentPath() << false;
+
+#if defined(Q_OS_MACOS)
+    auto createAlias = [](const QString &target, const QString &alias) {
+        NSURL *targetUrl = [NSURL fileURLWithPath:target.toNSString()];
+        NSURL *aliasUrl = [NSURL fileURLWithPath:alias.toNSString()];
+        NSData *bookmarkData = [targetUrl bookmarkDataWithOptions:NSURLBookmarkCreationSuitableForBookmarkFile
+            includingResourceValuesForKeys:nil relativeToURL:nil error:nullptr];
+        Q_ASSERT(bookmarkData);
+
+        bool success = [NSURL writeBookmarkData:bookmarkData toURL:aliasUrl
+            options:NSURLBookmarkCreationSuitableForBookmarkFile error:nullptr];
+        Q_ASSERT(success);
+    };
+
+    regularFile.link("symlink");
+    QTest::newRow("symlink") << "symlink" << false;
+
+    createAlias(regularFile.fileName(), QDir::current().filePath("file-alias"));
+    QTest::newRow("file-alias") << "file-alias" << true;
+
+    createAlias(QDir::currentPath(), QDir::current().filePath("directory-alias"));
+    QTest::newRow("directory-alias") << "directory-alias" << true;
+
+    regularFile.copy("non-existing-file");
+    createAlias("non-existing-file", QDir::current().filePath("non-existing-file-alias"));
+    QDir::current().remove("non-existing-file");
+    QTest::newRow("non-existing-file-alias") << "non-existing-file-alias" << true;
+#endif
+}
+
+void tst_QFileInfo::isAlias()
+{
+    QFETCH(QString, path);
+    QFETCH(bool, isAlias);
+
+    QFileInfo fi(path);
+    QCOMPARE(fi.isAlias(), isAlias);
 }
 
 void tst_QFileInfo::isSymbolicLink_data()
@@ -1697,7 +1729,7 @@ void tst_QFileInfo::ntfsJunctionPointsAndSymlinks_data()
     {
         // Symlink to UNC share
         pwd.mkdir("unc");
-        QString uncTarget = QStringLiteral("//") + QtNetworkSettings::winServerName() + "/testshare";
+        QString uncTarget = QStringLiteral("//") + QTest::uncServerName() + "/testshare";
         QString uncSymlink = QDir::toNativeSeparators(pwd.absolutePath().append("\\unc\\link_to_unc"));
         QTest::newRow("UNC symlink")
             << NtfsTestResource(NtfsTestResource::SymLink, uncSymlink, uncTarget)
@@ -1795,14 +1827,14 @@ void tst_QFileInfo::ntfsJunctionPointsAndSymlinks()
             creationResult.target = creationResult.target.sliced(4);
 
         // resolve volume to drive letter
-        static const QRegularExpression matchVolumeRe(uR"(^Volume\{([a-z]|[0-9]|-)+\}\\)"_qs,
+        static const QRegularExpression matchVolumeRe(uR"(^Volume\{([a-z]|[0-9]|-)+\}\\)"_s,
             QRegularExpression::CaseInsensitiveOption);
         auto matchVolume = matchVolumeRe.match(creationResult.target);
         if (matchVolume.hasMatch()) {
             Q_ASSERT(matchVolume.capturedStart() == 0);
             DWORD len;
             wchar_t buffer[MAX_PATH];
-            const QString volumeName = uR"(\\?\)"_qs + matchVolume.captured();
+            const QString volumeName = uR"(\\?\)"_s + matchVolume.captured();
             if (GetVolumePathNamesForVolumeName(reinterpret_cast<LPCWSTR>(volumeName.utf16()),
                                                 buffer, MAX_PATH, &len) != 0) {
                 creationResult.target.replace(0, matchVolume.capturedLength(),
@@ -1877,8 +1909,14 @@ void tst_QFileInfo::isWritable()
 void tst_QFileInfo::isExecutable()
 {
     QString appPath = QCoreApplication::applicationDirPath();
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
-    appPath += "/libtst_qfileinfo.so";
+#ifdef Q_OS_ANDROID
+    QDir dir(appPath);
+    QVERIFY(dir.exists());
+    dir.setNameFilters({ "libtst_qfileinfo*.so" });
+    QStringList entries = dir.entryList();
+    QCOMPARE(entries.size(), 1);
+
+    appPath += "/" + entries[0];
 #else
     appPath += "/tst_qfileinfo";
 # if defined(Q_OS_WIN)
@@ -1886,6 +1924,7 @@ void tst_QFileInfo::isExecutable()
 # endif
 #endif
     QFileInfo fi(appPath);
+    QVERIFY(fi.exists());
     QCOMPARE(fi.isExecutable(), true);
 
     QCOMPARE(QFileInfo(m_proFile).isExecutable(), false);

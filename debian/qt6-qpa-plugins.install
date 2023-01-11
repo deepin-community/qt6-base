@@ -1,28 +1,2 @@
-#!/usr/bin/dh-exec
-usr/lib/${DEB_HOST_MULTIARCH}/libQt6EglFSDeviceIntegration.so.*
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/libQt6EglFsKmsGbmSupport.so.*
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/libQt6EglFsKmsSupport.so.*
-usr/lib/${DEB_HOST_MULTIARCH}/libQt6XcbQpa.so.*
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-emu-integration.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-kms-egldevice-integration.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-kms-integration.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-x11-integration.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/generic/libqevdevkeyboardplugin.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/generic/libqevdevmouseplugin.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/generic/libqevdevtabletplugin.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/generic/libqevdevtouchplugin.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/generic/libqlibinputplugin.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/generic/libqtslibplugin.so
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/generic/libqtuiotouchplugin.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforminputcontexts/libcomposeplatforminputcontextplugin.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforminputcontexts/libibusplatforminputcontextplugin.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqeglfs.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqlinuxfb.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqminimal.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqminimalegl.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqoffscreen.so
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqvnc.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqxcb.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/xcbglintegrations/libqxcb-glx-integration.so
-[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqvkkhrdisplay.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/xcbglintegrations/libqxcb-egl-integration.so

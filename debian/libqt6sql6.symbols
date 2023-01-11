@@ -1,10 +1,12 @@
-# SymbolsHelper-Confirmed: 6.2.4 amd64
+# SymbolsHelper-Confirmed: 6.4.2 amd64
 libQt6Sql.so.6 libqt6sql6 #MINVER#
-| libqt6sql6 #MINVER#, qt6-base-abi (= 6.2.4)
+| libqt6sql6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev
  Qt_6.0@Qt_6.0 6.1.2
  Qt_6.1@Qt_6.1 6.1.2
  Qt_6.2@Qt_6.2 6.2.0
+ Qt_6.3@Qt_6.3 6.3.0
+ Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _ZN10QSqlDriver11cancelQueryEv@Qt_6 6.1.2
@@ -427,7 +429,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK9QSqlQuery8isSelectEv@Qt_6 6.1.2
  _ZNK9QSqlQuery9lastErrorEv@Qt_6 6.1.2
  _ZNK9QSqlQuery9lastQueryEv@Qt_6 6.1.2
- (optional=templinst)_ZNSt8_Rb_treeIiSt4pairIKiiESt10_Select1stIS2_ESt4lessIiESaIS2_EE16_M_insert_uniqueIS2_EES0_ISt17_Rb_tree_iteratorIS2_EbEOT_@Qt_6 6.1.2
+ (optional=templinst)_ZNSt8_Rb_treeIiSt4pairIKiiESt10_Select1stIS2_ESt4lessIiESaIS2_EE16_M_insert_uniqueIS2_EES0_ISt17_Rb_tree_iteratorIS2_EbEOT_@Qt_6 6.4.2
  _ZTI10QSqlDriver@Qt_6 6.1.2
  _ZTI10QSqlResult@Qt_6 6.1.2
  _ZTI14QSqlQueryModel@Qt_6 6.1.2
@@ -446,20 +448,6 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZTV14QSqlTableModel@Qt_6 6.1.2
  _ZTV16QSqlDriverPlugin@Qt_6 6.1.2
  _ZTV24QSqlRelationalTableModel@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QStringE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QStringE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QStringE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QStringE7getDtorEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI8QVariantE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI8QVariantE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI8QVariantE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI8QVariantE7getDtorEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Qt_6 6.1.2
  _Zls6QDebugRK10QSqlRecord@Qt_6 6.1.2
  _Zls6QDebugRK12QSqlDatabase@Qt_6 6.1.2
  _Zls6QDebugRK9QSqlError@Qt_6 6.1.2
