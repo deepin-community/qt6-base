@@ -19,6 +19,13 @@ else
         extra_cmake_args += -DFEATURE_sctp=OFF
 endif
 
+# remove forkfd_pidfd in riscv64
+# https://github.com/felixonmars/archriscv-packages/pull/1151#issuecomment-1100954643
+ifeq ($(DEB_HOST_ARCH),riscv64)
+        extra_cmake_args += -DFEATURE_forkfd_pidfd=OFF
+endif
+
+
 %:
 	dh $@ --with pkgkde_symbolshelper --buildsystem=cmake+ninja
 

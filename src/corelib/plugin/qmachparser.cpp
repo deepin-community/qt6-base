@@ -1,53 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmachparser_p.h"
 
-#if defined(Q_OF_MACH_O)
-
 #include <qendian.h>
-#include "qlibrary_p.h"
 
 #include <mach-o/loader.h>
 #include <mach-o/fat.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+// Whether we include some extra validity checks
+// (checks to ensure we don't read out-of-bounds are always included)
+static constexpr bool IncludeValidityChecks = true;
 
 #if defined(Q_PROCESSOR_X86_64)
 #  define MACHO64
@@ -81,15 +48,15 @@ typedef section my_section;
 static const uint32_t my_magic = MH_MAGIC;
 #endif
 
-static int ns(const QString &reason, const QString &library, QString *errorString)
+Q_DECL_COLD_FUNCTION
+static QLibraryScanResult notfound(const QString &reason, QString *errorString)
 {
-    if (errorString)
-        *errorString = QLibrary::tr("'%1' is not a valid Mach-O binary (%2)")
-                .arg(library, reason.isEmpty() ? QLibrary::tr("file is corrupt") : reason);
-    return QMachOParser::NotSuitable;
+    *errorString = QLibrary::tr("'%1' is not a valid Mach-O binary (%2)")
+            .arg(*errorString, reason.isEmpty() ? QLibrary::tr("file is corrupt") : reason);
+    return {};
 }
 
-int QMachOParser::parse(const char *m_s, ulong fdlen, const QString &library, QString *errorString, qsizetype *pos, qsizetype *sectionlen)
+QLibraryScanResult  QMachOParser::parse(const char *m_s, ulong fdlen, QString *errorString)
 {
     // The minimum size of a Mach-O binary we're interested in.
     // It must have a full Mach header, at least one segment and at least one
@@ -100,7 +67,7 @@ int QMachOParser::parse(const char *m_s, ulong fdlen, const QString &library, QS
     static const size_t MinFatHeaderSize = sizeof(fat_header) + 2 * sizeof(fat_arch);
 
     if (Q_UNLIKELY(fdlen < MinFileSize))
-        return ns(QLibrary::tr("file too small"), library, errorString);
+        return notfound(QLibrary::tr("file too small"), errorString);
 
     // find out if this is a fat Mach-O binary first
     const my_mach_header *header = nullptr;
@@ -109,12 +76,12 @@ int QMachOParser::parse(const char *m_s, ulong fdlen, const QString &library, QS
         // find our architecture in the binary
         const fat_arch *arch = reinterpret_cast<const fat_arch *>(fat + 1);
         if (Q_UNLIKELY(fdlen < MinFatHeaderSize)) {
-            return ns(QLibrary::tr("file too small"), library, errorString);
+            return notfound(QLibrary::tr("file too small"), errorString);
         }
 
         int count = qFromBigEndian(fat->nfat_arch);
         if (Q_UNLIKELY(fdlen < sizeof(*fat) + sizeof(*arch) * count))
-            return ns(QString(), library, errorString);
+            return notfound(QString(), errorString);
 
         for (int i = 0; i < count; ++i) {
             if (arch[i].cputype == qToBigEndian(my_cputype)) {
@@ -123,7 +90,7 @@ int QMachOParser::parse(const char *m_s, ulong fdlen, const QString &library, QS
                 uint32_t offset = qFromBigEndian(arch[i].offset);
                 if (Q_UNLIKELY(size > fdlen) || Q_UNLIKELY(offset > fdlen)
                         || Q_UNLIKELY(size + offset > fdlen) || Q_UNLIKELY(size < MinFileSize))
-                    return ns(QString(), library, errorString);
+                    return notfound(QString(), errorString);
 
                 header = reinterpret_cast<const my_mach_header *>(m_s + offset);
                 fdlen = size;
@@ -131,36 +98,35 @@ int QMachOParser::parse(const char *m_s, ulong fdlen, const QString &library, QS
             }
         }
         if (!header)
-            return ns(QLibrary::tr("no suitable architecture in fat binary"), library, errorString);
+            return notfound(QLibrary::tr("no suitable architecture in fat binary"), errorString);
 
         // check the magic again
         if (Q_UNLIKELY(header->magic != my_magic))
-            return ns(QString(), library, errorString);
+            return notfound(QString(), errorString);
     } else {
         header = reinterpret_cast<const my_mach_header *>(m_s);
         fat = 0;
 
         // check magic
         if (header->magic != my_magic)
-            return ns(QLibrary::tr("invalid magic %1").arg(qFromBigEndian(header->magic), 8, 16, QLatin1Char('0')),
-                      library, errorString);
+            return notfound(QLibrary::tr("invalid magic %1").arg(qFromBigEndian(header->magic),
+                                                                 8, 16, '0'_L1),
+                      errorString);
     }
 
-    // from this point on, fdlen is specific to this architecture
     // from this point on, everything is in host byte order
-    *pos = reinterpret_cast<const char *>(header) - m_s;
 
     // (re-)check the CPU type
     // ### should we check the CPU subtype? Maybe on ARM?
     if (header->cputype != my_cputype) {
         if (fat)
-            return ns(QString(), library, errorString);
-        return ns(QLibrary::tr("wrong architecture"), library, errorString);
+            return notfound(QString(), errorString);
+        return notfound(QLibrary::tr("wrong architecture"), errorString);
     }
 
     // check the file type
     if (Q_UNLIKELY(header->filetype != MH_BUNDLE && header->filetype != MH_DYLIB))
-        return ns(QLibrary::tr("not a dynamic library"), library, errorString);
+        return notfound(QLibrary::tr("not a dynamic library"), errorString);
 
     // find the __TEXT segment, "qtmetadata" section
     const my_segment_command *seg = reinterpret_cast<const my_segment_command *>(header + 1);
@@ -171,14 +137,14 @@ int QMachOParser::parse(const char *m_s, ulong fdlen, const QString &library, QS
         // We're sure that the file size includes at least one load command
         // but we have to check anyway if we're past the first
         if (Q_UNLIKELY(fdlen < minsize + sizeof(load_command)))
-            return ns(QString(), library, errorString);
+            return notfound(QString(), errorString);
 
         // cmdsize can't be trusted until validated
         // so check it against fdlen anyway
         // (these are unsigned operations, with overflow behavior specified in the standard)
         minsize += seg->cmdsize;
         if (Q_UNLIKELY(fdlen < minsize) || Q_UNLIKELY(fdlen < seg->cmdsize))
-            return ns(QString(), library, errorString);
+            return notfound(QString(), errorString);
 
         const uint32_t MyLoadCommand = sizeof(void *) > 4 ? LC_SEGMENT_64 : LC_SEGMENT;
         if (seg->cmd != MyLoadCommand)
@@ -195,11 +161,21 @@ int QMachOParser::parse(const char *m_s, ulong fdlen, const QString &library, QS
                 // found it!
                 if (Q_UNLIKELY(fdlen < sect[j].offset) || Q_UNLIKELY(fdlen < sect[j].size)
                         || Q_UNLIKELY(fdlen < sect[j].offset + sect[j].size))
-                    return ns(QString(), library, errorString);
+                    return notfound(QString(), errorString);
 
-                *pos += sect[j].offset;
-                *sectionlen = sect[j].size;
-                return QtMetaDataSection;
+                if (sect[j].size < sizeof(QPluginMetaData::MagicHeader))
+                    return notfound(QLibrary::tr(".qtmetadata section is too small"), errorString);
+
+                qsizetype pos = reinterpret_cast<const char *>(header) - m_s + sect[j].offset;
+                if (IncludeValidityChecks) {
+                    QByteArrayView expectedMagic = QByteArrayView::fromArray(QPluginMetaData::MagicString);
+                    QByteArrayView actualMagic = QByteArrayView(m_s + pos, expectedMagic.size());
+                    if (expectedMagic != actualMagic)
+                        return notfound(QLibrary::tr(".qtmetadata section has incorrect magic"), errorString);
+                }
+
+                pos += sizeof(QPluginMetaData::MagicString);
+                return { pos, qsizetype(sect[j].size - sizeof(QPluginMetaData::MagicString)) };
             }
         }
 
@@ -207,13 +183,9 @@ int QMachOParser::parse(const char *m_s, ulong fdlen, const QString &library, QS
         seg = reinterpret_cast<const my_segment_command *>(reinterpret_cast<const char *>(seg) + seg->cmdsize);
     }
 
-//    // No Qt section was found, but at least we know that where the proper architecture's boundaries are
-//    return NoQtSection;
-    if (errorString)
-        *errorString = QLibrary::tr("'%1' is not a Qt plugin").arg(library);
-    return NotSuitable;
+    // No .qtmetadata section was found
+    *errorString = QLibrary::tr("'%1' is not a Qt plugin").arg(*errorString);
+    return {};
 }
 
 QT_END_NAMESPACE
-
-#endif

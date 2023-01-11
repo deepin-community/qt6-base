@@ -1,35 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the $MODULE$ of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtGui>
 #include <QtWidgets>
 #include <QTest>
 #include <QtGui/private/qevent_p.h>
+#include <QtGui/private/qeventpoint_p.h>
 #include <qpa/qwindowsysteminterface.h>
 
 // #include <QDebug>
@@ -147,11 +123,11 @@ void tst_QScroller::kineticScroll(tst_QScrollerWidget *sw, QPointF from, QPoint 
     QScrollerProperties sp1 = QScroller::scroller(sw)->scrollerProperties();
 
     // send the touch begin event
-    QMutableEventPoint touchPoint(0);
-    touchPoint.setState(QEventPoint::State::Pressed);
-    touchPoint.setPosition(touchStart);
-    touchPoint.setScenePosition(touchStart);
-    touchPoint.setGlobalPosition(touchStart);
+    QEventPoint touchPoint(0);
+    QMutableEventPoint::setState(touchPoint, QEventPoint::State::Pressed);
+    QMutableEventPoint::setPosition(touchPoint, touchStart);
+    QMutableEventPoint::setScenePosition(touchPoint, touchStart);
+    QMutableEventPoint::setGlobalPosition(touchPoint, touchStart);
 
     QTouchEvent touchEvent1(QEvent::TouchBegin,
                             m_touchScreen,
@@ -164,10 +140,10 @@ void tst_QScroller::kineticScroll(tst_QScrollerWidget *sw, QPointF from, QPoint 
 
     // send the touch update far enough to trigger a scroll
     QTest::qWait(200); // we need to wait a little or else the speed would be infinite. now we have around 500 pixel per second.
-    touchPoint.setPosition(touchUpdate);
-    touchPoint.setScenePosition(touchUpdate);
-    touchPoint.setGlobalPosition(touchUpdate);
-    touchPoint.setState(QEventPoint::State::Updated);
+    QMutableEventPoint::setPosition(touchPoint, touchUpdate);
+    QMutableEventPoint::setScenePosition(touchPoint, touchUpdate);
+    QMutableEventPoint::setGlobalPosition(touchPoint, touchUpdate);
+    QMutableEventPoint::setState(touchPoint, QEventPoint::State::Updated);
     QTouchEvent touchEvent2(QEvent::TouchUpdate,
                             m_touchScreen,
                             Qt::NoModifier,
@@ -188,10 +164,10 @@ void tst_QScroller::kineticScroll(tst_QScrollerWidget *sw, QPointF from, QPoint 
     QVERIFY(qAbs(sw->currentPos.y() - calculatedPos.y()) < 1.0);
 
     // send the touch end
-    touchPoint.setPosition(touchEnd);
-    touchPoint.setScenePosition(touchEnd);
-    touchPoint.setGlobalPosition(touchEnd);
-    touchPoint.setState(QEventPoint::State::Released);
+    QMutableEventPoint::setPosition(touchPoint, touchEnd);
+    QMutableEventPoint::setScenePosition(touchPoint, touchEnd);
+    QMutableEventPoint::setGlobalPosition(touchPoint, touchEnd);
+    QMutableEventPoint::setState(touchPoint, QEventPoint::State::Released);
     QTouchEvent touchEvent5(QEvent::TouchEnd,
                             m_touchScreen,
                             Qt::NoModifier,
@@ -215,11 +191,11 @@ void tst_QScroller::kineticScrollNoTest(tst_QScrollerWidget *sw, QPointF from, Q
     int fps = 60;
 
     // send the touch begin event
-    QMutableEventPoint touchPoint(0);
-    touchPoint.setState(QEventPoint::State::Pressed);
-    touchPoint.setPosition(touchStart);
-    touchPoint.setScenePosition(touchStart);
-    touchPoint.setGlobalPosition(touchStart);
+    QEventPoint touchPoint(0);
+    QMutableEventPoint::setState(touchPoint, QEventPoint::State::Pressed);
+    QMutableEventPoint::setPosition(touchPoint, touchStart);
+    QMutableEventPoint::setScenePosition(touchPoint, touchStart);
+    QMutableEventPoint::setGlobalPosition(touchPoint, touchStart);
     QTouchEvent touchEvent1(QEvent::TouchBegin,
                             m_touchScreen,
                             Qt::NoModifier,
@@ -228,10 +204,10 @@ void tst_QScroller::kineticScrollNoTest(tst_QScrollerWidget *sw, QPointF from, Q
 
     // send the touch update far enough to trigger a scroll
     QTest::qWait(200); // we need to wait a little or else the speed would be infinite. now we have around 500 pixel per second.
-    touchPoint.setState(QEventPoint::State::Updated);
-    touchPoint.setPosition(touchUpdate);
-    touchPoint.setScenePosition(touchUpdate);
-    touchPoint.setGlobalPosition(touchUpdate);
+    QMutableEventPoint::setState(touchPoint, QEventPoint::State::Updated);
+    QMutableEventPoint::setPosition(touchPoint, touchUpdate);
+    QMutableEventPoint::setScenePosition(touchPoint, touchUpdate);
+    QMutableEventPoint::setGlobalPosition(touchPoint, touchUpdate);
     QTouchEvent touchEvent2(QEvent::TouchUpdate,
                             m_touchScreen,
                             Qt::NoModifier,
@@ -241,10 +217,10 @@ void tst_QScroller::kineticScrollNoTest(tst_QScrollerWidget *sw, QPointF from, Q
     QTest::qWait(1000 / fps * 2); // wait until the first scroll move
 
     // send the touch end
-    touchPoint.setState(QEventPoint::State::Released);
-    touchPoint.setPosition(touchEnd);
-    touchPoint.setScenePosition(touchEnd);
-    touchPoint.setGlobalPosition(touchEnd);
+    QMutableEventPoint::setState(touchPoint, QEventPoint::State::Released);
+    QMutableEventPoint::setPosition(touchPoint, touchEnd);
+    QMutableEventPoint::setScenePosition(touchPoint, touchEnd);
+    QMutableEventPoint::setGlobalPosition(touchPoint, touchEnd);
     QTouchEvent touchEvent5(QEvent::TouchEnd,
                             m_touchScreen,
                             Qt::NoModifier,
