@@ -2,7 +2,7 @@ Source: qt6-base
 Priority: optional
 Maintainer: Deepin Developer <deepin-dev@deepin.org>
 Uploaders: Deepin Packages Builder <packages@deepin.org>
-Build-Depends: cmake (>= 3.18~),
+Build-Depends: cmake (>= 3.24~),
                debhelper-compat (= 13),
                default-libmysqlclient-dev,
                dh-exec,
@@ -82,8 +82,9 @@ Package: libqt6core6
 Architecture: any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
-Provides: qt6-base-abi (= 6.2.4)
-Depends: ${misc:Depends}, ${shlibs:Depends}
+Provides: qt6-base-abi (= 6.4.2)
+Depends: shared-mime-info, ${misc:Depends}, ${shlibs:Depends}
+Recommends: qt6-translations-l10n
 Description: Qt 6 core module
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -125,7 +126,7 @@ Pre-Depends: ${misc:Pre-Depends}
 Depends: fontconfig, ${misc:Depends}, ${shlibs:Depends}
 Breaks: qt6-qpa-plugins (<< 6.2.4~)
 Replaces: qt6-qpa-plugins (<< 6.2.4~)
-Recommends: qt6-gtk-platformtheme
+Recommends: qt6-gtk-platformtheme, qt6-qpa-plugins
 Description: Qt 6 GUI module
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -137,12 +138,16 @@ Architecture: any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
 Depends: fontconfig, ${misc:Depends}, ${shlibs:Depends}
-Breaks: libqt6gui6 (<< 6.2.4~), libqt6network6 (<< 6.2.4~)
-Description: Qt 6 EGL plugins
+Breaks: libqt6gui6 (<< 6.2.4~),
+        libqt6network6 (<< 6.2.4~),
+        libqt6opengl6 (<< 6.2.4~),
+Description: Qt 6 QPA plugins
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
  .
- This package contains QPA-related plugins.
+ This package contains the following plugins:
+   * uioTouch Plugin
+   * VNC Plugin
 
 Package: qt6-gtk-platformtheme
 Architecture: any
@@ -173,6 +178,8 @@ Architecture: any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends}, ${shlibs:Depends}
+Breaks: qt6-qpa-plugins (<< 6.2.4~)
+Replaces: qt6-qpa-plugins (<< 6.2.4~)
 Description: Qt 6 OpenGL module
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -348,11 +355,13 @@ Depends: libgl-dev,
          libqt6test6 (= ${binary:Version}),
          libqt6widgets6 (= ${binary:Version}),
          libqt6xml6 (= ${binary:Version}),
+         libvulkan-dev [linux-any],
          qmake6 (= ${binary:Version}),
          qt6-base-dev-tools (= ${binary:Version}),
          qt6-qpa-plugins (= ${binary:Version}),
          ${misc:Depends},
 Recommends: libqt6opengl6-dev (= ${binary:Version})
+Breaks: libqt6opengl6-dev (<< 6.2.4~)
 Description: Qt 6 base development files
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -385,10 +394,8 @@ Package: qt6-base-dev-tools
 Architecture: any
 Multi-Arch: foreign
 Section: devel
-Depends: qtchooser (>= 55-gc9562a1-1~),
-         ${misc:Depends},
-         ${perl:Depends},
-         ${shlibs:Depends},
+Depends: ${misc:Depends}, ${perl:Depends}, ${shlibs:Depends}
+Suggests: cmake
 Description: Qt 6 base development programs
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -407,6 +414,8 @@ Section: libdevel
 Depends: libqt6opengl6 (= ${binary:Version}),
          qt6-base-dev (= ${binary:Version}),
          ${misc:Depends},
+Breaks: qt6-base-dev (<< 6.2.4~)
+Replaces: qt6-base-dev (<< 6.2.4~)
 Description: Qt 6 OpenGL library development files
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -431,7 +440,6 @@ Architecture: any
 Multi-Arch: same
 Section: devel
 Depends: qmake6-bin (= ${binary:Version}),
-         qtchooser (>= 55-gc9562a1-1~),
          ${misc:Depends},
          ${perl:Depends},
          ${shlibs:Depends},

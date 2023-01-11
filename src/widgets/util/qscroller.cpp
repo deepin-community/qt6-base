@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qevent.h"
 #include "qwidget.h"
@@ -1418,10 +1382,10 @@ bool QScrollerPrivate::prepareScrolling(const QPointF &position)
         // - check if the content position was moved
         if (contentDelta != QPointF(0, 0)) {
             // need to correct all segments
-            for (int i = 0; i < xSegments.count(); i++)
+            for (int i = 0; i < xSegments.size(); i++)
                 xSegments[i].startPos -= contentDelta.x();
 
-            for (int i = 0; i < ySegments.count(); i++)
+            for (int i = 0; i < ySegments.size(); i++)
                 ySegments[i].startPos -= contentDelta.y();
         }
 
@@ -1760,7 +1724,6 @@ void QScrollerPrivate::setContentPositionHelperDragging(const QPointF &deltaPos)
     qScrollerDebug() << "QScroller::setContentPositionHelperDragging(" << deltaPos << " [pix])";
     qScrollerDebug() << "  --> overshoot:" << overshootPosition << "- old pos:" << oldPos << "- new pos:" << newPos;
 
-    QPointF oldClampedPos = clampToRect(oldPos, contentPosRange);
     QPointF newClampedPos = clampToRect(newPos, contentPosRange);
 
     // --- handle overshooting and stop if the coordinate is going back inside the normal area
@@ -1775,9 +1738,6 @@ void QScrollerPrivate::setContentPositionHelperDragging(const QPointF &deltaPos)
     bool canOvershootX = !noOvershootX && (alwaysOvershootX || contentPosRange.width());
     bool canOvershootY = !noOvershootY && (alwaysOvershootY || contentPosRange.height());
 
-    qreal oldOvershootX = (canOvershootX) ? oldPos.x() - oldClampedPos.x() : 0;
-    qreal oldOvershootY = (canOvershootY) ? oldPos.y() - oldClampedPos.y() : 0;
-
     qreal newOvershootX = (canOvershootX) ? newPos.x() - newClampedPos.x() : 0;
     qreal newOvershootY = (canOvershootY) ? newPos.y() - newClampedPos.y() : 0;
 
@@ -1788,8 +1748,6 @@ void QScrollerPrivate::setContentPositionHelperDragging(const QPointF &deltaPos)
     qScrollerDebug() << "  --> canOS:" << canOvershootX << "newOS:" << newOvershootX << "maxOS:" << maxOvershootX;
 
     if (sp->overshootDragResistanceFactor) {
-        oldOvershootX *= sp->overshootDragResistanceFactor;
-        oldOvershootY *= sp->overshootDragResistanceFactor;
         newOvershootX *= sp->overshootDragResistanceFactor;
         newOvershootY *= sp->overshootDragResistanceFactor;
     }

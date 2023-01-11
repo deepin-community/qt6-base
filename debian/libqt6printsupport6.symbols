@@ -1,13 +1,30 @@
-# SymbolsHelper-Confirmed: 6.2.4 amd64
+# SymbolsHelper-Confirmed: 6.4.2 amd64
 libQt6PrintSupport.so.6 libqt6printsupport6 #MINVER#
-| libqt6printsupport6 #MINVER#, qt6-base-abi (= 6.2.4)
+| libqt6printsupport6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev
  Qt_6.0@Qt_6.0 6.1.2
  Qt_6.1@Qt_6.1 6.1.2
  Qt_6.2@Qt_6.2 6.2.0
+ Qt_6.3@Qt_6.3 6.3.0
+ Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
+ _Z49qRegisterNormalizedMetaType_QCUPSSupport__PageSetRK10QByteArray@Qt_6 6.4.0
+ _Z52qRegisterNormalizedMetaType_QCUPSSupport__BannerPageRK10QByteArray@Qt_6 6.4.0
+ _Z54qRegisterNormalizedMetaType_QCUPSSupport__JobHoldUntilRK10QByteArray@Qt_6 6.4.0
+ _Z55qRegisterNormalizedMetaType_QCUPSSupport__PagesPerSheetRK10QByteArray@Qt_6 6.4.0
+ _Z61qRegisterNormalizedMetaType_QCUPSSupport__PagesPerSheetLayoutRK10QByteArray@Qt_6 6.4.0
  _ZGVZN9QMetaType21registerConverterImplISt4pairI9QMarginsFN11QPageLayout4UnitEEN17QtMetaTypePrivate25QPairVariantInterfaceImplEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
+ _ZN11QPrintUtils18parsePpdResolutionERK10QByteArray@Qt_6 6.4.0
+ _ZN11QPrintUtils19paperBinToInputSlotEiRK7QString@Qt_6 6.4.0
+ _ZN11QPrintUtils20ppdChoiceToInputSlotERK12ppd_choice_s@Qt_6 6.4.0
+ _ZN11QPrintUtils20ppdChoiceToOutputBinERK12ppd_choice_s@Qt_6 6.4.0
+ _ZN11QPrintUtils21ppdChoiceToDuplexModeERK10QByteArray@Qt_6 6.4.0
+ _ZN11QPrintUtils22inputSlotIdToWindowsIdEN6QPrint11InputSlotIdE@Qt_6 6.4.0
+ _ZN11QPrintUtils25inputSlotIdToInputSlotKeyEN6QPrint11InputSlotIdE@Qt_6 6.4.0
+ _ZN11QPrintUtils25inputSlotKeyToInputSlotIdERK10QByteArray@Qt_6 6.4.0
+ _ZN11QPrintUtils25outputBinIdToOutputBinKeyEN6QPrint11OutputBinIdE@Qt_6 6.4.0
+ _ZN11QPrintUtils25outputBinKeyToOutputBinIdERK10QByteArray@Qt_6 6.4.0
  _ZN12QPrintDialog10setOptionsE6QFlagsIN20QAbstractPrintDialog17PrintDialogOptionEE@Qt_6 6.1.2
  _ZN12QPrintDialog10setVisibleEb@Qt_6 6.1.2
  _ZN12QPrintDialog11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
@@ -233,15 +250,6 @@ libQt6PrintSupport.so.6 libqt6printsupport6 #MINVER#
  _ZTV20QAbstractPrintDialog@Qt_6 6.1.2
  _ZTV8QPrinter@Qt_6 6.1.2
  (optional=templinst)_ZZN9QMetaType21registerConverterImplISt4pairI9QMarginsFN11QPageLayout4UnitEEN17QtMetaTypePrivate25QPairVariantInterfaceImplEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIdE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIdE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIdE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Qt_6 6.1.2
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Qt_6 6.1.2
  _Zls6QDebugRK12QPrinterInfo@Qt_6 6.1.2
  (c++)"non-virtual thunk to QAbstractPrintDialog::~QAbstractPrintDialog()@Qt_6" 6.1.2
  (c++)"non-virtual thunk to QPageSetupDialog::~QPageSetupDialog()@Qt_6" 6.1.2

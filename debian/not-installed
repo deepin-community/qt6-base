@@ -2,4 +2,9 @@ usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/3rdparty/extra-cmake-modules/COPYING-CMA
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/3rdparty/extra-cmake-modules/qt_attribution.json
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/3rdparty/kwin/COPYING-CMAKE-SCRIPTS
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/3rdparty/kwin/qt_attribution.json
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6GuiPlugins.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Network/Qt6NetworkPlugins.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6PrintSupport/Qt6PrintSupportPlugins.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Sql/Qt6SqlPlugins.cmake
 usr/lib/qt6/bin/qmake
+usr/lib/qt6/bin/qtpaths
