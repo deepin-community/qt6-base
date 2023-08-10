@@ -8,3 +8,8 @@ usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6PrintSupport/Qt6PrintSupportPlugins.cmake
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Sql/Qt6SqlPlugins.cmake
 usr/lib/qt6/bin/qmake
 usr/lib/qt6/bin/qtpaths
+# cross build specific:
+usr/lib/qt6/bin/host-qmake
+usr/lib/qt6/bin/host-qtpaths
+usr/lib/qt6/bin/target_qt.conf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/qdevice.pri

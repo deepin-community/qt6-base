@@ -1,140 +1,7 @@
-# SymbolsHelper-Confirmed: 6.4.2 amd64 arm64 armel armhf hppa i386 powerpc ppc64 ppc64el
+# SymbolsHelper-Confirmed: 6.4.2 amd64 arm64 armel armhf hppa hurd-i386 i386 mips64el mipsel powerpc ppc64 ppc64el riscv64 s390x
 libQt6Network.so.6 libqt6network6 #MINVER#
 | libqt6network6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev
- (arch=ppc64el)ERR_getErrorString@Qt_6 6.4.2
- (arch=ppc64el)FSE_buildDTable@Qt_6 6.4.2
- (arch=ppc64el)FSE_buildDTable_raw@Qt_6 6.4.2
- (arch=ppc64el)FSE_buildDTable_rle@Qt_6 6.4.2
- (arch=ppc64el)FSE_buildDTable_wksp@Qt_6 6.4.2
- (arch=ppc64el)FSE_createDTable@Qt_6 6.4.2
- (arch=ppc64el)FSE_decompress@Qt_6 6.4.2
- (arch=ppc64el)FSE_decompress_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)FSE_decompress_wksp@Qt_6 6.4.2
- (arch=ppc64el)FSE_decompress_wksp_bmi2@Qt_6 6.4.2
- (arch=ppc64el)FSE_freeDTable@Qt_6 6.4.2
- (arch=ppc64el)FSE_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)FSE_isError@Qt_6 6.4.2
- (arch=ppc64el)FSE_readNCount@Qt_6 6.4.2
- (arch=ppc64el)FSE_readNCount_bmi2@Qt_6 6.4.2
- (arch=ppc64el)FSE_versionNumber@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_buildDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_buildDTable_raw@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_buildDTable_rle@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_createDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_decompress@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_decompress_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_freeDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_isError@Qt_6 6.4.2
- (arch=ppc64el)FSEv05_readNCount@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_buildDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_buildDTable_raw@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_buildDTable_rle@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_createDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_decompress@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_decompress_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_freeDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_isError@Qt_6 6.4.2
- (arch=ppc64el)FSEv06_readNCount@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_buildDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_buildDTable_raw@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_buildDTable_rle@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_createDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_decompress@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_decompress_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_freeDTable@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_isError@Qt_6 6.4.2
- (arch=ppc64el)FSEv07_readNCount@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X1@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X1_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X1_DCtx_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X1_DCtx_wksp_bmi2@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X1_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X2@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X2_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X2_DCtx_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X2_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X_DCtx_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress1X_usingDTable_bmi2@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X1@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X1_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X1_DCtx_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X1_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X2@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X2_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X2_DCtx_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X2_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X_hufOnly@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X_hufOnly_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X_hufOnly_wksp_bmi2@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress4X_usingDTable_bmi2@Qt_6 6.4.2
- (arch=ppc64el)HUF_decompress@Qt_6 6.4.2
- (arch=ppc64el)HUF_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)HUF_isError@Qt_6 6.4.2
- (arch=ppc64el)HUF_readDTableX1@Qt_6 6.4.2
- (arch=ppc64el)HUF_readDTableX1_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_readDTableX1_wksp_bmi2@Qt_6 6.4.2
- (arch=ppc64el)HUF_readDTableX2@Qt_6 6.4.2
- (arch=ppc64el)HUF_readDTableX2_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_readDTableX2_wksp_bmi2@Qt_6 6.4.2
- (arch=ppc64el)HUF_readStats@Qt_6 6.4.2
- (arch=ppc64el)HUF_readStats_wksp@Qt_6 6.4.2
- (arch=ppc64el)HUF_selectDecoder@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress1X2@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress1X2_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress1X4@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress1X4_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress4X2@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress4X2_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress4X4@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress4X4_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_decompress@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_isError@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_readDTableX2@Qt_6 6.4.2
- (arch=ppc64el)HUFv05_readDTableX4@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress1X2@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress1X2_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress1X4@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress1X4_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress4X2@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress4X2_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress4X4@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress4X4_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_decompress@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_readDTableX2@Qt_6 6.4.2
- (arch=ppc64el)HUFv06_readDTableX4@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress1X2@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress1X2_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress1X2_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress1X4@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress1X4_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress1X4_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress1X_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress1X_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X2@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X2_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X2_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X4@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X4_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X4_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X_DCtx@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X_hufOnly@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress4X_usingDTable@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_decompress@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_isError@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_readDTableX2@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_readDTableX4@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_readStats@Qt_6 6.4.2
- (arch=ppc64el)HUFv07_selectDecoder@Qt_6 6.4.2
  Qt_6.0@Qt_6.0 6.1.2
  Qt_6.1@Qt_6.1 6.1.2
  Qt_6.2@Qt_6.2 6.2.0
@@ -142,198 +9,6 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
- (arch=ppc64el)ZBUFFv05_createDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv05_decompressContinue@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv05_decompressInit@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv05_decompressInitDictionary@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv05_freeDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv05_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv05_isError@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv05_recommendedDInSize@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv05_recommendedDOutSize@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_createDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_decompressContinue@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_decompressInit@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_decompressInitDictionary@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_freeDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_isError@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_recommendedDInSize@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv06_recommendedDOutSize@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_createDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_createDCtx_advanced@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_decompressContinue@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_decompressInit@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_decompressInitDictionary@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_freeDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_isError@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_recommendedDInSize@Qt_6 6.4.2
- (arch=ppc64el)ZBUFFv07_recommendedDOutSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_getParameter@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_loadDictionary@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_loadDictionary_advanced@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_loadDictionary_byReference@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_refDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_refPrefix@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_refPrefix_advanced@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_reset@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_setFormat@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_setMaxWindowSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DCtx_setParameter@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DDict_dictContent@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DDict_dictSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DStreamInSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_DStreamOutSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32_canonicalFromHash@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32_copyState@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32_createState@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32_digest@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32_freeState@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32_hashFromCanonical@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32_reset@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH32_update@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64_canonicalFromHash@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64_copyState@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64_createState@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64_digest@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64_freeState@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64_hashFromCanonical@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64_reset@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH64_update@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_XXH_versionNumber@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_buildFSETable@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_checkContinuity@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_copyDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_copyDDictParameters@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_createDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_createDCtx_advanced@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_createDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_createDDict_advanced@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_createDDict_byReference@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_createDStream@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_createDStream_advanced@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_customCalloc@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_customFree@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_customMalloc@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_dParam_getBounds@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decodeLiteralsBlock@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decodeSeqHeaders@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decodingBufferSize_min@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompress@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressBegin@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressBegin_usingDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressBegin_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressBlock@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressBlock_internal@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressBound@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressContinue@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressStream@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompressStream_simpleArgs@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompress_usingDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_decompress_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_estimateDCtxSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_estimateDDictSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_estimateDStreamSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_estimateDStreamSize_fromFrame@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_findDecompressedSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_findFrameCompressedSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_frameHeaderSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_freeDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_freeDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_freeDStream@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getDecompressedSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getDictID_fromDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getDictID_fromDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getDictID_fromFrame@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getErrorCode@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getErrorString@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getFrameContentSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getFrameHeader@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getFrameHeader_advanced@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_getcBlockSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_initDStream@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_initDStream_usingDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_initDStream_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_initStaticDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_initStaticDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_initStaticDStream@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_insertBlock@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_isError@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_isFrame@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_isSkippableFrame@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_loadDEntropy@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_nextInputType@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_nextSrcSizeToDecompress@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_readSkippableFrame@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_resetDStream@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_sizeof_DCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_sizeof_DDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_sizeof_DStream@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_versionNumber@Qt_6 6.4.2
- (arch=ppc64el)ZSTD_versionString@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_copyDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_createDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_decompress@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_decompressBegin@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_decompressBegin_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_decompressBlock@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_decompressContinue@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_decompressDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_decompress_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_decompress_usingPreparedDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_findFrameSizeInfoLegacy@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_freeDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_getFrameParams@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_isError@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_nextSrcSizeToDecompress@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv05_sizeofDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_copyDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_createDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_decompress@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_decompressBegin@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_decompressBegin_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_decompressBlock@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_decompressContinue@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_decompressDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_decompress_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_decompress_usingPreparedDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_findFrameSizeInfoLegacy@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_freeDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_getFrameParams@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_isError@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_nextSrcSizeToDecompress@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv06_sizeofDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_copyDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_createDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_createDCtx_advanced@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_createDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_decompress@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_decompressBegin@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_decompressBegin_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_decompressBlock@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_decompressContinue@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_decompressDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_decompress_usingDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_decompress_usingDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_estimateDCtxSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_findFrameSizeInfoLegacy@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_freeDCtx@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_freeDDict@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_getDecompressedSize@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_getErrorName@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_getFrameParams@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_insertBlock@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_isError@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_isSkipFrame@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_nextSrcSizeToDecompress@Qt_6 6.4.2
- (arch=ppc64el)ZSTDv07_sizeofDCtx@Qt_6 6.4.2
  _Z15qIsEffectiveTLD11QStringView@Qt_6 6.1.2
  _Z19qt_qhostinfo_lookupRK7QStringP7QObjectPKcPbPi@Qt_6 6.1.2
  _Z24qt_ForceTlsSecurityLevelv@Qt_6 6.1.2
@@ -1685,25 +1360,6 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK9QSslError11errorStringEv@Qt_6 6.1.2
  _ZNK9QSslError5errorEv@Qt_6 6.1.2
  _ZNK9QSslErroreqERKS_@Qt_6 6.1.2
- (optional=templinst|arch=amd64 arm64)_ZNKSt8_Rb_treeIN4QSsl24AlternativeNameEntryTypeESt4pairIKS1_7QStringESt10_Select1stIS5_ESt4lessIS1_ESaIS5_EE11equal_rangeERS3_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt11_Deque_baseIjSaIjEE17_M_initialize_mapEm@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt11_Deque_baseIjSaIjEED1Ev@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt11_Deque_baseIjSaIjEED2Ev@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt5dequeIjSaIjEE16_M_push_back_auxIJRKjEEEvDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt5dequeIjSaIjEE17_M_reallocate_mapEmb@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt5dequeIjSaIjEE8_M_eraseESt15_Deque_iteratorIjRjPjE@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt5dequeIjSaIjEE8_M_eraseESt15_Deque_iteratorIjRjPjES5_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorIN24QNetworkReplyImplPrivate21InternalNotificationsESaIS1_EE17_M_realloc_insertIJRKS1_EEEvN9__gnu_cxx17__normal_iteratorIPS1_S3_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorIN24QNetworkReplyImplPrivate21InternalNotificationsESaIS1_EE17_M_realloc_insertIJS1_EEEvN9__gnu_cxx17__normal_iteratorIPS1_S3_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorIhSaIhEE17_M_default_appendEm@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorIhSaIhEE17_M_realloc_insertIJRKhEEEvN9__gnu_cxx17__normal_iteratorIPhS1_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorIhSaIhEE17_M_realloc_insertIJhEEEvN9__gnu_cxx17__normal_iteratorIPhS1_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorIjSaIjEE17_M_realloc_insertIJRKjEEEvN9__gnu_cxx17__normal_iteratorIPjS1_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI10QByteArraySt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE16_M_insert_uniqueIS4_EES1_ISt17_Rb_tree_iteratorIS4_EbEOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI10QByteArraySt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE16_M_insert_uniqueIS3_EES1_ISt17_Rb_tree_iteratorIS3_EbEOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI9QDateTimeSt4pairIKS0_7QStringESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE28_M_get_insert_hint_equal_posESt23_Rb_tree_const_iteratorIS4_ERS2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZSt14__copy_move_a1ILb1EPjjEN9__gnu_cxx11__enable_ifIXsrSt23__is_random_access_iterIT0_NSt15iterator_traitsIS4_E17iterator_categoryEE7__valueESt15_Deque_iteratorIT1_RSA_PSA_EE6__typeES4_S4_SD_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZSt23__copy_move_backward_a1ILb1EPjjEN9__gnu_cxx11__enable_ifIXsrSt23__is_random_access_iterIT0_NSt15iterator_traitsIS4_E17iterator_categoryEE7__valueESt15_Deque_iteratorIT1_RSA_PSA_EE6__typeES4_S4_SD_@Qt_6 6.4.2
  _ZTI10QDnsLookup@Qt_6 6.1.2
  _ZTI10QSslServer@Qt_6 6.4.0
  _ZTI10QSslSocket@Qt_6 6.1.2
@@ -1730,8 +1386,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  (arch=!armel !riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
  (arch=armel riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
  (arch=!armel !riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
- (arch=!amd64 !arm64)_ZTISt19_Sp_make_shared_tag@Qt_6 6.4.2
- (arch=amd64 arm64)_ZTISt23_Sp_counted_ptr_inplaceI6QTimerSaIS0_ELN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.4.2
+ _ZTISt19_Sp_make_shared_tag@Qt_6 6.4.2
  _ZTIZN9QMetaType17registerConverterI5QListI14QNetworkCookieE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListI9QSslErrorE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListISt4pairI10QByteArrayS3_EE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS5_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
@@ -1766,9 +1421,8 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  (arch=armel riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
  (arch=!armel !riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
  _ZTSSt19_Sp_make_shared_tag@Qt_6 6.3.0
- (arch=amd64 arm64)_ZTSSt23_Sp_counted_ptr_inplaceI6QTimerSaIS0_ELN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.4.2
  (arch=armel riscv64)_ZTSSt23_Sp_counted_ptr_inplaceI6QTimerSaIvELN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.4.0
- (arch=!amd64 !arm64 !armel !riscv64)_ZTSSt23_Sp_counted_ptr_inplaceI6QTimerSaIvELN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.4.0
+ (arch=!armel !riscv64)_ZTSSt23_Sp_counted_ptr_inplaceI6QTimerSaIS0_ELN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.4.0
  _ZTSZN9QMetaType17registerConverterI5QListI14QNetworkCookieE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListI9QSslErrorE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListISt4pairI10QByteArrayS3_EE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS5_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
@@ -1797,7 +1451,6 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZTV21QAbstractNetworkCache@Qt_6 6.1.2
  _ZTV21QNetworkAccessManager@Qt_6 6.1.2
  _ZTV5QDtls@Qt_6 6.1.2
- (arch=amd64 arm64)_ZTVSt23_Sp_counted_ptr_inplaceI6QTimerSaIS0_ELN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.4.2
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI14QNetworkCookieE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI9QSslErrorE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListISt4pairI10QByteArrayS3_EE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0

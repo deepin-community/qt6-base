@@ -1,3 +1,18 @@
 # This dependency has been added to track external packages building against
 # our private headers. It is ok if internal packages depend on the ABI one.
 libqt6opengl6: symbols-declares-dependency-on-other-package qt6-base-abi *
+
+# libQt6EglFSDeviceIntegration, libQt6EglFsKmsGbmSupport and libQt6EglFsKmsSupport
+# are actually private libraries *only* used by their
+# respective platforms plugins.
+# Sadly instead of being installed into a proper place like
+# /usr/lib/<arch-triplet>/qt6/ they are being installed into /usr/lib/.
+# We are still shipping the headers but they only contain the version and
+# the only binaries that depend on them are shipped within this very same
+# binary package, so it's safe to override these Lintian warnings.
+libqt6opengl6: shared-library-symbols-not-tracked libQt6EglFSDeviceIntegration 6 for usr/lib/*/libQt6EglFSDeviceIntegration.so.6.* [symbols]
+libqt6opengl6: shared-library-symbols-not-tracked libQt6EglFsKmsGbmSupport 6 for usr/lib/*/libQt6EglFsKmsGbmSupport.so.6.* [symbols]
+libqt6opengl6: shared-library-symbols-not-tracked libQt6EglFsKmsSupport 6 for usr/lib/*/libQt6EglFsKmsSupport.so.6.* [symbols]
+libqt6opengl6: ships-undeclared-shared-library libQt6EglFSDeviceIntegration 6 for usr/lib/*/libQt6EglFSDeviceIntegration.so.6.* [shlibs]
+libqt6opengl6: ships-undeclared-shared-library libQt6EglFsKmsGbmSupport 6 for usr/lib/*/libQt6EglFsKmsGbmSupport.so.6.* [shlibs]
+libqt6opengl6: ships-undeclared-shared-library libQt6EglFsKmsSupport 6 for usr/lib/*/libQt6EglFsKmsSupport.so.6.* [shlibs]

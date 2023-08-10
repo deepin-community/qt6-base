@@ -1,0 +1,28 @@
+Description: force the usage of the shared libzstd library.
+ The library provides both versions, and the original code prefers the static
+ version over the shared, while on Debian it should always use the shared
+ version.
+Author: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
+Bug: https://bugreports.qt.io/browse/QTBUG-110978
+Forwarded: not-needed
+
+---
+ cmake/FindWrapZSTD.cmake |    7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+--- a/cmake/FindWrapZSTD.cmake
++++ b/cmake/FindWrapZSTD.cmake
+@@ -25,11 +25,8 @@ include(FindPackageHandleStandardArgs)
+ if(TARGET zstd::libzstd_static OR TARGET zstd::libzstd_shared)
+     find_package_handle_standard_args(WrapZSTD
+                                       REQUIRED_VARS zstd_VERSION VERSION_VAR zstd_VERSION)
+-    if(TARGET zstd::libzstd_static)
+-        set(zstdtargetsuffix "_static")
+-    else()
+-        set(zstdtargetsuffix "_shared")
+-    endif()
++    set(zstdtargetsuffix "_shared")
++
+     if(NOT TARGET WrapZSTD::WrapZSTD)
+         add_library(WrapZSTD::WrapZSTD INTERFACE IMPORTED)
+         set_target_properties(WrapZSTD::WrapZSTD PROPERTIES

@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.4.2 amd64
+# SymbolsHelper-Confirmed: 6.4.1 amd64
 libQt6Xml.so.6 libqt6xml6 #MINVER#
 | libqt6xml6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev
@@ -310,5 +310,4 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZNK8QDomNode9toElementEv@Qt_6 6.1.2
  _ZNK8QDomNodeeqERKS_@Qt_6 6.1.2
  _ZNK8QDomNodeneERKS_@Qt_6 6.1.2
- (optional=templinst)_ZNSt8__detail16_Hashtable_allocINSt3pmr21polymorphic_allocatorINS_10_Hash_nodeI7QStringLb1EEEEEE19_M_allocate_bucketsEm@Qt_6 6.4.2
  _ZlsR11QTextStreamRK8QDomNode@Qt_6 6.1.2

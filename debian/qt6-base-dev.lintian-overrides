@@ -1,0 +1,4 @@
+# script for the cmake build system
+qt6-base-dev: package-contains-documentation-outside-usr-share-doc [usr/lib/*/cmake/Qt6/config.tests/*/CMakeLists.txt]
+# script for the cmake build system
+qt6-base-dev: package-contains-documentation-outside-usr-share-doc [usr/lib/*/cmake/Qt6BuildInternals/QtStandaloneTestTemplateProject/CMakeLists.txt]
