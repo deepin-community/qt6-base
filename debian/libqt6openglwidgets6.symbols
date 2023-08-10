@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.4.2 amd64
+# SymbolsHelper-Confirmed: 6.4.0 amd64
 libQt6OpenGLWidgets.so.6 libqt6openglwidgets6 #MINVER#
 | libqt6openglwidgets6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev

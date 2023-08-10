@@ -1,14 +1,14 @@
 #!/usr/bin/dh-exec
+[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtEglFsKmsGbmSupport/6.*/*
+[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtEglFsKmsSupport/6.*/*
+[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtKmsSupport/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtDBus/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtDeviceDiscoverySupport/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtEglFSDeviceIntegration/6.*/*
-[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtEglFsKmsGbmSupport/6.*/*
-[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtEglFsKmsSupport/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtFbSupport/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtInputSupport/6.*/*
-[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtKmsSupport/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtNetwork/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtPrintSupport/6.*/*

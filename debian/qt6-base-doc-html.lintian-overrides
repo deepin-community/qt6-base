@@ -1,0 +1,3 @@
+# Documentation in Qt 6 is installed in usr/share/qt6, we create symlinks from
+# doc in order to solve this.
+qt6-base-doc-html: package-contains-documentation-outside-usr-share-doc *

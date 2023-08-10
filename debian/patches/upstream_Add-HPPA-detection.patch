@@ -1,0 +1,83 @@
+From e81cba0cd33339c2e5f5e3c670741605264b21c2 Mon Sep 17 00:00:00 2001
+From: Pino Toscano <toscano.pino@tiscali.it>
+Date: Thu, 6 Oct 2022 23:15:30 +0200
+Subject: [PATCH] Add HPPA detection
+
+- detect the HPPA architecture (PA-RISC) and define Q_PROCESSOR_HPPA
+- set the right machine type in QElfParser for HPPA ELF files
+
+Change-Id: I5214ce64ef1fdd0ecca3d6c1694c5db9b2852a22
+Reviewed-by: Thiago Macieira <thiago.macieira@intel.com>
+---
+ src/corelib/global/archdetect.cpp        |    2 ++
+ src/corelib/global/qglobal.cpp           |    9 +++++++++
+ src/corelib/global/qprocessordetection.h |    9 +++++++++
+ src/corelib/plugin/qelfparser_p.cpp      |    3 +++
+ 4 files changed, 23 insertions(+)
+
+--- a/src/corelib/global/archdetect.cpp
++++ b/src/corelib/global/archdetect.cpp
+@@ -17,6 +17,8 @@
+ #  define ARCH_PROCESSOR "bfin"
+ #elif defined(Q_PROCESSOR_WASM)
+ #  define ARCH_PROCESSOR "wasm"
++#elif defined(Q_PROCESSOR_HPPA)
++#  define ARCH_PROCESSOR "hppa"
+ #elif defined(Q_PROCESSOR_X86_32)
+ #  define ARCH_PROCESSOR "i386"
+ #elif defined(Q_PROCESSOR_X86_64)
+--- a/src/corelib/global/qprocessordetection.h
++++ b/src/corelib/global/qprocessordetection.h
+@@ -140,6 +140,15 @@
+ // #  define Q_BYTE_ORDER Q_LITTLE_ENDIAN
+ 
+ /*
++    PA-RISC family, no revisions or variants
++
++    PA-RISC is big-endian.
++*/
++#elif defined(__hppa__)
++#  define Q_PROCESSOR_HPPA
++#  define Q_BYTE_ORDER Q_BIG_ENDIAN
++
++/*
+     X86 family, known variants: 32- and 64-bit
+ 
+     X86 is little-endian.
+--- a/src/corelib/plugin/qelfparser_p.cpp
++++ b/src/corelib/plugin/qelfparser_p.cpp
+@@ -118,6 +118,8 @@ struct ElfMachineCheck
+             EM_AARCH64
+ #elif defined(Q_PROCESSOR_BLACKFIN)
+             EM_BLACKFIN
++#elif defined(Q_PROCESSOR_HPPA)
++            EM_PARISC
+ #elif defined(Q_PROCESSOR_IA64)
+             EM_IA_64
+ #elif defined(Q_PROCESSOR_MIPS)
+@@ -383,6 +385,7 @@ Q_DECL_UNUSED Q_DECL_COLD_FUNCTION stati
+ #endif
+     case EM_IA_64:      d << ", IA-64"; break;
+     case EM_MIPS:       d << ", MIPS"; break;
++    case EM_PARISC:     d << ", HPPA"; break;
+     case EM_PPC:        d << ", PowerPC"; break;
+     case EM_PPC64:      d << ", PowerPC 64-bit"; break;
+ #ifdef EM_RISCV
+--- a/src/corelib/global/qglobal.cpp
++++ b/src/corelib/global/qglobal.cpp
+@@ -1791,6 +1791,15 @@ bool qSharedBuild() noexcept
+ */
+ 
+ /*!
++    \macro Q_PROCESSOR_HPPA
++    \relates <QtGlobal>
++
++    Defined if the application is compiled for PA-RISC processors.
++
++    \sa QSysInfo::buildCpuArchitecture()
++*/
++
++/*!
+     \macro Q_PROCESSOR_IA64
+     \relates <QtGlobal>
+ 

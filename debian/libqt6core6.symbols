@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.4.2 alpha amd64 arm64
+# SymbolsHelper-Confirmed: 6.4.2 amd64 arm64 armel armhf hurd-i386 i386 mips64el mipsel powerpc ppc64 ppc64el riscv64 s390x sparc64
 libQt6Core.so.6 libqt6core6 #MINVER#
 | libqt6core6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev
@@ -14,7 +14,7 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  (arch=sh4)_Z10qvsnprintfPcjPKc13__va_list_tag@Qt_6 6.1.2
  (arch=alpha)_Z10qvsnprintfPcmPKc13__va_list_tag@Qt_6 6.1.2
  (arch=amd64 powerpc s390x|subst)_Z10qvsnprintfPc{size_t}PKcP13__va_list_tag@Qt_6 6.1.2
- (arch=ia64 mips64el mipsel riscv64 sparc64|subst)_Z10qvsnprintfPc{size_t}PKcPv@Qt_6 6.1.2
+ (arch=hppa ia64 m68k mips64el mipsel riscv64 sparc64|subst)_Z10qvsnprintfPc{size_t}PKcPv@Qt_6 6.1.2
  (arch=hurd-i386 i386 ppc64 ppc64el|subst)_Z10qvsnprintfPc{size_t}PKcS_@Qt_6 6.1.2
  (arch=arm64 armel armhf|subst)_Z10qvsnprintfPc{size_t}PKcSt9__va_list@Qt_6 6.1.2
  _Z11qFpClassifyd@Qt_6 6.1.2
@@ -446,8 +446,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN11QJsonObject4takeE13QLatin1String@Qt_6 6.1.2
  _ZN11QJsonObject4takeERK7QString@Qt_6 6.1.2
  _ZN11QJsonObject5eraseENS_8iteratorE@Qt_6 6.1.2
- (optional=templinst|arch=amd64 arm64)_ZN11QJsonObject6atImplI11QStringViewEE13QJsonValueRefT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZN11QJsonObject6atImplI13QLatin1StringEE13QJsonValueRefT_@Qt_6 6.4.2
  (subst)_ZN11QJsonObject6detachE{qptrdiff}@Qt_6 6.1.2
  _ZN11QJsonObject6insertE11QStringViewRK10QJsonValue@Qt_6 6.1.2
  _ZN11QJsonObject6insertE13QLatin1StringRK10QJsonValue@Qt_6 6.1.2
@@ -455,11 +453,7 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN11QJsonObject6removeE11QStringView@Qt_6 6.1.2
  _ZN11QJsonObject6removeE13QLatin1String@Qt_6 6.1.2
  _ZN11QJsonObject6removeERK7QString@Qt_6 6.1.2
- (optional=templinst|arch=amd64 arm64)_ZN11QJsonObject8insertAtI11QStringViewEENS_8iteratorExT_RK10QJsonValueb@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZN11QJsonObject8insertAtI13QLatin1StringEENS_8iteratorExT_RK10QJsonValueb@Qt_6 6.4.2
  (subst)_ZN11QJsonObject8removeAtE{qptrdiff}@Qt_6 6.1.2
- (optional=templinst|arch=amd64 arm64)_ZN11QJsonObject8takeImplI11QStringViewEE10QJsonValueT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZN11QJsonObject8takeImplI13QLatin1StringEE10QJsonValueT_@Qt_6 6.4.2
  _ZN11QJsonObjectC1EOS_@Qt_6 6.1.2
  _ZN11QJsonObjectC1EP21QCborContainerPrivate@Qt_6 6.1.2
  _ZN11QJsonObjectC1ERKS_@Qt_6 6.1.2
@@ -1204,7 +1198,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  (subst)_ZN17QCborStreamReader7addDataEPKc{qptrdiff}@Qt_6 6.1.2
  _ZN17QCborStreamReader7addDataERK10QByteArray@Qt_6 6.1.2
  _ZN17QCborStreamReader7reparseEv@Qt_6 6.1.2
- (arch=amd64 arm64)_ZN17QCborStreamReader8preparseEv@Qt_6 6.4.2
  _ZN17QCborStreamReader9lastErrorEv@Qt_6 6.1.2
  _ZN17QCborStreamReader9setDeviceEP9QIODevice@Qt_6 6.1.2
  _ZN17QCborStreamReaderC1EP9QIODevice@Qt_6 6.1.2
@@ -2410,7 +2403,7 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  (arch=alpha sh4)_ZN7QString9vasprintfEPKc13__va_list_tag@Qt_6 6.1.2
  (arch=amd64 powerpc s390x)_ZN7QString9vasprintfEPKcP13__va_list_tag@Qt_6 6.1.2
  (arch=hurd-i386 i386 ppc64 ppc64el)_ZN7QString9vasprintfEPKcPc@Qt_6 6.1.2
- (arch=ia64 mips64el mipsel riscv64 sparc64)_ZN7QString9vasprintfEPKcPv@Qt_6 6.1.2
+ (arch=hppa ia64 m68k mips64el mipsel riscv64 sparc64)_ZN7QString9vasprintfEPKcPv@Qt_6 6.1.2
  (arch=arm64 armel armhf)_ZN7QString9vasprintfEPKcSt9__va_list@Qt_6 6.1.2
  _ZN7QStringC1E5QChar@Qt_6 6.1.2
  (subst)_ZN7QStringC1EPK5QChar{qptrdiff}@Qt_6 6.1.2
@@ -2718,8 +2711,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN9QDateTime19fromMSecsSinceEpochExRK9QTimeZone@Qt_6 6.1.2
  _ZN9QDateTime21currentSecsSinceEpochEv@Qt_6 6.1.2
  _ZN9QDateTime22currentMSecsSinceEpochEv@Qt_6 6.1.2
- (arch=amd64 arm64)_ZN9QDateTime4DataD1Ev@Qt_6 6.4.2
- (arch=amd64 arm64)_ZN9QDateTime4DataD2Ev@Qt_6 6.4.2
  _ZN9QDateTime7setDateE5QDate@Qt_6 6.1.2
  _ZN9QDateTime7setTimeE5QTime@Qt_6 6.1.2
  _ZN9QDateTimeC1E5QDate5QTimeN2Qt8TimeSpecEi@Qt_6 6.1.2
@@ -5132,35 +5123,7 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  (subst)_ZNK9QtPrivate20QPropertyBindingData21notifyObserver_helperEP20QUntypedPropertyDataP15QBindingStorage24QPropertyObserverPointerR15QVarLengthArrayI19QBindingObserverPtrL{qptrdiff}256EE@Qt_6 6.4.0
  _ZNK9QtPrivate20QPropertyBindingData38registerWithCurrentlyEvaluatingBindingEv@Qt_6 6.1.2
  _ZNK9QtPrivate20QPropertyBindingData45registerWithCurrentlyEvaluatingBinding_helperEPNS_22BindingEvaluationStateE@Qt_6 6.1.2
- (optional=templinst|arch=amd64 arm64)_ZNKSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE4findERS2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt23mersenne_twister_engineIjLm32ELm624ELm397ELm31ELj2567483615ELm11ELj4294967295ELm7ELj2636928640ELm15ELj4022730752ELm18ELj1812433253EE11_M_gen_randEv@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt23mersenne_twister_engineIjLm32ELm624ELm397ELm31ELj2567483615ELm11ELj4294967295ELm7ELj2636928640ELm15ELj4022730752ELm18ELj1812433253EE4seedIN16QRandomGenerator15SystemGeneratorEEENSt9enable_ifIXsrSt6__and_IJSt6__not_ISt7is_sameINSt9remove_cvINSt16remove_referenceIT_E4typeEE4typeES0_EESt11is_unsignedINSA_11result_typeEES6_ISt14is_convertibleISA_jEEEE5valueEvE4typeERSA_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt23mersenne_twister_engineIjLm32ELm624ELm397ELm31ELj2567483615ELm11ELj4294967295ELm7ELj2636928640ELm15ELj4022730752ELm18ELj1812433253EE4seedISt8seed_seqEENSt9enable_ifIXsrSt6__and_IJSt6__not_ISt7is_sameINSt9remove_cvINSt16remove_referenceIT_E4typeEE4typeES0_EESt11is_unsignedINS9_11result_typeEES5_ISt14is_convertibleIS9_jEEEE5valueEvE4typeERS9_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorI17QPropertyObserverSaIS0_EE17_M_realloc_insertIJEEEvN9__gnu_cxx17__normal_iteratorIPS0_S2_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorIP7QObjectSaIS1_EE17_M_realloc_insertIJRKS1_EEEvN9__gnu_cxx17__normal_iteratorIPS1_S3_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorISt10unique_ptrI11QTranslatorSt14default_deleteIS1_EESaIS4_EE17_M_realloc_insertIJS4_EEEvN9__gnu_cxx17__normal_iteratorIPS4_S6_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorISt10unique_ptrIA_KcSt14default_deleteIS2_EESaIS5_EE17_M_realloc_insertIJRPcEEEvN9__gnu_cxx17__normal_iteratorIPS5_S7_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt6vectorIjSaIjEE17_M_realloc_insertIJjEEEvN9__gnu_cxx17__normal_iteratorIPjS1_EEDpOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt7__cxx1112basic_stringIDiSt11char_traitsIDiESaIDiEE9_M_mutateEmmPKDim@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI14QByteArrayViewSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE24_M_get_insert_unique_posERS2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI14QByteArrayViewSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE29_M_get_insert_hint_unique_posESt23_Rb_tree_const_iteratorIS3_ERS2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE11equal_rangeERS2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE12_M_erase_auxESt23_Rb_tree_const_iteratorIS4_ESC_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE16_M_insert_uniqueIS4_EES1_ISt17_Rb_tree_iteratorIS4_EbEOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE24_M_get_insert_unique_posERS2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE29_M_get_insert_hint_unique_posESt23_Rb_tree_const_iteratorIS4_ERS2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE4findERS2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeIiSt4pairIKi10QByteArrayESt10_Select1stIS3_ESt4lessIiESaIS3_EE16_M_insert_uniqueIS3_EES0_ISt17_Rb_tree_iteratorIS3_EbEOT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeIiSt4pairIKi7QStringESt10_Select1stIS3_ESt4lessIiESaIS3_EE28_M_get_insert_hint_equal_posESt23_Rb_tree_const_iteratorIS3_ERS1_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeIiSt4pairIKi8QVariantESt10_Select1stIS3_ESt4lessIiESaIS3_EE24_M_get_insert_unique_posERS1_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8_Rb_treeIiSt4pairIKi8QVariantESt10_Select1stIS3_ESt4lessIiESaIS3_EE29_M_get_insert_hint_unique_posESt23_Rb_tree_const_iteratorIS3_ERS1_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8__detail16_Hashtable_allocINSt3pmr21polymorphic_allocatorINS_10_Hash_nodeI7QStringLb1EEEEEE19_M_allocate_bucketsEm@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8__detail18__from_chars_alnumImEEbRPKcS2_RT_i@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8__detail18__from_chars_digitImEEbRPKcS2_RT_i@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8__detail19__from_chars_binaryImEEbRPKcS2_RT_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZNSt8seed_seq8generateIPjEEvT_S2_@Qt_6 6.4.2
- (optional=templinst|arch=amd64 arm64)_ZSt10from_charsIyENSt9enable_ifIXsrSt5__or_IJS1_IJSt7is_sameINSt9remove_cvIT_E4typeEaES2_IS6_sES2_IS6_iES2_IS6_lES2_IS6_xEEES1_IJS2_IS6_hES2_IS6_tES2_IS6_jES2_IS6_mES2_IS6_yEEES2_IcS6_EEE5valueESt17from_chars_resultE4typeEPKcSP_RS4_i@Qt_6 6.4.2
- (arch=alpha)_ZSt19piecewise_construct@Qt_6 6.4.2
+ _ZSt19piecewise_construct@Qt_6 6.4.1
  _ZTI10QEventLoop@Qt_6 6.1.2
  _ZTI10QException@Qt_6 6.1.2
  _ZTI11QChildEvent@Qt_6 6.1.2
@@ -5315,7 +5278,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZTV10QException@Qt_6 6.1.2
  _ZTV11QChildEvent@Qt_6 6.1.2
  _ZTV11QFileDevice@Qt_6 6.1.2
- (arch=amd64 arm64)_ZTV11QObjectData@Qt_6 6.4.2
  _ZTV11QTextStream@Qt_6 6.1.2
  _ZTV11QThreadPool@Qt_6 6.1.2
  _ZTV11QTimerEvent@Qt_6 6.1.2

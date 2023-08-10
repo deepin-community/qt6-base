@@ -1,11 +1,11 @@
 #!/usr/bin/dh-exec
-usr/lib/${DEB_HOST_MULTIARCH}/libQt6OpenGL.so.*
-usr/lib/${DEB_HOST_MULTIARCH}/libQt6EglFSDeviceIntegration.so.*
 [linux-any] usr/lib/${DEB_HOST_MULTIARCH}/libQt6EglFsKmsGbmSupport.so.*
 [linux-any] usr/lib/${DEB_HOST_MULTIARCH}/libQt6EglFsKmsSupport.so.*
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-emu-integration.so
 [linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-kms-egldevice-integration.so
 [linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-kms-integration.so
+usr/lib/${DEB_HOST_MULTIARCH}/libQt6EglFSDeviceIntegration.so.*
+usr/lib/${DEB_HOST_MULTIARCH}/libQt6OpenGL.so.*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-emu-integration.so
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/egldeviceintegrations/libqeglfs-x11-integration.so
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqeglfs.so
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqminimalegl.so

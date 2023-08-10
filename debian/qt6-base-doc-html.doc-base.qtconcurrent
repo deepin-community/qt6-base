@@ -1,0 +1,9 @@
+Document: qt6-concurrent
+Title: Qt 6 Concurrent module
+Author: The Qt Company Ltd
+Abstract: This is the HTML documentation for Qt 6 Concurrent
+Section: Programming/C++
+
+Format: HTML
+Index: /usr/share/doc/qt6-base-doc-html/html/qtconcurrent/qtconcurrent-index.html
+Files: /usr/share/doc/qt6-base-doc-html/html/qtconcurrent/*.html

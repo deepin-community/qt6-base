@@ -4,7 +4,7 @@
 # Use already defined DEB_HOST_* variables.
 include /usr/share/dpkg/architecture.mk
 
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=+lto
 sslpkgname := $(shell dpkg-query --show '--showformat=$${Depends}' libssl-dev | cut -d ' ' -f1)
 
 ifneq (,$(filter libqt6sql6-ibase,$(shell dh_listpackages)))
@@ -19,12 +19,13 @@ else
         extra_cmake_args += -DFEATURE_sctp=OFF
 endif
 
-# remove forkfd_pidfd in riscv64
-# https://github.com/felixonmars/archriscv-packages/pull/1151#issuecomment-1100954643
-ifeq ($(DEB_HOST_ARCH),riscv64)
-        extra_cmake_args += -DFEATURE_forkfd_pidfd=OFF
+# cross-builds
+ifneq ($(DEB_BUILD_ARCH),$(DEB_HOST_ARCH))
+	extra_cmake_args += \
+		-DQT_HOST_PATH=/usr \
+		-DQT_HOST_PATH_CMAKE_DIR=/usr/lib/${DEB_BUILD_MULTIARCH}/cmake \
+		-DQT_BUILD_TOOLS_WHEN_CROSSCOMPILING=ON
 endif
-
 
 %:
 	dh $@ --with pkgkde_symbolshelper --buildsystem=cmake+ninja
@@ -32,6 +33,7 @@ endif
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
+		--log-level=STATUS \
 		-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH) \
 		-DCMAKE_INSTALL_PREFIX=/usr \
 		-DINSTALL_BINDIR=lib/qt6/bin \
@@ -48,7 +50,7 @@ override_dh_auto_configure:
 		-DINSTALL_TRANSLATIONDIR=share/qt6/translations \
 		-DINSTALL_MKSPECSDIR=lib/$(DEB_HOST_MULTIARCH)/qt6/mkspecs \
 		-DINSTALL_PUBLICBINDIR=bin \
-		-DBUILD_EXAMPLES=ON \
+		-DQT_BUILD_EXAMPLES=ON \
 		-DFEATURE_mimetype_database=OFF \
 		-DFEATURE_dbus_linked=ON \
 		-DFEATURE_accessibility=ON \
@@ -82,7 +84,7 @@ override_dh_auto_configure:
 		$(extra_cmake_args)
 
 
-execute_after_dh_auto_install:
+execute_after_dh_auto_install-arch:
 	# Policy § 10.4. Remove this if https://bugs.debian.org/904409 gets fixed.
 	sed -i 's,bin/env perl,bin/perl,' debian/tmp/usr/lib/qt6/libexec/*.pl \
 		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/qt6/mkspecs/features/data/unix/findclasslist.pl
@@ -94,6 +96,26 @@ execute_after_dh_auto_install:
 	mkdir -p debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/qt6
 	sed 's/@DEB_HOST_MULTIARCH@/$(DEB_HOST_MULTIARCH)/' debian/qt.conf.in \
 		> debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/qt6/qt6.conf
+
+	# Inject cross-wrapper for qmake6
+	mkdir -p debian/tmp/usr/bin
+	sed -e 's/@DEB_HOST_MULTIARCH@/$(DEB_HOST_MULTIARCH)/g' \
+		-e 's/@DEB_HOST_GNU_TYPE@/$(DEB_HOST_GNU_TYPE)/g' \
+		< debian/qmake-cross-wrapper.in > debian/tmp/usr/bin/$(DEB_HOST_GNU_TYPE)-qmake6
+	chmod +x debian/tmp/usr/bin/$(DEB_HOST_GNU_TYPE)-qmake6
+
+	# Fix Qt6::qmake IMPORTED_LOCATION, see https://bugs.debian.org/1030980
+	sed -i 's,lib/qt6/bin/qmake,bin/$(DEB_HOST_GNU_TYPE)-qmake6,' \
+		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/cmake/Qt6CoreTools/Qt6CoreToolsTargets-none.cmake
+
+override_dh_auto_build-indep:
+	dh_auto_build -- docs
+
+override_dh_auto_install-indep:
+	DESTDIR=$(CURDIR)/debian/tmp dh_auto_build -- install_docs
+	# Remove build path from index files.
+	find $(CURDIR)/debian/tmp/usr/share/qt6/doc -type f -name *.index -exec \
+		sed -i 's@$(CURDIR)/@@g' {} \;
 
 override_dh_makeshlibs:
 	dh_makeshlibs -XlibQt6EglFSDeviceIntegration -XlibQt6EglFsKmsGbmSupport -XlibQt6EglFsKmsSupport -XlibQt6XcbQpa

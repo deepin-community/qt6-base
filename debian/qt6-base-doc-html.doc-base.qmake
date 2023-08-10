@@ -1,0 +1,9 @@
+Document: qt6-qmake-manual
+Title: Qt 6 qmake Tool
+Author: The Qt Company Ltd
+Abstract: This is the HTML documentation for Qt 6 qmake
+Section: Programming/C++
+
+Format: HTML
+Index: /usr/share/doc/qt6-base-doc-html/html/qmake/qmake-manual.html
+Files: /usr/share/doc/qt6-base-doc-html/html/qmake/*.html

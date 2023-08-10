@@ -1,0 +1,9 @@
+Document: qt6-opengl
+Title: Qt 6 OpenGL module
+Author: The Qt Company Ltd
+Abstract: This is the HTML documentation for Qt 6 OpenGL
+Section: Programming/C++
+
+Format: HTML
+Index: /usr/share/doc/qt6-base-doc-html/html/qtopengl/qtopengl-index.html
+Files: /usr/share/doc/qt6-base-doc-html/html/qtopengl/*.html
