@@ -1,0 +1,30 @@
+Description: Avoid trying to build the htmlinfo example
+ This example uses non-free images, so we had to remove it from the original
+ tarball.
+ .
+ This patch avoid building this example.
+Author: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
+Forwarded: not-needed
+
+---
+ examples/xml/CMakeLists.txt |    1 -
+ examples/xml/xml.pro        |    3 +--
+ 2 files changed, 1 insertion(+), 3 deletions(-)
+
+--- a/examples/xml/CMakeLists.txt
++++ b/examples/xml/CMakeLists.txt
+@@ -1,4 +1,3 @@
+-qt_internal_add_example(htmlinfo)
+ qt_internal_add_example(xmlstreamlint)
+ if(TARGET Qt::Widgets)
+     qt_internal_add_example(dombookmarks)
+--- a/examples/xml/xml.pro
++++ b/examples/xml/xml.pro
+@@ -1,6 +1,5 @@
+ TEMPLATE      = subdirs
+-SUBDIRS       = htmlinfo \
+-                xmlstreamlint
++SUBDIRS       = xmlstreamlint
+ 
+ qtHaveModule(widgets) {
+     SUBDIRS +=  dombookmarks \

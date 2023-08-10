@@ -1,0 +1,9 @@
+Document: qt6-widgets
+Title: Qt 6 Widgets module
+Author: The Qt Company Ltd
+Abstract: This is the HTML documentation for Qt 6 Widgets
+Section: Programming/C++
+
+Format: HTML
+Index: /usr/share/doc/qt6-base-doc-html/html/qtwidgets/qtwidgets-index.html
+Files: /usr/share/doc/qt6-base-doc-html/html/qtwidgets/*.html

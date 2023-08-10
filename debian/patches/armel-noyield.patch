@@ -1,0 +1,18 @@
+Description: Don't use yield on CPUs that might not support it
+
+---
+ src/corelib/global/qsimd_p.h |    2 ++
+ 1 file changed, 2 insertions(+)
+
+--- a/src/corelib/global/qsimd_p.h
++++ b/src/corelib/global/qsimd_p.h
+@@ -401,7 +401,9 @@ static inline void qYieldCpu()
+          https://stackoverflow.com/a/70076751/134841
+          https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105416
+     */
++#    if !defined(Q_CC_GNU) || (__ARM_ARCH >= 7)
+     asm volatile("yield"); /* this works everywhere */
++#    endif
+ #  else
+     __yield(); /* this is what should work everywhere */
+ #  endif

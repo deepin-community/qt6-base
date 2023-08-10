@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.4.2 amd64
+# SymbolsHelper-Confirmed: 6.4.1 amd64
 libQt6DBus.so.6 libqt6dbus6 #MINVER#
 | libqt6dbus6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev
@@ -301,7 +301,6 @@ libQt6DBus.so.6 libqt6dbus6 #MINVER#
  _ZN26QDBusAbstractInterfaceBase11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
  _ZN26QDBusAbstractInterfaceBaseC1ER29QDBusAbstractInterfacePrivateP7QObject@Qt_6 6.1.2
  _ZN26QDBusAbstractInterfaceBaseC2ER29QDBusAbstractInterfacePrivateP7QObject@Qt_6 6.1.2
- _ZN7QString5clearEv@Qt_6 6.4.2
  _ZNK10QDBusError4nameEv@Qt_6 6.1.2
  _ZNK10QDBusError4typeEv@Qt_6 6.1.2
  _ZNK10QDBusError7isValidEv@Qt_6 6.1.2
@@ -412,15 +411,7 @@ libQt6DBus.so.6 libqt6dbus6 #MINVER#
  _ZNK24QDBusConnectionInterface19isServiceRegisteredERK7QString@Qt_6 6.1.2
  _ZNK24QDBusConnectionInterface22registeredServiceNamesEv@Qt_6 6.1.2
  _ZNK24QDBusConnectionInterface23activatableServiceNamesEv@Qt_6 6.1.2
- (optional=templinst)_ZNKSt8_Rb_treeI7QStringSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE4findERS2_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE24_M_get_insert_unique_posERS2_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_8QVariantESt10_Select1stIS4_ESt4lessIS0_ESaIS4_EE29_M_get_insert_hint_unique_posESt23_Rb_tree_const_iteratorIS4_ERS2_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE11equal_rangeERS2_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE12_M_erase_auxESt23_Rb_tree_const_iteratorIS3_ESB_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE16_M_insert_uniqueIS3_EES1_ISt17_Rb_tree_iteratorIS3_EbEOT_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE24_M_get_insert_unique_posERS2_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE29_M_get_insert_hint_unique_posESt23_Rb_tree_const_iteratorIS3_ERS2_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI7QStringSt4pairIKS0_S0_ESt10_Select1stIS3_ESt4lessIS0_ESaIS3_EE4findERS2_@Qt_6 6.4.2
+ _ZSt19piecewise_construct@Qt_6 6.4.1
  _ZTI11QDBusServer@Qt_6 6.1.2
  _ZTI14QDBusInterface@Qt_6 6.1.2
  _ZTI16QDBusPendingCall@Qt_6 6.1.2

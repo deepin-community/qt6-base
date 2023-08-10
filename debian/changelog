@@ -1,17 +1,621 @@
-qt6-base (6.4.2-1+dde) UNRELEASED; urgency=medium
+qt6-base (6.4.2+dfsg-17deepin) unstable; urgency=medium
 
-   * New upstream version 6.4.2.
+  * Update d/libqt6network6.symbols.
 
- -- Lu YaNing <luyaning@uniontech.com>  Wed, 11 Jan 2023 10:05:38 +0800
+ -- Tianyu Chen <sweetyfish@deepin.org>  Mon, 07 Aug 2023 11:15:52 +0800
 
-qt6-base (6.2.4.1-1+dde) stable; urgency=medium
+qt6-base (6.4.2+dfsg-17) unstable; urgency=medium
 
+  * Team upload.
+  * Add remove_rpath_from_examples.patch in order to avoid setting
+    RPATH/RUNPATH on examples' binaries.
+  * Add forkfd_grow_stack_upwards_on_hppa.patch to solve how stack grows in
+    HPPA. Thanks John David Anglin for the patch.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Fri, 28 Jul 2023 14:26:34 -0300
+
+qt6-base (6.4.2+dfsg-16) unstable; urgency=medium
+
+  * Team upload.
+  * Release to unstable.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Sun, 23 Jul 2023 09:47:53 -0300
+
+qt6-base (6.4.2+dfsg-15) experimental; urgency=medium
+
+  * Team upload.
+
+  [ Eren Eroğlu ]
+  * Add qt6-base-doc* packages.
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Remove build path from documentation's index files.
+  * Add a lintian override for qt6-base-doc-html, documentation is shipped in
+    another path on Qt6. We provide symlinks in order to fix this.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Sat, 22 Jul 2023 13:21:44 -0300
+
+qt6-base (6.4.2+dfsg-14) unstable; urgency=medium
+
+  * Team upload to unstable.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Mon, 17 Jul 2023 16:42:10 -0300
+
+qt6-base (6.4.2+dfsg-13) experimental; urgency=medium
+
+  * Team upload to unstable.
+
+  [ Pino Toscano ]
+  * Drop the support for the dead GNU/kFreeBSD (which was never really used):
+    - drop the kfreebsd-any qualifiers from the firebird-dev build dependency
+    - drop the kfreebsd-any qualifiers from binary packages
+    - drop the kfreebsd-any qualifiers in install files
+  * Backport upstream commit eeb66b99df521c4a32b8eda1d889f615319355a6 to support
+    Alpha; patch upstream_Add-enable-Alpha-detection.patch. (Closes: #1025823)
+  * Mark some Linux-only examples in qt6-base-examples as such.
+  * Recommend qt6-wayland in libqt6gui6, so it is installed by default.
+    (Closes: #1038089)
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Fix wrong Break+Replaces on qt6-base-dev against libqt6opengl6-dev
+    (Closes: #1041300). Thanks Helmut Grohne for the bug report.
+  * Remove libgl1-mesa-dev from build dependencies. It has been superseded by
+    libgl-dev, which is already a build dependency.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Mon, 17 Jul 2023 15:52:14 -0300
+
+qt6-base (6.4.2+dfsg-12) experimental; urgency=medium
+
+  * Team upload.
+  * Enable building the examples, even if they do not ship the source code as
+    Qt 5 does.
+  * Merge libqt6opengl6-dev into qt6-base-dev, it is not the same situation as
+    with Qt 5.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Wed, 12 Jul 2023 14:21:06 -0300
+
+qt6-base (6.4.2+dfsg-11) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Add patch to fix CVE-2023-34410 (Closes: #1037209).
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 07 Jun 2023 21:54:59 +0200
+
+qt6-base (6.4.2+dfsg-10) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Add patch to fix CVE-2023-33285 (Closes: #1036848).
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 28 May 2023 10:41:24 +0200
+
+qt6-base (6.4.2+dfsg-9) unstable; urgency=medium
+
+  * Team upload.
+  * Add a patch to fix CVE-2023-32762.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Mon, 22 May 2023 11:40:45 -0300
+
+qt6-base (6.4.2+dfsg-8) unstable; urgency=medium
+
+  * Team upload.
+  * Add patch for solving CVE-2023-32763.
+  * Refresh patches.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Mon, 22 May 2023 10:42:21 -0300
+
+qt6-base (6.4.2+dfsg-7) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Update patch for CVE-2023-24607.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 28 Feb 2023 23:22:10 +0100
+
+qt6-base (6.4.2+dfsg-6) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Add patch to fix CVE-2023-24607 (Closes: #1031871).
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 24 Feb 2023 22:31:24 +0100
+
+qt6-base (6.4.2+dfsg-5) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Fix path for <triplet>-qmake6 cross wrapper.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 21 Feb 2023 16:14:43 +0100
+
+qt6-base (6.4.2+dfsg-4) unstable; urgency=medium
+
+  * Team upload.
+  * Workaround wrong path in CMake file, Qt6::qmake IMPORTED_LOCATION by
+    modifying the path (Closes: #1030895).
+    Thanks Helmut Grohne and Dmitry Shachnev for the bug and solution.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Mon, 20 Feb 2023 16:54:52 -0300
+
+qt6-base (6.4.2+dfsg-3) unstable; urgency=medium
+
+  * Team upload.
+  * Remove symbols related to libzstd. They where there because of the static
+    library.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Mon, 06 Feb 2023 16:47:48 -0300
+
+qt6-base (6.4.2+dfsg-2) unstable; urgency=medium
+
+  * Team upload.
+  * Update symbols files with buildd's logs.
+  * Force the usage of the shared version of libzstd (Closes: #1030546).
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Mon, 06 Feb 2023 15:50:58 -0300
+
+qt6-base (6.4.2+dfsg-1) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Switch to the official 6.4.2 tarball, the tarball is the same.
+
+  [ Helmut Grohne ]
+  * Fix FTCBFS: Pass QT_HOST_PATH. (Closes: #1023054)
+    + cross.patch: Honour PKG_CONFIG_EXECUTABLE
+    + cross.patch: Allow building android tools
+    + Pass QT_HOST_* variables to build.
+    + Depend on a native qt toolchain for the former.
+    + Do build tools even when cross building.
+    + Add excess files to debian/not-installed.
+  * Install <triplet>-qmake6 cross wrapper (Closes: #1025663).
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 31 Jan 2023 19:16:32 +0100
+
+qt6-base (6.4.2+dfsg~rc1-3) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Upload to unstable.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 30 Dec 2022 16:58:05 +0100
+
+qt6-base (6.4.2+dfsg~rc1-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 28 Dec 2022 14:19:02 +0100
+
+qt6-base (6.4.2+dfsg~rc1-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Enable link time optimization (Closes: #1015617).
+  * Update ABI to 6.4.2.
+  * Update excluded files from tarball.
+  * Bump Standards-Version to 4.6.2 (no changes needed).
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 27 Dec 2022 22:26:09 +0100
+
+qt6-base (6.4.1+dfsg-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Make cmake a suggestion of qt6-base-dev-tools instead of a hard
+    dependency (Closes: #1019870).
+  * New upstream release (6.4.1).
+  * Update ABI to 6.4.1.
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 15 Nov 2022 18:30:46 +0100
+
+qt6-base (6.4.0+dfsg-5) experimental; urgency=medium
+
+  * Team upload.
+  * Update symbols files from the logs of buildds.
+
+ -- Pino Toscano <pino@debian.org>  Sun, 16 Oct 2022 18:06:33 +0200
+
+qt6-base (6.4.0+dfsg-4) experimental; urgency=medium
+
+  * Team upload.
+  * Backport upstream commit e81cba0cd33339c2e5f5e3c670741605264b21c2 to support
+    HPPA; patch upstream_Add-HPPA-detection.patch. (Closes: #1021404)
+  * Backport upstream commit ac17a394a5701174c705050640e26c9cb95d289b to support
+    M68k; patch upstream_Add-M68k-detection.patch.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 15 Oct 2022 07:43:54 +0200
+
+qt6-base (6.4.0+dfsg-3) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Do not install cmake-files for various plugins.
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 02 Oct 2022 11:20:53 +0200
+
+qt6-base (6.4.0+dfsg-2) experimental; urgency=medium
+
+  * Team upload.
+  * Update symbols files from the logs of buildds.
+
+ -- Pino Toscano <pino@debian.org>  Sun, 02 Oct 2022 08:19:09 +0200
+
+qt6-base (6.4.0+dfsg-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.4.0).
+  * Update ABI to 6.4.0.
+  * Remove some patches as they have been applied upstream.
+  * Update list of installed files.
+  * Update symbols from buildlogs.
+  * Update lintian-overrides.
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 01 Oct 2022 20:35:52 +0200
+
+qt6-base (6.3.1+dfsg-10) unstable; urgency=medium
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Bump minimum CMake version to 3.24. Version 3.18 in stable won't create
+    pkg-config's .pc files, and we are installing them now. The change might
+    have occurred in a previous CMake version.
+
+  [ Patrick Franz ]
+  * Increase CMake verbosity level.
+  * Add cmake as a dependency to qt6-base-dev-tools as qt-cmake requires
+    it (Closes: #1019870).
+  * Move development files for libQt6EglFSDeviceIntegration,
+    libQt6EglFsKmsGbmSupport and libQt6EglFsKmsSupport from qt6-base-dev
+    into libqt6opengl6-dev (Closes: #1017940).
+
+  [ Pino Toscano ]
+  * Update symbols files from the logs of buildds.
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 01 Oct 2022 18:58:47 +0200
+
+qt6-base (6.3.1+dfsg-9) unstable; urgency=medium
+
+  * Team upload.
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Add libvulkan-dev [linux-any] as a qt6-base-dev dependency, as some CMake
+    file looks for it. (Closes: #1018877)
+
+  [ Pino Toscano ]
+  * Update symbols files for an ia64-specific change.
+  * Update lintian overrides.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 03 Sep 2022 08:15:09 +0200
+
+qt6-base (6.3.1+dfsg-8) unstable; urgency=medium
+
+  * Team upload.
+  * Update symbols files with current build logs, marking QString::clear() as
+    optional (it's an inline).
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Thu, 18 Aug 2022 22:08:54 -0300
+
+qt6-base (6.3.1+dfsg-7) unstable; urgency=medium
+
+  * Team upload.
+  * qt6-qpa-plugins: add missing Breaks against libqt6opengl6 and restore the
+    correct version for libqt6network6.
+  * Update symbols files with latests buildds' logs.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Thu, 18 Aug 2022 14:38:17 -0300
+
+qt6-base (6.3.1+dfsg-6) unstable; urgency=medium
+
+  [ Dmitry Shachnev ]
+  * Make libqt6gui6 recommend qt6-qpa-plugins.
+
+  [ Patrick Franz ]
+  * Move lots of QPA plugins into library packages.
+  * Update symbols from buildlogs.
+  * Update lintian-overrides.
+
+ -- Patrick Franz <deltaone@debian.org>  Mon, 15 Aug 2022 18:53:42 +0200
+
+qt6-base (6.3.1+dfsg-5) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 17 Jul 2022 04:04:45 +0200
+
+qt6-base (6.3.1+dfsg-4) experimental; urgency=medium
+
+  [ Pino Toscano ]
+  * Drop -march=native from the CXXFLAGS, as it will optimize the build for the
+    hardware it is built on (i.e. a specific buildd for each architecture),
+    making the binaries unusable (SIGBUS, "Illegal instruction") on hardware
+    without the build-time features.
+
+  [ Patrick Franz ]
+  * Add patch to not use yield on CPUs that do not support it (thx to
+    Adrian Bunk).
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 16 Jul 2022 20:37:59 +0200
+
+qt6-base (6.3.1+dfsg-3) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Adjust CXXFLAGS.
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 16 Jul 2022 02:58:23 +0200
+
+qt6-base (6.3.1+dfsg-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Update symbols from buildlogs.
+  * Add CXXFLAGS to fix build failure on armel.
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 16 Jul 2022 02:16:45 +0200
+
+qt6-base (6.3.1+dfsg-1) experimental; urgency=medium
+
+  [ Pino Toscano ]
+  * Update symbols files from the logs of buildds.
+
+  [ Patrick Franz ]
+  * New upstream release (6.3.1).
+  * Update ABI to 6.3.1.
+  * Remove upstream_Explicitly-check-for-atomic-addition.patch and
+    upstream_Hardcode-atomic_LIB-as-latomic.patch as they have been
+    applied upstream.
+  * Update patches.
+  * Update list of installed files.
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 15 Jul 2022 20:03:54 +0200
+
+qt6-base (6.3.0+dfsg-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 24 May 2022 08:48:38 +0200
+
+qt6-base (6.3.0+dfsg-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.3.0).
+  * Update ABI to 6.3.0.
+  * Remove upstream_QStorageInfo-limit-Linux-only-code-with-
+    Q_OS_LINUX.patch as it has been applied upstream.
+  * Update list of installed files.
+  * Update symbols from buildlogs.
+  * Update d/copyright.
+  * Update lintian-overrides.
+
+ -- Patrick Franz <deltaone@debian.org>  Mon, 23 May 2022 20:12:56 +0200
+
+qt6-base (6.2.4+dfsg-10) unstable; urgency=medium
+
+  * Team upload.
+  * qtpaths and qtpaths6 follow the same logic as qmake and qmake6: they are
+    both identical files. Only install qtpaths6 and link it into /usr/bin.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Thu, 07 Jul 2022 11:30:30 -0300
+
+qt6-base (6.2.4+dfsg-9) unstable; urgency=medium
+
+  * Team upload.
+
+  [ Pino Toscano ]
+  * Update symbols files from the logs of buildds.
+  * Make libqt6core6 depend on shared-mime-info: QtCore is built without an
+    embedded freedesktop MIME type database, so the system one is needed to
+    make the QMimeType APIs work; this matches what was done in
+    qtbase-opensource-src 5.14.1+dfsg-1.
+  * Make libqt6core6 recommend qt6-translations-l10n; this matches what was
+    done in qtbase-opensource-src 5.3.1+dfsg-5.
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Remove dependencies upon qtchooser, we don't need them in Qt 6.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Wed, 06 Jul 2022 16:33:21 -0300
+
+qt6-base (6.2.4+dfsg-8) unstable; urgency=medium
+
+  * Team upload.
+  * Disable relocatable feature, to fix paths on usr-merged systems.
+    Thanks to Steven Trabert for the patch! (Closes: #1010575, LP: #1970057)
+  * Mark one inline symbol as optional to fix build on Ubuntu ppc64el.
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Mon, 23 May 2022 00:56:59 +0300
+
+qt6-base (6.2.4+dfsg-7) unstable; urgency=medium
+
+  * Team upload.
+
+  [ Dmitry Shachnev ]
+  * Backport two upstream patches to fix libatomic detection.
+  * Update symbols files from buildds’ logs.
+
+  [ Lu YaNing ]
+  * Modify LibraryExecutables path.
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Sat, 14 May 2022 20:14:37 +0300
+
+qt6-base (6.2.4+dfsg-6) unstable; urgency=medium
+
+  * Team upload.
+  * Update symbols files from the logs of buildds.
+  * Bump Standards-Version to 4.6.1, no changes required.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 14 May 2022 06:39:30 +0200
+
+qt6-base (6.2.4+dfsg-5) unstable; urgency=medium
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Move plugins to the package they do belong to:
+    - libqcertonlybackend.so and libqopensslbackend.so to libqt6network6.
+    - libqgif.so, libqico.so and libqjpeg.so to libqt6gui6.
+    (Closes: #1009632).
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 30 Apr 2022 19:16:53 +0200
+
+qt6-base (6.2.4+dfsg-4) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Upload to unstable.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 22 Apr 2022 20:06:19 +0200
+
+qt6-base (6.2.4+dfsg-3) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Add libgl-dev as a dependency for qt6-base-dev.
+
+ -- Patrick Franz <deltaone@debian.org>  Mon, 11 Apr 2022 19:13:00 +0200
+
+qt6-base (6.2.4+dfsg-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Disable rpath.
+  * Add libglx-dev and libopengl-dev as dependencies for qt6-base-dev.
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 10 Apr 2022 20:52:38 +0200
+
+qt6-base (6.2.4+dfsg-1) experimental; urgency=medium
+
+  [ Lu YaNing ]
+  * New upstream release (6.2.4).
+  * Update ABI to 6.2.4.
+  * Update installed files.
+  * Update symbols.
+  * Update d/copyright.
+  * Update lintian-overrides.
+  * Specifies parameters to pass to the platform plugin.
+
+  [ Patrick Franz ]
+  * Add patch to prevent embedding the build path, thx to Vagrant
+    Cascadian (Closes: #1006407).
+  * Do not hardcode the libssl version as a dependency for
+    libqt6network6, thx to Dan Bungert (Closes: #1006954).
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 27 Mar 2022 16:35:23 +0200
+
+qt6-base (6.2.2+dfsg-6) unstable; urgency=medium
+
+  [ Pino Toscano ]
+  * Backport upstream commit 06e45cbd6a2e09bc32cb1c9aa3779d6bd5282c45 to fix
+    a memory leak in QFileSystemEngine::canonicalName() (caused by patch
+    upstream_Avoid-a-stack-buffer-when-not-needed.patch); patch
+    upstream_QFileSystemEngine-canonicalName-Unix-clean-up-contro.patch.
+  * Replace the libmariadb-dev-compat build dependency with
+    default-libmysqlclient-dev: other than aligning with what is used for
+    qt5-base, it represents better "the default MySQL client library" in Debian.
+
+ -- Patrick Franz <deltaone@debian.org>  Mon, 21 Feb 2022 18:35:17 +0100
+
+qt6-base (6.2.2+dfsg-5) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Upload to unstable.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 15 Feb 2022 21:10:59 +0100
+
+qt6-base (6.2.2+dfsg-4) experimental; urgency=medium
+
+  [ Pino Toscano ]
+  * Backport upstream commit 06e7b5168e269f913f03ecb9d77fc82db4d9dfd6 to enable
+    LFS on Hurd; patch upstream_Hurd-enable-XOPEN-largefile-APIs.patch.
+  * Replace patch path_max.diff with upstream commit
+    7c54988b1b3b9eb4d2f3650c1ba5ffe97673ca92; patch
+    upstream_Avoid-a-stack-buffer-when-not-needed.patch.
+  * Pass -DFEATURE_system_libb2=ON to cmake to make sure the system blake2
+    implementation (libb2) is used instead of the embedded copy.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 15 Feb 2022 01:09:24 +0100
+
+qt6-base (6.2.2+dfsg-3) experimental; urgency=medium
+
+  * Team upload.
+  * Backport/add patches for Hurd support:
+    - backport upstream commit 099e0fff61f080e2d628c8f472df78f6fd2f5234 to
+      support Hurd in the CMake build system; patch
+      upstream_CMake-add-support-for-GNU-Hurd.patch
+    - backport upstream commit 13a11f1c3526112eaf28943185fadc14523fd496 to
+      fix an unconditional PIPE_BUF usage; patch
+      upstream_QProcess-Unix-fallback-on-_POSIX_PIPE_BUF-w-missing-.patch
+    - backport upstream commit bf2fe41616c54712f78ea0ffd173f3614eb20190 to
+      limit a Linux-only code block in the QStorageInfo implementation; patch
+      upstream_QStorageInfo-limit-Linux-only-code-with-Q_OS_LINUX.patch
+    - borrow path_max.diff from qt-base 5 to avoid an unconditional PATH_MAX
+      usage
+  * Update install files for few more Linux-only bits.
+  * Simplify a lot the handling of private symbols in symbols files: since they
+    are tagged as Qt_6_PRIVATE_API, use a single (symver) directive to match
+    all of them at once; there is no minimum version set, as there is already
+    an alternate dependency that sets a strict requirement on qt6-base-abi.
+  * Update symbols files from the logs of buildds, and from the log of a manual
+    hurd-i386 build (marking linux-only and hurd-i386 symbols).
+
+ -- Pino Toscano <pino@debian.org>  Sat, 29 Jan 2022 09:32:23 +0100
+
+qt6-base (6.2.2+dfsg-2) experimental; urgency=medium
+
+  [ Pino Toscano ]
+  * Update symbols files from the logs of buildds.
+
+  [ Patrick Franz ]
+  * Remove copyright-script as it is now in the pkg-kde-tools package.
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Add a qmake6 symlink to usr/bin.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 31 Dec 2021 18:44:53 +0100
+
+qt6-base (6.2.2+dfsg-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.2.2).
+  * Update ABI to 6.2.2.
+  * Update installed files.
+  * Update lintian-overrides.
+  * Update symbols.
+  * Remove unneeded licenses from d/copyright.
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 01 Dec 2021 23:55:33 +0100
+
+qt6-base (6.2.1+dfsg-5) experimental; urgency=medium
+
+  * Team upload.
+  * Update symbols files from the logs of buildds; do manual fixes for vulkan
+    symbols in qt6gui6 for 32bit vs 64bit versions, and for CPU-specific ones.
+
+ -- Pino Toscano <pino@debian.org>  Sun, 21 Nov 2021 19:58:51 +0100
+
+qt6-base (6.2.1+dfsg-4) experimental; urgency=medium
+
+  * Team upload.
+  * Update install files for Linux-only bits.
+  * Update libqt6test6.symbols for 32bit architectures.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 20 Nov 2021 16:53:32 +0100
+
+qt6-base (6.2.1+dfsg-3) experimental; urgency=medium
+
+  * Team upload.
+  * Update symbols files from the logs of buildds.
+  * Restrict the liblttng-ust-dev build dependency as linux-any, as it is
+    specific for Linux.
+
+ -- Pino Toscano <pino@debian.org>  Sat, 20 Nov 2021 12:29:08 +0100
+
+qt6-base (6.2.1+dfsg-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Change path for libexec.
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 20 Nov 2021 03:07:02 +0100
+
+qt6-base (6.2.1+dfsg-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Tighten dependencies.
+  * New upstream release (6.2.1).
+  * Update ABI to 6.2.1.
+  * Update installed files.
   * Update symbols.
 
- -- Lu YaNing <luyaning@uniontech.com>  Mon, 19 Sep 2022 10:12:17 +0800
+ -- Patrick Franz <deltaone@debian.org>  Fri, 05 Nov 2021 15:51:24 +0100
 
-qt6-base (6.2.4-1+dde) stable; urgency=medium
+qt6-base (6.2.0+dfsg-1) experimental; urgency=medium
 
-  * ['Rebuild  against by  current gcc 11.2']
+  * Initial release (Closes: #994478).
 
- -- Deepin Packages Builder <packages@deepin.org>  Wed, 31 Aug 2022 14:51:55 +0800
+ -- Patrick Franz <deltaone@debian.org>  Fri, 17 Sep 2021 02:34:49 +0200

@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.4.2 amd64
+# SymbolsHelper-Confirmed: 6.4.1 amd64
 libQt6OpenGL.so.6 libqt6opengl6 #MINVER#
 | libqt6opengl6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev
@@ -665,7 +665,6 @@ libQt6OpenGL.so.6 libqt6opengl6 #MINVER#
  _ZN34QOpenGLFunctions_4_5_CompatibilityD0Ev@Qt_6 6.1.2
  _ZN34QOpenGLFunctions_4_5_CompatibilityD1Ev@Qt_6 6.1.2
  _ZN34QOpenGLFunctions_4_5_CompatibilityD2Ev@Qt_6 6.1.2
- _ZNK12QPaintDevice7devTypeEv@Qt_6 6.4.2
  _ZNK13QOpenGLBuffer12usagePatternEv@Qt_6 6.1.2
  _ZNK13QOpenGLBuffer4sizeEv@Qt_6 6.1.2
  _ZNK13QOpenGLBuffer4typeEv@Qt_6 6.1.2

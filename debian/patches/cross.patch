@@ -1,0 +1,27 @@
+---
+ cmake/QtBuildInternals/QtBuildInternalsConfig.cmake |    2 --
+ src/tools/configure.cmake                           |    2 +-
+ 2 files changed, 1 insertion(+), 3 deletions(-)
+
+--- a/cmake/QtBuildInternals/QtBuildInternalsConfig.cmake
++++ b/cmake/QtBuildInternals/QtBuildInternalsConfig.cmake
+@@ -151,8 +151,6 @@ function(qt_build_internals_disable_pkg_
+     set(FEATURE_pkg_config "${pkg_config_enabled}" CACHE STRING "Using pkg-config")
+     if(NOT pkg_config_enabled)
+         qt_build_internals_disable_pkg_config()
+-    else()
+-        unset(PKG_CONFIG_EXECUTABLE CACHE)
+     endif()
+ endfunction()
+ 
+--- a/src/tools/configure.cmake
++++ b/src/tools/configure.cmake
+@@ -2,7 +2,7 @@ qt_feature("androiddeployqt" PRIVATE
+     SECTION "Deployment"
+     LABEL "Android deployment tool"
+     PURPOSE "The Android deployment tool automates the process of creating Android packages."
+-    CONDITION NOT CMAKE_CROSSCOMPILING AND QT_FEATURE_regularexpression)
++    CONDITION QT_FEATURE_regularexpression)
+ 
+ qt_feature("macdeployqt" PRIVATE
+     SECTION "Deployment"

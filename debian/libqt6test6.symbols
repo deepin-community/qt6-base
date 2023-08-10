@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.4.2 amd64
+# SymbolsHelper-Confirmed: 6.4.1 amd64
 libQt6Test.so.6 libqt6test6 #MINVER#
 | libqt6test6 #MINVER#, qt6-base-abi (= 6.4.2)
 * Build-Depends-Package: qt6-base-dev
@@ -127,12 +127,6 @@ libQt6Test.so.6 libqt6test6 #MINVER#
  _ZNK9QTestData6parentEv@Qt_6 6.1.2
  _ZNK9QTestData7dataTagEv@Qt_6 6.1.2
  _ZNK9QTestData9dataCountEv@Qt_6 6.1.2
- (optional=templinst)_ZNSt6vectorI11QMetaMethodSaIS0_EE17_M_realloc_insertIJRKS0_EEEvN9__gnu_cxx17__normal_iteratorIPS0_S2_EEDpOT_@Qt_6 6.4.2
- (optional=templinst)_ZNSt6vectorI11QMetaMethodSaIS0_EE7reserveEm@Qt_6 6.4.2
- (optional=templinst)_ZNSt6vectorI8QVariantSaIS0_EE17_M_realloc_insertIJS0_EEEvN9__gnu_cxx17__normal_iteratorIPS0_S2_EEDpOT_@Qt_6 6.4.2
- (optional=templinst)_ZNSt6vectorIP9QTestDataSaIS1_EE17_M_realloc_insertIJRKS1_EEEvN9__gnu_cxx17__normal_iteratorIPS1_S3_EEDpOT_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI10QByteArrayS0_St9_IdentityIS0_ESt4lessIS0_ESaIS0_EE16_M_insert_uniqueIRKS0_EESt4pairISt17_Rb_tree_iteratorIS0_EbEOT_@Qt_6 6.4.2
- (optional=templinst)_ZNSt8_Rb_treeI10QByteArrayS0_St9_IdentityIS0_ESt4lessIS0_ESaIS0_EE4findERKS0_@Qt_6 6.4.2
  _ZTI14QTestEventLoop@Qt_6 6.1.2
  _ZTI24QAbstractItemModelTester@Qt_6 6.1.2
  _ZTS14QTestEventLoop@Qt_6 6.1.2
@@ -140,4 +134,3 @@ libQt6Test.so.6 libqt6test6 #MINVER#
  _ZTV14QTestEventLoop@Qt_6 6.1.2
  _ZTV24QAbstractItemModelTester@Qt_6 6.1.2
  _ZZN14QTestEventLoop8instanceEvE8testLoop@Qt_6 6.3.0
- (optional=templinst)_ZZNSt8__detail18__to_chars_10_implIjEEvPcjT_E8__digits@Qt_6 6.4.2

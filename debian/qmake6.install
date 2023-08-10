@@ -1,3 +1,4 @@
+usr/bin/*-qmake6
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/aix-g++-64/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/aix-g++-64/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/aix-g++/qmake.conf

@@ -1,0 +1,13 @@
+Bootstrapping the docs packages
+-------------------------------
+
+In order to generate documentation for Qt, qdoc and
+qtattributionsscanner is needed. Thus you need to do
+the following steps if you want to rebuild the Qt stack:
+
+* Build only arch-dependent packages from these sources:
+  - qt6-base
+  - qt6-declarative
+  - qt6-tools
+* Build the arch-independent packages (-doc and -doc-html) of the above sources.
+* Build the rest of the Qt stack in the usual way.

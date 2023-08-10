@@ -1,0 +1,62 @@
+From eeb66b99df521c4a32b8eda1d889f615319355a6 Mon Sep 17 00:00:00 2001
+From: Pino Toscano <toscano.pino@tiscali.it>
+Date: Tue, 15 Nov 2022 07:15:44 +0100
+Subject: [PATCH] Add/enable Alpha detection
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- uncomment the Alpha detection defining Q_PROCESSOR_ALPHA, which is
+  already used/documented in few places
+- set the right machine type in QElfParser for Alpha ELF files
+
+Pick-to: 6.5
+Change-Id: I072bdee8b73ad3c86591c764aa7075c114967fd9
+Reviewed-by: Thiago Macieira <thiago.macieira@intel.com>
+Reviewed-by: Lisandro Damián Nicanor Pérez Meyer <perezmeyer@gmail.com>
+---
+ src/corelib/global/qprocessordetection.h | 6 +++---
+ src/corelib/plugin/qelfparser_p.cpp      | 3 +++
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+--- a/src/corelib/global/qprocessordetection.h
++++ b/src/corelib/global/qprocessordetection.h
+@@ -48,8 +48,8 @@
+ 
+     Alpha is bi-endian, use endianness auto-detection implemented below.
+ */
+-// #elif defined(__alpha__) || defined(_M_ALPHA)
+-// #  define Q_PROCESSOR_ALPHA
++#if defined(__alpha__) || defined(_M_ALPHA)
++#  define Q_PROCESSOR_ALPHA
+ // Q_BYTE_ORDER not defined, use endianness auto-detection
+ 
+ /*
+@@ -58,7 +58,7 @@
+     ARM is bi-endian, detect using __ARMEL__ or __ARMEB__, falling back to
+     auto-detection implemented below.
+ */
+-#if defined(__arm__) || defined(__TARGET_ARCH_ARM) || defined(_M_ARM) || defined(_M_ARM64) || defined(__aarch64__) || defined(__ARM64__)
++#elif defined(__arm__) || defined(__TARGET_ARCH_ARM) || defined(_M_ARM) || defined(_M_ARM64) || defined(__aarch64__) || defined(__ARM64__)
+ #  if defined(__aarch64__) || defined(__ARM64__) || defined(_M_ARM64)
+ #    define Q_PROCESSOR_ARM_64
+ #    define Q_PROCESSOR_WORDSIZE 8
+--- a/src/corelib/plugin/qelfparser_p.cpp
++++ b/src/corelib/plugin/qelfparser_p.cpp
+@@ -112,6 +112,8 @@ struct ElfMachineCheck
+     static const Elf32_Half ExpectedMachine =
+ #if 0
+             // nothing
++#elif defined(Q_PROCESSOR_ALPHA)
++            EM_ALPHA
+ #elif defined(Q_PROCESSOR_ARM_32)
+             EM_ARM
+ #elif defined(Q_PROCESSOR_ARM_64)
+@@ -380,6 +382,7 @@ Q_DECL_UNUSED Q_DECL_COLD_FUNCTION stati
+     switch (r.machine) {
+     // list definitely not exhaustive!
+     case EM_NONE:       d << ", no machine"; break;
++    case EM_ALPHA:      d << ", Alpha"; break;
+     case EM_68K:        d << ", MC68000"; break;
+     case EM_ARM:        d << ", ARM"; break;
+     case EM_AARCH64:    d << ", AArch64"; break;

@@ -1,0 +1,23 @@
+Description: Change how stack grows on HPPA.
+ On HPPA stack grows upwards. This patch introduces this change for
+ this 3rd party code.
+Author: John David Anglin <dave.anglin@bell.net>
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1042018
+Reviewed-by: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
+Last-Update: 2023-07-28
+
+--- ./src/3rdparty/forkfd/forkfd_linux.c.save	2023-07-27 12:04:02.940466337 +0000
++++ ./src/3rdparty/forkfd/forkfd_linux.c	2023-07-27 12:06:53.522077424 +0000
+@@ -168,7 +168,12 @@
+     }
+     *system = 1;
+ 
++#if defined(__hppa__)
++    /* Stack grows up */
++    pid = clone(childFn, childStack, cloneflags, token, &pidfd, NULL, NULL);
++#else
+     pid = clone(childFn, childStack + sizeof(childStack), cloneflags, token, &pidfd, NULL, NULL);
++#endif
+     if (pid < 0)
+         return pid;
+     if (ppid)
