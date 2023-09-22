@@ -9,6 +9,7 @@ cve-2023-33285.diff
 upstream_Add-HPPA-detection.patch
 upstream_Add-M68k-detection.patch
 upstream_Add-enable-Alpha-detection.patch
+0001-rhi-gl-Fix-GL_INVALID_OPERATION-error-at-glPolygonMo.patch
 
 # fixed in 6.4.3
 cve-2023-24607.patch

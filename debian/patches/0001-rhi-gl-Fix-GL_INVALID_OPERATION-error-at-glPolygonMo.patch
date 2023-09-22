@@ -1,0 +1,55 @@
+From e44a984d49bc8ea2e6258a4ed55f8be140b80ad5 Mon Sep 17 00:00:00 2001
+From: JiDe Zhang <zhangjide@uniontech.com>
+Date: Wed, 12 Apr 2023 17:59:18 +0800
+Subject: [PATCH] rhi: gl: Fix GL_INVALID_OPERATION error at glPolygonMode
+
+Fixes: QTBUG-112756
+Change-Id: Id03bf805d70754818a98606b81a08a70d06853ba
+Reviewed-by: Laszlo Agocs <laszlo.agocs@qt.io>
+(cherry picked from commit 143d00cc2ccc113c935fab1de23614f3d8764a89)
+---
+ src/gui/rhi/qrhigles2.cpp | 14 +++++++++-----
+ 1 file changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/src/gui/rhi/qrhigles2.cpp b/src/gui/rhi/qrhigles2.cpp
+index e97a828c76..c8b1a787a9 100644
+--- a/src/gui/rhi/qrhigles2.cpp
++++ b/src/gui/rhi/qrhigles2.cpp
+@@ -623,8 +623,13 @@ bool QRhiGles2::create(QRhi::Flags flags)
+         return false;
+ 
+     f = static_cast<QOpenGLExtensions *>(ctx->extraFunctions());
+-    glPolygonMode = reinterpret_cast<void(QOPENGLF_APIENTRYP)(GLenum, GLenum)>(
+-            ctx->getProcAddress(QByteArrayLiteral("glPolygonMode")));
++    const QSurfaceFormat actualFormat = ctx->format();
++    caps.gles = actualFormat.renderableType() == QSurfaceFormat::OpenGLES;
++
++    if (!caps.gles) {
++        glPolygonMode = reinterpret_cast<void(QOPENGLF_APIENTRYP)(GLenum, GLenum)>(
++                ctx->getProcAddress(QByteArrayLiteral("glPolygonMode")));
++    }
+ 
+     const char *vendor = reinterpret_cast<const char *>(f->glGetString(GL_VENDOR));
+     const char *renderer = reinterpret_cast<const char *>(f->glGetString(GL_RENDERER));
+@@ -643,8 +648,6 @@ bool QRhiGles2::create(QRhi::Flags flags)
+     if (version)
+         driverInfoStruct.deviceName += QByteArray(version);
+ 
+-    const QSurfaceFormat actualFormat = ctx->format();
+-
+     caps.ctxMajor = actualFormat.majorVersion();
+     caps.ctxMinor = actualFormat.minorVersion();
+ 
+@@ -704,7 +707,8 @@ bool QRhiGles2::create(QRhi::Flags flags)
+ 
+     f->glGetIntegerv(GL_MAX_TEXTURE_SIZE, &caps.maxTextureSize);
+ 
+-    if (caps.ctxMajor >= 3 || actualFormat.renderableType() == QSurfaceFormat::OpenGL) {
++    if (!caps.gles || caps.ctxMajor >= 3) {
++        // non-ES or ES 3.0+
+         f->glGetIntegerv(GL_MAX_DRAW_BUFFERS, &caps.maxDrawBuffers);
+         f->glGetIntegerv(GL_MAX_SAMPLES, &caps.maxSamples);
+         caps.maxSamples = qMax(1, caps.maxSamples);
+-- 
+2.42.0
+
