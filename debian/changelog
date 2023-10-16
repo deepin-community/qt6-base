@@ -1,6 +1,7 @@
 qt6-base (6.4.2+dfsg-17deepin1) unstable; urgency=medium
 
   * Add 0001-rhi-gl-Fix-GL_INVALID_OPERATION-error-at-glPolygonMo.patch
+  * Update symbols.
 
  -- Tianyu Chen <sweetyfish@deepin.org>  Fri, 22 Sep 2023 10:04:16 +0800
 
