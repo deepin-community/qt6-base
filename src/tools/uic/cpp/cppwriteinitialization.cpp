@@ -180,6 +180,15 @@ FontHandle::FontHandle(const DomFont *domFont) :
 {
 }
 
+static QString fontWeight(const DomFont *domFont)
+{
+   if (domFont->hasElementFontWeight())
+       return domFont->elementFontWeight();
+   if (domFont->hasElementBold())
+      return domFont->elementBold() ? u"Bold"_s : u"Normal"_s;
+   return {};
+}
+
 int FontHandle::compare(const FontHandle &rhs) const
 {
     const QString family    = m_domFont->hasElementFamily()     ?     m_domFont->elementFamily() : QString();
@@ -194,10 +203,10 @@ int FontHandle::compare(const FontHandle &rhs) const
     if (const int crc = compareInt(pointSize, rhsPointSize))
         return crc;
 
-    const int bold    = m_domFont->hasElementBold()     ? (m_domFont->elementBold()     ? 1 : 0) : -1;
-    const int rhsBold = rhs.m_domFont->hasElementBold() ? (rhs.m_domFont->elementBold() ? 1 : 0) : -1;
-    if (const int crc = compareInt(bold, rhsBold))
-        return crc;
+    const QString fontWeight  = CPP::fontWeight(m_domFont);
+    const QString rhsFontWeight = CPP::fontWeight(rhs.m_domFont);
+    if (const int wrc = fontWeight.compare(rhsFontWeight))
+        return wrc;
 
     const int italic    = m_domFont->hasElementItalic()     ? (m_domFont->elementItalic()     ? 1 : 0) : -1;
     const int rhsItalic = rhs.m_domFont->hasElementItalic() ? (rhs.m_domFont->elementItalic() ? 1 : 0) : -1;
@@ -207,11 +216,6 @@ int FontHandle::compare(const FontHandle &rhs) const
     const int underline    = m_domFont->hasElementUnderline()     ? (m_domFont->elementUnderline()     ? 1 : 0) : -1;
     const int rhsUnderline = rhs.m_domFont->hasElementUnderline() ? (rhs.m_domFont->elementUnderline() ? 1 : 0) : -1;
     if (const int crc = compareInt(underline, rhsUnderline))
-        return crc;
-
-    const int weight    = m_domFont->hasElementWeight()     ?     m_domFont->elementWeight() : -1;
-    const int rhsWeight = rhs.m_domFont->hasElementWeight() ? rhs.m_domFont->elementWeight() : -1;
-    if (const int crc = compareInt(weight, rhsWeight))
         return crc;
 
     const int strikeOut    = m_domFont->hasElementStrikeOut()     ? (m_domFont->elementStrikeOut()     ? 1 : 0) : -1;
@@ -233,6 +237,13 @@ int FontHandle::compare(const FontHandle &rhs) const
     const QString rhsStyleStrategy = rhs.m_domFont->hasElementStyleStrategy() ? rhs.m_domFont->elementStyleStrategy() : QString();
 
     if (const int src = styleStrategy.compare(rhsStyleStrategy))
+        return src;
+
+    const QString hintingPreference = m_domFont->hasElementHintingPreference()
+        ? m_domFont->elementHintingPreference() : QString();
+    const QString rhsHintingPreference = rhs.m_domFont->hasElementHintingPreference()
+        ? rhs.m_domFont->elementHintingPreference() : QString();
+    if (const int src = hintingPreference.compare(rhsHintingPreference))
         return src;
 
     return 0;
@@ -669,7 +680,7 @@ void WriteInitialization::acceptWidget(DomWidget *node)
 
     const DomPropertyMap attributes = propertyMap(node->elementAttribute());
 
-    const QString pageDefaultString = "Page"_L1;
+    const QString pageDefaultString = u"Page"_s;
 
     if (cwi->extends(parentClass, "QMainWindow")) {
         if (cwi->extends(className, "QMenuBar")) {
@@ -781,10 +792,10 @@ void WriteInitialization::acceptWidget(DomWidget *node)
     };
 
     static const QStringList trees = {
-        "QTreeView"_L1, "QTreeWidget"_L1
+        u"QTreeView"_s, u"QTreeWidget"_s
     };
     static const QStringList tables = {
-        "QTableView"_L1, "QTableWidget"_L1
+        u"QTableView"_s, u"QTableWidget"_s
     };
 
     if (cwi->extendsOneOf(className, trees)) {
@@ -864,7 +875,7 @@ void WriteInitialization::addButtonGroup(const DomWidget *buttonNode, const QStr
     const QString groupName = m_driver->findOrInsertButtonGroup(group);
     // Create on demand
     if (!m_buttonGroups.contains(groupName)) {
-        const QString className = "QButtonGroup"_L1;
+        const QString className = u"QButtonGroup"_s;
         m_output << m_indent;
         if (createGroupOnTheFly)
             m_output << className << " *";
@@ -1002,7 +1013,7 @@ static inline QString formLayoutRole(int column, int colspan)
 
 static QString layoutAddMethod(DomLayoutItem::Kind kind, const QString &layoutClass)
 {
-    const QString methodPrefix = layoutClass == "QFormLayout"_L1 ? "set"_L1 : "add"_L1;
+    const auto methodPrefix = layoutClass == "QFormLayout"_L1 ? "set"_L1 : "add"_L1;
     switch (kind) {
     case DomLayoutItem::Widget:
         return methodPrefix + "Widget"_L1;
@@ -1237,8 +1248,8 @@ void WriteInitialization::writeProperties(const QString &varName,
             continue;
         }
         static const QStringList currentIndexWidgets = {
-            "QComboBox"_L1, "QStackedWidget"_L1,
-            "QTabWidget"_L1, "QToolBox"_L1
+            u"QComboBox"_s, u"QStackedWidget"_s,
+            u"QTabWidget"_s, u"QToolBox"_s
         };
         if (propertyName == "currentIndex"_L1 // set currentIndex later
             && (m_uic->customWidgetsInfo()->extendsOneOf(className, currentIndexWidgets))) {
@@ -1273,9 +1284,9 @@ void WriteInitialization::writeProperties(const QString &varName,
         } else if (propertyName == "orientation"_L1
                     && m_uic->customWidgetsInfo()->extends(className, "Line")) {
             // Line support
-            QString shape = "QFrame::HLine"_L1;
+            QString shape = u"QFrame::HLine"_s;
             if (p->elementEnum() == "Qt::Vertical"_L1)
-                shape = "QFrame::VLine"_L1;
+                shape = u"QFrame::VLine"_s;
 
             m_output << m_indent << varName << language::derefPointer << "setFrameShape("
                 << language::enumValue(shape) << ')' << language::eol;
@@ -1627,10 +1638,14 @@ QString WriteInitialization::writeFontProperties(const DomFont *f)
              << ")" << language::eol;
     }
 
-    if (f->hasElementBold()) {
+    if (f->hasElementFontWeight()) {
+         m_output << m_indent << fontName << ".setWeight(QFont"
+             << language::qualifier << f->elementFontWeight() << ')' << language::eol;
+    } else if (f->hasElementBold()) {
         m_output << m_indent << fontName << ".setBold("
             << language::boolValue(f->elementBold()) << ')' << language::eol;
     }
+
     if (f->hasElementItalic()) {
         m_output << m_indent << fontName << ".setItalic("
             << language::boolValue(f->elementItalic()) << ')' << language::eol;
@@ -1657,6 +1672,11 @@ QString WriteInitialization::writeFontProperties(const DomFont *f)
          m_output << m_indent << fontName << ".setStyleStrategy(QFont"
             << language::qualifier << f->elementStyleStrategy() << ')' << language::eol;
     }
+    if (f->hasElementHintingPreference()) {
+         m_output << m_indent << fontName << ".setHintingPreference(QFont"
+             << language::qualifier << f->elementHintingPreference() << ')' << language::eol;
+    }
+
     return  fontName;
 }
 
@@ -1930,7 +1950,7 @@ QString WriteInitialization::writeBrushInitialization(const DomBrush *brush)
 
 void WriteInitialization::writeBrush(const DomBrush *brush, const QString &brushName)
 {
-    QString style = "SolidPattern"_L1;
+    QString style = u"SolidPattern"_s;
     if (brush->hasAttributeBrushStyle())
         style = brush->attributeBrushStyle();
 
@@ -2048,7 +2068,8 @@ QString WriteInitialization::iconCall(const DomProperty *icon)
 
 QString WriteInitialization::pixCall(const DomProperty *p) const
 {
-    QString type, s;
+    QLatin1StringView type;
+    QString s;
     switch (p->kind()) {
     case DomProperty::IconSet:
         type = "QIcon"_L1;
@@ -2067,23 +2088,22 @@ QString WriteInitialization::pixCall(const DomProperty *p) const
     return pixCall(type, s);
 }
 
-QString WriteInitialization::pixCall(const QString &t, const QString &text) const
+QString WriteInitialization::pixCall(QLatin1StringView t, const QString &text) const
 {
-    QString type = t;
-    if (text.isEmpty()) {
-        type += "()"_L1;
-        return type;
-    }
+    if (text.isEmpty())
+        return t % "()"_L1;
 
-    QTextStream str(&type);
+    QString result;
+    QTextStream str(&result);
+    str << t;
     str << '(';
-    QString pixFunc = m_uic->pixmapFunction();
+    const QString pixFunc = m_uic->pixmapFunction();
     if (pixFunc.isEmpty())
         str << language::qstring(text, m_dindent);
     else
         str << pixFunc << '(' << language::charliteral(text, m_dindent) << ')';
     str << ')';
-    return type;
+    return result;
 }
 
 void WriteInitialization::initializeComboBox(DomWidget *w)
@@ -2604,6 +2624,10 @@ ConnectionSyntax WriteInitialization::connectionSyntax(const language::SignalSlo
         || requiresStringSyntax.contains(receiver.className)) {
         return ConnectionSyntax::StringBased;
     }
+
+    // QTBUG-110952, ambiguous overloads of display()
+    if (receiver.className == u"QLCDNumber" && receiver.signature.startsWith(u"display("))
+        return ConnectionSyntax::StringBased;
 
     if ((sender.name == m_mainFormVarName && m_customSignals.contains(sender.signature))
          || (receiver.name == m_mainFormVarName && m_customSlots.contains(receiver.signature))) {

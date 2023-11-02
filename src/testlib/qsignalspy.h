@@ -50,7 +50,7 @@ public:
         initArgs(mo->method(sigIndex), obj);
     }
 
-#ifdef Q_CLANG_QDOC
+#ifdef Q_QDOC
     template <typename PointerToMemberFunction>
     QSignalSpy(const QObject *object, PointerToMemberFunction signal);
 #else
@@ -79,7 +79,7 @@ public:
         sig = signalMetaMethod.methodSignature();
         initArgs(mo->method(sigIndex), obj);
     }
-#endif // Q_CLANG_QDOC
+#endif // Q_QDOC
 
     QSignalSpy(const QObject *obj, const QMetaMethod &signal)
         : m_waiting(false)
@@ -94,12 +94,15 @@ public:
     inline bool isValid() const { return !sig.isEmpty(); }
     inline QByteArray signal() const { return sig; }
 
-    bool wait(int timeout = 5000)
+    bool wait(int timeout)
+    { return wait(std::chrono::milliseconds{timeout}); }
+
+    bool wait(std::chrono::milliseconds timeout = std::chrono::seconds{5})
     {
         Q_ASSERT(!m_waiting);
-        const int origCount = size();
+        const qsizetype origCount = size();
         m_waiting = true;
-        m_loop.enterLoopMSecs(timeout);
+        m_loop.enterLoop(timeout);
         m_waiting = false;
         return size() > origCount;
     }

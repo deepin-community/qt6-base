@@ -1,12 +1,7 @@
-# SymbolsHelper-Confirmed: 6.4.2 armel armhf
+# SymbolsHelper-Confirmed: 6.6.0 amd64 armel armhf hppa i386 powerpc
 libQt6Widgets.so.6 libqt6widgets6 #MINVER#
-| libqt6widgets6 #MINVER#, qt6-base-abi (= 6.4.2)
+| libqt6widgets6 #MINVER#, qt6-base-private-abi (= 6.6.0)
 * Build-Depends-Package: qt6-base-dev
- Qt_6.0@Qt_6.0 6.1.2
- Qt_6.1@Qt_6.1 6.1.2
- Qt_6.2@Qt_6.2 6.2.0
- Qt_6.3@Qt_6.3 6.3.0
- Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _Z11qFadeEffectP7QWidgeti@Qt_6 6.1.2
@@ -33,6 +28,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _Z14qDrawWinButtonP8QPainteriiiiRK8QPalettebPK6QBrush@Qt_6 6.1.2
  _Z15qDrawShadePanelP8QPainterRK5QRectRK8QPalettebiPK6QBrush@Qt_6 6.1.2
  _Z15qDrawShadePanelP8QPainteriiiiRK8QPalettebiPK6QBrush@Qt_6 6.1.2
+ _Z15qRequireVersioniPPc14QAnyStringView@Qt_6 6.6.0
  _Z15qt_qwidget_dataP7QWidget@Qt_6 6.1.2
  _Z17qDrawBorderPixmapP8QPainterRK5QRectRK8QMarginsRK7QPixmapS3_S6_RK10QTileRules6QFlagsIN17QDrawBorderPixmap11DrawingHintEE@Qt_6 6.1.2
  _Z17qt_app_fonts_hashv@Qt_6 6.1.2
@@ -49,7 +45,6 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _Z57qRegisterNormalizedMetaType_QGesture__GestureCancelPolicyRK10QByteArray@Qt_6 6.4.0
  _Z59qRegisterNormalizedMetaType_QScrollerProperties__FrameRatesRK10QByteArray@Qt_6 6.4.0
  _Z64qRegisterNormalizedMetaType_QScrollerProperties__OvershootPolicyRK10QByteArray@Qt_6 6.4.0
- _Z9qGeomCalcR5QListI13QLayoutStructEiiiii@Qt_6 6.1.2
  _ZGVZN9QMetaType21registerConverterImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListI6QRectFE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
@@ -393,10 +388,8 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN11QFileDialog9setOptionENS_6OptionEb@Qt_6 6.1.2
  _ZN11QFileDialogC1EP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN11QFileDialogC1EP7QWidgetRK7QStringS4_S4_@Qt_6 6.1.2
- _ZN11QFileDialogC1ERK15QFileDialogArgs@Qt_6 6.1.2
  _ZN11QFileDialogC2EP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN11QFileDialogC2EP7QWidgetRK7QStringS4_S4_@Qt_6 6.1.2
- _ZN11QFileDialogC2ERK15QFileDialogArgs@Qt_6 6.1.2
  _ZN11QFileDialogD0Ev@Qt_6 6.1.2
  _ZN11QFileDialogD1Ev@Qt_6 6.1.2
  _ZN11QFileDialogD2Ev@Qt_6 6.1.2
@@ -585,9 +578,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN11QHeaderView8setModelEP18QAbstractItemModel@Qt_6 6.1.2
  _ZN11QHeaderView9setOffsetEi@Qt_6 6.1.2
  _ZN11QHeaderViewC1EN2Qt11OrientationEP7QWidget@Qt_6 6.1.2
- _ZN11QHeaderViewC1ER18QHeaderViewPrivateN2Qt11OrientationEP7QWidget@Qt_6 6.1.2
  _ZN11QHeaderViewC2EN2Qt11OrientationEP7QWidget@Qt_6 6.1.2
- _ZN11QHeaderViewC2ER18QHeaderViewPrivateN2Qt11OrientationEP7QWidget@Qt_6 6.1.2
  _ZN11QHeaderViewD0Ev@Qt_6 6.1.2
  _ZN11QHeaderViewD1Ev@Qt_6 6.1.2
  _ZN11QHeaderViewD2Ev@Qt_6 6.1.2
@@ -683,6 +674,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN11QMainWindowD1Ev@Qt_6 6.1.2
  _ZN11QMainWindowD2Ev@Qt_6 6.1.2
  _ZN11QMessageBox10closeEventEP11QCloseEvent@Qt_6 6.1.2
+ _ZN11QMessageBox10setOptionsE6QFlagsINS_6OptionEE@Qt_6 6.6.0
  _ZN11QMessageBox11changeEventEP6QEvent@Qt_6 6.1.2
  _ZN11QMessageBox11informationEP7QWidgetRK7QStringS4_6QFlagsINS_14StandardButtonEES6_@Qt_6 6.1.2
  _ZN11QMessageBox11informationEP7QWidgetRK7QStringS4_S4_S4_S4_ii@Qt_6 6.1.2
@@ -727,6 +719,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN11QMessageBox9addButtonENS_14StandardButtonE@Qt_6 6.1.2
  _ZN11QMessageBox9addButtonEP15QAbstractButtonNS_10ButtonRoleE@Qt_6 6.1.2
  _ZN11QMessageBox9addButtonERK7QStringNS_10ButtonRoleE@Qt_6 6.1.2
+ _ZN11QMessageBox9setOptionENS_6OptionEb@Qt_6 6.6.0
  _ZN11QMessageBox9showEventEP10QShowEvent@Qt_6 6.1.2
  _ZN11QMessageBoxC1ENS_4IconERK7QStringS3_6QFlagsINS_14StandardButtonEEP7QWidgetS4_IN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN11QMessageBoxC1EP7QWidget@Qt_6 6.1.2
@@ -780,11 +773,9 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN11QPushButton7setMenuEP5QMenu@Qt_6 6.1.2
  _ZN11QPushButton8showMenuEv@Qt_6 6.1.2
  _ZN11QPushButtonC1EP7QWidget@Qt_6 6.1.2
- _ZN11QPushButtonC1ER18QPushButtonPrivateP7QWidget@Qt_6 6.1.2
  _ZN11QPushButtonC1ERK5QIconRK7QStringP7QWidget@Qt_6 6.1.2
  _ZN11QPushButtonC1ERK7QStringP7QWidget@Qt_6 6.1.2
  _ZN11QPushButtonC2EP7QWidget@Qt_6 6.1.2
- _ZN11QPushButtonC2ER18QPushButtonPrivateP7QWidget@Qt_6 6.1.2
  _ZN11QPushButtonC2ERK5QIconRK7QStringP7QWidget@Qt_6 6.1.2
  _ZN11QPushButtonC2ERK7QStringP7QWidget@Qt_6 6.1.2
  _ZN11QPushButtonD0Ev@Qt_6 6.1.2
@@ -820,9 +811,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN11QScrollArea5eventEP6QEvent@Qt_6 6.1.2
  _ZN11QScrollArea9setWidgetEP7QWidget@Qt_6 6.1.2
  _ZN11QScrollAreaC1EP7QWidget@Qt_6 6.1.2
- _ZN11QScrollAreaC1ER18QScrollAreaPrivateP7QWidget@Qt_6 6.1.2
  _ZN11QScrollAreaC2EP7QWidget@Qt_6 6.1.2
- _ZN11QScrollAreaC2ER18QScrollAreaPrivateP7QWidget@Qt_6 6.1.2
  _ZN11QScrollAreaD0Ev@Qt_6 6.1.2
  _ZN11QScrollAreaD1Ev@Qt_6 6.1.2
  _ZN11QScrollAreaD2Ev@Qt_6 6.1.2
@@ -1811,10 +1800,8 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN14QPlainTextEdit9selectAllEv@Qt_6 6.1.2
  _ZN14QPlainTextEdit9showEventEP10QShowEvent@Qt_6 6.1.2
  _ZN14QPlainTextEditC1EP7QWidget@Qt_6 6.1.2
- _ZN14QPlainTextEditC1ER21QPlainTextEditPrivateP7QWidget@Qt_6 6.1.2
  _ZN14QPlainTextEditC1ERK7QStringP7QWidget@Qt_6 6.1.2
  _ZN14QPlainTextEditC2EP7QWidget@Qt_6 6.1.2
- _ZN14QPlainTextEditC2ER21QPlainTextEditPrivateP7QWidget@Qt_6 6.1.2
  _ZN14QPlainTextEditC2ERK7QStringP7QWidget@Qt_6 6.1.2
  _ZN14QPlainTextEditD0Ev@Qt_6 6.1.2
  _ZN14QPlainTextEditD1Ev@Qt_6 6.1.2
@@ -1891,9 +1878,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN15QAbstractButton7toggledEb@Qt_6 6.1.2
  _ZN15QAbstractButton8releasedEv@Qt_6 6.1.2
  _ZN15QAbstractButtonC1EP7QWidget@Qt_6 6.1.2
- _ZN15QAbstractButtonC1ER22QAbstractButtonPrivateP7QWidget@Qt_6 6.1.2
  _ZN15QAbstractButtonC2EP7QWidget@Qt_6 6.1.2
- _ZN15QAbstractButtonC2ER22QAbstractButtonPrivateP7QWidget@Qt_6 6.1.2
  _ZN15QAbstractButtonD0Ev@Qt_6 6.1.2
  _ZN15QAbstractButtonD1Ev@Qt_6 6.1.2
  _ZN15QAbstractButtonD2Ev@Qt_6 6.1.2
@@ -1927,9 +1912,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN15QAbstractSlider8setRangeEii@Qt_6 6.1.2
  _ZN15QAbstractSlider8setValueEi@Qt_6 6.1.2
  _ZN15QAbstractSliderC1EP7QWidget@Qt_6 6.1.2
- _ZN15QAbstractSliderC1ER22QAbstractSliderPrivateP7QWidget@Qt_6 6.1.2
  _ZN15QAbstractSliderC2EP7QWidget@Qt_6 6.1.2
- _ZN15QAbstractSliderC2ER22QAbstractSliderPrivateP7QWidget@Qt_6 6.1.2
  _ZN15QAbstractSliderD0Ev@Qt_6 6.1.2
  _ZN15QAbstractSliderD1Ev@Qt_6 6.1.2
  _ZN15QAbstractSliderD2Ev@Qt_6 6.1.2
@@ -1950,6 +1933,8 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN15QCalendarWidget14setMinimumDateE5QDate@Qt_6 6.1.2
  _ZN15QCalendarWidget15mousePressEventEP11QMouseEvent@Qt_6 6.1.2
  _ZN15QCalendarWidget15setSelectedDateE5QDate@Qt_6 6.1.2
+ _ZN15QCalendarWidget16clearMaximumDateEv@Qt_6 6.6.0
+ _ZN15QCalendarWidget16clearMinimumDateEv@Qt_6 6.6.0
  _ZN15QCalendarWidget16selectionChangedEv@Qt_6 6.1.2
  _ZN15QCalendarWidget16setSelectionModeENS_13SelectionModeE@Qt_6 6.1.2
  _ZN15QCalendarWidget16showPreviousYearEv@Qt_6 6.1.2
@@ -2097,9 +2082,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN15QGraphicsWidget9setLayoutEP15QGraphicsLayout@Qt_6 6.1.2
  _ZN15QGraphicsWidget9showEventEP10QShowEvent@Qt_6 6.1.2
  _ZN15QGraphicsWidgetC1EP13QGraphicsItem6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
- _ZN15QGraphicsWidgetC1ER22QGraphicsWidgetPrivateP13QGraphicsItem6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN15QGraphicsWidgetC2EP13QGraphicsItem6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
- _ZN15QGraphicsWidgetC2ER22QGraphicsWidgetPrivateP13QGraphicsItem6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN15QGraphicsWidgetD0Ev@Qt_6 6.1.2
  _ZN15QGraphicsWidgetD1Ev@Qt_6 6.1.2
  _ZN15QGraphicsWidgetD2Ev@Qt_6 6.1.2
@@ -2271,9 +2254,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN16QAbstractSpinBox9selectAllEv@Qt_6 6.1.2
  _ZN16QAbstractSpinBox9showEventEP10QShowEvent@Qt_6 6.1.2
  _ZN16QAbstractSpinBoxC1EP7QWidget@Qt_6 6.1.2
- _ZN16QAbstractSpinBoxC1ER23QAbstractSpinBoxPrivateP7QWidget@Qt_6 6.1.2
  _ZN16QAbstractSpinBoxC2EP7QWidget@Qt_6 6.1.2
- _ZN16QAbstractSpinBoxC2ER23QAbstractSpinBoxPrivateP7QWidget@Qt_6 6.1.2
  _ZN16QAbstractSpinBoxD0Ev@Qt_6 6.1.2
  _ZN16QAbstractSpinBoxD1Ev@Qt_6 6.1.2
  _ZN16QAbstractSpinBoxD2Ev@Qt_6 6.1.2
@@ -2316,13 +2297,13 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN16QKeySequenceEdit16staticMetaObjectE@Qt_6 6.1.2
  _ZN16QKeySequenceEdit18keySequenceChangedERK12QKeySequence@Qt_6 6.1.2
  _ZN16QKeySequenceEdit21setClearButtonEnabledEb@Qt_6 6.4.0
+ (subst)_ZN16QKeySequenceEdit24setMaximumSequenceLengthE{qptrdiff}@Qt_6 6.6.0
+ _ZN16QKeySequenceEdit27setFinishingKeyCombinationsERK5QListI15QKeyCombinationE@Qt_6 6.6.0
  _ZN16QKeySequenceEdit5clearEv@Qt_6 6.1.2
  _ZN16QKeySequenceEdit5eventEP6QEvent@Qt_6 6.1.2
  _ZN16QKeySequenceEditC1EP7QWidget@Qt_6 6.1.2
- _ZN16QKeySequenceEditC1ER23QKeySequenceEditPrivateP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN16QKeySequenceEditC1ERK12QKeySequenceP7QWidget@Qt_6 6.1.2
  _ZN16QKeySequenceEditC2EP7QWidget@Qt_6 6.1.2
- _ZN16QKeySequenceEditC2ER23QKeySequenceEditPrivateP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN16QKeySequenceEditC2ERK12QKeySequenceP7QWidget@Qt_6 6.1.2
  _ZN16QKeySequenceEditD0Ev@Qt_6 6.1.2
  _ZN16QKeySequenceEditD1Ev@Qt_6 6.1.2
@@ -2615,9 +2596,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN18QGraphicsTransform16staticMetaObjectE@Qt_6 6.1.2
  _ZN18QGraphicsTransform6updateEv@Qt_6 6.1.2
  _ZN18QGraphicsTransformC1EP7QObject@Qt_6 6.1.2
- _ZN18QGraphicsTransformC1ER25QGraphicsTransformPrivateP7QObject@Qt_6 6.1.2
  _ZN18QGraphicsTransformC2EP7QObject@Qt_6 6.1.2
- _ZN18QGraphicsTransformC2ER25QGraphicsTransformPrivateP7QObject@Qt_6 6.1.2
  _ZN18QGraphicsTransformD0Ev@Qt_6 6.1.2
  _ZN18QGraphicsTransformD1Ev@Qt_6 6.1.2
  _ZN18QGraphicsTransformD2Ev@Qt_6 6.1.2
@@ -3264,10 +3243,8 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN5QMenu9hideEventEP10QHideEvent@Qt_6 6.1.2
  _ZN5QMenu9triggeredEP7QAction@Qt_6 6.1.2
  _ZN5QMenuC1EP7QWidget@Qt_6 6.1.2
- _ZN5QMenuC1ER12QMenuPrivateP7QWidget@Qt_6 6.1.2
  _ZN5QMenuC1ERK7QStringP7QWidget@Qt_6 6.1.2
  _ZN5QMenuC2EP7QWidget@Qt_6 6.1.2
- _ZN5QMenuC2ER12QMenuPrivateP7QWidget@Qt_6 6.1.2
  _ZN5QMenuC2ERK7QStringP7QWidget@Qt_6 6.1.2
  _ZN5QMenuD0Ev@Qt_6 6.1.2
  _ZN5QMenuD1Ev@Qt_6 6.1.2
@@ -3299,9 +3276,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN6QFrame5eventEP6QEvent@Qt_6 6.1.2
  _ZN6QFrame9drawFrameEP8QPainter@Qt_6 6.1.2
  _ZN6QFrameC1EP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
- _ZN6QFrameC1ER13QFramePrivateP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN6QFrameC2EP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
- _ZN6QFrameC2ER13QFramePrivateP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.1.2
  _ZN6QFrameD0Ev@Qt_6 6.1.2
  _ZN6QFrameD1Ev@Qt_6 6.1.2
  _ZN6QFrameD2Ev@Qt_6 6.1.2
@@ -3362,9 +3337,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN6QStyle8unpolishEP12QApplication@Qt_6 6.1.2
  _ZN6QStyle8unpolishEP7QWidget@Qt_6 6.1.2
  _ZN6QStyle9visualPosEN2Qt15LayoutDirectionERK5QRectRK6QPoint@Qt_6 6.1.2
- _ZN6QStyleC1ER13QStylePrivate@Qt_6 6.1.2
  _ZN6QStyleC1Ev@Qt_6 6.1.2
- _ZN6QStyleC2ER13QStylePrivate@Qt_6 6.1.2
  _ZN6QStyleC2Ev@Qt_6 6.1.2
  _ZN6QStyleD0Ev@Qt_6 6.1.2
  _ZN6QStyleD1Ev@Qt_6 6.1.2
@@ -3531,6 +3504,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN7QWidget11setDisabledEb@Qt_6 6.1.2
  _ZN7QWidget11setGeometryERK5QRect@Qt_6 6.1.2
  _ZN7QWidget11setTabOrderEPS_S0_@Qt_6 6.1.2
+ _ZN7QWidget11setTabOrderESt16initializer_listIPS_E@Qt_6 6.6.0
  _ZN7QWidget11tabletEventEP12QTabletEvent@Qt_6 6.1.2
  _ZN7QWidget11unsetCursorEv@Qt_6 6.1.2
  _ZN7QWidget11unsetLocaleEv@Qt_6 6.1.2
@@ -3725,9 +3699,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN8QGesture16staticMetaObjectE@Qt_6 6.1.2
  _ZN8QGesture22setGestureCancelPolicyENS_19GestureCancelPolicyE@Qt_6 6.1.2
  _ZN8QGestureC1EP7QObject@Qt_6 6.1.2
- _ZN8QGestureC1ER15QGesturePrivateP7QObject@Qt_6 6.1.2
  _ZN8QGestureC2EP7QObject@Qt_6 6.1.2
- _ZN8QGestureC2ER15QGesturePrivateP7QObject@Qt_6 6.1.2
  _ZN8QGestureD0Ev@Qt_6 6.1.2
  _ZN8QGestureD1Ev@Qt_6 6.1.2
  _ZN8QGestureD2Ev@Qt_6 6.1.2
@@ -4309,10 +4281,8 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN9QTextEdit9selectAllEv@Qt_6 6.1.2
  _ZN9QTextEdit9showEventEP10QShowEvent@Qt_6 6.1.2
  _ZN9QTextEditC1EP7QWidget@Qt_6 6.1.2
- _ZN9QTextEditC1ER16QTextEditPrivateP7QWidget@Qt_6 6.1.2
  _ZN9QTextEditC1ERK7QStringP7QWidget@Qt_6 6.1.2
  _ZN9QTextEditC2EP7QWidget@Qt_6 6.1.2
- _ZN9QTextEditC2ER16QTextEditPrivateP7QWidget@Qt_6 6.1.2
  _ZN9QTextEditC2ERK7QStringP7QWidget@Qt_6 6.1.2
  _ZN9QTextEditD0Ev@Qt_6 6.1.2
  _ZN9QTextEditD1Ev@Qt_6 6.1.2
@@ -4721,6 +4691,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZNK11QMessageBox10buttonTextEi@Qt_6 6.1.2
  _ZNK11QMessageBox10iconPixmapEv@Qt_6 6.1.2
  _ZNK11QMessageBox10metaObjectEv@Qt_6 6.1.2
+ _ZNK11QMessageBox10testOptionENS_6OptionE@Qt_6 6.6.0
  _ZNK11QMessageBox10textFormatEv@Qt_6 6.1.2
  _ZNK11QMessageBox12detailedTextEv@Qt_6 6.1.2
  _ZNK11QMessageBox12escapeButtonEv@Qt_6 6.1.2
@@ -4734,6 +4705,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZNK11QMessageBox4textEv@Qt_6 6.1.2
  _ZNK11QMessageBox6buttonENS_14StandardButtonE@Qt_6 6.1.2
  _ZNK11QMessageBox7buttonsEv@Qt_6 6.1.2
+ _ZNK11QMessageBox7optionsEv@Qt_6 6.6.0
  _ZNK11QMessageBox8checkBoxEv@Qt_6 6.1.2
  _ZNK11QPanGesture10lastOffsetEv@Qt_6 6.1.2
  _ZNK11QPanGesture10metaObjectEv@Qt_6 6.1.2
@@ -5459,6 +5431,8 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZNK16QKeySequenceEdit10metaObjectEv@Qt_6 6.1.2
  _ZNK16QKeySequenceEdit11keySequenceEv@Qt_6 6.1.2
  _ZNK16QKeySequenceEdit20isClearButtonEnabledEv@Qt_6 6.4.0
+ _ZNK16QKeySequenceEdit21maximumSequenceLengthEv@Qt_6 6.6.0
+ _ZNK16QKeySequenceEdit24finishingKeyCombinationsEv@Qt_6 6.6.0
  _ZNK16QTableWidgetItem10isSelectedEv@Qt_6 6.1.2
  _ZNK16QTableWidgetItem10tableModelEv@Qt_6 6.1.2
  _ZNK16QTableWidgetItem4dataEi@Qt_6 6.1.2

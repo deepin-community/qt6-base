@@ -18,6 +18,15 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_TRACE_PREFIX(qtopengl,
+   "#include <private/qopengl2pexvertexarray_p.h>" \
+   "#include <private/qopengltextureuploader_p.h>" \
+   "#include <qopenglframebufferobject.h>"
+);
+Q_TRACE_PARAM_REPLACE(GLenum, int);
+Q_TRACE_PARAM_REPLACE(GLint, int);
+Q_TRACE_METADATA(qtopengl, "ENUM { } QOpenGLFramebufferObject::Attachment; ");
+
 #ifndef QT_NO_DEBUG
 #define QT_RESET_GLERROR()                                \
 {                                                         \
@@ -452,10 +461,11 @@ namespace
     }
 }
 
-void QOpenGLFramebufferObjectPrivate::init(QOpenGLFramebufferObject *qfbo, const QSize &size,
-                                           QOpenGLFramebufferObject::Attachment attachment,
-                                           GLenum texture_target, GLenum internal_format,
-                                           GLint samples, bool mipmap)
+void Q_TRACE_INSTRUMENT(qtopengl) QOpenGLFramebufferObjectPrivate::init(
+        QOpenGLFramebufferObject *qfbo, const QSize &size,
+        QOpenGLFramebufferObject::Attachment attachment,
+        GLenum texture_target, GLenum internal_format,
+        GLint samples, bool mipmap)
 {
     Q_TRACE_SCOPE(QOpenGLFramebufferObjectPrivate_init, qfbo, size, attachment, texture_target, internal_format, samples, mipmap);
     Q_UNUSED(qfbo);
@@ -1334,7 +1344,8 @@ static inline QImage qt_gl_read_framebuffer_rgba8(const QSize &size, bool includ
     bool isOpenGL12orBetter = !context->isOpenGLES() && (context->format().majorVersion() >= 2 || context->format().minorVersion() >= 2);
     if (isOpenGL12orBetter) {
         QImage img(size, include_alpha ? QImage::Format_ARGB32_Premultiplied : QImage::Format_RGB32);
-        funcs->glReadPixels(0, 0, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, img.bits());
+        if (!img.isNull())
+            funcs->glReadPixels(0, 0, w, h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, img.bits());
         return img;
     }
 
@@ -1344,7 +1355,8 @@ static inline QImage qt_gl_read_framebuffer_rgba8(const QSize &size, bool includ
     // BGRA capable impl would return BGRA from there)
 
     QImage rgbaImage(size, include_alpha ? QImage::Format_RGBA8888_Premultiplied : QImage::Format_RGBX8888);
-    funcs->glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgbaImage.bits());
+    if (!rgbaImage.isNull())
+        funcs->glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgbaImage.bits());
     return rgbaImage;
 }
 
@@ -1352,7 +1364,8 @@ static inline QImage qt_gl_read_framebuffer_rgb10a2(const QSize &size, bool incl
 {
     // We assume OpenGL 1.2+ or ES 3.0+ here.
     QImage img(size, include_alpha ? QImage::Format_A2BGR30_Premultiplied : QImage::Format_BGR30);
-    context->functions()->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_INT_2_10_10_10_REV, img.bits());
+    if (!img.isNull())
+        context->functions()->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_INT_2_10_10_10_REV, img.bits());
     return img;
 }
 
@@ -1360,7 +1373,8 @@ static inline QImage qt_gl_read_framebuffer_rgba16(const QSize &size, bool inclu
 {
     // We assume OpenGL 1.2+ or ES 3.0+ here.
     QImage img(size, include_alpha ? QImage::Format_RGBA64_Premultiplied : QImage::Format_RGBX64);
-    context->functions()->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_SHORT, img.bits());
+    if (!img.isNull())
+        context->functions()->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_SHORT, img.bits());
     return img;
 }
 
@@ -1368,14 +1382,16 @@ static inline QImage qt_gl_read_framebuffer_rgba16f(const QSize &size, bool incl
 {
     // We assume OpenGL (ES) 3.0+ here.
     QImage img(size, include_alpha ? QImage::Format_RGBA16FPx4_Premultiplied : QImage::Format_RGBX16FPx4);
-    context->functions()->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_HALF_FLOAT, img.bits());
+    if (!img.isNull())
+        context->functions()->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_HALF_FLOAT, img.bits());
     return img;
 }
 
 static inline QImage qt_gl_read_framebuffer_rgba32f(const QSize &size, bool include_alpha, QOpenGLContext *context)
 {
     QImage img(size, include_alpha ? QImage::Format_RGBA32FPx4_Premultiplied : QImage::Format_RGBX32FPx4);
-    context->functions()->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_FLOAT, img.bits());
+    if (!img.isNull())
+        context->functions()->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_FLOAT, img.bits());
     return img;
 }
 
@@ -1414,8 +1430,7 @@ static QImage qt_gl_read_framebuffer(const QSize &size, GLenum internal_format, 
         return qt_gl_read_framebuffer_rgba8(size, include_alpha, ctx).mirrored(false, flip);
     }
 
-    Q_UNREACHABLE();
-    return QImage();
+    Q_UNREACHABLE_RETURN(QImage());
 }
 
 Q_OPENGL_EXPORT QImage qt_gl_read_framebuffer(const QSize &size, bool alpha_format, bool include_alpha)

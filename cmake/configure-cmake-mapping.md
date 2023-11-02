@@ -17,7 +17,6 @@ The following table describes the mapping of configure options to CMake argument
 | -no-feature-foo                       | -DFEATURE_foo=OFF                                 |                                                                 |
 | -list-features                        |                                                   | At the moment: configure with cmake once,                       |
 |                                       |                                                   | then use ccmake or cmake-gui to inspect the features.           |
-| -list-libraries                       |                                                   |                                                                 |
 | -opensource                           | n/a                                               |                                                                 |
 | -commercial                           | n/a                                               |                                                                 |
 | -confirm-license                      | n/a                                               |                                                                 |
@@ -60,6 +59,7 @@ The following table describes the mapping of configure options to CMake argument
 | -R <string>                           | -DQT_EXTRA_RPATHS=path1;path2                     |                                                                 |
 | -rpath                                | negative CMAKE_SKIP_BUILD_RPATH                   |                                                                 |
 |                                       | negative CMAKE_SKIP_INSTALL_RPATH                 |                                                                 |
+|                                       | negative CMAKE_MACOSX_RPATH                       |                                                                 |
 | -reduce-exports                       | -DFEATURE_reduce_exports=ON                       |                                                                 |
 | -reduce-relocations                   | -DFEATURE_reduce_relocations=ON                   |                                                                 |
 | -plugin-manifests                     |                                                   |                                                                 |
@@ -73,16 +73,11 @@ The following table describes the mapping of configure options to CMake argument
 |                                       |                                                   | custom build steps for moc, uic, and rcc.                       |
 |                                       |                                                   | This lacks support in CMake.                                    |
 | -ccache                               | -DQT_USE_CCACHE=ON                                |                                                                 |
-| -make-tool <tool>                     | n/a                                               |                                                                 |
-| -mp                                   | n/a                                               |                                                                 |
+| -unity-build                          | -DQT_UNITY_BUILD=ON                               |                                                                 |
+| -unity-build-batch-size <int>         | -DQT_UNITY_BUILD_BATCH_SIZE=<int>                 |                                                                 |
 | -warnings-are-errors                  | -DWARNINGS_ARE_ERRORS=ON                          |                                                                 |
-| -silent                               | n/a                                               |                                                                 |
-| -sysroot <dir>                        | -DCMAKE_SYSROOT=<dir>                             | Should be provided by a toolchain file that's                   |
-|                                       |                                                   | passed via -DCMAKE_TOOLCHAIN_FILE=<filename>                    |
-| -no-gcc-sysroot                       | n/a                                               | The corresponding CMake variables are CMAKE_SYSROOT_LINK        |
-|                                       |                                                   | and CMAKE_SYSROOT_COMPILE.                                      |
-|                                       |                                                   | They are usually set in a toolchain file.                       |
 | -no-pkg-config                        | -DFEATURE_pkg_config=OFF                          |                                                                 |
+| -no-vcpkg                             | -DQT_USE_VCPKG=OFF                                |                                                                 |
 | -D <string>                           | -DQT_EXTRA_DEFINES=<string1>;<string2>            |                                                                 |
 | -I <string>                           | -DQT_EXTRA_INCLUDEPATHS=<string1>;<string2>       |                                                                 |
 | -L <string>                           | -DQT_EXTRA_LIBDIRS=<string1>;<string2>            |                                                                 |
@@ -98,7 +93,7 @@ The following table describes the mapping of configure options to CMake argument
 | -android-javac-source                 | -DQT_ANDROID_JAVAC_SOURCE=7                       | Set the javac build source version.                             |
 | -android-javac-target                 | -DQT_ANDROID_JAVAC_TARGET=7                       | Set the javac build target version.                             |
 | -skip <repo>,...,<repo_n>             | -DBUILD_<repo>=OFF                                |                                                                 |
-| -submodules <repo>,...,<repo_n>       | -QT_BUILD_SUBMODULES=<repo>;...;<repo>            |                                                                 |
+| -submodules <repo>,...,<repo_n>       | -DQT_BUILD_SUBMODULES=<repo>;...;<repo>            |                                                                 |
 | -make <part>                          | -DQT_BUILD_TESTS=ON                               | A way to turn on tools explicitly is missing. If tests/examples |
 |                                       | -DQT_BUILD_EXAMPLES=ON                            | are enabled, you can disable their building as part of the      |
 |                                       |                                                   | 'all' target by also passing -DQT_BUILD_TESTS_BY_DEFAULT=OFF or |
@@ -108,6 +103,7 @@ The following table describes the mapping of configure options to CMake argument
 |                                       |                                                   | build them separately, after configuration.                     |
 | -nomake <part>                        | -DQT_BUILD_TESTS=OFF                              | A way to turn off tools explicitly is missing.                  |
 |                                       | -DQT_BUILD_EXAMPLES=OFF                           |                                                                 |
+| -install-examples-sources             | -DQT_INSTALL_EXAMPLES_SOURCES=ON                  |                                                                 |
 | -no-gui                               | -DFEATURE_gui=OFF                                 |                                                                 |
 | -no-widgets                           | -DFEATURE_widgets=OFF                             |                                                                 |
 | -no-dbus                              | -DFEATURE_dbus=OFF                                |                                                                 |
@@ -169,3 +165,6 @@ The following table describes the mapping of configure options to CMake argument
 | -libjpeg                              | -DFEATURE_libjpeg=ON                              |                                                                 |
 | -sql-<driver>                         | -DFEATURE_sql_<driver>=ON                         |                                                                 |
 | -sqlite [qt/system]                   | -DFEATURE_system_sqlite=OFF/ON                    |                                                                 |
+| -disable-deprecated-up-to <hex_version> | -DQT_DISABLE_DEPRECATED_UP_TO=<hex_version>     |                                                                 |
+| -mimetype-database-compression <type> | -DINPUT_mimetype_database_compression=<type>      | Sets the compression type for mime type database. Supported     |
+|                                       |                                                   | types: gzip, zstd, none.                                        |

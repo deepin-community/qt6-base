@@ -139,12 +139,12 @@ public:
     // make sure const char* doesn't go call the bool constructor
     QCborValue(const void *) = delete;
 
-    QCborValue(const QCborValue &other);
+    QCborValue(const QCborValue &other) noexcept;
     QCborValue(QCborValue &&other) noexcept
-        : n(other.n), container(qExchange(other.container, nullptr)), t(qExchange(other.t, Undefined))
+        : n(other.n), container(std::exchange(other.container, nullptr)), t(std::exchange(other.t, Undefined))
     {
     }
-    QCborValue &operator=(const QCborValue &other);
+    QCborValue &operator=(const QCborValue &other) noexcept;
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QCborValue)
 
     void swap(QCborValue &other) noexcept
@@ -428,6 +428,8 @@ protected:
     qsizetype i;
 };
 
+QT_WARNING_PUSH
+QT6_ONLY(QT_WARNING_DISABLE_MSVC(4275)) // non dll-interface class 'QJsonValueConstRef' used as base for dll-interface class 'QJsonValueRef'
 class QT6_ONLY(Q_CORE_EXPORT) QCborValueRef : public QCborValueConstRef
 {
 public:
@@ -582,6 +584,9 @@ private:
     QT7_ONLY(Q_CORE_EXPORT) static void assign(QCborValueRef that, QCborValue &&other);
     QT7_ONLY(Q_CORE_EXPORT) static void assign(QCborValueRef that, const QCborValueRef other);
 };
+QT_WARNING_POP
+Q_DECLARE_OPERATORS_FOR_FLAGS(QCborValue::EncodingOptions)
+Q_DECLARE_OPERATORS_FOR_FLAGS(QCborValue::DiagnosticNotationOptions)
 
 Q_CORE_EXPORT size_t qHash(const QCborValue &value, size_t seed = 0);
 

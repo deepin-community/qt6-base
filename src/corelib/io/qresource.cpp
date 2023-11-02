@@ -82,7 +82,7 @@ public:
 
     inline QStringView next()
     {
-        int start = m_pos;
+        const qsizetype start = m_pos;
         while (m_pos < m_len && m_data[m_pos] != m_splitChar)
             ++m_pos;
         return QStringView(m_data + start, m_pos - start);
@@ -167,7 +167,6 @@ struct QResourceGlobalData
 {
     QRecursiveMutex resourceMutex;
     ResourceList resourceList;
-    QStringList resourceSearchPaths;
 };
 Q_GLOBAL_STATIC(QResourceGlobalData, resourceGlobalData)
 
@@ -176,9 +175,6 @@ static inline QRecursiveMutex &resourceMutex()
 
 static inline ResourceList *resourceList()
 { return &resourceGlobalData->resourceList; }
-
-static inline QStringList *resourceSearchPaths()
-{ return &resourceGlobalData->resourceSearchPaths; }
 
 /*!
     \class QResource
@@ -360,16 +356,10 @@ void QResourcePrivate::ensureInitialized() const
     if (path.startsWith(u'/')) {
         that->load(path.toString());
     } else {
-        const auto locker = qt_scoped_lock(resourceMutex());
-        QStringList searchPaths = *resourceSearchPaths();
-        searchPaths << ""_L1;
-        for (int i = 0; i < searchPaths.size(); ++i) {
-            const QString searchPath(searchPaths.at(i) + u'/' + path);
-            if (that->load(searchPath)) {
-                that->absoluteFilePath = u':' + searchPath;
-                break;
-            }
-        }
+        // Should we search QDir::searchPath() before falling back to root ?
+        const QString searchPath(u'/' + path);
+        if (that->load(searchPath))
+            that->absoluteFilePath = u':' + searchPath;
     }
 }
 
@@ -763,7 +753,7 @@ inline QString QResourceRoot::name(int node) const
 
     ret.resize(name_length);
     QChar *strData = ret.data();
-    qFromBigEndian<ushort>(names + name_offset, name_length, strData);
+    qFromBigEndian<char16_t>(names + name_offset, name_length, strData);
     return ret;
 }
 
@@ -1488,14 +1478,14 @@ QString QResourceFileEngine::fileName(FileName file) const
 {
     Q_D(const QResourceFileEngine);
     if (file == BaseName) {
-        int slash = d->resource.fileName().lastIndexOf(u'/');
+        const qsizetype slash = d->resource.fileName().lastIndexOf(u'/');
         if (slash == -1)
             return d->resource.fileName();
         return d->resource.fileName().mid(slash + 1);
     } else if (file == PathName || file == AbsolutePathName) {
         const QString path = (file == AbsolutePathName) ? d->resource.absoluteFilePath()
                                                         : d->resource.fileName();
-        const int slash = path.lastIndexOf(u'/');
+        const qsizetype slash = path.lastIndexOf(u'/');
         if (slash == -1)
             return ":"_L1;
         else if (slash <= 1)
@@ -1505,7 +1495,7 @@ QString QResourceFileEngine::fileName(FileName file) const
     } else if (file == CanonicalName || file == CanonicalPathName) {
         const QString absoluteFilePath = d->resource.absoluteFilePath();
         if (file == CanonicalPathName) {
-            const int slash = absoluteFilePath.lastIndexOf(u'/');
+            const qsizetype slash = absoluteFilePath.lastIndexOf(u'/');
             if (slash != -1)
                 return absoluteFilePath.left(slash);
         }
@@ -1574,7 +1564,7 @@ uchar *QResourceFileEnginePrivate::map(qint64 offset, qint64 size, QFile::Memory
     qint64 max = resource.uncompressedSize();
     qint64 end;
     if (offset < 0 || size <= 0 || !resource.isValid() ||
-            add_overflow(offset, size, &end) || end > max) {
+            qAddOverflow(offset, size, &end) || end > max) {
         q->setError(QFile::UnspecifiedError, QString());
         return nullptr;
     }

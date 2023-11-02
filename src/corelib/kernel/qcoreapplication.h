@@ -32,6 +32,11 @@ class QTranslator;
 class QPostEventList;
 class QAbstractEventDispatcher;
 class QAbstractNativeEventFilter;
+class QEventLoopLocker;
+
+#if QT_CONFIG(permissions) || defined(Q_QDOC)
+class QPermission;
+#endif
 
 #define qApp QCoreApplication::instance()
 
@@ -54,6 +59,11 @@ class Q_CORE_EXPORT QCoreApplication
 #endif
 
     Q_DECLARE_PRIVATE(QCoreApplication)
+    friend class QEventLoopLocker;
+#if QT_CONFIG(permissions)
+    using RequestPermissionPrototype = void(*)(QPermission);
+#endif
+
 public:
     enum { ApplicationFlags = QT_VERSION
     };
@@ -83,7 +93,7 @@ public:
     static void setSetuidAllowed(bool allow);
     static bool isSetuidAllowed();
 
-    static QCoreApplication *instance() { return self; }
+    static QCoreApplication *instance() noexcept { return self; }
 
 #ifndef QT_NO_QOBJECT
     static int exec();
@@ -106,6 +116,47 @@ public:
     static QString applicationDirPath();
     static QString applicationFilePath();
     static qint64 applicationPid() Q_DECL_CONST_FUNCTION;
+
+#if QT_CONFIG(permissions) || defined(Q_QDOC)
+    Qt::PermissionStatus checkPermission(const QPermission &permission);
+
+# ifdef Q_QDOC
+    template <typename Functor>
+    void requestPermission(const QPermission &permission, const QObject *context, Functor functor);
+# else
+    // requestPermission with context or receiver object; need to require here that receiver is the
+    // right type to avoid ambiguity with the private implementation function.
+    template <typename Functor,
+              std::enable_if_t<
+                    QtPrivate::AreFunctionsCompatible<RequestPermissionPrototype, Functor>::value,
+                    bool> = true>
+    void requestPermission(const QPermission &permission,
+                           const typename QtPrivate::ContextTypeForFunctor<Functor>::ContextType *receiver,
+                           Functor &&func)
+    {
+        requestPermission(permission,
+                          QtPrivate::makeCallableObject<RequestPermissionPrototype>(std::forward<Functor>(func)),
+                          receiver);
+    }
+# endif // Q_QDOC
+
+    // requestPermission to a functor or function pointer (without context)
+    template <typename Functor,
+              std::enable_if_t<
+                    QtPrivate::AreFunctionsCompatible<RequestPermissionPrototype, Functor>::value,
+                    bool> = true>
+    void requestPermission(const QPermission &permission, Functor &&func)
+    {
+        requestPermission(permission, nullptr, std::forward<Functor>(func));
+    }
+
+private:
+    // ### Qt 7: rename to requestPermissionImpl to avoid ambiguity
+    void requestPermission(const QPermission &permission,
+        QtPrivate::QSlotObjectBase *slotObj, const QObject *context);
+public:
+
+#endif // QT_CONFIG(permission)
 
 #if QT_CONFIG(library)
     static void setLibraryPaths(const QStringList &);

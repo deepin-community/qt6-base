@@ -1,4 +1,5 @@
-# Generated from qsslkey.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## tst_qsslkey Test:
@@ -17,16 +18,22 @@ list(APPEND test_data ${test_data_glob})
 qt_internal_add_test(tst_qsslkey
     SOURCES
         tst_qsslkey.cpp
-    PUBLIC_LIBRARIES
+    LIBRARIES
         Qt::Network
     TESTDATA ${test_data}
+    BUNDLE_ANDROID_OPENSSL_LIBS
+)
+
+qt_internal_extend_target(tst_qsslkey CONDITION QT_FEATURE_developer_build AND QT_FEATURE_openssl_linked
+    LIBRARIES
+        WrapOpenSSL::WrapOpenSSL
 )
 
 ## Scopes:
 #####################################################################
 
-qt_internal_extend_target(tst_qsslkey CONDITION QT_FEATURE_private_tests
-    PUBLIC_LIBRARIES
+qt_internal_extend_target(tst_qsslkey CONDITION QT_FEATURE_developer_build
+    LIBRARIES
         Qt::CorePrivate
         Qt::NetworkPrivate
 )

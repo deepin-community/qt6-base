@@ -3,10 +3,6 @@
 
 #define QT_NO_URL_CAST_FROM_STRING 1
 
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0A00
-#endif
-
 #include <QtCore/qt_windows.h>
 #include "qwindowscombase.h"
 #include "qwindowsdialoghelpers.h"
@@ -35,6 +31,8 @@
 #include <QtCore/qmutex.h>
 #include <QtCore/quuid.h>
 #include <QtCore/qtemporaryfile.h>
+#include <QtCore/private/qfunctions_win_p.h>
+#include <QtCore/private/qsystemerror_p.h>
 
 #include <algorithm>
 #include <vector>
@@ -44,34 +42,6 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
-
-#ifndef QT_NO_DEBUG_STREAM
-/* Output UID (IID, CLSID) as C++ constants.
- * The constants are contained in the Windows SDK libs, but not for MinGW. */
-static inline QString guidToString(const GUID &g)
-{
-    QString rc;
-    QTextStream str(&rc);
-    str.setIntegerBase(16);
-    str.setNumberFlags(str.numberFlags() | QTextStream::ShowBase);
-    str << '{' << g.Data1 << ", " << g.Data2 << ", " << g.Data3;
-    str.setFieldWidth(2);
-    str.setFieldAlignment(QTextStream::AlignRight);
-    str.setPadChar(u'0');
-    str << ",{" << g.Data4[0] << ", " << g.Data4[1]  << ", " << g.Data4[2]  << ", " << g.Data4[3]
-        << ", " << g.Data4[4] << ", " << g.Data4[5]  << ", " << g.Data4[6]  << ", " << g.Data4[7]
-        << "}};";
-    return rc;
-}
-
-inline QDebug operator<<(QDebug d, const GUID &g)
-{
-    QDebugStateSaver saver(d);
-    d.nospace();
-    d << guidToString(g);
-    return d;
-}
-#endif // !QT_NO_DEBUG_STREAM
 
 // Return an allocated wchar_t array from a QString, reserve more memory if desired.
 static wchar_t *qStringToWCharArray(const QString &s, size_t reserveSize = 0)
@@ -239,7 +209,7 @@ QWindowsNativeDialogBase *QWindowsDialogHelperBase<BaseClass>::ensureNativeDialo
     // Create dialog and apply common settings. Check "executed" flag as well
     // since for example IFileDialog::Show() works only once.
     if (m_nativeDialog.isNull() || m_nativeDialog->executed())
-        m_nativeDialog = QWindowsNativeDialogBasePtr(createNativeDialog());
+        m_nativeDialog = QWindowsNativeDialogBasePtr(createNativeDialog(), &QObject::deleteLater);
     return m_nativeDialog.data();
 }
 
@@ -268,6 +238,7 @@ private:
 void QWindowsDialogThread::run()
 {
     qCDebug(lcQpaDialogs) << '>' << __FUNCTION__;
+    QComHelper comInit(COINIT_APARTMENTTHREADED);
     m_dialog->exec(m_owner);
     qCDebug(lcQpaDialogs) << '<' << __FUNCTION__;
 }
@@ -324,12 +295,13 @@ void QWindowsDialogHelperBase<BaseClass>::stopTimer()
     }
 }
 
-
 template <class BaseClass>
 void QWindowsDialogHelperBase<BaseClass>::hide()
 {
-    if (m_nativeDialog)
+    if (m_nativeDialog) {
         m_nativeDialog->close();
+        m_nativeDialog.clear();
+    }
     m_ownerWindow = nullptr;
 }
 
@@ -635,7 +607,7 @@ bool QWindowsShellItem::copyData(QIODevice *out, QString *errorMessage)
     HRESULT hr = m_item->BindToHandler(nullptr, BHID_Stream, IID_PPV_ARGS(&istream));
     if (FAILED(hr)) {
         *errorMessage = "BindToHandler() failed: "_L1
-                        + QLatin1StringView(QWindowsContext::comErrorString(hr));
+                        + QSystemError::windowsComString(hr);
         return false;
     }
     enum : ULONG { bufSize = 102400 };
@@ -652,7 +624,7 @@ bool QWindowsShellItem::copyData(QIODevice *out, QString *errorMessage)
     istream->Release();
     if (hr != S_OK && hr != S_FALSE) {
         *errorMessage = "Read() failed: "_L1
-                        + QLatin1StringView(QWindowsContext::comErrorString(hr));
+                        + QSystemError::windowsComString(hr);
         return false;
     }
     return true;

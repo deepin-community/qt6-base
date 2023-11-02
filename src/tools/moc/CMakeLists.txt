@@ -1,4 +1,5 @@
-# Generated from moc.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## moc Tool:
@@ -6,10 +7,11 @@
 
 qt_get_tool_target_name(target_name moc)
 qt_internal_add_tool(${target_name}
+    TRY_RUN
     CORE_LIBRARY Bootstrap
     TARGET_DESCRIPTION "Qt Meta Object Compiler"
     INSTALL_DIR "${INSTALL_LIBEXECDIR}"
-    TOOLS_TARGET Core # special case
+    TOOLS_TARGET Core
     SOURCES
         cbordevice.h
         collectjson.cpp collectjson.h
@@ -19,7 +21,6 @@ qt_internal_add_tool(${target_name}
         outputrevision.h
         parser.cpp parser.h
         preprocessor.cpp preprocessor.h
-        # qdatetime_p.h special case remove
         symbols.h
         token.cpp token.h
         utils.h
@@ -34,10 +35,6 @@ qt_internal_add_tool(${target_name}
         ../shared
 )
 qt_internal_return_unless_building_tools()
-
-#### Keys ignored in scope 1:.:.:moc.pro:<TRUE>:
-# QMAKE_TARGET_DESCRIPTION = "Qt Meta Object Compiler"
-# _OPTION = "host_build"
 
 ## Scopes:
 #####################################################################

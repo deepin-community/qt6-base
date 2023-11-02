@@ -1,4 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2023 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPROCESS_H
@@ -12,7 +13,7 @@
 
 QT_REQUIRE_CONFIG(processenvironment);
 
-#if defined(Q_OS_WIN) || defined(Q_CLANG_QDOC)
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
 struct _PROCESS_INFORMATION;
 struct _SECURITY_ATTRIBUTES;
 struct _STARTUPINFOW;
@@ -150,7 +151,7 @@ public:
     void setStandardErrorFile(const QString &fileName, OpenMode mode = Truncate);
     void setStandardOutputProcess(QProcess *destination);
 
-#if defined(Q_OS_WIN) || defined(Q_CLANG_QDOC)
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
     QString nativeArguments() const;
     void setNativeArguments(const QString &arguments);
     struct CreateProcessArguments
@@ -169,10 +170,29 @@ public:
     typedef std::function<void(CreateProcessArguments *)> CreateProcessArgumentModifier;
     CreateProcessArgumentModifier createProcessArgumentsModifier() const;
     void setCreateProcessArgumentsModifier(CreateProcessArgumentModifier modifier);
-#endif // Q_OS_WIN || Q_CLANG_QDOC
-#if defined(Q_OS_UNIX) || defined(Q_CLANG_QDOC)
+#endif // Q_OS_WIN || Q_QDOC
+#if defined(Q_OS_UNIX) || defined(Q_QDOC)
     std::function<void(void)> childProcessModifier() const;
     void setChildProcessModifier(const std::function<void(void)> &modifier);
+
+    enum class UnixProcessFlag : quint32 {
+        ResetSignalHandlers                 = 0x0001, // like POSIX_SPAWN_SETSIGDEF
+        IgnoreSigPipe                       = 0x0002,
+        // some room if we want to add IgnoreSigHup or so
+        CloseFileDescriptors                = 0x0010,
+        UseVFork                            = 0x0020, // like POSIX_SPAWN_USEVFORK
+    };
+    Q_DECLARE_FLAGS(UnixProcessFlags, UnixProcessFlag)
+    struct UnixProcessParameters
+    {
+        UnixProcessFlags flags = {};
+        int lowestFileDescriptorToClose = 0;
+
+        quint32 _reserved[6] {};
+    };
+    UnixProcessParameters unixProcessParameters() const noexcept;
+    void setUnixProcessParameters(const UnixProcessParameters &params);
+    void setUnixProcessParameters(UnixProcessFlags flagsOnly);
 #endif
 
     QString workingDirectory() const;
@@ -255,6 +275,10 @@ private:
     Q_PRIVATE_SLOT(d_func(), bool _q_startupNotification())
     Q_PRIVATE_SLOT(d_func(), void _q_processDied())
 };
+
+#ifdef Q_OS_UNIX
+Q_DECLARE_OPERATORS_FOR_FLAGS(QProcess::UnixProcessFlags)
+#endif
 
 #endif // QT_CONFIG(process)
 

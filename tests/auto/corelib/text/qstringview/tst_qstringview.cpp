@@ -7,6 +7,11 @@
 #include <QChar>
 #include <QVarLengthArray>
 #include <QList>
+#if QT_CONFIG(cpp_winrt)
+#  include <private/qt_winrtbase_p.h>
+#endif
+#include <private/qxmlstream_p.h>
+
 
 #include <QTest>
 
@@ -90,6 +95,8 @@ static_assert(CanConvert<std::array<char16_t, 123>>::value);
 static_assert(!CanConvert<std::deque<char16_t>>::value);
 static_assert(!CanConvert<std::list<char16_t>>::value);
 
+static_assert(CanConvert<QtPrivate::XmlStringRef>::value);
+
 //
 // wchar_t
 //
@@ -123,6 +130,19 @@ static_assert(CanConvert<std::vector<wchar_t>>::value == CanConvertFromWCharT);
 static_assert(CanConvert<std::array<wchar_t, 123>>::value == CanConvertFromWCharT);
 static_assert(!CanConvert<std::deque<wchar_t>>::value);
 static_assert(!CanConvert<std::list<wchar_t>>::value);
+
+#if QT_CONFIG(cpp_winrt)
+
+//
+// winrt::hstring (QTBUG-111886)
+//
+
+static_assert(CanConvert<      winrt::hstring >::value);
+static_assert(CanConvert<const winrt::hstring >::value);
+static_assert(CanConvert<      winrt::hstring&>::value);
+static_assert(CanConvert<const winrt::hstring&>::value);
+
+#endif // QT_CONFIG(cpp_winrt)
 
 class tst_QStringView : public QObject
 {

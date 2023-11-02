@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 function(__qt_internal_strip_target_directory_scope_token target out_var)
     # In CMake versions earlier than CMake 3.18, a subdirectory scope id is appended to the
     # target name if the target is referenced in a target_link_libraries command from a
@@ -304,7 +307,17 @@ function(_qt_internal_set_up_static_runtime_library target)
             set_property(TARGET ${target} PROPERTY
                 MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
         elseif(MINGW)
-            target_link_options(${target} INTERFACE "LINKER:-Bstatic")
+            get_target_property(target_type ${target} TYPE)
+            if(target_type STREQUAL "EXECUTABLE")
+                set(link_option PRIVATE)
+            else()
+                set(link_option INTERFACE)
+            endif()
+            if(CLANG)
+                target_link_options(${target} ${link_option} "LINKER:-Bstatic")
+            else()
+                target_link_options(${target} ${link_option} "-static")
+            endif()
         endif()
     endif()
 endfunction()

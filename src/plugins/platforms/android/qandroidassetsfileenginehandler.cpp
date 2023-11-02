@@ -108,6 +108,8 @@ public:
     FolderIterator(const QString &path)
         : m_path(path)
     {
+        // Note that empty dirs in the assets dir before the build are not going to be
+        // included in the final apk, so no empty folders should expected to be listed.
         QJniObject files = QJniObject::callStaticObjectMethod(QtAndroid::applicationClass(),
                                                                             "listAssetContent",
                                                                             "(Landroid/content/res/AssetManager;Ljava/lang/String;)[Ljava/lang/String;",
@@ -161,7 +163,7 @@ private:
 };
 
 QCache<QString, QSharedPointer<FolderIterator>> FolderIterator::m_assetsCache(std::max(50, qEnvironmentVariableIntValue("QT_ANDROID_MAX_ASSETS_CACHE_SIZE")));
-QMutex FolderIterator::m_assetsCacheMutex;
+Q_CONSTINIT QMutex FolderIterator::m_assetsCacheMutex;
 
 class AndroidAbstractFileEngineIterator: public QAbstractFileEngineIterator
 {
@@ -186,7 +188,7 @@ public:
         return m_currentIterator->currentFileName();
     }
 
-    virtual QString currentFilePath() const
+    QString currentFilePath() const override
     {
         if (!m_currentIterator)
             return {};
@@ -305,9 +307,9 @@ public:
                 return prefixedPath(m_fileName);
         case BaseName:
             if ((pos = m_fileName.lastIndexOf(u'/')) != -1)
-                return prefixedPath(m_fileName.mid(pos));
+                return m_fileName.mid(pos + 1);
             else
-                return prefixedPath(m_fileName);
+                return m_fileName;
         case PathName:
         case AbsolutePathName:
         case CanonicalPathName:
@@ -350,8 +352,13 @@ public:
         } else {
             auto *assetDir = AAssetManager_openDir(m_assetManager, m_fileName.toUtf8());
             if (assetDir) {
-                if (AAssetDir_getNextFileName(assetDir))
+                if (AAssetDir_getNextFileName(assetDir)
+                        || (!FolderIterator::fromCache(m_fileName, false)->empty())) {
+                    // If AAssetDir_getNextFileName is not valid, it still can be a directory that
+                    // contains only other directories (no files). FolderIterator will not be called
+                    // on the directory containing files so it should not be too time consuming now.
                     m_assetInfo->type = AssetItem::Type::Folder;
+                }
                 AAssetDir_close(assetDir);
             }
         }
@@ -379,7 +386,7 @@ private:
 };
 
 QCache<QString, QSharedPointer<AssetItem>> AndroidAbstractFileEngine::m_assetsInfoCache(std::max(200, qEnvironmentVariableIntValue("QT_ANDROID_MAX_FILEINFO_ASSETS_CACHE_SIZE")));
-QMutex AndroidAbstractFileEngine::m_assetsInfoCacheMutex;
+Q_CONSTINIT QMutex AndroidAbstractFileEngine::m_assetsInfoCacheMutex;
 
 AndroidAssetsFileEngineHandler::AndroidAssetsFileEngineHandler()
 {

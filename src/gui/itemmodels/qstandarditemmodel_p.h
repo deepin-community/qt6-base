@@ -32,8 +32,10 @@ class QStandardItemData
 {
 public:
     inline QStandardItemData() : role(-1) {}
-    inline QStandardItemData(int r, const QVariant &v) : role(r), value(v) {}
-    inline QStandardItemData(const std::pair<const int&, const QVariant&> &p) : role(p.first), value(p.second) {}
+    inline QStandardItemData(int r, const QVariant &v) :
+          role(r == Qt::EditRole ? Qt::DisplayRole : r), value(v) {}
+    inline QStandardItemData(const std::pair<const int&, const QVariant&> &p) :
+          role(p.first == Qt::EditRole ? Qt::DisplayRole : p.first), value(p.second) {}
     int role;
     QVariant value;
     inline bool operator==(const QStandardItemData &other) const { return role == other.role && value == other.value; }
@@ -144,7 +146,7 @@ public:
 
     void changeFlags(bool enable, Qt::ItemFlags f);
     void setItemData(const QMap<int, QVariant> &roles);
-    const QMap<int, QVariant> itemData() const;
+    QMap<int, QVariant> itemData() const;
 
     bool insertRows(int row, int count, const QList<QStandardItem*> &items);
     bool insertRows(int row, const QList<QStandardItem*> &items);

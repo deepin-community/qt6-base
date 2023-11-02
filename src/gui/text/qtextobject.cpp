@@ -174,7 +174,7 @@ void QTextBlockGroupPrivate::markBlocksDirty()
 /*!
     \fn QTextBlockGroup::QTextBlockGroup(QTextDocument *document)
 
-    Creates a new new block group for the given \a document.
+    Creates a new block group for the given \a document.
 
     \warning This function should only be called from
     QTextDocument::createObject().
@@ -337,14 +337,14 @@ QTextFrameLayoutData::~QTextFrameLayoutData()
 /*!
     \fn QTextFrame::iterator QTextFrame::iterator::operator++(int)
 
-    The postfix ++ operator (\c{i++}) advances the iterator to the
+    The postfix \c{++} operator (\c{i++}) advances the iterator to the
     next item in the text frame, and returns an iterator to the old item.
 */
 
 /*!
     \fn QTextFrame::iterator QTextFrame::iterator::operator--(int)
 
-    The postfix -- operator (\c{i--}) makes the preceding item in the
+    The postfix \c{--} operator (\c{i--}) makes the preceding item in the
     current frame, and returns an iterator to the old item.
 */
 

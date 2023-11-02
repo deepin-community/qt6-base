@@ -31,9 +31,13 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcTlsBackend, "qt.tlsbackend.ossl");
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+constexpr auto DefaultWarningLevel = QtCriticalMsg;
+#else
+constexpr auto DefaultWarningLevel = QtDebugMsg;
+#endif
 
-Q_GLOBAL_STATIC(QRecursiveMutex, qt_opensslInitMutex)
+Q_LOGGING_CATEGORY(lcTlsBackend, "qt.tlsbackend.ossl", DefaultWarningLevel);
 
 static void q_loadCiphersForConnection(SSL *connection, QList<QSslCipher> &ciphers,
                                        QList<QSslCipher> &defaultCiphers)
@@ -59,8 +63,6 @@ static void q_loadCiphersForConnection(SSL *connection, QList<QSslCipher> &ciphe
     }
 }
 
-bool QTlsBackendOpenSSL::s_libraryLoaded = false;
-bool QTlsBackendOpenSSL::s_loadedCiphersAndCerts = false;
 int QTlsBackendOpenSSL::s_indexForSSLExtraData = -1;
 
 QString QTlsBackendOpenSSL::getErrorsFromOpenSsl()
@@ -92,12 +94,10 @@ void QTlsBackendOpenSSL::clearErrorQueue()
 
 bool QTlsBackendOpenSSL::ensureLibraryLoaded()
 {
-    if (!q_resolveOpenSslSymbols())
-        return false;
+    static bool libraryLoaded = []() {
+        if (!q_resolveOpenSslSymbols())
+            return false;
 
-    const QMutexLocker locker(qt_opensslInitMutex());
-
-    if (!s_libraryLoaded) {
         // Initialize OpenSSL.
         if (q_OPENSSL_init_ssl(0, nullptr) != 1)
             return false;
@@ -119,10 +119,10 @@ bool QTlsBackendOpenSSL::ensureLibraryLoaded()
             return false;
         }
 
-        s_libraryLoaded = true;
-    }
+        return true;
+    }();
 
-    return true;
+    return libraryLoaded;
 }
 
 QString QTlsBackendOpenSSL::backendName() const
@@ -175,11 +175,24 @@ void QTlsBackendOpenSSL::ensureInitialized() const
 
 void QTlsBackendOpenSSL::ensureCiphersAndCertsLoaded() const
 {
-    const QMutexLocker locker(qt_opensslInitMutex());
+    Q_CONSTINIT static bool initializationStarted = false;
+    Q_CONSTINIT static QAtomicInt initialized = Q_BASIC_ATOMIC_INITIALIZER(0);
+    Q_CONSTINIT static QRecursiveMutex initMutex;
 
-    if (s_loadedCiphersAndCerts)
+    if (initialized.loadAcquire())
         return;
-    s_loadedCiphersAndCerts = true;
+
+    const QMutexLocker locker(&initMutex);
+
+    if (initializationStarted || initialized.loadAcquire())
+        return;
+
+    // Indicate that the initialization has already started in the current
+    // thread in case of recursive calls. The atomic variable cannot be used
+    // for this because it is checked without holding the init mutex.
+    initializationStarted = true;
+
+    auto guard = qScopeGuard([] { initialized.storeRelease(1); });
 
     resetDefaultCiphers();
     resetDefaultEllipticCurves();

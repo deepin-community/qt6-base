@@ -1,4 +1,5 @@
-# Generated from nsphotolibrarysupport.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## QIosOptionalPlugin_NSPhotoLibrary Plugin:
@@ -6,6 +7,7 @@
 
 qt_internal_add_plugin(QIosOptionalPlugin_NSPhotoLibraryPlugin
     OUTPUT_NAME qiosnsphotolibrarysupport
+    STATIC # Force static, even in shared builds
     PLUGIN_TYPE platforms/darwin
     CLASS_NAME QIosOptionalPlugin_NSPhotoLibrary
     DEFAULT_IF FALSE
@@ -23,17 +25,7 @@ qt_internal_add_plugin(QIosOptionalPlugin_NSPhotoLibraryPlugin
         Qt::GuiPrivate
 )
 
-# special case begin
 set_target_properties(QIosOptionalPlugin_NSPhotoLibraryPlugin
     PROPERTIES
         DISABLE_PRECOMPILE_HEADERS ON
 )
-# special case end
-
-
-#### Keys ignored in scope 1:.:.:nsphotolibrarysupport.pro:<TRUE>:
-# OTHER_FILES = "plugin.json"
-# PLUGIN_EXTENDS = "-"
-
-## Scopes:
-#####################################################################

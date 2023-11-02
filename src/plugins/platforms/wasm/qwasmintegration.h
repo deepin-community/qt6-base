@@ -6,22 +6,20 @@
 
 #include "qwasmwindow.h"
 
+#include "qwasminputcontext.h"
+
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformscreen.h>
 #include <qpa/qplatforminputcontext.h>
 
 #include <QtCore/qhash.h>
 
+#include <private/qsimpledrag_p.h>
+#include <private/qstdweb_p.h>
+
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/val.h>
-
-#include "qwasminputcontext.h"
-#include <private/qstdweb_p.h>
-
-#if QT_CONFIG(draganddrop)
-#include "qwasmdrag.h"
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -33,6 +31,7 @@ class QWasmScreen;
 class QWasmCompositor;
 class QWasmBackingStore;
 class QWasmClipboard;
+class QWasmAccessibility;
 class QWasmServices;
 
 class QWasmIntegration : public QObject, public QPlatformIntegration
@@ -57,6 +56,9 @@ public:
     QPlatformTheme *createPlatformTheme(const QString &name) const override;
     QPlatformServices *services() const override;
     QPlatformClipboard *clipboard() const override;
+#ifndef QT_NO_ACCESSIBILITY
+    QPlatformAccessibility *accessibility() const override;
+#endif
     void initialize() override;
     QPlatformInputContext *inputContext() const override;
 
@@ -68,8 +70,9 @@ public:
     QWasmInputContext *getWasmInputContext() { return m_platformInputContext; }
     static QWasmIntegration *get() { return s_instance; }
 
-    void addScreen(const emscripten::val &canvas);
-    void removeScreen(const emscripten::val &canvas);
+    void setContainerElements(emscripten::val elementArray);
+    void addContainerElement(emscripten::val elementArray);
+    void removeContainerElement(emscripten::val elementArray);
     void resizeScreen(const emscripten::val &canvas);
     void resizeAllScreens();
     void updateDpi();
@@ -79,11 +82,18 @@ public:
     int touchPoints;
 
 private:
+    struct ScreenMapping {
+        emscripten::val emscriptenVal;
+        QWasmScreen *wasmScreen;
+    };
+
     mutable QWasmFontDatabase *m_fontDb;
     mutable QWasmServices *m_desktopServices;
     mutable QHash<QWindow *, QWasmBackingStore *> m_backingStores;
-    QList<QPair<emscripten::val, QWasmScreen *>> m_screens;
+    QList<ScreenMapping> m_screens;
     mutable QWasmClipboard *m_clipboard;
+    mutable QWasmAccessibility *m_accessibility;
+
     qreal m_fontDpi = -1;
     mutable QScopedPointer<QPlatformInputContext> m_inputContext;
     static QWasmIntegration *s_instance;
@@ -91,7 +101,7 @@ private:
     mutable QWasmInputContext *m_platformInputContext = nullptr;
 
 #if QT_CONFIG(draganddrop)
-    QWasmDrag *m_drag;
+    std::unique_ptr<QSimpleDrag> m_drag;
 #endif
 
 };

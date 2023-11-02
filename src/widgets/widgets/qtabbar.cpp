@@ -71,14 +71,6 @@ void QMovableTabWidget::paintEvent(QPaintEvent *e)
     p.drawPixmap(0, 0, m_pixmap);
 }
 
-inline static bool verticalTabs(QTabBar::Shape shape)
-{
-    return shape == QTabBar::RoundedWest
-           || shape == QTabBar::RoundedEast
-           || shape == QTabBar::TriangularWest
-           || shape == QTabBar::TriangularEast;
-}
-
 void QTabBarPrivate::updateMacBorderMetrics()
 {
 #if defined(Q_OS_MACOS)
@@ -534,7 +526,6 @@ void QTabBarPrivate::layoutTabs()
 
     if (useScrollButtons && tabList.size() && last > available) {
         const QRect scrollRect = normalizedScrollRect(0);
-        scrollOffset = -scrollRect.left();
 
         Q_Q(QTabBar);
         QStyleOption opt;
@@ -571,10 +562,9 @@ void QTabBarPrivate::layoutTabs()
         leftB->show();
 
         rightB->setGeometry(scrollButtonRightRect);
-        rightB->setEnabled(last - scrollOffset > scrollRect.x() + scrollRect.width());
+        rightB->setEnabled(last + scrollRect.left() > scrollRect.x() + scrollRect.width());
         rightB->show();
     } else {
-        scrollOffset = 0;
         rightB->hide();
         leftB->hide();
     }
@@ -591,6 +581,11 @@ QRect QTabBarPrivate::normalizedScrollRect(int index)
     // tab bar itself is in a different orientation.
 
     Q_Q(QTabBar);
+    // If scrollbuttons are not visible, then there's no tear either, and
+    // the entire widget is the scroll rect.
+    if (leftB->isHidden())
+        return verticalTabs(shape) ? q->rect().transposed() : q->rect();
+
     QStyleOptionTab opt;
     q->initStyleOption(&opt, currentIndex);
     opt.rect = q->rect();
@@ -670,16 +665,18 @@ int QTabBarPrivate::hoveredTabIndex() const
 void QTabBarPrivate::makeVisible(int index)
 {
     Q_Q(QTabBar);
-    if (!validIndex(index) || leftB->isHidden())
+    if (!validIndex(index))
         return;
 
     const QRect tabRect = tabList.at(index)->rect;
     const int oldScrollOffset = scrollOffset;
     const bool horiz = !verticalTabs(shape);
+    const int available = horiz ? q->width() : q->height();
     const int tabStart = horiz ? tabRect.left() : tabRect.top();
     const int tabEnd = horiz ? tabRect.right() : tabRect.bottom();
     const int lastTabEnd = horiz ? tabList.constLast()->rect.right() : tabList.constLast()->rect.bottom();
     const QRect scrollRect = normalizedScrollRect(index);
+    const QRect entireScrollRect = normalizedScrollRect(0); // ignore tears
     const int scrolledTabBarStart = qMax(1, scrollRect.left() + scrollOffset);
     const int scrolledTabBarEnd = qMin(lastTabEnd - 1, scrollRect.right() + scrollOffset);
 
@@ -688,7 +685,13 @@ void QTabBarPrivate::makeVisible(int index)
         scrollOffset = tabStart - scrollRect.left();
     } else if (tabEnd > scrolledTabBarEnd) {
         // Tab is outside on the right, so scroll right.
-        scrollOffset = tabEnd - scrollRect.right();
+        scrollOffset = qMax(0, tabEnd - scrollRect.right());
+    } else if (scrollOffset + entireScrollRect.width() > lastTabEnd + 1) {
+        // fill any free space on the right without overshooting
+        scrollOffset = qMax(0, lastTabEnd - entireScrollRect.width() + 1);
+    } else if (available >= lastTabEnd) {
+        // the entire tabbar fits, reset scroll
+        scrollOffset = 0;
     }
 
     leftB->setEnabled(scrollOffset > -scrollRect.left());
@@ -1410,7 +1413,10 @@ void QTabBar::setCurrentIndex(int index)
         if (tabRect(index).size() != tabSizeHint(index))
             d->layoutTabs();
         update();
-        d->makeVisible(index);
+        if (!isVisible())
+            d->layoutDirty = true;
+        else
+            d->makeVisible(index);
         if (d->validIndex(oldIndex)) {
             tab->lastTab = oldIndex;
             d->layoutTab(oldIndex);
@@ -1645,6 +1651,8 @@ void QTabBar::showEvent(QShowEvent *)
         d->refresh();
     if (!d->validIndex(d->currentIndex))
         setCurrentIndex(0);
+    else
+        d->makeVisible(d->currentIndex);
     d->updateMacBorderMetrics();
 }
 
@@ -1778,6 +1786,8 @@ void QTabBar::resizeEvent(QResizeEvent *)
     Q_D(QTabBar);
     if (d->layoutDirty)
         updateGeometry();
+
+    // when resizing, we want to keep the scroll offset as much as possible
     d->layoutTabs();
 
     d->makeVisible(d->currentIndex);
@@ -1873,21 +1883,30 @@ void QTabBar::paintEvent(QPaintEvent *)
         QStyleOptionTab tabOption;
         const auto tab = d->tabList.at(selected);
         initStyleOption(&tabOption, selected);
+
         if (d->paintWithOffsets && tab->dragOffset != 0) {
+            // if the drag offset is != 0, a move is in progress (drag or animation)
+            // => set the tab position to Moving to preserve the rect
+            tabOption.position = QStyleOptionTab::TabPosition::Moving;
+
             if (vertical)
                 tabOption.rect.moveTop(tabOption.rect.y() + tab->dragOffset);
             else
                 tabOption.rect.moveLeft(tabOption.rect.x() + tab->dragOffset);
         }
-        if (!d->dragInProgress)
-            p.drawControl(QStyle::CE_TabBarTab, tabOption);
-        else {
-            int taboverlap = style()->pixelMetric(QStyle::PM_TabBarTabOverlap, nullptr, this);
-            if (verticalTabs(d->shape))
-                d->movingTab->setGeometry(tabOption.rect.adjusted(0, -taboverlap, 0, taboverlap));
-            else
-                d->movingTab->setGeometry(tabOption.rect.adjusted(-taboverlap, 0, taboverlap, 0));
-        }
+
+        // Calculate the rect of a moving tab
+        const int taboverlap = style()->pixelMetric(QStyle::PM_TabBarTabOverlap, nullptr, this);
+        const QRect &movingRect = verticalTabs(d->shape)
+                ? tabOption.rect.adjusted(0, -taboverlap, 0, taboverlap)
+                : tabOption.rect.adjusted(-taboverlap, 0, taboverlap, 0);
+
+        // If a drag is in process, set the moving tab's geometry here
+        // (in an animation, it is already set)
+        if (d->dragInProgress)
+            d->movingTab->setGeometry(movingRect);
+
+        p.drawControl(QStyle::CE_TabBarTab, tabOption);
     }
 
     // Only draw the tear indicator if necessary. Most of the time we don't need too.
@@ -2194,7 +2213,8 @@ void QTabBar::mouseMoveEvent(QMouseEvent *event)
                 }
             }
             // Buttons needs to follow the dragged tab
-            d->layoutTab(d->pressedIndex);
+            if (d->pressedIndex != -1)
+                d->layoutTab(d->pressedIndex);
 
             update();
         }
@@ -2226,7 +2246,7 @@ void QTabBarPrivate::setupMovableTab()
 
     QStyleOptionTab tab;
     q->initStyleOption(&tab, pressedIndex);
-    tab.position = QStyleOptionTab::OnlyOneTab;
+    tab.position = QStyleOptionTab::Moving;
     if (verticalTabs(shape))
         tab.rect.moveTopLeft(QPoint(0, taboverlap));
     else
@@ -2752,10 +2772,11 @@ void QTabBar::setChangeCurrentOnDrag(bool change)
 
 /*!
     Sets \a widget on the tab \a index.  The widget is placed
-    on the left or right hand side depending upon the \a position.
+    on the left or right hand side depending on the \a position.
     \since 4.5
 
-    Any previously set widget in \a position is hidden.
+    Any previously set widget in \a position is hidden. Setting \a widget
+    to \nullptr will hide the current widget at \a position.
 
     The tab bar will take ownership of the widget and so all widgets set here
     will be deleted by the tab bar when it is destroyed unless you separately

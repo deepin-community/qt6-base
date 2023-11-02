@@ -45,7 +45,7 @@ Q_GUI_EXPORT bool qt_scaleForTransform(const QTransform &transform, qreal *scale
  * class QOutlineMapper
  *
  * Used to map between QPainterPath and the QT_FT_Outline structure used by the
- * freetype scanconvertor.
+ * freetype scanconverter.
  *
  * The outline mapper uses a path iterator to get points from the path,
  * so that it is possible to transform the points as they are converted. The
@@ -78,6 +78,8 @@ public:
         qt_scaleForTransform(m, &scale);
         m_curve_threshold = scale == 0 ? qreal(0.25) : (qreal(0.25) / scale);
     }
+
+    void setClipRect(QRect clipRect);
 
     void beginOutline(Qt::FillRule fillRule)
     {
@@ -163,6 +165,7 @@ public:
     QDataBuffer<int> m_contours;
 
     QRect m_clip_rect;
+    QRectF m_clip_trigger_rect;
     QRectF controlPointRect; // only valid after endOutline()
 
     QT_FT_Outline m_outline;

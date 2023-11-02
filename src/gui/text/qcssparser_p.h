@@ -19,7 +19,6 @@
 #include <QtCore/QStringList>
 #include <QtCore/QList>
 #include <QtCore/QVariant>
-#include <QtCore/QPair>
 #include <QtCore/QSize>
 #include <QtCore/QMultiHash>
 #include <QtGui/QFont>
@@ -166,6 +165,8 @@ enum Property {
     LetterSpacing,
     WordSpacing,
     TextDecorationColor,
+    QtPlaceHolderTextColor,
+    QtAccent,
     NumProperties
 };
 
@@ -823,7 +824,9 @@ struct Q_GUI_EXPORT ValueExtractor
     bool extractBox(int *margins, int *paddings, int *spacing = nullptr);
     bool extractBorder(int *borders, QBrush *colors, BorderStyle *Styles, QSize *radii);
     bool extractOutline(int *borders, QBrush *colors, BorderStyle *Styles, QSize *radii, int *offsets);
-    bool extractPalette(QBrush *fg, QBrush *sfg, QBrush *sbg, QBrush *abg);
+    bool extractPalette(QBrush *foreground, QBrush *selectedForeground, QBrush *selectedBackground,
+                        QBrush *alternateBackground, QBrush *placeHolderTextForeground,
+                        QBrush *accent);
     int  extractStyleFeatures();
     bool extractImage(QIcon *icon, Qt::Alignment *a, QSize *size);
     bool extractIcon(QIcon *icon, QSize *size);

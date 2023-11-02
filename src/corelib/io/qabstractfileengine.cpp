@@ -225,6 +225,8 @@ QAbstractFileEngine *QAbstractFileEngine::create(const QString &fileName)
     the base name).
     \value AbsoluteLinkTarget The full file name of the file that this file is a
     link to. (This will be empty if this file is not a link.)
+    \value RawLinkPath The raw link path of the file that this file is a
+    link to. (This will be empty if this file is not a link.)
     \value CanonicalName Often very similar to AbsoluteLinkTarget. Will return the true path to the file.
     \value CanonicalPathName Same as CanonicalName, excluding the base name.
     \value BundleName Returns the name of the bundle implies BundleType is set.
@@ -430,7 +432,7 @@ bool QAbstractFileEngine::seek(qint64 pos)
     Returns \c true if the file is a sequential access device; returns
     false if the file is a direct access device.
 
-    Operations involving size() and seek(int) are not valid on
+    Operations involving size() and seek(qint64) are not valid on
     sequential devices.
 */
 bool QAbstractFileEngine::isSequential() const

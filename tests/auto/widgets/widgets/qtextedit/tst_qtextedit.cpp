@@ -33,6 +33,8 @@
 #include "../../../shared/platforminputcontext.h"
 #include <private/qinputmethod_p.h>
 
+#include <QtWidgets/private/qapplication_p.h>
+
 Q_LOGGING_CATEGORY(lcTests, "qt.widgets.tests")
 
 //Used in copyAvailable
@@ -755,6 +757,11 @@ void tst_QTextEdit::cursorPositionChanged()
     QCOMPARE(spy2.cursorPositions.size(), 1);
     QCOMPARE(spy2.cursorPositions.at(0), 0);
     QCOMPARE(ed->textCursor().position(), 0);
+
+    ed->selectAll();
+    QCOMPARE(spy2.cursorPositions.size(), 2);
+    QCOMPARE(spy2.cursorPositions.at(1), 11);
+    QCOMPARE(ed->textCursor().position(), 11);
 }
 
 void tst_QTextEdit::setTextCursor()
@@ -1345,7 +1352,7 @@ void tst_QTextEdit::copyAvailable_data()
 //Tests the copyAvailable slot for several cases
 void tst_QTextEdit::copyAvailable()
 {
-    QFETCH(pairListType,keystrokes);
+    QFETCH(const pairListType, keystrokes);
     QFETCH(QList<bool>, copyAvailable);
     QFETCH(QString, function);
 
@@ -1358,9 +1365,8 @@ void tst_QTextEdit::copyAvailable()
     QSignalSpy spyCopyAvailabe(ed, SIGNAL(copyAvailable(bool)));
 
     //Execute Keystrokes
-    foreach(keyPairType keyPair, keystrokes) {
+    for (keyPairType keyPair : keystrokes)
         QTest::keyClick(ed, keyPair.first, keyPair.second );
-    }
 
     //Execute ed->"function"
     if (function == "cut")
@@ -2229,7 +2235,6 @@ void tst_QTextEdit::setDocumentPreservesPalette()
     QWidgetTextControl *control = ed->findChild<QWidgetTextControl *>();
     QVERIFY(control);
 
-    QPalette defaultPal = ed->palette();
     QPalette whitePal = ed->palette();
     whitePal.setColor(QPalette::Active, QPalette::Text, Qt::white);
 
@@ -2538,7 +2543,7 @@ void tst_QTextEdit::inputMethodEvent()
 
     // test that input method gets chance to commit preedit when removing focus
     ed->setText("");
-    QApplication::setActiveWindow(ed);
+    QApplicationPrivate::setActiveWindow(ed);
     QTRY_VERIFY(QApplication::focusWindow());
     QCOMPARE(qApp->focusObject(), ed);
 

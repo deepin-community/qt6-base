@@ -24,7 +24,7 @@ ifneq ($(DEB_BUILD_ARCH),$(DEB_HOST_ARCH))
 	extra_cmake_args += \
 		-DQT_HOST_PATH=/usr \
 		-DQT_HOST_PATH_CMAKE_DIR=/usr/lib/${DEB_BUILD_MULTIARCH}/cmake \
-		-DQT_BUILD_TOOLS_WHEN_CROSSCOMPILING=ON
+		-DQT_FORCE_BUILD_TOOLS=ON
 endif
 
 %:
@@ -51,6 +51,9 @@ override_dh_auto_configure:
 		-DINSTALL_MKSPECSDIR=lib/$(DEB_HOST_MULTIARCH)/qt6/mkspecs \
 		-DINSTALL_PUBLICBINDIR=bin \
 		-DQT_BUILD_EXAMPLES=ON \
+		-DQT_INSTALL_EXAMPLES_SOURCES=ON \
+		-DQT_SKIP_AUTO_PLUGIN_INCLUSION=ON \
+		-DQT_SKIP_AUTO_QML_PLUGIN_INCLUSION=ON \
 		-DFEATURE_mimetype_database=OFF \
 		-DFEATURE_dbus_linked=ON \
 		-DFEATURE_accessibility=ON \
@@ -85,10 +88,6 @@ override_dh_auto_configure:
 
 
 execute_after_dh_auto_install-arch:
-	# Policy § 10.4. Remove this if https://bugs.debian.org/904409 gets fixed.
-	sed -i 's,bin/env perl,bin/perl,' debian/tmp/usr/lib/qt6/libexec/*.pl \
-		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/qt6/mkspecs/features/data/unix/findclasslist.pl
-
 	# Reproducible builds: remove build paths from .prl files
 	sed -i -e '/^QMAKE_PRL_BUILD_DIR/d' debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libQt6*.prl
 

@@ -25,17 +25,14 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace {
-
-struct CaseInsensitiveAnyStringViewLessThan {
+struct QCalendarRegistryCaseInsensitiveAnyStringViewLessThan
+{
     struct is_transparent {};
     bool operator()(QAnyStringView lhs, QAnyStringView rhs) const
     {
         return QAnyStringView::compare(lhs, rhs, Qt::CaseInsensitive) < 0;
     }
 };
-
-} // unnamed namespace
 
 namespace QtPrivate {
 
@@ -70,7 +67,7 @@ class QCalendarRegistry
     */
     QFlatMap<
         QString, QCalendarBackend *,
-        CaseInsensitiveAnyStringViewLessThan,
+        QCalendarRegistryCaseInsensitiveAnyStringViewLessThan,
         QStringList,
         std::vector<QCalendarBackend *>
     > byName;
@@ -867,7 +864,7 @@ int QCalendarBackend::maximumMonthsInYear() const
  */
 int QCalendarBackend::dayOfWeek(qint64 jd) const
 {
-    return QRoundingDown::qMod(jd, 7) + 1;
+    return QRoundingDown::qMod<7>(jd) + 1;
 }
 
 // Month and week-day name look-ups (implemented in qlocale.cpp):

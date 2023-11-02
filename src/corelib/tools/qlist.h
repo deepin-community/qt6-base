@@ -16,6 +16,8 @@
 #include <initializer_list>
 #include <type_traits>
 
+class tst_QList;
+
 QT_BEGIN_NAMESPACE
 
 namespace QtPrivate {
@@ -75,10 +77,15 @@ class QList
     using DataPointer = QArrayDataPointer<T>;
     class DisableRValueRefs {};
 
+    friend class ::tst_QList;
+
     DataPointer d;
 
     template <typename V, typename U> friend qsizetype QtPrivate::indexOf(const QList<V> &list, const U &u, qsizetype from) noexcept;
     template <typename V, typename U> friend qsizetype QtPrivate::lastIndexOf(const QList<V> &list, const U &u, qsizetype from) noexcept;
+    // This alias prevents the QtPrivate namespace from being exposed into the docs.
+    template <typename InputIterator>
+    using if_input_iterator = QtPrivate::IfIsInputIterator<InputIterator>;
 
 public:
     using Type = T;
@@ -274,7 +281,7 @@ public:
     }
 
     inline QList(std::initializer_list<T> args)
-        : d(Data::allocate(args.size()))
+        : d(Data::allocate(qsizetype(args.size())))
     {
         if (args.size())
             d->copyAppend(args.begin(), args.end());
@@ -282,12 +289,13 @@ public:
 
     QList<T> &operator=(std::initializer_list<T> args)
     {
-        d = DataPointer(Data::allocate(args.size()));
+        d = DataPointer(Data::allocate(qsizetype(args.size())));
         if (args.size())
             d->copyAppend(args.begin(), args.end());
         return *this;
     }
-    template <typename InputIterator, QtPrivate::IfIsInputIterator<InputIterator> = true>
+
+    template <typename InputIterator, if_input_iterator<InputIterator> = true>
     QList(InputIterator i1, InputIterator i2)
     {
         if constexpr (!std::is_convertible_v<typename std::iterator_traits<InputIterator>::iterator_category, std::forward_iterator_tag>) {
@@ -295,7 +303,7 @@ public:
         } else {
             const auto distance = std::distance(i1, i2);
             if (distance) {
-                d = DataPointer(Data::allocate(distance));
+                d = DataPointer(Data::allocate(qsizetype(distance)));
                 // appendIteratorRange can deal with contiguous iterators on its own,
                 // this is an optimization for C++17 code.
                 if constexpr (std::is_same_v<std::decay_t<InputIterator>, iterator> ||
@@ -317,7 +325,7 @@ public:
 
     void swap(QList &other) noexcept { d.swap(other.d); }
 
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
     template <typename U = T>
     QTypeTraits::compare_eq_result_container<QList, U> operator==(const QList &other) const
     {
@@ -373,7 +381,7 @@ public:
     bool operator>(const QList &other) const;
     bool operator<=(const QList &other) const;
     bool operator>=(const QList &other) const;
-#endif // Q_CLANG_QDOC
+#endif // Q_QDOC
 
     qsizetype size() const noexcept { return d->size; }
     qsizetype count() const noexcept { return size(); }
@@ -426,7 +434,7 @@ public:
     reference operator[](qsizetype i)
     {
         Q_ASSERT_X(size_t(i) < size_t(d->size), "QList::operator[]", "index out of range");
-        detach();
+        // don't detach() here, we detach in data below:
         return data()[i];
     }
     const_reference operator[](qsizetype i) const noexcept { return at(i); }
@@ -487,6 +495,19 @@ public:
             return emplace(i, std::move(t));
         }
     }
+
+    QList &assign(qsizetype n, parameter_type t)
+    {
+        Q_ASSERT(n >= 0);
+        return fill(t, n);
+    }
+
+    template <typename InputIterator, if_input_iterator<InputIterator> = true>
+    QList &assign(InputIterator first, InputIterator last)
+    { d.assign(first, last); return *this; }
+
+    QList &assign(std::initializer_list<T> l)
+    { return assign(l.begin(), l.end()); }
 
     template <typename ...Args>
     iterator emplace(const_iterator before, Args&&... args)
@@ -669,10 +690,14 @@ public:
     // comfort
     QList<T> &operator+=(const QList<T> &l) { append(l); return *this; }
     QList<T> &operator+=(QList<T> &&l) { append(std::move(l)); return *this; }
-    inline QList<T> operator+(const QList<T> &l) const
+    inline QList<T> operator+(const QList<T> &l) const &
     { QList n = *this; n += l; return n; }
-    inline QList<T> operator+(QList<T> &&l) const
+    QList<T> operator+(const QList<T> &l) &&
+    { return std::move(*this += l); }
+    inline QList<T> operator+(QList<T> &&l) const &
     { QList n = *this; n += std::move(l); return n; }
+    QList<T> operator+(QList<T> &&l) &&
+    { return std::move(*this += std::move(l)); }
     inline QList<T> &operator+=(parameter_type t)
     { append(t); return *this; }
     inline QList<T> &operator<< (parameter_type t)

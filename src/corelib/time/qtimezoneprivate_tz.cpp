@@ -10,6 +10,7 @@
 
 #include <QtCore/QDataStream>
 #include <QtCore/QDateTime>
+#include <QtCore/QDirIterator>
 #include <QtCore/QFile>
 #include <QtCore/QCache>
 #include <QtCore/QMap>
@@ -41,14 +42,18 @@ Q_CONSTINIT static QBasicMutex s_icu_mutex;
 */
 
 struct QTzTimeZone {
-    QLocale::Territory territory;
+    QLocale::Territory territory = QLocale::AnyTerritory;
     QByteArray comment;
 };
 
 // Define as a type as Q_GLOBAL_STATIC doesn't like it
 typedef QHash<QByteArray, QTzTimeZone> QTzTimeZoneHash;
 
-// Parse zone.tab table, assume lists all installed zones, if not will need to read directories
+static bool isTzFile(const QString &name);
+
+// Parse zone.tab table for territory information, read directories to ensure we
+// find all installed zones (many are omitted from zone.tab; even more from
+// zone1970.tab).
 static QTzTimeZoneHash loadTzTimeZones()
 {
     QString path = QStringLiteral("/usr/share/zoneinfo/zone.tab");
@@ -84,6 +89,28 @@ static QTzTimeZoneHash loadTzTimeZones()
                 }
             }
         }
+    }
+
+    const qsizetype cut = path.lastIndexOf(u'/');
+    Q_ASSERT(cut > 0);
+    const QDir zoneDir = QDir(path.first(cut));
+    QDirIterator zoneFiles(zoneDir, QDirIterator::Subdirectories);
+    while (zoneFiles.hasNext()) {
+        const QFileInfo info = zoneFiles.nextFileInfo();
+        if (!(info.isFile() || info.isSymLink()))
+            continue;
+        const QString name = zoneDir.relativeFilePath(info.filePath());
+        // Two sub-directories containing (more or less) copies of the zoneinfo tree.
+        if (info.isDir() ? name == "posix"_L1 || name == "right"_L1
+            : name.startsWith("posix/"_L1) || name.startsWith("right/"_L1)) {
+            continue;
+        }
+        // We could filter out *.* and leapseconds instead of doing the
+        // isTzFile() check; in practice current (2023) zoneinfo/ contains only
+        // actual zone files and matches to that filter.
+        const QByteArray id = QFile::encodeName(name);
+        if (!zonesHash.contains(id) && isTzFile(zoneDir.absoluteFilePath(name)))
+            zonesHash.insert(id, QTzTimeZone());
     }
     return zonesHash;
 }
@@ -128,6 +155,11 @@ struct QTzType {
 };
 Q_DECLARE_TYPEINFO(QTzType, Q_PRIMITIVE_TYPE);
 
+static bool isTzFile(const QString &name)
+{
+    QFile file(name);
+    return file.open(QFile::ReadOnly) && file.read(strlen(TZ_MAGIC)) == TZ_MAGIC;
+}
 
 // TZ File parsing
 
@@ -352,13 +384,15 @@ static QDate calculateDowDate(int year, int month, int dayOfWeek, int week)
 
 static QDate calculatePosixDate(const QByteArray &dateRule, int year)
 {
+    Q_ASSERT(!dateRule.isEmpty());
     bool ok;
     // Can start with M, J, or a digit
     if (dateRule.at(0) == 'M') {
         // nth week in month format "Mmonth.week.dow"
         QList<QByteArray> dateParts = dateRule.split('.');
         if (dateParts.size() > 2) {
-            int month = dateParts.at(0).mid(1).toInt(&ok);
+            Q_ASSERT(!dateParts.at(0).isEmpty()); // the 'M' is its [0].
+            int month = QByteArrayView{ dateParts.at(0) }.sliced(1).toInt(&ok);
             int week = ok ? dateParts.at(1).toInt(&ok) : 0;
             int dow = ok ? dateParts.at(2).toInt(&ok) : 0;
             if (ok)
@@ -367,7 +401,7 @@ static QDate calculatePosixDate(const QByteArray &dateRule, int year)
     } else if (dateRule.at(0) == 'J') {
         // Day of Year 1...365, ignores Feb 29.
         // So March always starts on day 60.
-        int doy = dateRule.mid(1).toInt(&ok);
+        int doy = QByteArrayView{ dateRule }.sliced(1).toInt(&ok);
         if (ok && doy > 0 && doy < 366) {
             // Subtract 1 because we're adding days *after* the first of
             // January, unless it's after February in a leap year, when the leap
@@ -394,26 +428,26 @@ static int parsePosixTime(const char *begin, const char *end)
     const int maxHour = 137; // POSIX's extended range.
     auto r = qstrntoll(begin, end - begin, 10);
     hour = r.result;
-    if (!r.ok() || hour < -maxHour || hour > maxHour || r.endptr > begin + 2)
+    if (!r.ok() || hour < -maxHour || hour > maxHour || r.used > 2)
         return INT_MIN;
-    begin = r.endptr;
+    begin += r.used;
     if (begin < end && *begin == ':') {
         // minutes
         ++begin;
         r = qstrntoll(begin, end - begin, 10);
         min = r.result;
-        if (!r.ok() || min < 0 || min > 59 || r.endptr > begin + 2)
+        if (!r.ok() || min < 0 || min > 59 || r.used > 2)
             return INT_MIN;
 
-        begin = r.endptr;
+        begin += r.used;
         if (begin < end && *begin == ':') {
             // seconds
             ++begin;
             r = qstrntoll(begin, end - begin, 10);
             sec = r.result;
-            if (!r.ok() || sec < 0 || sec > 59 || r.endptr > begin + 2)
+            if (!r.ok() || sec < 0 || sec > 59 || r.used > 2)
                 return INT_MIN;
-            begin = r.endptr;
+            begin += r.used;
         }
     }
 
@@ -484,7 +518,7 @@ PosixZone PosixZone::parse(const char *&pos, const char *end)
     Q_ASSERT(pos < end);
 
     if (*pos == '<') {
-        nameBegin = pos + 1;    // skip the '<'
+        ++nameBegin;    // skip the '<'
         nameEnd = nameBegin;
         while (nameEnd < end && *nameEnd != '>') {
             // POSIX says only alphanumeric, but we allow anything
@@ -492,7 +526,6 @@ PosixZone PosixZone::parse(const char *&pos, const char *end)
         }
         pos = nameEnd + 1;      // skip the '>'
     } else {
-        nameBegin = pos;
         nameEnd = nameBegin;
         while (nameEnd < end && asciiIsLetter(*nameEnd))
             ++nameEnd;
@@ -522,7 +555,12 @@ PosixZone PosixZone::parse(const char *&pos, const char *end)
     return {std::move(name), offset};
 }
 
-static auto validatePosixRule(const QByteArray &posixRule)
+/* Parse and check a POSIX rule.
+
+   By default a simple zone abbreviation with no offset information is accepted.
+   Set \a requireOffset to \c true to require that there be offset data present.
+*/
+static auto validatePosixRule(const QByteArray &posixRule, bool requireOffset = false)
 {
     // Format is described here:
     // http://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
@@ -534,15 +572,19 @@ static auto validatePosixRule(const QByteArray &posixRule)
         return fail;
 
     const char *begin = zoneinfo.begin();
-
-    // Updates begin to point after the name and offset it parses:
-    if (PosixZone::parse(begin, zoneinfo.end()).name.isEmpty())
-        return fail;
+    {
+        // Updates begin to point after the name and offset it parses:
+        const auto posix = PosixZone::parse(begin, zoneinfo.end());
+        if (posix.name.isEmpty())
+            return fail;
+        if (requireOffset && !posix.hasValidOffset())
+            return fail;
+    }
 
     if (good.hasDst) {
         if (begin >= zoneinfo.end())
             return fail;
-        // Expect a second name and offset after the first:
+        // Expect a second name (and optional offset) after the first:
         if (PosixZone::parse(begin, zoneinfo.end()).name.isEmpty())
             return fail;
     }
@@ -632,20 +674,22 @@ static QList<QTimeZonePrivate::Data> calculatePosixTransitions(const QByteArray 
     Q_ASSERT(startYear <= endYear);
 
     for (int year = startYear; year <= endYear; ++year) {
-        // Note: std and dst, despite being QDateTime(,, Qt::UTC), have the
+        // Note: std and dst, despite being QDateTime(,, UTC), have the
         // date() and time() of the *zone*'s description of the transition
         // moments; the atMSecsSinceEpoch values computed from them are
         // correctly offse to be UTC-based.
 
         QTimeZonePrivate::Data dstData; // Transition to DST
-        QDateTime dst(calculatePosixDate(dstDateRule, year).startOfDay(Qt::UTC).addSecs(dstTime));
+        QDateTime dst(calculatePosixDate(dstDateRule, year)
+                      .startOfDay(QTimeZone::UTC).addSecs(dstTime));
         dstData.atMSecsSinceEpoch = dst.toMSecsSinceEpoch() - stdZone.offset * 1000;
         dstData.offsetFromUtc = dstZone.offset;
         dstData.standardTimeOffset = stdZone.offset;
         dstData.daylightTimeOffset = dstZone.offset - stdZone.offset;
         dstData.abbreviation = dstZone.name;
         QTimeZonePrivate::Data stdData; // Transition to standard time
-        QDateTime std(calculatePosixDate(stdDateRule, year).startOfDay(Qt::UTC).addSecs(stdTime));
+        QDateTime std(calculatePosixDate(stdDateRule, year)
+                      .startOfDay(QTimeZone::UTC).addSecs(stdTime));
         stdData.atMSecsSinceEpoch = std.toMSecsSinceEpoch() - dstZone.offset * 1000;
         stdData.offsetFromUtc = stdZone.offset;
         stdData.standardTimeOffset = stdZone.offset;
@@ -656,16 +700,16 @@ static QList<QTimeZonePrivate::Data> calculatePosixTransitions(const QByteArray 
             // Handle the special case of fixed state, which may be represented
             // by fake transitions at start and end of each year:
             if (dstData.atMSecsSinceEpoch < stdData.atMSecsSinceEpoch) {
-                if (dst <= QDate(year, 1, 1).startOfDay(Qt::UTC)
-                    && std >= QDate(year, 12, 31).endOfDay(Qt::UTC)) {
+                if (dst <= QDate(year, 1, 1).startOfDay(QTimeZone::UTC)
+                    && std >= QDate(year, 12, 31).endOfDay(QTimeZone::UTC)) {
                     // Permanent DST:
                     dstData.atMSecsSinceEpoch = lastTranMSecs;
                     result << dstData;
                     return result;
                 }
             } else {
-                if (std <= QDate(year, 1, 1).startOfDay(Qt::UTC)
-                    && dst >= QDate(year, 12, 31).endOfDay(Qt::UTC)) {
+                if (std <= QDate(year, 1, 1).startOfDay(QTimeZone::UTC)
+                    && dst >= QDate(year, 12, 31).endOfDay(QTimeZone::UTC)) {
                     // Permanent Standard time, perversely described:
                     stdData.atMSecsSinceEpoch = lastTranMSecs;
                     result << stdData;
@@ -895,8 +939,8 @@ QTzTimeZoneCacheEntry QTzTimeZoneCache::findEntry(const QByteArray &ianaId)
         if (ruleIndex == -1) {
             if (rule.dstOffset != 0)
                 ret.m_hasDst = true;
+            tran.ruleIndex = ret.m_tranRules.size();
             ret.m_tranRules.append(rule);
-            tran.ruleIndex = ret.m_tranRules.size() - 1;
         } else {
             tran.ruleIndex = ruleIndex;
         }
@@ -1094,7 +1138,7 @@ QTimeZonePrivate::Data QTzTimeZonePrivate::dataFromRule(QTzTransitionRule rule,
 
 QList<QTimeZonePrivate::Data> QTzTimeZonePrivate::getPosixTransitions(qint64 msNear) const
 {
-    const int year = QDateTime::fromMSecsSinceEpoch(msNear, Qt::UTC).date().year();
+    const int year = QDateTime::fromMSecsSinceEpoch(msNear, QTimeZone::UTC).date().year();
     // The Data::atMSecsSinceEpoch of the single entry if zone is constant:
     qint64 atTime = tranCache().isEmpty() ? msNear : tranCache().last().atMSecsSinceEpoch;
     return calculatePosixTransitions(cached_data.m_posixRule, year - 1, year + 1, atTime);
@@ -1188,7 +1232,11 @@ QTimeZonePrivate::Data QTzTimeZonePrivate::previousTransition(qint64 beforeMSecs
 
 bool QTzTimeZonePrivate::isTimeZoneIdAvailable(const QByteArray &ianaId) const
 {
-    return tzZones->contains(ianaId);
+    // Allow a POSIX rule as long as it has offset data. (This needs to reject a
+    // plain abbreviation, without offset, since claiming to support such zones
+    // would prevent the custom QTimeZone constructor from accepting such a
+    // name, as it doesn't want a custom zone to over-ride a "real" one.)
+    return tzZones->contains(ianaId) || validatePosixRule(ianaId, true).isValid;
 }
 
 QList<QByteArray> QTzTimeZonePrivate::availableTimeZoneIds() const
@@ -1294,7 +1342,7 @@ private:
             path = QFile::symLinkTarget(path);
             int index = path.indexOf(zoneinfo);
             if (index >= 0) // Found zoneinfo file; extract zone name from path:
-                return QStringView{ path }.mid(index + zoneinfo.size()).toUtf8();
+                return QStringView{ path }.sliced(index + zoneinfo.size()).toUtf8();
         } while (!path.isEmpty() && --iteration > 0);
 
         return QByteArray();
@@ -1351,7 +1399,7 @@ QByteArray QTzTimeZonePrivate::staticSystemTimeZoneId()
     if (ianaId == ":/etc/localtime")
         ianaId.clear();
     else if (ianaId.startsWith(':'))
-        ianaId = ianaId.mid(1);
+        ianaId = ianaId.sliced(1);
 
     if (ianaId.isEmpty()) {
         Q_CONSTINIT thread_local static ZoneNameReader reader;

@@ -10,7 +10,12 @@
 #include <QtCore/qrect.h>
 #include <QtCore/qmath.h>
 
+#include <QtCore/q20type_traits.h>
+#include <QtCore/q23utility.h>
+
 QT_BEGIN_NAMESPACE
+
+// QT_ENABLE_P0846_SEMANTICS_FOR(get) // from qpoint.h
 
 class QVector2D;
 class QVector3D;
@@ -145,13 +150,10 @@ private:
     template <std::size_t I,
               typename V,
               std::enable_if_t<(I < 2), bool> = true,
-              std::enable_if_t<std::is_same_v<std::decay_t<V>, QVector2D>, bool> = true>
+              std::enable_if_t<std::is_same_v<q20::remove_cvref_t<V>, QVector2D>, bool> = true>
     friend constexpr decltype(auto) get(V &&vec) noexcept
     {
-        if constexpr (I == 0)
-            return (std::forward<V>(vec).v[0]);
-        else if constexpr (I == 1)
-            return (std::forward<V>(vec).v[1]);
+        return q23::forward_like<V>(vec.v[I]);
     }
 };
 
@@ -307,15 +309,10 @@ private:
     template <std::size_t I,
               typename V,
               std::enable_if_t<(I < 3), bool> = true,
-              std::enable_if_t<std::is_same_v<std::decay_t<V>, QVector3D>, bool> = true>
+              std::enable_if_t<std::is_same_v<q20::remove_cvref_t<V>, QVector3D>, bool> = true>
     friend constexpr decltype(auto) get(V &&vec) noexcept
     {
-        if constexpr (I == 0)
-            return (std::forward<V>(vec).v[0]);
-        else if constexpr (I == 1)
-            return (std::forward<V>(vec).v[1]);
-        else if constexpr (I == 2)
-            return (std::forward<V>(vec).v[2]);
+        return q23::forward_like<V>(vec.v[I]);
     }
 };
 
@@ -464,17 +461,10 @@ private:
     template <std::size_t I,
               typename V,
               std::enable_if_t<(I < 4), bool> = true,
-              std::enable_if_t<std::is_same_v<std::decay_t<V>, QVector4D>, bool> = true>
+              std::enable_if_t<std::is_same_v<q20::remove_cvref_t<V>, QVector4D>, bool> = true>
     friend constexpr decltype(auto) get(V &&vec) noexcept
     {
-        if constexpr (I == 0)
-            return (std::forward<V>(vec).v[0]);
-        else if constexpr (I == 1)
-            return (std::forward<V>(vec).v[1]);
-        else if constexpr (I == 2)
-            return (std::forward<V>(vec).v[2]);
-        else if constexpr (I == 3)
-            return (std::forward<V>(vec).v[3]);
+        return q23::forward_like<V>(vec.v[I]);
     }
 };
 

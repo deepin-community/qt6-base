@@ -15,7 +15,9 @@
 #include <IOKit/graphics/IOGraphicsLib.h>
 
 #include <QtGui/private/qwindow_p.h>
+#include <QtGui/private/qhighdpiscaling_p.h>
 
+#include <QtCore/private/qcore_mac_p.h>
 #include <QtCore/private/qeventdispatcher_cf_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -288,24 +290,33 @@ void QCocoaScreen::update(CGDirectDisplayID displayId)
 
 Q_LOGGING_CATEGORY(lcQpaScreenUpdates, "qt.qpa.screen.updates", QtCriticalMsg);
 
-void QCocoaScreen::requestUpdate()
+bool QCocoaScreen::requestUpdate()
 {
     Q_ASSERT(m_displayId);
 
     if (!isOnline()) {
         qCDebug(lcQpaScreenUpdates) << this << "is not online. Ignoring update request";
-        return;
+        return false;
     }
 
     if (!m_displayLink) {
-        CVDisplayLinkCreateWithCGDisplay(m_displayId, &m_displayLink);
+        qCDebug(lcQpaScreenUpdates) << "Creating display link for" << this;
+        if (CVDisplayLinkCreateWithCGDisplay(m_displayId, &m_displayLink) != kCVReturnSuccess) {
+            qCWarning(lcQpaScreenUpdates) << "Failed to create display link for" << this;
+            return false;
+        }
+        if (auto displayId = CVDisplayLinkGetCurrentCGDisplay(m_displayLink); displayId != m_displayId) {
+            qCWarning(lcQpaScreenUpdates) << "Unexpected display" << displayId << "for display link";
+            CVDisplayLinkRelease(m_displayLink);
+            m_displayLink = nullptr;
+            return false;
+        }
         CVDisplayLinkSetOutputCallback(m_displayLink, [](CVDisplayLinkRef, const CVTimeStamp*,
             const CVTimeStamp*, CVOptionFlags, CVOptionFlags*, void* displayLinkContext) -> int {
                 // FIXME: It would be nice if update requests would include timing info
                 static_cast<QCocoaScreen*>(displayLinkContext)->deliverUpdateRequests();
                 return kCVReturnSuccess;
         }, this);
-        qCDebug(lcQpaScreenUpdates) << "Display link created for" << this;
 
         // During live window resizing -[NSWindow _resizeWithEvent:] will spin a local event loop
         // in event-tracking mode, dequeuing only the mouse drag events needed to update the window's
@@ -360,6 +371,8 @@ void QCocoaScreen::requestUpdate()
         qCDebug(lcQpaScreenUpdates) << "Starting display link for" << this;
         CVDisplayLinkStart(m_displayLink);
     }
+
+    return true;
 }
 
 // Helper to allow building up debug output in multiple steps
@@ -453,6 +466,25 @@ void QCocoaScreen::deliverUpdateRequests()
             if (!platformWindow->updatesWithDisplayLink())
                 continue;
 
+            // QTBUG-107198: Skip updates in a live resize for a better resize experience.
+            if (platformWindow->isContentView() && platformWindow->view().inLiveResize) {
+                const QSurface::SurfaceType surfaceType = window->surfaceType();
+                const bool usesMetalLayer = surfaceType == QWindow::MetalSurface || surfaceType == QWindow::VulkanSurface;
+                const bool usesNonDefaultContentsPlacement = [platformWindow->view() layerContentsPlacement]
+                        != NSViewLayerContentsPlacementScaleAxesIndependently;
+                if (usesMetalLayer && usesNonDefaultContentsPlacement) {
+                    static bool deliverDisplayLinkUpdatesDuringLiveResize =
+                            qEnvironmentVariableIsSet("QT_MAC_DISPLAY_LINK_UPDATE_IN_RESIZE");
+                    if (!deliverDisplayLinkUpdatesDuringLiveResize) {
+                        // Must keep the link running, we do not know what the event
+                        // handlers for UpdateRequest (which is not sent now) would do,
+                        // would they trigger a new requestUpdate() or not.
+                        pauseUpdates = false;
+                        continue;
+                    }
+                }
+            }
+
             platformWindow->deliverUpdateRequest();
 
             // Another update request was triggered, keep the display link running
@@ -492,39 +524,36 @@ QPlatformScreen::SubpixelAntialiasingType QCocoaScreen::subpixelAntialiasingType
 
 QWindow *QCocoaScreen::topLevelAt(const QPoint &point) const
 {
-    NSPoint screenPoint = mapToNative(point);
+    __block QWindow *window = nullptr;
+    [NSApp enumerateWindowsWithOptions:NSWindowListOrderedFrontToBack
+        usingBlock:^(NSWindow *nsWindow, BOOL *stop) {
+            if (!nsWindow)
+                return;
 
-    // Search (hit test) for the top-level window. [NSWidow windowNumberAtPoint:
-    // belowWindowWithWindowNumber] may return windows that are not interesting
-    // to Qt. The search iterates until a suitable window or no window is found.
-    NSInteger topWindowNumber = 0;
-    QWindow *window = nullptr;
-    do {
-        // Get the top-most window, below any previously rejected window.
-        topWindowNumber = [NSWindow windowNumberAtPoint:screenPoint
-                                    belowWindowWithWindowNumber:topWindowNumber];
+            // Continue the search if the window does not belong to Qt
+            if (![nsWindow conformsToProtocol:@protocol(QNSWindowProtocol)])
+                return;
 
-        // Continue the search if the window does not belong to this process.
-        NSWindow *nsWindow = [NSApp windowWithWindowNumber:topWindowNumber];
-        if (!nsWindow)
-            continue;
+            QCocoaWindow *cocoaWindow = qnsview_cast(nsWindow.contentView).platformWindow;
+            if (!cocoaWindow)
+                return;
 
-        // Continue the search if the window does not belong to Qt.
-        if (![nsWindow conformsToProtocol:@protocol(QNSWindowProtocol)])
-            continue;
+            QWindow *w = cocoaWindow->window();
+            if (!w->isVisible())
+                return;
 
-        QCocoaWindow *cocoaWindow = qnsview_cast(nsWindow.contentView).platformWindow;
-        if (!cocoaWindow)
-            continue;
-        window = cocoaWindow->window();
+            if (!QHighDpi::toNativePixels(w->geometry(), w).contains(point))
+                return;
 
-        // Continue the search if the window is not a top-level window.
-        if (!window->isTopLevel())
-             continue;
+            window = w;
 
-        // Stop searching. The current window is the correct window.
-        break;
-    } while (topWindowNumber > 0);
+            // Continue the search if the window is not a top-level window
+            if (!window->isTopLevel())
+                return;
+
+            *stop = true;
+        }
+    ];
 
     return window;
 }

@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 qt_internal_add_plugin(QNLMNIPlugin
     OUTPUT_NAME qnetworklistmanager
     CLASS_NAME QNetworkListManagerNetworkInformationBackendFactory
@@ -14,6 +17,7 @@ qt_internal_add_plugin(QNLMNIPlugin
 qt_internal_extend_target(QNLMNIPlugin CONDITION WIN32 AND MSVC AND NOT CLANG
     LIBRARIES
         runtimeobject
+        oleaut32
 )
 
 # Don't repeat the target name in AUTOGEN_BUILD_DIR to work around issues with overlong paths.

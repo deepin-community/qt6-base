@@ -5,6 +5,10 @@
 #ifndef QPLUGIN_H
 #define QPLUGIN_H
 
+#if 0
+#pragma qt_class(QtPlugin)
+#endif
+
 #include <QtCore/qobject.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qjsonobject.h>
@@ -123,7 +127,7 @@ void Q_CORE_EXPORT qRegisterStaticPluginFunction(QStaticPlugin staticPlugin);
 #if defined(Q_OF_ELF) || (defined(Q_OS_WIN) && (defined (Q_CC_GNU) || defined(Q_CC_CLANG)))
 #  define QT_PLUGIN_METADATA_SECTION \
     __attribute__ ((section (".qtmetadata"))) __attribute__((used))
-#elif defined(Q_OS_MAC)
+#elif defined(Q_OS_DARWIN)
 #  define QT_PLUGIN_METADATA_SECTION \
     __attribute__ ((section ("__TEXT,qtmetadata"))) __attribute__((used))
 #elif defined(Q_CC_MSVC)

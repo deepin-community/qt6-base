@@ -17,13 +17,13 @@
 
 #include <QtCore/qglobal.h>
 
-#if !defined(QT_BOOTSTRAPPED) && defined(Q_OS_WIN) && !defined(Q_CC_CLANG) && QT_CONFIG(cpp_winrt)
+#if !defined(QT_BOOTSTRAPPED) && QT_CONFIG(cpp_winrt)
 #    define QT_USE_FACTORY_CACHE_REGISTRATION
 #endif
 
 #ifdef QT_USE_FACTORY_CACHE_REGISTRATION
 
-#include <winrt/base.h>
+#include "qt_winrtbase_p.h"
 
 QT_BEGIN_NAMESPACE
 

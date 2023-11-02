@@ -109,9 +109,9 @@ private:
 
 class QSortFilterProxyModelPrivate : public QAbstractProxyModelPrivate
 {
+public:
     Q_DECLARE_PUBLIC(QSortFilterProxyModel)
 
-public:
     enum class Direction {
         Rows = 1,
         Columns = 2,
@@ -238,6 +238,8 @@ public:
     QModelIndexPairList saved_persistent_indexes;
     QList<QPersistentModelIndex> saved_layoutChange_parents;
 
+    std::array<QMetaObject::Connection, 18> sourceConnections;
+
     QHash<QModelIndex, Mapping *>::const_iterator create_mapping(
         const QModelIndex &source_parent) const;
     QHash<QModelIndex, Mapping *>::const_iterator create_mapping_recursive(
@@ -254,7 +256,7 @@ public:
      */
     void set_filter_pattern(const QString &pattern)
     {
-        QRegularExpression re = filter_regularexpression.value();
+        QRegularExpression re = filter_regularexpression.valueBypassingBindings();
         const auto cs = re.patternOptions() & QRegularExpression::CaseInsensitiveOption;
         re.setPattern(pattern);
         re.setPatternOptions(cs);
@@ -1265,7 +1267,7 @@ void QSortFilterProxyModelPrivate::update_persistent_indexes(
 */
 void QSortFilterProxyModelPrivate::filter_about_to_be_changed(const QModelIndex &source_parent)
 {
-    if (!filter_regularexpression.value().pattern().isEmpty()
+    if (!filter_regularexpression.valueBypassingBindings().pattern().isEmpty()
         && source_index_mapping.constFind(source_parent) == source_index_mapping.constEnd()) {
         create_mapping(source_parent);
     }
@@ -2006,7 +2008,9 @@ void QSortFilterProxyModelPrivate::_q_sourceColumnsMoved(
 QSortFilterProxyModel::QSortFilterProxyModel(QObject *parent)
     : QAbstractProxyModel(*new QSortFilterProxyModelPrivate, parent)
 {
-    connect(this, SIGNAL(modelReset()), this, SLOT(_q_clearMapping()));
+    Q_D(QSortFilterProxyModel);
+    QObjectPrivate::connect(this, &QAbstractItemModel::modelReset, d,
+                            &QSortFilterProxyModelPrivate::_q_clearMapping);
 }
 
 /*!
@@ -2031,56 +2035,10 @@ void QSortFilterProxyModel::setSourceModel(QAbstractItemModel *sourceModel)
 
     beginResetModel();
 
-    disconnect(d->model, SIGNAL(dataChanged(QModelIndex,QModelIndex,QList<int>)),
-               this, SLOT(_q_sourceDataChanged(QModelIndex,QModelIndex,QList<int>)));
-
-    disconnect(d->model, SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
-               this, SLOT(_q_sourceHeaderDataChanged(Qt::Orientation,int,int)));
-
-    disconnect(d->model, SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)),
-               this, SLOT(_q_sourceRowsAboutToBeInserted(QModelIndex,int,int)));
-
-    disconnect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-               this, SLOT(_q_sourceRowsInserted(QModelIndex,int,int)));
-
-    disconnect(d->model, SIGNAL(columnsAboutToBeInserted(QModelIndex,int,int)),
-               this, SLOT(_q_sourceColumnsAboutToBeInserted(QModelIndex,int,int)));
-
-    disconnect(d->model, SIGNAL(columnsInserted(QModelIndex,int,int)),
-               this, SLOT(_q_sourceColumnsInserted(QModelIndex,int,int)));
-
-    disconnect(d->model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-               this, SLOT(_q_sourceRowsAboutToBeRemoved(QModelIndex,int,int)));
-
-    disconnect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-               this, SLOT(_q_sourceRowsRemoved(QModelIndex,int,int)));
-
-    disconnect(d->model, SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-               this, SLOT(_q_sourceColumnsAboutToBeRemoved(QModelIndex,int,int)));
-
-    disconnect(d->model, SIGNAL(columnsRemoved(QModelIndex,int,int)),
-               this, SLOT(_q_sourceColumnsRemoved(QModelIndex,int,int)));
-
-    disconnect(d->model, SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-               this, SLOT(_q_sourceRowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-
-    disconnect(d->model, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-               this, SLOT(_q_sourceRowsMoved(QModelIndex,int,int,QModelIndex,int)));
-
-    disconnect(d->model, SIGNAL(columnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-               this, SLOT(_q_sourceColumnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-
-    disconnect(d->model, SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-               this, SLOT(_q_sourceColumnsMoved(QModelIndex,int,int,QModelIndex,int)));
-
-    disconnect(d->model, SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-               this, SLOT(_q_sourceLayoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-
-    disconnect(d->model, SIGNAL(layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-               this, SLOT(_q_sourceLayoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-
-    disconnect(d->model, SIGNAL(modelAboutToBeReset()), this, SLOT(_q_sourceAboutToBeReset()));
-    disconnect(d->model, SIGNAL(modelReset()), this, SLOT(_q_sourceReset()));
+    if (d->model) {
+        for (const QMetaObject::Connection &connection : std::as_const(d->sourceConnections))
+            disconnect(connection);
+    }
 
     // same as in _q_sourceReset()
     d->invalidatePersistentIndexes();
@@ -2088,57 +2046,61 @@ void QSortFilterProxyModel::setSourceModel(QAbstractItemModel *sourceModel)
 
     QAbstractProxyModel::setSourceModel(sourceModel);
 
-    connect(d->model, SIGNAL(dataChanged(QModelIndex,QModelIndex,QList<int>)),
-            this, SLOT(_q_sourceDataChanged(QModelIndex,QModelIndex,QList<int>)));
+    d->sourceConnections = std::array<QMetaObject::Connection, 18>{
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::dataChanged, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceDataChanged),
 
-    connect(d->model, SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
-            this, SLOT(_q_sourceHeaderDataChanged(Qt::Orientation,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::headerDataChanged, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceHeaderDataChanged),
 
-    connect(d->model, SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)),
-            this, SLOT(_q_sourceRowsAboutToBeInserted(QModelIndex,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsAboutToBeInserted, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceRowsAboutToBeInserted),
 
-    connect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-            this, SLOT(_q_sourceRowsInserted(QModelIndex,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsInserted, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceRowsInserted),
 
-    connect(d->model, SIGNAL(columnsAboutToBeInserted(QModelIndex,int,int)),
-            this, SLOT(_q_sourceColumnsAboutToBeInserted(QModelIndex,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsAboutToBeInserted, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceColumnsAboutToBeInserted),
 
-    connect(d->model, SIGNAL(columnsInserted(QModelIndex,int,int)),
-            this, SLOT(_q_sourceColumnsInserted(QModelIndex,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsInserted, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceColumnsInserted),
 
-    connect(d->model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-            this, SLOT(_q_sourceRowsAboutToBeRemoved(QModelIndex,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsAboutToBeRemoved, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceRowsAboutToBeRemoved),
 
-    connect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-            this, SLOT(_q_sourceRowsRemoved(QModelIndex,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsRemoved, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceRowsRemoved),
 
-    connect(d->model, SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-            this, SLOT(_q_sourceColumnsAboutToBeRemoved(QModelIndex,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsAboutToBeRemoved, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceColumnsAboutToBeRemoved),
 
-    connect(d->model, SIGNAL(columnsRemoved(QModelIndex,int,int)),
-            this, SLOT(_q_sourceColumnsRemoved(QModelIndex,int,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsRemoved, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceColumnsRemoved),
 
-    connect(d->model, SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-            this, SLOT(_q_sourceRowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsAboutToBeMoved, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceRowsAboutToBeMoved),
 
-    connect(d->model, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-            this, SLOT(_q_sourceRowsMoved(QModelIndex,int,int,QModelIndex,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsMoved, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceRowsMoved),
 
-    connect(d->model, SIGNAL(columnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-            this, SLOT(_q_sourceColumnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsAboutToBeMoved, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceColumnsAboutToBeMoved),
 
-    connect(d->model, SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-            this, SLOT(_q_sourceColumnsMoved(QModelIndex,int,int,QModelIndex,int)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsMoved, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceColumnsMoved),
 
-    connect(d->model, SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-            this, SLOT(_q_sourceLayoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::layoutAboutToBeChanged, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceLayoutAboutToBeChanged),
 
-    connect(d->model, SIGNAL(layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-            this, SLOT(_q_sourceLayoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::layoutChanged, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceLayoutChanged),
 
-    connect(d->model, SIGNAL(modelAboutToBeReset()), this, SLOT(_q_sourceAboutToBeReset()));
-    connect(d->model, SIGNAL(modelReset()), this, SLOT(_q_sourceReset()));
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::modelAboutToBeReset, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceAboutToBeReset),
 
+        QObjectPrivate::connect(d->model, &QAbstractItemModel::modelReset, d,
+                                &QSortFilterProxyModelPrivate::_q_sourceReset)
+    };
     endResetModel();
     if (d->update_source_sort_column() && d->dynamic_sortfilter)
         d->sort();
@@ -2620,11 +2582,12 @@ QBindable<QRegularExpression> QSortFilterProxyModel::bindableFilterRegularExpres
 void QSortFilterProxyModel::setFilterRegularExpression(const QRegularExpression &regularExpression)
 {
     Q_D(QSortFilterProxyModel);
-    Qt::beginPropertyUpdateGroup();
-    const bool regExpChanged = regularExpression != d->filter_regularexpression.value();
+    const QScopedPropertyUpdateGroup guard;
+    const bool regExpChanged =
+            regularExpression != d->filter_regularexpression.valueBypassingBindings();
     d->filter_regularexpression.removeBindingUnlessInWrapper();
     d->filter_casesensitive.removeBindingUnlessInWrapper();
-    const Qt::CaseSensitivity cs = filterCaseSensitivity();
+    const Qt::CaseSensitivity cs = d->filter_casesensitive.valueBypassingBindings();
     d->filter_about_to_be_changed();
     const Qt::CaseSensitivity updatedCs =
             regularExpression.patternOptions() & QRegularExpression::CaseInsensitiveOption
@@ -2639,7 +2602,6 @@ void QSortFilterProxyModel::setFilterRegularExpression(const QRegularExpression 
         d->filter_regularexpression.notify();
     if (cs != updatedCs)
         d->filter_casesensitive.notify();
-    Qt::endPropertyUpdateGroup();
 }
 
 /*!
@@ -2666,7 +2628,7 @@ void QSortFilterProxyModel::setFilterKeyColumn(int column)
     Q_D(QSortFilterProxyModel);
     d->filter_column.removeBindingUnlessInWrapper();
     d->filter_about_to_be_changed();
-    const auto oldColumn = d->filter_column.value();
+    const auto oldColumn = d->filter_column.valueBypassingBindings();
     d->filter_column.setValueBypassingBindings(column);
     d->filter_changed(QSortFilterProxyModelPrivate::Direction::Rows);
     if (oldColumn != column)
@@ -2715,7 +2677,7 @@ void QSortFilterProxyModel::setFilterCaseSensitivity(Qt::CaseSensitivity cs)
     if (cs == d->filter_casesensitive)
         return;
 
-    Qt::beginPropertyUpdateGroup();
+    const QScopedPropertyUpdateGroup guard;
     QRegularExpression::PatternOptions options =
             d->filter_regularexpression.value().patternOptions();
     options.setFlag(QRegularExpression::CaseInsensitiveOption, cs == Qt::CaseInsensitive);
@@ -2728,7 +2690,6 @@ void QSortFilterProxyModel::setFilterCaseSensitivity(Qt::CaseSensitivity cs)
     d->filter_changed(QSortFilterProxyModelPrivate::Direction::Rows);
     d->filter_regularexpression.notify();
     d->filter_casesensitive.notify();
-    Qt::endPropertyUpdateGroup();
 }
 
 QBindable<Qt::CaseSensitivity> QSortFilterProxyModel::bindableFilterCaseSensitivity()
@@ -2965,7 +2926,7 @@ void QSortFilterProxyModel::setSortRole(int role)
 {
     Q_D(QSortFilterProxyModel);
     d->sort_role.removeBindingUnlessInWrapper();
-    if (d->sort_role == role)
+    if (d->sort_role.valueBypassingBindings() == role)
         return;
     d->sort_role.setValueBypassingBindings(role);
     d->sort();
@@ -3004,7 +2965,7 @@ void QSortFilterProxyModel::setFilterRole(int role)
 {
     Q_D(QSortFilterProxyModel);
     d->filter_role.removeBindingUnlessInWrapper();
-    if (d->filter_role == role)
+    if (d->filter_role.valueBypassingBindings() == role)
         return;
     d->filter_about_to_be_changed();
     d->filter_role.setValueBypassingBindings(role);

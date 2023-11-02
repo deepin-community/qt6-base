@@ -1,8 +1,8 @@
-// Copyright (C) 2019 The Qt Company Ltd.
+// Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qshaderdescription_p_p.h"
-#include "qshader_p_p.h"
+#include "qshaderdescription_p.h"
+#include "qshader_p.h"
 #include <QDebug>
 #include <QDataStream>
 #include <QJsonObject>
@@ -12,10 +12,21 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \class QShaderDescription
-    \internal
+    \ingroup painting-3D
     \inmodule QtGui
+    \since 6.6
 
     \brief Describes the interface of a shader.
+
+    \warning The QRhi family of classes in the Qt Gui module, including QShader
+    and QShaderDescription, offer limited compatibility guarantees. There are
+    no source or binary compatibility guarantees for these classes, meaning the
+    API is only guaranteed to work with the Qt version the application was
+    developed against. Source incompatible changes are however aimed to be kept
+    at a minimum and will only be made in minor releases (6.7, 6.8, and so on).
+    To use these classes in an application, link to
+    \c{Qt::GuiPrivate} (if using CMake), and include the headers with the \c
+    rhi prefix, for example \c{#include <rhi/qshaderdescription.h>}.
 
     A shader typically has a set of inputs and outputs. A vertex shader for
     example has a number of input variables and may use one or more uniform
@@ -50,8 +61,6 @@ QT_BEGIN_NAMESPACE
             mat4 mvp;
             float opacity;
         } ubuf;
-
-        out gl_PerVertex { vec4 gl_Position; };
 
         void main()
         {
@@ -200,28 +209,179 @@ QT_BEGIN_NAMESPACE
     \value ImageRect
     \value ImageBuffer
     \value Struct
+    \value Half
+    \value Half2
+    \value Half3
+    \value Half4
  */
 
 /*!
-    \class QShaderDescription::InOutVariable
-    \internal
+    \enum QShaderDescription::ImageFormat
+    Image format.
+
+    \value ImageFormatUnknown
+    \value ImageFormatRgba32f
+    \value ImageFormatRgba16f
+    \value ImageFormatR32f
+    \value ImageFormatRgba8
+    \value ImageFormatRgba8Snorm
+    \value ImageFormatRg32f
+    \value ImageFormatRg16f
+    \value ImageFormatR11fG11fB10f
+    \value ImageFormatR16f
+    \value ImageFormatRgba16
+    \value ImageFormatRgb10A2
+    \value ImageFormatRg16
+    \value ImageFormatRg8
+    \value ImageFormatR16
+    \value ImageFormatR8
+    \value ImageFormatRgba16Snorm
+    \value ImageFormatRg16Snorm
+    \value ImageFormatRg8Snorm
+    \value ImageFormatR16Snorm
+    \value ImageFormatR8Snorm
+    \value ImageFormatRgba32i
+    \value ImageFormatRgba16i
+    \value ImageFormatRgba8i
+    \value ImageFormatR32i
+    \value ImageFormatRg32i
+    \value ImageFormatRg16i
+    \value ImageFormatRg8i
+    \value ImageFormatR16i
+    \value ImageFormatR8i
+    \value ImageFormatRgba32ui
+    \value ImageFormatRgba16ui
+    \value ImageFormatRgba8ui
+    \value ImageFormatR32ui
+    \value ImageFormatRgb10a2ui
+    \value ImageFormatRg32ui
+    \value ImageFormatRg16ui
+    \value ImageFormatRg8ui
+    \value ImageFormatR16ui
+    \value ImageFormatR8ui
+ */
+
+/*!
+    \enum QShaderDescription::ImageFlag
+    Image flags.
+
+    \value ReadOnlyImage
+    \value WriteOnlyImage
+ */
+
+/*!
+    \enum QShaderDescription::QualifierFlag
+    Qualifier flags.
+
+    \value QualifierReadOnly
+    \value QualifierWriteOnly
+    \value QualifierCoherent
+    \value QualifierVolatile
+    \value QualifierRestrict
+ */
+
+/*!
+    \struct QShaderDescription::InOutVariable
     \inmodule QtGui
+    \since 6.6
 
     \brief Describes an input or output variable in the shader.
+
+    \note This is a RHI API with limited compatibility guarantees, see \l QShaderDescription
+    for details.
  */
 
 /*!
-    \class QShaderDescription::BlockVariable
-    \internal
+    \variable QShaderDescription::InOutVariable::name
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::type
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::location
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::binding
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::descriptorSet
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::imageFormat
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::imageFlags
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::arrayDims
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::perPatch
+ */
+
+/*!
+    \variable QShaderDescription::InOutVariable::structMembers
+ */
+
+/*!
+    \struct QShaderDescription::BlockVariable
     \inmodule QtGui
+    \since 6.6
 
     \brief Describes a member of a uniform or push constant block.
+
+    \note This is a RHI API with limited compatibility guarantees, see \l QShaderDescription
+    for details.
  */
 
 /*!
-    \class QShaderDescription::UniformBlock
-    \internal
+    \variable QShaderDescription::BlockVariable::name
+ */
+
+/*!
+    \variable QShaderDescription::BlockVariable::type
+ */
+
+/*!
+    \variable QShaderDescription::BlockVariable::offset
+ */
+
+/*!
+    \variable QShaderDescription::BlockVariable::size
+ */
+
+/*!
+    \variable QShaderDescription::BlockVariable::arrayDims
+ */
+
+/*!
+    \variable QShaderDescription::BlockVariable::arrayStride
+ */
+
+/*!
+    \variable QShaderDescription::BlockVariable::matrixStride
+ */
+
+/*!
+    \variable QShaderDescription::BlockVariable::matrixIsRowMajor
+ */
+
+/*!
+    \variable QShaderDescription::BlockVariable::structMembers
+ */
+
+/*!
+    \struct QShaderDescription::UniformBlock
     \inmodule QtGui
+    \since 6.6
 
     \brief Describes a uniform block.
 
@@ -229,22 +389,157 @@ QT_BEGIN_NAMESPACE
     (like GLSL 120 or GLSL/ES 100), uniform blocks are replaced with ordinary
     uniforms in a struct. The name of the struct, and so the prefix for the
     uniforms generated from the block members, is given by structName.
+
+    \note This is a RHI API with limited compatibility guarantees, see \l QShaderDescription
+    for details.
  */
 
 /*!
-    \class QShaderDescription::PushConstantBlock
-    \internal
+    \variable QShaderDescription::UniformBlock::blockName
+ */
+
+/*!
+    \variable QShaderDescription::UniformBlock::structName
+ */
+
+/*!
+    \variable QShaderDescription::UniformBlock::size
+ */
+
+/*!
+    \variable QShaderDescription::UniformBlock::binding
+ */
+
+/*!
+    \variable QShaderDescription::UniformBlock::descriptorSet
+ */
+
+/*!
+    \variable QShaderDescription::UniformBlock::members
+ */
+
+/*!
+    \struct QShaderDescription::PushConstantBlock
     \inmodule QtGui
+    \since 6.6
 
     \brief Describes a push constant block.
+
+    \note This is a RHI API with limited compatibility guarantees, see \l QShaderDescription
+    for details.
  */
 
 /*!
-    \class QShaderDescription::StorageBlock
-    \internal
+    \variable QShaderDescription::PushConstantBlock::name
+ */
+
+/*!
+    \variable QShaderDescription::PushConstantBlock::size
+ */
+
+/*!
+    \variable QShaderDescription::PushConstantBlock::members
+ */
+
+/*!
+    \struct QShaderDescription::StorageBlock
     \inmodule QtGui
+    \since 6.6
 
     \brief Describes a shader storage block.
+
+    \note This is a RHI API with limited compatibility guarantees, see \l QShaderDescription
+    for details.
+ */
+
+/*!
+    \variable QShaderDescription::StorageBlock::blockName
+ */
+
+/*!
+    \variable QShaderDescription::StorageBlock::instanceName
+ */
+
+/*!
+    \variable QShaderDescription::StorageBlock::knownSize
+ */
+
+/*!
+    \variable QShaderDescription::StorageBlock::binding
+ */
+
+/*!
+    \variable QShaderDescription::StorageBlock::descriptorSet
+ */
+
+/*!
+    \variable QShaderDescription::StorageBlock::members
+ */
+
+/*!
+    \variable QShaderDescription::StorageBlock::runtimeArrayStride
+ */
+
+/*!
+    \variable QShaderDescription::StorageBlock::qualifierFlags
+ */
+
+/*!
+    \struct QShaderDescription::BuiltinVariable
+    \inmodule QtGui
+    \since 6.6
+
+    \brief Describes a built-in variable.
+
+    \note This is a RHI API with limited compatibility guarantees, see \l QShaderDescription
+    for details.
+ */
+
+/*!
+    \variable QShaderDescription::BuiltinVariable::type
+ */
+
+/*!
+    \variable QShaderDescription::BuiltinVariable::varType
+ */
+
+/*!
+    \variable QShaderDescription::BuiltinVariable::arrayDims
+ */
+
+/*!
+    \enum QShaderDescription::BuiltinType
+    Built-in variable type.
+
+    \value PositionBuiltin
+    \value PointSizeBuiltin
+    \value ClipDistanceBuiltin
+    \value CullDistanceBuiltin
+    \value VertexIdBuiltin
+    \value InstanceIdBuiltin
+    \value PrimitiveIdBuiltin
+    \value InvocationIdBuiltin
+    \value LayerBuiltin
+    \value ViewportIndexBuiltin
+    \value TessLevelOuterBuiltin
+    \value TessLevelInnerBuiltin
+    \value TessCoordBuiltin
+    \value PatchVerticesBuiltin
+    \value FragCoordBuiltin
+    \value PointCoordBuiltin
+    \value FrontFacingBuiltin
+    \value SampleIdBuiltin
+    \value SamplePositionBuiltin
+    \value SampleMaskBuiltin
+    \value FragDepthBuiltin
+    \value NumWorkGroupsBuiltin
+    \value WorkgroupSizeBuiltin
+    \value WorkgroupIdBuiltin
+    \value LocalInvocationIdBuiltin
+    \value GlobalInvocationIdBuiltin
+    \value LocalInvocationIndexBuiltin
+    \value VertexIndexBuiltin
+    \value InstanceIndexBuiltin
  */
 
 /*!
@@ -267,7 +562,7 @@ void QShaderDescription::detach()
 }
 
 /*!
-    \internal
+    Constructs a copy of \a other.
  */
 QShaderDescription::QShaderDescription(const QShaderDescription &other)
     : d(other.d)
@@ -276,7 +571,7 @@ QShaderDescription::QShaderDescription(const QShaderDescription &other)
 }
 
 /*!
-    \internal
+    Assigns \a other to this object.
  */
 QShaderDescription &QShaderDescription::operator=(const QShaderDescription &other)
 {
@@ -302,7 +597,8 @@ bool QShaderDescription::isValid() const
     return !d->inVars.isEmpty() || !d->outVars.isEmpty()
         || !d->uniformBlocks.isEmpty() || !d->pushConstantBlocks.isEmpty() || !d->storageBlocks.isEmpty()
         || !d->combinedImageSamplers.isEmpty() || !d->storageImages.isEmpty()
-        || !d->separateImages.isEmpty() || !d->separateSamplers.isEmpty();
+        || !d->separateImages.isEmpty() || !d->separateSamplers.isEmpty()
+        || !d->inBuiltins.isEmpty() || !d->outBuiltins.isEmpty();
 }
 
 /*!
@@ -318,13 +614,14 @@ QByteArray QShaderDescription::toJson() const
 }
 
 /*!
-    Serializes this QShaderDescription to \a stream.
+    Serializes this QShaderDescription to \a stream. \a version specifies
+    the qsb version.
 
     \sa deserialize(), toJson()
  */
-void QShaderDescription::serialize(QDataStream *stream) const
+void QShaderDescription::serialize(QDataStream *stream, int version) const
 {
-    d->writeToStream(stream);
+    d->writeToStream(stream, version);
 }
 
 /*!
@@ -402,6 +699,7 @@ QList<QShaderDescription::PushConstantBlock> QShaderDescription::pushConstantBlo
             "blockName": "StuffSsbo",
             "instanceName": "buf",
             "knownSize": 16,
+            "runtimeArrayStride": 16
             "members": [
                 {
                     "name": "whatever",
@@ -439,7 +737,10 @@ QList<QShaderDescription::PushConstantBlock> QShaderDescription::pushConstantBlo
 
     \note The size of the last member in the storage block is undefined. This shows
     up as \c size 0 and an array dimension of \c{[0]}. The storage block's \c knownSize
-    excludes the size of the last member since that will only be known at run time.
+    excludes the size of the last member since that will only be known at run time. The
+    stride in bytes between array items for a last member with undefined array size is
+    \c runtimeArrayStride.  This value is determined according to the specified buffer
+    memory layout standard (std140, std430) rules.
 
     \note SSBOs are not available with some graphics APIs, such as, OpenGL 2.x or
     OpenGL ES older than 3.1.
@@ -514,7 +815,26 @@ QList<QShaderDescription::InOutVariable> QShaderDescription::storageImages() con
 }
 
 /*!
-    Returns the local size of a compute shader.
+    \return the list of active builtins used as input. For example, a
+    tessellation evaluation shader reading the value of gl_TessCoord and
+    gl_Position will have TessCoordBuiltin and PositionBuiltin listed here.
+ */
+QVector<QShaderDescription::BuiltinVariable> QShaderDescription::inputBuiltinVariables() const
+{
+    return d->inBuiltins;
+}
+
+/*!
+    \return the list of active built-in variables used as input. For example, a
+    vertex shader will very often have PositionBuiltin as an output built-in.
+ */
+QVector<QShaderDescription::BuiltinVariable> QShaderDescription::outputBuiltinVariables() const
+{
+    return d->outBuiltins;
+}
+
+/*!
+    \return the local size of a compute shader.
 
     For example, for a compute shader with the following declaration the
     function returns { 256, 16, 1}.
@@ -526,6 +846,101 @@ QList<QShaderDescription::InOutVariable> QShaderDescription::storageImages() con
 std::array<uint, 3> QShaderDescription::computeShaderLocalSize() const
 {
     return d->localSize;
+}
+
+/*!
+    \return the number of output vertices.
+
+    For example, for a tessellation control shader with the following
+    declaration the function returns 3.
+
+    \badcode
+        layout(vertices = 3) out;
+    \endcode
+ */
+uint QShaderDescription::tessellationOutputVertexCount() const
+{
+    return d->tessOutVertCount;
+}
+
+/*!
+    \enum QShaderDescription::TessellationMode
+
+    \value UnknownTessellationMode
+    \value TrianglesTessellationMode
+    \value QuadTessellationMode
+    \value IsolineTessellationMode
+ */
+
+/*!
+    \return the tessellation execution mode for a tessellation control or
+    evaluation shader.
+
+    When not set, the returned value is UnknownTessellationMode.
+
+    For example, for a tessellation evaluation shader with the following
+    declaration the function returns TrianglesTessellationMode.
+
+    \badcode
+        layout(triangles) in;
+    \endcode
+ */
+QShaderDescription::TessellationMode QShaderDescription::tessellationMode() const
+{
+    return d->tessMode;
+}
+
+/*!
+    \enum QShaderDescription::TessellationWindingOrder
+
+    \value UnknownTessellationWindingOrder
+    \value CwTessellationWindingOrder
+    \value CcwTessellationWindingOrder
+ */
+
+/*!
+    \return the tessellation winding order for a tessellation control or
+    evaluation shader.
+
+    When not set, the returned value is UnknownTessellationWindingOrder.
+
+    For example, for a tessellation evaluation shader with the following
+    declaration the function returns CcwTessellationWindingOrder.
+
+    \badcode
+        layout(triangles, fractional_odd_spacing, ccw) in;
+    \endcode
+ */
+QShaderDescription::TessellationWindingOrder QShaderDescription::tessellationWindingOrder() const
+{
+    return d->tessWind;
+}
+
+/*!
+    \enum QShaderDescription::TessellationPartitioning
+
+    \value UnknownTessellationPartitioning
+    \value EqualTessellationPartitioning
+    \value FractionalEvenTessellationPartitioning
+    \value FractionalOddTessellationPartitioning
+ */
+
+/*!
+    \return the tessellation partitioning mode for a tessellation control or
+    evaluation shader.
+
+    When not set, the returned value is UnknownTessellationPartitioning.
+
+    For example, for a tessellation evaluation shader with the following
+    declaration the function returns FractionalOddTessellationPartitioning.
+
+    \badcode
+        layout(triangles, fractional_odd_spacing, ccw) in;
+    \endcode
+ */
+QShaderDescription::TessellationPartitioning QShaderDescription::tessellationPartitioning() const
+{
+    return d->tessPart;
 }
 
 static const struct TypeTab {
@@ -604,10 +1019,14 @@ static const struct TypeTab {
     { "image3DArray", QShaderDescription::Image3DArray },
     { "imageCubeArray", QShaderDescription::ImageCubeArray },
     { "imageRect", QShaderDescription::ImageRect },
-    { "imageBuffer", QShaderDescription::ImageBuffer }
-};
+    { "imageBuffer", QShaderDescription::ImageBuffer },
 
-static QLatin1StringView typeStr(const QShaderDescription::VariableType &t)
+    { "half", QShaderDescription::Half },
+    { "half2", QShaderDescription::Half2 },
+    { "half3", QShaderDescription::Half3 },
+    { "half4", QShaderDescription::Half4 } };
+
+static QLatin1StringView typeStr(QShaderDescription::VariableType t)
 {
     for (size_t i = 0; i < sizeof(typeTab) / sizeof(TypeTab); ++i) {
         if (typeTab[i].v == t)
@@ -662,11 +1081,111 @@ static const struct ImageFormatTab {
     { "r8ui", QShaderDescription::ImageFormatR8ui }
 };
 
-static QLatin1StringView imageFormatStr(const QShaderDescription::ImageFormat &f)
+static QLatin1StringView imageFormatStr(QShaderDescription::ImageFormat f)
 {
     for (size_t i = 0; i < sizeof(imageFormatTab) / sizeof(ImageFormatTab); ++i) {
         if (imageFormatTab[i].v == f)
             return QLatin1StringView(imageFormatTab[i].k);
+    }
+    return {};
+}
+
+static const struct BuiltinTypeTab {
+    const char k[21];
+    QShaderDescription::BuiltinType v;
+} builtinTypeTab[] = {
+    { "Position", QShaderDescription::PositionBuiltin },
+    { "PointSize", QShaderDescription::PointSizeBuiltin },
+    { "ClipDistance", QShaderDescription::ClipDistanceBuiltin },
+    { "CullDistance", QShaderDescription::CullDistanceBuiltin },
+    { "VertexId", QShaderDescription::VertexIdBuiltin },
+    { "InstanceId", QShaderDescription::InstanceIdBuiltin },
+    { "PrimitiveId", QShaderDescription::PrimitiveIdBuiltin },
+    { "InvocationId", QShaderDescription::InvocationIdBuiltin },
+    { "Layer", QShaderDescription::LayerBuiltin },
+    { "ViewportIndex", QShaderDescription::ViewportIndexBuiltin },
+    { "TessLevelOuter", QShaderDescription::TessLevelOuterBuiltin },
+    { "TessLevelInner", QShaderDescription::TessLevelInnerBuiltin },
+    { "TessCoord", QShaderDescription::TessCoordBuiltin },
+    { "PatchVertices", QShaderDescription::PatchVerticesBuiltin },
+    { "FragCoord", QShaderDescription::FragCoordBuiltin },
+    { "PointCoord", QShaderDescription::PointCoordBuiltin },
+    { "FrontFacing", QShaderDescription::FrontFacingBuiltin },
+    { "SampleId", QShaderDescription::SampleIdBuiltin },
+    { "SamplePosition", QShaderDescription::SamplePositionBuiltin },
+    { "SampleMask", QShaderDescription::SampleMaskBuiltin },
+    { "FragDepth", QShaderDescription::FragDepthBuiltin },
+    { "NumWorkGroups", QShaderDescription::NumWorkGroupsBuiltin },
+    { "WorkgroupSize", QShaderDescription::WorkgroupSizeBuiltin },
+    { "WorkgroupId", QShaderDescription::WorkgroupIdBuiltin },
+    { "LocalInvocationId", QShaderDescription::LocalInvocationIdBuiltin },
+    { "GlobalInvocationId", QShaderDescription::GlobalInvocationIdBuiltin },
+    { "LocalInvocationIndex", QShaderDescription::LocalInvocationIndexBuiltin },
+    { "VertexIndex", QShaderDescription::VertexIndexBuiltin },
+    { "InstanceIndex", QShaderDescription::InstanceIndexBuiltin }
+};
+
+static QLatin1StringView builtinTypeStr(QShaderDescription::BuiltinType t)
+{
+    for (size_t i = 0; i < sizeof(builtinTypeTab) / sizeof(BuiltinTypeTab); ++i) {
+        if (builtinTypeTab[i].v == t)
+            return QLatin1StringView(builtinTypeTab[i].k);
+    }
+    return {};
+}
+
+static const struct TessellationModeTab {
+    const char k[10];
+    QShaderDescription::TessellationMode v;
+} tessellationModeTab[] {
+    { "unknown", QShaderDescription::UnknownTessellationMode },
+    { "triangles", QShaderDescription::TrianglesTessellationMode },
+    { "quad", QShaderDescription::QuadTessellationMode },
+    { "isoline", QShaderDescription::IsolineTessellationMode }
+};
+
+static QLatin1StringView tessModeStr(QShaderDescription::TessellationMode mode)
+{
+    for (size_t i = 0; i < sizeof(tessellationModeTab) / sizeof(TessellationModeTab); ++i) {
+        if (tessellationModeTab[i].v == mode)
+            return QLatin1StringView(tessellationModeTab[i].k);
+    }
+    return {};
+}
+
+static const struct TessellationWindingOrderTab {
+    const char k[8];
+    QShaderDescription::TessellationWindingOrder v;
+} tessellationWindingOrderTab[] {
+    { "unknown", QShaderDescription::UnknownTessellationWindingOrder },
+    { "cw", QShaderDescription::CwTessellationWindingOrder },
+    { "ccw", QShaderDescription::CcwTessellationWindingOrder }
+};
+
+static QLatin1StringView tessWindStr(QShaderDescription::TessellationWindingOrder w)
+{
+    for (size_t i = 0; i < sizeof(tessellationWindingOrderTab) / sizeof(TessellationWindingOrderTab); ++i) {
+        if (tessellationWindingOrderTab[i].v == w)
+            return QLatin1StringView(tessellationWindingOrderTab[i].k);
+    }
+    return {};
+}
+
+static const struct TessellationPartitioningTab {
+    const char k[24];
+    QShaderDescription::TessellationPartitioning v;
+} tessellationPartitioningTab[] {
+    { "unknown", QShaderDescription::UnknownTessellationPartitioning },
+    { "equal_spacing", QShaderDescription::EqualTessellationPartitioning },
+    { "fractional_even_spacing", QShaderDescription::FractionalEvenTessellationPartitioning },
+    { "fractional_odd_spacing", QShaderDescription::FractionalOddTessellationPartitioning }
+};
+
+static QLatin1StringView tessPartStr(QShaderDescription::TessellationPartitioning p)
+{
+    for (size_t i = 0; i < sizeof(tessellationPartitioningTab) / sizeof(TessellationPartitioningTab); ++i) {
+        if (tessellationPartitioningTab[i].v == p)
+            return QLatin1StringView(tessellationPartitioningTab[i].k);
     }
     return {};
 }
@@ -688,6 +1207,8 @@ QDebug operator<<(QDebug dbg, const QShaderDescription &sd)
                       << " storageImages " << d->storageImages
                       << " separateImages " << d->separateImages
                       << " separateSamplers " << d->separateSamplers
+                      << " inBuiltins " << d->inBuiltins
+                      << " outBuiltins " << d->outBuiltins
                       << ')';
     } else {
         dbg.nospace() << "QShaderDescription(null)";
@@ -700,6 +1221,8 @@ QDebug operator<<(QDebug dbg, const QShaderDescription::InOutVariable &var)
 {
     QDebugStateSaver saver(dbg);
     dbg.nospace() << "InOutVariable(" << typeStr(var.type) << ' ' << var.name;
+    if (var.perPatch)
+        dbg.nospace() << " per-patch";
     if (var.location >= 0)
         dbg.nospace() << " location=" << var.location;
     if (var.binding >= 0)
@@ -712,6 +1235,8 @@ QDebug operator<<(QDebug dbg, const QShaderDescription::InOutVariable &var)
         dbg.nospace() << " imageFlags=" << var.imageFlags;
     if (!var.arrayDims.isEmpty())
         dbg.nospace() << " array=" << var.arrayDims;
+    if (!var.structMembers.isEmpty())
+        dbg.nospace() << " structMembers=" << var.structMembers;
     dbg.nospace() << ')';
     return dbg;
 }
@@ -719,8 +1244,10 @@ QDebug operator<<(QDebug dbg, const QShaderDescription::InOutVariable &var)
 QDebug operator<<(QDebug dbg, const QShaderDescription::BlockVariable &var)
 {
     QDebugStateSaver saver(dbg);
-    dbg.nospace() << "BlockVariable(" << typeStr(var.type) << ' ' << var.name
-                  << " offset=" << var.offset << " size=" << var.size;
+    dbg.nospace() << "BlockVariable(" << typeStr(var.type) << ' ' << var.name;
+    if (var.offset != -1)
+        dbg.nospace() << " offset=" << var.offset;
+    dbg.nospace() << " size=" << var.size;
     if (!var.arrayDims.isEmpty())
         dbg.nospace() << " array=" << var.arrayDims;
     if (var.arrayStride)
@@ -765,7 +1292,22 @@ QDebug operator<<(QDebug dbg, const QShaderDescription::StorageBlock &blk)
         dbg.nospace() << " binding=" << blk.binding;
     if (blk.descriptorSet >= 0)
         dbg.nospace() << " set=" << blk.descriptorSet;
+    if (blk.runtimeArrayStride)
+        dbg.nospace() << " runtimeArrayStride=" << blk.runtimeArrayStride;
+    if (blk.qualifierFlags)
+        dbg.nospace() << " qualifierFlags=" << blk.qualifierFlags;
     dbg.nospace() << ' ' << blk.members << ')';
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, const QShaderDescription::BuiltinVariable &builtin)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace() << "BuiltinVariable(type=" << builtinTypeStr(builtin.type);
+    dbg.nospace() << " varType=" << typeStr(builtin.varType);
+    if (!builtin.arrayDims.isEmpty())
+        dbg.nospace() << " array=" << builtin.arrayDims;
+    dbg.nospace() << ")";
     return dbg;
 }
 #endif
@@ -776,6 +1318,7 @@ JSON_KEY(type)
 JSON_KEY(location)
 JSON_KEY(binding)
 JSON_KEY(set)
+JSON_KEY(perPatch)
 JSON_KEY(imageFormat)
 JSON_KEY(imageFlags)
 JSON_KEY(offset)
@@ -797,9 +1340,17 @@ JSON_KEY(pushConstantBlocks)
 JSON_KEY(storageBlocks)
 JSON_KEY(combinedImageSamplers)
 JSON_KEY(storageImages)
-JSON_KEY(localSize)
+JSON_KEY(inBuiltins)
+JSON_KEY(outBuiltins)
+JSON_KEY(computeLocalSize)
+JSON_KEY(tessellationOutputVertexCount)
+JSON_KEY(tessellationMode)
+JSON_KEY(tessellationWindingOrder)
+JSON_KEY(tessellationPartitioning)
 JSON_KEY(separateImages)
 JSON_KEY(separateSamplers)
+JSON_KEY(runtimeArrayStride)
+JSON_KEY(qualifierFlags)
 #undef JSON_KEY
 
 static void addDeco(QJsonObject *obj, const QShaderDescription::InOutVariable &v)
@@ -810,6 +1361,8 @@ static void addDeco(QJsonObject *obj, const QShaderDescription::InOutVariable &v
         (*obj)[bindingKey()] = v.binding;
     if (v.descriptorSet >= 0)
         (*obj)[setKey()] = v.descriptorSet;
+    if (v.perPatch)
+        (*obj)[perPatchKey()] = v.perPatch;
     if (v.imageFormat != QShaderDescription::ImageFormatUnknown)
         (*obj)[imageFormatKey()] = imageFormatStr(v.imageFormat);
     if (v.imageFlags)
@@ -822,7 +1375,7 @@ static void addDeco(QJsonObject *obj, const QShaderDescription::InOutVariable &v
     }
 }
 
-static void serializeDecorations(QDataStream *stream, const QShaderDescription::InOutVariable &v)
+static void serializeDecorations(QDataStream *stream, const QShaderDescription::InOutVariable &v, int version)
 {
     (*stream) << v.location;
     (*stream) << v.binding;
@@ -832,22 +1385,19 @@ static void serializeDecorations(QDataStream *stream, const QShaderDescription::
     (*stream) << int(v.arrayDims.size());
     for (int dim : v.arrayDims)
         (*stream) << dim;
+    if (version > QShaderPrivate::QSB_VERSION_WITHOUT_NATIVE_SHADER_INFO)
+        (*stream) << quint8(v.perPatch);
 }
 
-static QJsonObject inOutObject(const QShaderDescription::InOutVariable &v)
+static void serializeBuiltinVar(QDataStream *stream, const QShaderDescription::BuiltinVariable &v, int version)
 {
-    QJsonObject obj;
-    obj[nameKey()] = QString::fromUtf8(v.name);
-    obj[typeKey()] = typeStr(v.type);
-    addDeco(&obj, v);
-    return obj;
-}
-
-static void serializeInOutVar(QDataStream *stream, const QShaderDescription::InOutVariable &v)
-{
-    (*stream) << QString::fromUtf8(v.name);
     (*stream) << int(v.type);
-    serializeDecorations(stream, v);
+    if (version > QShaderPrivate::QSB_VERSION_WITHOUT_INPUT_OUTPUT_INTERFACE_BLOCKS) {
+        (*stream) << int(v.varType);
+        (*stream) << int(v.arrayDims.size());
+        for (int dim : v.arrayDims)
+            (*stream) << dim;
+    }
 }
 
 static QJsonObject blockMemberObject(const QShaderDescription::BlockVariable &v)
@@ -855,7 +1405,8 @@ static QJsonObject blockMemberObject(const QShaderDescription::BlockVariable &v)
     QJsonObject obj;
     obj[nameKey()] = QString::fromUtf8(v.name);
     obj[typeKey()] = typeStr(v.type);
-    obj[offsetKey()] = v.offset;
+    if (v.offset != -1)
+        obj[offsetKey()] = v.offset;
     obj[sizeKey()] = v.size;
     if (!v.arrayDims.isEmpty()) {
         QJsonArray dimArr;
@@ -878,6 +1429,36 @@ static QJsonObject blockMemberObject(const QShaderDescription::BlockVariable &v)
     return obj;
 }
 
+static QJsonObject inOutObject(const QShaderDescription::InOutVariable &v)
+{
+    QJsonObject obj;
+    obj[nameKey()] = QString::fromUtf8(v.name);
+    obj[typeKey()] = typeStr(v.type);
+    addDeco(&obj, v);
+    if (!v.structMembers.isEmpty()) {
+        QJsonArray arr;
+        for (const QShaderDescription::BlockVariable &sv : v.structMembers)
+            arr.append(blockMemberObject(sv));
+        obj[structMembersKey()] = arr;
+    }
+    return obj;
+}
+
+static QJsonObject builtinObject(const QShaderDescription::BuiltinVariable &v)
+{
+    QJsonObject obj;
+
+    obj[nameKey()] = builtinTypeStr(v.type);
+    obj[typeKey()] = typeStr(v.varType);
+    if (!v.arrayDims.isEmpty()) {
+        QJsonArray dimArr;
+        for (int dim : v.arrayDims)
+            dimArr.append(dim);
+        obj[arrayDimsKey()] = dimArr;
+    }
+    return obj;
+}
+
 static void serializeBlockMemberVar(QDataStream *stream, const QShaderDescription::BlockVariable &v)
 {
     (*stream) << QString::fromUtf8(v.name);
@@ -893,6 +1474,19 @@ static void serializeBlockMemberVar(QDataStream *stream, const QShaderDescriptio
     (*stream) << int(v.structMembers.size());
     for (const QShaderDescription::BlockVariable &sv : v.structMembers)
         serializeBlockMemberVar(stream, sv);
+}
+
+static void serializeInOutVar(QDataStream *stream, const QShaderDescription::InOutVariable &v,
+                              int version)
+{
+    (*stream) << QString::fromUtf8(v.name);
+    (*stream) << int(v.type);
+    serializeDecorations(stream, v, version);
+    if (version > QShaderPrivate::QSB_VERSION_WITHOUT_INPUT_OUTPUT_INTERFACE_BLOCKS) {
+        (*stream) << int(v.structMembers.size());
+        for (const QShaderDescription::BlockVariable &sv : v.structMembers)
+            serializeBlockMemberVar(stream, sv);
+    }
 }
 
 QJsonDocument QShaderDescriptionPrivate::makeDoc()
@@ -954,6 +1548,10 @@ QJsonDocument QShaderDescriptionPrivate::makeDoc()
             jstorageBlock[bindingKey()] = b.binding;
         if (b.descriptorSet >= 0)
             jstorageBlock[setKey()] = b.descriptorSet;
+        if (b.runtimeArrayStride)
+            jstorageBlock[runtimeArrayStrideKey()] = b.runtimeArrayStride;
+        if (b.qualifierFlags)
+            jstorageBlock[qualifierFlagsKey()] = int(b.qualifierFlags);
         QJsonArray members;
         for (const QShaderDescription::BlockVariable &v : b.members)
             members.append(blockMemberObject(v));
@@ -985,10 +1583,36 @@ QJsonDocument QShaderDescriptionPrivate::makeDoc()
     if (!jstorageImages.isEmpty())
         root[storageImagesKey()] = jstorageImages;
 
-    QJsonArray jlocalSize;
-    for (int i = 0; i < 3; ++i)
-        jlocalSize.append(QJsonValue(int(localSize[i])));
-    root[localSizeKey()] = jlocalSize;
+    QJsonArray jinBuiltins;
+    for (const QShaderDescription::BuiltinVariable &v : std::as_const(inBuiltins))
+        jinBuiltins.append(builtinObject(v));
+    if (!jinBuiltins.isEmpty())
+        root[inBuiltinsKey()] = jinBuiltins;
+
+    QJsonArray joutBuiltins;
+    for (const QShaderDescription::BuiltinVariable &v : std::as_const(outBuiltins))
+        joutBuiltins.append(builtinObject(v));
+    if (!joutBuiltins.isEmpty())
+        root[outBuiltinsKey()] = joutBuiltins;
+
+    if (localSize[0] || localSize[1] || localSize[2]) {
+        QJsonArray jlocalSize;
+        for (size_t i = 0; i < 3; ++i)
+            jlocalSize.append(QJsonValue(int(localSize[i])));
+        root[computeLocalSizeKey()] = jlocalSize;
+    }
+
+    if (tessOutVertCount)
+        root[tessellationOutputVertexCountKey()] = int(tessOutVertCount);
+
+    if (tessMode != QShaderDescription::UnknownTessellationMode)
+        root[tessellationModeKey()] = tessModeStr(tessMode);
+
+    if (tessWind != QShaderDescription::UnknownTessellationWindingOrder)
+        root[tessellationWindingOrderKey()] = tessWindStr(tessWind);
+
+    if (tessPart != QShaderDescription::UnknownTessellationPartitioning)
+        root[tessellationPartitioningKey()] = tessPartStr(tessPart);
 
     QJsonArray jseparateImages;
     for (const QShaderDescription::InOutVariable &v : std::as_const(separateImages)) {
@@ -1015,15 +1639,15 @@ QJsonDocument QShaderDescriptionPrivate::makeDoc()
     return QJsonDocument(root);
 }
 
-void QShaderDescriptionPrivate::writeToStream(QDataStream *stream)
+void QShaderDescriptionPrivate::writeToStream(QDataStream *stream, int version)
 {
     (*stream) << int(inVars.size());
     for (const QShaderDescription::InOutVariable &v : std::as_const(inVars))
-        serializeInOutVar(stream, v);
+        serializeInOutVar(stream, v, version);
 
     (*stream) << int(outVars.size());
     for (const QShaderDescription::InOutVariable &v : std::as_const(outVars))
-        serializeInOutVar(stream, v);
+        serializeInOutVar(stream, v, version);
 
     (*stream) << int(uniformBlocks.size());
     for (const QShaderDescription::UniformBlock &b : uniformBlocks) {
@@ -1056,37 +1680,56 @@ void QShaderDescriptionPrivate::writeToStream(QDataStream *stream)
         (*stream) << int(b.members.size());
         for (const QShaderDescription::BlockVariable &v : b.members)
             serializeBlockMemberVar(stream, v);
+        if (version > QShaderPrivate::QSB_VERSION_WITHOUT_EXTENDED_STORAGE_BUFFER_INFO) {
+            (*stream) << b.runtimeArrayStride;
+            (*stream) << b.qualifierFlags;
+        }
     }
 
     (*stream) << int(combinedImageSamplers.size());
     for (const QShaderDescription::InOutVariable &v : std::as_const(combinedImageSamplers)) {
         (*stream) << QString::fromUtf8(v.name);
         (*stream) << int(v.type);
-        serializeDecorations(stream, v);
+        serializeDecorations(stream, v, version);
     }
 
     (*stream) << int(storageImages.size());
     for (const QShaderDescription::InOutVariable &v : std::as_const(storageImages)) {
         (*stream) << QString::fromUtf8(v.name);
         (*stream) << int(v.type);
-        serializeDecorations(stream, v);
+        serializeDecorations(stream, v, version);
     }
 
     for (size_t i = 0; i < 3; ++i)
-        (*stream) << localSize[i];
+        (*stream) << quint32(localSize[i]);
 
     (*stream) << int(separateImages.size());
     for (const QShaderDescription::InOutVariable &v : std::as_const(separateImages)) {
         (*stream) << QString::fromUtf8(v.name);
         (*stream) << int(v.type);
-        serializeDecorations(stream, v);
+        serializeDecorations(stream, v, version);
     }
 
     (*stream) << int(separateSamplers.size());
     for (const QShaderDescription::InOutVariable &v : std::as_const(separateSamplers)) {
         (*stream) << QString::fromUtf8(v.name);
         (*stream) << int(v.type);
-        serializeDecorations(stream, v);
+        serializeDecorations(stream, v, version);
+    }
+
+    if (version > QShaderPrivate::QSB_VERSION_WITHOUT_NATIVE_SHADER_INFO) {
+        (*stream) << quint32(tessOutVertCount);
+        (*stream) << quint32(tessMode);
+        (*stream) << quint32(tessWind);
+        (*stream) << quint32(tessPart);
+
+        (*stream) << int(inBuiltins.size());
+        for (const QShaderDescription::BuiltinVariable &v : std::as_const(inBuiltins))
+            serializeBuiltinVar(stream, v, version);
+
+        (*stream) << int(outBuiltins.size());
+        for (const QShaderDescription::BuiltinVariable &v : std::as_const(outBuiltins))
+            serializeBuiltinVar(stream, v, version);
     }
 }
 
@@ -1107,18 +1750,29 @@ static void deserializeDecorations(QDataStream *stream, int version, QShaderDesc
         for (int i = 0; i < f; ++i)
             (*stream) >> v->arrayDims[i];
     }
+
+    if (version > QShaderPrivate::QSB_VERSION_WITHOUT_NATIVE_SHADER_INFO) {
+        quint8 b;
+        (*stream) >> b;
+        v->perPatch = b;
+    }
 }
 
-static QShaderDescription::InOutVariable deserializeInOutVar(QDataStream *stream, int version)
+static QShaderDescription::BuiltinVariable deserializeBuiltinVar(QDataStream *stream, int version)
 {
-    QShaderDescription::InOutVariable var;
-    QString tmp;
-    (*stream) >> tmp;
-    var.name = tmp.toUtf8();
+    QShaderDescription::BuiltinVariable var;
     int t;
     (*stream) >> t;
-    var.type = QShaderDescription::VariableType(t);
-    deserializeDecorations(stream, version, &var);
+    var.type = QShaderDescription::BuiltinType(t);
+    if (version > QShaderPrivate::QSB_VERSION_WITHOUT_INPUT_OUTPUT_INTERFACE_BLOCKS) {
+        (*stream) >> t;
+        var.varType = QShaderDescription::VariableType(t);
+        int count;
+        (*stream) >> count;
+        var.arrayDims.resize(count);
+        for (int i = 0; i < count; ++i)
+            (*stream) >> var.arrayDims[i];
+    }
     return var;
 }
 
@@ -1145,6 +1799,26 @@ static QShaderDescription::BlockVariable deserializeBlockMemberVar(QDataStream *
     var.structMembers.resize(count);
     for (int i = 0; i < count; ++i)
         var.structMembers[i] = deserializeBlockMemberVar(stream, version);
+    return var;
+}
+
+static QShaderDescription::InOutVariable deserializeInOutVar(QDataStream *stream, int version)
+{
+    QShaderDescription::InOutVariable var;
+    QString tmp;
+    (*stream) >> tmp;
+    var.name = tmp.toUtf8();
+    int t;
+    (*stream) >> t;
+    var.type = QShaderDescription::VariableType(t);
+    deserializeDecorations(stream, version, &var);
+    if (version > QShaderPrivate::QSB_VERSION_WITHOUT_INPUT_OUTPUT_INTERFACE_BLOCKS) {
+        int count;
+        (*stream) >> count;
+        var.structMembers.resize(count);
+        for (int i = 0; i < count; ++i)
+            var.structMembers[i] = deserializeBlockMemberVar(stream, version);
+    }
     return var;
 }
 
@@ -1211,6 +1885,11 @@ void QShaderDescriptionPrivate::loadFromStream(QDataStream *stream, int version)
         storageBlocks[i].members.resize(memberCount);
         for (int memberIdx = 0; memberIdx < memberCount; ++memberIdx)
             storageBlocks[i].members[memberIdx] = deserializeBlockMemberVar(stream, version);
+
+        if (version > QShaderPrivate::QSB_VERSION_WITHOUT_EXTENDED_STORAGE_BUFFER_INFO) {
+            (*stream) >> storageBlocks[i].runtimeArrayStride;
+            (*stream) >> storageBlocks[i].qualifierFlags;
+        }
     }
 
     (*stream) >> count;
@@ -1237,8 +1916,11 @@ void QShaderDescriptionPrivate::loadFromStream(QDataStream *stream, int version)
         deserializeDecorations(stream, version, &storageImages[i]);
     }
 
-    for (size_t i = 0; i < 3; ++i)
-        (*stream) >> localSize[i];
+    for (size_t i = 0; i < 3; ++i) {
+        quint32 v;
+        (*stream) >> v;
+        localSize[i] = v;
+    }
 
     if (version > QShaderPrivate::QSB_VERSION_WITHOUT_SEPARATE_IMAGES_AND_SAMPLERS) {
         (*stream) >> count;
@@ -1265,6 +1947,28 @@ void QShaderDescriptionPrivate::loadFromStream(QDataStream *stream, int version)
             deserializeDecorations(stream, version, &separateSamplers[i]);
         }
     }
+
+    if (version > QShaderPrivate::QSB_VERSION_WITHOUT_NATIVE_SHADER_INFO) {
+        quint32 v;
+        (*stream) >> v;
+        tessOutVertCount = v;
+        (*stream) >> v;
+        tessMode = QShaderDescription::TessellationMode(v);
+        (*stream) >> v;
+        tessWind = QShaderDescription::TessellationWindingOrder(v);
+        (*stream) >> v;
+        tessPart = QShaderDescription::TessellationPartitioning(v);
+
+        (*stream) >> count;
+        inBuiltins.resize(count);
+        for (int i = 0; i < count; ++i)
+            inBuiltins[i] = deserializeBuiltinVar(stream, version);
+
+        (*stream) >> count;
+        outBuiltins.resize(count);
+        for (int i = 0; i < count; ++i)
+            outBuiltins[i] = deserializeBuiltinVar(stream, version);
+    }
 }
 
 /*!
@@ -1287,7 +1991,13 @@ bool operator==(const QShaderDescription &lhs, const QShaderDescription &rhs) no
             && lhs.d->separateImages == rhs.d->separateImages
             && lhs.d->separateSamplers == rhs.d->separateSamplers
             && lhs.d->storageImages == rhs.d->storageImages
-            && lhs.d->localSize == rhs.d->localSize;
+            && lhs.d->inBuiltins == rhs.d->inBuiltins
+            && lhs.d->outBuiltins == rhs.d->outBuiltins
+            && lhs.d->localSize == rhs.d->localSize
+            && lhs.d->tessOutVertCount == rhs.d->tessOutVertCount
+            && lhs.d->tessMode == rhs.d->tessMode
+            && lhs.d->tessWind == rhs.d->tessWind
+            && lhs.d->tessPart == rhs.d->tessPart;
 }
 
 /*!
@@ -1305,7 +2015,9 @@ bool operator==(const QShaderDescription::InOutVariable &lhs, const QShaderDescr
             && lhs.descriptorSet == rhs.descriptorSet
             && lhs.imageFormat == rhs.imageFormat
             && lhs.imageFlags == rhs.imageFlags
-            && lhs.arrayDims == rhs.arrayDims;
+            && lhs.arrayDims == rhs.arrayDims
+            && lhs.perPatch == rhs.perPatch
+            && lhs.structMembers == rhs.structMembers;
 }
 
 /*!
@@ -1369,7 +2081,22 @@ bool operator==(const QShaderDescription::StorageBlock &lhs, const QShaderDescri
             && lhs.knownSize == rhs.knownSize
             && lhs.binding == rhs.binding
             && lhs.descriptorSet == rhs.descriptorSet
+            && lhs.runtimeArrayStride == rhs.runtimeArrayStride
+            && lhs.qualifierFlags == rhs.qualifierFlags
             && lhs.members == rhs.members;
+}
+
+/*!
+    Returns \c true if the two BuiltinVariable objects \a lhs and \a rhs are
+    equal.
+
+    \relates QShaderDescription::BuiltinVariable
+ */
+bool operator==(const QShaderDescription::BuiltinVariable &lhs, const QShaderDescription::BuiltinVariable &rhs) noexcept
+{
+    return lhs.type == rhs.type
+            && lhs.varType == rhs.varType
+            && lhs.arrayDims == rhs.arrayDims;
 }
 
 QT_END_NAMESPACE

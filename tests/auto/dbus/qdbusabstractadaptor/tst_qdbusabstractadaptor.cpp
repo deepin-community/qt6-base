@@ -868,7 +868,7 @@ void tst_QDBusAbstractAdaptor::readProperties()
                 properties.call(QDBus::BlockWithGui, "Get", "local." + name, propname);
             QVariant value = reply;
 
-            QCOMPARE(value.userType(), int(QVariant::String));
+            QCOMPARE(value.userType(), int(QMetaType::QString));
             QCOMPARE(value.toString(), QString("QString %1::%2() const").arg(name, propname));
         }
     }
@@ -957,7 +957,7 @@ void tst_QDBusAbstractAdaptor::readAllProperties()
                      qPrintable(propname + " on " + name));
             QVariant value = reply.value().value(propname);
 
-            QCOMPARE(value.userType(), int(QVariant::String));
+            QCOMPARE(value.userType(), int(QMetaType::QString));
             QCOMPARE(value.toString(), QString("QString %1::%2() const").arg(name, propname));
         }
     }
@@ -1405,7 +1405,7 @@ void tst_QDBusAbstractAdaptor::readPropertiesPeer()
                 properties.call(QDBus::BlockWithGui, "Get", "local." + name, propname);
             QVariant value = reply;
 
-            QCOMPARE(value.userType(), int(QVariant::String));
+            QCOMPARE(value.userType(), int(QMetaType::QString));
             QCOMPARE(value.toString(), QString("QString %1::%2() const").arg(name, propname));
         }
     }
@@ -1484,7 +1484,7 @@ void tst_QDBusAbstractAdaptor::readAllPropertiesPeer()
                      qPrintable(propname + " on " + name));
             QVariant value = reply.value().value(propname);
 
-            QCOMPARE(value.userType(), int(QVariant::String));
+            QCOMPARE(value.userType(), int(QMetaType::QString));
             QCOMPARE(value.toString(), QString("QString %1::%2() const").arg(name, propname));
         }
     }
@@ -1842,8 +1842,7 @@ void tst_QDBusAbstractAdaptor::typeMatching()
     QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
     QCOMPARE(reply.arguments().size(), 1);
 
-    const QVariant &retval = reply.arguments().at(0);
-    QVERIFY(compare(retval, value));
+    QVERIFY(compare(reply.arguments().at(0), value));
 }
 
 void tst_QDBusAbstractAdaptor::methodWithMoreThanOneReturnValue()
@@ -1864,7 +1863,7 @@ void tst_QDBusAbstractAdaptor::methodWithMoreThanOneReturnValue()
     QVERIFY(intreply.isValid());
     QCOMPARE(intreply.value(), 42);
 
-    QCOMPARE(reply.arguments().at(1).userType(), int(QVariant::String));
+    QCOMPARE(reply.arguments().at(1).userType(), int(QMetaType::QString));
     QCOMPARE(qdbus_cast<QString>(reply.arguments().at(1)), testString);
 }
 
@@ -1887,7 +1886,7 @@ void tst_QDBusAbstractAdaptor::methodWithMoreThanOneReturnValuePeer()
     QVERIFY(intreply.isValid());
     QCOMPARE(intreply.value(), 42);
 
-    QCOMPARE(reply.arguments().at(1).userType(), int(QVariant::String));
+    QCOMPARE(reply.arguments().at(1).userType(), int(QMetaType::QString));
     QCOMPARE(qdbus_cast<QString>(reply.arguments().at(1)), testString);
 }
 

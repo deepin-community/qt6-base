@@ -8,9 +8,9 @@
 #endif
 #if QT_CONFIG(buttongroup)
 #include "qbuttongroup.h"
-#include "private/qapplication_p.h"
 #include "private/qbuttongroup_p.h"
 #endif
+#include "private/qapplication_p.h"
 #include "qabstractbutton_p.h"
 #include "qevent.h"
 #include "qpainter.h"
@@ -613,12 +613,13 @@ void QAbstractButton::setChecked(bool checked)
     if (guard)
         d->emitToggled(checked);
 
-
 #if QT_CONFIG(accessibility)
-    QAccessible::State s;
-    s.checked = true;
-    QAccessibleStateChangeEvent event(this, s);
-    QAccessible::updateAccessibility(&event);
+    if (guard) {
+        QAccessible::State s;
+        s.checked = true;
+        QAccessibleStateChangeEvent event(this, s);
+        QAccessible::updateAccessibility(&event);
+    }
 #endif
 }
 

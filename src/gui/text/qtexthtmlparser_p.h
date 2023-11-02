@@ -26,7 +26,9 @@
 
 #include "private/qtextformat_p.h"
 #include "private/qtextdocument_p.h"
+#if QT_CONFIG(cssparser)
 #include "private/qcssparser_p.h"
+#endif
 
 #ifndef QT_NO_TEXTHTMLPARSER
 
@@ -148,6 +150,7 @@ struct QTextHtmlParserNode {
     uint displayMode : 3; // QTextHtmlElement::DisplayMode
     uint hasHref : 1;
     QTextListFormat::Style listStyle;
+    int listStart = 1;
     QString textListNumberPrefix;
     QString textListNumberSuffix;
     QString imageName;

@@ -43,6 +43,8 @@
 #include "private/qsslsocket_p.h"
 #include "private/qsslconfiguration_p.h"
 
+using namespace std::chrono_literals;
+
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
 // make these enum values available without causing deprecation warnings:
@@ -291,6 +293,7 @@ private:
     QSslSocket *socket;
     QList<QSslError> storedExpectedSslErrors;
     bool isTestingOpenSsl = false;
+    bool isSecurityLevel0Required = false;
     bool opensslResolved = false;
     bool isTestingSecureTransport = false;
     bool isTestingSchannel = false;
@@ -410,6 +413,9 @@ void tst_QSslSocket::initTestCase()
         flukeCertificateError = QSslError::SelfSignedCertificate;
 #if QT_CONFIG(openssl)
         opensslResolved = qt_auto_test_resolve_OpenSSL_symbols();
+        // This is where OpenSSL moved several protocols under
+        // non-default (0) security level (the default is 1).
+        isSecurityLevel0Required = OPENSSL_VERSION_NUMBER >= 0x30100010;
 #else
         opensslResolved = false; // Not 'unused variable' anymore.
 #endif
@@ -808,6 +814,10 @@ void tst_QSslSocket::simpleConnect()
     if (!QSslSocket::supportsSsl())
         return;
 
+    // Starting from OpenSSL v 3.1.1 deprecated protocol versions (we want to use when connecting) are not available by default.
+    if (isSecurityLevel0Required)
+        QSKIP("Testing with OpenSSL backend, but security level 0 is required for TLS v1.1 or earlier");
+
     QFETCH_GLOBAL(bool, setProxy);
     if (setProxy)
         return;
@@ -869,6 +879,10 @@ void tst_QSslSocket::simpleConnectWithIgnore()
     if (!QSslSocket::supportsSsl())
         return;
 
+    // Starting from OpenSSL v 3.1.1 deprecated protocol versions (we want to use when connecting) are not available by default.
+    if (isSecurityLevel0Required)
+        QSKIP("Testing with OpenSSL backend, but security level 0 is required for TLS v1.1 or earlier");
+
     QFETCH_GLOBAL(bool, setProxy);
     if (setProxy)
         return;
@@ -913,6 +927,10 @@ void tst_QSslSocket::simpleConnectWithIgnore()
 
 void tst_QSslSocket::sslErrors_data()
 {
+    // Starting from OpenSSL v 3.1.1 deprecated protocol versions (we want to use in 'sslErrors' test) are not available by default.
+    if (isSecurityLevel0Required)
+        QSKIP("Testing with OpenSSL backend, but security level 0 is required for TLS v1.1 or earlier");
+
     QTest::addColumn<QString>("host");
     QTest::addColumn<int>("port");
 
@@ -1098,8 +1116,6 @@ void tst_QSslSocket::connectToHostEncrypted()
         return;
 
     QSslSocketPtr socket = newSocket();
-    if (isTestingSchannel) // old certificate not supported with TLS 1.2
-        socket->setProtocol(Test::TlsV1_1);
 
     this->socket = socket.data();
     auto config = socket->sslConfiguration();
@@ -1137,8 +1153,6 @@ void tst_QSslSocket::connectToHostEncryptedWithVerificationPeerName()
         return;
 
     QSslSocketPtr socket = newSocket();
-    if (isTestingSchannel) // old certificate not supported with TLS 1.2
-        socket->setProtocol(Test::TlsV1_1);
 
     this->socket = socket.data();
 
@@ -1298,6 +1312,7 @@ void tst_QSslSocket::privateKey()
 #if QT_CONFIG(openssl)
 void tst_QSslSocket::privateKeyOpaque()
 {
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     if (!isTestingOpenSsl)
         QSKIP("The active TLS backend does not support private opaque keys");
 
@@ -1331,6 +1346,7 @@ void tst_QSslSocket::privateKeyOpaque()
     QFETCH_GLOBAL(bool, setProxy);
     if (setProxy && !socket->waitForEncrypted(10000))
         QSKIP("Skipping flaky test - See QTBUG-29941");
+#endif // OPENSSL_NO_DEPRECATED_3_0
 }
 #endif // Feature 'openssl'.
 
@@ -1916,8 +1932,6 @@ void tst_QSslSocket::setSslConfiguration()
     QSslSocketPtr socket = newSocket();
     QFETCH(QSslConfiguration, configuration);
     socket->setSslConfiguration(configuration);
-    if (isTestingSchannel) // old certificate not supported with TLS 1.2
-        socket->setProtocol(Test::TlsV1_1);
 
     this->socket = socket.data();
     socket->connectToHostEncrypted(QtNetworkSettings::httpServerName(), 443);
@@ -1970,6 +1984,10 @@ void tst_QSslSocket::waitForConnectedEncryptedReadyRead()
 {
     if (!QSslSocket::supportsSsl())
         return;
+
+    // Starting from OpenSSL v 3.1.1 deprecated protocol versions (we want to use here) are not available by default.
+    if (isSecurityLevel0Required)
+        QSKIP("Testing with OpenSSL backend, but security level 0 is required for TLS v1.1 or earlier");
 
     QSslSocketPtr socket = newSocket();
     this->socket = socket.data();
@@ -2645,8 +2663,6 @@ void tst_QSslSocket::verifyMode()
         return;
 
     QSslSocket socket;
-    if (isTestingSchannel) // old certificate not supported with TLS 1.2
-        socket.setProtocol(Test::TlsV1_1);
 
     QCOMPARE(socket.peerVerifyMode(), QSslSocket::AutoVerifyPeer);
     socket.setPeerVerifyMode(QSslSocket::VerifyNone);
@@ -2826,7 +2842,7 @@ void tst_QSslSocket::closeWhileEmittingSocketError()
     // Make sure we have some data buffered so that close will try to flush:
     clientSocket.write(QByteArray(1000000, Qt::Uninitialized));
 
-    QTestEventLoop::instance().enterLoopMSecs(1000);
+    QTestEventLoop::instance().enterLoop(1s);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
     QCOMPARE(socketErrorSpy.size(), 1);
@@ -2987,8 +3003,6 @@ void tst_QSslSocket::abortOnSslErrors()
 void tst_QSslSocket::readFromClosedSocket()
 {
     QSslSocketPtr socket = newSocket();
-    if (isTestingSchannel) // old certificate not supported with TLS 1.2
-        socket->setProtocol(Test::TlsV1_1);
 
     socket->ignoreSslErrors();
     socket->connectToHostEncrypted(QtNetworkSettings::httpServerName(), 443);
@@ -3088,7 +3102,14 @@ void tst_QSslSocket::blacklistedCertificates()
     QList<QSslError> sslErrors = receiver->sslHandshakeErrors();
     QVERIFY(sslErrors.size() > 0);
     // there are more errors (self signed cert and hostname mismatch), but we only care about the blacklist error
-    QCOMPARE(sslErrors.at(0).error(), QSslError::CertificateBlacklisted);
+    std::optional<QSslError> blacklistedError;
+    for (const QSslError &error : sslErrors) {
+        if (error.error() == QSslError::CertificateBlacklisted) {
+            blacklistedError = error;
+            break;
+        }
+    }
+    QVERIFY2(blacklistedError, "CertificateBlacklisted error not found!");
 }
 
 void tst_QSslSocket::versionAccessors()
@@ -3114,6 +3135,10 @@ void tst_QSslSocket::encryptWithoutConnecting()
 
 void tst_QSslSocket::resume_data()
 {
+    // Starting from OpenSSL v 3.1.1 deprecated protocol versions (we want to use in 'resume' test) are not available by default.
+    if (isSecurityLevel0Required)
+        QSKIP("Testing with OpenSSL backend, but security level 0 is required for TLS v1.1 or earlier");
+
     QTest::addColumn<bool>("ignoreErrorsAfterPause");
     QTest::addColumn<QList<QSslError> >("errorsToIgnore");
     QTest::addColumn<bool>("expectSuccess");
@@ -3518,6 +3543,8 @@ void tst_QSslSocket::dhServerCustomParams()
 {
     if (!QSslSocket::supportsSsl())
         QSKIP("No SSL support");
+    if (!QSslSocket::isClassImplemented(QSsl::ImplementedClass::DiffieHellman))
+        QSKIP("The current backend doesn't support diffie hellman parameters");
 
     QFETCH_GLOBAL(bool, setProxy);
     if (setProxy)
@@ -4559,7 +4586,7 @@ void tst_QSslSocket::unsupportedProtocols()
         return;
 
     QFETCH(const QSsl::SslProtocol, unsupportedProtocol);
-    const int timeoutMS = 500;
+    constexpr auto timeout = 500ms;
     // Test a client socket.
     {
         // 0. connectToHostEncrypted: client-side, non-blocking API, error is discovered
@@ -4581,7 +4608,7 @@ void tst_QSslSocket::unsupportedProtocols()
         QCOMPARE(socket.error(), QAbstractSocket::UnknownSocketError);
 
         socket.connectToHost(QHostAddress::LocalHost, server.serverPort());
-        QVERIFY(socket.waitForConnected(timeoutMS));
+        QVERIFY(socket.waitForConnected(int(timeout.count())));
 
         socket.setProtocol(unsupportedProtocol);
         socket.startClientEncryption();
@@ -4606,7 +4633,7 @@ void tst_QSslSocket::unsupportedProtocols()
 
         QTcpSocket client;
         client.connectToHost(QHostAddress::LocalHost, server.serverPort());
-        loop.enterLoopMSecs(timeoutMS);
+        loop.enterLoop(timeout);
         QVERIFY(!loop.timeout());
         QVERIFY(server.socket);
         QCOMPARE(server.socket->error(), QAbstractSocket::SslInvalidUserDataError);
@@ -4713,7 +4740,7 @@ void tst_QSslSocket::alertMissingCertificate()
     connect(&clientSocket, &QAbstractSocket::errorOccurred, earlyQuitter);
     connect(&server, &SslServer::socketError, earlyQuitter);
 
-    runner.enterLoopMSecs(1000);
+    runner.enterLoop(1s);
 
     if (clientSocket.isEncrypted()) {
         // When using TLS 1.3 the client side thinks it is connected very
@@ -4721,7 +4748,7 @@ void tst_QSslSocket::alertMissingCertificate()
         // inevitable disconnect.
         QCOMPARE(clientSocket.sessionProtocol(), QSsl::TlsV1_3);
         connect(&clientSocket, &QSslSocket::disconnected, &runner, &QTestEventLoop::exitLoop);
-        runner.enterLoopMSecs(10000);
+        runner.enterLoop(10s);
     }
 
     QVERIFY(serverSpy.size() > 0);
@@ -4776,7 +4803,7 @@ void tst_QSslSocket::alertInvalidCertificate()
     connect(&clientSocket, &QAbstractSocket::errorOccurred, earlyQuitter);
     connect(&server, &SslServer::socketError, earlyQuitter);
 
-    runner.enterLoopMSecs(1000);
+    runner.enterLoop(1s);
 
     QVERIFY(serverSpy.size() > 0);
     QVERIFY(clientSpy.size() > 0);
@@ -4904,7 +4931,7 @@ void tst_QSslSocket::selfSignedCertificates()
     connect(&clientSocket, &QAbstractSocket::errorOccurred, earlyQuitter);
     connect(&server, &SslServer::socketError, earlyQuitter);
 
-    runner.enterLoopMSecs(1000);
+    runner.enterLoop(1s);
 
     if (clientKnown) {
         QCOMPARE(serverSpy.size(), 0);
@@ -5042,7 +5069,7 @@ void tst_QSslSocket::pskHandshake()
     connect(&clientSocket, &QAbstractSocket::errorOccurred, earlyQuitter);
     connect(&server, &SslServer::socketError, earlyQuitter);
 
-    runner.enterLoopMSecs(1000);
+    runner.enterLoop(1s);
 
     if (pskRight) {
         QCOMPARE(serverSpy.size(), 0);

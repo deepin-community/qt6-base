@@ -1,6 +1,31 @@
-# special case begin
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Order by dependency [*], then alphabetic. [*] If bugs in part A of
 # our source would break tests of part B, then test A before B.
+
+set(run_dbus_tests OFF)
+if (QT_FEATURE_dbus)
+    set(run_dbus_tests ON)
+    if(NOT CMAKE_CROSSCOMPILING AND TARGET Qt::DBus)
+        execute_process(COMMAND dbus-send --session --type=signal / local.AutotestCheck.Hello
+            TIMEOUT 5
+            RESULT_VARIABLE dbus_session_test
+            OUTPUT_QUIET ERROR_QUIET)
+        if(NOT "${dbus_session_test}" STREQUAL "0")
+            set(run_dbus_tests OFF)
+            if(QT_FEATURE_dbus_linked)
+                message(WARNING
+                    " QtDBus is enabled but session bus is not available for testing.\n"
+                    " Please check the installation. Skipping QtDBus tests.")
+            else()
+                message(WARNING
+                    " QtDBus is enabled with runtime support, but session bus is not available.\n"
+                    " Skipping QtDBus tests.")
+            endif()
+        endif()
+    endif()
+endif()
 
 if(UIKIT)
     # For now, only build CMake auto tests when QT_BUILD_MINIMAL_STATIC_TEST
@@ -22,6 +47,15 @@ if(UIKIT)
     return()
 endif()
 
+# Limit set of tests to run for Android multi-ABI Qt builds.
+if(QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS)
+    add_subdirectory(cmake)
+    add_subdirectory(corelib/kernel/qmath)
+    add_subdirectory(widgets/effects/qpixmapfilter)
+    add_subdirectory(corelib/platform)
+    return()
+endif()
+
 # Only configure a single auto test for wasm for now
 # Since the linking step at this point is prohibitively long (static linking)
 if(WASM)
@@ -34,11 +68,9 @@ if(NOT CMAKE_CROSSCOMPILING AND QT_FEATURE_process)
      add_subdirectory(tools)
 endif()
 add_subdirectory(corelib)
-# special case begin
 if (TARGET Qt::Xml AND TARGET Qt::Sql AND TARGET Qt::Network)
     add_subdirectory(cmake)
 endif()
-# special case end
 
 # Limit set of tests to run for static Qt builds.
 if(QT_BUILD_MINIMAL_STATIC_TESTS)
@@ -49,28 +81,8 @@ if (TARGET Qt::Concurrent)
      add_subdirectory(concurrent)
 endif()
 
-if (QT_FEATURE_dbus)
-    set(run_dbus_tests ON)
-    if(NOT CMAKE_CROSSCOMPILING AND TARGET Qt::DBus)
-        execute_process(COMMAND dbus-send --session --type=signal / local.AutotestCheck.Hello
-            RESULT_VARIABLE dbus_session_test
-            OUTPUT_QUIET ERROR_QUIET)
-        if(NOT "${dbus_session_test}" STREQUAL "0")
-            set(run_dbus_tests OFF)
-            if(QT_FEATURE_dbus_linked)
-                message(WARNING
-                    " QtDBus is enabled but session bus is not available for testing.\n"
-                    " Please check the installation. Skipping QtDBus tests.")
-            else()
-                message(WARNING
-                    " QtDBus is enabled with runtime support, but session bus is not available.\n"
-                    " Skipping QtDBus tests.")
-            endif()
-        endif()
-    endif()
-    if(run_dbus_tests)
-        add_subdirectory(dbus)
-    endif()
+if(run_dbus_tests)
+    add_subdirectory(dbus)
 endif()
 
 if (TARGET Qt::Gui)
@@ -96,5 +108,3 @@ if (TARGET Qt::Xml)
 endif()
 # add_subdirectory(installed_cmake) ## FIXME: Does this still make sense in this form?
 add_subdirectory(other)
-
-# special case end

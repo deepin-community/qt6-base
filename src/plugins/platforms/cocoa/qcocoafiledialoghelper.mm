@@ -18,6 +18,8 @@
 #include <QtCore/qoperatingsystemversion.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qregularexpression.h>
+#include <QtCore/qpointer.h>
+#include <QtCore/private/qcore_mac_p.h>
 
 #include <QtGui/qguiapplication.h>
 #include <QtGui/private/qguiapplication_p.h>
@@ -52,13 +54,13 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
     NSView *m_accessoryView;
     NSPopUpButton *m_popupButton;
     NSTextField *m_textField;
-    QCocoaFileDialogHelper *m_helper;
+    QPointer<QCocoaFileDialogHelper> m_helper;
     NSString *m_currentDirectory;
 
     SharedPointerFileDialogOptions m_options;
-    QString *m_currentSelection;
-    QStringList *m_nameFilterDropDownList;
-    QStringList *m_selectedNameFilter;
+    QString m_currentSelection;
+    QStringList m_nameFilterDropDownList;
+    QStringList m_selectedNameFilter;
 }
 
 - (instancetype)initWithAcceptMode:(const QString &)selectFile
@@ -78,24 +80,24 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 
         m_helper = helper;
 
-        m_nameFilterDropDownList = new QStringList(m_options->nameFilters());
+        m_nameFilterDropDownList = m_options->nameFilters();
         QString selectedVisualNameFilter = m_options->initiallySelectedNameFilter();
-        m_selectedNameFilter = new QStringList([self findStrippedFilterWithVisualFilterName:selectedVisualNameFilter]);
+        m_selectedNameFilter = [self findStrippedFilterWithVisualFilterName:selectedVisualNameFilter];
 
-        QFileInfo sel(selectFile);
+        const QFileInfo sel(selectFile);
         if (sel.isDir() && !sel.isBundle()){
             m_currentDirectory = [sel.absoluteFilePath().toNSString() retain];
-            m_currentSelection = new QString;
+            m_currentSelection.clear();
         } else {
             m_currentDirectory = [sel.absolutePath().toNSString() retain];
-            m_currentSelection = new QString(sel.absoluteFilePath());
+            m_currentSelection = sel.absoluteFilePath();
         }
 
         [self createPopUpButton:selectedVisualNameFilter hideDetails:options->testOption(QFileDialogOptions::HideNameFilterDetails)];
         [self createTextField];
         [self createAccessory];
 
-        m_panel.accessoryView = m_nameFilterDropDownList->size() > 1 ? m_accessoryView : nil;
+        m_panel.accessoryView = m_nameFilterDropDownList.size() > 1 ? m_accessoryView : nil;
         // -setAccessoryView: can result in -panel:directoryDidChange:
         // resetting our m_currentDirectory, set the delegate
         // here to make sure it gets the correct value.
@@ -111,10 +113,6 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 
 - (void)dealloc
 {
-    delete m_nameFilterDropDownList;
-    delete m_selectedNameFilter;
-    delete m_currentSelection;
-
     [m_panel orderOut:m_panel];
     m_panel.accessoryView = nil;
     [m_popupButton release];
@@ -128,7 +126,7 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 
 - (bool)showPanel:(Qt::WindowModality) windowModality withParent:(QWindow *)parent
 {
-    QFileInfo info(*m_currentSelection);
+    const QFileInfo info(m_currentSelection);
     NSString *filepath = info.filePath().toNSString();
     NSURL *url = [NSURL fileURLWithPath:filepath isDirectory:info.isDir()];
     bool selectable = (m_options->acceptMode() == QFileDialogOptions::AcceptSave)
@@ -159,6 +157,8 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
     // QEventLoop has been interrupted, and the second-most event loop has not
     // yet been reactivated (regardless if [NSApp run] is still on the stack)),
     // showing a native modal dialog will fail.
+    if (!m_helper)
+        return;
 
     QMacAutoReleasePool pool;
 
@@ -180,7 +180,7 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 
 - (void)closePanel
 {
-    *m_currentSelection = QString::fromNSString(m_panel.URL.path).normalized(QString::NormalizationForm_C);
+    m_currentSelection = QString::fromNSString(m_panel.URL.path).normalized(QString::NormalizationForm_C);
 
     if (m_panel.sheet)
         [NSApp endSheet:m_panel];
@@ -188,19 +188,6 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
         [NSApp stopModal];
     else
         [m_panel close];
-}
-
-- (BOOL)isHiddenFileAtURL:(NSURL *)url
-{
-    BOOL hidden = NO;
-    if (url) {
-        CFBooleanRef isHiddenProperty;
-        if (CFURLCopyResourcePropertyForKey((__bridge CFURLRef)url, kCFURLIsHiddenKey, &isHiddenProperty, nullptr)) {
-            hidden = CFBooleanGetValue(isHiddenProperty);
-            CFRelease(isHiddenProperty);
-        }
-    }
-    return hidden;
 }
 
 - (BOOL)panel:(id)sender shouldEnableURL:(NSURL *)url
@@ -211,53 +198,53 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
     if (!filename.length)
         return NO;
 
-    // Always accept directories regardless of their names (unless it is a bundle):
-    NSFileManager *fm = NSFileManager.defaultManager;
-    NSDictionary *fileAttrs = [fm attributesOfItemAtPath:filename error:nil];
-    if (!fileAttrs)
-        return NO; // Error accessing the file means 'no'.
-    NSString *fileType = fileAttrs.fileType;
-    bool isDir = [fileType isEqualToString:NSFileTypeDirectory];
-    if (isDir) {
-        if (!m_panel.treatsFilePackagesAsDirectories) {
-            if ([NSWorkspace.sharedWorkspace isFilePackageAtPath:filename] == NO)
-                return YES;
-        }
+    const QFileInfo fileInfo(QString::fromNSString(filename));
+
+    // Always accept directories regardless of their names.
+    // This also includes symlinks and aliases to directories.
+    if (fileInfo.isDir()) {
+        // Unless it's a bundle, and we should treat bundles as files.
+        // FIXME: We'd like to use QFileInfo::isBundle() here, but the
+        // detection in QFileInfo goes deeper than NSWorkspace does
+        // (likely a bug), and as a result causes TCC permission
+        // dialogs to pop up when used.
+        bool treatBundlesAsFiles = !m_panel.treatsFilePackagesAsDirectories;
+        if (!(treatBundlesAsFiles && [NSWorkspace.sharedWorkspace isFilePackageAtPath:filename]))
+            return YES;
     }
 
-    // Treat symbolic links and aliases to directories like directories
-    QFileInfo fileInfo(QString::fromNSString(filename));
-    if (fileInfo.isSymLink() && QFileInfo(fileInfo.symLinkTarget()).isDir())
-        return YES;
-
-    QString qtFileName = fileInfo.fileName();
+    const QString qtFileName = fileInfo.fileName();
     // No filter means accept everything
-    bool nameMatches = m_selectedNameFilter->isEmpty();
+    bool nameMatches = m_selectedNameFilter.isEmpty();
     // Check if the current file name filter accepts the file:
-    for (int i = 0; !nameMatches && i < m_selectedNameFilter->size(); ++i) {
-        if (QDir::match(m_selectedNameFilter->at(i), qtFileName))
+    for (int i = 0; !nameMatches && i < m_selectedNameFilter.size(); ++i) {
+        if (QDir::match(m_selectedNameFilter.at(i), qtFileName))
             nameMatches = true;
     }
     if (!nameMatches)
         return NO;
 
     QDir::Filters filter = m_options->filter();
-    if ((!(filter & (QDir::Dirs | QDir::AllDirs)) && isDir)
-        || (!(filter & QDir::Files) && [fileType isEqualToString:NSFileTypeRegular])
-        || ((filter & QDir::NoSymLinks) && [fileType isEqualToString:NSFileTypeSymbolicLink]))
+    if ((!(filter & (QDir::Dirs | QDir::AllDirs)) && fileInfo.isDir())
+        || (!(filter & QDir::Files) && (fileInfo.isFile() && !fileInfo.isSymLink()))
+        || ((filter & QDir::NoSymLinks) && fileInfo.isSymLink()))
         return NO;
 
     bool filterPermissions = ((filter & QDir::PermissionMask)
                               && (filter & QDir::PermissionMask) != QDir::PermissionMask);
     if (filterPermissions) {
-        if ((!(filter & QDir::Readable) && [fm isReadableFileAtPath:filename])
-            || (!(filter & QDir::Writable) && [fm isWritableFileAtPath:filename])
-            || (!(filter & QDir::Executable) && [fm isExecutableFileAtPath:filename]))
+        if ((!(filter & QDir::Readable) && fileInfo.isReadable())
+            || (!(filter & QDir::Writable) && fileInfo.isWritable())
+            || (!(filter & QDir::Executable) && fileInfo.isExecutable()))
             return NO;
     }
-    if (!(filter & QDir::Hidden)
-        && (qtFileName.startsWith(u'.') || [self isHiddenFileAtURL:url]))
-            return NO;
+
+    // We control the visibility of hidden files via the showsHiddenFiles
+    // property on the panel, based on QDir::Hidden being set. But the user
+    // can also toggle this via the Command+Shift+. keyboard shortcut,
+    // in which case they have explicitly requested to show hidden files,
+    // and we should enable them even if QDir::Hidden was not set. In
+    // effect, we don't need to filter on QDir::Hidden here.
 
     return YES;
 }
@@ -265,10 +252,10 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 - (void)setNameFilters:(const QStringList &)filters hideDetails:(BOOL)hideDetails
 {
     [m_popupButton removeAllItems];
-    *m_nameFilterDropDownList = filters;
+    m_nameFilterDropDownList = filters;
     if (filters.size() > 0){
         for (int i = 0; i < filters.size(); ++i) {
-            QString filter = hideDetails ? [self removeExtensions:filters.at(i)] : filters.at(i);
+            const QString filter = hideDetails ? [self removeExtensions:filters.at(i)] : filters.at(i);
             [m_popupButton.menu addItemWithTitle:filter.toNSString() action:nil keyEquivalent:@""];
         }
         [m_popupButton selectItemAtIndex:0];
@@ -284,8 +271,10 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 {
     // This m_delegate function is called when the _name_ filter changes.
     Q_UNUSED(sender);
-    QString selection = m_nameFilterDropDownList->value([m_popupButton indexOfSelectedItem]);
-    *m_selectedNameFilter = [self findStrippedFilterWithVisualFilterName:selection];
+    if (!m_helper)
+        return;
+    const QString selection = m_nameFilterDropDownList.value([m_popupButton indexOfSelectedItem]);
+    m_selectedNameFilter = [self findStrippedFilterWithVisualFilterName:selection];
     [m_panel validateVisibleColumns];
     [self updateProperties];
 
@@ -361,6 +350,8 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
     if (m_panel.allowedFileTypes.count > 2)
         m_panel.extensionHidden = NO;
 
+    m_panel.showsHiddenFiles = m_options->filter().testFlag(QDir::Hidden);
+
     if (m_panel.visible)
         [m_panel validateVisibleColumns];
 }
@@ -368,10 +359,14 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 - (void)panelSelectionDidChange:(id)sender
 {
     Q_UNUSED(sender);
+
+    if (!m_helper)
+        return;
+
     if (m_panel.visible) {
-        QString selection = QString::fromNSString(m_panel.URL.path);
-        if (selection != *m_currentSelection) {
-            *m_currentSelection = selection;
+        const QString selection = QString::fromNSString(m_panel.URL.path);
+        if (selection != m_currentSelection) {
+            m_currentSelection = selection;
             emit m_helper->currentChanged(QUrl::fromLocalFile(selection));
         }
     }
@@ -380,6 +375,9 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 - (void)panel:(id)sender directoryDidChange:(NSString *)path
 {
     Q_UNUSED(sender);
+
+    if (!m_helper)
+        return;
 
     if (!(path && path.length) || [path isEqualToString:m_currentDirectory])
         return;
@@ -408,7 +406,7 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
         return nil; // panel:shouldEnableURL: does the file filtering for NSOpenPanel
 
     QStringList fileTypes;
-    for (const QString &filter : *m_selectedNameFilter) {
+    for (const QString &filter : std::as_const(m_selectedNameFilter)) {
         if (!filter.startsWith("*."_L1))
             continue;
 
@@ -455,10 +453,10 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
     m_popupButton.target = self;
     m_popupButton.action = @selector(filterChanged:);
 
-    if (m_nameFilterDropDownList->size() > 0) {
+    if (!m_nameFilterDropDownList.isEmpty()) {
         int filterToUse = -1;
-        for (int i = 0; i < m_nameFilterDropDownList->size(); ++i) {
-            QString currentFilter = m_nameFilterDropDownList->at(i);
+        for (int i = 0; i < m_nameFilterDropDownList.size(); ++i) {
+            const QString currentFilter = m_nameFilterDropDownList.at(i);
             if (selectedFilter == currentFilter ||
                 (filterToUse == -1 && currentFilter.startsWith(selectedFilter)))
                 filterToUse = i;
@@ -472,9 +470,9 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 
 - (QStringList) findStrippedFilterWithVisualFilterName:(QString)name
 {
-    for (int i = 0; i < m_nameFilterDropDownList->size(); ++i) {
-        if (m_nameFilterDropDownList->at(i).startsWith(name))
-            return QPlatformFileDialogHelper::cleanFilterList(m_nameFilterDropDownList->at(i));
+    for (const QString &currentFilter : std::as_const(m_nameFilterDropDownList)) {
+        if (currentFilter.startsWith(name))
+            return QPlatformFileDialogHelper::cleanFilterList(currentFilter);
     }
     return QStringList();
 }

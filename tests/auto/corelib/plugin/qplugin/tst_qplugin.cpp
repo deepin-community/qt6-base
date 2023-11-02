@@ -57,7 +57,7 @@ void tst_QPlugin::loadDebugPlugin()
         if (!QLibrary::isLibrary(fileName))
             continue;
         QPluginLoader loader(dir.filePath(fileName));
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MAC)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN)
         // we can always load a plugin on unix
         QVERIFY(loader.load());
         QObject *object = loader.instance();
@@ -90,7 +90,7 @@ void tst_QPlugin::loadReleasePlugin()
         if (!QLibrary::isLibrary(fileName))
             continue;
         QPluginLoader loader(dir.filePath(fileName));
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MAC)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN)
         // we can always load a plugin on unix
         QVERIFY(loader.load());
         QObject *object = loader.instance();
@@ -152,8 +152,8 @@ void tst_QPlugin::scanInvalidPlugin_data()
                                    << " Unexpected metadata contents";
 
     ++cprefix[MagicLen + 0];
-    QTest::newRow("cbor-major-too-new") << (cprefix + cborValid) << false
-                                        << " Invalid metadata version";
+    QTest::newRow("cbor-major-too-new-invalid")
+        << (cprefix + cborValid) << false << " Invalid metadata version";
 }
 
 static const char invalidPluginSignature[] = "qplugin testfile";
@@ -224,10 +224,6 @@ void tst_QPlugin::scanInvalidPlugin()
     // now try to load this
     QFETCH(bool, loads);
     QFETCH(QString, errMsg);
-    if (!errMsg.isEmpty())
-        QTest::ignoreMessage(QtWarningMsg,
-                             "Found invalid metadata in lib " + QFile::encodeName(newName) +
-                             ":" + errMsg.toUtf8());
     QPluginLoader loader(newName);
     QCOMPARE(loader.load(), loads);
     if (loads)

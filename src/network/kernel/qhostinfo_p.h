@@ -34,8 +34,6 @@
 #include <QElapsedTimer>
 #include <QCache>
 
-#include <QSharedPointer>
-
 #include <atomic>
 
 QT_BEGIN_NAMESPACE
@@ -45,13 +43,8 @@ class QHostInfoResult : public QObject
 {
     Q_OBJECT
 public:
-    QHostInfoResult(const QObject *receiver, QtPrivate::QSlotObjectBase *slotObj)
-        : receiver(receiver), slotObj(slotObj),
-          withContextObject(slotObj && receiver)
-    {
-        if (receiver)
-            moveToThread(receiver->thread());
-    }
+    explicit QHostInfoResult(const QObject *receiver, QtPrivate::SlotObjUniquePtr slot);
+    ~QHostInfoResult() override;
 
     void postResultsReady(const QHostInfo &info);
 
@@ -63,7 +56,7 @@ protected:
 
 private:
     QHostInfoResult(const QHostInfoResult *other)
-        : receiver(other->receiver), slotObj(other->slotObj),
+        : receiver(other->receiver), slotObj{copy(other->slotObj)},
           withContextObject(other->withContextObject)
     {
         // cleanup if the application terminates before results are delivered
@@ -74,7 +67,7 @@ private:
     }
 
     QPointer<const QObject> receiver = nullptr;
-    QtPrivate::QSlotObjectBase *slotObj = nullptr;
+    QtPrivate::SlotObjUniquePtr slotObj;
     const bool withContextObject = false;
 };
 
@@ -143,8 +136,10 @@ private:
 class QHostInfoRunnable : public QRunnable
 {
 public:
-    QHostInfoRunnable(const QString &hn, int i, const QObject *receiver,
-                      QtPrivate::QSlotObjectBase *slotObj);
+    explicit QHostInfoRunnable(const QString &hn, int i, const QObject *receiver,
+                               QtPrivate::SlotObjUniquePtr slotObj);
+    ~QHostInfoRunnable() override;
+
     void run() override;
 
     QString toBeLookedUp;

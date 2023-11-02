@@ -7,7 +7,9 @@
 #include "qtexttable.h"
 #include "qtextlist.h"
 #include "qtextengine_p.h"
+#if QT_CONFIG(cssparser)
 #include "private/qcssutil_p.h"
+#endif
 #include "private/qguiapplication_p.h"
 
 #include "qabstracttextdocumentlayout_p.h"
@@ -1209,8 +1211,7 @@ static inline QTextFormat::Property borderPropertyForEdge(QCss::Edge edge)
     case QCss::RightEdge:
         return QTextFormat::TableCellRightBorder;
     default:
-        Q_UNREACHABLE();
-        return QTextFormat::UserProperty;
+        Q_UNREACHABLE_RETURN(QTextFormat::UserProperty);
     }
 }
 
@@ -1226,8 +1227,7 @@ static inline QTextFormat::Property borderStylePropertyForEdge(QCss::Edge edge)
     case QCss::RightEdge:
         return QTextFormat::TableCellRightBorderStyle;
     default:
-        Q_UNREACHABLE();
-        return QTextFormat::UserProperty;
+        Q_UNREACHABLE_RETURN(QTextFormat::UserProperty);
     }
 }
 
@@ -1243,8 +1243,7 @@ static inline QCss::Edge adjacentEdge(QCss::Edge edge)
     case QCss::LeftEdge:
         return QCss::RightEdge;
     default:
-        Q_UNREACHABLE();
-        return QCss::NumEdges;
+        Q_UNREACHABLE_RETURN(QCss::NumEdges);
     }
 }
 
@@ -1323,8 +1322,7 @@ static inline bool sharesAxis(const QTextTableCell &cell, QCss::Edge edge,
         return cell.column() + cell.columnSpan() ==
                 competingCell.column() + (competingCellEdge == QCss::LeftEdge ? 0 : competingCell.columnSpan());
     default:
-        Q_UNREACHABLE();
-        return false;
+        Q_UNREACHABLE_RETURN(false);
     }
 }
 
@@ -2072,7 +2070,7 @@ void QTextDocumentLayoutPrivate::drawBlock(const QPointF &offset, QPainter *pain
         const qreal width = blockFormat.lengthProperty(QTextFormat::BlockTrailingHorizontalRulerWidth).value(r.width());
         const auto color = blockFormat.hasProperty(QTextFormat::BackgroundBrush)
                          ? qvariant_cast<QBrush>(blockFormat.property(QTextFormat::BackgroundBrush)).color()
-                         : context.palette.color(QPalette::Dark);
+                         : context.palette.color(QPalette::Inactive, QPalette::WindowText);
         painter->setPen(color);
         qreal y = r.bottom();
         if (bl.length() == 1)
@@ -2553,8 +2551,9 @@ recalc_minmax_widths:
                 const QFixed allottedPercentage = QFixed::fromReal(columnWidthConstraints.at(i).rawValue());
 
                 const QFixed percentWidth = totalPercentagedWidth * allottedPercentage / totalPercentage;
-                if (percentWidth >= td->minWidths.at(i)) {
-                    td->widths[i] = qBound(td->minWidths.at(i), percentWidth, remainingWidth - remainingMinWidths);
+                QFixed maxWidth = remainingWidth - remainingMinWidths;
+                if (percentWidth >= td->minWidths.at(i) && maxWidth > td->minWidths.at(i)) {
+                    td->widths[i] = qBound(td->minWidths.at(i), percentWidth, maxWidth);
                 } else {
                     td->widths[i] = td->minWidths.at(i);
                 }
@@ -3112,7 +3111,7 @@ void QTextDocumentLayoutPrivate::layoutFlow(QTextFrame::Iterator it, QTextLayout
     QTextBlockFormat previousBlockFormat = previousIt.currentBlock().blockFormat();
 
     QFixed maximumBlockWidth = 0;
-    while (!it.atEnd()) {
+    while (!it.atEnd() && layoutStruct->absoluteY() < QFIXED_MAX) {
         QTextFrame *c = it.currentFrame();
 
         int docPos;
@@ -3362,7 +3361,7 @@ void QTextDocumentLayoutPrivate::layoutFlow(QTextFrame::Iterator it, QTextLayout
         if (!fd->floats.isEmpty())
             contentHasAlignment = true;
 
-        if (it.atEnd()) {
+        if (it.atEnd() || layoutStruct->absoluteY() >= QFIXED_MAX) {
             //qDebug("layout done!");
             currentLazyLayoutPosition = -1;
             QCheckPoint cp;
@@ -3548,6 +3547,11 @@ void QTextDocumentLayoutPrivate::layoutBlock(const QTextBlock &bl, int blockPosi
 
             while (layoutStruct->pageHeight > 0 && layoutStruct->absoluteY() + lineBreakHeight > layoutStruct->pageBottom &&
                 layoutStruct->contentHeight() >= lineBreakHeight) {
+                if (layoutStruct->pageHeight == QFIXED_MAX) {
+                    layoutStruct->y = QFIXED_MAX - layoutStruct->frameY;
+                    break;
+                }
+
                 layoutStruct->newPage();
 
                 floatMargins(layoutStruct->y, layoutStruct, &left, &right);

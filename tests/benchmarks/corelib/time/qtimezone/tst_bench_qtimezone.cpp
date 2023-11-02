@@ -1,3 +1,4 @@
+// Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2019 Crimson AS <info@crimson.no>
 // Copyright (C) 2018 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
@@ -29,11 +30,7 @@ private Q_SLOTS:
 static QList<QByteArray> enoughZones()
 {
 #ifdef EXHAUSTIVE
-    auto available = QTimeZone::availableTimeZoneIds();
-    QList<QByteArray> result;
-    result.reserve(available.size() + 1);
-    for (conat auto &name : available)
-        result << name;
+    QList<QByteArray> result = QTimeZone::availableTimeZoneIds();
 #else
     QList<QByteArray> result {
         QByteArray("UTC"),
@@ -108,9 +105,9 @@ void tst_QTimeZone::transitionList()
 {
     QFETCH(QByteArray, name);
     const QTimeZone zone = name.isEmpty() ? QTimeZone::systemTimeZone() : QTimeZone(name);
-    const QDateTime early = QDate(1625, 6, 8).startOfDay(Qt::UTC); // Cassini's birth date
+    const QDateTime early = QDate(1625, 6, 8).startOfDay(QTimeZone::UTC); // Cassini's birth date
     const QDateTime late // End of 32-bit signed time_t
-        = QDateTime::fromSecsSinceEpoch(std::numeric_limits<qint32>::max(), Qt::UTC);
+        = QDateTime::fromSecsSinceEpoch(std::numeric_limits<qint32>::max(), QTimeZone::UTC);
     QTimeZone::OffsetDataList seq;
     QBENCHMARK {
         seq = zone.transitions(early, late);
@@ -122,7 +119,7 @@ void tst_QTimeZone::transitionsForward()
 {
     QFETCH(QByteArray, name);
     const QTimeZone zone = name.isEmpty() ? QTimeZone::systemTimeZone() : QTimeZone(name);
-    const QDateTime early = QDate(1625, 6, 8).startOfDay(Qt::UTC); // Cassini's birth date
+    const QDateTime early = QDate(1625, 6, 8).startOfDay(QTimeZone::UTC); // Cassini's birth date
     QBENCHMARK {
         QTimeZone::OffsetData tran = zone.nextTransition(early);
         while (tran.atUtc.isValid())
@@ -135,7 +132,7 @@ void tst_QTimeZone::transitionsReverse()
     QFETCH(QByteArray, name);
     const QTimeZone zone = name.isEmpty() ? QTimeZone::systemTimeZone() : QTimeZone(name);
     const QDateTime late // End of 32-bit signed time_t
-        = QDateTime::fromSecsSinceEpoch(std::numeric_limits<qint32>::max(), Qt::UTC);
+        = QDateTime::fromSecsSinceEpoch(std::numeric_limits<qint32>::max(), QTimeZone::UTC);
     QBENCHMARK {
         QTimeZone::OffsetData tran = zone.previousTransition(late);
         while (tran.atUtc.isValid())

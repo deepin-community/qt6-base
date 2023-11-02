@@ -1,12 +1,7 @@
-# SymbolsHelper-Confirmed: 6.4.0 amd64
+# SymbolsHelper-Confirmed: 6.6.0 amd64
 libQt6PrintSupport.so.6 libqt6printsupport6 #MINVER#
-| libqt6printsupport6 #MINVER#, qt6-base-abi (= 6.4.2)
+| libqt6printsupport6 #MINVER#, qt6-base-private-abi (= 6.6.0)
 * Build-Depends-Package: qt6-base-dev
- Qt_6.0@Qt_6.0 6.1.2
- Qt_6.1@Qt_6.1 6.1.2
- Qt_6.2@Qt_6.2 6.2.0
- Qt_6.3@Qt_6.3 6.3.0
- Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _Z49qRegisterNormalizedMetaType_QCUPSSupport__PageSetRK10QByteArray@Qt_6 6.4.0
@@ -125,9 +120,7 @@ libQt6PrintSupport.so.6 libqt6printsupport6 #MINVER#
  _ZN20QAbstractPrintDialog9setFromToEii@Qt_6 6.1.2
  _ZN20QAbstractPrintDialog9setMinMaxEii@Qt_6 6.1.2
  _ZN20QAbstractPrintDialogC1EP8QPrinterP7QWidget@Qt_6 6.1.2
- _ZN20QAbstractPrintDialogC1ER27QAbstractPrintDialogPrivateP8QPrinterP7QWidget@Qt_6 6.1.2
  _ZN20QAbstractPrintDialogC2EP8QPrinterP7QWidget@Qt_6 6.1.2
- _ZN20QAbstractPrintDialogC2ER27QAbstractPrintDialogPrivateP8QPrinterP7QWidget@Qt_6 6.1.2
  _ZN20QAbstractPrintDialogD0Ev@Qt_6 6.1.2
  _ZN20QAbstractPrintDialogD1Ev@Qt_6 6.1.2
  _ZN20QAbstractPrintDialogD2Ev@Qt_6 6.1.2

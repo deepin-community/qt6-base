@@ -1,4 +1,19 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 function(qt_internal_add_resource target resourceName)
+    if(NOT TARGET "${target}")
+        message(FATAL_ERROR "${target} is not a target.")
+    endif()
+    qt_internal_is_skipped_test(skipped ${target})
+    if(skipped)
+        return()
+    endif()
+    qt_internal_is_in_test_batch(in_batch ${target})
+    if(in_batch)
+        _qt_internal_test_batch_target_name(target)
+    endif()
+
     # Don't try to add resources when cross compiling, and the target is actually a host target
     # (like a tool).
     qt_is_imported_target("${target}" is_imported)
@@ -6,7 +21,11 @@ function(qt_internal_add_resource target resourceName)
         return()
     endif()
 
-    qt_parse_all_arguments(arg "qt_add_resource" "" "PREFIX;LANG;BASE;OUTPUT_TARGETS" "FILES" ${ARGN})
+    cmake_parse_arguments(PARSE_ARGV 2 arg
+        ""
+        "PREFIX;LANG;BASE;OUTPUT_TARGETS"
+        "FILES")
+    _qt_internal_validate_all_args_are_parsed(arg)
 
     _qt_internal_process_resource(${target} ${resourceName}
         PREFIX "${arg_PREFIX}"

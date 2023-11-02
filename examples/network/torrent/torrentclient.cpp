@@ -14,6 +14,7 @@
 #include <QNetworkInterface>
 
 #include <algorithm>
+#include <chrono>
 
 // These constants could also be configurable by the user.
 static const int ServerMinPort = 6881;
@@ -23,10 +24,10 @@ static const int MaxBlocksInProgress = 5;
 static const int MaxBlocksInMultiMode = 2;
 static const int MaxConnectionPerPeer = 1;
 static const int RateControlWindowLength = 10;
-static const int RateControlTimerDelay = 1000;
+static const std::chrono::seconds RateControlTimerDelay(1);
 static const int MinimumTimeBeforeRevisit = 30;
 static const int MaxUploads = 4;
-static const int UploadScheduleInterval = 10000;
+static const std::chrono::seconds UploadScheduleInterval(10);
 
 struct TorrentPiece {
     QBitArray completedBlocks;
@@ -69,9 +70,9 @@ public:
     int uploadScheduleTimer;
 
     // Pieces
-    QMap<int, PeerWireClient *> readIds;
+    QMap<qint32, PeerWireClient *> readIds;
     QMultiMap<PeerWireClient *, TorrentPiece *> payloads;
-    QMap<int, TorrentPiece *> pendingPieces;
+    QMap<qint32, TorrentPiece *> pendingPieces;
     QBitArray completedPieces;
     QBitArray incompletePieces;
     int pieceCount;
@@ -207,6 +208,10 @@ TorrentClient::TorrentClient(QObject *parent)
 
 TorrentClient::~TorrentClient()
 {
+    auto rateController = RateController::instance();
+    const auto childSockets = findChildren<PeerWireClient *>(Qt::FindDirectChildrenOnly);
+    for (PeerWireClient *socket : childSockets)
+        rateController->removeSocket(socket);
     qDeleteAll(d->peers);
     qDeleteAll(d->pendingPieces);
     delete d;
@@ -264,8 +269,8 @@ void TorrentClient::setDumpedState(const QByteArray &dumpedState)
     stream >> d->completedPieces;
 
     while (!stream.atEnd()) {
-        int index;
-        int length;
+        qint32 index;
+        qint32 length;
         QBitArray completed;
         stream >> index >> length >> completed;
         if (stream.status() != QDataStream::Ok) {
@@ -293,7 +298,7 @@ QByteArray TorrentClient::dumpedState() const
 
     // Save the state of all partially downloaded pieces into a format
     // suitable for storing in settings.
-    QMap<int, TorrentPiece *>::ConstIterator it = d->pendingPieces.constBegin();
+    auto it = d->pendingPieces.constBegin();
     while (it != d->pendingPieces.constEnd()) {
         TorrentPiece *piece = it.value();
         if (blocksLeftForPiece(piece) > 0 && blocksLeftForPiece(piece) < piece->completedBlocks.size()) {
@@ -492,7 +497,8 @@ void TorrentClient::timerEvent(QTimerEvent *event)
     }
 }
 
-void TorrentClient::sendToPeer(int readId, int pieceIndex, int begin, const QByteArray &data)
+void TorrentClient::sendToPeer(qint32 readId, qint32 pieceIndex, qint32 begin,
+                               const QByteArray &data)
 {
     // Send the requested block to the peer if the client connection
     // still exists; otherwise do nothing. This slot is called by the
@@ -511,7 +517,7 @@ void TorrentClient::fullVerificationDone()
     d->completedPieces = d->fileManager.completedPieces();
     d->incompletePieces.resize(d->completedPieces.size());
     d->pieceCount = d->completedPieces.size();
-    for (int i = 0; i < d->fileManager.pieceCount(); ++i) {
+    for (qint32 i = 0; i < d->fileManager.pieceCount(); ++i) {
         if (!d->completedPieces.testBit(i))
             d->incompletePieces.setBit(i);
     }
@@ -520,7 +526,7 @@ void TorrentClient::fullVerificationDone()
 
     // If the checksums show that what the dumped state thought was
     // partial was in fact complete, then we trust the checksums.
-    QMap<int, TorrentPiece *>::Iterator it = d->pendingPieces.begin();
+    auto it = d->pendingPieces.begin();
     while (it != d->pendingPieces.end()) {
         if (d->completedPieces.testBit(it.key()))
             it = d->pendingPieces.erase(it);
@@ -550,7 +556,7 @@ void TorrentClient::fullVerificationDone()
     d->trackerClient.start(d->metaInfo);
 }
 
-void TorrentClient::pieceVerified(int pieceIndex, bool ok)
+void TorrentClient::pieceVerified(qint32 pieceIndex, bool ok)
 {
     TorrentPiece *piece = d->pendingPieces.value(pieceIndex);
 
@@ -578,7 +584,7 @@ void TorrentClient::pieceVerified(int pieceIndex, bool ok)
         if (!peer->interesting)
             continue;
         bool interesting = false;
-        for (int i = 0; i < d->pieceCount; ++i) {
+        for (qint32 i = 0; i < d->pieceCount; ++i) {
             if (peer->pieces.testBit(i) && d->incompletePieces.testBit(i)) {
                 interesting = true;
                 break;
@@ -896,8 +902,8 @@ void TorrentClient::peerPiecesAvailable(const QBitArray &pieces)
     // Check for interesting pieces, and tell the peer whether we are
     // interested or not.
     bool interested = false;
-    int piecesSize = pieces.size();
-    for (int pieceIndex = 0; pieceIndex < piecesSize; ++pieceIndex) {
+    qint32 piecesSize = pieces.size();
+    for (qint32 pieceIndex = 0; pieceIndex < piecesSize; ++pieceIndex) {
         if (!pieces.testBit(pieceIndex))
             continue;
         if (!d->completedPieces.testBit(pieceIndex)) {
@@ -909,7 +915,7 @@ void TorrentClient::peerPiecesAvailable(const QBitArray &pieces)
             }
 
             QMultiMap<PeerWireClient *, TorrentPiece *>::Iterator it = d->payloads.find(client);
-            int inProgress = 0;
+            qint32 inProgress = 0;
             while (it != d->payloads.end() && it.key() == client) {
                 if (it.value()->inProgress)
                     inProgress += it.value()->requestedBlocks.count(true);
@@ -927,7 +933,7 @@ void TorrentClient::peerPiecesAvailable(const QBitArray &pieces)
     }
 }
 
-void TorrentClient::peerRequestsBlock(int pieceIndex, int begin, int length)
+void TorrentClient::peerRequestsBlock(qint32 pieceIndex, qint32 begin, qint32 length)
 {
     PeerWireClient *client = qobject_cast<PeerWireClient *>(sender());
 
@@ -944,7 +950,7 @@ void TorrentClient::peerRequestsBlock(int pieceIndex, int begin, int length)
                       qobject_cast<PeerWireClient *>(sender()));
 }
 
-void TorrentClient::blockReceived(int pieceIndex, int begin, const QByteArray &data)
+void TorrentClient::blockReceived(qint32 pieceIndex, qint32 begin, const QByteArray &data)
 {
     PeerWireClient *client = qobject_cast<PeerWireClient *>(sender());
     if (data.size() == 0) {
@@ -953,7 +959,7 @@ void TorrentClient::blockReceived(int pieceIndex, int begin, const QByteArray &d
     }
 
     // Ignore it if we already have this block.
-    int blockBit = begin / BlockSize;
+    qint32 blockBit = begin / BlockSize;
     TorrentPiece *piece = d->pendingPieces.value(pieceIndex);
     if (!piece || piece->completedBlocks.testBit(blockBit)) {
         // Discard blocks that we already have, and fill up the pipeline.
@@ -1021,15 +1027,9 @@ void TorrentClient::peerWireBytesReceived(qint64 size)
     emit dataSent(size);
 }
 
-int TorrentClient::blocksLeftForPiece(const TorrentPiece *piece) const
+qint32 TorrentClient::blocksLeftForPiece(const TorrentPiece *piece) const
 {
-    int blocksLeft = 0;
-    int completedBlocksSize = piece->completedBlocks.size();
-    for (int i = 0; i < completedBlocksSize; ++i) {
-        if (!piece->completedBlocks.testBit(i))
-            ++blocksLeft;
-    }
-    return blocksLeft;
+    return piece->completedBlocks.count(false);
 }
 
 void TorrentClient::scheduleUploads()
@@ -1114,7 +1114,7 @@ void TorrentClient::schedulePieceForClient(PeerWireClient *client)
 
     // Make a list of all the client's pending pieces, and count how
     // many blocks have been requested.
-    QList<int> currentPieces;
+    QList<qint32> currentPieces;
     bool somePiecesAreNotInProgress = false;
     TorrentPiece *lastPendingPiece = nullptr;
     QMultiMap<PeerWireClient *, TorrentPiece *>::Iterator it = d->payloads.find(client);
@@ -1165,7 +1165,7 @@ void TorrentClient::schedulePieceForClient(PeerWireClient *client)
         // the same piece. In endgame mode, this only applies to
         // clients that are currently uploading (more than 1.0KB/s).
         if ((d->state == Endgame && client->uploadSpeed() < 1024) || d->state != WarmingUp) {
-            QMap<int, TorrentPiece *>::ConstIterator it = d->pendingPieces.constBegin();
+            auto it = d->pendingPieces.constBegin();
             while (it != d->pendingPieces.constEnd()) {
                 if (it.value()->inProgress)
                     incompletePiecesAvailableToClient.clearBit(it.key());
@@ -1177,7 +1177,7 @@ void TorrentClient::schedulePieceForClient(PeerWireClient *client)
         incompletePiecesAvailableToClient &= client->availablePieces();
 
         // Remove all pieces that this client has already requested.
-        for (int i : std::as_const(currentPieces))
+        for (qint32 i : std::as_const(currentPieces))
             incompletePiecesAvailableToClient.clearBit(i);
 
         // Only continue if more pieces can be scheduled. If no pieces
@@ -1189,7 +1189,7 @@ void TorrentClient::schedulePieceForClient(PeerWireClient *client)
         // Check if any of the partially completed pieces can be
         // recovered, and if so, pick a random one of them.
         QList<TorrentPiece *> partialPieces;
-        QMap<int, TorrentPiece *>::ConstIterator it = d->pendingPieces.constBegin();
+        auto it = d->pendingPieces.constBegin();
         while (it != d->pendingPieces.constEnd()) {
             TorrentPiece *tmp = it.value();
             if (incompletePiecesAvailableToClient.testBit(it.key())) {

@@ -31,9 +31,13 @@ public:
     bool hasCapability(Capability cap) const override;
 
     QPlatformWindow *createPlatformWindow(QWindow *window) const override;
+    QPlatformWindow *createForeignWindow(QWindow *window, WId nativeHandle) const override;
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override;
 
+#if QT_CONFIG(opengl)
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
+#endif
+
     QPlatformOffscreenSurface *createPlatformOffscreenSurface(QOffscreenSurface *surface) const override;
 
     QPlatformFontDatabase *fontDatabase() const override;
@@ -57,6 +61,8 @@ public:
 #endif
 
     void beep() const override;
+
+    void setApplicationBadge(qint64 number) override;
 
     static QIOSIntegration *instance();
 

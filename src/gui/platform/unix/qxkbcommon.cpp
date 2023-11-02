@@ -488,11 +488,9 @@ int QXkbCommon::keysymToQtKey(xkb_keysym_t keysym, Qt::KeyboardModifiers modifie
         // With standard shortcuts we should prefer a latin character, this is
         // for checks like "some qkeyevent == QKeySequence::Copy" to work even
         // when using for example 'russian' keyboard layout.
-        if (!QXkbCommon::isLatin1(keysym)) {
-            xkb_keysym_t latinKeysym = QXkbCommon::lookupLatinKeysym(state, code);
-            if (latinKeysym != XKB_KEY_NoSymbol)
-                keysym = latinKeysym;
-        }
+        xkb_keysym_t latinKeysym = QXkbCommon::lookupLatinKeysym(state, code);
+        if (latinKeysym != XKB_KEY_NoSymbol)
+            keysym = latinKeysym;
     }
 
     return keysymToQtKey_internal(keysym, modifiers, state, code, superAsMeta, hyperAsMeta);
@@ -512,13 +510,13 @@ static int keysymToQtKey_internal(xkb_keysym_t keysym, Qt::KeyboardModifiers mod
         // numeric keypad keys
         qtKey = Qt::Key_0 + (keysym - XKB_KEY_KP_0);
     } else if (QXkbCommon::isLatin1(keysym)) {
-        // Upper-case first, since Qt::Keys are defined in terms of their
-        // upper-case versions.
+        // Most Qt::Key values are determined by their upper-case version,
+        // where this is in the Latin-1 repertoire. So start with that:
         qtKey = QXkbCommon::qxkbcommon_xkb_keysym_to_upper(keysym);
-        // Upper-casing a Latin1 character might move it out of Latin1 range,
-        // for example U+00B5 MICRO SIGN, which upper-case equivalent is
-        // U+039C GREEK CAPITAL LETTER MU. If that's the case, then map the
-        // original lower-case character.
+        // However, Key_mu and Key_ydiaeresis are U+00B5 MICRO SIGN and
+        // U+00FF LATIN SMALL LETTER Y WITH DIAERESIS, both lower-case,
+        // with upper-case forms outside Latin-1, so use them as they are
+        // since they're the Qt::Key values.
         if (!QXkbCommon::isLatin1(qtKey))
             qtKey = keysym;
     } else {
@@ -564,7 +562,7 @@ static int keysymToQtKey_internal(xkb_keysym_t keysym, Qt::KeyboardModifiers mod
     return qtKey;
 }
 
-Qt::KeyboardModifiers QXkbCommon::modifiers(struct xkb_state *state)
+Qt::KeyboardModifiers QXkbCommon::modifiers(struct xkb_state *state, xkb_keysym_t keysym)
 {
     Qt::KeyboardModifiers modifiers = Qt::NoModifier;
 
@@ -576,6 +574,9 @@ Qt::KeyboardModifiers QXkbCommon::modifiers(struct xkb_state *state)
         modifiers |= Qt::ShiftModifier;
     if (xkb_state_mod_name_is_active(state, XKB_MOD_NAME_LOGO, XKB_STATE_MODS_EFFECTIVE) > 0)
         modifiers |= Qt::MetaModifier;
+
+    if (keysym >= XKB_KEY_KP_Space && keysym <= XKB_KEY_KP_9)
+        modifiers |= Qt::KeypadModifier;
 
     return modifiers;
 }
@@ -732,12 +733,9 @@ xkb_keysym_t QXkbCommon::lookupLatinKeysym(xkb_state *state, xkb_keycode_t keyco
     xkb_keysym_t sym = XKB_KEY_NoSymbol;
     xkb_keymap *keymap = xkb_state_get_keymap(state);
     const xkb_layout_index_t layoutCount = xkb_keymap_num_layouts_for_key(keymap, keycode);
-    const xkb_layout_index_t currentLayout = xkb_state_key_get_layout(state, keycode);
     // Look at user layouts in the order in which they are defined in system
     // settings to find a latin keysym.
     for (layout = 0; layout < layoutCount; ++layout) {
-        if (layout == currentLayout)
-            continue;
         const xkb_keysym_t *syms = nullptr;
         xkb_level_index_t level = xkb_state_key_get_level(state, keycode, layout);
         if (xkb_keymap_key_get_syms_by_level(keymap, keycode, layout, level, &syms) != 1)
@@ -745,34 +743,6 @@ xkb_keysym_t QXkbCommon::lookupLatinKeysym(xkb_state *state, xkb_keycode_t keyco
         if (isLatin1(syms[0])) {
             sym = syms[0];
             break;
-        }
-    }
-
-    if (sym == XKB_KEY_NoSymbol)
-        return sym;
-
-    xkb_mod_mask_t latchedMods = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
-    xkb_mod_mask_t lockedMods = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
-
-    // Check for uniqueness, consider the following setup:
-    // setxkbmap -layout us,ru,us -variant dvorak,, -option 'grp:ctrl_alt_toggle' (set 'ru' as active).
-    // In this setup, the user would expect to trigger a ctrl+q shortcut by pressing ctrl+<physical x key>,
-    // because "US dvorak" is higher up in the layout settings list. This check verifies that an obtained
-    // 'sym' can not be acquired by any other layout higher up in the user's layout list. If it can be acquired
-    // then the obtained key is not unique. This prevents ctrl+<physical q key> from generating a ctrl+q
-    // shortcut in the above described setup. We don't want ctrl+<physical x key> and ctrl+<physical q key> to
-    // generate the same shortcut event in this case.
-    const xkb_keycode_t minKeycode = xkb_keymap_min_keycode(keymap);
-    const xkb_keycode_t maxKeycode = xkb_keymap_max_keycode(keymap);
-    ScopedXKBState queryState(xkb_state_new(keymap));
-    for (xkb_layout_index_t prevLayout = 0; prevLayout < layout; ++prevLayout) {
-        xkb_state_update_mask(queryState.get(), 0, latchedMods, lockedMods, 0, 0, prevLayout);
-        for (xkb_keycode_t code = minKeycode; code < maxKeycode; ++code) {
-            xkb_keysym_t prevSym = xkb_state_key_get_one_sym(queryState.get(), code);
-            if (prevSym == sym) {
-                sym = XKB_KEY_NoSymbol;
-                break;
-            }
         }
     }
 

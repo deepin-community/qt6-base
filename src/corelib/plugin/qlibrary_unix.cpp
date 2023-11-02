@@ -12,7 +12,7 @@
 
 #include <dlfcn.h>
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
 #  include <private/qcore_mac_p.h>
 #endif
 
@@ -72,7 +72,7 @@ QStringList QLibraryPrivate::suffixes_sys(const QString &fullVersion)
 # endif
     }
 #endif
-# ifdef Q_OS_MAC
+# ifdef Q_OS_DARWIN
     if (!fullVersion.isEmpty()) {
         suffixes << ".%1.bundle"_L1.arg(fullVersion);
         suffixes << ".%1.dylib"_L1.arg(fullVersion);
@@ -90,6 +90,11 @@ QStringList QLibraryPrivate::prefixes_sys()
 
 bool QLibraryPrivate::load_sys()
 {
+#if defined(Q_OS_WASM) && defined(QT_STATIC)
+    // emscripten does not support dlopen when using static linking
+    return false;
+#endif
+
     QMutexLocker locker(&mutex);
     QString attempt;
     QFileSystemEntry fsEntry(fileName);
@@ -194,7 +199,7 @@ bool QLibraryPrivate::load_sys()
                 continue;
             if (loadHints & QLibrary::LoadArchiveMemberHint) {
                 attempt = name;
-                int lparen = attempt.indexOf(u'(');
+                qsizetype lparen = attempt.indexOf(u'(');
                 if (lparen == -1)
                     lparen = attempt.size();
                 attempt = path + prefixes.at(prefix) + attempt.insert(lparen, suffixes.at(suffix));
@@ -228,7 +233,7 @@ bool QLibraryPrivate::load_sys()
         }
     }
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
     if (!hnd) {
         QByteArray utf8Bundle = fileName.toUtf8();
         QCFType<CFURLRef> bundleUrl = CFURLCreateFromFileSystemRepresentation(NULL, reinterpret_cast<const UInt8*>(utf8Bundle.data()), utf8Bundle.length(), true);
@@ -280,7 +285,7 @@ Q_CORE_EXPORT QFunctionPointer qt_linux_find_symbol_sys(const char *symbol)
 }
 #endif
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
 Q_CORE_EXPORT QFunctionPointer qt_mac_resolve_sys(void *handle, const char *symbol)
 {
     return QFunctionPointer(dlsym(handle, symbol));

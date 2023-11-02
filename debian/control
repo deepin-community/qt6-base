@@ -6,7 +6,7 @@ Build-Depends: cmake (>= 3.24~),
                debhelper-compat (= 13),
                default-libmysqlclient-dev,
                dh-exec,
-               firebird-dev [linux-any],
+               firebird-dev (<< 4.0~) [linux-any],
                libatspi2.0-dev,
                libb2-dev,
                libcups2-dev,
@@ -73,8 +73,8 @@ Build-Depends: cmake (>= 3.24~),
                qt6-base-dev:native <cross>,
                unixodbc-dev,
                zlib1g-dev,
-Build-Depends-Indep: qt6-base-dev (>= 6.4~) <!nodoc>,
-                     qt6-documentation-tools (>= 6.4~) <!nodoc>,
+Build-Depends-Indep: qt6-base-dev (>= 6.6~) <!nodoc>,
+                     qt6-documentation-tools (>= 6.6~) <!nodoc>,
 Standards-Version: 4.6.2
 Section: libs
 Homepage: https://www.qt.io/developers/
@@ -86,7 +86,7 @@ Package: libqt6core6
 Architecture: any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends},
-Provides: qt6-base-abi (= 6.4.2),
+Provides: qt6-base-private-abi (= 6.6.0),
 Depends: shared-mime-info, ${misc:Depends}, ${shlibs:Depends},
 Recommends: qt6-translations-l10n,
 Description: Qt 6 core module
@@ -443,6 +443,8 @@ Depends: qmake6-bin (= ${binary:Version}),
          ${misc:Depends},
          ${perl:Depends},
          ${shlibs:Depends},
+Breaks: qt6-base-dev (<< 6.6.0+dfsg~),
+Replaces: qt6-base-dev (<< 6.6.0+dfsg~),
 Description: Qt 6 qmake Makefile generator tool
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.

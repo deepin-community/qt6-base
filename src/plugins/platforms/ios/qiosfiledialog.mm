@@ -3,6 +3,8 @@
 
 #import <UIKit/UIKit.h>
 
+#import <Photos/Photos.h>
+
 #include <QtCore/qstandardpaths.h>
 #include <QtGui/qwindow.h>
 #include <QDebug>
@@ -36,17 +38,28 @@ bool QIOSFileDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality window
     Q_UNUSED(windowFlags);
     Q_UNUSED(windowModality);
 
-    bool acceptOpen = options()->acceptMode() == QFileDialogOptions::AcceptOpen;
-    QString directory = options()->initialDirectory().toLocalFile();
+    const bool acceptOpen = options()->acceptMode() == QFileDialogOptions::AcceptOpen;
+    const auto initialDir = options()->initialDirectory();
+    const QString directory = initialDir.toLocalFile();
+    // We manually add assets-library:// to the list of paths,
+    // when converted to QUrl, it becames a scheme.
+    const QString scheme = initialDir.scheme();
 
     if (acceptOpen) {
-        if (directory.startsWith("assets-library:"_L1))
+        if (directory.startsWith("assets-library:"_L1) || scheme == "assets-library"_L1)
             return showImagePickerDialog(parent);
         else
             return showNativeDocumentPickerDialog(parent);
     }
 
     return false;
+}
+
+void QIOSFileDialog::showImagePickerDialog_helper(QWindow *parent)
+{
+    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
+                              : qt_apple_sharedApplication().keyWindow;
+    [window.rootViewController presentViewController:m_viewController animated:YES completion:nil];
 }
 
 bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
@@ -67,9 +80,38 @@ bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
         return false;
     }
 
-    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
-        : qt_apple_sharedApplication().keyWindow;
-    [window.rootViewController presentViewController:m_viewController animated:YES completion:nil];
+    // "Old style" authorization (deprecated, but we have to work with AssetsLibrary anyway).
+    //
+    // From the documentation:
+    // "The authorizationStatus and requestAuthorization: methods aren’t compatible with the
+    //  limited library and return PHAuthorizationStatusAuthorized when the user authorizes your
+    //  app for limited access only."
+    //
+    // This is good enough for us.
+
+    const auto authStatus = [PHPhotoLibrary authorizationStatus];
+    if (authStatus == PHAuthorizationStatusAuthorized) {
+        showImagePickerDialog_helper(parent);
+    } else if (authStatus == PHAuthorizationStatusNotDetermined) {
+        QPointer<QWindow> winGuard(parent);
+        QPointer<QIOSFileDialog> thisGuard(this);
+        [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (status == PHAuthorizationStatusAuthorized) {
+                    if (thisGuard && winGuard)
+                        thisGuard->showImagePickerDialog_helper(winGuard);
+
+                } else if (thisGuard) {
+                    emit thisGuard->reject();
+                }
+            });
+        }];
+    } else {
+        // Treat 'Limited' (we don't know how to deal with anyway) and 'Denied' as errors.
+        // FIXME: logging category?
+        qWarning() << "QIOSFileDialog: insufficient permission, cannot pick images";
+        return false;
+    }
 
     return true;
 }
@@ -77,10 +119,6 @@ bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
 bool QIOSFileDialog::showNativeDocumentPickerDialog(QWindow *parent)
 {
 #ifndef Q_OS_TVOS
-    if (options()->fileMode() == QFileDialogOptions::Directory ||
-        options()->fileMode() == QFileDialogOptions::DirectoryOnly)
-        return false;
-
     m_viewController = [[QIOSDocumentPickerController alloc] initWithQIOSFileDialog:this];
 
     UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window

@@ -19,11 +19,6 @@ class tst_QSql : public QObject
 {
     Q_OBJECT
 
-public:
-    tst_QSql();
-    virtual ~tst_QSql();
-
-
 public slots:
     void initTestCase();
     void cleanupTestCase();
@@ -41,15 +36,6 @@ private slots:
 };
 
 /****************** General Qt SQL Module tests *****************/
-
-tst_QSql::tst_QSql()
-{
-}
-
-tst_QSql::~tst_QSql()
-{
-}
-
 void tst_QSql::initTestCase()
 {
 }
@@ -80,7 +66,7 @@ void tst_QSql::basicDriverTest()
     tst_Databases dbs;
     QVERIFY(dbs.open());
 
-    foreach (const QString& dbName, dbs.dbNames) {
+    for (const QString &dbName : std::as_const(dbs.dbNames)) {
         QSqlDatabase db = QSqlDatabase::database(dbName);
         QVERIFY_SQL(db, isValid());
 
@@ -135,6 +121,10 @@ void tst_QSql::open()
 
 void tst_QSql::openInvalid()
 {
+    int argc = 1;
+    char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+    QCoreApplication app(argc, argv, false);
+
     QSqlDatabase db;
     QVERIFY(!db.open());
 
@@ -150,7 +140,7 @@ void tst_QSql::concurrentAccess()
     tst_Databases dbs;
 
     QVERIFY(dbs.open());
-    foreach (const QString& dbName, dbs.dbNames) {
+    for (const QString &dbName : std::as_const(dbs.dbNames)) {
         QSqlDatabase db = QSqlDatabase::database(dbName);
         QVERIFY(db.isValid());
         if (tst_Databases::isMSAccess(db))
@@ -182,7 +172,7 @@ void tst_QSql::openErrorRecovery()
     QVERIFY(dbs.addDbs());
     if (dbs.dbNames.isEmpty())
         QSKIP("No database drivers installed");
-    foreach (const QString& dbName, dbs.dbNames) {
+    for (const QString &dbName : std::as_const(dbs.dbNames)) {
         QSqlDatabase db = QSqlDatabase::database(dbName, false);
         CHECK_DATABASE(db);
 

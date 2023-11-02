@@ -1,4 +1,5 @@
-# Generated from qtsvg.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -11,6 +12,8 @@ project(QtMockPlugins
 )
 
 find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core)
+qt_internal_project_setup()
+
 find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG OPTIONAL_COMPONENTS Gui Widgets Xml)
 
 qt_build_repo_begin()

@@ -3,6 +3,10 @@
 
 #include "qxdgdesktopportalfiledialog_p.h"
 
+#include <private/qgenericunixservices_p.h>
+#include <private/qguiapplication_p.h>
+#include <qpa/qplatformintegration.h>
+
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
@@ -157,8 +161,6 @@ void QXdgDesktopPortalFileDialog::openPortal(Qt::WindowFlags windowFlags, Qt::Wi
                                                           "/org/freedesktop/portal/desktop"_L1,
                                                           "org.freedesktop.portal.FileChooser"_L1,
                                                           d->saveFile ? "SaveFile"_L1 : "OpenFile"_L1);
-    QString parentWindowId = "x11:"_L1 + QString::number(parent ? parent->winId() : 0, 16);
-
     QVariantMap options;
     if (!d->acceptLabel.isEmpty())
         options.insert("accept_label"_L1, d->acceptLabel);
@@ -167,19 +169,18 @@ void QXdgDesktopPortalFileDialog::openPortal(Qt::WindowFlags windowFlags, Qt::Wi
     options.insert("multiple"_L1, d->multipleFiles);
     options.insert("directory"_L1, d->directoryMode);
 
-    if (d->saveFile) {
-        if (!d->directory.isEmpty())
-            options.insert("current_folder"_L1, QFile::encodeName(d->directory).append('\0'));
+    if (!d->directory.isEmpty())
+        options.insert("current_folder"_L1, QFile::encodeName(d->directory).append('\0'));
 
-        if (!d->selectedFiles.isEmpty()) {
-            // current_file for the file to be pre-selected, current_name for the file name to be pre-filled
-            // current_file accepts absolute path and requires the file to exist
-            // while current_name accepts just file name
-            QFileInfo selectedFileInfo(d->selectedFiles.first());
-            if (selectedFileInfo.exists())
-                options.insert("current_file"_L1, QFile::encodeName(d->selectedFiles.first()).append('\0'));
-            options.insert("current_name"_L1, selectedFileInfo.fileName());
-        }
+    if (d->saveFile && !d->selectedFiles.isEmpty()) {
+        // current_file for the file to be pre-selected, current_name for the file name to be
+        // pre-filled current_file accepts absolute path and requires the file to exist while
+        // current_name accepts just file name
+        QFileInfo selectedFileInfo(d->selectedFiles.first());
+        if (selectedFileInfo.exists())
+            options.insert("current_file"_L1,
+                           QFile::encodeName(d->selectedFiles.first()).append('\0'));
+        options.insert("current_name"_L1, selectedFileInfo.fileName());
     }
 
     // Insert filters
@@ -265,11 +266,18 @@ void QXdgDesktopPortalFileDialog::openPortal(Qt::WindowFlags windowFlags, Qt::Wi
     // TODO choices a(ssa(ss)s)
     // List of serialized combo boxes to add to the file chooser.
 
-    message << parentWindowId << d->title << options;
+    auto unixServices = dynamic_cast<QGenericUnixServices *>(
+            QGuiApplicationPrivate::platformIntegration()->services());
+    if (parent && unixServices)
+        message << unixServices->portalWindowIdentifier(parent);
+    else
+        message << QString();
+
+    message << d->title << options;
 
     QDBusPendingCall pendingCall = QDBusConnection::sessionBus().asyncCall(message);
     QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(pendingCall);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [=] (QDBusPendingCallWatcher *watcher) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, d, windowFlags, windowModality, parent] (QDBusPendingCallWatcher *watcher) {
         QDBusPendingReply<QDBusObjectPath> reply = *watcher;
         // Any error means the dialog is not shown and we need to fallback
         d->failedToOpen = reply.isError();

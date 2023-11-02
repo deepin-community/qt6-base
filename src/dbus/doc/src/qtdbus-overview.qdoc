@@ -5,6 +5,7 @@
     \page qtdbus-overview.html
     \title Qt D-Bus Overview
     \brief Provides insight into the Qt Qt D-Bus module.
+    \ingroup explanations-networkingandconnectivity
 
     D-Bus is an Inter-Process Communication (IPC) and Remote Procedure
     Calling (RPC) mechanism originally developed for Linux to replace
@@ -164,7 +165,7 @@
     This feature can be enabled on a per-application basis by setting the
     \c QDBUS_DEBUG environment variable before running each application.
     For example, we can enable debugging only for the car in the
-    \l{D-Bus Remote Controlled Car Example} by running the controller and the
+    \l{D-Bus Remote Controlled Car} example by running the controller and the
     car in the following way:
 
     \snippet code/doc_src_introtodbus.qdoc QDBUS_DEBUG

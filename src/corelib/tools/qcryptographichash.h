@@ -60,13 +60,19 @@ public:
         Blake2s_224,
         Blake2s_256,
 #endif
+        NumAlgorithms
     };
     Q_ENUM(Algorithm)
 
     explicit QCryptographicHash(Algorithm method);
+    QCryptographicHash(QCryptographicHash &&other) noexcept : d(std::exchange(other.d, nullptr)) {}
     ~QCryptographicHash();
 
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QCryptographicHash)
+    void swap(QCryptographicHash &other) noexcept { qt_ptr_swap(d, other.d); }
+
     void reset() noexcept;
+    [[nodiscard]] Algorithm algorithm() const noexcept;
 
 #if QT_DEPRECATED_SINCE(6, 4)
     QT_DEPRECATED_VERSION_X_6_4("Use the QByteArrayView overload instead")
@@ -86,6 +92,7 @@ public:
 #endif
     static QByteArray hash(QByteArrayView data, Algorithm method);
     static int hashLength(Algorithm method);
+    static bool supportsAlgorithm(Algorithm method);
 private:
     Q_DISABLE_COPY(QCryptographicHash)
     QCryptographicHashPrivate *d;

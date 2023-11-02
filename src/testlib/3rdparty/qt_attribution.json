@@ -4,11 +4,12 @@
         "Name": "Valgrind",
         "QDocModule": "qttestlib",
         "QtUsage": "Used on Linux ond MacOS in the Qt Test module.",
-        "Files": "valgrind_p.h callgrind_p.h",
+        "Comment": { "UpstreamFiles": [ "include/valgrind.h.in", "callgrind/callgrind.h" ] },
+        "Files": [ "valgrind_p.h", "callgrind_p.h" ],
 
         "Description": "An instrumentation framework for building dynamic analysis tools.",
         "Homepage": "http://valgrind.org/",
-        "Version": "3.14.0",
+        "Version": "3.20.0",
         "License": "BSD 4-clause \"Original\" or \"Old\" License",
         "LicenseId": "BSD-4-Clause",
         "LicenseFile": "VALGRIND_LICENSE.txt",
@@ -40,7 +41,7 @@ Copyright (c) 2003, 2006 Massachusetts Institute of Technology"
         "Homepage": "https://www.kernel.org",
         "Version": "3.7",
         "License": "GNU General Public License v2.0 only with Linux Syscall Note",
-        "LicenseId": "GPL-2.0 WITH Linux-syscall-note",
+        "LicenseId": "GPL-2.0-only WITH Linux-syscall-note",
         "LicenseFile": "LINUX_LICENSE.txt",
         "Copyright": "Copyright (C) 2008-2009, Thomas Gleixner <tglx@linutronix.de>
 Copyright (C) 2008-2011, Red Hat, Inc., Ingo Molnar

@@ -1,4 +1,5 @@
-# Generated from plugins.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 if(TARGET Qt::Sql)
     add_subdirectory(sqldrivers)
@@ -23,4 +24,7 @@ endif()
 if (TARGET Qt::Network)
     add_subdirectory(networkinformation)
     add_subdirectory(tls)
+endif()
+if (QT_FEATURE_ctf AND QT_FEATURE_library)
+    add_subdirectory(tracing)
 endif()

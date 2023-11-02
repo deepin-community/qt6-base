@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Match the pattern 'regex' in 'input_line', replace the match with 'replacement'
 # and set that result in 'out_var' in the parent scope.
 function(qt_regex_match_and_get input_line regex replacement out_var)
@@ -32,6 +35,15 @@ function(qt_process_qlalr consuming_target input_file_list flags)
         return()
     endif()
 
+    qt_internal_is_skipped_test(skipped ${consuming_target})
+    if(skipped)
+        return()
+    endif()
+    qt_internal_is_in_test_batch(in_batch ${consuming_target})
+    if(in_batch)
+        _qt_internal_test_batch_target_name(consuming_target)
+    endif()
+
     foreach(input_file ${input_file_list})
         file(STRINGS ${input_file} input_file_lines)
         qt_qlalr_find_option_in_list("${input_file_lines}" "^%parser(.+)" "parser")
@@ -49,8 +61,8 @@ function(qt_process_qlalr consuming_target input_file_list flags)
             "${absolute_input_file}")
 
         set(cpp_file "${parser}.cpp")
-        set(private_file "${parser}_p.h")
-        set(decl_file "${decl}")
+        set(private_file "${CMAKE_CURRENT_BINARY_DIR}/${parser}_p.h")
+        set(decl_file "${CMAKE_CURRENT_BINARY_DIR}/${decl}")
         set(impl_file "${impl}")
         add_custom_command(
             OUTPUT ${cpp_file} ${private_file} ${decl_file} ${impl_file}
@@ -59,6 +71,7 @@ function(qt_process_qlalr consuming_target input_file_list flags)
             MAIN_DEPENDENCY ${input_file}
             VERBATIM
         )
-        target_sources(${consuming_target} PRIVATE ${cpp_file} ${impl_file})
+        target_sources(${consuming_target} PRIVATE ${cpp_file} ${impl_file}
+            ${private_file} ${decl_file})
     endforeach()
 endfunction()

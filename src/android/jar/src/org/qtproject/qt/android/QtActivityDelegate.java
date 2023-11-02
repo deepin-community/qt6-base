@@ -14,6 +14,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.Rect;
@@ -43,6 +44,8 @@ import android.view.Surface;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.view.ViewTreeObserver;
@@ -130,13 +133,13 @@ public class QtActivityDelegate
             return;
 
         m_systemUiVisibility = systemUiVisibility;
+        setLayoutInDisplayCutoutMode();
 
-        int systemUiVisibilityFlags = 0;
+        int systemUiVisibilityFlags = View.SYSTEM_UI_FLAG_VISIBLE;
         switch (m_systemUiVisibility) {
         case SYSTEM_UI_VISIBILITY_NORMAL:
             m_activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
             m_activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-            systemUiVisibilityFlags = View.SYSTEM_UI_FLAG_VISIBLE;
             break;
         case SYSTEM_UI_VISIBILITY_FULLSCREEN:
             m_activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -154,13 +157,23 @@ public class QtActivityDelegate
                     | WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION
                     | WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
             m_activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-            systemUiVisibilityFlags = View.SYSTEM_UI_FLAG_VISIBLE;
             break;
         };
 
         m_activity.getWindow().getDecorView().setSystemUiVisibility(systemUiVisibilityFlags);
 
         m_layout.requestLayout();
+    }
+
+    private void setLayoutInDisplayCutoutMode()
+    {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            int cutOutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            if (SYSTEM_UI_VISIBILITY_FULLSCREEN == m_systemUiVisibility)
+                cutOutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+
+            m_activity.getWindow().getAttributes().layoutInDisplayCutoutMode = cutOutMode;
+        }
     }
 
     public void updateFullScreen()
@@ -559,7 +572,9 @@ public class QtActivityDelegate
     private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener()
     {
         @Override
-        public void onDisplayAdded(int displayId) { }
+        public void onDisplayAdded(int displayId) {
+            QtNative.handleScreenAdded(displayId);
+        }
 
         private boolean isSimilarRotation(int r1, int r2)
         {
@@ -586,10 +601,13 @@ public class QtActivityDelegate
 
             float refreshRate = display.getRefreshRate();
             QtNative.handleRefreshRateChanged(refreshRate);
+            QtNative.handleScreenChanged(displayId);
         }
 
         @Override
-        public void onDisplayRemoved(int displayId) { }
+        public void onDisplayRemoved(int displayId) {
+            QtNative.handleScreenRemoved(displayId);
+        }
     };
 
     public boolean updateActivity(Activity activity)
@@ -713,7 +731,7 @@ public class QtActivityDelegate
                                         "Droid Sans Mono;Droid Sans;Droid Sans Fallback");
         QtNative.setEnvironmentVariable("QT_ANDROID_FONTS_SERIF", "Droid Serif");
         QtNative.setEnvironmentVariable("HOME", m_activity.getFilesDir().getAbsolutePath());
-        QtNative.setEnvironmentVariable("TMPDIR", m_activity.getFilesDir().getAbsolutePath());
+        QtNative.setEnvironmentVariable("TMPDIR", m_activity.getCacheDir().getAbsolutePath());
         QtNative.setEnvironmentVariable("QT_ANDROID_FONTS",
                                         "Roboto;Droid Sans;Droid Sans Fallback");
         QtNative.setEnvironmentVariable("QT_ANDROID_APP_ICON_SIZE",
@@ -973,6 +991,19 @@ public class QtActivityDelegate
 
     private void handleUiModeChange(int uiMode)
     {
+        // QTBUG-108365
+        if (Build.VERSION.SDK_INT >= 30) {
+            // Since 29 version we are using Theme_DeviceDefault_DayNight
+            Window window = m_activity.getWindow();
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                // set APPEARANCE_LIGHT_STATUS_BARS if needed
+                int appearanceLight = Color.luminance(window.getStatusBarColor()) > 0.5 ?
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS : 0;
+                controller.setSystemBarsAppearance(appearanceLight,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+            }
+        }
         switch (uiMode) {
             case Configuration.UI_MODE_NIGHT_NO:
                 ExtractStyle.runIfNeeded(m_activity, false);

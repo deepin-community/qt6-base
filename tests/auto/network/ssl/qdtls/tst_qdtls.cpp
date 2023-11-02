@@ -26,6 +26,8 @@
 
 #include <algorithm>
 
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
 
 namespace
@@ -127,8 +129,8 @@ private:
     DtlsPtr clientCrypto;
 
     QTestEventLoop testLoop;
-    const int handshakeTimeoutMS = 5000;
-    const int dataExchangeTimeoutMS = 1000;
+    static constexpr auto HandshakeTimeout = 5s;
+    static constexpr auto DataExchangeTimeout = 1s;
 
     const QByteArray presharedKey = "DEADBEEFDEADBEEF";
     QString certDirPath;
@@ -270,7 +272,7 @@ void tst_QDtls::configuration()
     QFETCH(const QSslSocket::SslMode, mode);
     QDtls dtls(mode);
     QCOMPARE(dtls.dtlsConfiguration(), config);
-    config.setProtocol(QSsl::DtlsV1_0OrLater);
+    config.setProtocol(QSsl::DtlsV1_2);
     config.setDtlsCookieVerificationEnabled(false);
     QCOMPARE(config.dtlsCookieVerificationEnabled(), false);
 
@@ -413,7 +415,7 @@ void tst_QDtls::handshake()
     QDTLS_VERIFY_NO_ERROR(clientCrypto);
     QCOMPARE(clientCrypto->handshakeState(), QDtls::HandshakeInProgress);
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!testLoop.timeout());
 
@@ -473,7 +475,7 @@ void tst_QDtls::handshakeWithRetransmission()
     // client will re-transmit in 1s., the first part of 'ServerHello' to be
     // dropped, the client then will re-transmit after another 2 s. Thus it's ~3.
     // We err on safe side and double our (already quite generous) 5s.
-    testLoop.enterLoopMSecs(handshakeTimeoutMS * 2);
+    testLoop.enterLoop(HandshakeTimeout * 2);
 
     QVERIFY(!testLoop.timeout());
     QDTLS_VERIFY_HANDSHAKE_SUCCESS(serverCrypto);
@@ -496,7 +498,7 @@ void tst_QDtls::sessionCipher()
     QVERIFY(clientCrypto->setPeer(serverAddress, serverPort, hostName));
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!testLoop.timeout());
     QDTLS_VERIFY_HANDSHAKE_SUCCESS(clientCrypto);
@@ -559,7 +561,7 @@ void tst_QDtls::cipherPreferences()
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
     QDTLS_VERIFY_NO_ERROR(clientCrypto);
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
     QVERIFY(!testLoop.timeout());
     QDTLS_VERIFY_HANDSHAKE_SUCCESS(clientCrypto);
     QDTLS_VERIFY_HANDSHAKE_SUCCESS(serverCrypto);
@@ -579,20 +581,36 @@ void tst_QDtls::protocolVersionMatching_data()
     QTest::addColumn<QSsl::SslProtocol>("clientProtocol");
     QTest::addColumn<bool>("works");
 
-    QTest::addRow("DtlsV1_0 <-> DtlsV1_0") << QSsl::DtlsV1_0 << QSsl::DtlsV1_0 << true;
-    QTest::addRow("DtlsV1_0OrLater <-> DtlsV1_0") << QSsl::DtlsV1_0OrLater << QSsl::DtlsV1_0 << true;
-    QTest::addRow("DtlsV1_0 <-> DtlsV1_0OrLater") << QSsl::DtlsV1_0 << QSsl::DtlsV1_0OrLater << true;
-    QTest::addRow("DtlsV1_0OrLater <-> DtlsV1_0OrLater") << QSsl::DtlsV1_0OrLater << QSsl::DtlsV1_0OrLater << true;
+    //OPENSSL_VERSION_NUMBER :
+    //(OPENSSL_VERSION_MAJOR<<28) | (OPENSSL_VERSION_MINOR<<20) | (OPENSSL_VERSION_PATCH<<4)
+    const long ossl311 = 0x30100010;
+
+    if (QSslSocket::sslLibraryVersionNumber() < ossl311) {
+#if QT_DEPRECATED_SINCE(6, 3)
+QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
+        QTest::addRow("DtlsV1_0 <-> DtlsV1_0") << QSsl::DtlsV1_0 << QSsl::DtlsV1_0 << true;
+        QTest::addRow("DtlsV1_0OrLater <-> DtlsV1_0") << QSsl::DtlsV1_0OrLater << QSsl::DtlsV1_0 << true;
+        QTest::addRow("DtlsV1_0 <-> DtlsV1_0OrLater") << QSsl::DtlsV1_0 << QSsl::DtlsV1_0OrLater << true;
+        QTest::addRow("DtlsV1_0OrLater <-> DtlsV1_0OrLater") << QSsl::DtlsV1_0OrLater << QSsl::DtlsV1_0OrLater << true;
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 3)
+    }
 
     QTest::addRow("DtlsV1_2 <-> DtlsV1_2") << QSsl::DtlsV1_2 << QSsl::DtlsV1_2 << true;
     QTest::addRow("DtlsV1_2OrLater <-> DtlsV1_2") << QSsl::DtlsV1_2OrLater << QSsl::DtlsV1_2 << true;
     QTest::addRow("DtlsV1_2 <-> DtlsV1_2OrLater") << QSsl::DtlsV1_2 << QSsl::DtlsV1_2OrLater << true;
     QTest::addRow("DtlsV1_2OrLater <-> DtlsV1_2OrLater") << QSsl::DtlsV1_2OrLater << QSsl::DtlsV1_2OrLater << true;
 
-    QTest::addRow("DtlsV1_0 <-> DtlsV1_2") << QSsl::DtlsV1_0 << QSsl::DtlsV1_2 << false;
-    QTest::addRow("DtlsV1_0 <-> DtlsV1_2OrLater") << QSsl::DtlsV1_0 << QSsl::DtlsV1_2OrLater << false;
-    QTest::addRow("DtlsV1_2 <-> DtlsV1_0") << QSsl::DtlsV1_2 << QSsl::DtlsV1_0 << false;
-    QTest::addRow("DtlsV1_2OrLater <-> DtlsV1_0") << QSsl::DtlsV1_2OrLater << QSsl::DtlsV1_0 << false;
+    if (QSslSocket::sslLibraryVersionNumber() < ossl311) {
+#if QT_DEPRECATED_SINCE(6, 3)
+QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
+        QTest::addRow("DtlsV1_0 <-> DtlsV1_2") << QSsl::DtlsV1_0 << QSsl::DtlsV1_2 << false;
+        QTest::addRow("DtlsV1_0 <-> DtlsV1_2OrLater") << QSsl::DtlsV1_0 << QSsl::DtlsV1_2OrLater << false;
+        QTest::addRow("DtlsV1_2 <-> DtlsV1_0") << QSsl::DtlsV1_2 << QSsl::DtlsV1_0 << false;
+        QTest::addRow("DtlsV1_2OrLater <-> DtlsV1_0") << QSsl::DtlsV1_2OrLater << QSsl::DtlsV1_0 << false;
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 3
+    }
 }
 
 void tst_QDtls::protocolVersionMatching()
@@ -618,7 +636,7 @@ void tst_QDtls::protocolVersionMatching()
     QVERIFY(clientCrypto->setPeer(serverAddress, serverPort));
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
 
     if (works) {
         QDTLS_VERIFY_HANDSHAKE_SUCCESS(serverCrypto);
@@ -653,7 +671,7 @@ void tst_QDtls::verificationErrors()
     // Now we are ready for handshake:
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!testLoop.timeout());
     QDTLS_VERIFY_NO_ERROR(serverCrypto);
@@ -723,7 +741,7 @@ void tst_QDtls::presetExpectedErrors()
     QVERIFY(clientCrypto->setPeer(serverAddress, serverPort));
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!testLoop.timeout());
 
@@ -810,7 +828,7 @@ void tst_QDtls::verifyServerCertificate()
 
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
     QVERIFY(!testLoop.timeout());
 
     if (serverKey.isNull() && !serverCerts.isEmpty()) {
@@ -940,7 +958,7 @@ void tst_QDtls::verifyClientCertificate()
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
     QDTLS_VERIFY_NO_ERROR(clientCrypto);
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
 
     serverConfig = serverCrypto->dtlsConfiguration();
 
@@ -987,7 +1005,7 @@ void tst_QDtls::blacklistedCerificate()
     QVERIFY(clientCrypto->setPeer(serverAddress, serverPort, name));
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
     QVERIFY(!testLoop.timeout());
     QCOMPARE(clientCrypto->handshakeState(), QDtls::PeerVerificationFailed);
     QCOMPARE(clientCrypto->dtlsError(), QDtlsError::PeerVerificationError);
@@ -1039,7 +1057,7 @@ void tst_QDtls::readWriteEncrypted()
     QCOMPARE(clientCrypto->dtlsError(), QDtlsError::InvalidOperation);
 
     // 1.2 Finish the handshake:
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
     QVERIFY(!testLoop.timeout());
 
     QDTLS_VERIFY_HANDSHAKE_SUCCESS(clientCrypto);
@@ -1057,7 +1075,7 @@ void tst_QDtls::readWriteEncrypted()
     QVERIFY(clientBytesWritten > 0);
 
     // 5. Exchange client/server messages:
-    testLoop.enterLoopMSecs(dataExchangeTimeoutMS);
+    testLoop.enterLoop(DataExchangeTimeout);
     QVERIFY(!testLoop.timeout());
 
     QCOMPARE(serverExpectedPlainText, serverReceivedPlainText);
@@ -1075,7 +1093,7 @@ void tst_QDtls::readWriteEncrypted()
     QCOMPARE(crypto->handshakeState(), QDtls::HandshakeNotStarted);
     QVERIFY(!crypto->isConnectionEncrypted());
     // 8. Receive this read notification and handle it:
-    testLoop.enterLoopMSecs(dataExchangeTimeoutMS);
+    testLoop.enterLoop(DataExchangeTimeout);
     QVERIFY(!testLoop.timeout());
 
     DtlsPtr &peerCrypto = serverSideShutdown ? clientCrypto : serverCrypto;
@@ -1100,7 +1118,7 @@ void tst_QDtls::datagramFragmentation()
 
     QVERIFY(clientCrypto->doHandshake(&clientSocket));
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS);
+    testLoop.enterLoop(HandshakeTimeout);
     QVERIFY(!testLoop.timeout());
 
     QDTLS_VERIFY_HANDSHAKE_SUCCESS(clientCrypto);

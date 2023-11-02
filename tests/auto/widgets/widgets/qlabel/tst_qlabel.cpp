@@ -18,6 +18,8 @@
 #include <qmath.h>
 #include <private/qlabel_p.h>
 
+#include <QtWidgets/private/qapplication_p.h>
+
 class Widget : public QWidget
 {
     Q_OBJECT
@@ -75,12 +77,16 @@ private Q_SLOTS:
 
 #ifndef QT_NO_CONTEXTMENU
     void taskQTBUG_7902_contextMenuCrash();
+    void contextMenu_data();
+    void contextMenu();
 #endif
 
     void taskQTBUG_48157_dprPixmap();
     void taskQTBUG_48157_dprMovie();
 
     void resourceProvider();
+    void mouseEventPropagation_data();
+    void mouseEventPropagation();
 
 private:
     QLabel *testWidget;
@@ -165,7 +171,7 @@ void tst_QLabel::setBuddy()
     layout->addWidget(test_edit);
     layout->addWidget(test_edit2);
     test_box->show();
-    qApp->setActiveWindow(test_box);
+    QApplicationPrivate::setActiveWindow(test_box);
     QVERIFY(test_box->isActiveWindow());
 
     test_label->setBuddy( test_edit );
@@ -557,6 +563,43 @@ void tst_QLabel::taskQTBUG_7902_contextMenuCrash()
     QTest::qWait(350);
     // No crash, it's allright.
 }
+
+void tst_QLabel::contextMenu_data()
+{
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<Qt::TextInteractionFlag>("interactionFlags");
+    QTest::addColumn<bool>("showsContextMenu");
+
+    QTest::addRow("Read-only")  << "Plain Text"
+                                << Qt::NoTextInteraction
+                                << false;
+    QTest::addRow("Selectable") << "Plain Text"
+                                << Qt::TextEditorInteraction
+                                << true;
+    QTest::addRow("Link")       << "<a href=\"nowhere\">Rich text with link</a>"
+                                << Qt::TextBrowserInteraction
+                                << true;
+    QTest::addRow("Rich text")  << "<b>Rich text without link</b>"
+                                << Qt::TextBrowserInteraction
+                                << true;
+}
+
+void tst_QLabel::contextMenu()
+{
+    QFETCH(QString, text);
+    QFETCH(Qt::TextInteractionFlag, interactionFlags);
+    QFETCH(bool, showsContextMenu);
+
+    QLabel label(text);
+    label.setTextInteractionFlags(interactionFlags);
+    label.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&label));
+
+    const QPoint menuPosition = label.rect().center();
+    QContextMenuEvent cme(QContextMenuEvent::Mouse, menuPosition, label.mapToGlobal(menuPosition));
+    QApplication::sendEvent(&label, &cme);
+    QCOMPARE(cme.isAccepted(), showsContextMenu);
+}
 #endif
 
 void tst_QLabel::taskQTBUG_48157_dprPixmap()
@@ -596,6 +639,95 @@ void tst_QLabel::resourceProvider()
     label.show();
     QCOMPARE(providerUrl, url);
     QVERIFY(providerCalled > 0);
+}
+
+// Test if mouse events are correctly propagated to the parent widget,
+// even if a label contains rich text (QTBUG-110055)
+void tst_QLabel::mouseEventPropagation_data()
+{
+    QTest::addColumn<const QString>("text");
+    QTest::addColumn<const Qt::TextInteractionFlag>("interaction");
+    QTest::addColumn<const QList<Qt::MouseButton>>("buttons");
+    QTest::addColumn<const bool>("expectPropagation");
+
+
+    QTest::newRow("RichText")
+            << QString("<b>This is a rich text propagating mouse events</b>")
+            << Qt::LinksAccessibleByMouse
+            << QList<Qt::MouseButton>{Qt::LeftButton, Qt::RightButton, Qt::MiddleButton}
+            << true;
+    QTest::newRow("PlainText")
+            << QString("This is a plain text propagating mouse events")
+            << Qt::LinksAccessibleByMouse
+            << QList<Qt::MouseButton>{Qt::LeftButton, Qt::RightButton, Qt::MiddleButton}
+            << true;
+    QTest::newRow("PlainTextConsume")
+            << QString("This is a plain text consuming mouse events")
+            << Qt::TextSelectableByMouse
+            << QList<Qt::MouseButton>{Qt::LeftButton}
+            << false;
+    QTest::newRow("RichTextConsume")
+            << QString("<b>This is a rich text consuming mouse events</b>")
+            << Qt::TextSelectableByMouse
+            << QList<Qt::MouseButton>{Qt::LeftButton}
+            << false;
+    QTest::newRow("PlainTextNoInteraction")
+            << QString("This is a text not interacting with mouse")
+            << Qt::NoTextInteraction
+            << QList<Qt::MouseButton>{Qt::LeftButton, Qt::RightButton, Qt::MiddleButton}
+            << true;
+    QTest::newRow("RichTextNoInteraction")
+            << QString("<b>This is a rich text not interacting with mouse</b>")
+            << Qt::NoTextInteraction
+            << QList<Qt::MouseButton>{Qt::LeftButton, Qt::RightButton, Qt::MiddleButton}
+            << true;
+}
+
+void tst_QLabel::mouseEventPropagation()
+{
+    class MouseEventWidget : public QWidget
+    {
+    public:
+        uint pressed() const { return m_pressed; }
+        uint released() const { return m_released; }
+
+    private:
+        uint m_pressed = 0;
+        uint m_released = 0;
+        void mousePressEvent(QMouseEvent *event) override
+        {
+            ++m_pressed;
+            return QWidget::mousePressEvent(event);
+        }
+
+        void mouseReleaseEvent(QMouseEvent *event) override
+        {
+            ++m_released;
+            return QWidget::mouseReleaseEvent(event);
+        }
+    };
+
+    QFETCH(const QString, text);
+    QFETCH(const Qt::TextInteractionFlag, interaction);
+    QFETCH(const QList<Qt::MouseButton>, buttons);
+    QFETCH(const bool, expectPropagation);
+
+    MouseEventWidget widget;
+    auto *layout = new QVBoxLayout(&widget);
+    auto *label = new QLabel(text);
+    label->setTextInteractionFlags(interaction);
+
+    layout->addWidget(label);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    const QPoint labelCenter = label->rect().center();
+    for (Qt::MouseButton mouseButton : buttons)
+        QTest::mouseClick(label, mouseButton, Qt::KeyboardModifiers(), labelCenter);
+
+    const uint count = expectPropagation ? buttons.count() : 0;
+    QTRY_COMPARE(widget.pressed(), count);
+    QTRY_COMPARE(widget.released(), count);
 }
 
 QTEST_MAIN(tst_QLabel)

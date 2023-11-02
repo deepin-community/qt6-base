@@ -24,11 +24,12 @@ using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcMD, "qt.text.markdown")
 
-static const QChar Newline = u'\n';
-static const QChar Space = u' ';
+static const QChar qtmi_Newline = u'\n';
+static const QChar qtmi_Space = u' ';
 
 // TODO maybe eliminate the margins after all views recognize BlockQuoteLevel, CSS can format it, etc.
-static const int BlockQuoteIndent = 40; // pixels, same as in QTextHtmlParserNode::initializeProperties
+static const int qtmi_BlockQuoteIndent =
+        40; // pixels, same as in QTextHtmlParserNode::initializeProperties
 
 static_assert(int(QTextMarkdownImporter::FeatureCollapseWhitespace) == MD_FLAG_COLLAPSEWHITESPACE);
 static_assert(int(QTextMarkdownImporter::FeaturePermissiveATXHeaders) == MD_FLAG_PERMISSIVEATXHEADERS);
@@ -137,7 +138,9 @@ void QTextMarkdownImporter::import(QTextDocument *doc, const QString &markdown)
         m_monoFont.setPixelSize(doc->defaultFont().pixelSize());
     qCDebug(lcMD) << "default font" << doc->defaultFont() << "mono font" << m_monoFont;
     QByteArray md = markdown.toUtf8();
+    m_cursor->beginEditBlock();
     md_parse(md.constData(), MD_SIZE(md.size()), &callbacks, this);
+    m_cursor->endEditBlock();
     delete m_cursor;
     m_cursor = nullptr;
 }
@@ -226,7 +229,8 @@ int QTextMarkdownImporter::cbEnterBlock(int blockType, void *det)
         m_listFormat.setIndent(m_listStack.size() + 1);
         m_listFormat.setNumberSuffix(QChar::fromLatin1(detail->mark_delimiter));
         m_listFormat.setStyle(QTextListFormat::ListDecimal);
-        qCDebug(lcMD, "OL xx%d level %d", detail->mark_delimiter, int(m_listStack.size()) + 1);
+        m_listFormat.setStart(detail->start);
+        qCDebug(lcMD, "OL xx%d level %d start %d", detail->mark_delimiter, int(m_listStack.size()) + 1, detail->start);
     } break;
     case MD_BLOCK_TD: {
         MD_BLOCK_TD_DETAIL *detail = static_cast<MD_BLOCK_TD_DETAIL *>(det);
@@ -447,10 +451,10 @@ int QTextMarkdownImporter::cbText(int textType, const char *text, unsigned size)
         s = QString(QChar(u'\xFFFD')); // CommonMark-required replacement for null
         break;
     case MD_TEXT_BR:
-        s = QString(Newline);
+        s = QString(qtmi_Newline);
         break;
     case MD_TEXT_SOFTBR:
-        s = QString(Space);
+        s = QString(qtmi_Space);
         break;
     case MD_TEXT_CODE:
         // We'll see MD_SPAN_CODE too, which will set the char format, and that's enough.
@@ -499,7 +503,7 @@ int QTextMarkdownImporter::cbText(int textType, const char *text, unsigned size)
         m_nonEmptyTableCells.append(m_tableCol);
         break;
     case MD_BLOCK_CODE:
-        if (s == Newline) {
+        if (s == qtmi_Newline) {
             // defer a blank line until we see something else in the code block,
             // to avoid ending every code block with a gratuitous blank line
             m_needsInsertBlock = true;
@@ -572,8 +576,8 @@ void QTextMarkdownImporter::insertBlock()
     }
     if (m_blockQuoteDepth) {
         blockFormat.setProperty(QTextFormat::BlockQuoteLevel, m_blockQuoteDepth);
-        blockFormat.setLeftMargin(BlockQuoteIndent * m_blockQuoteDepth);
-        blockFormat.setRightMargin(BlockQuoteIndent);
+        blockFormat.setLeftMargin(qtmi_BlockQuoteIndent * m_blockQuoteDepth);
+        blockFormat.setRightMargin(qtmi_BlockQuoteIndent);
     }
     if (m_codeBlock) {
         blockFormat.setProperty(QTextFormat::BlockCodeLanguage, m_blockCodeLanguage);

@@ -24,6 +24,8 @@
 #endif
 #include <QStyleHints>
 
+#include <QtWidgets/private/qapplication_p.h>
+
 static const Qt::WindowFlags DefaultWindowFlags
     = Qt::SubWindow | Qt::WindowSystemMenuHint
       | Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint;
@@ -174,7 +176,7 @@ static bool verifyArrangement(QMdiArea *mdiArea, Arrangement arrangement, const 
         // QWidget::childAt with the position of the first one and subsequently adding
         // dx and dy.
         QPoint subWindowPos(20, 5);
-        foreach (int expectedIndex, expectedIndices) {
+        for (int expectedIndex : expectedIndices) {
             QMdiSubWindow *expected = subWindows.at(expectedIndex);
             expected->raise();
             if (mdiArea->viewport()->childAt(subWindowPos) != expected)
@@ -185,7 +187,7 @@ static bool verifyArrangement(QMdiArea *mdiArea, Arrangement arrangement, const 
         }
 
         // Restore stacking order.
-        foreach (QMdiSubWindow *subWindow, activationOrderList) {
+        for (QMdiSubWindow *subWindow : activationOrderList) {
             mdiArea->setActiveSubWindow(subWindow);
             qApp->processEvents();
         }
@@ -304,7 +306,7 @@ void tst_QMdiArea::subWindowActivated()
     QSignalSpy spy(workspace, SIGNAL(subWindowActivated(QMdiSubWindow*)));
     connect( workspace, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(activeChanged(QMdiSubWindow*)));
     mw.show();
-    qApp->setActiveWindow(&mw);
+    QApplicationPrivate::setActiveWindow(&mw);
 
     QFETCH( int, count );
     int i;
@@ -512,7 +514,7 @@ void tst_QMdiArea::subWindowActivatedWithMinimize()
     QSignalSpy spy(workspace, SIGNAL(subWindowActivated(QMdiSubWindow*)));
     connect( workspace, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(activeChanged(QMdiSubWindow*)) );
     mw.show();
-    qApp->setActiveWindow(&mw);
+    QApplicationPrivate::setActiveWindow(&mw);
     QWidget *widget = new QWidget(workspace);
     widget->setAttribute(Qt::WA_DeleteOnClose);
     QMdiSubWindow *window1 = workspace->addSubWindow(widget);
@@ -657,7 +659,7 @@ void tst_QMdiArea::changeWindowTitle()
 #endif
 
     mw->show();
-    qApp->setActiveWindow(mw);
+    QApplicationPrivate::setActiveWindow(mw);
 
 #ifdef USE_SHOW
     mw->showFullScreen();
@@ -902,7 +904,7 @@ void tst_QMdiArea::setActiveSubWindow()
 
     QSignalSpy spy(&workspace, SIGNAL(subWindowActivated(QMdiSubWindow*)));
     connect(&workspace, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(activeChanged(QMdiSubWindow*)));
-    qApp->setActiveWindow(&workspace);
+    QApplicationPrivate::setActiveWindow(&workspace);
 
     // Activate hidden windows
     const int windowCount = 10;
@@ -961,7 +963,7 @@ void tst_QMdiArea::activeSubWindow()
     mainWindow.addDockWidget(Qt::LeftDockWidgetArea, dockWidget);
 
     mainWindow.show();
-    qApp->setActiveWindow(&mainWindow);
+    QApplicationPrivate::setActiveWindow(&mainWindow);
     QVERIFY(QTest::qWaitForWindowActive(&mainWindow));
     QCOMPARE(mdiArea->activeSubWindow(), subWindow);
     QCOMPARE(qApp->focusWidget(), (QWidget *)subWindowLineEdit);
@@ -984,15 +986,15 @@ void tst_QMdiArea::activeSubWindow()
     dummyTopLevel.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dummyTopLevel));
 
-    qApp->setActiveWindow(&dummyTopLevel);
+    QApplicationPrivate::setActiveWindow(&dummyTopLevel);
     QCOMPARE(mdiArea->activeSubWindow(), subWindow);
 
-    qApp->setActiveWindow(&mainWindow);
+    QApplicationPrivate::setActiveWindow(&mainWindow);
     QCOMPARE(mdiArea->activeSubWindow(), subWindow);
 
     //task 202657
     dockWidgetLineEdit->setFocus();
-    qApp->setActiveWindow(&mainWindow);
+    QApplicationPrivate::setActiveWindow(&mainWindow);
     QVERIFY(dockWidgetLineEdit->hasFocus());
 }
 
@@ -1005,7 +1007,7 @@ void tst_QMdiArea::currentSubWindow()
     for (int i = 0; i < 5; ++i)
         mdiArea.addSubWindow(new QLineEdit)->show();
 
-    qApp->setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     QCOMPARE(qApp->activeWindow(), (QWidget *)&mdiArea);
 
     // Check that the last added window is the active and the current.
@@ -1020,7 +1022,7 @@ void tst_QMdiArea::currentSubWindow()
 
     // Move focus to another top-level and check that we still
     // have an active window.
-    qApp->setActiveWindow(&dummyTopLevel);
+    QApplicationPrivate::setActiveWindow(&dummyTopLevel);
     QCOMPARE(qApp->activeWindow(), (QWidget *)&dummyTopLevel);
     QVERIFY(mdiArea.activeSubWindow());
 
@@ -1033,7 +1035,7 @@ void tst_QMdiArea::currentSubWindow()
     QCOMPARE(mdiArea.currentSubWindow(), mdiArea.subWindowList().front());
 
     // Activate mdi area and check that active == current.
-    qApp->setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     active = mdiArea.activeSubWindow();
     QVERIFY(active);
     QCOMPARE(mdiArea.activeSubWindow(), mdiArea.subWindowList().front());
@@ -1042,11 +1044,11 @@ void tst_QMdiArea::currentSubWindow()
     QCOMPARE(mdiArea.activeSubWindow(), active);
     QCOMPARE(mdiArea.currentSubWindow(), active);
 
-    qApp->setActiveWindow(&dummyTopLevel);
+    QApplicationPrivate::setActiveWindow(&dummyTopLevel);
     QVERIFY(mdiArea.activeSubWindow());
     QCOMPARE(mdiArea.currentSubWindow(), active);
 
-    qApp->setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     active->show();
     QCOMPARE(mdiArea.activeSubWindow(), active);
 
@@ -1133,7 +1135,8 @@ void tst_QMdiArea::addAndRemoveWindows()
     }
 
     // removeSubWindow
-    foreach (QWidget *window, workspace.subWindowList()) {
+    const auto subWindows = workspace.subWindowList();
+    for (QWidget *window : subWindows) {
         workspace.removeSubWindow(window);
         delete window;
     }
@@ -1251,7 +1254,7 @@ void tst_QMdiArea::closeWindows()
 {
     QMdiArea workspace;
     workspace.show();
-    qApp->setActiveWindow(&workspace);
+    QApplicationPrivate::setActiveWindow(&workspace);
 
     // Close widget
     QWidget *widget = new QWidget;
@@ -1303,7 +1306,7 @@ void tst_QMdiArea::activateNextAndPreviousWindow()
 {
     QMdiArea workspace;
     workspace.show();
-    qApp->setActiveWindow(&workspace);
+    QApplicationPrivate::setActiveWindow(&workspace);
 
     const int windowCount = 10;
     QMdiSubWindow *windows[windowCount];
@@ -1387,7 +1390,7 @@ void tst_QMdiArea::subWindowList()
 
     QMdiArea workspace;
     workspace.show();
-    qApp->setActiveWindow(&workspace);
+    QApplicationPrivate::setActiveWindow(&workspace);
     QVERIFY(QTest::qWaitForWindowActive(&workspace));
 
     QList<QMdiSubWindow *> activationOrder;
@@ -1683,7 +1686,8 @@ void tst_QMdiArea::tileSubWindows()
     QTRY_COMPARE(workspace.size(), QSize(350, 150));
 
     const QSize minSize(600, 130);
-    foreach (QMdiSubWindow *subWindow, workspace.subWindowList())
+    const auto subWindows = workspace.subWindowList();
+    for (QMdiSubWindow *subWindow : subWindows)
         subWindow->setMinimumSize(minSize);
 
     QCOMPARE(workspace.size(), QSize(350, 150));
@@ -1841,7 +1845,7 @@ void tst_QMdiArea::resizeMaximizedChildWindows()
 
     int newSize = startSize + increment * windowCount;
     QCOMPARE(workspaceSize, QSize(newSize, newSize));
-    foreach (QWidget *window, windows)
+    for (QWidget *window : std::as_const(windows))
         QCOMPARE(window->rect(), workspace.contentsRect());
 }
 
@@ -1866,7 +1870,7 @@ void tst_QMdiArea::focusWidgetAfterAddSubWindow()
 
     mdiArea.show();
     view->show();
-    qApp->setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     QCOMPARE(qApp->focusWidget(), static_cast<QWidget *>(lineEdit2));
 }
 
@@ -1875,7 +1879,7 @@ void tst_QMdiArea::dontMaximizeSubWindowOnActivation()
     QMdiArea mdiArea;
     mdiArea.show();
     QVERIFY(QTest::qWaitForWindowExposed(&mdiArea));
-    qApp->setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
 
     // Add one maximized window.
     mdiArea.addSubWindow(new QWidget)->showMaximized();
@@ -1891,7 +1895,7 @@ void tst_QMdiArea::dontMaximizeSubWindowOnActivation()
     }
 
     // Verify that activated windows still are maximized on activation.
-    QList<QMdiSubWindow *> subWindows = mdiArea.subWindowList();
+    const QList<QMdiSubWindow *> subWindows = mdiArea.subWindowList();
     for (int i = 0; i < subWindows.size(); ++i) {
         mdiArea.activateNextSubWindow();
         QMdiSubWindow *window = subWindows.at(i);
@@ -1928,7 +1932,7 @@ void tst_QMdiArea::dontMaximizeSubWindowOnActivation()
     QVERIFY(mdiArea.activeSubWindow()->isMaximized());
 
     // Minimize all windows.
-    foreach (QMdiSubWindow *window, subWindows) {
+    for (QMdiSubWindow *window : subWindows) {
         window->showMinimized();
         QVERIFY(window->isMinimized());
         qApp->processEvents();
@@ -2260,7 +2264,7 @@ void tst_QMdiArea::tabBetweenSubWindows()
     mdiArea.show();
     QVERIFY(QTest::qWaitForWindowExposed(&mdiArea));
 
-    qApp->setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     QWidget *focusWidget = subWindows.back()->widget();
     QCOMPARE(qApp->focusWidget(), focusWidget);
 
@@ -2315,7 +2319,7 @@ void tst_QMdiArea::setViewMode()
     QVERIFY(QTest::qWaitForWindowExposed(&mdiArea));
 
     QMdiSubWindow *activeSubWindow = mdiArea.activeSubWindow();
-    QList<QMdiSubWindow *> subWindows = mdiArea.subWindowList();
+    const QList<QMdiSubWindow *> subWindows = mdiArea.subWindowList();
 
     // Default.
     QVERIFY(!activeSubWindow->isMaximized());
@@ -2384,13 +2388,12 @@ void tst_QMdiArea::setViewMode()
     QVERIFY(tabBar->isTabEnabled(tabIndex));
 
     // Remove sub-windows and make sure the tab is removed.
-    foreach (QMdiSubWindow *subWindow, subWindows) {
+    for (QMdiSubWindow *subWindow : subWindows) {
         if (subWindow != activeSubWindow) {
             mdiArea.removeSubWindow(subWindow);
             delete subWindow;
         }
     }
-    subWindows.clear();
     QCOMPARE(tabBar->count(), 1);
 
     // Go back to default (QMdiArea::SubWindowView).
@@ -2591,8 +2594,11 @@ void tst_QMdiArea::nativeSubWindows()
 
     // No native widgets.
     QVERIFY(!mdiArea.viewport()->internalWinId());
-    foreach (QMdiSubWindow *subWindow, mdiArea.subWindowList())
-        QVERIFY(!subWindow->internalWinId());
+    {
+        const auto subWindows = mdiArea.subWindowList();
+        for (QMdiSubWindow *subWindow : subWindows)
+            QVERIFY(!subWindow->internalWinId());
+    }
 
     QWidget *nativeWidget = new QWidget;
     QVERIFY(nativeWidget->winId()); // enforce native window.
@@ -2601,8 +2607,11 @@ void tst_QMdiArea::nativeSubWindows()
 
     // The viewport and all the sub-windows must be native.
     QVERIFY(mdiArea.viewport()->internalWinId());
-    foreach (QMdiSubWindow *subWindow, mdiArea.subWindowList())
-        QVERIFY(subWindow->internalWinId());
+    {
+        const auto subWindows = mdiArea.subWindowList();
+        for (QMdiSubWindow *subWindow : subWindows)
+            QVERIFY(subWindow->internalWinId());
+    }
 
     // Add a non-native widget. This should become native.
     QMdiSubWindow *subWindow = new QMdiSubWindow;
@@ -2623,8 +2632,11 @@ void tst_QMdiArea::nativeSubWindows()
 
     // The viewport and all the sub-windows must be native.
     QVERIFY(mdiArea.viewport()->internalWinId());
-    foreach (QMdiSubWindow *subWindow, mdiArea.subWindowList())
-        QVERIFY(subWindow->internalWinId());
+    {
+        const auto subWindows = mdiArea.subWindowList();
+        for (QMdiSubWindow *subWindow : subWindows)
+            QVERIFY(subWindow->internalWinId());
+    }
     }
 
     { // Make a sub-window native *after* it's added to the area.
@@ -2640,8 +2652,11 @@ void tst_QMdiArea::nativeSubWindows()
 
     // All the sub-windows should be native at this point
     QVERIFY(mdiArea.viewport()->internalWinId());
-    foreach (QMdiSubWindow *subWindow, mdiArea.subWindowList())
+    {
+        const auto subWindows = mdiArea.subWindowList();
+        for (QMdiSubWindow *subWindow : subWindows)
             QVERIFY(subWindow->internalWinId());
+    }
     }
 }
 

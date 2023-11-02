@@ -52,6 +52,13 @@ public:
         : QAbstractTableModel(parent), row_count(rows), column_count(columns)
     {}
 
+    void insertRows(int rows)
+    {
+        beginInsertRows(QModelIndex(), row_count, row_count + rows - 1);
+        row_count += rows;
+        endInsertRows();
+    }
+
     int rowCount(const QModelIndex& = QModelIndex()) const override
     {
         return row_count;
@@ -429,6 +436,7 @@ private slots:
     void viewOptions();
 
     void taskQTBUG_7232_AllowUserToControlSingleStep();
+    void rowsInVerticalHeader();
 
 #if QT_CONFIG(textmarkdownwriter)
     void markdownWriter();
@@ -600,7 +608,7 @@ void tst_QTableView::keyboardNavigation()
     view.setCurrentIndex(index);
 
     view.show();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
 
     int row = rowCount - 1;
@@ -3790,7 +3798,7 @@ void tst_QTableView::tabFocus()
     QLineEdit *edit = new QLineEdit(&window);
 
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     window.setFocus();
     window.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&window));
@@ -4865,7 +4873,7 @@ void tst_QTableView::selectWithHeader()
 
     QVERIFY(QTest::qWaitForWindowExposed(&view));
 
-    QHeaderView *header;
+    QHeaderView *header = nullptr;
     QPoint clickPos;
     QModelIndex lastIndex;
 
@@ -4928,6 +4936,19 @@ void tst_QTableView::markdownWriter()
     QCOMPARE(md, QString::fromLatin1("|1      |2      |3      |\n|-------|-------|-------|\n|[0,0,0]|[0,1,0]|[0,2,0]|\n|[1,0,0]|[1,1,0]|[1,2,0]|\n"));
 }
 #endif
+
+void tst_QTableView::rowsInVerticalHeader()
+{
+    QtTestTableModel model(0, 2);
+    QTableView view;
+    view.setModel(&model);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    auto *verticalHeader = view.verticalHeader();
+    QCOMPARE(verticalHeader->count(), 0);
+    model.insertRows(2);
+    QCOMPARE(verticalHeader->count(), 2);
+}
 
 QTEST_MAIN(tst_QTableView)
 #include "tst_qtableview.moc"

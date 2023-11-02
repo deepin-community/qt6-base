@@ -1,0 +1,32 @@
+Description: Add SH description
+ Upstream processes archs from time to time and tends to disable those that
+ they do not know wether they are working or not. 
+ .
+ SH is working on Debian, so as an intermediate measure re enable it here.
+Author: John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1043225
+Reviewed-by: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
+
+Index: qt6-base-6.4.2+dfsg/src/corelib/global/qprocessordetection.h
+===================================================================
+--- qt6-base-6.4.2+dfsg.orig/src/corelib/global/qprocessordetection.h
++++ qt6-base-6.4.2+dfsg/src/corelib/global/qprocessordetection.h
+@@ -294,12 +294,12 @@
+ 
+     SuperH is bi-endian, use endianness auto-detection implemented below.
+ */
+-// #elif defined(__sh__)
+-// #  define Q_PROCESSOR_SH
+-// #  if defined(__sh4a__)
+-// #    define Q_PROCESSOR_SH_4A
+-// #  endif
+-// Q_BYTE_ORDER not defined, use endianness auto-detection
++#elif defined(__sh__)
++#  define Q_PROCESSOR_SH
++#  if defined(__sh4a__)
++#    define Q_PROCESSOR_SH_4A
++#  endif
++#  define Q_BYTE_ORDER Q_LITTLE_ENDIAN
+ 
+ /*
+     SPARC family, optional revision: V9

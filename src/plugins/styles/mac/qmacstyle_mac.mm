@@ -160,7 +160,7 @@ const int pushButtonBevelRectOffsets[3] = {
 
 QVector<QPointer<QObject> > QMacStylePrivate::scrollBars;
 
-bool isDarkMode() { return QGuiApplicationPrivate::platformTheme()->appearance() == QPlatformTheme::Appearance::Dark; }
+bool isDarkMode() { return QGuiApplicationPrivate::platformTheme()->colorScheme() == Qt::ColorScheme::Dark; }
 
 // Title bar gradient colors for Lion were determined by inspecting PSDs exported
 // using CoreUI's CoreThemeDocument; there is no public API to retrieve them
@@ -429,12 +429,7 @@ static bool setupSlider(NSSlider *slider, const QStyleOptionSlider *sl)
     if (sl->minimum >= sl->maximum)
         return false;
 
-    // NSSlider seems to cache values based on tracking and the last layout of the
-    // NSView, resulting in incorrect knob rects that break the interaction with
-    // multiple sliders. So completely reinitialize the slider.
-    const auto controlSize = slider.controlSize;
-    [slider initWithFrame:sl->rect.toCGRect()];
-    slider.controlSize = controlSize;
+    slider.frame = sl->rect.toCGRect();
 
     slider.minValue = sl->minimum;
     slider.maxValue = sl->maximum;
@@ -464,14 +459,6 @@ static bool setupSlider(NSSlider *slider, const QStyleOptionSlider *sl)
     // Ensure the values set above are reflected when asking
     // the cell for its metrics and to draw itself.
     [slider layoutSubtreeIfNeeded];
-
-    if (sl->state & QStyle::State_Sunken) {
-        const CGRect knobRect = [slider.cell knobRectFlipped:slider.isFlipped];
-        CGPoint pressPoint;
-        pressPoint.x = CGRectGetMidX(knobRect);
-        pressPoint.y = CGRectGetMidY(knobRect);
-        [slider.cell startTrackingAt:pressPoint inView:slider];
-    }
 
     return true;
 }
@@ -2553,10 +2540,13 @@ int QMacStyle::pixelMetric(PixelMetric metric, const QStyleOption *opt, const QW
     case PM_ToolBarFrameWidth:
         ret = 1;
         break;
-    case PM_ScrollView_ScrollBarOverlap:
-        ret = [NSScroller preferredScrollerStyle] == NSScrollerStyleOverlay ?
-               pixelMetric(PM_ScrollBarExtent, opt, widget) : 0;
+    case PM_ScrollView_ScrollBarOverlap: {
+        const QStyle *realStyle = widget ? widget->style() : proxy();
+        ret = realStyle->styleHint(SH_ScrollBar_Transient, opt, widget)
+            ? realStyle->pixelMetric(PM_ScrollBarExtent, opt, widget)
+            : 0;
         break;
+    }
     default:
         ret = QCommonStyle::pixelMetric(metric, opt, widget);
         break;
@@ -3284,7 +3274,7 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
         NSButtonCell *triangleCell = static_cast<NSButtonCell *>(d->cocoaCell(cw));
         [triangleCell setState:(opt->state & State_Open) ? NSControlStateValueOn : NSControlStateValueOff];
         bool viewHasFocus = (w && w->hasFocus()) || (opt->state & State_HasFocus);
-        [triangleCell setBackgroundStyle:((opt->state & State_Selected) && viewHasFocus) ? NSBackgroundStyleDark : NSBackgroundStyleLight];
+        [triangleCell setBackgroundStyle:((opt->state & State_Selected) && viewHasFocus) ? NSBackgroundStyleEmphasized : NSBackgroundStyleNormal];
 
         d->setupNSGraphicsContext(cg, NO);
 
@@ -3912,6 +3902,7 @@ void QMacStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
                     frameRect = frameRect.adjusted(-1, 0, 1, 0);
                 }
                 break;
+            case QStyleOptionTab::Moving: // Moving tab treated like End
             case QStyleOptionTab::End:
                 // Pressed state hack: tweak adjustments in preparation for flip below
                 if (isSelected || tabDirection == QMacStylePrivate::West)
@@ -5192,7 +5183,8 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
             const auto cocoaSize = d->effectiveAquaSizeConstrain(opt, widget);
             const CGFloat maxExpandScale = expandedKnobWidths[cocoaSize] / knobWidths[cocoaSize];
 
-            const bool isTransient = proxy()->styleHint(SH_ScrollBar_Transient, opt, widget);
+            const QStyle *realStyle = widget ? widget->style() : proxy();
+            const bool isTransient = realStyle->styleHint(SH_ScrollBar_Transient, opt, widget);
             if (!isTransient)
                 d->stopAnimation(opt->styleObject);
             bool wasActive = false;
@@ -5381,6 +5373,15 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                 const CGRect knobRect = [slider.cell knobRectFlipped:slider.isFlipped];
                 pressPoint.x = CGRectGetMidX(knobRect);
                 pressPoint.y = CGRectGetMidY(knobRect);
+
+                // The only way to tell a NSSlider/NSSliderCell to render as pressed
+                // is to start tracking. But this API has some weird behaviors that
+                // we have to account for. First of all, the pressed state will not
+                // be visually reflected unless we start tracking twice. And secondly
+                // if we don't track twice, the state of one render-pass will affect
+                // the render pass of other sliders, even if we set up the shared
+                // NSSlider with a new slider value.
+                [slider.cell startTrackingAt:pressPoint inView:slider];
                 [slider.cell startTrackingAt:pressPoint inView:slider];
             }
 
@@ -5485,8 +5486,12 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                 }
             });
 
-            if (isPressed)
+            if (isPressed) {
+                // We stop twice to be on the safe side, even if one seems to be enough.
+                // See startTracking above for why we do this.
                 [slider.cell stopTracking:pressPoint at:pressPoint inView:slider mouseIsUp:NO];
+                [slider.cell stopTracking:pressPoint at:pressPoint inView:slider mouseIsUp:NO];
+            }
         }
         break;
 #if QT_CONFIG(spinbox)

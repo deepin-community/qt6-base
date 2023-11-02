@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 add_subdirectory(test)
 add_subdirectory(testProcessCrash)
 add_subdirectory(testProcessEcho)
@@ -24,4 +27,7 @@ add_subdirectory(testSpaceInName)
 if(WIN32)
     add_subdirectory(testProcessEchoGui)
     add_subdirectory(testSetNamedPipeHandleState)
+endif()
+if(UNIX)
+    add_subdirectory(testUnixProcessParameters)
 endif()

@@ -1,4 +1,6 @@
-# Generated from tools.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 add_subdirectory(qatomicscopedvaluerollback)
 if(NOT INTEGRITY)
     add_subdirectory(collections)
@@ -15,7 +17,9 @@ add_subdirectory(qduplicatetracker)
 add_subdirectory(qeasingcurve)
 add_subdirectory(qexplicitlyshareddatapointer)
 add_subdirectory(qflatmap)
-add_subdirectory(qfreelist)
+if(QT_FEATURE_private_tests)
+    add_subdirectory(qfreelist)
+endif()
 add_subdirectory(qhash)
 add_subdirectory(qhashfunctions)
 add_subdirectory(qhashseed)
@@ -42,6 +46,7 @@ add_subdirectory(qset)
 add_subdirectory(qsharedpointer)
 add_subdirectory(qsize)
 add_subdirectory(qsizef)
+add_subdirectory(qspan)
 add_subdirectory(qstl)
 add_subdirectory(qvarlengtharray)
 add_subdirectory(qversionnumber)

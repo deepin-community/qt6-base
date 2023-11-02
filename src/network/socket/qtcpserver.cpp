@@ -43,8 +43,8 @@
     use waitForNewConnection(), which blocks until either a
     connection is available or a timeout expires.
 
-    \sa QTcpSocket, {Fortune Server Example}, {Threaded Fortune Server Example},
-        {Loopback Example}, {Torrent Example}
+    \sa QTcpSocket, {Fortune Server}, {Threaded Fortune Server},
+        {Torrent Example}
 */
 
 /*! \fn void QTcpServer::newConnection()

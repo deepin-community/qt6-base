@@ -23,6 +23,7 @@ private Q_SLOTS:
     void cannotCheckIfInvalidBrushSet();
     void checkIfBrushForCurrentGroupSet();
     void cacheKey();
+    void dataStream();
 };
 
 void tst_QPalette::roleValues_data()
@@ -51,9 +52,10 @@ void tst_QPalette::roleValues_data()
     QTest::newRow("QPalette::ToolTipBase") << int(QPalette::ToolTipBase) << 18;
     QTest::newRow("QPalette::ToolTipText") << int(QPalette::ToolTipText) << 19;
     QTest::newRow("QPalette::PlaceholderText") << int(QPalette::PlaceholderText) << 20;
+    QTest::newRow("QPalette::Accent") << int(QPalette::Accent) << 21;
 
     // Change this value as you add more roles.
-    QTest::newRow("QPalette::NColorRoles") << int(QPalette::NColorRoles) << 21;
+    QTest::newRow("QPalette::NColorRoles") << int(QPalette::NColorRoles) << 22;
 }
 
 void tst_QPalette::roleValues()
@@ -236,8 +238,14 @@ void tst_QPalette::setAllPossibleBrushes()
     }
 
     for (int r = 0; r < QPalette::NColorRoles; ++r) {
+        const QPalette::ColorRole role = static_cast<QPalette::ColorRole>(r);
         for (int g = 0; g < QPalette::NColorGroups; ++g) {
-            QVERIFY(p.isBrushSet(QPalette::ColorGroup(g), QPalette::ColorRole(r)));
+            const QPalette::ColorGroup group = static_cast<QPalette::ColorGroup>(g);
+            // NoRole has no resolve bit => isBrushSet returns false
+            if (role == QPalette::NoRole)
+                QVERIFY(!p.isBrushSet(group, role));
+            else
+                QVERIFY(p.isBrushSet(group, role));
         }
     }
 }
@@ -293,6 +301,10 @@ void tst_QPalette::cacheKey()
     const auto differentDataKey = copyDifferentData.cacheKey();
     const auto differentDataSerNo = differentDataKey >> 32;
     const auto differentDataDetachNo = differentDataKey & 0xffffffff;
+    auto loggerDeepDetach = qScopeGuard([&](){
+        qDebug() << "Deep detach serial" << differentDataSerNo;
+        qDebug() << "Deep detach detach number" << differentDataDetachNo;
+    });
 
     QCOMPARE_NE(copyDifferentData.cacheKey(), defaultCacheKey);
     QCOMPARE(defaultPalette.cacheKey(), defaultCacheKey);
@@ -302,6 +314,11 @@ void tst_QPalette::cacheKey()
     const auto differentMaskKey = copyDifferentMask.cacheKey();
     const auto differentMaskSerNo = differentMaskKey >> 32;
     const auto differentMaskDetachNo = differentMaskKey & 0xffffffff;
+    auto loggerShallowDetach = qScopeGuard([&](){
+        qDebug() << "Shallow detach serial" << differentMaskSerNo;
+        qDebug() << "Shallow detach detach number" << differentMaskDetachNo;
+    });
+
     QCOMPARE(differentMaskSerNo, defaultSerNo);
     QCOMPARE_NE(differentMaskSerNo, defaultDetachNo);
     QCOMPARE_NE(differentMaskKey, defaultCacheKey);
@@ -327,6 +344,48 @@ void tst_QPalette::cacheKey()
     QCOMPARE_NE(modifiedAllKey, defaultCacheKey);
     QCOMPARE_NE(modifiedAllKey, differentDataKey);
     QCOMPARE_NE(modifiedAllKey, modifiedCacheKey);
+
+    loggerDeepDetach.dismiss();
+    loggerShallowDetach.dismiss();
+}
+
+void tst_QPalette::dataStream()
+{
+    const QColor highlight(42, 42, 42);
+    const QColor accent(13, 13, 13);
+    QPalette palette;
+    palette.setBrush(QPalette::Highlight, highlight);
+    palette.setBrush(QPalette::Accent, accent);
+
+    // When saved with Qt_6_5 or earlier, Accent defaults to Highlight
+    {
+        QByteArray b;
+        {
+            QDataStream stream(&b, QIODevice::WriteOnly);
+            stream.setVersion(QDataStream::Qt_6_5);
+            stream << palette;
+        }
+        QPalette test;
+        QDataStream stream (&b, QIODevice::ReadOnly);
+        stream.setVersion(QDataStream::Qt_6_5);
+        stream >> test;
+        QCOMPARE(test.accent().color(), highlight);
+    }
+
+    // When saved with Qt_6_6 or later, Accent is saved explicitly
+    {
+        QByteArray b;
+        {
+            QDataStream stream(&b, QIODevice::WriteOnly);
+            stream.setVersion(QDataStream::Qt_6_6);
+            stream << palette;
+        }
+        QPalette test;
+        QDataStream stream (&b, QIODevice::ReadOnly);
+        stream.setVersion(QDataStream::Qt_6_6);
+        stream >> test;
+        QCOMPARE(test.accent().color(), accent);
+    }
 }
 
 QTEST_MAIN(tst_QPalette)

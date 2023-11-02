@@ -13,7 +13,7 @@ BindableSubscription::BindableSubscription(BindableUser *user) : m_user(user)
     m_price.setBinding([this] { return qRound(calculateDiscount() * m_duration * basePrice()); });
 
     m_isValid.setBinding([this] {
-        return m_user->country() != BindableUser::None && m_user->age() > 12;
+        return m_user->country() != BindableUser::Country::AnyCountry && m_user->age() > 12;
     });
 }
 
@@ -38,14 +38,13 @@ double BindableSubscription::calculateDiscount() const
     case Yearly:
         return 0.6;
     }
-    Q_ASSERT(false);
-    return -1;
+    Q_UNREACHABLE_RETURN(-1);
 }
 
 int BindableSubscription::basePrice() const
 {
-    if (m_user->country() == BindableUser::None)
+    if (m_user->country() == BindableUser::Country::AnyCountry)
         return 0;
 
-    return (m_user->country() == BindableUser::Norway) ? 100 : 80;
+    return (m_user->country() == BindableUser::Country::Norway) ? 100 : 80;
 }

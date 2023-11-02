@@ -37,6 +37,8 @@
 
 #include "../../../../shared/filesystem.h"
 
+#include <QtWidgets/private/qapplication_p.h>
+
 #if defined QT_BUILD_INTERNAL
 QT_BEGIN_NAMESPACE
 Q_GUI_EXPORT bool qt_test_isFetchedRoot();
@@ -680,13 +682,13 @@ void tst_QFileDialog2::completionOnLevelAfterRoot()
 #if defined(Q_OS_WIN)
     fd.setDirectory("C:/");
     QDir current = fd.directory();
-    QStringList entryList = current.entryList(QStringList(), QDir::Dirs);
+    const QStringList entryList = current.entryList(QStringList(), QDir::Dirs);
     // Find a suitable test dir under c:-root:
     // - At least 6 characters long
     // - Ascii, letters only
     // - No another dir with same start
     QString testDir;
-    foreach (const QString &entry, entryList) {
+    for (const QString &entry : entryList) {
         if (entry.size() > 5 && QString(entry.toLatin1()).compare(entry) == 0) {
             bool invalid = false;
             for (int i = 0; i < 5; i++) {
@@ -696,7 +698,7 @@ void tst_QFileDialog2::completionOnLevelAfterRoot()
                 }
             }
             if (!invalid) {
-                foreach (const QString &check, entryList) {
+                for (const QString &check : entryList) {
                     if (check.startsWith(entry.left(5), Qt::CaseInsensitive) && check != entry) {
                         invalid = true;
                         break;
@@ -946,9 +948,9 @@ void tst_QFileDialog2::task239706_editableFilterCombo()
     d.show();
     QVERIFY(QTest::qWaitForWindowExposed(&d));
 
-    QList<QComboBox *> comboList = d.findChildren<QComboBox *>();
+    const QList<QComboBox *> comboList = d.findChildren<QComboBox *>();
     QComboBox *filterCombo = nullptr;
-    foreach (QComboBox *combo, comboList) {
+    for (QComboBox *combo : comboList) {
         if (combo->objectName() == QString("fileTypeCombo")) {
             filterCombo = combo;
             break;
@@ -1265,7 +1267,7 @@ void tst_QFileDialog2::QTBUG6558_showDirsOnly()
     fd.setOption(QFileDialog::ShowDirsOnly, true);
     fd.show();
 
-    QApplication::setActiveWindow(&fd);
+    QApplicationPrivate::setActiveWindow(&fd);
     QVERIFY(QTest::qWaitForWindowActive(&fd));
     QCOMPARE(fd.isVisible(), true);
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&fd));
@@ -1309,7 +1311,7 @@ void tst_QFileDialog2::QTBUG4842_selectFilterWithHideNameFilterDetails()
     fd.selectNameFilter(chosenFilterString);
     fd.show();
 
-    QApplication::setActiveWindow(&fd);
+    QApplicationPrivate::setActiveWindow(&fd);
     QVERIFY(QTest::qWaitForWindowActive(&fd));
     QCOMPARE(fd.isVisible(), true);
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&fd));
@@ -1325,7 +1327,7 @@ void tst_QFileDialog2::QTBUG4842_selectFilterWithHideNameFilterDetails()
     fd2.selectNameFilter(chosenFilterString);
     fd2.show();
 
-    QApplication::setActiveWindow(&fd2);
+    QApplicationPrivate::setActiveWindow(&fd2);
     QVERIFY(QTest::qWaitForWindowActive(&fd2));
     QCOMPARE(fd2.isVisible(), true);
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&fd2));
@@ -1345,7 +1347,7 @@ void tst_QFileDialog2::dontShowCompleterOnRoot()
     fd.setAcceptMode(QFileDialog::AcceptSave);
     fd.show();
 
-    QApplication::setActiveWindow(&fd);
+    QApplicationPrivate::setActiveWindow(&fd);
     QVERIFY(QTest::qWaitForWindowActive(&fd));
     QCOMPARE(fd.isVisible(), true);
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&fd));

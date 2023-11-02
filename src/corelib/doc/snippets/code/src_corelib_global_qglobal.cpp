@@ -32,17 +32,6 @@ Q_FLAG(Options)
 typedef QFlags<Enum> Flags;
 //! [2]
 
-
-//! [3]
-int myValue = 10;
-int minValue = 2;
-int maxValue = 6;
-
-int boundedValue = qBound(minValue, myValue, maxValue);
-// boundedValue == 6
-//! [3]
-
-
 //! [4]
 if (!driver()->isOpen() || driver()->isOpenError()) {
     qWarning("QSqlQuery::exec: database not open");
@@ -59,11 +48,6 @@ qint64 value = Q_INT64_C(932838457459459);
 //! [6]
 quint64 value = Q_UINT64_C(932838457459459);
 //! [6]
-
-
-//! [7]
-void myMsgHandler(QtMsgType, const char *);
-//! [7]
 
 
 //! [8]
@@ -480,16 +464,6 @@ QString result(int type, int n)
 }
 //! [qttrid_n_noop]
 
-//! [37]
-qWarning("%s: %s", qUtf8Printable(key), qUtf8Printable(value));
-//! [37]
-
-
-//! [qUtf16Printable]
-qWarning("%ls: %ls", qUtf16Printable(key), qUtf16Printable(value));
-//! [qUtf16Printable]
-
-
 //! [38]
 struct Point2D
 {
@@ -589,11 +563,6 @@ qFuzzyCompare(0.0, 1.0e-200); // This will return false
 qFuzzyCompare(1 + 0.0, 1 + 1.0e-200); // This will return true
 //! [46]
 
-//! [47]
-CApaApplication *myApplicationFactory();
-//! [47]
-
-
 //! [49]
 void myMessageHandler(QtMsgType, const QMessageLogContext &, const QString &);
 //! [49]
@@ -620,11 +589,6 @@ template<> class QTypeInfo<A> : public QTypeInfoMerger<A, B, C, D> {};
     ... qOverload<>(&Foo::overloadedFunction)
     ... qOverload<int, const QString &>(&Foo::overloadedFunction)
 //! [52]
-
-//! [53]
-    ... QOverload<>::of(&Foo::overloadedFunction)
-    ... QOverload<int, const QString &>::of(&Foo::overloadedFunction)
-//! [53]
 
 //! [54]
     struct Foo {
@@ -708,7 +672,7 @@ bool readConfiguration(const QFile &file)
     QString s = ...;
     for (QChar ch : s) // detaches 's' (performs a deep-copy if 's' was shared)
         process(ch);
-    for (QChar ch : std::as_const(s)) // ok, no detach attempt
+    for (QChar ch : qAsConst(s)) // ok, no detach attempt
         process(ch);
 //! [as-const-0]
 
@@ -724,12 +688,12 @@ bool readConfiguration(const QFile &file)
 //! [as-const-2]
 
 //! [as-const-3]
-    for (QChar ch : std::as_const(funcReturningQString()))
+    for (QChar ch : qAsConst(funcReturningQString()))
         process(ch); // ERROR: ch is copied from deleted memory
 //! [as-const-3]
 
 //! [as-const-4]
-    for (QChar ch : std::as_const(funcReturningQString()))
+    for (QChar ch : qAsConst(funcReturningQString()))
         process(ch); // ERROR: ch is copied from deleted memory
 //! [as-const-4]
 

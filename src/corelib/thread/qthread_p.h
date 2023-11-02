@@ -58,6 +58,7 @@ inline bool operator<(const QPostEvent &first, const QPostEvent &second)
 
 // This class holds the list of posted events.
 //  The list has to be kept sorted by priority
+// It's used in a virtual in QCoreApplication, so ELFVERSION:ignore-next
 class QPostEventList : public QList<QPostEvent>
 {
 public:
@@ -169,7 +170,7 @@ public:
     ~QDaemonThread();
 };
 
-class QThreadPrivate : public QObjectPrivate
+class Q_AUTOTEST_EXPORT QThreadPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QThread)
 

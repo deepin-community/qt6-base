@@ -143,6 +143,16 @@ QT_BEGIN_NAMESPACE
 
     \value ButtonPressKeys (QList<Qt::Key>) A list of keys that can be used to press buttons via keyboard input.
 
+    \value SetFocusOnTouchRelease (bool) Whether focus objects (line edits etc) should receive
+           input focus after a touch/mouse release.
+           This enum value has been added in Qt 6.5.
+
+    \value MouseCursorTheme (QString) Name of the mouse cursor theme.
+           This enum value has been added in Qt 6.5.
+
+    \value MouseCursorSize (QSize) Size of the mouse cursor.
+           This enum value has been added in Qt 6.5.
+
     \sa themeHint(), QStyle::pixelMetric()
 */
 
@@ -346,7 +356,7 @@ Q_GUI_EXPORT QPalette qt_fusionPalette()
 {
     auto theme = QGuiApplicationPrivate::platformTheme();
     const bool darkAppearance = theme
-                              ? theme->appearance() == QPlatformTheme::Appearance::Dark
+                              ? theme->colorScheme() == Qt::ColorScheme::Dark
                               : false;
     const QColor windowText = darkAppearance ? QColor(240, 240, 240) : Qt::black;
     const QColor backGround = darkAppearance ? QColor(50, 50, 50) : QColor(239, 239, 239);
@@ -364,6 +374,7 @@ Q_GUI_EXPORT QPalette qt_fusionPalette()
     const QColor button = backGround;
     const QColor shadow = dark.darker(135);
     const QColor disabledShadow = shadow.lighter(150);
+    const QColor disabledHighlight(145, 145, 145);
     QColor placeholder = text;
     placeholder.setAlpha(128);
 
@@ -382,7 +393,11 @@ Q_GUI_EXPORT QPalette qt_fusionPalette()
 
     fusionPalette.setBrush(QPalette::Active, QPalette::Highlight, highlight);
     fusionPalette.setBrush(QPalette::Inactive, QPalette::Highlight, highlight);
-    fusionPalette.setBrush(QPalette::Disabled, QPalette::Highlight, QColor(145, 145, 145));
+    fusionPalette.setBrush(QPalette::Disabled, QPalette::Highlight, disabledHighlight);
+
+    fusionPalette.setBrush(QPalette::Active, QPalette::Accent, highlight);
+    fusionPalette.setBrush(QPalette::Inactive, QPalette::Accent, highlight);
+    fusionPalette.setBrush(QPalette::Disabled, QPalette::Accent, disabledHighlight);
 
     fusionPalette.setBrush(QPalette::PlaceholderText, placeholder);
 
@@ -426,9 +441,9 @@ QPlatformDialogHelper *QPlatformTheme::createPlatformDialogHelper(DialogType typ
     return nullptr;
 }
 
-QPlatformTheme::Appearance QPlatformTheme::appearance() const
+Qt::ColorScheme QPlatformTheme::colorScheme() const
 {
-    return Appearance::Unknown;
+    return Qt::ColorScheme::Unknown;
 }
 
 const QPalette *QPlatformTheme::palette(Palette type) const
@@ -507,6 +522,16 @@ QVariant QPlatformTheme::themeHint(ThemeHint hint) const
         return QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::UiEffects);
     case QPlatformTheme::ShowShortcutsInContextMenus:
         return QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::ShowShortcutsInContextMenus);
+    case QPlatformTheme::SetFocusOnTouchRelease:
+        return QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::SetFocusOnTouchRelease);
+    case QPlatformTheme::FlickStartDistance:
+        return QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::FlickStartDistance);
+    case QPlatformTheme::FlickMaximumVelocity:
+        return QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::FlickMaximumVelocity);
+    case QPlatformTheme::FlickDeceleration:
+        return QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::FlickDeceleration);
+    case QPlatformTheme::UnderlineShortcut:
+        return QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::UnderlineShortcut);
     default:
         return QPlatformTheme::defaultThemeHint(hint);
     }
@@ -605,7 +630,24 @@ QVariant QPlatformTheme::defaultThemeHint(ThemeHint hint)
         return false;
     case ButtonPressKeys:
         return QVariant::fromValue(QList<Qt::Key>({ Qt::Key_Space, Qt::Key_Select }));
+    case SetFocusOnTouchRelease:
+        return false;
+    case FlickStartDistance:
+        return QVariant(15);
+    case FlickMaximumVelocity:
+        return QVariant(2500);
+    case FlickDeceleration:
+        return QVariant(5000);
+    case MenuBarFocusOnAltPressRelease:
+        return false;
+    case MouseCursorTheme:
+        return QVariant(QString());
+    case MouseCursorSize:
+        return QVariant(QSize(16, 16));
+    case UnderlineShortcut:
+        return true;
     }
+
     return QVariant();
 }
 
@@ -773,33 +815,38 @@ QString QPlatformTheme::defaultStandardButtonText(int button)
 
 QString QPlatformTheme::removeMnemonics(const QString &original)
 {
+    const auto mnemonicInParentheses = [](QStringView text) {
+        /* Format of mnemonics to remove is /\(&[^&]\)/ but accept full-width
+           forms of ( and ) as equivalent, for cross-platform compatibility with
+           MS (and consequent behavior of translators, see QTBUG-110829).
+        */
+        Q_ASSERT(text.size() == 4); // Caller's responsibility.
+        constexpr QChar wideOpen = u'\uff08', wideClose = u'\uff09';
+        if (!text.startsWith(u'(') && !text.startsWith(wideOpen))
+            return false;
+        if (text[1] != u'&' || text[2] == u'&')
+            return false;
+        return text.endsWith(u')') || text.endsWith(wideClose);
+    };
     QString returnText(original.size(), u'\0');
     int finalDest = 0;
-    int currPos = 0;
-    int l = original.length();
-    while (l) {
-        if (original.at(currPos) == u'&') {
-            ++currPos;
-            --l;
-            if (l == 0)
+    QStringView text(original);
+    while (!text.isEmpty()) {
+        if (text.startsWith(u'&')) {
+            text = text.sliced(1);
+            if (text.isEmpty())
                 break;
-        } else if (original.at(currPos) == u'(' && l >= 4 &&
-                   original.at(currPos + 1) == u'&' &&
-                   original.at(currPos + 2) != u'&' &&
-                   original.at(currPos + 3) == u')') {
-            /* remove mnemonics its format is "\s*(&X)" */
-            int n = 0;
-            while (finalDest > n && returnText.at(finalDest - n - 1).isSpace())
-                ++n;
-            finalDest -= n;
-            currPos += 4;
-            l -= 4;
+        } else if (text.size() >= 4 && mnemonicInParentheses(text.first(4))) {
+            // Advance over the matched mnemonic:
+            text = text.sliced(4);
+            // Also strip any leading space before it:
+            while (finalDest > 0 && returnText.at(finalDest - 1).isSpace())
+                --finalDest;
             continue;
         }
-        returnText[finalDest] = original.at(currPos);
-        ++currPos;
+        returnText[finalDest] = text.front();
+        text = text.sliced(1);
         ++finalDest;
-        --l;
     }
     returnText.truncate(finalDest);
     return returnText;
@@ -816,6 +863,11 @@ unsigned QPlatformThemePrivate::currentKeyPlatforms()
         result |= KB_X11;
 #endif
     return result;
+}
+
+QString QPlatformTheme::name() const
+{
+    return d_func()->name;
 }
 
 QT_END_NAMESPACE

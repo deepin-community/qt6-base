@@ -1,4 +1,6 @@
-# Generated from io.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # There is no mounted filesystem for IO testing on INTEGRITY yet.
 if(INTEGRITY)
     return()
@@ -40,10 +42,10 @@ if(NOT ANDROID)
     add_subdirectory(qdir)
     add_subdirectory(qresourceengine)
 endif()
-if(QT_FEATURE_private_tests OR UNIX)
+if(QT_FEATURE_private_tests)
     add_subdirectory(qfilesystementry)
 endif()
-# QTBUG-88508 # special case
+# QTBUG-88508
 if(QT_FEATURE_filesystemwatcher AND NOT ANDROID)
     add_subdirectory(qfilesystemwatcher)
 endif()
@@ -61,4 +63,7 @@ if(QT_FEATURE_processenvironment)
 endif()
 if(QT_FEATURE_settings AND TARGET Qt::Gui)
     add_subdirectory(qsettings)
+endif()
+if(QT_FEATURE_private_tests)
+    add_subdirectory(qzip)
 endif()

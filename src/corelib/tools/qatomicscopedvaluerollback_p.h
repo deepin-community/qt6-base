@@ -23,7 +23,7 @@
 QT_BEGIN_NAMESPACE
 
 template <typename T>
-class [[nodiscard]] QAtomicScopedValueRollback
+class QAtomicScopedValueRollback
 {
     std::atomic<T> &m_atomic;
     T m_value;
@@ -43,6 +43,7 @@ class [[nodiscard]] QAtomicScopedValueRollback
         }
         // GCC 8.x does not tread __builtin_unreachable() as constexpr
 #if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
+        // NOLINTNEXTLINE(qt-use-unreachable-return): Triggers on Clang, breaking GCC 8
         Q_UNREACHABLE();
 #endif
         return std::memory_order_seq_cst;
@@ -51,11 +52,13 @@ public:
     //
     // std::atomic:
     //
+    Q_NODISCARD_CTOR
     explicit constexpr
     QAtomicScopedValueRollback(std::atomic<T> &var,
                                std::memory_order mo = std::memory_order_seq_cst)
         : m_atomic(var), m_value(var.load(mo)), m_mo(mo) {}
 
+    Q_NODISCARD_CTOR
     explicit constexpr
     QAtomicScopedValueRollback(std::atomic<T> &var, T value,
                                std::memory_order mo = std::memory_order_seq_cst)
@@ -64,11 +67,13 @@ public:
     //
     // Q(Basic)AtomicInteger:
     //
+    Q_NODISCARD_CTOR
     explicit constexpr
     QAtomicScopedValueRollback(QBasicAtomicInteger<T> &var,
                                std::memory_order mo = std::memory_order_seq_cst)
         : QAtomicScopedValueRollback(var._q_value, mo) {}
 
+    Q_NODISCARD_CTOR
     explicit constexpr
     QAtomicScopedValueRollback(QBasicAtomicInteger<T> &var, T value,
                                std::memory_order mo = std::memory_order_seq_cst)
@@ -77,11 +82,13 @@ public:
     //
     // Q(Basic)AtomicPointer:
     //
+    Q_NODISCARD_CTOR
     explicit constexpr
     QAtomicScopedValueRollback(QBasicAtomicPointer<std::remove_pointer_t<T>> &var,
                                std::memory_order mo = std::memory_order_seq_cst)
         : QAtomicScopedValueRollback(var._q_value, mo) {}
 
+    Q_NODISCARD_CTOR
     explicit constexpr
     QAtomicScopedValueRollback(QBasicAtomicPointer<std::remove_pointer_t<T>> &var, T value,
                                std::memory_order mo = std::memory_order_seq_cst)
@@ -100,6 +107,13 @@ public:
         m_value = m_atomic.load(m_mo);
     }
 };
+
+template <typename T>
+QAtomicScopedValueRollback(QBasicAtomicPointer<T> &)
+    -> QAtomicScopedValueRollback<T*>;
+template <typename T>
+QAtomicScopedValueRollback(QBasicAtomicPointer<T> &, std::memory_order)
+    -> QAtomicScopedValueRollback<T*>;
 
 QT_END_NAMESPACE
 

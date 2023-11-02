@@ -5,7 +5,7 @@
     \page xml-changes-qt6.html
     \title Changes to Qt XML
     \ingroup changes-qt-5-to-6
-    \brief Migrate Qt XML to Qt 6.
+    \brief Use QXmlStreamReader for reading XML files.
 
     Qt 6 is a result of the conscious effort to make the framework more
     efficient and easy to use.
@@ -72,6 +72,15 @@
 
     If you use QDomDocument and rely on any of these, you must update
     your code and XML documents accordingly.
+
+    \section3 Spacing-only text nodes
+
+    By default, text nodes containing only spacing characters are stripped
+    and won't appear in the QDomDocument. The Qt 5 way of changing this behavior
+    was using the QDomDocument::setContent() overload that allowed a \c QXmlReader
+    to be supplied. That overload was removed in Qt 6.0, but since Qt 6.5,
+    you can pass QDomDocument::ParseOption::PreserveSpacingOnlyNodes as a parse
+    option, to specify that spacing-only text nodes must be preserved.
 
     \section2 Qt Core5 compatibility library
 

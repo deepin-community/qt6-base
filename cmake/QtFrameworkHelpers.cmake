@@ -1,7 +1,12 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 macro(qt_find_apple_system_frameworks)
     if(APPLE)
         qt_internal_find_apple_system_framework(FWAppKit AppKit)
+        qt_internal_find_apple_system_framework(FWCFNetwork CFNetwork)
         qt_internal_find_apple_system_framework(FWAssetsLibrary AssetsLibrary)
+        qt_internal_find_apple_system_framework(FWPhotos Photos)
         qt_internal_find_apple_system_framework(FWAudioToolbox AudioToolbox)
         qt_internal_find_apple_system_framework(FWApplicationServices ApplicationServices)
         qt_internal_find_apple_system_framework(FWCarbon Carbon)
@@ -28,6 +33,10 @@ macro(qt_find_apple_system_frameworks)
         qt_internal_find_apple_system_framework(FWWatchKit WatchKit)
         qt_internal_find_apple_system_framework(FWGameController GameController)
         qt_internal_find_apple_system_framework(FWCoreBluetooth CoreBluetooth)
+        qt_internal_find_apple_system_framework(FWAVFoundation AVFoundation)
+        qt_internal_find_apple_system_framework(FWContacts Contacts)
+        qt_internal_find_apple_system_framework(FWEventKit EventKit)
+        qt_internal_find_apple_system_framework(FWHealthKit HealthKit)
     endif()
 endmacro()
 
@@ -50,7 +59,7 @@ function(qt_internal_find_apple_system_framework out_var framework_name)
     endif()
 endfunction()
 
-# Copy header files to QtXYZ.framework/Versions/A/Headers/
+# Copy header files to the framework's Headers directory
 # Use this function for header files that
 #   - are not added as source files to the target
 #   - are not marked as PUBLIC_HEADER
@@ -61,42 +70,51 @@ function(qt_copy_framework_headers target)
         return()
     endif()
 
-    set(options PUBLIC PRIVATE QPA)
+    set(options)
     set(oneValueArgs)
-    set(multiValueArgs)
-    cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    set(multiValueArgs PUBLIC PRIVATE QPA RHI)
+    cmake_parse_arguments(arg "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     qt_internal_get_framework_info(fw ${target})
-    set(fw_output_header_dir "${fw_versioned_header_dir}")
-    if(ARG_PRIVATE)
-        set(fw_output_header_dir "${fw_private_module_header_dir}/private")
-    elseif(ARG_QPA)
-        set(fw_output_header_dir "${fw_private_module_header_dir}/qpa")
-    endif()
-
     get_target_property(output_dir ${target} LIBRARY_OUTPUT_DIRECTORY)
-    set(fw_output_header_dir "${output_dir}/${fw_output_header_dir}")
+    set(output_dir_PUBLIC "${output_dir}/${fw_versioned_header_dir}")
+    set(output_dir_PRIVATE "${output_dir}/${fw_private_module_header_dir}/private")
+    set(output_dir_QPA "${output_dir}/${fw_private_module_header_dir}/qpa")
+    set(output_dir_RHI "${output_dir}/${fw_private_module_header_dir}/rhi")
+
 
     set(out_files)
-    foreach(hdr IN LISTS ARG_UNPARSED_ARGUMENTS)
-        get_filename_component(in_file_path ${hdr} ABSOLUTE)
-        get_filename_component(in_file_name ${hdr} NAME)
-        set(out_file_path "${fw_output_header_dir}/${in_file_name}")
-        add_custom_command(
-            OUTPUT ${out_file_path}
-            DEPENDS ${in_file_path}
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${fw_output_header_dir}"
-            COMMAND ${CMAKE_COMMAND} -E copy "${in_file_path}" "${fw_output_header_dir}"
-            VERBATIM)
-        list(APPEND out_files ${out_file_path})
+    foreach(type IN ITEMS PUBLIC PRIVATE QPA RHI)
+        set(fw_output_header_dir "${output_dir_${type}}")
+        foreach(hdr IN LISTS arg_${type})
+            get_filename_component(in_file_path ${hdr} ABSOLUTE)
+            get_filename_component(in_file_name ${hdr} NAME)
+            set(out_file_path "${fw_output_header_dir}/${in_file_name}")
+            add_custom_command(
+                OUTPUT ${out_file_path}
+                DEPENDS ${in_file_path}
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${fw_output_header_dir}"
+                COMMAND ${CMAKE_COMMAND} -E copy "${in_file_path}" "${fw_output_header_dir}"
+                VERBATIM)
+            list(APPEND out_files ${out_file_path})
+        endforeach()
     endforeach()
 
-    get_target_property(fw_copied_headers ${target} QT_COPIED_FRAMEWORK_HEADERS)
-    if(NOT fw_copied_headers)
-        set(fw_copied_headers "")
-    endif()
-    list(APPEND fw_copied_headers ${out_files})
-    set_target_properties(${target} PROPERTIES QT_COPIED_FRAMEWORK_HEADERS "${fw_copied_headers}")
+    set_property(TARGET ${target} APPEND PROPERTY
+        QT_COPIED_FRAMEWORK_HEADERS "${out_files}")
+endfunction()
+
+function(qt_internal_generate_fake_framework_header target)
+    # Hack to create the "Headers" symlink in the framework:
+    # Create a fake header file and copy it into the framework by marking it as PUBLIC_HEADER.
+    # CMake now takes care of creating the symlink.
+    set(fake_header "${CMAKE_CURRENT_BINARY_DIR}/${target}_fake_header.h")
+    qt_internal_get_main_cmake_configuration(main_config)
+    file(GENERATE OUTPUT "${fake_header}" CONTENT "// ignore this file\n"
+        CONDITION "$<CONFIG:${main_config}>")
+    target_sources(${target} PRIVATE "${fake_header}")
+    set_source_files_properties("${fake_header}" PROPERTIES GENERATED ON)
+    set_property(TARGET ${target} APPEND PROPERTY PUBLIC_HEADER "${fake_header}")
 endfunction()
 
 function(qt_finalize_framework_headers_copy target)
@@ -110,17 +128,7 @@ function(qt_finalize_framework_headers_copy target)
     endif()
     get_target_property(headers ${target} QT_COPIED_FRAMEWORK_HEADERS)
     if(headers)
-        # Hack to create the "Headers" symlink in the framework:
-        # Create a fake header file and copy it into the framework by marking it as PUBLIC_HEADER.
-        # CMake now takes care of creating the symlink.
-        set(fake_header ${target}_fake_header.h)
-        qt_internal_get_main_cmake_configuration(main_config)
-        file(GENERATE OUTPUT ${fake_header} CONTENT "// ignore this file\n"
-             CONDITION "$<CONFIG:${main_config}>")
-        string(PREPEND fake_header "${CMAKE_CURRENT_BINARY_DIR}/")
-        target_sources(${target} PRIVATE ${fake_header})
-        set_source_files_properties(${fake_header} PROPERTIES GENERATED ON)
-        set_property(TARGET ${target} APPEND PROPERTY PUBLIC_HEADER ${fake_header})
+        qt_internal_generate_fake_framework_header(${target})
 
         # Add a target, e.g. Core_framework_headers, that triggers the header copy.
         add_custom_target(${target}_framework_headers DEPENDS ${headers})
@@ -158,8 +166,13 @@ function(qt_internal_get_framework_info out_var target)
     set(${out_var}_name "${module}")
     set(${out_var}_dir "${${out_var}_name}.framework")
     set(${out_var}_header_dir "${${out_var}_dir}/Headers")
-    set(${out_var}_versioned_header_dir "${${out_var}_dir}/Versions/${${out_var}_version}/Headers")
-    set(${out_var}_private_header_dir "${${out_var}_header_dir}/${${out_var}_bundle_version}")
+    if(UIKIT)
+        # iOS frameworks do not version their headers
+        set(${out_var}_versioned_header_dir "${${out_var}_header_dir}")
+    else()
+        set(${out_var}_versioned_header_dir "${${out_var}_dir}/Versions/${${out_var}_version}/Headers")
+    endif()
+    set(${out_var}_private_header_dir "${${out_var}_versioned_header_dir}/${${out_var}_bundle_version}")
     set(${out_var}_private_module_header_dir "${${out_var}_private_header_dir}/${module}")
 
     set(${out_var}_name "${${out_var}_name}" PARENT_SCOPE)

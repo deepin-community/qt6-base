@@ -416,6 +416,12 @@ void QFontEngine::initializeHeightMetrics() const
 
         // Allow OS/2 metrics to override if present
         processOS2Table();
+
+        if (!supportsSubPixelPositions()) {
+            m_ascent = m_ascent.round();
+            m_descent = m_descent.round();
+            m_leading = m_leading.round();
+        }
     }
 
     m_heightMetricsQueried = true;
@@ -448,6 +454,7 @@ bool QFontEngine::processOS2Table() const
                 return false;
             m_ascent = QFixed::fromReal(winAscent * fontDef.pixelSize) / unitsPerEm;
             m_descent = QFixed::fromReal(winDescent * fontDef.pixelSize) / unitsPerEm;
+            m_leading = QFixed{};
         }
 
         return true;
@@ -560,6 +567,16 @@ qreal QFontEngine::minRightBearing() const
     }
 
     return m_minRightBearing;
+}
+
+glyph_metrics_t QFontEngine::boundingBox(const QGlyphLayout &glyphs)
+{
+    QFixed w;
+    for (int i = 0; i < glyphs.numGlyphs; ++i)
+        w += glyphs.effectiveAdvance(i);
+    const QFixed leftBearing = firstLeftBearing(glyphs);
+    const QFixed rightBearing = lastRightBearing(glyphs);
+    return glyph_metrics_t(leftBearing, -(ascent()), w - leftBearing - rightBearing, ascent() + descent(), w, 0);
 }
 
 glyph_metrics_t QFontEngine::tightBoundingBox(const QGlyphLayout &glyphs)
@@ -1452,6 +1469,17 @@ bool QFontEngine::hasUnreliableGlyphOutline() const
     return glyphFormat == QFontEngine::Format_ARGB;
 }
 
+QFixed QFontEngine::firstLeftBearing(const QGlyphLayout &glyphs)
+{
+    for (int i = 0; i < glyphs.numGlyphs; ++i) {
+        glyph_t glyph = glyphs.glyphs[i];
+        glyph_metrics_t gi = boundingBox(glyph);
+        if (gi.isValid() && gi.width > 0)
+            return gi.leftBearing();
+    }
+    return 0;
+}
+
 QFixed QFontEngine::lastRightBearing(const QGlyphLayout &glyphs)
 {
     if (glyphs.numGlyphs >= 1) {
@@ -1804,6 +1832,7 @@ bool QFontEngineMulti::stringToCMap(const QChar *str, int len,
     QStringIterator it(str, str + len);
 
     int lastFallback = -1;
+    char32_t previousUcs4 = 0;
     while (it.hasNext()) {
         const char32_t ucs4 = it.peekNext();
 
@@ -1833,7 +1862,8 @@ bool QFontEngineMulti::stringToCMap(const QChar *str, int len,
                 && ucs4 != QChar::LineSeparator
                 && ucs4 != QChar::LineFeed
                 && ucs4 != QChar::CarriageReturn
-                && ucs4 != QChar::ParagraphSeparator) {
+                && ucs4 != QChar::ParagraphSeparator
+                && QChar::category(ucs4) != QChar::Other_PrivateUse) {
             if (!m_fallbackFamiliesQueried)
                 const_cast<QFontEngineMulti *>(this)->ensureFallbackFamiliesQueried();
             for (int x = 1, n = qMin(m_engines.size(), 256); x < n; ++x) {
@@ -1865,10 +1895,35 @@ bool QFontEngineMulti::stringToCMap(const QChar *str, int len,
                     break;
                 }
             }
+
+            // For variant-selectors, they are modifiers to the previous character. If we
+            // end up with different font selections for the selector and the character it
+            // modifies, we try applying the selector font to the preceding character as well
+            const int variantSelectorBlock = 0xFE00;
+            if ((ucs4 & 0xFFF0) == variantSelectorBlock && glyph_pos > 0) {
+                int selectorFontEngine = glyphs->glyphs[glyph_pos] >> 24;
+                int precedingCharacterFontEngine = glyphs->glyphs[glyph_pos - 1] >> 24;
+
+                if (selectorFontEngine != precedingCharacterFontEngine) {
+                    QFontEngine *engine = m_engines.at(selectorFontEngine);
+                    glyph_t glyph = engine->glyphIndex(previousUcs4);
+                    if (glyph != 0) {
+                        glyphs->glyphs[glyph_pos - 1] = glyph;
+                        if (!(flags & GlyphIndicesOnly)) {
+                            QGlyphLayout g = glyphs->mid(glyph_pos - 1, 1);
+                            engine->recalcAdvances(&g, flags);
+                        }
+
+                        // set the high byte to indicate which engine the glyph came from
+                        glyphs->glyphs[glyph_pos - 1] |= (selectorFontEngine << 24);
+                    }
+                }
+            }
         }
 
         it.advance();
         ++glyph_pos;
+        previousUcs4 = ucs4;
     }
 
     *nglyphs = glyph_pos;

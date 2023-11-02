@@ -7,6 +7,7 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qthread.h>
 #include <QtCore/qsocketnotifier.h>
+#include <QtCore/private/qstdweb_p.h>
 
 #include "emscripten.h"
 #include <emscripten/html5.h>
@@ -32,14 +33,20 @@ Q_LOGGING_CATEGORY(lcEventDispatcherTimers, "qt.eventdispatcher.timers");
 // track Qts own usage of asyncify.
 static bool g_is_asyncify_suspended = false;
 
-EM_JS(bool, qt_have_asyncify_js, (), {
-    return typeof Asyncify != "undefined";
-});
+#if defined(QT_STATIC)
+
+static bool useAsyncify()
+{
+    return qstdweb::haveAsyncify();
+}
 
 EM_JS(void, qt_asyncify_suspend_js, (), {
+    if (Module.qtSuspendId === undefined)
+        Module.qtSuspendId = 0;
     let sleepFn = (wakeUp) => {
         Module.qtAsyncifyWakeUp = wakeUp;
     };
+    ++Module.qtSuspendId;
     return Asyncify.handleSleep(sleepFn);
 });
 
@@ -48,20 +55,38 @@ EM_JS(void, qt_asyncify_resume_js, (), {
     if (wakeUp == undefined)
         return;
     Module.qtAsyncifyWakeUp = undefined;
+    const suspendId = Module.qtSuspendId;
 
     // Delayed wakeup with zero-timer. Workaround/fix for
     // https://github.com/emscripten-core/emscripten/issues/10515
-    setTimeout(wakeUp);
+    setTimeout(() => {
+        // Another suspend occurred while the timeout was in queue.
+        if (Module.qtSuspendId !== suspendId)
+            return;
+        wakeUp();
+    });
 });
 
-// Returns true if asyncify is available.
-bool qt_have_asyncify()
+#else
+
+// EM_JS is not supported for side modules; disable asyncify
+
+static bool useAsyncify()
 {
-    static bool have_asyncify = []{
-        return qt_have_asyncify_js();
-    }();
-    return have_asyncify;
+    return false;
 }
+
+void qt_asyncify_suspend_js()
+{
+    Q_UNREACHABLE();
+}
+
+void qt_asyncify_resume_js()
+{
+    Q_UNREACHABLE();
+}
+
+#endif // defined(QT_STATIC)
 
 // Suspends the main thread until qt_asyncify_resume() is called. Returns
 // false immediately if Qt has already suspended the main thread (recursive
@@ -91,6 +116,8 @@ Q_CONSTINIT QEventDispatcherWasm *QEventDispatcherWasm::g_mainThreadEventDispatc
 #if QT_CONFIG(thread)
 Q_CONSTINIT QVector<QEventDispatcherWasm *> QEventDispatcherWasm::g_secondaryThreadEventDispatchers;
 Q_CONSTINIT std::mutex QEventDispatcherWasm::g_staticDataMutex;
+emscripten::ProxyingQueue QEventDispatcherWasm::g_proxyingQueue;
+pthread_t QEventDispatcherWasm::g_mainThread;
 #endif
 // ### dynamic initialization:
 std::multimap<int, QSocketNotifier *> QEventDispatcherWasm::g_socketNotifiers;
@@ -119,6 +146,9 @@ QEventDispatcherWasm::QEventDispatcherWasm()
         // dispatchers so we set a global pointer to it.
         Q_ASSERT(g_mainThreadEventDispatcher == nullptr);
         g_mainThreadEventDispatcher = this;
+#if QT_CONFIG(thread)
+        g_mainThread = pthread_self();
+#endif
     } else {
 #if QT_CONFIG(thread)
         std::lock_guard<std::mutex> lock(g_staticDataMutex);
@@ -182,12 +212,9 @@ bool QEventDispatcherWasm::isValidEventDispatcherPointer(QEventDispatcherWasm *e
 
 bool QEventDispatcherWasm::processEvents(QEventLoop::ProcessEventsFlags flags)
 {
+    qCDebug(lcEventDispatcher) << "QEventDispatcherWasm::processEvents flags" << flags;
+
     emit awake();
-
-    bool hasPendingEvents = qGlobalPostedEventsCount() > 0;
-
-    qCDebug(lcEventDispatcher) << "QEventDispatcherWasm::processEvents flags" << flags
-                               << "pending events" << hasPendingEvents;
 
     if (isMainThreadEventDispatcher()) {
         if (flags & QEventLoop::DialogExec)
@@ -196,30 +223,27 @@ bool QEventDispatcherWasm::processEvents(QEventLoop::ProcessEventsFlags flags)
             handleApplicationExec();
     }
 
-    hasPendingEvents = qGlobalPostedEventsCount() > 0;
+    processPostedEvents();
 
-    if (!hasPendingEvents && (flags & QEventLoop::WaitForMoreEvents))
-        wait();
+    // The processPostedEvents() call above may process an event which deletes the
+    // application object and the event dispatcher; stop event processing in that case.
+    if (!isValidEventDispatcherPointer(this))
+        return false;
 
     if (m_interrupted) {
         m_interrupted = false;
         return false;
     }
 
+    if (flags & QEventLoop::WaitForMoreEvents)
+        wait();
+
     if (m_processTimers) {
         m_processTimers = false;
         processTimers();
     }
 
-    hasPendingEvents = qGlobalPostedEventsCount() > 0;
-    QCoreApplication::sendPostedEvents();
-    processWindowSystemEvents(flags);
-    return hasPendingEvents;
-}
-
-void QEventDispatcherWasm::processWindowSystemEvents(QEventLoop::ProcessEventsFlags flags)
-{
-    Q_UNUSED(flags);
+    return false;
 }
 
 void QEventDispatcherWasm::registerSocketNotifier(QSocketNotifier *notifier)
@@ -345,7 +369,7 @@ void QEventDispatcherWasm::wakeUp()
             m_pendingProcessEvents = true;
         }
         runOnMainThreadAsync([this](){
-            QEventDispatcherWasm::callProcessEvents(this);
+            QEventDispatcherWasm::callProcessPostedEvents(this);
         });
     }
 }
@@ -368,7 +392,7 @@ void QEventDispatcherWasm::handleApplicationExec()
 
 void QEventDispatcherWasm::handleDialogExec()
 {
-    if (!qt_have_asyncify()) {
+    if (!useAsyncify()) {
         qWarning() << "Warning: exec() is not supported on Qt for WebAssembly in this configuration. Please build"
                    << "with asyncify support, or use an asynchronous API like QDialog::open()";
         emscripten_sleep(1); // This call never returns
@@ -397,7 +421,7 @@ bool QEventDispatcherWasm::wait(int timeout)
 #endif
     Q_ASSERT(emscripten_is_main_runtime_thread());
     Q_ASSERT(isMainThreadEventDispatcher());
-    if (qt_have_asyncify()) {
+    if (useAsyncify()) {
         if (timeout > 0)
             qWarning() << "QEventDispatcherWasm asyncify wait with timeout is not supported; timeout will be ignored"; // FIXME
 
@@ -437,7 +461,7 @@ bool QEventDispatcherWasm::wakeEventDispatcherThread()
 
 // Process event activation callbacks for the main thread event dispatcher.
 // Must be called on the main thread.
-void QEventDispatcherWasm::callProcessEvents(void *context)
+void QEventDispatcherWasm::callProcessPostedEvents(void *context)
 {
     Q_ASSERT(emscripten_is_main_runtime_thread());
 
@@ -445,7 +469,7 @@ void QEventDispatcherWasm::callProcessEvents(void *context)
     if (!g_mainThreadEventDispatcher)
         return;
 
-    // In the unlikely event that we get a callProcessEvents() call for
+    // In the unlikely event that we get a callProcessPostedEvents() call for
     // a previous main thread event dispatcher (i.e. the QApplication
     // object was deleted and created again): just ignore it and return.
     if (context != g_mainThreadEventDispatcher)
@@ -455,7 +479,14 @@ void QEventDispatcherWasm::callProcessEvents(void *context)
         LOCK_GUARD(g_mainThreadEventDispatcher->m_mutex);
         g_mainThreadEventDispatcher->m_pendingProcessEvents = false;
     }
-    g_mainThreadEventDispatcher->processEvents(QEventLoop::AllEvents);
+
+    g_mainThreadEventDispatcher->processPostedEvents();
+}
+
+bool QEventDispatcherWasm::processPostedEvents()
+{
+    QCoreApplication::sendPostedEvents();
+    return false;
 }
 
 void QEventDispatcherWasm::processTimers()
@@ -479,13 +510,13 @@ void QEventDispatcherWasm::updateNativeTimer()
     // access to m_timerInfo), and then call native API to set the new
     // wakeup time on the main thread.
 
-    auto timespecToNanosec = [](timespec ts) -> uint64_t {
+    auto timespecToMsec = [](timespec ts) -> uint64_t {
         return ts.tv_sec * 1000 + ts.tv_nsec / (1000 * 1000);
     };
     timespec toWait;
     bool hasTimer = m_timerInfo->timerWait(toWait);
-    uint64_t currentTime = timespecToNanosec(m_timerInfo->currentTime);
-    uint64_t toWaitDuration = timespecToNanosec(toWait);
+    uint64_t currentTime = timespecToMsec(m_timerInfo->currentTime);
+    uint64_t toWaitDuration = timespecToMsec(toWait);
     uint64_t newTargetTime = currentTime + toWaitDuration;
 
     auto maintainNativeTimer = [this, hasTimer, toWaitDuration, newTargetTime]() {
@@ -795,7 +826,9 @@ void QEventDispatcherWasm::runOnMainThread(std::function<void(void)> fn)
 #if QT_CONFIG(thread)
     if (!emscripten_is_main_runtime_thread()) {
         void *context = new std::function<void(void)>(fn);
-        emscripten_async_run_in_main_runtime_thread_(EM_FUNC_SIG_VI, reinterpret_cast<void *>(trampoline), context);
+        g_proxyingQueue.proxyAsync(g_mainThread, [context]{
+            trampoline(context);
+        });
         return;
     }
 #endif
@@ -809,7 +842,9 @@ void QEventDispatcherWasm::runOnMainThreadAsync(std::function<void(void)> fn)
     void *context = new std::function<void(void)>(fn);
 #if QT_CONFIG(thread)
     if (!emscripten_is_main_runtime_thread()) {
-        emscripten_async_run_in_main_runtime_thread_(EM_FUNC_SIG_VI, reinterpret_cast<void *>(trampoline), context);
+        g_proxyingQueue.proxyAsync(g_mainThread, [context]{
+            trampoline(context);
+        });
         return;
     }
 #endif

@@ -180,12 +180,18 @@ QString QStandardPaths::writableLocation(StandardLocation type)
     case CacheLocation:
     case GenericCacheLocation:
     {
-        // http://standards.freedesktop.org/basedir-spec/basedir-spec-0.6.html
-        QString xdgCacheHome = QFile::decodeName(qgetenv("XDG_CACHE_HOME"));
-        if (isTestModeEnabled())
+        QString xdgCacheHome;
+        if (isTestModeEnabled()) {
             xdgCacheHome = QDir::homePath() + "/.qttest/cache"_L1;
-        if (xdgCacheHome.isEmpty())
-            xdgCacheHome = QDir::homePath() + "/.cache"_L1;
+        } else {
+            // http://standards.freedesktop.org/basedir-spec/basedir-spec-0.6.html
+            xdgCacheHome = QFile::decodeName(qgetenv("XDG_CACHE_HOME"));
+            if (!xdgCacheHome.startsWith(u'/'))
+                xdgCacheHome.clear(); // spec says relative paths should be ignored
+
+            if (xdgCacheHome.isEmpty())
+                xdgCacheHome = QDir::homePath() + "/.cache"_L1;
+        }
         if (type == QStandardPaths::CacheLocation)
             appendOrganizationAndApp(xdgCacheHome);
         return xdgCacheHome;
@@ -194,11 +200,17 @@ QString QStandardPaths::writableLocation(StandardLocation type)
     case AppLocalDataLocation:
     case GenericDataLocation:
     {
-        QString xdgDataHome = QFile::decodeName(qgetenv("XDG_DATA_HOME"));
-        if (isTestModeEnabled())
+        QString xdgDataHome;
+        if (isTestModeEnabled()) {
             xdgDataHome = QDir::homePath() + "/.qttest/share"_L1;
-        if (xdgDataHome.isEmpty())
-            xdgDataHome = QDir::homePath() + "/.local/share"_L1;
+        } else {
+            xdgDataHome = QFile::decodeName(qgetenv("XDG_DATA_HOME"));
+            if (!xdgDataHome.startsWith(u'/'))
+                xdgDataHome.clear(); // spec says relative paths should be ignored
+
+            if (xdgDataHome.isEmpty())
+                xdgDataHome = QDir::homePath() + "/.local/share"_L1;
+        }
         if (type == AppDataLocation || type == AppLocalDataLocation)
             appendOrganizationAndApp(xdgDataHome);
         return xdgDataHome;
@@ -207,12 +219,18 @@ QString QStandardPaths::writableLocation(StandardLocation type)
     case GenericConfigLocation:
     case AppConfigLocation:
     {
-        // http://standards.freedesktop.org/basedir-spec/latest/
-        QString xdgConfigHome = QFile::decodeName(qgetenv("XDG_CONFIG_HOME"));
-        if (isTestModeEnabled())
+        QString xdgConfigHome;
+        if (isTestModeEnabled()) {
             xdgConfigHome = QDir::homePath() + "/.qttest/config"_L1;
-        if (xdgConfigHome.isEmpty())
-            xdgConfigHome = QDir::homePath() + "/.config"_L1;
+        } else {
+            // http://standards.freedesktop.org/basedir-spec/latest/
+            xdgConfigHome = QFile::decodeName(qgetenv("XDG_CONFIG_HOME"));
+            if (!xdgConfigHome.startsWith(u'/'))
+                xdgConfigHome.clear(); // spec says relative paths should be ignored
+
+            if (xdgConfigHome.isEmpty())
+                xdgConfigHome = QDir::homePath() + "/.config"_L1;
+        }
         if (type == AppConfigLocation)
             appendOrganizationAndApp(xdgConfigHome);
         return xdgConfigHome;
@@ -220,6 +238,9 @@ QString QStandardPaths::writableLocation(StandardLocation type)
     case RuntimeLocation:
     {
         QString xdgRuntimeDir = QFile::decodeName(qgetenv("XDG_RUNTIME_DIR"));
+        if (!xdgRuntimeDir.startsWith(u'/'))
+            xdgRuntimeDir.clear(); // spec says relative paths should be ignored
+
         bool fromEnv = !xdgRuntimeDir.isEmpty();
         if (xdgRuntimeDir.isEmpty() || !checkXdgRuntimeDir(xdgRuntimeDir)) {
             // environment variable not set or is set to something unsuitable
@@ -246,6 +267,9 @@ QString QStandardPaths::writableLocation(StandardLocation type)
 #if QT_CONFIG(regularexpression)
     // http://www.freedesktop.org/wiki/Software/xdg-user-dirs
     QString xdgConfigHome = QFile::decodeName(qgetenv("XDG_CONFIG_HOME"));
+    if (!xdgConfigHome.startsWith(u'/'))
+        xdgConfigHome.clear(); // spec says relative paths should be ignored
+
     if (xdgConfigHome.isEmpty())
         xdgConfigHome = QDir::homePath() + "/.config"_L1;
     QFile file(xdgConfigHome + "/user-dirs.dirs"_L1);
@@ -253,7 +277,7 @@ QString QStandardPaths::writableLocation(StandardLocation type)
     if (!key.isEmpty() && !isTestModeEnabled() && file.open(QIODevice::ReadOnly)) {
         QTextStream stream(&file);
         // Only look for lines like: XDG_DESKTOP_DIR="$HOME/Desktop"
-        QRegularExpression exp("^XDG_(.*)_DIR=(.*)$"_L1);
+        static const QRegularExpression exp(u"^XDG_(.*)_DIR=(.*)$"_s);
         QString result;
         while (!stream.atEnd()) {
             const QString &line = stream.readLine();
@@ -323,41 +347,48 @@ QString QStandardPaths::writableLocation(StandardLocation type)
     return path;
 }
 
-static QStringList xdgDataDirs()
+static QStringList dirsList(const QString &xdgEnvVar)
 {
     QStringList dirs;
     // http://standards.freedesktop.org/basedir-spec/latest/
-    QString xdgDataDirsEnv = QFile::decodeName(qgetenv("XDG_DATA_DIRS"));
-    if (xdgDataDirsEnv.isEmpty()) {
-        dirs.append(QString::fromLatin1("/usr/local/share"));
-        dirs.append(QString::fromLatin1("/usr/share"));
-    } else {
-        // Normalize paths, skip relative paths
-        for (const auto dir : qTokenize(xdgDataDirsEnv, u':')) {
-            if (dir.startsWith(u'/'))
-                dirs.push_back(QDir::cleanPath(dir.toString()));
-        }
+    // Normalize paths, skip relative paths (the spec says relative paths
+    // should be ignored)
+    for (const auto dir : qTokenize(xdgEnvVar, u':'))
+        if (dir.startsWith(u'/'))
+            dirs.push_back(QDir::cleanPath(dir.toString()));
 
-        // Remove duplicates from the list, there's no use for duplicated
-        // paths in XDG_DATA_DIRS - if it's not found in the given
-        // directory the first time, it won't be there the second time.
-        // Plus duplicate paths causes problems for example for mimetypes,
-        // where duplicate paths here lead to duplicated mime types returned
-        // for a file, eg "text/plain,text/plain" instead of "text/plain"
-        dirs.removeDuplicates();
-    }
+    // Remove duplicates from the list, there's no use for duplicated paths
+    // in XDG_* env vars - if whatever is being looked for is not found in
+    // the given directory the first time, it won't be there the second time.
+    // Plus duplicate paths causes problems for example for mimetypes,
+    // where duplicate paths here lead to duplicated mime types returned
+    // for a file, eg "text/plain,text/plain" instead of "text/plain"
+    dirs.removeDuplicates();
+
+    return dirs;
+}
+
+static QStringList xdgDataDirs()
+{
+    // http://standards.freedesktop.org/basedir-spec/latest/
+    QString xdgDataDirsEnv = QFile::decodeName(qgetenv("XDG_DATA_DIRS"));
+
+    QStringList dirs = dirsList(xdgDataDirsEnv);
+    if (dirs.isEmpty())
+        dirs = QStringList{u"/usr/local/share"_s, u"/usr/share"_s};
+
     return dirs;
 }
 
 static QStringList xdgConfigDirs()
 {
-    QStringList dirs;
     // http://standards.freedesktop.org/basedir-spec/latest/
     const QString xdgConfigDirs = QFile::decodeName(qgetenv("XDG_CONFIG_DIRS"));
-    if (xdgConfigDirs.isEmpty())
-        dirs.append(QString::fromLatin1("/etc/xdg"));
-    else
-        dirs = xdgConfigDirs.split(u':');
+
+    QStringList dirs = dirsList(xdgConfigDirs);
+    if (dirs.isEmpty())
+        dirs.push_back(u"/etc/xdg"_s);
+
     return dirs;
 }
 

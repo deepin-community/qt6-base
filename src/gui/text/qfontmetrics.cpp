@@ -75,15 +75,23 @@ extern void qt_format_text(const QFont& font, const QRectF &_r,
     inFont(). You can also treat the character as a string, and use
     the string functions on it.
 
-    The string functions include horizontalAdvance(), to return the width of a
-    string in pixels (or points, for a printer), boundingRect(), to
-    return a rectangle large enough to contain the rendered string,
+    The string functions include horizontalAdvance(), to return the advance
+    width of a string in pixels (or points, for a printer), boundingRect(),
+    to return a rectangle large enough to contain the rendered string,
     and size(), to return the size of that rectangle.
+
+    \note The advance width can be different from the width of the actual
+    rendered text. It refers to the distance from the origin of the string to
+    where you would append additional characters. As text may have overhang
+    (in the case of an italic font for instance) or padding between
+    characters, the advance width can be either smaller or larger than the
+    actual rendering of the text. This is called the right bearing of the
+    text.
 
     Example:
     \snippet code/src_gui_text_qfontmetrics.cpp 0
 
-    \sa QFont, QFontInfo, QFontDatabase, {Character Map Example}
+    \sa QFont, QFontInfo, QFontDatabase
 */
 
 /*!
@@ -473,10 +481,13 @@ int QFontMetrics::rightBearing(QChar ch) const
     return qRound(rb);
 }
 
+static constexpr QLatin1Char s_variableLengthStringSeparator('\x9c');
+
 /*!
     Returns the horizontal advance in pixels of the first \a len characters of \a
     text. If \a len is negative (the default), the entire string is
-    used.
+    used. The entire length of \a text is analysed even if \a len is substantially
+    shorter.
 
     This is the distance appropriate for drawing a subsequent character
     after \a text.
@@ -487,9 +498,11 @@ int QFontMetrics::rightBearing(QChar ch) const
 */
 int QFontMetrics::horizontalAdvance(const QString &text, int len) const
 {
-    int pos = text.indexOf(QLatin1Char('\x9c'));
+    int pos = (len >= 0)
+            ? QStringView(text).left(len).indexOf(s_variableLengthStringSeparator)
+            : text.indexOf(s_variableLengthStringSeparator);
     if (pos != -1) {
-        len = (len < 0) ? pos : qMin(pos, len);
+        len = pos;
     } else if (len < 0) {
         len = text.size();
     }
@@ -512,11 +525,11 @@ int QFontMetrics::horizontalAdvance(const QString &text, int len) const
 */
 int QFontMetrics::horizontalAdvance(const QString &text, const QTextOption &option) const
 {
-    int pos = text.indexOf(QLatin1Char('\x9c'));
+    int pos = text.indexOf(s_variableLengthStringSeparator);
     int len = -1;
     if (pos != -1) {
-        len = (len < 0) ? pos : qMin(pos, len);
-    } else if (len < 0) {
+        len = pos;
+    } else {
         len = text.size();
     }
     if (len == 0)
@@ -876,13 +889,13 @@ QString QFontMetrics::elidedText(const QString &text, Qt::TextElideMode mode, in
     QString _text = text;
     if (!(flags & Qt::TextLongestVariant)) {
         int posA = 0;
-        int posB = _text.indexOf(QLatin1Char('\x9c'));
+        int posB = _text.indexOf(s_variableLengthStringSeparator);
         while (posB >= 0) {
             QString portion = _text.mid(posA, posB - posA);
             if (size(flags, portion).width() <= width)
                 return portion;
             posA = posB + 1;
-            posB = _text.indexOf(QLatin1Char('\x9c'), posA);
+            posB = _text.indexOf(s_variableLengthStringSeparator, posA);
         }
         _text = _text.mid(posA);
     }
@@ -1387,7 +1400,8 @@ qreal QFontMetricsF::rightBearing(QChar ch) const
 /*!
     Returns the horizontal advance in pixels of the first \a length characters of \a
     text. If \a length is negative (the default), the entire string is
-    used.
+    used. The entire length of \a text is analysed even if \a length is substantially
+    shorter.
 
     The advance is the distance appropriate for drawing a subsequent
     character after \a text.
@@ -1398,9 +1412,11 @@ qreal QFontMetricsF::rightBearing(QChar ch) const
 */
 qreal QFontMetricsF::horizontalAdvance(const QString &text, int length) const
 {
-    int pos = text.indexOf(QLatin1Char('\x9c'));
+    int pos = (length >= 0)
+            ? QStringView(text).left(length).indexOf(s_variableLengthStringSeparator)
+            : text.indexOf(s_variableLengthStringSeparator);
     if (pos != -1)
-        length = (length < 0) ? pos : qMin(pos, length);
+        length = pos;
     else if (length < 0)
         length = text.size();
 
@@ -1424,11 +1440,11 @@ qreal QFontMetricsF::horizontalAdvance(const QString &text, int length) const
 */
 qreal QFontMetricsF::horizontalAdvance(const QString &text, const QTextOption &option) const
 {
-    int pos = text.indexOf(QLatin1Char('\x9c'));
+    int pos = text.indexOf(s_variableLengthStringSeparator);
     int length = -1;
     if (pos != -1)
-        length = (length < 0) ? pos : qMin(pos, length);
-    else if (length < 0)
+        length = pos;
+    else
         length = text.size();
 
     if (length == 0)
@@ -1793,13 +1809,13 @@ QString QFontMetricsF::elidedText(const QString &text, Qt::TextElideMode mode, q
     QString _text = text;
     if (!(flags & Qt::TextLongestVariant)) {
         int posA = 0;
-        int posB = _text.indexOf(QLatin1Char('\x9c'));
+        int posB = _text.indexOf(s_variableLengthStringSeparator);
         while (posB >= 0) {
             QString portion = _text.mid(posA, posB - posA);
             if (size(flags, portion).width() <= width)
                 return portion;
             posA = posB + 1;
-            posB = _text.indexOf(QLatin1Char('\x9c'), posA);
+            posB = _text.indexOf(s_variableLengthStringSeparator, posA);
         }
         _text = _text.mid(posA);
     }

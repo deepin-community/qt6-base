@@ -1,19 +1,13 @@
-# SymbolsHelper-Confirmed: 6.4.1 amd64
+# SymbolsHelper-Confirmed: 6.6.0 amd64
 libQt6Test.so.6 libqt6test6 #MINVER#
-| libqt6test6 #MINVER#, qt6-base-abi (= 6.4.2)
+| libqt6test6 #MINVER#, qt6-base-private-abi (= 6.6.0)
 * Build-Depends-Package: qt6-base-dev
- Qt_6.0@Qt_6.0 6.1.2
- Qt_6.1@Qt_6.1 6.1.2
- Qt_6.2@Qt_6.2 6.2.0
- Qt_6.3@Qt_6.3 6.3.0
- Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _ZGVZN14QTestEventLoop8instanceEvE8testLoop@Qt_6 6.3.0
  _ZN12QTestPrivate14parseBlackListEv@Qt_6 6.1.2
  _ZN12QTestPrivate15checkBlackListsEPKcS1_S1_@Qt_6 6.3.1
  _ZN12QTestPrivate17qtestMouseButtonsE@Qt_6 6.1.2
- _ZN12QTestPrivate22generateTestIdentifierEP15QTestCharBufferi@Qt_6 6.1.2
  _ZN14QTestEventLoop11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
  _ZN14QTestEventLoop11qt_metacastEPKc@Qt_6 6.1.2
  _ZN14QTestEventLoop16staticMetaObjectE@Qt_6 6.1.2
@@ -60,11 +54,10 @@ libQt6Test.so.6 libqt6test6 #MINVER#
  _ZN5QTest18lastMouseTimestampE@Qt_6 6.1.2
  _ZN5QTest18setBenchmarkResultEdNS_16QBenchmarkMetricE@Qt_6 6.1.2
  _ZN5QTest19currentTestFunctionEv@Qt_6 6.1.2
+ _ZN5QTest19currentTestResolvedEv@Qt_6 6.6.0
  (subst)_ZN5QTest19toHexRepresentationEPKc{qptrdiff}@Qt_6 6.4.0
  _ZN5QTest21compare_string_helperEPKcS1_S1_S1_S1_i@Qt_6 6.1.2
- _ZN5QTest23endBenchmarkMeasurementEv@Qt_6 6.1.2
  _ZN5QTest23printAvailableFunctionsE@Qt_6 6.1.2
- _ZN5QTest25beginBenchmarkMeasurementEv@Qt_6 6.1.2
  _ZN5QTest29QBenchmarkIterationController4nextEv@Qt_6 6.1.2
  _ZN5QTest29QBenchmarkIterationController6isDoneEv@Qt_6 6.1.2
  _ZN5QTest29QBenchmarkIterationControllerC1ENS0_7RunModeE@Qt_6 6.1.2

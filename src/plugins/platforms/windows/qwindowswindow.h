@@ -78,6 +78,8 @@ struct QWindowsWindowData
 {
     Qt::WindowFlags flags;
     QRect geometry;
+    QRect preMoveGeometry;
+    QRect restoreGeometry;
     QMargins fullFrameMargins; // Do not use directly for windows, see FrameDirty.
     QMargins customMargins;    // User-defined, additional frame for NCCALCSIZE
     HWND hwnd = nullptr;
@@ -218,6 +220,13 @@ public:
     void setGeometry(const QRect &rect) override;
     QRect geometry() const override { return m_data.geometry; }
     QRect normalGeometry() const override;
+    QRect restoreGeometry() const { return m_data.restoreGeometry; }
+    void updateRestoreGeometry();
+
+    static QWindow *topTransientOf(QWindow *w);
+    QRect preMoveRect() const { return m_data.preMoveGeometry; }
+    void setPreMoveRect(const QRect &rect) { m_data.preMoveGeometry = rect; }
+    void moveTransientChildren();
 
     void setVisible(bool visible) override;
     bool isVisible() const;
@@ -272,7 +281,7 @@ public:
     QWindowsMenuBar *menuBar() const;
     void setMenuBar(QWindowsMenuBar *mb);
 
-    QMargins customMargins() const override { return m_data.customMargins; }
+    QMargins customMargins() const override;
     void setCustomMargins(const QMargins &m) override;
 
     void setStyle(unsigned s) const;
@@ -281,7 +290,7 @@ public:
     bool handleWmPaint(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, LRESULT *result);
 
     void handleMoved();
-    void handleResized(int wParam);
+    void handleResized(int wParam, LPARAM lParam);
     void handleHidden();
     void handleCompositionSettingsChanged();
     void handleDpiScaledSize(WPARAM wParam, LPARAM lParam, LRESULT *result);
@@ -296,6 +305,7 @@ public:
     static inline void *userDataOf(HWND hwnd);
     static inline void setUserDataOf(HWND hwnd, void *ud);
 
+    static bool hasNoNativeFrame(HWND hwnd, Qt::WindowFlags flags);
     static bool setWindowLayered(HWND hwnd, Qt::WindowFlags flags, bool hasAlpha, qreal opacity);
     bool isLayered() const;
 
@@ -342,6 +352,7 @@ public:
 
     void setSavedDpi(int dpi) { m_savedDpi = dpi; }
     int savedDpi() const { return m_savedDpi; }
+    qreal dpiRelativeScale(const UINT dpi) const;
 
 private:
     inline void show_sys() const;
@@ -377,7 +388,6 @@ private:
     HICON m_iconBig = nullptr;
     void *m_surface = nullptr;
     int m_savedDpi = 96;
-    bool m_firstBgDraw = false;
 
     static bool m_screenForGLInitialized;
 

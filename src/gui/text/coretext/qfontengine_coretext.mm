@@ -12,6 +12,8 @@
 #include <QtGui/qpainterpath.h>
 #include <private/qcoregraphics_p.h>
 #include <private/qimage_p.h>
+#include <private/qguiapplication_p.h>
+#include <qpa/qplatformtheme.h>
 
 #include <cmath>
 
@@ -301,14 +303,6 @@ bool QCoreTextFontEngine::stringToCMap(const QChar *str, int len, QGlyphLayout *
     return true;
 }
 
-glyph_metrics_t QCoreTextFontEngine::boundingBox(const QGlyphLayout &glyphs)
-{
-    QFixed w;
-    for (int i = 0; i < glyphs.numGlyphs; ++i)
-        w += glyphs.effectiveAdvance(i);
-    return glyph_metrics_t(0, -(ascent()), w - lastRightBearing(glyphs), ascent()+descent(), w, 0);
-}
-
 glyph_metrics_t QCoreTextFontEngine::boundingBox(glyph_t glyph)
 {
     glyph_metrics_t ret;
@@ -370,6 +364,7 @@ bool QCoreTextFontEngine::hasColorGlyphs() const
     return glyphFormat == QFontEngine::Format_ARGB;
 }
 
+Q_GUI_EXPORT extern bool qt_scaleForTransform(const QTransform &transform, qreal *scale); // qtransform.cpp
 void QCoreTextFontEngine::draw(CGContextRef ctx, qreal x, qreal y, const QTextItemInt &ti, int paintDeviceHeight)
 {
     QVarLengthArray<QFixedPoint> positions;
@@ -414,7 +409,15 @@ void QCoreTextFontEngine::draw(CGContextRef ctx, qreal x, qreal y, const QTextIt
     CTFontDrawGlyphs(ctfont, cgGlyphs.data(), cgPositions.data(), glyphs.size(), ctx);
 
     if (synthesisFlags & QFontEngine::SynthesizedBold) {
-        CGContextSetTextPosition(ctx, positions[0].x.toReal() + 0.5 * lineThickness().toReal(),
+        QTransform matrix(cgMatrix.a, cgMatrix.b, cgMatrix.c, cgMatrix.d, cgMatrix.tx, cgMatrix.ty);
+
+        qreal boldOffset = 0.5 * lineThickness().toReal();
+        qreal scale;
+        qt_scaleForTransform(matrix, &scale);
+        boldOffset *= scale;
+
+        CGContextSetTextPosition(ctx,
+                                 positions[0].x.toReal() + boldOffset,
                                  positions[0].y.toReal());
         CTFontDrawGlyphs(ctfont, cgGlyphs.data(), cgPositions.data(), glyphs.size(), ctx);
     }
@@ -715,10 +718,12 @@ QImage QCoreTextFontEngine::imageForGlyph(glyph_t glyph, const QFixedPoint &subP
             // draw with white or black fill, and then invert the glyph image in the latter case,
             // producing an alpha map. This covers the most common use-cases, but longer term we
             // should propagate the fill color all the way from the paint engine, and include it
-            //in the key for the glyph cache.
+            // in the key for the glyph cache.
 
-            if (!qt_mac_applicationIsInDarkMode())
-                return kCGColorBlack;
+            if (auto *platformTheme = QGuiApplicationPrivate::platformTheme()) {
+                if (platformTheme->colorScheme() != Qt::ColorScheme::Dark)
+                    return kCGColorBlack;
+            }
         }
         return kCGColorWhite;
     }();
@@ -761,7 +766,13 @@ QImage QCoreTextFontEngine::imageForGlyph(glyph_t glyph, const QFixedPoint &subP
         CTFontDrawGlyphs(ctfont, &cgGlyph, &CGPointZero, 1, ctx);
 
         if (synthesisFlags & QFontEngine::SynthesizedBold) {
-            CGContextSetTextPosition(ctx, pos_x + 0.5 * lineThickness().toReal(), pos_y);
+            qreal boldOffset = 0.5 * lineThickness().toReal();
+
+            qreal scale;
+            qt_scaleForTransform(matrix, &scale);
+            boldOffset *= scale;
+
+            CGContextSetTextPosition(ctx, pos_x + boldOffset, pos_y);
             CTFontDrawGlyphs(ctfont, &cgGlyph, &CGPointZero, 1, ctx);
         }
     } else {

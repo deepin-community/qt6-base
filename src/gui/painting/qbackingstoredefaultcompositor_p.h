@@ -16,7 +16,7 @@
 //
 
 #include <qpa/qplatformbackingstore.h>
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -45,10 +45,14 @@ public:
 
 private:
     enum UpdateUniformOption {
-      NoOption = 0x00,
-      NeedsRedBlueSwap = 0x01,
-      NeedsAlphaRotate = 0x02,
+        NeedsRedBlueSwap = 1 << 0,
+        NeedsAlphaRotate = 1 << 1
     };
+    Q_DECLARE_FLAGS(UpdateUniformOptions, UpdateUniformOption)
+    enum UpdateQuadDataOption {
+        NeedsLinearFiltering = 1 << 0
+    };
+    Q_DECLARE_FLAGS(UpdateQuadDataOptions, UpdateQuadDataOption)
 
     void ensureResources(QRhiSwapChain *swapchain, QRhiResourceUpdateBatch *resourceUpdates);
     QRhiTexture *toTexture(const QImage &image,
@@ -61,7 +65,8 @@ private:
     mutable QRhiTexture *m_texture = nullptr;
 
     QRhiBuffer *m_vbuf = nullptr;
-    QRhiSampler *m_sampler = nullptr;
+    QRhiSampler *m_samplerNearest = nullptr;
+    QRhiSampler *m_samplerLinear = nullptr;
     QRhiGraphicsPipeline *m_psNoBlend = nullptr;
     QRhiGraphicsPipeline *m_psBlend = nullptr;
     QRhiGraphicsPipeline *m_psPremulBlend = nullptr;
@@ -70,23 +75,34 @@ private:
         QRhiBuffer *ubuf = nullptr;
         // All srbs are layout-compatible.
         QRhiShaderResourceBindings *srb = nullptr;
+        QRhiShaderResourceBindings *srbExtra = nullptr; // may be null (used for stereo)
         QRhiTexture *lastUsedTexture = nullptr;
+        QRhiTexture *lastUsedTextureExtra = nullptr;    // may be null (used for stereo)
+        QRhiSampler::Filter lastUsedFilter = QRhiSampler::None;
         bool isValid() const { return ubuf && srb; }
         void reset() {
             delete ubuf;
             ubuf = nullptr;
             delete srb;
             srb = nullptr;
+            if (srbExtra) {
+                delete srbExtra;
+                srbExtra = nullptr;
+            }
             lastUsedTexture = nullptr;
+            lastUsedTextureExtra = nullptr;
+            lastUsedFilter = QRhiSampler::None;
         }
     };
     PerQuadData m_widgetQuadData;
     QVarLengthArray<PerQuadData, 8> m_textureQuadData;
 
-    PerQuadData createPerQuadData(QRhiTexture *texture);
-    void updatePerQuadData(PerQuadData *d, QRhiTexture *texture);
+    PerQuadData createPerQuadData(QRhiTexture *texture, QRhiTexture *textureExtra = nullptr);
+    void updatePerQuadData(PerQuadData *d, QRhiTexture *texture, QRhiTexture *textureExtra = nullptr,
+                           UpdateQuadDataOptions options = {});
     void updateUniforms(PerQuadData *d, QRhiResourceUpdateBatch *resourceUpdates,
-                        const QMatrix4x4 &target, const QMatrix3x3 &source, UpdateUniformOption option);
+                        const QMatrix4x4 &target, const QMatrix3x3 &source,
+                        UpdateUniformOptions options = {});
 };
 
 QT_END_NAMESPACE

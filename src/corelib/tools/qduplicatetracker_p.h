@@ -16,7 +16,7 @@
 
 #include <private/qglobal_p.h>
 
-#if __has_include(<memory_resource>)
+#ifdef __cpp_lib_memory_resource
 #  include <unordered_set>
 #  include <memory_resource>
 #  include <qhash.h> // for the hashing helpers
@@ -56,13 +56,13 @@ class QDuplicateTracker {
         auto insert(const T &e) {
             auto it = QSet<T>::insert(e);
             const auto n = this->size();
-            return std::pair{it, qExchange(setSize, n) != n};
+            return std::pair{it, std::exchange(setSize, n) != n};
         }
 
         auto insert(T &&e) {
             auto it = QSet<T>::insert(std::move(e));
             const auto n = this->size();
-            return std::pair{it, qExchange(setSize, n) != n};
+            return std::pair{it, std::exchange(setSize, n) != n};
         }
     };
     Set set{Prealloc};

@@ -294,8 +294,8 @@ constexpr inline bool has_prepend_v<QVarLengthArray<T,N>> = false; // deprecated
 
 void tst_Collections::typeinfo()
 {
-    QVERIFY(QTypeInfo<int*>::isPointer);
-    QVERIFY(!QTypeInfo<int>::isPointer);
+    QVERIFY(std::is_pointer_v<int*>);
+    QVERIFY(!std::is_pointer_v<int>);
     QVERIFY(QTypeInfo<QString>::isComplex);
     QVERIFY(!QTypeInfo<int>::isComplex);
 }
@@ -2018,7 +2018,7 @@ void tst_Collections::qstring()
     s = "ascii";
     s += QChar((uchar) 0xb0);
     QVERIFY(s.toUtf8() != s.toLatin1());
-    QCOMPARE(s[s.size()-1].unicode(), (ushort)0xb0);
+    QCOMPARE(s[s.size()-1].unicode(), char16_t(0xb0));
     QCOMPARE(s.left(s.size()-1), QLatin1String("ascii"));
 
     QVERIFY(s == QString::fromUtf8(s.toUtf8().constData()));
@@ -3069,9 +3069,8 @@ class T2;
 
 void tst_Collections::forwardDeclared()
 {
-#define COMMA ,
-#define TEST(type) do { \
-        using C = type; \
+#define TEST(...) do { \
+        using C = __VA_ARGS__; \
         C *x = nullptr; \
         C::iterator i; \
         C::const_iterator j; \
@@ -3080,16 +3079,15 @@ void tst_Collections::forwardDeclared()
         Q_UNUSED(j); \
     } while (false)
 
-    TEST(QHash<Key1 COMMA T1>);
-    TEST(QMap<Key1 COMMA T1>);
-    TEST(QMultiMap<Key1 COMMA T1>);
+    TEST(QHash<Key1, T1>);
+    TEST(QMap<Key1, T1>);
+    TEST(QMultiMap<Key1, T1>);
     TEST(QList<T1>);
     TEST(QVector<T1>);
     TEST(QStack<T1>);
     TEST(QQueue<T1>);
     TEST(QSet<T1>);
 #undef TEST
-#undef COMMA
 
     {
         using C = QPair<T1, T2>;

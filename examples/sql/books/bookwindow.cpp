@@ -89,6 +89,7 @@ BookWindow::BookWindow()
             );
 
     ui.bookTable->setCurrentIndex(model->index(0, 0));
+    ui.bookTable->selectRow(0);
     createMenuBar();
 }
 
@@ -111,7 +112,7 @@ void BookWindow::createMenuBar()
     helpMenu->addAction(aboutAction);
     helpMenu->addAction(aboutQtAction);
 
-    connect(quitAction, &QAction::triggered, this, &BookWindow::close);
+    connect(quitAction, &QAction::triggered, qApp, &QCoreApplication::quit);
     connect(aboutAction, &QAction::triggered, this, &BookWindow::about);
     connect(aboutQtAction, &QAction::triggered, qApp, &QApplication::aboutQt);
 }

@@ -59,31 +59,33 @@ public class QtMessageDialogHelper
     }
 
 
-    public void setIcon(int icon)
+    public void setStandardIcon(int icon)
     {
-        m_icon = icon;
+        m_standardIcon = icon;
 
     }
 
     private Drawable getIconDrawable()
     {
-        if (m_icon == 0)
+        if (m_standardIcon == 0)
             return null;
 
         try {
             TypedValue typedValue = new TypedValue();
             m_theme.resolveAttribute(android.R.attr.alertDialogIcon, typedValue, true);
-            return m_activity.getResources().getDrawable(typedValue.resourceId);
+            return m_activity.getResources().getDrawable(typedValue.resourceId,
+                                                         m_activity.getTheme());
         } catch (Exception e) {
             e.printStackTrace();
         }
 
         // Information, Warning, Critical, Question
-        switch (m_icon)
+        switch (m_standardIcon)
         {
             case 1: // Information
                 try {
-                    return m_activity.getResources().getDrawable(android.R.drawable.ic_dialog_info);
+                    return m_activity.getResources().getDrawable(android.R.drawable.ic_dialog_info,
+                                                                 m_activity.getTheme());
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -97,14 +99,16 @@ public class QtMessageDialogHelper
 //                break;
             case 3: // Critical
                 try {
-                    return m_activity.getResources().getDrawable(android.R.drawable.ic_dialog_alert);
+                    return m_activity.getResources().getDrawable(android.R.drawable.ic_dialog_alert,
+                                                                 m_activity.getTheme());
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
                 break;
             case 4: // Question
                 try {
-                    return m_activity.getResources().getDrawable(android.R.drawable.ic_menu_help);
+                    return m_activity.getResources().getDrawable(android.R.drawable.ic_menu_help,
+                                                                 m_activity.getTheme());
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -332,7 +336,7 @@ public class QtMessageDialogHelper
 
     public void reset()
     {
-        m_icon = 0;
+        m_standardIcon = 0;
         m_title = null;
         m_text = null;
         m_informativeText = null;
@@ -343,7 +347,7 @@ public class QtMessageDialogHelper
     }
 
     private Activity m_activity;
-    private int m_icon = 0;
+    private int m_standardIcon = 0;
     private Spanned m_title, m_text, m_informativeText, m_detailedText;
     private ArrayList<ButtonStruct> m_buttonsList;
     private AlertDialog m_dialog;

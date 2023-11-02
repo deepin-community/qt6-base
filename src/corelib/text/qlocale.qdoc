@@ -50,7 +50,7 @@
     \note For the current keyboard input locale take a look at
     QInputMethod::locale().
 
-    QLocale's data is based on Common Locale Data Repository v41.
+    QLocale's data is based on Common Locale Data Repository v43.
 
     \section1 Matching combinations of language, script and territory
 
@@ -116,6 +116,7 @@
     \value Azerbaijani
     \value Bafia
     \value [since 5.1] Balinese
+    \value [since 6.6] Baluchi
     \value Bambara
     \value [since 5.1] Bamun
     \value [since 6.0] Bangla
@@ -197,6 +198,7 @@
     \value Gujarati
     \value Gusii
     \value Haitian
+    \value [since 6.5] Haryanvi
     \value Hausa
     \value Hawaiian
     \value Hebrew
@@ -260,6 +262,7 @@
     \value [since 5.5] Lezghian
     \value Limburgish
     \value Lingala
+    \value [since 6.6] Ligurian
     \value [since 5.7] LiteraryChinese
     \value Lithuanian
     \value [since 5.12] Lojban
@@ -292,6 +295,7 @@
     \value Meru
     \value Meta
     \value [since 5.5] Mohawk
+    \value [since 6.5] Moksha
     \value Mongolian
     \value Morisyen
     \value Mundang
@@ -308,6 +312,7 @@
     \value [since 6.0] NigerianPidgin
     \value Ngomba
     \value [since 5.5] Nko
+    \value [since 6.5] NorthernFrisian
     \value [since 5.7] NorthernLuri
     \value NorthernSami
     \value NorthernSotho
@@ -317,6 +322,7 @@
     \value Nuer
     \value Nyanja
     \value Nyankole
+    \value [since 6.5] Obolo
     \value Occitan
     \value [since 6.0] Odia
     \value Ojibwa
@@ -334,12 +340,15 @@
     \value Pashto
     \value Persian
     \value [since 5.1] Phoenician
+    \value [since 6.5] Pijin
     \value Polish
     \value Portuguese
     \value [since 5.5] Prussian
     \value Punjabi
     \value Quechua
+    \value [since 6.5] Rajasthani
     \value RhaetoRomance Obsolete, please use Romansh
+    \value [since 6.6] Rohingya
     \value Romanian
     \value Romansh
     \value Rombo
@@ -399,8 +408,10 @@
     \value Tigre
     \value Tigrinya
     \value [since 5.7] TokelauLanguage
+    \value [since 6.5] TokiPona
     \value [since 5.7] TokPisin
     \value Tongan
+    \value [since 6.6] Torwali
     \value Tsonga
     \value Tswana
     \value Turkish
@@ -807,6 +818,7 @@
     \value GujaratiScript
     \value GurmukhiScript
     \value [since 5.1] HangulScript
+    \value [since 6.6] HanifiScript
     \value [since 5.1] HanScript
     \value [since 5.1] HanunooScript
     \value [since 5.7] HanWithBopomofoScript

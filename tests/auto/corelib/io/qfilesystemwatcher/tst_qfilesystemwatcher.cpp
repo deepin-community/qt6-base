@@ -396,8 +396,14 @@ void tst_QFileSystemWatcher::addPaths()
     QFileSystemWatcher watcher;
     QStringList paths;
     paths << QDir::homePath() << QDir::tempPath();
+#ifndef Q_OS_QNX
+    // Adding this makes QNX fail and we haven't investigated why
+    for (const QFileInfo &fi : QDir::drives())
+        paths << fi.absoluteFilePath();     // on Unix, this will be just "/"
+#endif
+
     QCOMPARE(watcher.addPaths(paths), QStringList());
-    QCOMPARE(watcher.directories().size(), 2);
+    QCOMPARE(watcher.directories().size(), paths.size());
 
     // With empty list
     paths.clear();
@@ -464,8 +470,14 @@ void tst_QFileSystemWatcher::removePaths()
     QFileSystemWatcher watcher;
     QStringList paths;
     paths << QDir::homePath() << QDir::tempPath();
+#ifndef Q_OS_QNX
+    // Adding this makes QNX fail and we haven't investigated why
+    for (const QFileInfo &fi : QDir::drives())
+        paths << fi.absoluteFilePath();     // on Unix, this will be just "/"
+#endif
+
     QCOMPARE(watcher.addPaths(paths), QStringList());
-    QCOMPARE(watcher.directories().size(), 2);
+    QCOMPARE(watcher.directories().size(), paths.size());
     QCOMPARE(watcher.removePaths(paths), QStringList());
     QCOMPARE(watcher.directories().size(), 0);
 
@@ -551,7 +563,7 @@ void tst_QFileSystemWatcher::watchFileAndItsDirectory()
     QVERIFY2(testFile.write(QByteArrayLiteral("hello again")), msgFileOperationFailed("write", testFile));
     testFile.close();
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
     // wait again for the file's atime to be updated
     QTest::qWait(2000);
 #endif
@@ -613,9 +625,11 @@ void tst_QFileSystemWatcher::nonExistingFile()
                               QStringList() << "../..//./does-not-exist");
 
     // empty path is not actually a failure
+    QTest::ignoreMessage(QtWarningMsg, "QFileSystemWatcher::addPaths: list is empty");
     QCOMPARE(watcher.addPaths(QStringList() << QString()), QStringList());
 
     // empty path is not actually a failure
+    QTest::ignoreMessage(QtWarningMsg, "QFileSystemWatcher::removePaths: list is empty");
     QCOMPARE(watcher.removePaths(QStringList() << QString()), QStringList());
 }
 

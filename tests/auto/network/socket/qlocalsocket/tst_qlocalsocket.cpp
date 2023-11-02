@@ -5,6 +5,7 @@
 
 #include <QTest>
 #include <QSignalSpy>
+#include <QtTest/private/qpropertytesthelper_p.h>
 #if QT_CONFIG(process)
 #include <QProcess>
 #endif
@@ -123,6 +124,7 @@ private slots:
     void verifyListenWithDescriptor_data();
 
     void serverBindingsAndProperties();
+    void socketBindings();
 
 protected slots:
     void socketClosedSlot();
@@ -300,8 +302,8 @@ void tst_QLocalSocket::listen_data()
     QTest::addColumn<bool>("canListen");
     QTest::addColumn<bool>("close");
     QTest::newRow("null") << QString() << false << false;
-    QTest::newRow("tst_localsocket") << "tst_localsocket" << true << true;
-    QTest::newRow("tst_localsocket") << "tst_localsocket" << true << false;
+    QTest::newRow("tst_localsocket,close") << "tst_localsocket" << true << true;
+    QTest::newRow("tst_localsocket,no-close") << "tst_localsocket" << true << false;
 }
 
 // start a server that listens, but don't connect a socket, make sure everything is in order
@@ -1807,14 +1809,18 @@ void tst_QLocalSocket::serverBindingsAndProperties()
 {
     CrashSafeLocalServer server;
 
-    QProperty<QLocalServer::SocketOptions> sockOpts;
-    server.bindableSocketOptions().setBinding(Qt::makePropertyBinding(sockOpts));
-    sockOpts = QLocalServer::GroupAccessOption | QLocalServer::UserAccessOption;
-    QCOMPARE(server.socketOptions(), sockOpts.value());
+    QTestPrivate::testReadWritePropertyBasics(
+            server, QLocalServer::SocketOptions{QLocalServer::GroupAccessOption},
+            QLocalServer::SocketOptions{QLocalServer::OtherAccessOption}, "socketOptions");
+}
 
-    sockOpts.setBinding(server.bindableSocketOptions().makeBinding());
-    server.setSocketOptions(QLocalServer::OtherAccessOption);
-    QCOMPARE(sockOpts.value(), QLocalServer::OtherAccessOption);
+void tst_QLocalSocket::socketBindings()
+{
+    QLocalSocket socket;
+
+    QTestPrivate::testReadWritePropertyBasics(
+            socket, QLocalSocket::SocketOptions{QLocalSocket::AbstractNamespaceOption},
+            QLocalSocket::SocketOptions{QLocalSocket::NoOptions}, "socketOptions");
 }
 
 QTEST_MAIN(tst_QLocalSocket)

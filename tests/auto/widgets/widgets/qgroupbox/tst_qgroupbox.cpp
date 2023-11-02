@@ -14,6 +14,8 @@
 #include <private/qguiapplication_p.h>
 #include <qpa/qplatformtheme.h>
 
+#include <QtWidgets/private/qapplication_p.h>
+
 #include "qgroupbox.h"
 
 class tst_QGroupBox : public QObject
@@ -428,7 +430,7 @@ void tst_QGroupBox::childrenAreDisabled()
     layout->addWidget(new QRadioButton);
     box.setLayout(layout);
 
-    foreach (QObject *object, box.children()) {
+    for (QObject *object : box.children()) {
         if (QWidget *widget = qobject_cast<QWidget *>(object)) {
             QVERIFY(!widget->isEnabled());
             QVERIFY(!widget->testAttribute(Qt::WA_ForceDisabled));
@@ -436,7 +438,7 @@ void tst_QGroupBox::childrenAreDisabled()
     }
 
     box.setChecked(true);
-    foreach (QObject *object, box.children()) {
+    for (QObject *object : box.children()) {
         if (QWidget *widget = qobject_cast<QWidget *>(object)) {
             QVERIFY(widget->isEnabled());
             QVERIFY(!widget->testAttribute(Qt::WA_ForceDisabled));
@@ -444,7 +446,7 @@ void tst_QGroupBox::childrenAreDisabled()
     }
 
     box.setChecked(false);
-    foreach (QObject *object, box.children()) {
+    for (QObject *object : box.children()) {
         if (QWidget *widget = qobject_cast<QWidget *>(object)) {
             QVERIFY(!widget->isEnabled());
             QVERIFY(!widget->testAttribute(Qt::WA_ForceDisabled));
@@ -460,7 +462,7 @@ void tst_QGroupBox::propagateFocus()
     QGroupBox box;
     QLineEdit lineEdit(&box);
     box.show();
-    QApplication::setActiveWindow(&box);
+    QApplicationPrivate::setActiveWindow(&box);
     QVERIFY(QTest::qWaitForWindowActive(&box));
     box.setFocus();
     QTRY_COMPARE(qApp->focusWidget(), static_cast<QWidget*>(&lineEdit));

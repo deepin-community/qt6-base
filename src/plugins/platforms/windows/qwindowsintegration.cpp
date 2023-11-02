@@ -48,6 +48,11 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qvariant.h>
 
+#include <QtCore/qoperatingsystemversion.h>
+#include <QtCore/private/qfunctions_win_p.h>
+
+#include <wrl.h>
+
 #include <limits.h>
 
 #if !defined(QT_NO_OPENGL)
@@ -55,6 +60,14 @@
 #endif
 
 #include "qwindowsopengltester.h"
+
+#if QT_CONFIG(cpp_winrt)
+#  include <QtCore/private/qt_winrtbase_p.h>
+#  include <winrt/Windows.UI.Notifications.h>
+#  include <winrt/Windows.Data.Xml.Dom.h>
+#  include <winrt/Windows.Foundation.h>
+#  include <winrt/Windows.UI.ViewManagement.h>
+#endif
 
 #include <memory>
 
@@ -131,7 +144,7 @@ bool parseIntOption(const QString &parameter,const QLatin1StringView &option,
     const auto valueRef = QStringView{parameter}.right(valueLength);
     const int value = valueRef.toInt(&ok);
     if (ok) {
-        if (value >= minimumValue && value <= maximumValue)
+        if (value >= int(minimumValue) && value <= int(maximumValue))
             *target = static_cast<IntType>(value);
         else {
             qWarning() << "Value" << value << "for option" << option << "out of range"
@@ -148,7 +161,7 @@ using DarkModeHandling = QNativeInterface::Private::QWindowsApplication::DarkMod
 
 static inline unsigned parseOptions(const QStringList &paramList,
                                     int *tabletAbsoluteRange,
-                                    QtWindows::ProcessDpiAwareness *dpiAwareness,
+                                    QtWindows::DpiAwareness *dpiAwareness,
                                     DarkModeHandling *darkModeHandling)
 {
     unsigned options = 0;
@@ -179,7 +192,8 @@ static inline unsigned parseOptions(const QStringList &paramList,
             options |= QWindowsIntegration::DontPassOsMouseEventsSynthesizedFromTouch;
         } else if (parseIntOption(param, "verbose"_L1, 0, INT_MAX, &QWindowsContext::verbose)
             || parseIntOption(param, "tabletabsoluterange"_L1, 0, INT_MAX, tabletAbsoluteRange)
-            || parseIntOption(param, "dpiawareness"_L1, QtWindows::ProcessDpiUnaware, QtWindows::ProcessPerMonitorV2DpiAware, dpiAwareness)) {
+            || parseIntOption(param, "dpiawareness"_L1, QtWindows::DpiAwareness::Invalid,
+                    QtWindows::DpiAwareness::PerMonitorVersion2, dpiAwareness)) {
         } else if (param == u"menus=native") {
             options |= QWindowsIntegration::AlwaysUseNativeMenus;
         } else if (param == u"menus=none") {
@@ -209,10 +223,11 @@ void QWindowsIntegrationPrivate::parseOptions(QWindowsIntegration *q, const QStr
 
     static bool dpiAwarenessSet = false;
     // Default to per-monitor-v2 awareness (if available)
-    QtWindows::ProcessDpiAwareness dpiAwareness = QtWindows::ProcessPerMonitorV2DpiAware;
+    QtWindows::DpiAwareness dpiAwareness = QtWindows::DpiAwareness::PerMonitorVersion2;
 
     int tabletAbsoluteRange = -1;
-    DarkModeHandling darkModeHandling = DarkModeHandlingFlag::DarkModeWindowFrames;
+    DarkModeHandling darkModeHandling = DarkModeHandlingFlag::DarkModeWindowFrames
+                                      | DarkModeHandlingFlag::DarkModeStyle;
     m_options = ::parseOptions(paramList, &tabletAbsoluteRange, &dpiAwareness, &darkModeHandling);
     q->setDarkModeHandling(darkModeHandling);
     QWindowsFontDatabase::setFontOptions(m_options);
@@ -227,22 +242,9 @@ void QWindowsIntegrationPrivate::parseOptions(QWindowsIntegration *q, const QStr
 
     if (!dpiAwarenessSet) { // Set only once in case of repeated instantiations of QGuiApplication.
         if (!QCoreApplication::testAttribute(Qt::AA_PluginApplication)) {
-            if (dpiAwareness == QtWindows::ProcessPerMonitorV2DpiAware) {
-                // DpiAwareV2 requires using new API
-                if (m_context.setProcessDpiV2Awareness()) {
-                    qCDebug(lcQpaWindows, "DpiAwareness: DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2");
-                    dpiAwarenessSet = true;
-                } else {
-                    // fallback to old API
-                    dpiAwareness = QtWindows::ProcessPerMonitorDpiAware;
-                }
-            }
-
-            if (!dpiAwarenessSet) {
-                m_context.setProcessDpiAwareness(dpiAwareness);
-                qCDebug(lcQpaWindows) << "DpiAwareness=" << dpiAwareness
-                    << "effective process DPI awareness=" << QWindowsContext::processDpiAwareness();
-            }
+            m_context.setProcessDpiAwareness(dpiAwareness);
+            qCDebug(lcQpaWindow) << "DpiAwareness=" << dpiAwareness
+                << "effective process DPI awareness=" << QWindowsContext::processDpiAwareness();
         }
         dpiAwarenessSet = true;
     }
@@ -319,7 +321,7 @@ QPlatformWindow *QWindowsIntegration::createPlatformWindow(QWindow *window) cons
 {
     if (window->type() == Qt::Desktop) {
         auto *result = new QWindowsDesktopWindow(window);
-        qCDebug(lcQpaWindows) << "Desktop window:" << window
+        qCDebug(lcQpaWindow) << "Desktop window:" << window
             << Qt::showbase << Qt::hex << result->winId() << Qt::noshowbase << Qt::dec << result->geometry();
         return result;
     }
@@ -329,15 +331,17 @@ QPlatformWindow *QWindowsIntegration::createPlatformWindow(QWindow *window) cons
     requested.geometry = window->isTopLevel()
         ? QHighDpi::toNativePixels(window->geometry(), window)
         : QHighDpi::toNativeLocalPosition(window->geometry(), window);
-    // Apply custom margins (see  QWindowsWindow::setCustomMargins())).
-    const QVariant customMarginsV = window->property("_q_windowsCustomMargins");
-    if (customMarginsV.isValid())
-        requested.customMargins = qvariant_cast<QMargins>(customMarginsV);
+    if (!(requested.flags & Qt::FramelessWindowHint)) {
+        // Apply custom margins (see  QWindowsWindow::setCustomMargins())).
+        const QVariant customMarginsV = window->property("_q_windowsCustomMargins");
+        if (customMarginsV.isValid())
+            requested.customMargins = qvariant_cast<QMargins>(customMarginsV);
+    }
 
     QWindowsWindowData obtained =
         QWindowsWindowData::create(window, requested,
                                    QWindowsWindow::formatWindowTitle(window->title()));
-    qCDebug(lcQpaWindows).nospace()
+    qCDebug(lcQpaWindow).nospace()
         << __FUNCTION__ << ' ' << window
         << "\n    Requested: " << requested.geometry << " frame incl.="
         << QWindowsGeometryHint::positionIncludesFrame(window)
@@ -374,7 +378,7 @@ QPlatformWindow *QWindowsIntegration::createForeignWindow(QWindow *window, WId n
         screen = pScreen->screen();
     if (screen && screen != window->screen())
         window->setScreen(screen);
-    qCDebug(lcQpaWindows) << "Foreign window:" << window << Qt::showbase << Qt::hex
+    qCDebug(lcQpaWindow) << "Foreign window:" << window << Qt::showbase << Qt::hex
         << result->winId() << Qt::noshowbase << Qt::dec << obtainedGeometry << screen;
     return result;
 }
@@ -633,6 +637,155 @@ QPlatformServices *QWindowsIntegration::services() const
 void QWindowsIntegration::beep() const
 {
     MessageBeep(MB_OK);  // For QApplication
+}
+
+void QWindowsIntegration::setApplicationBadge(qint64 number)
+{
+    // Clamp to positive numbers, as the Windows API doesn't support negative numbers
+    number = qMax(0, number);
+
+    // Persist, so we can re-apply it on setting changes and Explorer restart
+    m_applicationBadgeNumber = number;
+
+    static const bool isWindows11 = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11;
+
+#if QT_CONFIG(cpp_winrt)
+    // We prefer the native BadgeUpdater API, that allows us to set a number directly,
+    // but it requires that the application has a package identity, and also doesn't
+    // seem to work in all cases on < Windows 11.
+    if (isWindows11 && qt_win_hasPackageIdentity()) {
+        using namespace winrt::Windows::UI::Notifications;
+        auto badgeXml = BadgeUpdateManager::GetTemplateContent(BadgeTemplateType::BadgeNumber);
+        badgeXml.SelectSingleNode(L"//badge/@value").NodeValue(winrt::box_value(winrt::to_hstring(number)));
+        BadgeUpdateManager::CreateBadgeUpdaterForApplication().Update(BadgeNotification(badgeXml));
+        return;
+    }
+#endif
+
+    // Fallback for non-packaged apps, Windows 10, or Qt builds without WinRT/C++ support
+
+    if (!number) {
+        // Clear badge
+        setApplicationBadge(QImage());
+        return;
+    }
+
+    const bool isDarkMode = QWindowsContext::isDarkMode();
+
+    QColor badgeColor;
+    QColor textColor;
+
+#if QT_CONFIG(cpp_winrt)
+    if (isWindows11) {
+        // Match colors used by BadgeUpdater
+        static const auto fromUIColor = [](winrt::Windows::UI::Color &&color) {
+            return QColor(color.R, color.G, color.B, color.A);
+        };
+        using namespace winrt::Windows::UI::ViewManagement;
+        const auto settings = UISettings();
+        badgeColor = fromUIColor(settings.GetColorValue(isDarkMode ?
+            UIColorType::AccentLight2 : UIColorType::Accent));
+        textColor = fromUIColor(settings.GetColorValue(UIColorType::Background));
+    }
+#endif
+
+    if (!badgeColor.isValid()) {
+        // Fall back to basic badge colors, based on Windows 10 look
+        badgeColor = isDarkMode ? Qt::black : QColor(220, 220, 220);
+        badgeColor.setAlphaF(0.5f);
+        textColor = isDarkMode ? Qt::white : Qt::black;
+    }
+
+    const auto devicePixelRatio = qApp->devicePixelRatio();
+
+    static const QSize iconBaseSize(16, 16);
+    QImage image(iconBaseSize * devicePixelRatio,
+        QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+
+    QPainter painter(&image);
+
+    QRect badgeRect = image.rect();
+    QPen badgeBorderPen = Qt::NoPen;
+    if (!isWindows11) {
+        QColor badgeBorderColor = textColor;
+        badgeBorderColor.setAlphaF(0.5f);
+        badgeBorderPen = badgeBorderColor;
+        badgeRect.adjust(1, 1, -1, -1);
+    }
+    painter.setBrush(badgeColor);
+    painter.setPen(badgeBorderPen);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.drawEllipse(badgeRect);
+
+    auto pixelSize = qCeil(10.5 * devicePixelRatio);
+    // Unlike the BadgeUpdater API we're limited by a square
+    // badge, so adjust the font size when above two digits.
+    const bool textOverflow = number > 99;
+    if (textOverflow)
+        pixelSize *= 0.8;
+
+    QFont font = painter.font();
+    font.setPixelSize(pixelSize);
+    font.setWeight(isWindows11 ? QFont::Medium : QFont::DemiBold);
+    painter.setFont(font);
+
+    painter.setRenderHint(QPainter::TextAntialiasing, devicePixelRatio > 1);
+    painter.setPen(textColor);
+
+    auto text = textOverflow ? u"99+"_s : QString::number(number);
+    painter.translate(textOverflow ? 1 : 0, textOverflow ? 0 : -1);
+    painter.drawText(image.rect(), Qt::AlignCenter, text);
+
+    painter.end();
+
+    setApplicationBadge(image);
+}
+
+void QWindowsIntegration::setApplicationBadge(const QImage &image)
+{
+    QComHelper comHelper;
+
+    using Microsoft::WRL::ComPtr;
+
+    ComPtr<ITaskbarList3> taskbarList;
+    CoCreateInstance(CLSID_TaskbarList, nullptr,
+        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&taskbarList));
+    if (!taskbarList) {
+        // There may not be any windows with a task bar button yet,
+        // in which case we'll apply the badge once a window with
+        // a button has been created.
+        return;
+    }
+
+    const auto hIcon = image.toHICON();
+
+    // Apply the icon to all top level windows, since the badge is
+    // set on an application level. If one of the windows go away
+    // the other windows will take over in showing the badge.
+    const auto topLevelWindows = QGuiApplication::topLevelWindows();
+    for (auto *topLevelWindow : topLevelWindows) {
+        if (!topLevelWindow->handle())
+            continue;
+        auto hwnd = reinterpret_cast<HWND>(topLevelWindow->winId());
+        taskbarList->SetOverlayIcon(hwnd, hIcon, L"");
+    }
+
+    DestroyIcon(hIcon);
+
+    // FIXME: Update icon when the application scale factor changes.
+    // Doing so in response to screen DPI changes is too soon, as the
+    // task bar is not yet ready for an updated icon, and will just
+    // result in a blurred icon even if our icon is high-DPI.
+}
+
+void QWindowsIntegration::updateApplicationBadge()
+{
+    // The system color settings have changed, or we are reacting
+    // to a task bar button being created for the fist time or after
+    // Explorer had crashed and re-started. In any case, re-apply the
+    // badge so that everything is up to date.
+    setApplicationBadge(m_applicationBadgeNumber);
 }
 
 #if QT_CONFIG(vulkan)

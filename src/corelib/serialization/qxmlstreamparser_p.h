@@ -38,7 +38,7 @@
 
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_XMLSTREAMREADER
+#if QT_CONFIG(xmlstreamreader)
 
 bool QXmlStreamReaderPrivate::parse()
 {
@@ -140,7 +140,7 @@ bool QXmlStreamReaderPrivate::parse()
             } else switch (token_char) {
             case 0xfffe:
             case 0xffff:
-                token = ERROR;
+                token = XML_ERROR;
                 break;
             case '\r':
                 token = SPACE;
@@ -947,7 +947,12 @@ bool QXmlStreamReaderPrivate::parse()
         break;
 
         case 262: {
-            sym(1).len += fastScanName(&sym(1).prefix);
+            Value &val = sym(1);
+            if (auto res = fastScanName(&val))
+                val.len += *res;
+            else
+                return false;
+
             if (atEnd) {
                 resume(262);
                 return false;
@@ -955,7 +960,11 @@ bool QXmlStreamReaderPrivate::parse()
         } break;
 
         case 263:
-            sym(1).len += fastScanName();
+            if (auto res = fastScanName())
+                sym(1).len += *res;
+            else
+                return false;
+
             if (atEnd) {
                 resume(263);
                 return false;
@@ -989,7 +998,7 @@ bool QXmlStreamReaderPrivate::parse()
     return false;
 }
 
-#endif
+#endif // feature xmlstreamreader
 
 QT_END_NAMESPACE
 

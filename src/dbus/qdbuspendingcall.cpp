@@ -123,16 +123,18 @@ bool QDBusPendingCallPrivate::setReplyCallback(QObject *target, const char *memb
         return false;
     }
 
-    methodIdx = QDBusConnectionPrivate::findSlot(target, member + 1, metaTypes);
+    QString errorMsg;
+    methodIdx = QDBusConnectionPrivate::findSlot(target, member + 1, metaTypes, errorMsg);
     if (methodIdx == -1) {
         QByteArray normalizedName = QMetaObject::normalizedSignature(member + 1);
-        methodIdx = QDBusConnectionPrivate::findSlot(target, normalizedName, metaTypes);
+        methodIdx = QDBusConnectionPrivate::findSlot(target, normalizedName, metaTypes, errorMsg);
     }
     if (methodIdx == -1) {
         // would not be able to deliver a reply
-        qWarning("QDBusPendingCall::setReplyCallback: error: cannot deliver a reply to %s::%s (%s)",
-                 target->metaObject()->className(),
-                 member + 1, qPrintable(target->objectName()));
+        qWarning("QDBusPendingCall::setReplyCallback: error: cannot deliver a reply to %s::%s (%s) "
+                 "because %s",
+                 target->metaObject()->className(), member + 1, qPrintable(target->objectName()),
+                 qPrintable(errorMsg));
         return false;
     }
 
@@ -472,7 +474,9 @@ QDBusPendingCallWatcher::QDBusPendingCallWatcher(const QDBusPendingCall &call, Q
             d->watcherHelper = new QDBusPendingCallWatcherHelper;
             if (d->replyMessage.type() != QDBusMessage::InvalidMessage) {
                 // cause a signal emission anyways
-                QMetaObject::invokeMethod(d->watcherHelper, "finished", Qt::QueuedConnection);
+                QMetaObject::invokeMethod(d->watcherHelper,
+                                          &QDBusPendingCallWatcherHelper::finished,
+                                          Qt::QueuedConnection);
             }
         }
         d->watcherHelper->add(this);

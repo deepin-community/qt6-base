@@ -150,13 +150,20 @@ QAbstractFileEngine *QFilePrivate::engine() const
     data and operator>>() to read it back. See the class
     documentation for details.
 
-    When you use QFile, QFileInfo, and QDir to access the file system
-    with Qt, you can use Unicode file names. On Unix, these file
-    names are converted to an 8-bit encoding. If you want to use
-    standard C++ APIs (\c <cstdio> or \c <iostream>) or
-    platform-specific APIs to access files instead of QFile, you can
-    use the encodeName() and decodeName() functions to convert
-    between Unicode file names and 8-bit file names.
+    \section1 Signals
+
+    Unlike other QIODevice implementations, such as QTcpSocket, QFile does not
+    emit the aboutToClose(), bytesWritten(), or readyRead() signals. This
+    implementation detail means that QFile is not suitable for reading and
+    writing certain types of files, such as device files on Unix platforms.
+
+    \section1 Platform Specific Issues
+
+    \l{Input/Output and Networking}{Qt APIs related to I/O} use UTF-16 based
+    QStrings to represent file paths. Standard C++ APIs (\c <cstdio> or
+    \c <iostream>) or platform-specific APIs however often need a 8-bit encoded
+    path. You can use encodeName() and decodeName() to convert between both
+    representations.
 
     On Unix, there are some special system files (e.g. in \c /proc) for which
     size() will always return 0, yet you may still be able to read more data
@@ -168,15 +175,6 @@ QAbstractFileEngine *QFilePrivate::engine() const
     example uses QTextStream to read \c /proc/modules line by line:
 
     \snippet file/file.cpp 3
-
-    \section1 Signals
-
-    Unlike other QIODevice implementations, such as QTcpSocket, QFile does not
-    emit the aboutToClose(), bytesWritten(), or readyRead() signals. This
-    implementation detail means that QFile is not suitable for reading and
-    writing certain types of files, such as device files on Unix platforms.
-
-    \section1 Platform Specific Issues
 
     File permissions are handled differently on Unix-like systems and
     Windows.  In a non \l{QIODevice::isWritable()}{writable}
@@ -191,6 +189,8 @@ QAbstractFileEngine *QFilePrivate::engine() const
     passed. Qt does not manipulate access control lists (ACLs), which makes this
     function mostly useless for NTFS volumes. It may still be of use for USB
     sticks that use VFAT file systems. POSIX ACLs are not manipulated, either.
+
+    \include android-content-uri-limitations.qdocinc
 
     \sa QTextStream, QDataStream, QFileInfo, QDir, {The Qt Resource System}
 */
@@ -226,6 +226,15 @@ QFile::QFile(QObject *parent)
 }
 /*!
     Constructs a new file object to represent the file with the given \a name.
+
+//! [qfile-explicit-constructor-note]
+    \note In versions up to and including Qt 6.8, this constructor is
+    implicit, for backward compatibility. Starting from Qt 6.9 this
+    constructor is unconditionally \c{explicit}. Users can force this
+    constructor to be \c{explicit} even in earlier versions of Qt by
+    defining the \c{QT_EXPLICIT_QFILE_CONSTRUCTION_FROM_PATH} macro
+    before including any Qt header.
+//! [qfile-explicit-constructor-note]
 */
 QFile::QFile(const QString &name)
     : QFileDevice(*new QFilePrivate, nullptr)
@@ -313,10 +322,10 @@ QFile::setFileName(const QString &name)
 /*!
     \fn QByteArray QFile::encodeName(const QString &fileName)
 
-    Converts \a fileName to the local 8-bit
-    encoding determined by the user's locale. This is sufficient for
-    file names that the user chooses. File names hard-coded into the
-    application should only use 7-bit ASCII filename characters.
+    Converts \a fileName to an 8-bit encoding that you can use in native
+    APIs. On Windows, the encoding is the one from active Windows (ANSI)
+    codepage. On other platforms, this is UTF-8, for \macos in decomposed
+    form (NFD).
 
     \sa decodeName()
 */
@@ -725,6 +734,9 @@ QFile::link(const QString &fileName, const QString &linkName)
 
     \include qfile-copy.qdocinc
 
+    \note On Android, this operation is not yet supported for \c content
+    scheme URIs.
+
     \sa setFileName()
 */
 
@@ -835,6 +847,9 @@ QFile::copy(const QString &newName)
 
     \include qfile-copy.qdocinc
 
+    \note On Android, this operation is not yet supported for \c content
+    scheme URIs.
+
     \sa rename()
 */
 
@@ -857,6 +872,9 @@ QFile::copy(const QString &fileName, const QString &newName)
     will try to create a new file before opening it. The file will be
     created with mode 0666 masked by the umask on POSIX systems, and
     with permissions inherited from the parent directory on Windows.
+    On Android, it's expected to have access permission to the parent
+    of the file name, otherwise, it won't be possible to create this
+    non-existing file.
 
     \sa QIODevice::OpenMode, setFileName()
 */
@@ -1145,6 +1163,8 @@ qint64 QFile::size() const
     \since 6.0
 
     Constructs a new file object to represent the file with the given \a name.
+
+    \include qfile.cpp qfile-explicit-constructor-note
 */
 /*!
     \fn QFile::QFile(const std::filesystem::path &name, QObject *parent)

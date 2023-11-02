@@ -1,5 +1,7 @@
-# Generated from kernel.pro.
-if(NOT INTEGRITY)
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
+if(QT_FEATURE_dnslookup AND (QT_FEATURE_libresolv OR WIN32))
     add_subdirectory(qdnslookup)
     add_subdirectory(qdnslookup_appless)
 endif()

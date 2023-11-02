@@ -68,7 +68,8 @@ public:
         WindowScreenChanged = 0x21,
         SafeAreaMarginsChanged = 0x22,
         ApplicationTermination = 0x23,
-        Paint = 0x24
+        Paint = 0x24,
+        WindowDevicePixelRatioChanged = 0x25,
     };
 
     class WindowSystemEvent {
@@ -152,6 +153,15 @@ public:
 
         QPointer<QWindow> window;
         QPointer<QScreen> screen;
+    };
+
+    class WindowDevicePixelRatioChangedEvent : public WindowSystemEvent {
+    public:
+        WindowDevicePixelRatioChangedEvent(QWindow *w)
+            : WindowSystemEvent(WindowDevicePixelRatioChanged), window(w)
+        { }
+
+        QPointer<QWindow> window;
     };
 
     class SafeAreaMarginsChangedEvent : public WindowSystemEvent {
@@ -463,7 +473,7 @@ public:
         }
         void append(WindowSystemEvent *e)
         { const QMutexLocker locker(&mutex); impl.append(e); }
-        int count() const
+        qsizetype count() const
         { const QMutexLocker locker(&mutex); return impl.size(); }
         WindowSystemEvent *peekAtFirstOfType(EventType t) const
         {
@@ -490,7 +500,7 @@ public:
 
     static WindowSystemEventList windowSystemEventQueue;
 
-    static int windowSystemEventsQueued();
+    static qsizetype windowSystemEventsQueued();
     static bool nonUserInputEventsQueued();
     static WindowSystemEvent *getWindowSystemEvent();
     static WindowSystemEvent *getNonUserInputWindowSystemEvent();

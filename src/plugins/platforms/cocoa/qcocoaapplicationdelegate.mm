@@ -318,7 +318,16 @@ QT_USE_NAMESPACE
 {
     Q_UNUSED(replyEvent);
     NSString *urlString = [[event paramDescriptorForKeyword:keyDirectObject] stringValue];
-    QWindowSystemInterface::handleFileOpenEvent(QUrl(QString::fromNSString(urlString)));
+    // The string we get from the requesting application might not necessarily meet
+    // QUrl's requirement for a IDN-compliant host. So if we can't parse into a QUrl,
+    // then we pass the string on to the application as the name of a file (and
+    // QFileOpenEvent::file is not guaranteed to be the path to a local, open'able
+    // file anyway).
+    const QString qurlString = QString::fromNSString(urlString);
+    if (const QUrl url(qurlString); url.isValid())
+        QWindowSystemInterface::handleFileOpenEvent(url);
+    else
+        QWindowSystemInterface::handleFileOpenEvent(qurlString);
 }
 @end
 
@@ -326,6 +335,8 @@ QT_USE_NAMESPACE
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item
 {
+    qCDebug(lcQpaMenus) << "Validating" << item << "for" << self;
+
     auto *nativeItem = qt_objc_cast<QCocoaNSMenuItem *>(item);
     if (!nativeItem)
         return item.enabled; // FIXME Test with with Qt as plugin or embedded QWindow.
@@ -347,6 +358,8 @@ QT_USE_NAMESPACE
 
 - (void)qt_itemFired:(QCocoaNSMenuItem *)item
 {
+    qCDebug(lcQpaMenus) << "Activating" << item;
+
     if (item.hasSubmenu)
         return;
 

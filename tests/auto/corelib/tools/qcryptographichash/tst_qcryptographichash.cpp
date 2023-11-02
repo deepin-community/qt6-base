@@ -31,10 +31,16 @@ private slots:
     void files();
     void hashLength_data();
     void hashLength();
+    void addDataAcceptsNullByteArrayView_data() { hashLength_data(); }
+    void addDataAcceptsNullByteArrayView();
+    void move();
+    void swap();
     // keep last
     void moreThan4GiBOfData_data();
     void moreThan4GiBOfData();
+    void keccakBufferOverflow();
 private:
+    void ensureLargeData();
     std::vector<char> large;
 };
 
@@ -48,6 +54,8 @@ void tst_QCryptographicHash::repeated_result()
     QFETCH(int, algo);
     QCryptographicHash::Algorithm _algo = QCryptographicHash::Algorithm(algo);
     QCryptographicHash hash(_algo);
+
+    QCOMPARE_EQ(hash.algorithm(), _algo);
 
     QFETCH(QByteArray, first);
     hash.addData(first);
@@ -389,7 +397,7 @@ void tst_QCryptographicHash::hashLength_data()
     auto metaEnum = QMetaEnum::fromType<QCryptographicHash::Algorithm>();
     for (int i = 0, value = metaEnum.value(i); value != -1; value = metaEnum.value(++i)) {
         auto algorithm = QCryptographicHash::Algorithm(value);
-        QTest::addRow("%s", metaEnum.valueToKey(value)) << algorithm;
+        QTest::addRow("%s", metaEnum.key(i)) << algorithm;
     }
 }
 
@@ -397,16 +405,81 @@ void tst_QCryptographicHash::hashLength()
 {
     QFETCH(const QCryptographicHash::Algorithm, algorithm);
 
-    QByteArray output = QCryptographicHash::hash("test", algorithm);
-    QCOMPARE(QCryptographicHash::hashLength(algorithm), output.length());
+    qsizetype expectedSize;
+    if (algorithm == QCryptographicHash::NumAlgorithms) {
+        // It's UB to call ::hash() with NumAlgorithms, but hashLength() is
+        // fine and returns 0 for invalid values:
+        expectedSize = 0;
+    } else {
+        expectedSize = QCryptographicHash::hash("test", algorithm).size();
+    }
+    QCOMPARE(QCryptographicHash::hashLength(algorithm), expectedSize);
 }
 
-void tst_QCryptographicHash::moreThan4GiBOfData_data()
+void tst_QCryptographicHash::addDataAcceptsNullByteArrayView()
+{
+    QFETCH(const QCryptographicHash::Algorithm, algorithm);
+
+    if (!QCryptographicHash::supportsAlgorithm(algorithm))
+        QSKIP("QCryptographicHash doesn't support this algorithm");
+
+    QCryptographicHash hash1(algorithm);
+    hash1.addData("meep");
+    hash1.addData(QByteArrayView{}); // after other data
+
+    QCryptographicHash hash2(algorithm);
+    hash2.addData(QByteArrayView{}); // before any other data
+    hash2.addData("meep");
+
+    const auto expected = QCryptographicHash::hash("meep", algorithm);
+
+    QCOMPARE(hash1.resultView(), expected);
+    QCOMPARE(hash2.resultView(), expected);
+}
+
+void tst_QCryptographicHash::move()
+{
+    QCryptographicHash hash1(QCryptographicHash::Sha1);
+    hash1.addData("a");
+
+    // move constructor
+    auto hash2(std::move(hash1));
+    hash2.addData("b");
+
+    // move assign operator
+    QCryptographicHash hash3(QCryptographicHash::Sha256);
+    hash3.addData("no effect on the end result");
+    hash3 = std::move(hash2);
+    hash3.addData("c");
+
+    QCOMPARE(hash3.resultView(), QByteArray::fromHex("A9993E364706816ABA3E25717850C26C9CD0D89D"));
+}
+
+void tst_QCryptographicHash::swap()
+{
+    QCryptographicHash hash1(QCryptographicHash::Sha1);
+    QCryptographicHash hash2(QCryptographicHash::Sha256);
+
+    hash1.addData("da");
+    hash2.addData("te");
+
+    hash1.swap(hash2);
+
+    hash2.addData("ta");
+    hash1.addData("st");
+
+    QCOMPARE(hash2.result(), QCryptographicHash::hash("data", QCryptographicHash::Sha1));
+    QCOMPARE(hash1.result(), QCryptographicHash::hash("test", QCryptographicHash::Sha256));
+}
+
+void tst_QCryptographicHash::ensureLargeData()
 {
 #if QT_POINTER_SIZE > 4
     QElapsedTimer timer;
     timer.start();
     const size_t GiB = 1024 * 1024 * 1024;
+    if (large.size() == 4 * GiB + 1)
+        return;
     try {
         large.resize(4 * GiB + 1, '\0');
     } catch (const std::bad_alloc &) {
@@ -415,7 +488,14 @@ void tst_QCryptographicHash::moreThan4GiBOfData_data()
     QCOMPARE(large.size(), 4 * GiB + 1);
     large.back() = '\1';
     qDebug("created dataset in %lld ms", timer.elapsed());
+#endif
+}
 
+void tst_QCryptographicHash::moreThan4GiBOfData_data()
+{
+#if QT_POINTER_SIZE > 4
+    if (ensureLargeData(); large.empty())
+        return;
     QTest::addColumn<QCryptographicHash::Algorithm>("algorithm");
     auto me = QMetaEnum::fromType<QCryptographicHash::Algorithm>();
     auto row = [me] (QCryptographicHash::Algorithm algo) {
@@ -476,6 +556,34 @@ void tst_QCryptographicHash::moreThan4GiBOfData()
     t.join();
 
     QCOMPARE(single, chunked);
+}
+
+void tst_QCryptographicHash::keccakBufferOverflow()
+{
+#if QT_POINTER_SIZE == 4
+    QSKIP("This is a 64-bit-only test");
+#else
+
+    if (ensureLargeData(); large.empty())
+        return;
+
+    QElapsedTimer timer;
+    timer.start();
+    const auto sg = qScopeGuard([&] {
+        qDebug() << "test finished in" << timer.restart() << "ms";
+    });
+
+    constexpr qsizetype magic = INT_MAX/4;
+    QCOMPARE_GE(large.size(), size_t(magic + 1));
+
+    QCryptographicHash hash(QCryptographicHash::Algorithm::Keccak_224);
+    const auto first = QByteArrayView{large}.first(1);
+    const auto second = QByteArrayView{large}.sliced(1, magic);
+    hash.addData(first);
+    hash.addData(second);
+    (void)hash.resultView();
+    QVERIFY(true); // didn't crash
+#endif
 }
 
 QTEST_MAIN(tst_QCryptographicHash)

@@ -16,7 +16,7 @@
 #include <qoperatingsystemversion.h>
 #include <qstringlist.h>
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
 #  include <private/qcore_mac_p.h>
 #endif
 #include <private/qcoreapplication_p.h>
@@ -33,6 +33,9 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+
+Q_TRACE_POINT(qtcore, QLibraryPrivate_load_entry, const QString &fileName);
+Q_TRACE_POINT(qtcore, QLibraryPrivate_load_exit, bool success);
 
 // On Unix systema and on Windows with MinGW, we can mix and match debug and
 // release plugins without problems. (unless compiled in debug-and-release mode
@@ -207,7 +210,7 @@ static QLibraryScanResult qt_find_pattern(const char *s, qsizetype s_len, QStrin
                 information could not be read.
   Returns  true if version information is present and successfully read.
 */
-static bool findPatternUnloaded(const QString &library, QLibraryPrivate *lib)
+static QLibraryScanResult findPatternUnloaded(const QString &library, QLibraryPrivate *lib)
 {
     QFile file(library);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -215,7 +218,7 @@ static bool findPatternUnloaded(const QString &library, QLibraryPrivate *lib)
             lib->errorString = file.errorString();
         qCWarning(qt_lcDebugPlugins, "%ls: cannot open: %ls", qUtf16Printable(library),
                   qUtf16Printable(file.errorString()));
-        return false;
+        return {};
     }
 
     // Files can be bigger than the virtual memory size on 32-bit systems, so
@@ -232,7 +235,7 @@ static bool findPatternUnloaded(const QString &library, QLibraryPrivate *lib)
         // This can't be used as a plugin.
         qCWarning(qt_lcDebugPlugins, "%ls: failed to map to memory: %ls",
                   qUtf16Printable(library), qUtf16Printable(file.errorString()));
-        return false;
+        return {};
     }
 #else
     QByteArray data;
@@ -249,15 +252,19 @@ static bool findPatternUnloaded(const QString &library, QLibraryPrivate *lib)
     QString errMsg = library;
     QLibraryScanResult r = qt_find_pattern(filedata, fdlen, &errMsg);
     if (r.length) {
+#if defined(Q_OF_MACH_O)
+        if (r.isEncrypted)
+            return r;
+#endif
         if (!lib->metaData.parse(QByteArrayView(filedata + r.pos, r.length))) {
             errMsg = lib->metaData.errorString();
-            qCWarning(qt_lcDebugPlugins, "Found invalid metadata in lib %ls: %ls",
+            qCDebug(qt_lcDebugPlugins, "Found invalid metadata in lib %ls: %ls",
                       qUtf16Printable(library), qUtf16Printable(errMsg));
         } else {
             qCDebug(qt_lcDebugPlugins, "Found metadata in lib %ls, metadata=\n%s\n",
                     qUtf16Printable(library),
                     QJsonDocument(lib->metaData.toJson()).toJson().constData());
-            return true;
+            return r;
         }
     } else {
         qCDebug(qt_lcDebugPlugins, "Failed to find metadata in lib %ls: %ls",
@@ -266,7 +273,7 @@ static bool findPatternUnloaded(const QString &library, QLibraryPrivate *lib)
 
     lib->errorString = QLibrary::tr("Failed to extract plugin meta data from '%1': %2")
             .arg(library, errMsg);
-    return false;
+    return {};
 }
 
 static void installCoverageTool(QLibraryPrivate *libPrivate)
@@ -341,12 +348,7 @@ inline void QLibraryStore::cleanup()
             if (lib->libraryUnloadCount.loadRelaxed() > 0) {
                 Q_ASSERT(lib->pHnd.loadRelaxed());
                 lib->libraryUnloadCount.storeRelaxed(1);
-#ifdef __GLIBC__
-                // glibc has a bug in unloading from global destructors
-                // see https://bugzilla.novell.com/show_bug.cgi?id=622977
-                // and http://sourceware.org/bugzilla/show_bug.cgi?id=11941
-                lib->unload(QLibraryPrivate::NoUnloadSys);
-#elif defined(Q_OS_DARWIN)
+#if defined(Q_OS_DARWIN)
                 // We cannot fully unload libraries, as we don't know if there are
                 // lingering references (in system threads e.g.) to Objective-C classes
                 // defined in the library.
@@ -396,10 +398,12 @@ inline QLibraryPrivate *QLibraryStore::findOrCreate(const QString &fileName, con
     QMutexLocker locker(&qt_library_mutex);
     QLibraryStore *data = instance();
 
+    QString mapName = version.isEmpty() ? fileName : fileName + u'\0' + version;
+
     // check if this library is already loaded
     QLibraryPrivate *lib = nullptr;
     if (Q_LIKELY(data)) {
-        lib = data->libraryMap.value(fileName);
+        lib = data->libraryMap.value(mapName);
         if (lib)
             lib->mergeLoadHints(loadHints);
     }
@@ -408,7 +412,7 @@ inline QLibraryPrivate *QLibraryStore::findOrCreate(const QString &fileName, con
 
     // track this library
     if (Q_LIKELY(data) && !fileName.isEmpty())
-        data->libraryMap.insert(fileName, lib);
+        data->libraryMap.insert(mapName, lib);
 
     lib->libraryRefCount.ref();
     return lib;
@@ -428,9 +432,11 @@ inline void QLibraryStore::releaseLibrary(QLibraryPrivate *lib)
     Q_ASSERT(lib->libraryUnloadCount.loadRelaxed() == 0);
 
     if (Q_LIKELY(data) && !lib->fileName.isEmpty()) {
-        QLibraryPrivate *that = data->libraryMap.take(lib->fileName);
-        Q_ASSERT(lib == that);
-        Q_UNUSED(that);
+        qsizetype n = erase_if(data->libraryMap, [lib](LibraryMap::iterator it) {
+            return it.value() == lib;
+        });
+        Q_ASSERT_X(n, "~QLibrary", "Did not find this library in the library map");
+        Q_UNUSED(n);
     }
     delete lib;
 }
@@ -706,7 +712,7 @@ void QLibraryPrivate::updatePluginState()
 
     bool success = false;
 
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MAC)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN)
     if (fileName.endsWith(".debug"_L1)) {
         // refuse to load a file that ends in .debug
         // these are the debug symbols from the libraries
@@ -722,7 +728,22 @@ void QLibraryPrivate::updatePluginState()
 
     if (!pHnd.loadRelaxed()) {
         // scan for the plugin metadata without loading
-        success = findPatternUnloaded(fileName, this);
+        QLibraryScanResult result = findPatternUnloaded(fileName, this);
+#if defined(Q_OF_MACH_O)
+        if (result.length && result.isEncrypted) {
+            // We found the .qtmetadata section, but since the library is encrypted
+            // we need to dlopen() it before we can parse the metadata for further
+            // validation.
+            qCDebug(qt_lcDebugPlugins, "Library is encrypted. Doing prospective load before parsing metadata");
+            locker.unlock();
+            load();
+            locker.relock();
+            success = qt_get_metadata(this, &errorString);
+        } else
+#endif
+        {
+            success = result.length != 0;
+        }
     } else {
         // library is already loaded (probably via QLibrary)
         // simply get the target function and call it.
@@ -745,7 +766,7 @@ void QLibraryPrivate::updatePluginState()
     uint qt_version = uint(metaData.value(QtPluginMetaDataKeys::QtVersion).toInteger());
     bool debug = metaData.value(QtPluginMetaDataKeys::IsDebug).toBool();
     if ((qt_version & 0x00ff00) > (QT_VERSION & 0x00ff00) || (qt_version & 0xff0000) != (QT_VERSION & 0xff0000)) {
-        qCWarning(qt_lcDebugPlugins, "In %s:\n"
+        qCDebug(qt_lcDebugPlugins, "In %s:\n"
                  "  Plugin uses incompatible Qt library (%d.%d.%d) [%s]",
                  QFile::encodeName(fileName).constData(),
                  (qt_version&0xff0000) >> 16, (qt_version&0xff00) >> 8, qt_version&0xff,
@@ -781,9 +802,11 @@ bool QLibrary::load()
         return false;
     if (d.tag() == Loaded)
         return d->pHnd.loadRelaxed();
-    else
+    if (d->load()) {
         d.setTag(Loaded);
-    return d->load();
+        return true;
+    }
+    return false;
 }
 
 /*!
@@ -797,7 +820,9 @@ bool QLibrary::load()
     call will fail, and unloading will only happen when every instance
     has called unload().
 
-    Note that on Mac OS X 10.3 (Panther), dynamic libraries cannot be unloaded.
+    Note that on \macos, dynamic libraries cannot be unloaded.
+    QLibrary::unload() will return \c true, but the library will remain
+    loaded into the process.
 
     \sa resolve(), load()
 */
@@ -811,13 +836,17 @@ bool QLibrary::unload()
 }
 
 /*!
-    Returns \c true if the library is loaded; otherwise returns \c false.
+    Returns \c true if load() succeeded; otherwise returns \c false.
+
+    \note Prior to Qt 6.6, this function would return \c true even without a
+    call to load() if another QLibrary object on the same library had caused it
+    to be loaded.
 
     \sa load()
  */
 bool QLibrary::isLoaded() const
 {
-    return d && d->pHnd.loadRelaxed();
+    return d.tag() == Loaded;
 }
 
 
@@ -954,8 +983,7 @@ void QLibrary::setFileNameAndVersion(const QString &fileName, const QString &ver
         d->release();
     }
     QLibraryPrivate *dd = QLibraryPrivate::findOrCreate(fileName, version, lh);
-    d = dd;
-    d.setTag(isLoaded() ? Loaded : NotLoaded);
+    d = QTaggedPointer(dd, NotLoaded);      // we haven't load()ed
 }
 
 /*!

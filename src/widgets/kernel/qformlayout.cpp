@@ -13,7 +13,7 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace {
+namespace QtPrivate {
 // Fixed column matrix, stores items as [i11, i12, i21, i22...],
 // with FORTRAN-style index operator(r, c).
 template <class T, int NumColumns>
@@ -67,8 +67,6 @@ void FixedColumnMatrix<T, NumColumns>::storageIndexToPosition(int idx, int *rowP
 // RowWrapPolicy
 const uint DefaultFieldGrowthPolicy = 255;
 const uint DefaultRowWrapPolicy = 255;
-
-enum { ColumnCount = 2 };
 
 // -- our data structure for our items
 // This owns the QLayoutItem
@@ -152,7 +150,7 @@ class QFormLayoutPrivate : public QLayoutPrivate
     Q_DECLARE_PUBLIC(QFormLayout)
 
 public:
-    typedef FixedColumnMatrix<QFormLayoutItem *, ColumnCount> ItemMatrix;
+    using ItemMatrix = QtPrivate::FixedColumnMatrix<QFormLayoutItem *, 2>;
 
     QFormLayoutPrivate();
     ~QFormLayoutPrivate() { }
@@ -480,6 +478,7 @@ void QFormLayoutPrivate::recalcHFW(int w)
 
 void QFormLayoutPrivate::setupHfwLayoutData()
 {
+    Q_Q(QFormLayout);
     // setupVerticalLayoutData must be called before this
     // setupHorizontalLayoutData must also be called before this
     // copies non hfw data into hfw
@@ -503,6 +502,10 @@ void QFormLayoutPrivate::setupHfwLayoutData()
     for (i = 0; i < rr; ++i) {
         QFormLayoutItem *label = m_matrix(i, 0);
         QFormLayoutItem *field = m_matrix(i, 1);
+
+        // ignore rows with only hidden items
+        if (!q->isRowVisible(i))
+            continue;
 
         if (label && label->vLayoutIndex > -1) {
             if (label->isHfw) {
@@ -681,9 +684,15 @@ void QFormLayoutPrivate::setupVerticalLayoutData(int width)
         QFormLayoutItem *label = m_matrix(i, 0);
         QFormLayoutItem *field = m_matrix(i, 1);
 
-        // Totally ignore empty rows or rows with only hidden items
-        if (!q->isRowVisible(i))
+        // Ignore empty rows or rows with only hidden items,
+        // and invalidate their position in the layout.
+        if (!q->isRowVisible(i)) {
+            if (label)
+                label->vLayoutIndex = -1;
+            if (field)
+                field->vLayoutIndex = -1;
             continue;
+        }
 
         QSize min1;
         QSize min2;
@@ -2189,6 +2198,9 @@ void QFormLayoutPrivate::arrangeWidgets(const QList<QLayoutStruct> &layouts, QRe
     for (i = 0; i < rr; ++i) {
         QFormLayoutItem *label = m_matrix(i, 0);
         QFormLayoutItem *field = m_matrix(i, 1);
+
+        if (!q->isRowVisible(i))
+            continue;
 
         if (label && label->vLayoutIndex > -1) {
             int height = layouts.at(label->vLayoutIndex).size;

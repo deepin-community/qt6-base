@@ -5,6 +5,7 @@ SUBDIRS = \
 filetest \
 embeddedintoforeignwindow \
 foreignwindows \
+fontfeatures \
 gestures \
 highdpi \
 inputmethodhints \
@@ -47,6 +48,7 @@ windowflags \
 windowgeometry \
 windowmodality \
 widgetgrab \
+xmlstreamlint \
 shortcuts \
 dialogs \
 windowtransparency \

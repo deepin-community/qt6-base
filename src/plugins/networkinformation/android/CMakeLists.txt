@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 
 set(java_sources
     jar/src/org/qtproject/qt/android/networkinformation/QtAndroidNetworkInformation.java
@@ -9,8 +12,10 @@ qt_internal_add_jar(Qt${QtBase_VERSION_MAJOR}AndroidNetworkInformationBackend
     OUTPUT_DIR "${QT_BUILD_DIR}/jar"
 )
 
+qt_path_join(destination ${INSTALL_DATADIR} "jar")
+
 install_jar(Qt${QtBase_VERSION_MAJOR}AndroidNetworkInformationBackend
-    DESTINATION jar
+    DESTINATION ${destination}
     COMPONENT Devel
 )
 

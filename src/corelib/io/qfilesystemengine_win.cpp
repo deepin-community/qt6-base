@@ -37,6 +37,8 @@
 #define SECURITY_WIN32
 #include <security.h>
 
+#include <QtCore/private/qfunctions_win_p.h>
+
 #ifndef SPI_GETPLATFORMTYPE
 #define SPI_GETPLATFORMTYPE 257
 #endif
@@ -379,8 +381,54 @@ constexpr QFileDevice::Permissions toSpecificPermissions(PermissionTag tag,
 } // anonymous namespace
 #endif // QT_CONFIG(fslibs)
 
+#if QT_DEPRECATED_SINCE(6,6)
+int qt_ntfs_permission_lookup = 0;
+#endif
 
-Q_CORE_EXPORT int qt_ntfs_permission_lookup = 0;
+static QBasicAtomicInt qt_ntfs_permission_lookup_v2 = Q_BASIC_ATOMIC_INITIALIZER(0);
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+
+/*!
+    \internal
+
+    Returns true if the check was previously enabled.
+*/
+
+bool qEnableNtfsPermissionChecks() noexcept
+{
+    return qt_ntfs_permission_lookup_v2.fetchAndAddRelaxed(1)
+QT_IF_DEPRECATED_SINCE(6, 6, /*nothing*/, + qt_ntfs_permission_lookup)
+        != 0;
+}
+
+/*!
+    \internal
+
+    Returns true if the check is disabled, i.e. there are no more users.
+*/
+
+bool qDisableNtfsPermissionChecks() noexcept
+{
+    return qt_ntfs_permission_lookup_v2.fetchAndSubRelaxed(1)
+QT_IF_DEPRECATED_SINCE(6, 6, /*nothing*/, + qt_ntfs_permission_lookup)
+        == 1;
+}
+
+/*!
+    \internal
+
+    Returns true if the check is enabled.
+*/
+
+bool qAreNtfsPermissionChecksEnabled() noexcept
+{
+    return qt_ntfs_permission_lookup_v2.loadRelaxed()
+QT_IF_DEPRECATED_SINCE(6, 6, /*nothing*/, + qt_ntfs_permission_lookup)
+        ;
+}
+QT_WARNING_POP
 
 /*!
     \class QNativeFilePermissions
@@ -668,21 +716,16 @@ static QString readLink(const QFileSystemEntry &link)
 #if QT_CONFIG(fslibs)
     QString ret;
 
-    bool neededCoInit = false;
     IShellLink *psl;                            // pointer to IShellLink i/f
     WIN32_FIND_DATA wfd;
     wchar_t szGotPath[MAX_PATH];
+
+    QComHelper comHelper;
 
     // Get pointer to the IShellLink interface.
     HRESULT hres = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink,
                                     (LPVOID *)&psl);
 
-    if (hres == CO_E_NOTINITIALIZED) { // COM was not initialized
-        neededCoInit = true;
-        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-        hres = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink,
-                                (LPVOID *)&psl);
-    }
     if (SUCCEEDED(hres)) {    // Get pointer to the IPersistFile interface.
         IPersistFile *ppf;
         hres = psl->QueryInterface(IID_IPersistFile, (LPVOID *)&ppf);
@@ -698,8 +741,6 @@ static QString readLink(const QFileSystemEntry &link)
         }
         psl->Release();
     }
-    if (neededCoInit)
-        CoUninitialize();
 
     return ret;
 #else
@@ -861,6 +902,18 @@ void QFileSystemEngine::clearWinStatData(QFileSystemMetaData &data)
 QFileSystemEntry QFileSystemEngine::getLinkTarget(const QFileSystemEntry &link,
                                                   QFileSystemMetaData &data)
 {
+    QFileSystemEntry ret = getRawLinkPath(link, data);
+    if (!ret.isEmpty() && ret.isRelative()) {
+        QString target = absoluteName(link).path() + u'/' + ret.filePath();
+        ret = QFileSystemEntry(QDir::cleanPath(target));
+    }
+    return ret;
+}
+
+//static
+QFileSystemEntry QFileSystemEngine::getRawLinkPath(const QFileSystemEntry &link,
+                                                   QFileSystemMetaData &data)
+{
     Q_CHECK_FILE_NAME(link, link);
 
     if (data.missingFlags(QFileSystemMetaData::LinkType))
@@ -871,12 +924,7 @@ QFileSystemEntry QFileSystemEngine::getLinkTarget(const QFileSystemEntry &link,
         target = readLink(link);
     else if (data.isLink())
         target = readSymLink(link);
-    QFileSystemEntry ret(target);
-    if (!target.isEmpty() && ret.isRelative()) {
-        target.prepend(absoluteName(link).path() + u'/');
-        ret = QFileSystemEntry(QDir::cleanPath(target));
-    }
-    return ret;
+    return QFileSystemEntry(target);
 }
 
 //static
@@ -1076,8 +1124,7 @@ QString QFileSystemEngine::owner(const QFileSystemEntry &entry, QAbstractFileEng
 {
     QString name;
 #if QT_CONFIG(fslibs)
-    extern int qt_ntfs_permission_lookup;
-    if (qt_ntfs_permission_lookup > 0) {
+    if (qAreNtfsPermissionChecksEnabled()) {
         initGlobalSid();
         {
             PSID pOwner = 0;
@@ -1131,7 +1178,7 @@ bool QFileSystemEngine::fillPermissions(const QFileSystemEntry &entry, QFileSyst
                                         QFileSystemMetaData::MetaDataFlags what)
 {
 #if QT_CONFIG(fslibs)
-    if (qt_ntfs_permission_lookup > 0) {
+    if (qAreNtfsPermissionChecksEnabled()) {
         initGlobalSid();
 
         QString fname = entry.nativeFilePath();
@@ -1661,17 +1708,10 @@ bool QFileSystemEngine::createLink(const QFileSystemEntry &source, const QFileSy
                                    QSystemError &error)
 {
     bool ret = false;
+    QComHelper comHelper;
     IShellLink *psl = nullptr;
     HRESULT hres = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink,
                                     reinterpret_cast<void **>(&psl));
-
-    bool neededCoInit = false;
-    if (hres == CO_E_NOTINITIALIZED) { // COM was not initialized
-        neededCoInit = true;
-        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-        hres = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink,
-                                reinterpret_cast<void **>(&psl));
-    }
 
     if (SUCCEEDED(hres)) {
         const auto name = QDir::toNativeSeparators(source.filePath());
@@ -1691,9 +1731,6 @@ bool QFileSystemEngine::createLink(const QFileSystemEntry &source, const QFileSy
 
     if (!ret)
         error = QSystemError(::GetLastError(), QSystemError::NativeError);
-
-    if (neededCoInit)
-        CoUninitialize();
 
     return ret;
 }
@@ -1762,7 +1799,8 @@ bool QFileSystemEngine::moveFileToTrash(const QFileSystemEntry &source,
     // we need the "display name" of the file, so can't use nativeAbsoluteFilePath
     const QString sourcePath = QDir::toNativeSeparators(absoluteName(source).filePath());
 
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    QComHelper comHelper;
+
     IFileOperation *pfo = nullptr;
     IShellItem *deleteItem = nullptr;
     FileOperationProgressSink *sink = nullptr;
@@ -1775,7 +1813,6 @@ bool QFileSystemEngine::moveFileToTrash(const QFileSystemEntry &source,
             deleteItem->Release();
         if (pfo)
             pfo->Release();
-        CoUninitialize();
         if (!SUCCEEDED(hres))
             error = QSystemError(hres, QSystemError::NativeError);
     });
@@ -1837,7 +1874,7 @@ static inline QDateTime fileTimeToQDateTime(const FILETIME *time)
     FileTimeToSystemTime(time, &sTime);
     return QDateTime(QDate(sTime.wYear, sTime.wMonth, sTime.wDay),
                      QTime(sTime.wHour, sTime.wMinute, sTime.wSecond, sTime.wMilliseconds),
-                     Qt::UTC);
+                     QTimeZone::UTC);
 }
 
 QDateTime QFileSystemMetaData::birthTime() const

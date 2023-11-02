@@ -18,6 +18,7 @@ class tst_QtConcurrentRun: public QObject
 {
     Q_OBJECT
 private slots:
+    void initTestCase();
     void runLightFunction();
     void runHeavyFunction();
     void returnValue();
@@ -83,6 +84,13 @@ void heavy()
     for (int i = 0; i < 1000000; ++i)
         str.append("a");
     qDebug("done function");
+}
+
+void tst_QtConcurrentRun::initTestCase()
+{
+    // proxy check for QEMU; catches slightly more though
+    if (QTestPrivate::isRunningArmOnX86())
+        QSKIP("Runs into spurious crashes on QEMU -- QTBUG-106906");
 }
 
 void tst_QtConcurrentRun::runLightFunction()
@@ -658,10 +666,10 @@ void tst_QtConcurrentRun::implicitConvertibleTypes()
 {
     QThreadPool pool;
 
-    double d;
+    double d = 0.0;
     run(doubleFunction, d).waitForFinished();
     run(&pool, doubleFunction, d).waitForFinished();
-    int i;
+    int i = 0;
     run(doubleFunction, d).waitForFinished();
     run(&pool, doubleFunction, d).waitForFinished();
     run(doubleFunction, i).waitForFinished();
@@ -701,9 +709,6 @@ static void runFunction()
 
 void tst_QtConcurrentRun::pollForIsFinished()
 {
-    // proxy check for QEMU; catches slightyl more though
-    if (QTestPrivate::isRunningArmOnX86())
-        QSKIP("Runs into spurious crashes on QEMU -- QTBUG-106906");
     const int numThreads = std::max(4, 2 * QThread::idealThreadCount());
     QThreadPool::globalInstance()->setMaxThreadCount(numThreads);
 
@@ -810,7 +815,7 @@ public:
     void run() override {
         int iter = 60;
         while (--iter && !cancel.loadRelaxed())
-            QThread::currentThread()->msleep(25);
+            QThread::currentThread()->sleep(std::chrono::milliseconds{25});
     }
 };
 

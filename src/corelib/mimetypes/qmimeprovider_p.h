@@ -31,6 +31,8 @@ class QMimeMagicRuleMatcher;
 
 class QMimeProviderBase
 {
+    Q_DISABLE_COPY(QMimeProviderBase)
+
 public:
     QMimeProviderBase(QMimeDatabasePrivate *db, const QString &directory);
     virtual ~QMimeProviderBase() {}
@@ -48,11 +50,38 @@ public:
     virtual void loadIcon(QMimeTypePrivate &) {}
     virtual void loadGenericIcon(QMimeTypePrivate &) {}
     virtual void ensureLoaded() {}
+    virtual void excludeMimeTypeGlobs(const QStringList &) {}
 
     QString directory() const { return m_directory; }
 
     QMimeDatabasePrivate *m_db;
     QString m_directory;
+
+    /*
+        MimeTypes with "glob-deleteall" tags are handled differently by each provider
+        sub-class:
+        - QMimeBinaryProvider parses glob-deleteall tags lazily, i.e. only when loadMimeTypePrivate()
+          is called, and clears the glob patterns associated with mimetypes that have this tag
+        - QMimeXMLProvider parses glob-deleteall from the the start, i.e. when a XML file is
+          parsed with QMimeTypeParser
+
+        The two lists below are used to let both provider types (XML and Binary) communicate
+        about mimetypes with glob-deleteall.
+    */
+    /*
+        List of mimetypes in _this_ Provider that have a "glob-deleteall" tag,
+        glob patterns for those mimetypes should be ignored in all _other_ lower
+        precedence Providers.
+    */
+    QStringList m_mimeTypesWithDeletedGlobs;
+
+    /*
+        List of mimetypes with glob patterns that are "overwritten" in _this_ Provider,
+        by a "glob-deleteall" tag in a mimetype definition in a _higher precedence_
+        Provider. With QMimeBinaryProvider, we can't change the data in the binary mmap'ed
+        file, hence the need for this list.
+    */
+    QStringList m_mimeTypesWithExcludedGlobs;
 };
 
 /*
@@ -77,23 +106,29 @@ public:
     void loadIcon(QMimeTypePrivate &) override;
     void loadGenericIcon(QMimeTypePrivate &) override;
     void ensureLoaded() override;
+    void excludeMimeTypeGlobs(const QStringList &toExclude) override;
 
 private:
     struct CacheFile;
 
-    void matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile, int offset, const QString &fileName);
-    bool matchSuffixTree(QMimeGlobMatchResult &result, CacheFile *cacheFile, int numEntries, int firstOffset, const QString &fileName, int charPos, bool caseSensitiveCheck);
+    int matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile, int offset,
+                      const QString &fileName);
+    bool matchSuffixTree(QMimeGlobMatchResult &result, CacheFile *cacheFile, int numEntries,
+                         int firstOffset, const QString &fileName, qsizetype charPos,
+                         bool caseSensitiveCheck);
     bool matchMagicRule(CacheFile *cacheFile, int numMatchlets, int firstOffset, const QByteArray &data);
+    bool isMimeTypeGlobsExcluded(const char *name);
     QLatin1StringView iconForMime(CacheFile *cacheFile, int posListOffset, const QByteArray &inputMime);
     void loadMimeTypeList();
     bool checkCacheChanged();
 
-    CacheFile *m_cacheFile = nullptr;
+    std::unique_ptr<CacheFile> m_cacheFile;
     QStringList m_cacheFileNames;
     QSet<QString> m_mimetypeNames;
     bool m_mimetypeListLoaded;
     struct MimeTypeExtra
     {
+        // Both retrieved on demand in loadMimeTypePrivate
         QHash<QString, QString> localeComments;
         QStringList globPatterns;
     };
@@ -131,6 +166,7 @@ public:
 
     // Called by the mimetype xml parser
     void addMimeType(const QMimeType &mt);
+    void excludeMimeTypeGlobs(const QStringList &toExclude) override;
     void addGlobPattern(const QMimeGlobPattern &glob);
     void addParent(const QString &child, const QString &parent);
     void addAlias(const QString &alias, const QString &name);

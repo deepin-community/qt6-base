@@ -459,11 +459,13 @@ BenchmarkResult BenchmarkResult::parse(QString const& line, QString* error)
     // This code avoids using a QRegExp because QRegExp might be broken.
     // Sample format: 4,000 msec per iteration (total: 4,000, iterations: 1)
 
-    QString sFirstNumber;
-    while (!remaining.isEmpty() && !remaining.at(0).isSpace()) {
-        sFirstNumber += remaining.at(0);
-        remaining.remove(0,1);
-    }
+    const auto begin = remaining.cbegin();
+    auto it = std::find_if(begin, remaining.cend(), [](const auto ch) {
+        return ch.isSpace();
+    });
+    QString sFirstNumber{std::distance(begin, it), Qt::Uninitialized};
+    std::move(begin, it, sFirstNumber.begin());
+    remaining.erase(begin, it);
     remaining = remaining.trimmed();
 
     // 4,000 -> 4000
@@ -763,27 +765,28 @@ void checkErrorOutput(const QString &test, const QByteArray &errorOutput)
         return;
 
 #ifdef Q_CC_MINGW
-    if (test == "blacklisted" // calls qFatal()
-        || test == "silent") // calls qFatal()
-#endif
+    if (test == "silent") // calls qFatal()
         return;
+#endif
 
 #ifdef Q_OS_WIN
     if (test == "crashes")
         return; // Complains about uncaught exception
 #endif
 
+#ifdef Q_OS_UNIX
+    if (test == "assert"
+        || test == "crashes"
+        || test == "failfetchtype"
+        || test == "faildatatype")
+    return; // Outputs "Received signal 6 (SIGABRT)"
+#endif
+
 #ifdef Q_OS_LINUX
-    // QEMU outputs to stderr about uncaught signals
-    if (QTestPrivate::isRunningArmOnX86() &&
-        (test == "assert"
-         || test == "blacklisted"
-         || test == "crashes"
-         || test == "faildatatype"
-         || test == "failfetchtype"
-         || test == "silent"
-        ))
-        return;
+    if (test == "silent") {
+        if (QTestPrivate::isRunningArmOnX86())
+            return;         // QEMU outputs to stderr about uncaught signals
+    }
 #endif
 
     INFO(errorOutput.toStdString());
@@ -970,8 +973,7 @@ TestProcessResult runTestProcess(const QString &test, const QStringList &argumen
     const bool expectedCrash = test == "assert" || test == "exceptionthrow"
         || test == "fetchbogus" || test == "crashedterminate"
         || test == "faildatatype" || test == "failfetchtype"
-        || test == "crashes" || test == "silent"
-        || test == "blacklisted" || test == "watchdog";
+        || test == "crashes" || test == "silent" || test == "watchdog";
 
     if (expectedCrash) {
         environment.insert("QTEST_DISABLE_CORE_DUMP", "1");

@@ -13,3 +13,5 @@ usr/lib/qt6/bin/host-qmake
 usr/lib/qt6/bin/host-qtpaths
 usr/lib/qt6/bin/target_qt.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/qdevice.pri
+usr/lib/${DEB_HOST_MULTIARCH}/objects-None/ExampleIconsPrivate_resources_1/.rcc/qrc_example_icons.cpp.o
+

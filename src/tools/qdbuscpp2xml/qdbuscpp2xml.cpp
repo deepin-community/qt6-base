@@ -37,7 +37,7 @@ static const char docTypeHeader[] =
 
 #define PROGRAMNAME     "qdbuscpp2xml"
 #define PROGRAMVERSION  "0.2"
-#define PROGRAMCOPYRIGHT "Copyright (C) 2022 The Qt Company Ltd."
+#define PROGRAMCOPYRIGHT QT_COPYRIGHT
 
 static QString outputFile;
 static int flags;
@@ -116,7 +116,7 @@ static QString addFunction(const FunctionDef &mm, bool isSignal = false) {
         return QString();           // signal with QDBusMessage argument?
 
     bool isScriptable = mm.isScriptable;
-    for (int j = 1; j < types.size(); ++j) {
+    for (qsizetype j = 1; j < types.size(); ++j) {
         // input parameter for a slot or output for a signal
         if (types.at(j) == QDBusMetaTypeId::message()) {
             isScriptable = true;
@@ -333,7 +333,7 @@ static std::deque<CustomType> s_customTypes;
 static void parseCmdLine(QStringList &arguments)
 {
     flags = 0;
-    for (int i = 0; i < arguments.size(); ++i) {
+    for (qsizetype i = 0; i < arguments.size(); ++i) {
         const QString arg = arguments.at(i);
 
         if (arg == "--help"_L1)
@@ -379,7 +379,7 @@ static void parseCmdLine(QStringList &arguments)
             } else {
                 const QByteArray arg = arguments.takeAt(i + 1).toUtf8();
                 // lastIndexOf because the C++ type could contain '=' while the DBus type can't
-                const int separator = arg.lastIndexOf('=');
+                const qsizetype separator = arg.lastIndexOf('=');
                 if (separator == -1) {
                     printf("-t expects a type=dbustype argument, but no '=' was found\n");
                     exit(1);
@@ -431,14 +431,20 @@ int main(int argc, char **argv)
 
     QList<ClassDef> classes;
 
-    for (int i = 0; i < args.size(); ++i) {
-        const QString arg = args.at(i);
-
-        if (arg.startsWith(u'-'))
+    if (args.isEmpty())
+        args << u"-"_s;
+    for (const auto &arg: std::as_const(args)) {
+        if (arg.startsWith(u'-') && arg.size() > 1)
             continue;
 
-        QFile f(arg);
-        if (!f.open(QIODevice::ReadOnly|QIODevice::Text)) {
+        QFile f;
+        if (arg == u'-') {
+            f.open(stdin, QIODevice::ReadOnly | QIODevice::Text);
+        } else {
+            f.setFileName(arg);
+            f.open(QIODevice::ReadOnly | QIODevice::Text);
+        }
+        if (!f.isOpen()) {
             fprintf(stderr, PROGRAMNAME ": could not open '%s': %s\n",
                     qPrintable(arg), qPrintable(f.errorString()));
             return 1;

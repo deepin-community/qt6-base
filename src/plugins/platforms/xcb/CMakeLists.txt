@@ -1,4 +1,5 @@
-# Generated from xcb.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## XcbQpaPrivate Module:
@@ -44,6 +45,7 @@ qt_internal_add_module(XcbQpaPrivate
         PkgConfig::XKB_COMMON_X11
         Qt::CorePrivate
         Qt::GuiPrivate
+        XCB::CURSOR
         XCB::ICCCM
         XCB::IMAGE
         XCB::KEYSYMS
@@ -55,14 +57,12 @@ qt_internal_add_module(XcbQpaPrivate
         XCB::SYNC
         XCB::XCB
         XCB::XFIXES
-        # XCB::XINPUT # special case remove handled below
         XCB::XKB
         XKB::XKB
+    NO_UNITY_BUILD # X11 define clashes
 )
 
-# special case begin
 qt_disable_apple_app_extension_api_only(XcbQpaPrivate)
-# special case end
 
 ## Scopes:
 #####################################################################
@@ -87,12 +87,12 @@ qt_internal_extend_target(XcbQpaPrivate CONDITION QT_FEATURE_xcb_xlib
         qt_xlib_wrapper.c qt_xlib_wrapper.h
     PUBLIC_LIBRARIES
         X11::XCB
-        # special case begin
-        # 'QMAKE_USE += xcb_xlib' in qmake implies also += xlib (aka X11)
-        # due to "use": "xcb xlib" in src/gui/configure.json.
-        # That's not yet handled by the conversion scripts unfortunately.
         X11::X11
-        # special case end
+)
+
+qt_internal_extend_target(XcbQpaPrivate CONDITION NOT QT_FEATURE_xcb_xlib
+    SOURCES
+        qxcbcursorfont.h
 )
 
 qt_internal_extend_target(XcbQpaPrivate CONDITION QT_FEATURE_xcb_sm
@@ -143,7 +143,6 @@ qt_internal_extend_target(XcbQpaPrivate CONDITION QT_FEATURE_fontconfig AND QT_F
         WrapFreetype::WrapFreetype
 )
 
-# special case begin
 if(QT_FEATURE_system_xcb_xinput)
     qt_internal_extend_target(XcbQpaPrivate LIBRARIES XCB::XINPUT)
 else()
@@ -157,7 +156,6 @@ else()
         "${PROJECT_SOURCE_DIR}/src/3rdparty/xcb/include"
     )
 endif()
-# special case end
 
 #####################################################################
 ## QXcbIntegrationPlugin Plugin:
@@ -166,7 +164,7 @@ endif()
 qt_internal_add_plugin(QXcbIntegrationPlugin
     OUTPUT_NAME qxcb
     PLUGIN_TYPE platforms
-    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES xcb # special case
+    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES xcb
     SOURCES
         qxcbmain.cpp
     DEFINES
@@ -177,16 +175,7 @@ qt_internal_add_plugin(QXcbIntegrationPlugin
         Qt::XcbQpaPrivate
 )
 
-#### Keys ignored in scope 18:.:.:xcb-plugin.pro:<TRUE>:
-# OTHER_FILES = "xcb.json" "README"
-
-## Scopes:
-#####################################################################
-
-#### Keys ignored in scope 20:.:.:xcb-plugin.pro:NOT TARGET___equals____ss_QT_DEFAULT_QPA_PLUGIN:
-# PLUGIN_EXTENDS = "-"
 add_subdirectory(gl_integrations)
 if(OFF)
-    add_subdirectory(xcb-static) # special case TODO: xcb-static sub folder
+    add_subdirectory(xcb-static)
 endif()
-

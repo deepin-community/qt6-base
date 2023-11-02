@@ -30,12 +30,18 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtGui/qpointingdevice.h>
 
+#include <QtCore/private/qcore_mac_p.h>
 #include <QtGui/private/qcoregraphics_p.h>
-#include <QtGui/private/qopenglcontext_p.h>
+#include <QtGui/private/qmacmimeregistry_p.h>
+#ifndef QT_NO_OPENGL
+#  include <QtGui/private/qopenglcontext_p.h>
+#endif
 #include <QtGui/private/qrhibackingstore_p.h>
 #include <QtGui/private/qfontengine_coretext_p.h>
 
 #include <IOKit/graphics/IOGraphicsLib.h>
+
+#include <inttypes.h>
 
 static void initResources()
 {
@@ -163,7 +169,7 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
 
     QCocoaScreen::initializeScreens();
 
-    QMacInternalPasteboardMime::initializeMimeTypes();
+    QMacMimeRegistry::initializeMimeTypes();
     QCocoaMimeTypes::initializeMimeTypes();
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
     QWindowSystemInterface::registerInputDevice(new QInputDevice(QString("keyboard"), 0,
@@ -193,12 +199,10 @@ QCocoaIntegration::~QCocoaIntegration()
     // Deleting the clipboard integration flushes promised pastes using
     // the mime converters - the ordering here is important.
     delete mCocoaClipboard;
-    QMacInternalPasteboardMime::destroyMimeTypes();
+    QMacMimeRegistry::destroyMimeTypes();
 #endif
 
     QCocoaScreen::cleanupScreens();
-
-    clearToolbars();
 }
 
 QCocoaIntegration *QCocoaIntegration::instance()
@@ -305,6 +309,7 @@ QPlatformBackingStore *QCocoaIntegration::createPlatformBackingStore(QWindow *wi
         return new QCALayerBackingStore(window);
     case QSurface::MetalSurface:
     case QSurface::OpenGLSurface:
+    case QSurface::VulkanSurface:
         return new QRhiBackingStore(window);
     default:
         return nullptr;
@@ -405,35 +410,16 @@ QList<int> QCocoaIntegration::possibleKeys(const QKeyEvent *event) const
     return mKeyboardMapper->possibleKeys(event);
 }
 
-void QCocoaIntegration::setToolbar(QWindow *window, NSToolbar *toolbar)
-{
-    if (NSToolbar *prevToolbar = mToolbars.value(window))
-        [prevToolbar release];
-
-    [toolbar retain];
-    mToolbars.insert(window, toolbar);
-}
-
-NSToolbar *QCocoaIntegration::toolbar(QWindow *window) const
-{
-    return mToolbars.value(window);
-}
-
-void QCocoaIntegration::clearToolbars()
-{
-    QHash<QWindow *, NSToolbar *>::const_iterator it = mToolbars.constBegin();
-    while (it != mToolbars.constEnd()) {
-        [it.value() release];
-        ++it;
-    }
-    mToolbars.clear();
-}
-
 void QCocoaIntegration::setApplicationIcon(const QIcon &icon) const
 {
     // Fall back to a size that looks good on the highest resolution screen available
     auto fallbackSize = NSApp.dockTile.size.width * qGuiApp->devicePixelRatio();
     NSApp.applicationIconImage = [NSImage imageFromQIcon:icon withSize:fallbackSize];
+}
+
+void QCocoaIntegration::setApplicationBadge(qint64 number)
+{
+    NSApp.dockTile.badgeLabel = number ? [NSString stringWithFormat:@"%" PRId64, number] : nil;
 }
 
 void QCocoaIntegration::beep() const

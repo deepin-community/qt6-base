@@ -11,6 +11,7 @@
 #include "private/qstringconverter_p.h"
 #include "private/qcborvalue_p.h"
 #include "private/qnumeric_p.h"
+#include <private/qtools_p.h>
 
 //#define PARSER_DEBUG
 #ifdef PARSER_DEBUG
@@ -27,6 +28,8 @@ Q_CONSTINIT static int indent = 0;
 static const int nestingLimit = 1024;
 
 QT_BEGIN_NAMESPACE
+
+using namespace QtMiscUtils;
 
 // error strings for the JSON parser
 #define JSONERR_OK          QT_TRANSLATE_NOOP("QJsonParseError", "no error occurred")
@@ -50,6 +53,7 @@ QT_BEGIN_NAMESPACE
     \inmodule QtCore
     \ingroup json
     \ingroup shared
+    \ingroup qtserialization
     \reentrant
     \since 5.0
 
@@ -692,14 +696,14 @@ bool Parser::parseNumber()
     if (json < end && *json == '0') {
         ++json;
     } else {
-        while (json < end && *json >= '0' && *json <= '9')
+        while (json < end && isAsciiDigit(*json))
             ++json;
     }
 
     // frac = decimal-point 1*DIGIT
     if (json < end && *json == '.') {
         ++json;
-        while (json < end && *json >= '0' && *json <= '9') {
+        while (json < end && isAsciiDigit(*json)) {
             isInt = isInt && *json == '0';
             ++json;
         }
@@ -711,7 +715,7 @@ bool Parser::parseNumber()
         ++json;
         if (json < end && (*json == '-' || *json == '+'))
             ++json;
-        while (json < end && *json >= '0' && *json <= '9')
+        while (json < end && isAsciiDigit(*json))
             ++json;
     }
 
@@ -776,15 +780,13 @@ bool Parser::parseNumber()
 static inline bool addHexDigit(char digit, char32_t *result)
 {
     *result <<= 4;
-    if (digit >= '0' && digit <= '9')
-        *result |= (digit - '0');
-    else if (digit >= 'a' && digit <= 'f')
-        *result |= (digit - 'a') + 10;
-    else if (digit >= 'A' && digit <= 'F')
-        *result |= (digit - 'A') + 10;
-    else
-        return false;
-    return true;
+    const int h = fromHex(digit);
+    if (h != -1) {
+        *result |= h;
+        return true;
+    }
+
+    return false;
 }
 
 static inline bool scanEscapeSequence(const char *&json, const char *end, char32_t *ch)
@@ -837,7 +839,7 @@ static inline bool scanUtf8Char(const char *&json, const char *end, char32_t *re
     const auto *usrc = reinterpret_cast<const uchar *>(json);
     const auto *uend = reinterpret_cast<const uchar *>(end);
     const uchar b = *usrc++;
-    int res = QUtf8Functions::fromUtf8<QUtf8BaseTraits>(b, result, usrc, uend);
+    qsizetype res = QUtf8Functions::fromUtf8<QUtf8BaseTraits>(b, result, usrc, uend);
     if (res < 0)
         return false;
 

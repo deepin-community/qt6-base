@@ -53,7 +53,7 @@ Q_CORE_EXPORT bool isBuiltinType(const QByteArray &type)
 } // namespace QtPrivate
 
 // copied from qmetaobject.cpp
-[[maybe_unused]] static inline const QMetaObjectPrivate *priv(const uint* data)
+[[maybe_unused]] static inline const QMetaObjectPrivate *qmobPriv(const uint* data)
 { return reinterpret_cast<const QMetaObjectPrivate*>(data); }
 
 class QMetaMethodBuilderPrivate
@@ -159,6 +159,7 @@ public:
 
     QByteArray name;
     QByteArray enumName;
+    QMetaType metaType;
     bool isFlag;
     bool isScoped;
     QList<QByteArray> keys;
@@ -597,6 +598,7 @@ QMetaEnumBuilder QMetaObjectBuilder::addEnumerator(const QMetaEnum &prototype)
 {
     QMetaEnumBuilder en = addEnumerator(prototype.name());
     en.setEnumName(prototype.enumName());
+    en.setMetaType(prototype.metaType());
     en.setIsFlag(prototype.isFlag());
     en.setIsScoped(prototype.isScoped());
     int count = prototype.keyCount();
@@ -704,7 +706,7 @@ void QMetaObjectBuilder::addMetaObject(const QMetaObject *prototype,
     }
 
     if ((members & RelatedMetaObjects) != 0) {
-        Q_ASSERT(priv(prototype->d.data)->revision >= 2);
+        Q_ASSERT(qmobPriv(prototype->d.data)->revision >= 2);
         const auto *objects = prototype->d.relatedMetaObjects;
         if (objects) {
             while (*objects != nullptr) {
@@ -715,7 +717,7 @@ void QMetaObjectBuilder::addMetaObject(const QMetaObject *prototype,
     }
 
     if ((members & StaticMetacall) != 0) {
-        Q_ASSERT(priv(prototype->d.data)->revision >= 6);
+        Q_ASSERT(qmobPriv(prototype->d.data)->revision >= 6);
         if (prototype->d.static_metacall)
             setStaticMetacallFunction(prototype->d.static_metacall);
     }
@@ -1026,6 +1028,9 @@ int QMetaObjectBuilder::indexOfClassInfo(const QByteArray &name)
 }
 
 // Align on a specific type boundary.
+#ifdef ALIGN
+#  undef ALIGN
+#endif
 #define ALIGN(size,type)    \
     (size) = ((size) + sizeof(type) - 1) & ~(sizeof(type) - 1)
 
@@ -1167,7 +1172,7 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
             - int(d->methods.size())       // return "parameters" don't have names
             - int(d->constructors.size()); // "this" parameters don't have names
     if constexpr (mode == Construct) {
-        static_assert(QMetaObjectPrivate::OutputRevision == 10, "QMetaObjectBuilder should generate the same version as moc");
+        static_assert(QMetaObjectPrivate::OutputRevision == 12, "QMetaObjectBuilder should generate the same version as moc");
         pmeta->revision = QMetaObjectPrivate::OutputRevision;
         pmeta->flags = d->flags.toInt();
         pmeta->className = 0;   // Class name is always the first string.
@@ -2300,6 +2305,31 @@ void QMetaEnumBuilder::setEnumName(const QByteArray &alias)
     QMetaEnumBuilderPrivate *d = d_func();
     if (d)
         d->enumName = alias;
+}
+
+/*!
+    Returns the meta type of the enumerator.
+
+    \since 6.6
+*/
+QMetaType QMetaEnumBuilder::metaType() const
+{
+    if (QMetaEnumBuilderPrivate *d = d_func())
+        return d->metaType;
+    return QMetaType();
+}
+
+/*!
+    Sets this enumerator to have the given \c metaType.
+
+    \since 6.6
+    \sa metaType()
+*/
+void QMetaEnumBuilder::setMetaType(QMetaType metaType)
+{
+    QMetaEnumBuilderPrivate *d = d_func();
+    if (d)
+        d->metaType = metaType;
 }
 
 /*!

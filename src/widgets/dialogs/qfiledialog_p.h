@@ -74,8 +74,6 @@ struct QFileDialogArgs
     QFileDialog::Options options = {};
 };
 
-#define UrlRole (Qt::UserRole + 1)
-
 class Q_WIDGETS_EXPORT QFileDialogPrivate : public QDialogPrivate
 {
     Q_DECLARE_PUBLIC(QFileDialog)
@@ -122,11 +120,11 @@ public:
 
     QLineEdit *lineEdit() const;
 
-    static int maxNameLength(const QString &path);
+    static long maxNameLength(const QString &path);
 
     QString basename(const QString &path) const
     {
-        int separator = QDir::toNativeSeparators(path).lastIndexOf(QDir::separator());
+        const qsizetype separator = QDir::toNativeSeparators(path).lastIndexOf(QDir::separator());
         if (separator != -1)
             return path.mid(separator + 1);
         return path;
@@ -223,6 +221,7 @@ public:
     // dialog. Returning false means that a non-native dialog must be
     // used instead.
     bool canBeNativeDialog() const override;
+    void setVisible(bool visible) override;
     inline bool usingWidgets() const;
 
     inline void setDirectory_sys(const QUrl &directory);
@@ -259,6 +258,8 @@ private:
     virtual void helperPrepareShow(QPlatformDialogHelper *) override;
     virtual void helperDone(QDialog::DialogCode, QPlatformDialogHelper *) override;
 
+    void itemNotFound(const QString &fileName, QFileDialog::FileMode mode);
+    bool itemAlreadyExists(const QString &fileName);
     Q_DISABLE_COPY_MOVE(QFileDialogPrivate)
 };
 

@@ -1,4 +1,5 @@
-# Generated from dbus.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## DBus Module:
@@ -51,11 +52,9 @@ qt_internal_add_module(DBus
     GENERATE_CPP_EXPORTS
 )
 
+# This file is included by qdbusargument.cpp
 set_source_files_properties(qdbusmarshaller.cpp
-    PROPERTIES HEADER_FILE_ONLY ON)  # special case: This file is included by qdbusargument.cpp
-
-#### Keys ignored in scope 1:.:.:dbus.pro:<TRUE>:
-# MODULE_CONFIG = "dbusadaptors" "dbusinterfaces"
+    PROPERTIES HEADER_FILE_ONLY ON)
 
 ## Scopes:
 #####################################################################
@@ -77,4 +76,3 @@ qt_internal_extend_target(DBus CONDITION WIN32
 qt_internal_add_docs(DBus
     doc/qtdbus.qdocconf
 )
-

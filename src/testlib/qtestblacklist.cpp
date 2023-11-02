@@ -25,6 +25,9 @@ using namespace Qt::StringLiterals;
   referring to this documentation is kind to readers.  Comments can also be used
   to indicate the reasons for ignoring particular cases.
 
+  Each blacklist line is interpreted as a list of keywords in an AND-relationship.
+  To blacklist a test for multiple platforms (OR-relationship), use separate lines.
+
   The key "ci" applies only when run by COIN. The key "cmake" applies when Qt
   is built using CMake. Other keys name platforms, operating systems,
   distributions, tool-chains or architectures; a ! prefix reverses what it
@@ -44,7 +47,8 @@ using namespace Qt::StringLiterals;
   data row's name coincides with that of a local data row, some unintended
   matches may result; try to keep your data-row tags distinct.)
 
-  Subsequent lines give conditions for ignoring this test.
+  Subsequent lines give conditions for ignoring this test. You need at least
+  one or the group has no effect.
 
         # See qtbase/src/testlib/qtestblacklist.cpp for format
         # Test doesn't work on QNX at all
@@ -57,7 +61,7 @@ using namespace Qt::StringLiterals;
 
         # Flaky in COIN on macOS, not reproducible by developers
         [testSlowly]
-        ci osx
+        macos ci
 
         # Needs basic C++11 support
         [testfunction2:testData]

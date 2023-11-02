@@ -1747,12 +1747,13 @@ void QLineEdit::keyPressEvent(QKeyEvent *event)
 /*!
     \reimp
 */
-void QLineEdit::keyReleaseEvent(QKeyEvent *)
+void QLineEdit::keyReleaseEvent(QKeyEvent *e)
 {
     Q_D(QLineEdit);
     if (!isReadOnly())
         d->handleSoftwareInputPanel();
     d->control->updateCursorBlinking();
+    QWidget::keyReleaseEvent(e);
 }
 
 /*!
@@ -1802,6 +1803,22 @@ void QLineEdit::inputMethodEvent(QInputMethodEvent *e)
 */
 QVariant QLineEdit::inputMethodQuery(Qt::InputMethodQuery property) const
 {
+#ifdef Q_OS_ANDROID
+    // QTBUG-61652
+    if (property == Qt::ImEnterKeyType) {
+        QWidget *next = nextInFocusChain();
+        while (next && next != this && next->focusPolicy() == Qt::NoFocus)
+            next = next->nextInFocusChain();
+        if (next) {
+            const auto nextYPos = next->mapToGlobal(QPoint(0, 0)).y();
+            const auto currentYPos = mapToGlobal(QPoint(0, 0)).y();
+            if (currentYPos < nextYPos)
+                // Set EnterKey to KeyNext type only if the next widget
+                // in the focus chain is below current QLineEdit
+                return Qt::EnterKeyNext;
+        }
+    }
+#endif
     return inputMethodQuery(property, QVariant());
 }
 
@@ -2164,13 +2181,6 @@ void QLineEdit::contextMenuEvent(QContextMenuEvent *event)
         menu->setAttribute(Qt::WA_DeleteOnClose);
         menu->popup(event->globalPos());
     }
-}
-
-static inline void setActionIcon(QAction *action, const QString &name)
-{
-    const QIcon icon = QIcon::fromTheme(name);
-    if (!icon.isNull())
-        action->setIcon(icon);
 }
 
 /*!  This function creates the standard context menu which is shown

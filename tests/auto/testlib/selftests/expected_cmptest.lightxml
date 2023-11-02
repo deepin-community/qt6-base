@@ -234,6 +234,10 @@
     </Incident>
     <Duration msecs="0"/>
   </TestFunction>
+  <TestFunction name="compareContainerToInitializerList">
+    <Incident type="pass" file="" line="0" />
+    <Duration msecs="0"/>
+  </TestFunction>
   <TestFunction name="compareQColor">
     <Incident type="pass" file="" line="0">
       <DataTag><![CDATA[Qt::yellow vs "yellow"]]></DataTag>
@@ -396,7 +400,7 @@
   </TestFunction>
   <TestFunction name="verify2">
     <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
-      <Description><![CDATA['opaqueFunc() < 2' returned FALSE. (42)]]></Description>
+      <Description><![CDATA['opaqueFunc() < 2' returned FALSE. (42 >= 2 (as expected, in fact))]]></Description>
     </Incident>
     <Duration msecs="0"/>
   </TestFunction>

@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 function(qt_internal_collect_direct_target_dependencies target targets_out_var)
     __qt_internal_walk_libs("${target}" "${targets_out_var}" _rcc_objects
                             "qt_direct_targets_dict" "direct_targets")
@@ -19,7 +22,8 @@ endmacro()
 # Create a Qt6*.pc file intended for pkg-config consumption.
 function(qt_internal_generate_pkg_config_file module)
     # TODO: PkgConfig is supported under MSVC with pkgconf (github.com/pkgconf/pkgconf)
-    if((NOT UNIX OR QT_FEATURE_framework) AND NOT MINGW OR CMAKE_VERSION VERSION_LESS "3.20")
+    if((NOT UNIX OR QT_FEATURE_framework)
+        AND NOT MINGW OR CMAKE_VERSION VERSION_LESS "3.20" OR ANDROID)
         return()
     endif()
     if(NOT BUILD_SHARED_LIBS)
@@ -46,6 +50,17 @@ function(qt_internal_generate_pkg_config_file module)
     get_target_property(loose_include_dirs ${target} INTERFACE_INCLUDE_DIRECTORIES)
     list(TRANSFORM loose_include_dirs REPLACE "${INSTALL_INCLUDEDIR}" "\${includedir}")
     list(TRANSFORM loose_include_dirs REPLACE "${INSTALL_MKSPECSDIR}" "\${mkspecsdir}")
+
+    # Remove genex wrapping around gc_sections flag because we can't evaluate genexes like
+    # $<CXX_COMPILER_ID> in file(GENERATE). And given that .pc files don't support dynamic
+    # evaluation like the $<CXX_COMPILER_ID> genex, distros will be expected to patch the .pc
+    # files according to which compiler they intend to be used with.
+    get_property(gc_sections_with_genex GLOBAL PROPERTY _qt_internal_gc_sections_with_genex)
+    get_property(gc_sections_without_genex GLOBAL PROPERTY _qt_internal_gc_sections_without_genex)
+    if(loose_link_options AND gc_sections_with_genex AND gc_sections_without_genex)
+        string(REPLACE "${gc_sections_with_genex}" "${gc_sections_without_genex}"
+            loose_link_options "${loose_link_options}")
+    endif()
 
     qt_internal_set_pkg_config_cpp_flags(link_options "${loose_link_options}" "")
     qt_internal_set_pkg_config_cpp_flags(compile_defs "${loose_compile_defs}" -D)

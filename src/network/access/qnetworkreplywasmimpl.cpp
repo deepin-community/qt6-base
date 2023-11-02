@@ -9,6 +9,8 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qthread.h>
+#include <QtCore/private/qoffsetstringarray_p.h>
+#include <QtCore/private/qtools_p.h>
 
 #include <private/qnetworkaccessmanager_p.h>
 #include <private/qnetworkfile_p.h>
@@ -17,6 +19,41 @@
 #include <emscripten/fetch.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+namespace {
+
+static constexpr auto BannedHeaders = qOffsetStringArray(
+    "accept-charset",
+    "accept-encoding",
+    "access-control-request-headers",
+    "access-control-request-method",
+    "connection",
+    "content-length",
+    "cookie",
+    "cookie2",
+    "date",
+    "dnt",
+    "expect",
+    "host",
+    "keep-alive",
+    "origin",
+    "referer",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "via"
+);
+
+bool isUnsafeHeader(QLatin1StringView header) noexcept
+{
+    return header.startsWith("proxy-"_L1, Qt::CaseInsensitive)
+        || header.startsWith("sec-"_L1, Qt::CaseInsensitive)
+        || BannedHeaders.contains(header, Qt::CaseInsensitive);
+}
+} // namespace
 
 QNetworkReplyWasmImplPrivate::QNetworkReplyWasmImplPrivate()
     : QNetworkReplyPrivate()
@@ -190,15 +227,22 @@ void QNetworkReplyWasmImplPrivate::doSendRequest()
 
     QList<QByteArray> headersData = request.rawHeaderList();
     int arrayLength = getArraySize(headersData.count());
-    const char* customHeaders[arrayLength];
+    const char *customHeaders[arrayLength];
+    QStringList trimmedHeaders;
 
     if (headersData.count() > 0) {
         int i = 0;
-        for (int j = 0; j < headersData.count(); j++) {
-            customHeaders[i] = headersData[j].constData();
-            i += 1;
-            customHeaders[i] = request.rawHeader(headersData[j]).constData();
-            i += 1;
+        for (const auto &headerName : headersData) {
+            if (isUnsafeHeader(QLatin1StringView(headerName.constData()))) {
+                trimmedHeaders.push_back(QString::fromLatin1(headerName));
+            } else {
+                customHeaders[i++] = headerName.constData();
+                customHeaders[i++] = request.rawHeader(headerName).constData();
+            }
+        }
+        if (!trimmedHeaders.isEmpty()) {
+            qWarning() << "Qt has trimmed the following forbidden headers from the request:"
+                       << trimmedHeaders.join(QLatin1StringView(", "));
         }
         customHeaders[i] = nullptr;
         attr.requestHeaders = customHeaders;
@@ -239,6 +283,7 @@ void QNetworkReplyWasmImplPrivate::doSendRequest()
         attr.attributes -= EMSCRIPTEN_FETCH_PERSIST_FILE;
     }
 
+    attr.withCredentials = request.attribute(QNetworkRequest::UseCredentialsAttribute, false).toBool();
     attr.onsuccess = QNetworkReplyWasmImplPrivate::downloadSucceeded;
     attr.onerror = QNetworkReplyWasmImplPrivate::downloadFailed;
     attr.onprogress = QNetworkReplyWasmImplPrivate::downloadProgress;
@@ -268,7 +313,7 @@ void QNetworkReplyWasmImplPrivate::emitDataReadProgress(qint64 bytesReceived, qi
 
     totalDownloadSize = bytesTotal;
 
-    percentFinished = (bytesReceived / bytesTotal) * 100;
+    percentFinished = bytesTotal ? (bytesReceived / bytesTotal) * 100 : 100;
 
     emit q->downloadProgress(bytesReceived, bytesTotal);
 }
@@ -300,32 +345,36 @@ static int parseHeaderName(const QByteArray &headerName)
     if (headerName.isEmpty())
         return -1;
 
-    switch (tolower(headerName.at(0))) {
+    auto is = [&](const char *what) {
+        return qstrnicmp(headerName.data(), headerName.size(), what) == 0;
+    };
+
+    switch (QtMiscUtils::toAsciiLower(headerName.front())) {
     case 'c':
-        if (qstricmp(headerName.constData(), "content-type") == 0)
+        if (is("content-type"))
             return QNetworkRequest::ContentTypeHeader;
-        else if (qstricmp(headerName.constData(), "content-length") == 0)
+        else if (is("content-length"))
             return QNetworkRequest::ContentLengthHeader;
-        else if (qstricmp(headerName.constData(), "cookie") == 0)
+        else if (is("cookie"))
             return QNetworkRequest::CookieHeader;
         break;
 
     case 'l':
-        if (qstricmp(headerName.constData(), "location") == 0)
+        if (is("location"))
             return QNetworkRequest::LocationHeader;
-        else if (qstricmp(headerName.constData(), "last-modified") == 0)
+        else if (is("last-modified"))
             return QNetworkRequest::LastModifiedHeader;
         break;
 
     case 's':
-        if (qstricmp(headerName.constData(), "set-cookie") == 0)
+        if (is("set-cookie"))
             return QNetworkRequest::SetCookieHeader;
-        else if (qstricmp(headerName.constData(), "server") == 0)
+        else if (is("server"))
             return QNetworkRequest::ServerHeader;
         break;
 
     case 'u':
-        if (qstricmp(headerName.constData(), "user-agent") == 0)
+        if (is("user-agent"))
             return QNetworkRequest::UserAgentHeader;
         break;
     }
@@ -489,6 +538,8 @@ void QNetworkReplyWasmImplPrivate::downloadFailed(emscripten_fetch_t *fetch)
                 reasonStr = QStringLiteral("Operation canceled");
             else
                 reasonStr = QString::fromUtf8(fetch->statusText);
+            QByteArray buffer(fetch->data, fetch->numBytes);
+            reply->dataReceived(buffer, buffer.size());
             QByteArray statusText(fetch->statusText);
             reply->setStatusCode(fetch->status, statusText);
             reply->emitReplyError(reply->statusCodeFromHttp(fetch->status, reply->request.url()), reasonStr);

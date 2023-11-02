@@ -15,6 +15,7 @@
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
 #include <QtGui/QColor>
+#include <QtGui/QPixmap>
 
 #include <algorithm>
 
@@ -767,13 +768,17 @@ public:
     {}
 
     QString windowTitle;
-    QMessageDialogOptions::Icon icon;
+    QMessageDialogOptions::StandardIcon icon;
     QString text;
     QString informativeText;
     QString detailedText;
     QPlatformDialogHelper::StandardButtons buttons;
     QList<QMessageDialogOptions::CustomButton> customButtons;
     int nextCustomButtonId;
+    QPixmap iconPixmap;
+    QString checkBoxLabel;
+    Qt::CheckState checkBoxState = Qt::Unchecked;
+    QMessageDialogOptions::Options options;
 };
 
 QMessageDialogOptions::QMessageDialogOptions(QMessageDialogOptionsPrivate *dd)
@@ -815,14 +820,24 @@ void QMessageDialogOptions::setWindowTitle(const QString &title)
     d->windowTitle = title;
 }
 
-QMessageDialogOptions::Icon QMessageDialogOptions::icon() const
+QMessageDialogOptions::StandardIcon QMessageDialogOptions::standardIcon() const
 {
     return d->icon;
 }
 
-void QMessageDialogOptions::setIcon(Icon icon)
+void QMessageDialogOptions::setStandardIcon(StandardIcon icon)
 {
     d->icon = icon;
+}
+
+void QMessageDialogOptions::setIconPixmap(const QPixmap &pixmap)
+{
+    d->iconPixmap = pixmap;
+}
+
+QPixmap QMessageDialogOptions::iconPixmap() const
+{
+    return d->iconPixmap;
 }
 
 QString QMessageDialogOptions::text() const
@@ -890,9 +905,48 @@ const QList<QMessageDialogOptions::CustomButton> &QMessageDialogOptions::customB
 
 const QMessageDialogOptions::CustomButton *QMessageDialogOptions::customButton(int id)
 {
-    int i = d->customButtons.indexOf(CustomButton(id));
+    const int i = int(d->customButtons.indexOf(CustomButton(id)));
     return (i < 0 ? nullptr : &d->customButtons.at(i));
 }
+
+void QMessageDialogOptions::setCheckBox(const QString &label, Qt::CheckState state)
+{
+    d->checkBoxLabel = label;
+    d->checkBoxState = state;
+}
+
+QString QMessageDialogOptions::checkBoxLabel() const
+{
+    return d->checkBoxLabel;
+}
+
+Qt::CheckState QMessageDialogOptions::checkBoxState() const
+{
+    return d->checkBoxState;
+}
+
+void QMessageDialogOptions::setOption(QMessageDialogOptions::Option option, bool on)
+{
+    if (!(d->options & option) != !on)
+        setOptions(d->options ^ option);
+}
+
+bool QMessageDialogOptions::testOption(QMessageDialogOptions::Option option) const
+{
+    return d->options & option;
+}
+
+void QMessageDialogOptions::setOptions(QMessageDialogOptions::Options options)
+{
+    if (options != d->options)
+        d->options = options;
+}
+
+QMessageDialogOptions::Options QMessageDialogOptions::options() const
+{
+    return d->options;
+}
+
 
 QPlatformDialogHelper::ButtonRole QPlatformDialogHelper::buttonRole(QPlatformDialogHelper::StandardButton button)
 {

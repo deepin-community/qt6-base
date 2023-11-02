@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "utils.h"
-#include "elfreader.h"
 
 #include <QtCore/QString>
 #include <QtCore/QDebug>
@@ -15,6 +14,7 @@
 #include <QtCore/QStandardPaths>
 #if defined(Q_OS_WIN)
 #  include <QtCore/qt_windows.h>
+#  include <QtCore/private/qsystemerror_p.h>
 #  include <shlwapi.h>
 #  include <delayimp.h>
 #else // Q_OS_WIN
@@ -61,7 +61,7 @@ bool createSymbolicLink(const QFileInfo &source, const QString &target, QString 
     return true;
 }
 
-bool createDirectory(const QString &directory, QString *errorMessage)
+bool createDirectory(const QString &directory, QString *errorMessage, bool dryRun)
 {
     const QFileInfo fi(directory);
     if (fi.isDir())
@@ -73,11 +73,13 @@ bool createDirectory(const QString &directory, QString *errorMessage)
     }
     if (optVerboseLevel)
         std::wcout << "Creating " << QDir::toNativeSeparators(directory) << "...\n";
-    QDir dir;
-    if (!dir.mkpath(directory)) {
-        *errorMessage = QString::fromLatin1("Could not create directory %1.").
-                        arg(QDir::toNativeSeparators(directory));
-        return false;
+    if (!dryRun) {
+        QDir dir;
+        if (!dir.mkpath(directory)) {
+            *errorMessage = QString::fromLatin1("Could not create directory %1.")
+                                    .arg(QDir::toNativeSeparators(directory));
+            return false;
+        }
     }
     return true;
 }
@@ -92,7 +94,7 @@ QStringList findSharedLibraries(const QDir &directory, Platform platform,
         nameFilter += u'*';
     if (debugMatchMode == MatchDebug && platformHasDebugSuffix(platform))
         nameFilter += u'd';
-    nameFilter += sharedLibrarySuffix(platform);
+    nameFilter += sharedLibrarySuffix();
     QStringList result;
     QString errorMessage;
     const QFileInfoList &dlls = directory.entryInfoList(QStringList(nameFilter), QDir::Files);
@@ -116,22 +118,6 @@ QStringList findSharedLibraries(const QDir &directory, Platform platform,
 }
 
 #ifdef Q_OS_WIN
-QString winErrorMessage(unsigned long error)
-{
-    QString rc = QString::fromLatin1("#%1: ").arg(error);
-    char16_t *lpMsgBuf;
-
-    const DWORD len = FormatMessage(
-            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-            NULL, error, 0, reinterpret_cast<LPTSTR>(&lpMsgBuf), 0, NULL);
-    if (len) {
-        rc = QString::fromUtf16(lpMsgBuf, int(len));
-        LocalFree(lpMsgBuf);
-    } else {
-        rc += QString::fromLatin1("<unknown error>");
-    }
-    return rc;
-}
 
 // Case-Normalize file name via GetShortPathNameW()/GetLongPathNameW()
 QString normalizeFileName(const QString &name)
@@ -263,8 +249,10 @@ bool runProcess(const QString &binary, const QStringList &args,
             CloseHandle(si.hStdOutput);
         if (stdErr)
             CloseHandle(si.hStdError);
-        if (errorMessage)
-            *errorMessage = QStringLiteral("CreateProcessW failed: ") + winErrorMessage(GetLastError());
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("CreateProcessW failed: ")
+                + QSystemError::windowsString();
+        }
         return false;
     }
 
@@ -564,37 +552,6 @@ bool updateFile(const QString &sourceFileName, const QStringList &nameFilters,
     return true;
 }
 
-bool readElfExecutable(const QString &elfExecutableFileName, QString *errorMessage,
-                       QStringList *dependentLibraries, unsigned *wordSize,
-                       bool *isDebug)
-{
-    ElfReader elfReader(elfExecutableFileName);
-    const ElfData data = elfReader.readHeaders();
-    if (data.sectionHeaders.isEmpty()) {
-        *errorMessage = QStringLiteral("Unable to read ELF binary \"")
-            + QDir::toNativeSeparators(elfExecutableFileName) + QStringLiteral("\": ")
-            + elfReader.errorString();
-            return false;
-    }
-    if (wordSize)
-        *wordSize = data.elfclass == Elf_ELFCLASS64 ? 64 : 32;
-    if (dependentLibraries) {
-        dependentLibraries->clear();
-        const QList<QByteArray> libs = elfReader.dependencies();
-        if (libs.isEmpty()) {
-            *errorMessage = QStringLiteral("Unable to read dependenices of ELF binary \"")
-                + QDir::toNativeSeparators(elfExecutableFileName) + QStringLiteral("\": ")
-                + elfReader.errorString();
-                return false;
-        }
-        for (const QByteArray &l : libs)
-            dependentLibraries->push_back(QString::fromLocal8Bit(l));
-    }
-    if (isDebug)
-        *isDebug = data.symbolsType != UnknownSymbols && data.symbolsType != NoSymbols;
-    return true;
-}
-
 #ifdef Q_OS_WIN
 
 static inline QString stringFromRvaPtr(const void *rvaPtr)
@@ -731,28 +688,43 @@ static inline MsvcDebugRuntimeResult checkMsvcDebugRuntime(const QStringList &de
 }
 
 template <class ImageNtHeader>
+inline QStringList determineDependentLibs(const ImageNtHeader *nth, const void *fileMemory,
+                                           QString *errorMessage)
+{
+    return readImportSections(nth, fileMemory, errorMessage);
+}
+
+template <class ImageNtHeader>
+inline bool determineDebug(const ImageNtHeader *nth, const void *fileMemory,
+                           QStringList *dependentLibrariesIn, QString *errorMessage)
+{
+    if (nth->FileHeader.Characteristics & IMAGE_FILE_DEBUG_STRIPPED)
+        return false;
+
+    const QStringList dependentLibraries = dependentLibrariesIn != nullptr ?
+                *dependentLibrariesIn :
+                determineDependentLibs(nth, fileMemory, errorMessage);
+
+    const bool hasDebugEntry = nth->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size;
+    // When an MSVC debug entry is present, check whether the debug runtime
+    // is actually used to detect -release / -force-debug-info builds.
+    const MsvcDebugRuntimeResult msvcrt = checkMsvcDebugRuntime(dependentLibraries);
+    if (msvcrt == NoMsvcRuntime)
+        return hasDebugEntry;
+    else
+        return hasDebugEntry && msvcrt == MsvcDebugRuntime;
+}
+
+template <class ImageNtHeader>
 inline void determineDebugAndDependentLibs(const ImageNtHeader *nth, const void *fileMemory,
-                                           bool isMinGW,
                                            QStringList *dependentLibrariesIn,
                                            bool *isDebugIn, QString *errorMessage)
 {
-    const bool hasDebugEntry = nth->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size;
-    QStringList dependentLibraries;
-    if (dependentLibrariesIn || (isDebugIn != nullptr && hasDebugEntry && !isMinGW))
-        dependentLibraries = readImportSections(nth, fileMemory, errorMessage);
-
     if (dependentLibrariesIn)
-        *dependentLibrariesIn = dependentLibraries;
-    if (isDebugIn != nullptr) {
-        if (isMinGW) {
-            // Use logic that's used e.g. in objdump / pfd library
-            *isDebugIn = !(nth->FileHeader.Characteristics & IMAGE_FILE_DEBUG_STRIPPED);
-        } else {
-            // When an MSVC debug entry is present, check whether the debug runtime
-            // is actually used to detect -release / -force-debug-info builds.
-            *isDebugIn = hasDebugEntry && checkMsvcDebugRuntime(dependentLibraries) != MsvcReleaseRuntime;
-        }
-    }
+        *dependentLibrariesIn = determineDependentLibs(nth, fileMemory, errorMessage);
+
+    if (isDebugIn)
+        *isDebugIn = determineDebug(nth, fileMemory, dependentLibrariesIn, errorMessage);
 }
 
 // Read a PE executable and determine dependent libraries, word size
@@ -778,19 +750,22 @@ bool readPeExecutable(const QString &peExecutableFileName, QString *errorMessage
         hFile = CreateFile(reinterpret_cast<const WCHAR*>(peExecutableFileName.utf16()), GENERIC_READ, FILE_SHARE_READ, NULL,
                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile == INVALID_HANDLE_VALUE || hFile == NULL) {
-            *errorMessage = QString::fromLatin1("Cannot open '%1': %2").arg(peExecutableFileName, winErrorMessage(GetLastError()));
+            *errorMessage = QString::fromLatin1("Cannot open '%1': %2")
+                .arg(peExecutableFileName, QSystemError::windowsString());
             break;
         }
 
         hFileMap = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
         if (hFileMap == NULL) {
-            *errorMessage = QString::fromLatin1("Cannot create file mapping of '%1': %2").arg(peExecutableFileName, winErrorMessage(GetLastError()));
+            *errorMessage = QString::fromLatin1("Cannot create file mapping of '%1': %2")
+                .arg(peExecutableFileName, QSystemError::windowsString());
             break;
         }
 
         fileMemory = MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0);
         if (!fileMemory) {
-            *errorMessage = QString::fromLatin1("Cannot map '%1': %2").arg(peExecutableFileName, winErrorMessage(GetLastError()));
+            *errorMessage = QString::fromLatin1("Cannot map '%1': %2")
+                .arg(peExecutableFileName, QSystemError::windowsString());
             break;
         }
 
@@ -803,10 +778,10 @@ bool readPeExecutable(const QString &peExecutableFileName, QString *errorMessage
             *wordSizeIn = wordSize;
         if (wordSize == 32) {
             determineDebugAndDependentLibs(reinterpret_cast<const IMAGE_NT_HEADERS32 *>(ntHeaders),
-                                           fileMemory, isMinGW, dependentLibrariesIn, isDebugIn, errorMessage);
+                                           fileMemory, dependentLibrariesIn, isDebugIn, errorMessage);
         } else {
             determineDebugAndDependentLibs(reinterpret_cast<const IMAGE_NT_HEADERS64 *>(ntHeaders),
-                                           fileMemory, isMinGW, dependentLibrariesIn, isDebugIn, errorMessage);
+                                           fileMemory, dependentLibrariesIn, isDebugIn, errorMessage);
         }
 
         if (machineArchIn)

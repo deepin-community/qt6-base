@@ -1,17 +1,20 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 #! [qt_wrap_cpp]
 set(SOURCES myapp.cpp main.cpp)
 qt_wrap_cpp(SOURCES myapp.h)
-add_executable(myapp ${SOURCES})
+qt_add_executable(myapp ${SOURCES})
 #! [qt_wrap_cpp]
 
 #! [qt_add_resources]
 set(SOURCES main.cpp)
 qt_add_resources(SOURCES example.qrc)
-add_executable(myapp ${SOURCES})
+qt_add_executable(myapp ${SOURCES})
 #! [qt_add_resources]
 
 #! [qt_add_resources_target]
-add_executable(myapp main.cpp)
+qt_add_executable(myapp main.cpp)
 qt_add_resources(myapp "images"
     PREFIX "/images"
     FILES image1.png image2.png)
@@ -25,7 +28,7 @@ qt_add_big_resources(SOURCES big_resource.qrc)
 list(APPEND SOURCES big_resource.qrc)
 set_property(SOURCE big_resource.qrc PROPERTY SKIP_AUTORCC ON)
 
-add_executable(myapp ${SOURCES})
+qt_add_executable(myapp ${SOURCES})
 #! [qt_add_big_resources]
 
 #! [qt_add_binary_resources]
@@ -38,7 +41,7 @@ qt_generate_moc(main.cpp main.moc TARGET myapp)
 #! [qt_generate_moc]
 
 #! [qt_import_plugins]
-add_executable(myapp main.cpp)
+qt_add_executable(myapp main.cpp)
 target_link_libraries(myapp Qt::Gui Qt::Sql)
 qt_import_plugins(myapp
     INCLUDE Qt::QCocoaIntegrationPlugin

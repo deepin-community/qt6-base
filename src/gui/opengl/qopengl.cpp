@@ -195,20 +195,13 @@ struct OsTypeTerm
     static QString hostOs();
     static QVersionNumber hostKernelVersion() { return QVersionNumber::fromString(QSysInfo::kernelVersion()); }
     static QString hostOsRelease() {
-        QString ver;
 #ifdef Q_OS_WIN
-        const auto osver = QOperatingSystemVersion::current();
-#define Q_WINVER(major, minor) (major << 8 | minor)
-        switch (Q_WINVER(osver.majorVersion(), osver.minorVersion())) {
-        case Q_WINVER(10, 0):
-            ver = QStringLiteral("10");
-            break;
-        default:
-            break;
-        }
-#undef Q_WINVER
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11)
+            return u"11"_s;
+        return u"10"_s;
+#else
+        return {};
 #endif
-        return ver;
     }
 
     bool isNull() const { return type.isEmpty(); }
@@ -392,7 +385,8 @@ static bool readGpuFeatures(const QOpenGLConfig::Gpu &gpu,
     QJsonParseError error;
     const QJsonDocument document = QJsonDocument::fromJson(jsonAsciiData, &error);
     if (document.isNull()) {
-        const int lineNumber = 1 + jsonAsciiData.left(error.offset).count('\n');
+        const qsizetype lineNumber =
+                QByteArrayView(jsonAsciiData).left(error.offset).count('\n') + 1;
         QTextStream str(errorMessage);
         str << "Failed to parse data: \"" << error.errorString()
             << "\" at line " << lineNumber << " (offset: "

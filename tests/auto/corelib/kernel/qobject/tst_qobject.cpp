@@ -58,6 +58,7 @@ private slots:
     void connectNotify_connectSlotsByName();
     void connectDisconnectNotify_shadowing();
     void connectReferenceToIncompleteTypes();
+    void connectAutoQueuedIncomplete();
     void emitInDefinedOrder();
     void customTypes();
     void streamCustomTypes();
@@ -148,6 +149,7 @@ private slots:
     void objectNameBinding();
     void emitToDestroyedClass();
     void declarativeData();
+    void asyncCallbackHelper();
 };
 
 struct QObjectCreatedOnShutdown
@@ -893,6 +895,42 @@ void tst_QObject::connectReferenceToIncompleteTypes() {
     QVERIFY(connection);
 }
 
+struct Incomplete2;
+class QObjectWithIncomplete2 : public QObject {
+    Q_OBJECT
+
+public:
+    QObjectWithIncomplete2(QObject *parent=nullptr) : QObject(parent) {}
+signals:
+    void signalWithIncomplete(Incomplete2 *ptr);
+public slots:
+    void slotWithIncomplete(Incomplete2 *) { calledSlot = true; }
+    void run() { Q_EMIT signalWithIncomplete(nullptr); }
+public:
+    bool calledSlot = false;
+};
+
+void tst_QObject::connectAutoQueuedIncomplete()
+{
+    auto objectWithIncomplete1 = new QObjectWithIncomplete2();
+    auto objectWithIncomplete2 = new QObjectWithIncomplete2();
+    auto t = new QThread(this);
+    auto cleanup = qScopeGuard([&](){
+        t->quit();
+        QVERIFY(t->wait());
+        delete objectWithIncomplete1;
+        delete objectWithIncomplete2;
+    });
+
+    t->start();
+    objectWithIncomplete2->moveToThread(t);
+
+    connect(objectWithIncomplete2, &QObjectWithIncomplete2::signalWithIncomplete,
+            objectWithIncomplete1, &QObjectWithIncomplete2::slotWithIncomplete);
+    QMetaObject::invokeMethod(objectWithIncomplete2, "run", Qt::QueuedConnection);
+    QTRY_VERIFY(objectWithIncomplete1->calledSlot);
+}
+
 static void connectDisconnectNotifyTestSlot() {}
 
 void tst_QObject::connectDisconnectNotifyPMF()
@@ -1481,8 +1519,7 @@ void tst_QObject::customTypes()
         QCOMPARE(checker.received.value(), t1.value());
         checker.received = t0;
 
-        int idx = qRegisterMetaType<CustomType>("CustomType");
-        QCOMPARE(QMetaType::type("CustomType"), idx);
+        qRegisterMetaType<CustomType>();
 
         checker.disconnect();
         connect(&checker, SIGNAL(signal1(CustomType)), &checker, SLOT(slot1(CustomType)),
@@ -1495,11 +1532,6 @@ void tst_QObject::customTypes()
         QCoreApplication::processEvents();
         QCOMPARE(checker.received.value(), t2.value());
         QCOMPARE(instanceCount, 4);
-
-        QVERIFY(QMetaType::isRegistered(idx));
-        QCOMPARE(qRegisterMetaType<CustomType>("CustomType"), idx);
-        QCOMPARE(QMetaType::type("CustomType"), idx);
-        QVERIFY(QMetaType::isRegistered(idx));
     }
     QCOMPARE(instanceCount, 3);
 }
@@ -1508,13 +1540,15 @@ void tst_QObject::streamCustomTypes()
 {
     QByteArray ba;
 
-    int idx = qRegisterMetaType<CustomType>("CustomType");
+    qRegisterMetaType<CustomType>();
+
+    QMetaType metaType = QMetaType::fromType<CustomType>();
 
     {
         CustomType t1(1, 2, 3);
         QCOMPARE(instanceCount, 1);
         QDataStream stream(&ba, (QIODevice::OpenMode)QIODevice::WriteOnly);
-        QMetaType::save(stream, idx, &t1);
+        metaType.save(stream, &t1);
     }
 
     QCOMPARE(instanceCount, 0);
@@ -1523,7 +1557,7 @@ void tst_QObject::streamCustomTypes()
         CustomType t2;
         QCOMPARE(instanceCount, 1);
         QDataStream stream(&ba, (QIODevice::OpenMode)QIODevice::ReadOnly);
-        QMetaType::load(stream, idx, &t2);
+        metaType.load(stream, &t2);
         QCOMPARE(instanceCount, 1);
         QCOMPARE(t2.i1, 1);
         QCOMPARE(t2.i2, 2);
@@ -1959,7 +1993,7 @@ void tst_QObject::property()
 
     const int idx = mo->indexOfProperty("variant");
     QVERIFY(idx != -1);
-    QCOMPARE(QMetaType::Type(mo->property(idx).type()), QMetaType::QVariant);
+    QCOMPARE(mo->property(idx).userType(), QMetaType::QVariant);
     QCOMPARE(object.property("variant"), QVariant());
     QVariant variant1(42);
     QVariant variant2("string");
@@ -1978,7 +2012,7 @@ void tst_QObject::property()
     QVERIFY(!property.isEnumType());
     QCOMPARE(property.typeName(), "CustomType*");
     qRegisterMetaType<CustomType*>();
-    QCOMPARE(property.type(), QVariant::UserType);
+    QCOMPARE_GE(property.typeId(), QMetaType::User);
     QCOMPARE(property.userType(), qMetaTypeId<CustomType*>());
 
     CustomType *customPointer = nullptr;
@@ -1993,7 +2027,7 @@ void tst_QObject::property()
     property = mo->property(mo->indexOfProperty("custom"));
     QVERIFY(property.isWritable());
     QCOMPARE(property.typeName(), "CustomType*");
-    QCOMPARE(property.type(), QVariant::UserType);
+    QCOMPARE_GE(property.typeId(), QMetaType::User);
     QCOMPARE(property.userType(), qMetaTypeId<CustomType*>());
 
     QVERIFY(object.setProperty("custom", customVariant));
@@ -2023,13 +2057,13 @@ void tst_QObject::property()
     QCOMPARE(object.property("priority").toInt(), 0);
 
     // now it's registered, so it works as expected
-    int priorityMetaTypeId = qRegisterMetaType<PropertyObject::Priority>("PropertyObject::Priority");
+    int priorityMetaTypeId = qRegisterMetaType<PropertyObject::Priority>();
 
     QVERIFY(mo->indexOfProperty("priority") != -1);
     property = mo->property(mo->indexOfProperty("priority"));
     QVERIFY(property.isEnumType());
     QCOMPARE(property.typeName(), "PropertyObject::Priority");
-    QCOMPARE(property.type(), QVariant::UserType);
+    QCOMPARE_GE(property.typeId(), QMetaType::User);
     QCOMPARE(property.userType(), priorityMetaTypeId);
 
     var = object.property("priority");
@@ -2052,7 +2086,7 @@ void tst_QObject::property()
     object.setProperty("priority", var);
     QCOMPARE(qvariant_cast<PropertyObject::Priority>(object.property("priority")), PropertyObject::High);
 
-    qRegisterMetaType<CustomString>("CustomString");
+    qRegisterMetaType<CustomString>();
     QVERIFY(mo->indexOfProperty("customString") != -1);
     QCOMPARE(object.property("customString").toString(), QString());
     object.setCustomString("String1");
@@ -2891,7 +2925,7 @@ void tst_QObject::floatProperty()
     QVERIFY(idx > 0);
     QMetaProperty prop = obj.metaObject()->property(idx);
     QVERIFY(prop.isValid());
-    QCOMPARE(int(prop.type()), QMetaType::type("float"));
+    QCOMPARE(prop.typeId(), QMetaType::fromType<float>().id());
     QVERIFY(!prop.write(&obj, QVariant("Hello")));
     QVERIFY(prop.write(&obj, QVariant::fromValue(128.0f)));
     QVariant v = prop.read(&obj);
@@ -2906,7 +2940,7 @@ void tst_QObject::qrealProperty()
     QVERIFY(idx > 0);
     QMetaProperty prop = obj.metaObject()->property(idx);
     QVERIFY(prop.isValid());
-    QCOMPARE(int(prop.type()), QMetaType::type("qreal"));
+    QCOMPARE(prop.typeId(), QMetaType::fromType<qreal>().id());
     QVERIFY(!prop.write(&obj, QVariant("Hello")));
 
     QVERIFY(prop.write(&obj, QVariant::fromValue(128.0f)));
@@ -2957,7 +2991,7 @@ void tst_QObject::dynamicProperties()
     QVERIFY(!obj.setProperty("myuserproperty", "Hello"));
     QCOMPARE(obj.changedDynamicProperties.size(), 1);
 
-    QCOMPARE(obj.property("myuserproperty").type(), QVariant::String);
+    QCOMPARE(obj.property("myuserproperty").typeId(), QMetaType::QString);
     QCOMPARE(obj.property("myuserproperty").toString(), QString("Hello"));
 
     QCOMPARE(obj.dynamicPropertyNames().size(), 1);
@@ -2968,7 +3002,7 @@ void tst_QObject::dynamicProperties()
     QVERIFY(!obj.setProperty("myuserproperty", QByteArray("Hello")));
     QCOMPARE(obj.changedDynamicProperties.size(), 1);
     QCOMPARE(obj.changedDynamicProperties.first(), QByteArray("myuserproperty"));
-    QCOMPARE(obj.property("myuserproperty").type(), QVariant::ByteArray);
+    QCOMPARE(obj.property("myuserproperty").typeId(), QMetaType::QByteArray);
     QCOMPARE(obj.property("myuserproperty").toString(), QByteArray("Hello"));
 
     // unset the property
@@ -4702,8 +4736,7 @@ void tst_QObject::customTypesPointer()
 
         checker.disconnect();
 
-        int idx = qRegisterMetaType<CustomType>("CustomType");
-        QCOMPARE(QMetaType::type("CustomType"), idx);
+        qRegisterMetaType<CustomType>();
 
         connect(&checker, &QCustomTypeChecker::signal1, &checker, &QCustomTypeChecker::slot1,
                 Qt::QueuedConnection);
@@ -4715,11 +4748,6 @@ void tst_QObject::customTypesPointer()
         QCoreApplication::processEvents();
         QCOMPARE(checker.received.value(), t2.value());
         QCOMPARE(instanceCount, 4);
-
-        QVERIFY(QMetaType::isRegistered(idx));
-        QCOMPARE(qRegisterMetaType<CustomType>("CustomType"), idx);
-        QCOMPARE(QMetaType::type("CustomType"), idx);
-        QVERIFY(QMetaType::isRegistered(idx));
 
         // Test auto registered type  (QList<CustomType>)
         QList<CustomType> list;
@@ -5955,15 +5983,15 @@ class ConnectToPrivateSlotPrivate;
 
 class ConnectToPrivateSlot :public QObject {
     Q_OBJECT
+    Q_DECLARE_PRIVATE(ConnectToPrivateSlot)
 public:
     ConnectToPrivateSlot();
     void test(SenderObject *obj1) ;
-    Q_DECLARE_PRIVATE(ConnectToPrivateSlot)
 };
 
 class ConnectToPrivateSlotPrivate : public QObjectPrivate {
-public:
     Q_DECLARE_PUBLIC(ConnectToPrivateSlot)
+public:
     int receivedCount;
     QVariant receivedValue;
 
@@ -5975,6 +6003,8 @@ public:
         receivedCount++;
         receivedValue = v;
     };
+
+    void testFromPrivate(SenderObject *obj);
 };
 
 ConnectToPrivateSlot::ConnectToPrivateSlot(): QObject(*new ConnectToPrivateSlotPrivate) {}
@@ -5999,6 +6029,14 @@ void ConnectToPrivateSlot::test(SenderObject* obj1) {
     obj1->signal2();
     QCOMPARE(d->receivedCount, 3);
     QVERIFY(!QObjectPrivate::disconnect(obj1, &SenderObject::signal2, d, &ConnectToPrivateSlotPrivate::thisIsAPrivateSlot));
+}
+
+// Compile test to verify that we can use QObjectPrivate::connect in
+// the code of the private class, even if Q_DECLARE_PUBLIC is used in the
+// private section of the private class.
+void ConnectToPrivateSlotPrivate::testFromPrivate(SenderObject *obj)
+{
+    QVERIFY(QObjectPrivate::connect(obj, &SenderObject::signal1, this, &ConnectToPrivateSlotPrivate::thisIsAPrivateSlot));
 }
 
 void tst_QObject::connectPrivateSlots()
@@ -6037,6 +6075,7 @@ void tst_QObject::connectFunctorArgDifference()
 
     connect(&timer, &QTimer::timeout, [=](){});
     connect(&timer, &QTimer::objectNameChanged, [=](const QString &){});
+    connect(&timer, &QTimer::objectNameChanged, this, [](){});
     connect(qApp, &QCoreApplication::aboutToQuit, [=](){});
 
     connect(&timer, &QTimer::objectNameChanged, [=](){});
@@ -6775,7 +6814,11 @@ struct QmlReceiver : public QtPrivate::QSlotObjectBase
         , magic(0)
     {}
 
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     static void impl(int which, QSlotObjectBase *this_, QObject *, void **metaArgs, bool *ret)
+#else
+    static void impl(QSlotObjectBase *this_, QObject *, void **metaArgs, int which, bool *ret)
+#endif
     {
         switch (which) {
         case Destroy: delete static_cast<QmlReceiver*>(this_); return;
@@ -8154,6 +8197,16 @@ void tst_QObject::objectNameBinding()
     QObject obj;
     QTestPrivate::testReadWritePropertyBasics<QObject, QString>(obj, "test1", "test2",
                                                                 "objectName");
+
+    const QPropertyBinding<QString> binding([]() {
+        QObject obj2;
+        obj2.setObjectName(QLatin1String("no loop"));
+        return obj2.objectName();
+    }, {});
+    obj.bindableObjectName().setBinding(binding);
+
+    QCOMPARE(obj.objectName(), QLatin1String("no loop"));
+    QVERIFY2(!binding.error().hasError(), qPrintable(binding.error().description()));
 }
 
 namespace EmitToDestroyedClass {
@@ -8316,6 +8369,241 @@ void tst_QObject::declarativeData()
     QtDeclarative::Object *child = new QtDeclarative::Object;
     child->setParent(&p);
 #endif
+}
+
+/*
+    Compile-time test for the helpers in qobjectdefs_impl.h.
+*/
+class AsyncCaller : public QObject
+{
+    Q_OBJECT
+public:
+    ~AsyncCaller()
+    {
+        if (slotObject)
+            slotObject->destroyIfLastRef();
+    }
+    void callback0() {}
+    void callback1(const QString &) {}
+    void callbackInt(int) {}
+    int returnInt() const { return 0; }
+
+    static int staticCallback0() { return 0; }
+    static void staticCallback1(const QString &) {}
+
+    using Prototype0 = int(*)();
+    using Prototype1 = void(*)(QString);
+
+    template<typename Functor>
+    bool callMe0(const typename QtPrivate::ContextTypeForFunctor<Functor>::ContextType *, Functor &&func)
+    {
+        if (slotObject) {
+            slotObject->destroyIfLastRef();
+            slotObject = nullptr;
+        }
+        QtPrivate::AssertCompatibleFunctions<Prototype0, Functor>();
+        slotObject = QtPrivate::makeCallableObject<Prototype0>(std::forward<Functor>(func));
+        return true;
+    }
+
+    template<typename Functor>
+    bool callMe0(Functor &&func)
+    {
+        return callMe0(nullptr, std::forward<Functor>(func));
+    }
+
+    template<typename Functor>
+    bool callMe1(const typename QtPrivate::ContextTypeForFunctor<Functor>::ContextType *, Functor &&func)
+    {
+        if (slotObject) {
+            slotObject->destroyIfLastRef();
+            slotObject = nullptr;
+        }
+        QtPrivate::AssertCompatibleFunctions<Prototype1, Functor>();
+        slotObject = QtPrivate::makeCallableObject<Prototype1>(std::forward<Functor>(func));
+        return true;
+    }
+
+    template<typename Functor>
+    bool callMe1(Functor &&func)
+    {
+        return callMe1(nullptr, std::forward<Functor>(func));
+    }
+
+    QtPrivate::QSlotObjectBase *slotObject = nullptr;
+};
+
+static void freeFunction0() {}
+static void freeFunction1(QString) {}
+static void freeFunctionVariant(QVariant) {}
+
+template<typename Prototype, typename Functor>
+inline constexpr bool compiles(Functor &&) {
+    return QtPrivate::AreFunctionsCompatible<Prototype, Functor>::value;
+}
+
+void tst_QObject::asyncCallbackHelper()
+{
+    int result = 0;
+    QString arg1 = "Parameter";
+    void *argv[] = { &result, &arg1 };
+
+    auto lambda0 = []{};
+    auto lambda1 = [](const QString &) {};
+    auto lambda2 = [](const QString &, int) {};
+    const auto constLambda = [](const QString &) {};
+    auto moveOnlyLambda = [u = std::unique_ptr<int>()]{};
+    auto moveOnlyLambda1 = [u = std::unique_ptr<int>()](const QString &){};
+
+    SlotFunctor functor0;
+    SlotFunctorString functor1;
+
+    // no parameters provided or needed
+    static_assert(compiles<AsyncCaller::Prototype0>(&AsyncCaller::callback0));
+    static_assert(compiles<AsyncCaller::Prototype0>(&AsyncCaller::staticCallback0));
+    static_assert(compiles<AsyncCaller::Prototype0>(lambda0));
+    static_assert(compiles<AsyncCaller::Prototype0>(std::move(moveOnlyLambda)));
+    static_assert(compiles<AsyncCaller::Prototype0>(freeFunction0));
+    static_assert(compiles<AsyncCaller::Prototype0>(functor0));
+
+    // more parameters than needed
+    static_assert(compiles<AsyncCaller::Prototype1>(&AsyncCaller::callback0));
+    static_assert(compiles<AsyncCaller::Prototype1>(&AsyncCaller::staticCallback0));
+    static_assert(compiles<AsyncCaller::Prototype1>(lambda0));
+    static_assert(compiles<AsyncCaller::Prototype1>(freeFunction0));
+    static_assert(compiles<AsyncCaller::Prototype1>(functor0));
+
+    // matching parameter
+    static_assert(compiles<AsyncCaller::Prototype1>(&AsyncCaller::callback1));
+    static_assert(compiles<AsyncCaller::Prototype1>(&AsyncCaller::staticCallback1));
+    static_assert(compiles<AsyncCaller::Prototype1>(lambda1));
+    static_assert(compiles<AsyncCaller::Prototype1>(std::move(moveOnlyLambda1)));
+    static_assert(compiles<AsyncCaller::Prototype1>(constLambda));
+    static_assert(compiles<AsyncCaller::Prototype1>(freeFunction1));
+    static_assert(compiles<AsyncCaller::Prototype1>(functor1));
+
+    // not enough parameters
+    static_assert(!compiles<AsyncCaller::Prototype0>(&AsyncCaller::callback1));
+    static_assert(!compiles<AsyncCaller::Prototype0>(&AsyncCaller::staticCallback1));
+    static_assert(!compiles<AsyncCaller::Prototype0>(lambda1));
+    static_assert(!compiles<AsyncCaller::Prototype0>(constLambda));
+    static_assert(!compiles<AsyncCaller::Prototype0>(lambda2));
+    static_assert(!compiles<AsyncCaller::Prototype0>(freeFunction1));
+    static_assert(!compiles<AsyncCaller::Prototype0>(functor1));
+
+    // wrong parameter type
+    static_assert(!compiles<AsyncCaller::Prototype1>(&AsyncCaller::callbackInt));
+
+    // old-style slot name
+    static_assert(!compiles<AsyncCaller::Prototype0>("callback1"));
+
+    // slot with return value is ok, we just don't pass
+    // the return value through to anything.
+    static_assert(compiles<AsyncCaller::Prototype0>(&AsyncCaller::returnInt));
+
+    static_assert(compiles<AsyncCaller::Prototype1>(freeFunctionVariant));
+
+    std::function<int()> stdFunction0(&AsyncCaller::staticCallback0);
+    std::function<void(QString)> stdFunction1(&AsyncCaller::staticCallback1);
+    static_assert(compiles<AsyncCaller::Prototype0>(stdFunction0));
+    static_assert(compiles<AsyncCaller::Prototype1>(stdFunction1));
+
+    AsyncCaller caller;
+    // with context
+    QVERIFY(caller.callMe0(&caller, &AsyncCaller::callback0));
+    QVERIFY(caller.callMe0(&caller, &AsyncCaller::returnInt));
+    QVERIFY(caller.callMe0(&caller, &AsyncCaller::staticCallback0));
+    QVERIFY(caller.callMe0(&caller, lambda0));
+    QVERIFY(caller.callMe0(&caller, freeFunction0));
+    QVERIFY(caller.callMe0(&caller, std::move(moveOnlyLambda)));
+    QVERIFY(caller.callMe0(&caller, stdFunction0));
+
+    QVERIFY(caller.callMe1(&caller, &AsyncCaller::callback1));
+    QVERIFY(caller.callMe1(&caller, &AsyncCaller::staticCallback1));
+    QVERIFY(caller.callMe1(&caller, lambda1));
+    QVERIFY(caller.callMe1(&caller, freeFunction1));
+    QVERIFY(caller.callMe1(&caller, constLambda));
+    QVERIFY(caller.callMe1(&caller, stdFunction1));
+
+    // without context
+    QVERIFY(caller.callMe0(&AsyncCaller::staticCallback0));
+    QVERIFY(caller.callMe0(lambda0));
+    QVERIFY(caller.callMe0(freeFunction0));
+    QVERIFY(caller.callMe0(stdFunction0));
+
+    QVERIFY(caller.callMe1(&AsyncCaller::staticCallback1));
+    QVERIFY(caller.callMe1(lambda1));
+    QVERIFY(caller.callMe1(constLambda));
+    QVERIFY(caller.callMe1(std::move(moveOnlyLambda1)));
+    QVERIFY(caller.callMe1(freeFunction1));
+    QVERIFY(caller.callMe1(stdFunction1));
+
+    static const char *expectedPayload = "Hello World!";
+    {
+        struct MoveOnlyFunctor {
+            MoveOnlyFunctor() = default;
+            MoveOnlyFunctor(MoveOnlyFunctor &&) = default;
+            MoveOnlyFunctor(const MoveOnlyFunctor &) = delete;
+            ~MoveOnlyFunctor() = default;
+
+            int operator()() const {
+                qDebug().noquote() << payload;
+                return int(payload.length());
+            }
+            QString payload = expectedPayload;
+        } moveOnlyFunctor;
+        QVERIFY(caller.callMe0(std::move(moveOnlyFunctor)));
+    }
+    QTest::ignoreMessage(QtDebugMsg, expectedPayload);
+    caller.slotObject->call(nullptr, argv);
+    QCOMPARE(result, QLatin1String(expectedPayload).length());
+
+    // mutable lambda; same behavior as mutableFunctor - we copy the functor
+    // in the QCallableObject, so the original is not modified
+    int status = 0;
+    auto mutableLambda1 = [&status, calls = 0]() mutable { status = ++calls; };
+
+    mutableLambda1();
+    QCOMPARE(status, 1);
+    QVERIFY(caller.callMe0(mutableLambda1)); // this copies the lambda with count == 1
+    caller.slotObject->call(nullptr, argv);  // this doesn't change mutableLambda1, but the copy
+    QCOMPARE(status, 2);
+    mutableLambda1();
+    QCOMPARE(status, 2);                     // and we are still at two
+
+    auto mutableLambda2 = [calls = 0]() mutable { return ++calls; };
+    QCOMPARE(mutableLambda2(), 1);
+    QVERIFY(caller.callMe0(mutableLambda2)); // this copies the lambda
+    caller.slotObject->call(nullptr, argv);  // this call doesn't change mutableLambda2
+    QCOMPARE(mutableLambda2(), 2);           // so we are still at 2
+
+    {
+        int called = -1;
+        struct MutableFunctor {
+            void operator()() { called = 0; }
+            int &called;
+        };
+        struct ConstFunctor
+        {
+            void operator()() const { called = 1; }
+            int &called;
+        };
+
+        MutableFunctor mf{called};
+        QMetaObject::invokeMethod(this, mf);
+        QCOMPARE(called, 0);
+        ConstFunctor cf{called};
+        QMetaObject::invokeMethod(this, cf);
+        QCOMPARE(called, 1);
+        QMetaObject::invokeMethod(this, [&called, u = std::unique_ptr<int>()]{ called = 2; });
+        QCOMPARE(called, 2);
+        QMetaObject::invokeMethod(this, [&called, count = 0]() mutable {
+            if (!count)
+                called = 3;
+            ++count;
+        });
+        QCOMPARE(called, 3);
+    }
 }
 
 QTEST_MAIN(tst_QObject)

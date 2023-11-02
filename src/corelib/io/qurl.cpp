@@ -14,14 +14,16 @@
     \ingroup network
     \ingroup shared
 
-
     It can parse and construct URLs in both encoded and unencoded
     form. QUrl also has support for internationalized domain names
     (IDNs).
 
-    The most common way to use QUrl is to initialize it via the
-    constructor by passing a QString. Otherwise, setUrl() can also
-    be used.
+    The most common way to use QUrl is to initialize it via the constructor by
+    passing a QString containing a full URL. QUrl objects can also be created
+    from a QByteArray containing a full URL using QUrl::fromEncoded(), or
+    heuristically from incomplete URLs using QUrl::fromUserInput(). The URL
+    representation can be obtained from a QUrl using either QUrl::toString() or
+    QUrl::toEncoded().
 
     URLs can be represented in two forms: encoded or unencoded. The
     unencoded representation is suitable for showing to users, but
@@ -400,18 +402,17 @@
 #include "private/qipaddress_p.h"
 #include "qurlquery.h"
 #include "private/qdir_p.h"
+#include <private/qtools_p.h>
 
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
-
-// in qstring.cpp:
-void qt_from_latin1(char16_t *dst, const char *str, size_t size) noexcept;
+using namespace QtMiscUtils;
 
 inline static bool isHex(char c)
 {
     c |= 0x20;
-    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    return isAsciiDigit(c) || (c >= 'a' && c <= 'f');
 }
 
 static inline QString ftpScheme()
@@ -819,14 +820,16 @@ recodeFromUser(const QString &input, const ushort *actions, qsizetype from, qsiz
 static inline void appendToUser(QString &appendTo, QStringView value, QUrl::FormattingOptions options,
                                 const ushort *actions)
 {
-    // Test ComponentFormattingOptions, ignore FormattingOptions.
-    if ((options & 0xFFFF0000) == QUrl::PrettyDecoded) {
+    // The stored value is already QUrl::PrettyDecoded, so there's nothing to
+    // do if that's what the user asked for (test only
+    // ComponentFormattingOptions, ignore FormattingOptions).
+    if ((options & 0xFFFF0000) == QUrl::PrettyDecoded ||
+            !qt_urlRecode(appendTo, value, options, actions))
         appendTo += value;
-        return;
-    }
 
-    if (!qt_urlRecode(appendTo, value, options, actions))
-        appendTo += value;
+    // copy nullness, if necessary, because QString::operator+=(QStringView) doesn't
+    if (appendTo.isNull() && !value.isNull())
+        appendTo.detach();
 }
 
 inline void QUrlPrivate::appendAuthority(QString &appendTo, QUrl::FormattingOptions options, Section appendingTo) const
@@ -960,14 +963,14 @@ inline bool QUrlPrivate::setScheme(const QString &value, qsizetype len, bool doS
     qsizetype needsLowercasing = -1;
     const ushort *p = reinterpret_cast<const ushort *>(value.data());
     for (qsizetype i = 0; i < len; ++i) {
-        if (p[i] >= 'a' && p[i] <= 'z')
+        if (isAsciiLower(p[i]))
             continue;
-        if (p[i] >= 'A' && p[i] <= 'Z') {
+        if (isAsciiUpper(p[i])) {
             needsLowercasing = i;
             continue;
         }
         if (i) {
-            if (p[i] >= '0' && p[i] <= '9')
+            if (isAsciiDigit(p[i]))
                 continue;
             if (p[i] == '+' || p[i] == '-' || p[i] == '.')
                 continue;
@@ -988,7 +991,7 @@ inline bool QUrlPrivate::setScheme(const QString &value, qsizetype len, bool doS
         QChar *schemeData = scheme.data(); // force detaching here
         for (qsizetype i = needsLowercasing; i >= 0; --i) {
             ushort c = schemeData[i].unicode();
-            if (c >= 'A' && c <= 'Z')
+            if (isAsciiUpper(c))
                 schemeData[i] = QChar(c + 0x20);
         }
     }
@@ -1040,7 +1043,7 @@ inline void QUrlPrivate::setAuthority(const QString &auth, qsizetype from, qsize
             unsigned long x = 0;
             for (qsizetype i = colonIndex + 1; i < end; ++i) {
                 ushort c = auth.at(i).unicode();
-                if (c >= '0' && c <= '9') {
+                if (isAsciiDigit(c)) {
                     x *= 10;
                     x += c - '0';
                 } else {
@@ -1182,9 +1185,7 @@ static const QChar *parseIpFuture(QString &host, const QChar *begin, const QChar
     const QChar *const origBegin = begin;
     if (begin[3].unicode() != '.')
         return &begin[3];
-    if ((begin[2].unicode() >= 'A' && begin[2].unicode() <= 'F') ||
-            (begin[2].unicode() >= 'a' && begin[2].unicode() <= 'f') ||
-            (begin[2].unicode() >= '0' && begin[2].unicode() <= '9')) {
+    if (isHexDigit(begin[2].unicode())) {
         // this is so unlikely that we'll just go down the slow path
         // decode the whole string, skipping the "[vH." and "]" which we already know to be there
         host += QStringView(begin, 4);
@@ -1203,11 +1204,7 @@ static const QChar *parseIpFuture(QString &host, const QChar *begin, const QChar
         }
 
         for ( ; begin != end; ++begin) {
-            if (begin->unicode() >= 'A' && begin->unicode() <= 'Z')
-                host += *begin;
-            else if (begin->unicode() >= 'a' && begin->unicode() <= 'z')
-                host += *begin;
-            else if (begin->unicode() >= '0' && begin->unicode() <= '9')
+            if (isAsciiLetterOrNumber(begin->unicode()))
                 host += *begin;
             else if (begin->unicode() < 0x80 && strchr(acceptable, begin->unicode()) != nullptr)
                 host += *begin;
@@ -1792,7 +1789,20 @@ inline void QUrlPrivate::validate() const
 
 
 /*!
-    Constructs a URL by parsing \a url. QUrl will automatically percent encode
+    Constructs a URL by parsing \a url. Note this constructor expects a proper
+    URL or URL-Reference and will not attempt to guess intent. For example, the
+    following declaration:
+
+    \snippet code/src_corelib_io_qurl.cpp constructor-url-reference
+
+    Will construct a valid URL but it may not be what one expects, as the
+    scheme() part of the input is missing. For a string like the above,
+    applications may want to use fromUserInput(). For this constructor or
+    setUrl(), the following is probably what was intended:
+
+    \snippet code/src_corelib_io_qurl.cpp constructor-url
+
+    QUrl will automatically percent encode
     all characters that are not allowed in a URL and decode the percent-encoded
     sequences that represent an unreserved character (letters, digits, hyphens,
     underscores, dots and tildes). All other characters are left in their
@@ -1837,7 +1847,7 @@ QUrl::QUrl() : d(nullptr)
 /*!
     Constructs a copy of \a other.
 */
-QUrl::QUrl(const QUrl &other) : d(other.d)
+QUrl::QUrl(const QUrl &other) noexcept : d(other.d)
 {
     if (d)
         d->ref.ref();
@@ -2963,7 +2973,7 @@ QByteArray QUrl::toEncoded(FormattingOptions options) const
     Parses \a input and returns the corresponding QUrl. \a input is
     assumed to be in encoded form, containing only ASCII characters.
 
-    Parses the URL using \a parsingMode. See setUrl() for more information on
+    Parses the URL using \a mode. See setUrl() for more information on
     this parameter. QUrl::DecodedMode is not permitted in this context.
 
     \sa toEncoded(), setUrl()
@@ -3227,7 +3237,7 @@ bool QUrl::operator !=(const QUrl &url) const
 /*!
     Assigns the specified \a url to this object.
 */
-QUrl &QUrl::operator =(const QUrl &url)
+QUrl &QUrl::operator =(const QUrl &url) noexcept
 {
     if (!d) {
         if (url.d) {
@@ -3493,10 +3503,7 @@ static QString errorMessage(QUrlPrivate::ErrorCode errorCode, const QString &err
 
     switch (errorCode) {
     case QUrlPrivate::NoError:
-        Q_ASSERT_X(false, "QUrl::errorString",
-                   "Impossible: QUrl::errorString should have treated this condition");
-        Q_UNREACHABLE();
-        return QString();
+        Q_UNREACHABLE_RETURN(QString()); // QUrl::errorString should have treated this condition
 
     case QUrlPrivate::InvalidSchemeError: {
         auto msg = "Invalid scheme (character '%1' not permitted)"_L1;
@@ -3553,9 +3560,7 @@ static QString errorMessage(QUrlPrivate::ErrorCode errorCode, const QString &err
         return QStringLiteral("Relative URL's path component contains ':' before any '/'");
     }
 
-    Q_ASSERT_X(false, "QUrl::errorString", "Cannot happen, unknown error");
-    Q_UNREACHABLE();
-    return QString();
+    Q_UNREACHABLE_RETURN(QString());
 }
 
 static inline void appendComponentIfPresent(QString &msg, bool present, const char *componentName,

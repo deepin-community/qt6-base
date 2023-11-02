@@ -9,13 +9,6 @@
 #include <QtTest/private/qbenchmark_p.h>
 #include <QtTest/private/qtestlog_p.h>
 
-#ifdef min // windows.h without NOMINMAX is included by the benchmark headers.
-#  undef min
-#endif
-#ifdef max
-#  undef max
-#endif
-
 #include <QtCore/qlibraryinfo.h>
 
 #include <string.h>
@@ -28,7 +21,7 @@ QT_BEGIN_NAMESPACE
     QJUnitTestLogger implements logging in a JUnit-compatible XML format.
 
     The \l{JUnit XML} format was originally developed for Java testing.
-    It is supported by \l{Squish Test Center}.
+    It is supported by \l{Test Center}.
 */
 // QTBUG-95424 links to further useful documentation.
 
@@ -45,7 +38,7 @@ QJUnitTestLogger::~QJUnitTestLogger()
 
 // We track test timing per test case, so we
 // need to maintain our own elapsed timer.
-static QElapsedTimer elapsedTestcaseTime;
+Q_CONSTINIT static QElapsedTimer elapsedTestcaseTime;
 static qreal elapsedTestCaseSeconds()
 {
     return elapsedTestcaseTime.nsecsElapsed() / 1e9;

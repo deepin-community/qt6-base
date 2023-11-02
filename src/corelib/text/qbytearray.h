@@ -34,6 +34,14 @@ Q_FORWARD_DECLARE_CF_TYPE(CFData);
 Q_FORWARD_DECLARE_OBJC_CLASS(NSData);
 #endif
 
+#if defined(Q_OS_WASM) || defined(Q_QDOC)
+namespace emscripten {
+    class val;
+}
+#endif
+
+class tst_QByteArray;
+
 QT_BEGIN_NAMESPACE
 
 class QString;
@@ -54,6 +62,11 @@ private:
 
     DataPointer d;
     static const char _empty;
+
+    friend class ::tst_QByteArray;
+
+    template <typename InputIterator>
+    using if_input_iterator = QtPrivate::IfIsInputIterator<InputIterator>;
 public:
 
     enum Base64Option {
@@ -173,7 +186,7 @@ public:
     void truncate(qsizetype pos);
     void chop(qsizetype n);
 
-#if !defined(Q_CLANG_QDOC)
+#if !defined(Q_QDOC)
     [[nodiscard]] QByteArray toLower() const &
     { return toLower_helper(*this); }
     [[nodiscard]] QByteArray toLower() &&
@@ -221,6 +234,20 @@ public:
     QByteArray &append(QByteArrayView a)
     { return insert(size(), a); }
 
+    QByteArray &assign(QByteArrayView v);
+    QByteArray &assign(qsizetype n, char c)
+    {
+        Q_ASSERT(n >= 0);
+        return fill(c, n);
+    }
+    template <typename InputIterator, if_input_iterator<InputIterator> = true>
+    QByteArray &assign(InputIterator first, InputIterator last)
+    {
+        d.assign(first, last);
+        d.data()[d.size] = '\0';
+        return *this;
+    }
+
     QByteArray &insert(qsizetype i, QByteArrayView data);
     inline QByteArray &insert(qsizetype i, const char *s)
     { return insert(i, QByteArrayView(s)); }
@@ -233,10 +260,15 @@ public:
     { return insert(i, QByteArrayView(s, len)); }
 
     QByteArray &remove(qsizetype index, qsizetype len);
+    QByteArray &removeAt(qsizetype pos)
+    { return size_t(pos) < size_t(size()) ? remove(pos, 1) : *this; }
+    QByteArray &removeFirst() { return !isEmpty() ? remove(0, 1) : *this; }
+    QByteArray &removeLast() { return !isEmpty() ? remove(size() - 1, 1) : *this; }
+
     template <typename Predicate>
     QByteArray &removeIf(Predicate pred)
     {
-        QtPrivate::sequential_erase_if(*this, pred);
+        removeIf_helper(pred);
         return *this;
     }
 
@@ -274,15 +306,15 @@ public:
     friend inline bool operator==(const QByteArray &a1, const QByteArray &a2) noexcept
     { return QByteArrayView(a1) == QByteArrayView(a2); }
     friend inline bool operator==(const QByteArray &a1, const char *a2) noexcept
-    { return a2 ? QtPrivate::compareMemory(a1, a2) == 0 : a1.isEmpty(); }
+    { return QByteArrayView(a1) == QByteArrayView(a2); }
     friend inline bool operator==(const char *a1, const QByteArray &a2) noexcept
-    { return a1 ? QtPrivate::compareMemory(a1, a2) == 0 : a2.isEmpty(); }
+    { return QByteArrayView(a1) == QByteArrayView(a2); }
     friend inline bool operator!=(const QByteArray &a1, const QByteArray &a2) noexcept
     { return !(a1==a2); }
     friend inline bool operator!=(const QByteArray &a1, const char *a2) noexcept
-    { return a2 ? QtPrivate::compareMemory(a1, a2) != 0 : !a1.isEmpty(); }
+    { return QByteArrayView(a1) != QByteArrayView(a2); }
     friend inline bool operator!=(const char *a1, const QByteArray &a2) noexcept
-    { return a1 ? QtPrivate::compareMemory(a1, a2) != 0 : !a2.isEmpty(); }
+    { return QByteArrayView(a1) != QByteArrayView(a2); }
     friend inline bool operator<(const QByteArray &a1, const QByteArray &a2) noexcept
     { return QtPrivate::compareMemory(QByteArrayView(a1), QByteArrayView(a2)) < 0; }
     friend inline bool operator<(const QByteArray &a1, const char *a2) noexcept
@@ -382,6 +414,11 @@ public:
     NSData *toRawNSData() const Q_DECL_NS_RETURNS_AUTORELEASED;
 #endif
 
+#if defined(Q_OS_WASM) || defined(Q_QDOC)
+    static QByteArray fromEcmaUint8Array(emscripten::val uint8array);
+    emscripten::val toEcmaUint8Array();
+#endif
+
     typedef char *iterator;
     typedef const char *const_iterator;
     typedef iterator Iterator;
@@ -429,6 +466,7 @@ public:
     { prepend(a); }
     void shrink_to_fit() { squeeze(); }
     iterator erase(const_iterator first, const_iterator last);
+    inline iterator erase(const_iterator it) { return erase(it, it + 1); }
 
     static QByteArray fromStdString(const std::string &s);
     std::string toStdString() const;
@@ -461,9 +499,20 @@ private:
     static QByteArray trimmed_helper(QByteArray &a);
     static QByteArray simplified_helper(const QByteArray &a);
     static QByteArray simplified_helper(QByteArray &a);
+    template <typename Predicate>
+    qsizetype removeIf_helper(Predicate pred)
+    {
+        const qsizetype result = d->eraseIf(pred);
+        if (result > 0)
+            d.data()[d.size] = '\0';
+        return result;
+    }
 
     friend class QString;
     friend Q_CORE_EXPORT QByteArray qUncompress(const uchar *data, qsizetype nbytes);
+
+    template <typename T> friend qsizetype erase(QByteArray &ba, const T &t);
+    template <typename Predicate> friend qsizetype erase_if(QByteArray &ba, Predicate pred);
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QByteArray::Base64Options)
@@ -541,15 +590,21 @@ inline int QByteArray::compare(QByteArrayView a, Qt::CaseSensitivity cs) const n
                                      qstrnicmp(data(), size(), a.data(), a.size());
 }
 #if !defined(QT_USE_QSTRINGBUILDER)
-inline const QByteArray operator+(const QByteArray &a1, const QByteArray &a2)
+inline QByteArray operator+(const QByteArray &a1, const QByteArray &a2)
 { return QByteArray(a1) += a2; }
-inline const QByteArray operator+(const QByteArray &a1, const char *a2)
+inline QByteArray operator+(QByteArray &&lhs, const QByteArray &rhs)
+{ return std::move(lhs += rhs); }
+inline QByteArray operator+(const QByteArray &a1, const char *a2)
 { return QByteArray(a1) += a2; }
-inline const QByteArray operator+(const QByteArray &a1, char a2)
+inline QByteArray operator+(QByteArray &&lhs, const char *rhs)
+{ return std::move(lhs += rhs); }
+inline QByteArray operator+(const QByteArray &a1, char a2)
 { return QByteArray(a1) += a2; }
-inline const QByteArray operator+(const char *a1, const QByteArray &a2)
+inline QByteArray operator+(QByteArray &&lhs, char rhs)
+{ return std::move(lhs += rhs); }
+inline QByteArray operator+(const char *a1, const QByteArray &a2)
 { return QByteArray(a1) += a2; }
-inline const QByteArray operator+(char a1, const QByteArray &a2)
+inline QByteArray operator+(char a1, const QByteArray &a2)
 { return QByteArray(&a1, 1) += a2; }
 #endif // QT_USE_QSTRINGBUILDER
 
@@ -639,13 +694,13 @@ Q_CORE_EXPORT Q_DECL_PURE_FUNCTION size_t qHash(const QByteArray::FromBase64Resu
 template <typename T>
 qsizetype erase(QByteArray &ba, const T &t)
 {
-    return QtPrivate::sequential_erase(ba, t);
+    return ba.removeIf_helper([&t](const auto &e) { return t == e; });
 }
 
 template <typename Predicate>
 qsizetype erase_if(QByteArray &ba, Predicate pred)
 {
-    return QtPrivate::sequential_erase_if(ba, pred);
+    return ba.removeIf_helper(pred);
 }
 
 //
@@ -660,7 +715,7 @@ namespace Qt {
 inline namespace Literals {
 inline namespace StringLiterals {
 
-inline QByteArray operator"" _ba(const char *str, size_t size) noexcept
+inline QByteArray operator""_ba(const char *str, size_t size) noexcept
 {
     return QByteArray(QByteArrayData(nullptr, const_cast<char *>(str), qsizetype(size)));
 }
@@ -673,7 +728,7 @@ inline namespace QtLiterals {
 #if QT_DEPRECATED_SINCE(6, 8)
 
 QT_DEPRECATED_VERSION_X_6_8("Use _ba from Qt::StringLiterals namespace instead.")
-inline QByteArray operator"" _qba(const char *str, size_t size) noexcept
+inline QByteArray operator""_qba(const char *str, size_t size) noexcept
 {
     return Qt::StringLiterals::operator""_ba(str, size);
 }

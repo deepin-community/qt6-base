@@ -51,8 +51,8 @@ public:
 
     ~QJsonValue();
 
-    QJsonValue(const QJsonValue &other);
-    QJsonValue &operator =(const QJsonValue &other);
+    QJsonValue(const QJsonValue &other) noexcept;
+    QJsonValue &operator =(const QJsonValue &other) noexcept;
 
     QJsonValue(QJsonValue &&other) noexcept;
 
@@ -134,7 +134,7 @@ public:
     bool toBool(bool defaultValue = false) const
     { return concreteBool(*this, defaultValue); }
     int toInt(int defaultValue = 0) const
-    { return concreteInt(*this, defaultValue, true); }
+    { return int(concreteInt(*this, defaultValue, true)); }
     qint64 toInteger(qint64 defaultValue = 0) const
     { return concreteInt(*this, defaultValue, false); }
     double toDouble(double defaultValue = 0) const
@@ -215,6 +215,8 @@ protected:
     friend class QJsonPrivate::Value;
 };
 
+QT_WARNING_PUSH
+QT6_ONLY(QT_WARNING_DISABLE_MSVC(4275)) // non dll-interface class 'QJsonValueConstRef' used as base for dll-interface class 'QJsonValueRef'
 class QT6_ONLY(Q_CORE_EXPORT) QJsonValueRef : public QJsonValueConstRef
 {
 public:
@@ -273,6 +275,7 @@ private:
     friend class QJsonArray;
     friend class QJsonObject;
 };
+QT_WARNING_POP
 
 inline QJsonValue QCborValueConstRef::toJsonValue() const
 {

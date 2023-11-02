@@ -37,7 +37,7 @@ public:
     QIcon fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions options = {}) const override;
 
     QVariant themeHint(ThemeHint hint) const override;
-    Appearance appearance() const override;
+    Qt::ColorScheme colorScheme() const override;
     QString standardButtonText(int button) const override;
     QKeySequence standardButtonShortcut(int button) const override;
 
@@ -54,6 +54,9 @@ private:
     QMacNotificationObserver m_systemColorObserver;
     mutable QHash<QPlatformTheme::Palette, QPalette*> m_palettes;
     QMacKeyValueObserver m_appearanceObserver;
+
+    Qt::ColorScheme m_colorScheme = Qt::ColorScheme::Unknown;
+    void updateColorScheme();
 };
 
 QT_END_NAMESPACE

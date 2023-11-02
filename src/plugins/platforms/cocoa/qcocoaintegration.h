@@ -20,7 +20,9 @@
 #include <QtCore/QScopedPointer>
 #include <qpa/qplatformintegration.h>
 #include <QtGui/private/qcoretextfontdatabase_p.h>
-#include <QtGui/private/qopenglcontext_p.h>
+#ifndef QT_NO_OPENGL
+#  include <QtGui/private/qopenglcontext_p.h>
+#endif
 #include <QtGui/private/qapplekeymapper_p.h>
 
 Q_FORWARD_DECLARE_OBJC_CLASS(NSToolbar);
@@ -85,11 +87,8 @@ public:
     Qt::KeyboardModifiers queryKeyboardModifiers() const override;
     QList<int> possibleKeys(const QKeyEvent *event) const override;
 
-    void setToolbar(QWindow *window, NSToolbar *toolbar);
-    NSToolbar *toolbar(QWindow *window) const;
-    void clearToolbars();
-
     void setApplicationIcon(const QIcon &icon) const override;
+    void setApplicationBadge(qint64 number) override;
 
     void beep() const override;
     void quit() const override;
@@ -119,7 +118,6 @@ private:
 #if QT_CONFIG(vulkan)
     mutable QCocoaVulkanInstance *mCocoaVulkanInstance = nullptr;
 #endif
-    QHash<QWindow *, NSToolbar *> mToolbars;
 
     QCocoaWindowManager m_windowManager;
 };

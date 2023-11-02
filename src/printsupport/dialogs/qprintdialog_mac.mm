@@ -118,7 +118,7 @@ QT_USE_NAMESPACE
             // happen synchronously after the dialog is accepted, so we can defer
             // the opening of the file to the next runloop pass.
             dispatch_async(dispatch_get_main_queue(), ^{
-                [NSWorkspace.sharedWorkspace openFile:fileName.toNSString()];
+                [NSWorkspace.sharedWorkspace openURL:[NSURL fileURLWithPath:fileName.toNSString()]];
             });
         } else if (dest == kPMDestinationProcessPDF) {
             qWarning("Printing workflows are not supported");
@@ -238,8 +238,8 @@ void QPrintDialogPrivate::openCocoaPrintPanel(Qt::WindowModality modality)
         int rval = [printPanel runModalWithPrintInfo:printInfo];
         [delegate printPanelDidEnd:printPanel returnCode:rval contextInfo:q];
     } else {
-        Q_ASSERT(q->parentWidget());
-        QWindow *parentWindow = q->parentWidget()->windowHandle();
+        Q_ASSERT(q->window());
+        QWindow *parentWindow = q->window()->windowHandle();
         NSWindow *window = static_cast<NSWindow *>(qApp->platformNativeInterface()->nativeResourceForWindow("nswindow", parentWindow));
         [printPanel beginSheetWithPrintInfo:printInfo
                              modalForWindow:window
@@ -271,6 +271,7 @@ QPrintDialog::QPrintDialog(QWidget *parent)
 
 QPrintDialog::~QPrintDialog()
 {
+    hide();
 }
 
 int QPrintDialog::exec()

@@ -9,6 +9,7 @@
 #include <qpa/qplatformintegrationfactory_p.h>
 #include "private/qevent_p.h"
 #include "private/qeventpoint_p.h"
+#include "private/qiconloader_p.h"
 #include "qfont.h"
 #include "qpointingdevice.h"
 #include <qpa/qplatformfontdatabase.h>
@@ -18,6 +19,7 @@
 #include <qpa/qplatformintegration.h>
 
 #include <QtCore/QAbstractEventDispatcher>
+#include <QtCore/QFileInfo>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QVariant>
 #include <QtCore/private/qcoreapplication_p.h>
@@ -41,6 +43,7 @@
 
 #include <QtGui/qgenericpluginfactory.h>
 #include <QtGui/qstylehints.h>
+#include <QtGui/private/qstylehints_p.h>
 #include <QtGui/qinputmethod.h>
 #include <QtGui/qpixmapcache.h>
 #include <qpa/qplatforminputcontext.h>
@@ -49,8 +52,11 @@
 #include <qpa/qwindowsysteminterface.h>
 #include <qpa/qwindowsysteminterface_p.h>
 #include "private/qwindow_p.h"
+#include "private/qicon_p.h"
 #include "private/qcursor_p.h"
-#include "private/qopenglcontext_p.h"
+#if QT_CONFIG(opengl)
+#  include "private/qopenglcontext_p.h"
+#endif
 #include "private/qinputdevicemanager_p.h"
 #include "private/qinputmethod_p.h"
 #include "private/qpointingdevice_p.h"
@@ -93,12 +99,14 @@
 
 #include <qtgui_tracepoints_p.h>
 
-#include <ctype.h>
+#include <private/qtools_p.h>
+
 #include <limits>
 
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace QtMiscUtils;
 
 // Helper macro for static functions to check on the existence of the application class.
 #define CHECK_QAPP_INSTANCE(...) \
@@ -226,7 +234,7 @@ static void initThemeHints()
 static bool checkNeedPortalSupport()
 {
 #if QT_CONFIG(dbus)
-    return !QStandardPaths::locate(QStandardPaths::RuntimeLocation, "flatpak-info"_L1).isEmpty() || qEnvironmentVariableIsSet("SNAP");
+    return QFileInfo::exists("/.flatpak-info"_L1) || qEnvironmentVariableIsSet("SNAP");
 #else
     return false;
 #endif // QT_CONFIG(dbus)
@@ -253,20 +261,20 @@ struct QWindowGeometrySpecification
 static inline int nextGeometryToken(const QByteArray &a, int &pos, char *op)
 {
     *op = 0;
-    const int size = a.size();
+    const qsizetype size = a.size();
     if (pos >= size)
         return -1;
 
     *op = a.at(pos);
     if (*op == '+' || *op == '-' || *op == 'x')
         pos++;
-    else if (isdigit(*op))
+    else if (isAsciiDigit(*op))
         *op = 'x'; // If it starts with a digit, it is supposed to be a width specification.
     else
         return -1;
 
     const int numberPos = pos;
-    for ( ; pos < size && isdigit(a.at(pos)); ++pos) ;
+    for ( ; pos < size && isAsciiDigit(a.at(pos)); ++pos) ;
 
     bool ok;
     const int result = a.mid(numberPos, pos - numberPos).toInt(&ok);
@@ -554,9 +562,11 @@ static QWindowGeometrySpecification windowGeometrySpecification = Q_WINDOW_GEOME
     \list
         \li \c {altgr}, detect the key \c {AltGr} found on some keyboards as
                Qt::GroupSwitchModifier (since Qt 5.12).
-        \li \c {darkmode=[1|2]} controls how Qt responds to the activation
+        \li \c {darkmode=[0|1|2]} controls how Qt responds to the activation
                of the \e{Dark Mode for applications} introduced in Windows 10
                1903 (since Qt 5.15).
+
+               A value of 0 disables dark mode support.
 
                A value of 1 causes Qt to switch the window borders to black
                when \e{Dark Mode for applications} is activated and no High
@@ -568,6 +578,9 @@ static QWindowGeometrySpecification windowGeometrySpecification = Q_WINDOW_GEOME
                simplified palette in dark mode. This is currently
                experimental pending the introduction of new style that
                properly adapts to dark mode.
+
+               As of Qt 6.5, the default value is 2; to disable dark mode
+               support, set the value to 0 or 1.
 
         \li \c {dialogs=[xp|none]}, \c xp uses XP-style native dialogs and
             \c none disables them.
@@ -682,6 +695,7 @@ QGuiApplication::~QGuiApplication()
     QGuiApplicationPrivate::lastCursorPosition.reset();
     QGuiApplicationPrivate::currentMousePressWindow = QGuiApplicationPrivate::currentMouseWindow = nullptr;
     QGuiApplicationPrivate::applicationState = Qt::ApplicationInactive;
+    QGuiApplicationPrivate::highDpiScaleFactorRoundingPolicy = Qt::HighDpiScaleFactorRoundingPolicy::PassThrough;
     QGuiApplicationPrivate::currentDragWindow = nullptr;
     QGuiApplicationPrivate::tabletDevicePoints.clear();
 }
@@ -736,13 +750,37 @@ QString QGuiApplication::applicationDisplayName()
 }
 
 /*!
+    Sets the application's badge to \a number.
+
+    Useful for providing feedback to the user about the number
+    of unread messages or similar.
+
+    The badge will be overlaid on the application's icon in the Dock
+    on \macos, the home screen icon on iOS, or the task bar on Windows
+    and Linux.
+
+    If the number is outside the range supported by the platform, the
+    number will be clamped to the supported range. If the number does
+    not fit within the badge, the number may be visually elided.
+
+    Setting the number to 0 will clear the badge.
+
+    \since 6.5
+    \sa applicationName
+*/
+void QGuiApplication::setBadgeNumber(qint64 number)
+{
+    QGuiApplicationPrivate::platformIntegration()->setApplicationBadge(number);
+}
+
+/*!
     \property QGuiApplication::desktopFileName
     \brief the base name of the desktop entry for this application
     \since 5.7
 
-    This is the file name, without the full path, of the desktop entry
-    that represents this application according to the freedesktop desktop
-    entry specification.
+    This is the file name, without the full path or the trailing ".desktop"
+    extension of the desktop entry that represents this application
+    according to the freedesktop desktop entry specification.
 
     This property gives a precise indication of what desktop entry represents
     the application and it is needed by the windowing system to retrieve
@@ -756,6 +794,15 @@ void QGuiApplication::setDesktopFileName(const QString &name)
     if (!QGuiApplicationPrivate::desktopFileName)
         QGuiApplicationPrivate::desktopFileName = new QString;
     *QGuiApplicationPrivate::desktopFileName = name;
+    if (name.endsWith(QLatin1String(".desktop"))) { // ### Qt 7: remove
+        const QString filePath = QStandardPaths::locate(QStandardPaths::ApplicationsLocation, name);
+        if (!filePath.isEmpty()) {
+            qWarning("QGuiApplication::setDesktopFileName: the specified desktop file name "
+                     "ends with .desktop. For compatibility reasons, the .desktop suffix will "
+                     "be removed. Please specify a desktop file name without .desktop suffix");
+            (*QGuiApplicationPrivate::desktopFileName).chop(8);
+        }
+    }
 }
 
 QString QGuiApplication::desktopFileName()
@@ -851,6 +898,17 @@ void QGuiApplicationPrivate::hideModalWindow(QWindow *window)
     }
 }
 
+Qt::WindowModality QGuiApplicationPrivate::defaultModality() const
+{
+    return Qt::NonModal;
+}
+
+bool QGuiApplicationPrivate::windowNeverBlocked(QWindow *window) const
+{
+    Q_UNUSED(window);
+    return false;
+}
+
 /*
     Returns \c true if \a window is blocked by a modal window. If \a
     blockingWindow is non-zero, *blockingWindow will be set to the blocking
@@ -858,55 +916,40 @@ void QGuiApplicationPrivate::hideModalWindow(QWindow *window)
 */
 bool QGuiApplicationPrivate::isWindowBlocked(QWindow *window, QWindow **blockingWindow) const
 {
+    Q_ASSERT_X(window, Q_FUNC_INFO, "The window must not be null");
+
     QWindow *unused = nullptr;
     if (!blockingWindow)
         blockingWindow = &unused;
+    *blockingWindow = nullptr;
 
-    if (modalWindowList.isEmpty()) {
-        *blockingWindow = nullptr;
+    if (modalWindowList.isEmpty() || windowNeverBlocked(window))
         return false;
-    }
 
     for (int i = 0; i < modalWindowList.size(); ++i) {
         QWindow *modalWindow = modalWindowList.at(i);
 
         // A window is not blocked by another modal window if the two are
         // the same, or if the window is a child of the modal window.
-        if (window == modalWindow || modalWindow->isAncestorOf(window, QWindow::IncludeTransients)) {
-            *blockingWindow = nullptr;
+        if (window == modalWindow || modalWindow->isAncestorOf(window, QWindow::IncludeTransients))
             return false;
-        }
 
-        Qt::WindowModality windowModality = modalWindow->modality();
-        switch (windowModality) {
+        switch (modalWindow->modality() == Qt::NonModal ? defaultModality()
+                                                        : modalWindow->modality()) {
         case Qt::ApplicationModal:
-        {
-            if (modalWindow != window) {
-                *blockingWindow = modalWindow;
-                return true;
-            }
-            break;
-        }
-        case Qt::WindowModal:
-        {
-            QWindow *w = window;
+            *blockingWindow = modalWindow;
+            return true;
+        case Qt::WindowModal: {
+            // Find the nearest ancestor of window which is also an ancestor of modal window to
+            // determine if the modal window blocks the window.
+            auto *current = window;
             do {
-                QWindow *m = modalWindow;
-                do {
-                    if (m == w) {
-                        *blockingWindow = m;
-                        return true;
-                    }
-                    QWindow *p = m->parent();
-                    if (!p)
-                        p = m->transientParent();
-                    m = p;
-                } while (m);
-                QWindow *p = w->parent();
-                if (!p)
-                    p = w->transientParent();
-                w = p;
-            } while (w);
+                if (current->isAncestorOf(modalWindow, QWindow::IncludeTransients)) {
+                    *blockingWindow = modalWindow;
+                    return true;
+                }
+                current = current->parent(QWindow::IncludeTransients);
+            } while (current);
             break;
         }
         default:
@@ -914,13 +957,14 @@ bool QGuiApplicationPrivate::isWindowBlocked(QWindow *window, QWindow **blocking
             break;
         }
     }
-    *blockingWindow = nullptr;
     return false;
 }
 
 /*!
     Returns the QWindow that receives events tied to focus,
     such as key events.
+
+    \sa QWindow::requestActivate()
 */
 QWindow *QGuiApplication::focusWindow()
 {
@@ -1145,10 +1189,14 @@ QWindow *QGuiApplication::topLevelAt(const QPoint &pos)
         \li \c offscreen
         \li \c qnx
         \li \c windows
-        \li \c wayland is a platform plugin for modern Linux desktops and some
-            embedded systems.
-        \li \c xcb is the X11 plugin used on regular desktop Linux platforms.
+        \li \c wayland is a platform plugin for the Wayland display server protocol,
+            used on some Linux desktops and embedded systems.
+        \li \c xcb is a plugin for the X11 window system, used on some desktop Linux platforms.
     \endlist
+
+    \note Calling this function without a QGuiApplication will return the default
+    platform name, if available. The default platform name is not affected by the
+    \c{-platform} command line option, or the \c QT_QPA_PLATFORM environment variable.
 
     For more information about the platform plugins for embedded Linux devices,
     see \l{Qt for Embedded Linux}.
@@ -1156,8 +1204,16 @@ QWindow *QGuiApplication::topLevelAt(const QPoint &pos)
 
 QString QGuiApplication::platformName()
 {
-    return QGuiApplicationPrivate::platform_name ?
-           *QGuiApplicationPrivate::platform_name : QString();
+    if (!QGuiApplication::instance()) {
+#ifdef QT_QPA_DEFAULT_PLATFORM_NAME
+        return QStringLiteral(QT_QPA_DEFAULT_PLATFORM_NAME);
+#else
+        return QString();
+#endif
+    } else {
+        return QGuiApplicationPrivate::platform_name ?
+            *QGuiApplicationPrivate::platform_name : QString();
+    }
 }
 
 Q_LOGGING_CATEGORY(lcQpaPluginLoading, "qt.qpa.plugin");
@@ -1213,7 +1269,7 @@ static void init_platform(const QString &pluginNamesWithArguments, const QString
                                               "Reinstalling the application may fix this problem.\n");
 
         if (!availablePlugins.isEmpty())
-            fatalMessage += QStringLiteral("\nAvailable platform plugins are: %1.\n").arg(availablePlugins.join(", "_L1));
+            fatalMessage += "\nAvailable platform plugins are: %1.\n"_L1.arg(availablePlugins.join(", "_L1));
 
 #if defined(Q_OS_WIN)
         // Windows: Display message box unless it is a console application
@@ -1280,7 +1336,7 @@ static void init_platform(const QString &pluginNamesWithArguments, const QString
     if (!platformArguments.isEmpty()) {
         if (QObject *nativeInterface = QGuiApplicationPrivate::platform_integration->nativeInterface()) {
             for (const QString &argument : std::as_const(platformArguments)) {
-                const int equalsPos = argument.indexOf(u'=');
+                const qsizetype equalsPos = argument.indexOf(u'=');
                 const QByteArray name =
                     equalsPos != -1 ? argument.left(equalsPos).toUtf8() : argument.toUtf8();
                 const QVariant value =
@@ -1293,14 +1349,14 @@ static void init_platform(const QString &pluginNamesWithArguments, const QString
     const auto platformIntegration = QGuiApplicationPrivate::platformIntegration();
     fontSmoothingGamma = platformIntegration->styleHint(QPlatformIntegration::FontSmoothingGamma).toReal();
     QCoreApplication::setAttribute(Qt::AA_DontShowShortcutsInContextMenus,
-        !platformIntegration->styleHint(QPlatformIntegration::ShowShortcutsInContextMenus).toBool());
+        !QGuiApplication::styleHints()->showShortcutsInContextMenus());
 }
 
 static void init_plugins(const QList<QByteArray> &pluginList)
 {
     for (int i = 0; i < pluginList.size(); ++i) {
         QByteArray pluginSpec = pluginList.at(i);
-        int colonPos = pluginSpec.indexOf(':');
+        qsizetype colonPos = pluginSpec.indexOf(':');
         QObject *plugin;
         if (colonPos < 0)
             plugin = QGenericPluginFactory::create(QLatin1StringView(pluginSpec), QString());
@@ -1470,6 +1526,8 @@ void QGuiApplicationPrivate::createPlatformIntegration()
     Q_UNUSED(platformExplicitlySelected);
 
     init_platform(QLatin1StringView(platformName), platformPluginPath, platformThemeName, argc, argv);
+    if (const QPlatformTheme *theme = platformTheme())
+        QStyleHintsPrivate::get(QGuiApplication::styleHints())->setColorScheme(theme->colorScheme());
 
     if (!icon.isEmpty())
         forcedWindowIcon = QDir::isAbsolutePath(icon) ? QIcon(icon) : QIcon::fromTheme(icon);
@@ -1488,7 +1546,11 @@ void QGuiApplicationPrivate::createEventDispatcher()
     if (platform_integration == nullptr)
         createPlatformIntegration();
 
-    // The platform integration should not mess with the event dispatcher
+    // The platform integration should not result in creating an event dispatcher
+    Q_ASSERT_X(!threadData.loadRelaxed()->eventDispatcher, "QGuiApplication",
+        "Creating the platform integration resulted in creating an event dispatcher");
+
+    // Nor should it mess with the QCoreApplication's event dispatcher
     Q_ASSERT(!eventDispatcher);
 
     eventDispatcher = platform_integration->createEventDispatcher();
@@ -1502,7 +1564,7 @@ void QGuiApplicationPrivate::eventDispatcherReady()
     platform_integration->initialize();
 }
 
-void QGuiApplicationPrivate::init()
+void Q_TRACE_INSTRUMENT(qtgui) QGuiApplicationPrivate::init()
 {
     Q_TRACE_SCOPE(QGuiApplicationPrivate_init);
 
@@ -1565,7 +1627,7 @@ void QGuiApplicationPrivate::init()
             ++i;
             if (argv[i] && *argv[i]) {
                 session_id = QString::fromLatin1(argv[i]);
-                int p = session_id.indexOf(u'_');
+                qsizetype p = session_id.indexOf(u'_');
                 if (p >= 0) {
                     session_key = session_id.mid(p +1);
                     session_id = session_id.left(p);
@@ -1989,8 +2051,9 @@ bool QGuiApplicationPrivate::processNativeEvent(QWindow *window, const QByteArra
     return window->nativeEvent(eventType, message, result);
 }
 
-void QGuiApplicationPrivate::processWindowSystemEvent(QWindowSystemInterfacePrivate::WindowSystemEvent *e)
+void Q_TRACE_INSTRUMENT(qtgui) QGuiApplicationPrivate::processWindowSystemEvent(QWindowSystemInterfacePrivate::WindowSystemEvent *e)
 {
+    Q_TRACE_PARAM_REPLACE(QWindowSystemInterfacePrivate::WindowSystemEvent *, int);
     Q_TRACE_SCOPE(QGuiApplicationPrivate_processWindowSystemEvent, e->type);
 
     switch(e->type) {
@@ -2023,6 +2086,9 @@ void QGuiApplicationPrivate::processWindowSystemEvent(QWindowSystemInterfacePriv
         break;
     case QWindowSystemInterfacePrivate::WindowScreenChanged:
         QGuiApplicationPrivate::processWindowScreenChangedEvent(static_cast<QWindowSystemInterfacePrivate::WindowScreenChangedEvent *>(e));
+        break;
+    case QWindowSystemInterfacePrivate::WindowDevicePixelRatioChanged:
+        QGuiApplicationPrivate::processWindowDevicePixelRatioChangedEvent(static_cast<QWindowSystemInterfacePrivate::WindowDevicePixelRatioChangedEvent *>(e));
         break;
     case QWindowSystemInterfacePrivate::SafeAreaMarginsChanged:
         QGuiApplicationPrivate::processSafeAreaMarginsChangedEvent(static_cast<QWindowSystemInterfacePrivate::SafeAreaMarginsChangedEvent *>(e));
@@ -2326,6 +2392,7 @@ void QGuiApplicationPrivate::processWheelEvent(QWindowSystemInterfacePrivate::Wh
                    mouse_buttons, e->modifiers, e->phase, e->inverted, e->source, device);
     ev.setTimestamp(e->timestamp);
     QGuiApplication::sendSpontaneousEvent(window, &ev);
+    e->eventAccepted = ev.isAccepted();
 #else
      Q_UNUSED(e);
 #endif // QT_CONFIG(wheelevent)
@@ -2506,35 +2573,44 @@ void QGuiApplicationPrivate::processActivatedEvent(QWindowSystemInterfacePrivate
 
 void QGuiApplicationPrivate::processWindowStateChangedEvent(QWindowSystemInterfacePrivate::WindowStateChangedEvent *wse)
 {
-    if (QWindow *window  = wse->window.data()) {
+    if (QWindow *window = wse->window.data()) {
+        QWindowPrivate *windowPrivate = qt_window_private(window);
+        const auto originalEffectiveState = QWindowPrivate::effectiveState(windowPrivate->windowState);
+
+        windowPrivate->windowState = wse->newState;
+        const auto newEffectiveState = QWindowPrivate::effectiveState(windowPrivate->windowState);
+        if (newEffectiveState != originalEffectiveState)
+            emit window->windowStateChanged(newEffectiveState);
+
+        windowPrivate->updateVisibility();
+
         QWindowStateChangeEvent e(wse->oldState);
-        window->d_func()->windowState = wse->newState;
         QGuiApplication::sendSpontaneousEvent(window, &e);
     }
 }
 
 void QGuiApplicationPrivate::processWindowScreenChangedEvent(QWindowSystemInterfacePrivate::WindowScreenChangedEvent *wse)
 {
-    if (QWindow *window  = wse->window.data()) {
-        if (window->screen() == wse->screen.data())
-            return;
-        if (QWindow *topLevelWindow = window->d_func()->topLevelWindow(QWindow::ExcludeTransients)) {
-            if (QScreen *screen = wse->screen.data())
-                topLevelWindow->d_func()->setTopLevelScreen(screen, false /* recreate */);
-            else // Fall back to default behavior, and try to find some appropriate screen
-                topLevelWindow->setScreen(nullptr);
-        }
+    QWindow *window = wse->window.data();
+    if (!window)
+        return;
 
-        // We may have changed scaling; trigger resize event if needed,
-        // except on Windows, where we send resize events during WM_DPICHANGED
-        // event handling. FIXME: unify DPI change handling across all platforms.
-#ifndef Q_OS_WIN
-        if (window->handle()) {
-            QWindowSystemInterfacePrivate::GeometryChangeEvent gce(window, QHighDpi::fromNativePixels(window->handle()->geometry(), window));
-            processGeometryChangeEvent(&gce);
-        }
-#endif
+    if (window->screen() == wse->screen.data())
+        return;
+
+    if (QWindow *topLevelWindow = window->d_func()->topLevelWindow(QWindow::ExcludeTransients)) {
+        if (QScreen *screen = wse->screen.data())
+            topLevelWindow->d_func()->setTopLevelScreen(screen, false /* recreate */);
+        else // Fall back to default behavior, and try to find some appropriate screen
+            topLevelWindow->setScreen(nullptr);
     }
+}
+
+void QGuiApplicationPrivate::processWindowDevicePixelRatioChangedEvent(QWindowSystemInterfacePrivate::WindowDevicePixelRatioChangedEvent *wde)
+{
+    if (wde->window.isNull())
+        return;
+    QWindowPrivate::get(wde->window)->updateDevicePixelRatio();
 }
 
 void QGuiApplicationPrivate::processSafeAreaMarginsChangedEvent(QWindowSystemInterfacePrivate::SafeAreaMarginsChangedEvent *wse)
@@ -2553,16 +2629,33 @@ void QGuiApplicationPrivate::processThemeChanged(QWindowSystemInterfacePrivate::
     if (self)
         self->handleThemeChanged();
 
+    QIconPrivate::clearIconCache();
+
+    QStyleHintsPrivate::get(QGuiApplication::styleHints())->setColorScheme(colorScheme());
+
     QEvent themeChangeEvent(QEvent::ThemeChange);
     const QWindowList windows = tce->window ? QWindowList{tce->window} : window_list;
     for (auto *window : windows)
         QGuiApplication::sendSpontaneousEvent(window, &themeChangeEvent);
 }
 
+/*!
+   \internal
+   \brief QGuiApplicationPrivate::colorScheme
+   \return the platform theme's color scheme
+   or Qt::ColorScheme::Unknown if a platform theme cannot be established
+ */
+Qt::ColorScheme QGuiApplicationPrivate::colorScheme()
+{
+    return platformTheme() ? platformTheme()->colorScheme()
+                           : Qt::ColorScheme::Unknown;
+}
+
 void QGuiApplicationPrivate::handleThemeChanged()
 {
     updatePalette();
 
+    QIconLoader::instance()->updateSystemTheme();
     QAbstractFileIconProviderPrivate::clearIconTypeCache();
 
     if (!(applicationResourceFlags & ApplicationFontExplicitlySet)) {
@@ -2632,6 +2725,7 @@ void QGuiApplicationPrivate::processCloseEvent(QWindowSystemInterfacePrivate::Cl
     if (e->window.data()->d_func()->blockedByModalWindow && !e->window.data()->d_func()->inClose) {
         // a modal window is blocking this window, don't allow close events through, unless they
         // originate from a call to QWindow::close.
+        e->eventAccepted = false;
         return;
     }
 
@@ -3071,26 +3165,16 @@ void QGuiApplicationPrivate::processScreenGeometryChange(QWindowSystemInterfaceP
     if (!e->screen)
         return;
 
-    QScreen *s = e->screen.data();
+    {
+        QScreen *s = e->screen.data();
+        QScreenPrivate::UpdateEmitter updateEmitter(s);
 
-    bool geometryChanged = e->geometry != s->d_func()->geometry;
-    s->d_func()->geometry = e->geometry;
+        // Note: The incoming geometries have already been scaled by QHighDpi
+        // in the QWSI layer, so we don't need to call updateGeometry() here.
+        s->d_func()->geometry = e->geometry;
+        s->d_func()->availableGeometry = e->availableGeometry;
 
-    bool availableGeometryChanged = e->availableGeometry != s->d_func()->availableGeometry;
-    s->d_func()->availableGeometry = e->availableGeometry;
-
-    const Qt::ScreenOrientation primaryOrientation = s->primaryOrientation();
-    if (geometryChanged)
         s->d_func()->updatePrimaryOrientation();
-
-    s->d_func()->emitGeometryChangeSignals(geometryChanged, availableGeometryChanged);
-
-    if (geometryChanged) {
-        emit s->physicalSizeChanged(s->physicalSize());
-        emit s->logicalDotsPerInchChanged(s->logicalDotsPerInch());
-
-        if (s->primaryOrientation() != primaryOrientation)
-            emit s->primaryOrientationChanged(s->primaryOrientation());
     }
 
     resetCachedDevicePixelRatio();
@@ -3107,11 +3191,16 @@ void QGuiApplicationPrivate::processScreenLogicalDotsPerInchChange(QWindowSystem
     if (!e->screen)
         return;
 
-    QScreen *s = e->screen.data();
-    s->d_func()->logicalDpi = QDpi(e->dpiX, e->dpiY);
+    {
+        QScreen *s = e->screen.data();
+        QScreenPrivate::UpdateEmitter updateEmitter(s);
+        s->d_func()->logicalDpi = QDpi(e->dpiX, e->dpiY);
+        s->d_func()->updateGeometry();
+    }
 
-    emit s->logicalDotsPerInchChanged(s->logicalDotsPerInch());
-    s->d_func()->updateGeometriesWithSignals();
+    for (QWindow *window : QGuiApplication::allWindows())
+        if (window->screen() == e->screen)
+            QWindowPrivate::get(window)->updateDevicePixelRatio();
 
     resetCachedDevicePixelRatio();
 }
@@ -4274,6 +4363,9 @@ void *QGuiApplication::resolveInterface(const char *name, int revision) const
 #endif
 #if QT_CONFIG(xcb)
     QT_NATIVE_INTERFACE_RETURN_IF(QX11Application, platformNativeInterface());
+#endif
+#if defined(Q_OS_UNIX)
+    QT_NATIVE_INTERFACE_RETURN_IF(QWaylandApplication, platformNativeInterface());
 #endif
 
     return QCoreApplication::resolveInterface(name, revision);

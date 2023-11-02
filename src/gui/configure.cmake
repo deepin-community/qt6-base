@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 
 
 #### Inputs
@@ -25,7 +28,8 @@ set_property(CACHE INPUT_libpng PROPERTY STRINGS undefined no qt system)
 
 
 #### Libraries
-qt_set01(X11_SUPPORTED LINUX OR HPUX OR FREEBSD OR NETBSD OR OPENBSD OR SOLARIS OR HURD) # special case
+qt_set01(X11_SUPPORTED LINUX OR HPUX OR FREEBSD OR NETBSD OR OPENBSD OR SOLARIS OR
+    HURD)
 qt_find_package(ATSPI2 PROVIDED_TARGETS PkgConfig::ATSPI2 MODULE_NAME gui QMAKE_LIB atspi)
 qt_find_package(DirectFB PROVIDED_TARGETS PkgConfig::DirectFB MODULE_NAME gui QMAKE_LIB directfb)
 qt_find_package(Libdrm PROVIDED_TARGETS Libdrm::Libdrm MODULE_NAME gui QMAKE_LIB drm)
@@ -54,7 +58,8 @@ qt_find_package(Mtdev PROVIDED_TARGETS PkgConfig::Mtdev MODULE_NAME gui QMAKE_LI
 qt_find_package(WrapOpenGL PROVIDED_TARGETS WrapOpenGL::WrapOpenGL MODULE_NAME gui QMAKE_LIB opengl)
 qt_find_package(GLESv2 PROVIDED_TARGETS GLESv2::GLESv2 MODULE_NAME gui QMAKE_LIB opengl_es2)
 qt_find_package(Tslib PROVIDED_TARGETS PkgConfig::Tslib MODULE_NAME gui QMAKE_LIB tslib)
-qt_find_package(WrapVulkanHeaders PROVIDED_TARGETS WrapVulkanHeaders::WrapVulkanHeaders MODULE_NAME gui QMAKE_LIB vulkan MARK_OPTIONAL) # special case
+qt_find_package(WrapVulkanHeaders PROVIDED_TARGETS WrapVulkanHeaders::WrapVulkanHeaders
+    MODULE_NAME gui QMAKE_LIB vulkan MARK_OPTIONAL)
 if((LINUX) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     qt_find_package(Wayland PROVIDED_TARGETS Wayland::Server MODULE_NAME gui QMAKE_LIB wayland_server)
 endif()
@@ -66,6 +71,9 @@ if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     qt_find_package(XCB 1.11 PROVIDED_TARGETS XCB::XCB MODULE_NAME gui QMAKE_LIB xcb)
+endif()
+if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
+    qt_find_package(XCB 0.1.1 COMPONENTS CURSOR PROVIDED_TARGETS XCB::CURSOR MODULE_NAME gui QMAKE_LIB xcb_cursor)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     qt_find_package(XCB 0.3.9 COMPONENTS ICCCM PROVIDED_TARGETS XCB::ICCCM MODULE_NAME gui QMAKE_LIB xcb_icccm)
@@ -271,8 +279,8 @@ qt_config_compile_test(egl_viv
     LABEL "i.Mx6 EGL"
     LIBRARIES
         EGL::EGL
-    COMPILE_OPTIONS # special case
-        "-DEGL_API_FB=1" # special case
+    COMPILE_OPTIONS
+        "-DEGL_API_FB=1"
     CODE
 "#include <EGL/egl.h>
 #include <EGL/eglvivante.h>
@@ -400,11 +408,9 @@ ioctl(fd, FBIOGET_VSCREENINFO, &vinfo);
 ")
 
 # opengles3
-# special case begin
 if(WASM)
     set(extra_compiler_options "-s FULL_ES3=1")
 endif()
-# special case end
 
 set(test_libs GLESv2::GLESv2)
 if(INTEGRITY AND _qt_igy_gui_libs)
@@ -415,9 +421,7 @@ qt_config_compile_test(opengles3
     LABEL "OpenGL ES 3.0"
     LIBRARIES
         ${test_libs}
-# special case begin
     COMPILE_OPTIONS ${extra_compiler_options}
-# special case end
     CODE
 "#ifdef __APPLE__
 #  include <OpenGLES/ES3/gl.h>
@@ -479,6 +483,7 @@ glFramebufferTexture(GL_TEXTURE_2D, GL_DEPTH_STENCIL_ATTACHMENT, 1, 0);
 qt_config_compile_test(xcb_syslibs
     LABEL "XCB (extensions)"
     LIBRARIES
+        XCB::CURSOR
         XCB::ICCCM
         XCB::IMAGE
         XCB::KEYSYMS
@@ -497,6 +502,7 @@ qt_config_compile_test(xcb_syslibs
 #include <xcb/xcb.h>
 #include <xcb/xcb_image.h>
 #include <xcb/xcb_keysyms.h>
+#include <xcb/xcb_cursor.h>
 #include <xcb/randr.h>
 #include <xcb/render.h>
 #include <xcb/shape.h>
@@ -545,7 +551,6 @@ libinput_event_pointer_get_scroll_value_v120(nullptr, LIBINPUT_POINTER_AXIS_SCRO
 }
 ")
 
-# special case begin
 # directwrite (assumes DirectWrite2)
 qt_config_compile_test(directwrite
     LABEL "WINDOWS directwrite"
@@ -607,7 +612,6 @@ int main(int, char **)
     return 0;
 }
 ")
-# special case end
 
 
 #### Features
@@ -625,21 +629,21 @@ qt_feature("directfb" PRIVATE
 )
 qt_feature("directwrite" PRIVATE
     LABEL "DirectWrite"
-    CONDITION TEST_directwrite # special case
+    CONDITION TEST_directwrite
     EMIT_IF WIN32
 )
 qt_feature("directwrite3" PRIVATE
     LABEL "DirectWrite 3"
-    CONDITION QT_FEATURE_directwrite AND TEST_directwrite3 # special case
+    CONDITION QT_FEATURE_directwrite AND TEST_directwrite3
     EMIT_IF WIN32
 )
 qt_feature("direct2d" PRIVATE
     LABEL "Direct 2D"
-    CONDITION WIN32 AND NOT WINRT AND TEST_d2d1 # special case
+    CONDITION WIN32 AND NOT WINRT AND TEST_d2d1
 )
 qt_feature("direct2d1_1" PRIVATE
     LABEL "Direct 2D 1.1"
-    CONDITION QT_FEATURE_direct2d AND TEST_d2d1_1 # special case
+    CONDITION QT_FEATURE_direct2d AND TEST_d2d1_1
 )
 qt_feature("evdev" PRIVATE
     LABEL "evdev"
@@ -924,7 +928,7 @@ qt_feature("xcb-glx" PRIVATE
 )
 qt_feature("xcb-egl-plugin" PRIVATE
     LABEL "EGL-X11 Plugin"
-    CONDITION QT_FEATURE_egl_x11 AND QT_FEATURE_opengl
+    CONDITION QT_FEATURE_egl AND QT_FEATURE_opengl
     EMIT_IF QT_FEATURE_xcb
 )
 qt_feature("xcb-native-painting" PRIVATE
@@ -1308,7 +1312,7 @@ qt_configure_end_summary_section() # end of "GL integrations" section
 qt_configure_end_summary_section() # end of "XCB" section
 qt_configure_add_summary_section(NAME "Windows")
 qt_configure_add_summary_entry(ARGS "direct2d")
-qt_configure_add_summary_entry(ARGS "direct2d1_1") ### special case
+qt_configure_add_summary_entry(ARGS "direct2d1_1")
 qt_configure_add_summary_entry(ARGS "directwrite")
 qt_configure_add_summary_entry(ARGS "directwrite3")
 qt_configure_end_summary_section() # end of "Windows" section
@@ -1327,11 +1331,6 @@ qt_configure_add_report_entry(
     TYPE WARNING
     MESSAGE "No QPA platform plugin enabled! This will produce a Qt that cannot run GUI applications.  See \"Platform backends\" in the output of --help."
     CONDITION QT_FEATURE_gui AND LINUX AND NOT ANDROID AND NOT QT_FEATURE_xcb AND NOT QT_FEATURE_eglfs AND NOT QT_FEATURE_directfb AND NOT QT_FEATURE_linuxfb
-)
-qt_configure_add_report_entry(
-    TYPE WARNING
-    MESSAGE "On OS X, AAT is supported only with -qt-harfbuzz."
-    CONDITION APPLE AND QT_FEATURE_system_harfbuzz
 )
 qt_configure_add_report_entry(
     TYPE ERROR

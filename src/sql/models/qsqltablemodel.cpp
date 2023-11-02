@@ -19,7 +19,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-typedef QSqlTableModelSql Sql;
+using SqlTm = QSqlTableModelSql;
 
 QSqlTableModelPrivate::~QSqlTableModelPrivate()
 {
@@ -205,7 +205,7 @@ bool QSqlTableModelPrivate::exec(const QString &stmt, bool prepStatement,
     want to resolve foreign keys.
 
     \sa QSqlRelationalTableModel, QSqlQuery, {Model/View Programming},
-        {Table Model Example}, {Cached Table Example}
+        {Table Model Example}, {Cached SQL Table}
 */
 
 /*!
@@ -342,10 +342,9 @@ bool QSqlTableModel::select()
 
     d->clearCache();
 
-    QSqlQuery qu(query, d->db);
-    setQuery(qu);
+    this->QSqlQueryModel::setQuery(query, d->db);
 
-    if (!qu.isActive() || lastError().isValid()) {
+    if (!d->query.isActive() || lastError().isValid()) {
         // something went wrong - revert to non-select state
         d->initRecordAndPrimaryIndex();
         endResetModel();
@@ -380,7 +379,7 @@ bool QSqlTableModel::selectRow(int row)
                                               d->tableName,
                                               primaryValues(row),
                                               false);
-    static const QString wh = Sql::where() + Sql::sp();
+    static const QString wh = SqlTm::where() + SqlTm::sp();
     if (d->filter.startsWith(wh, Qt::CaseInsensitive))
         d->filter.remove(0, wh.size());
 
@@ -582,18 +581,6 @@ bool QSqlTableModel::clearItemData(const QModelIndex &index)
 }
 
 /*!
-    This function simply calls QSqlQueryModel::setQuery(\a query).
-    You should normally not call it on a QSqlTableModel. Instead, use
-    setTable(), setSort(), setFilter(), etc., to set up the query.
-
-    \sa selectStatement()
-*/
-void QSqlTableModel::setQuery(const QSqlQuery &query)
-{
-    QT_IGNORE_DEPRECATIONS(QSqlQueryModel::setQuery(query);)
-}
-
-/*!
     Updates the given \a row in the currently active database table
     with the specified \a values. Returns \c true if successful; otherwise
     returns \c false.
@@ -627,7 +614,7 @@ bool QSqlTableModel::updateRowInTable(int row, const QSqlRecord &values)
         return false;
     }
 
-    return d->exec(Sql::concat(stmt, where), prepStatement, rec, whereValues);
+    return d->exec(SqlTm::concat(stmt, where), prepStatement, rec, whereValues);
 }
 
 
@@ -695,7 +682,7 @@ bool QSqlTableModel::deleteRowFromTable(int row)
         return false;
     }
 
-    return d->exec(Sql::concat(stmt, where), prepStatement, QSqlRecord() /* no new values */, whereValues);
+    return d->exec(SqlTm::concat(stmt, where), prepStatement, QSqlRecord() /* no new values */, whereValues);
 }
 
 /*!
@@ -967,8 +954,8 @@ QString QSqlTableModel::orderByClause() const
     QString field = d->db.driver()->escapeIdentifier(d->tableName, QSqlDriver::TableName)
             + u'.'
             + d->db.driver()->escapeIdentifier(f.name(), QSqlDriver::FieldName);
-    field = d->sortOrder == Qt::AscendingOrder ? Sql::asc(field) : Sql::desc(field);
-    return Sql::orderBy(field);
+    field = d->sortOrder == Qt::AscendingOrder ? SqlTm::asc(field) : SqlTm::desc(field);
+    return SqlTm::orderBy(field);
 }
 
 /*!
@@ -1010,7 +997,7 @@ QString QSqlTableModel::selectStatement() const
                              QString(), QSqlError::StatementError);
         return stmt;
     }
-    return Sql::concat(Sql::concat(stmt, Sql::where(d->filter)), orderByClause());
+    return SqlTm::concat(SqlTm::concat(stmt, SqlTm::where(d->filter)), orderByClause());
 }
 
 /*!

@@ -366,6 +366,7 @@ QAccessible::State QAccessibleComboBox::state() const
 
     s.expandable = true;
     s.expanded = isValid() && comboBox()->view()->isVisible();
+    s.editable = comboBox()->isEditable();
 
     return s;
 }
@@ -476,13 +477,19 @@ QWidgetList QAccessibleAbstractScrollArea::accessibleChildren() const
     // Horizontal scrollBar container.
     QScrollBar *horizontalScrollBar = abstractScrollArea()->horizontalScrollBar();
     if (horizontalScrollBar && horizontalScrollBar->isVisible()) {
-        children.append(horizontalScrollBar->parentWidget());
+        QWidget *scrollBarParent = horizontalScrollBar->parentWidget();
+        // Add container only if scroll bar is in the container
+        if (elementType(scrollBarParent) == HorizontalContainer)
+            children.append(scrollBarParent);
     }
 
     // Vertical scrollBar container.
     QScrollBar *verticalScrollBar = abstractScrollArea()->verticalScrollBar();
     if (verticalScrollBar && verticalScrollBar->isVisible()) {
-        children.append(verticalScrollBar->parentWidget());
+        QWidget *scrollBarParent = verticalScrollBar->parentWidget();
+        // Add container only if scroll bar is in the container
+        if (elementType(scrollBarParent) == VerticalContainer)
+            children.append(scrollBarParent);
     }
 
     // CornerWidget.

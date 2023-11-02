@@ -28,11 +28,18 @@
 #include <QtGui/qfontmetrics.h>
 #include <QtGui/qclipboard.h>
 #include "private/qabstractbutton_p.h"
+#include <QtGui/qpa/qplatformtheme.h>
+
+#include <QtCore/qanystringview.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qversionnumber.h>
 
 #ifdef Q_OS_WIN
 #    include <QtCore/qt_windows.h>
 #include <qpa/qplatformnativeinterface.h>
 #endif
+
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -171,7 +178,7 @@ public:
     void init(const QString &title = QString(), const QString &text = QString());
     void setupLayout();
     void _q_buttonClicked(QAbstractButton *);
-    void _q_clicked(QPlatformDialogHelper::StandardButton button, QPlatformDialogHelper::ButtonRole role);
+    void _q_helperClicked(QPlatformDialogHelper::StandardButton button, QPlatformDialogHelper::ButtonRole role);
     void setClickedButton(QAbstractButton *button);
 
     QAbstractButton *findButton(int button0, int button1, int button2, int flags);
@@ -180,12 +187,13 @@ public:
     QAbstractButton *abstractButtonForId(int id) const;
     int execReturnCode(QAbstractButton *button);
 
-    int dialogCodeForButton(QAbstractButton *button) const;
-
     void detectEscapeButton();
     void updateSize();
     int layoutMinimumWidth();
     void retranslateStrings();
+
+    void setVisible(bool visible) override;
+    bool canBeNativeDialog() const override;
 
     static int showOldMessageBox(QWidget *parent, QMessageBox::Icon icon,
                                  const QString &title, const QString &text,
@@ -203,6 +211,7 @@ public:
                 QMessageBox::StandardButtons buttons, QMessageBox::StandardButton defaultButton);
 
     static QPixmap standardIcon(QMessageBox::Icon icon, QMessageBox *mb);
+    static QMessageBox::StandardButton standardButtonForRole(QMessageBox::ButtonRole role);
 
     QLabel *label;
     QMessageBox::Icon icon;
@@ -228,7 +237,7 @@ public:
 private:
     void initHelper(QPlatformDialogHelper *) override;
     void helperPrepareShow(QPlatformDialogHelper *) override;
-    void helperDone(QDialog::DialogCode, QPlatformDialogHelper *) override;
+    int dialogCode() const override;
 };
 
 void QMessageBoxPrivate::init(const QString &title, const QString &text)
@@ -268,7 +277,7 @@ void QMessageBoxPrivate::setupLayout()
     Q_Q(QMessageBox);
     delete q->layout();
     QGridLayout *grid = new QGridLayout;
-    bool hasIcon = !iconLabel->pixmap(Qt::ReturnByValue).isNull();
+    const bool hasIcon = !iconLabel->pixmap().isNull();
 
     if (hasIcon)
         grid->addWidget(iconLabel, 0, 0, 2, 1, Qt::AlignTop);
@@ -432,25 +441,24 @@ int QMessageBoxPrivate::execReturnCode(QAbstractButton *button)
     return ret;
 }
 
-/*!
-    \internal
-
-    Returns 0 for RejectedRole and NoRole, 1 for AcceptedRole and YesRole, -1 otherwise
- */
-int QMessageBoxPrivate::dialogCodeForButton(QAbstractButton *button) const
+int QMessageBoxPrivate::dialogCode() const
 {
     Q_Q(const QMessageBox);
 
-    switch (q->buttonRole(button)) {
-    case QMessageBox::AcceptRole:
-    case QMessageBox::YesRole:
-        return QDialog::Accepted;
-    case QMessageBox::RejectRole:
-    case QMessageBox::NoRole:
-        return QDialog::Rejected;
-    default:
-        return -1;
+    if (clickedButton) {
+        switch (q->buttonRole(clickedButton)) {
+        case QMessageBox::AcceptRole:
+        case QMessageBox::YesRole:
+            return QDialog::Accepted;
+        case QMessageBox::RejectRole:
+        case QMessageBox::NoRole:
+            return QDialog::Rejected;
+        default:
+            ;
+        }
     }
+
+    return QDialogPrivate::dialogCode();
 }
 
 void QMessageBoxPrivate::_q_buttonClicked(QAbstractButton *button)
@@ -484,23 +492,26 @@ void QMessageBoxPrivate::setClickedButton(QAbstractButton *button)
     emit q->buttonClicked(clickedButton);
 
     auto resultCode = execReturnCode(button);
-    close(resultCode);
-    finalize(resultCode, dialogCodeForButton(button));
+    q->done(resultCode);
 }
 
-void QMessageBoxPrivate::_q_clicked(QPlatformDialogHelper::StandardButton button, QPlatformDialogHelper::ButtonRole role)
+void QMessageBoxPrivate::_q_helperClicked(QPlatformDialogHelper::StandardButton helperButton, QPlatformDialogHelper::ButtonRole role)
 {
+    Q_UNUSED(role);
     Q_Q(QMessageBox);
-    if (button > QPlatformDialogHelper::LastButton) {
-        // It's a custom button, and the QPushButton in options is just a proxy
-        // for the button on the platform dialog.  Simulate the user clicking it.
-        clickedButton = static_cast<QAbstractButton *>(options->customButton(button)->button);
-        Q_ASSERT(clickedButton);
-        clickedButton->click();
-        q->done(role);
-    } else {
-        q->done(button);
-    }
+
+    // Map back to QAbstractButton, so that the message box behaves the same from
+    // the outside, regardless of whether it's backed by a native helper or not.
+    QAbstractButton *dialogButton = helperButton > QPlatformDialogHelper::LastButton ?
+        static_cast<QAbstractButton *>(options->customButton(helperButton)->button) :
+        q->button(QMessageBox::StandardButton(helperButton));
+
+    Q_ASSERT(dialogButton);
+
+    // Simulate click by explicitly clicking the button. This will ensure that
+    // any logic of the button that responds to the click is respected, including
+    // plumbing back to _q_buttonClicked above based on the clicked() signal.
+    dialogButton->click();
 }
 
 /*!
@@ -514,10 +525,11 @@ void QMessageBoxPrivate::_q_clicked(QPlatformDialogHelper::StandardButton button
 
     A message box displays a primary \l{QMessageBox::text}{text} to
     alert the user to a situation, an \l{QMessageBox::informativeText}
-    {informative text} to further explain the alert or to ask the user
-    a question, and an optional \l{QMessageBox::detailedText}
-    {detailed text} to provide even more data if the user requests
-    it. A message box can also display an \l{QMessageBox::icon} {icon}
+    {informative text} to further explain the situation, and an optional
+    \l{QMessageBox::detailedText} {detailed text} to provide even more data
+    if the user requests it.
+
+    A message box can also display an \l{QMessageBox::icon} {icon}
     and \l{QMessageBox::standardButtons} {standard buttons} for
     accepting a user response.
 
@@ -543,27 +555,21 @@ void QMessageBoxPrivate::_q_clicked(QPlatformDialogHelper::StandardButton button
     \image msgbox1.png
 
     A better approach than just alerting the user to an event is to
-    also ask the user what to do about it. Store the question in the
-    \l{QMessageBox::informativeText} {informative text} property, and
-    set the \l{QMessageBox::standardButtons} {standard buttons}
+    also ask the user what to do about it.
+
+    Set the \l{QMessageBox::standardButtons} {standard buttons}
     property to the set of buttons you want as the set of user
     responses. The buttons are specified by combining values from
     StandardButtons using the bitwise OR operator. The display order
     for the buttons is platform-dependent. For example, on Windows,
     \uicontrol{Save} is displayed to the left of \uicontrol{Cancel}, whereas on
-    Mac OS, the order is reversed.
-
-    Mark one of your standard buttons to be your
+    \macos, the order is reversed. Mark one of your standard buttons to be your
     \l{QMessageBox::defaultButton()} {default button}.
 
-    \snippet code/src_gui_dialogs_qmessagebox.cpp 6
+    The \l{QMessageBox::informativeText} {informative text} property can
+    be used to add additional context to help the user choose the appropriate action.
 
-    This is the approach recommended in the
-    \l{http://developer.apple.com/library/mac/documentation/UserExperience/Conceptual/AppleHIGuidelines/Windows/Windows.html#//apple_ref/doc/uid/20000961-BABCAJID}
-    {\macos Guidelines}. Similar guidelines apply for the other
-    platforms, but note the different ways the
-    \l{QMessageBox::informativeText} {informative text} is handled for
-    different platforms.
+    \snippet code/src_gui_dialogs_qmessagebox.cpp 6
 
     \image msgbox2.png
 
@@ -572,10 +578,10 @@ void QMessageBoxPrivate::_q_clicked(QPlatformDialogHelper::StandardButton button
 
     \snippet code/src_gui_dialogs_qmessagebox.cpp 7
 
-    To give the user more information to help him answer the question,
-    set the \l{QMessageBox::detailedText} {detailed text} property. If
-    the \l{QMessageBox::detailedText} {detailed text} property is set,
-    the \uicontrol{Show Details...} button will be shown.
+    To give the user more information to help them choose the appropriate,
+    action, set the \l{QMessageBox::detailedText} {detailed text} property.
+    Depending on the platform the \l{QMessageBox::detailedText} {detailed text},
+    may require the user to click a \uicontrol{Show Details...} button to be shown.
 
     \image msgbox3.png
 
@@ -715,7 +721,7 @@ void QMessageBoxPrivate::_q_clicked(QPlatformDialogHelper::StandardButton button
     When an escape button can't be determined using these rules,
     pressing \uicontrol Esc has no effect.
 
-    \sa QDialogButtonBox, {Standard Dialogs Example}, {Qt Widgets - Application Example}
+    \sa QDialogButtonBox, {Standard Dialogs Example}
 */
 
 /*!
@@ -771,6 +777,12 @@ void QMessageBoxPrivate::_q_clicked(QPlatformDialogHelper::StandardButton button
 */
 
 /*!
+    \enum QMessageBox::Option
+    \since 6.6
+    \value DontUseNativeDialog Don't use the native message dialog.
+*/
+
+/*!
     \fn void QMessageBox::buttonClicked(QAbstractButton *button)
 
     This signal is emitted whenever a button is clicked inside the QMessageBox.
@@ -778,13 +790,20 @@ void QMessageBoxPrivate::_q_clicked(QPlatformDialogHelper::StandardButton button
 */
 
 /*!
-    Constructs a message box with no text and no buttons. \a parent is
-    passed to the QDialog constructor.
+    Constructs an \l{Qt::ApplicationModal} {application modal} message box with no text and no buttons.
+    \a parent is passed to the QDialog constructor.
+
+    The window modality can be overridden via setWindowModality() before calling show().
+
+    \note Using open() or exec() to show the message box affects the window modality.
+    Please see the detailed documentation for each function for more information.
 
     On \macos, if you want your message box to appear
     as a Qt::Sheet of its \a parent, set the message box's
     \l{setWindowModality()} {window modality} to Qt::WindowModal or use open().
     Otherwise, the message box will be a standard dialog.
+
+    \sa setWindowTitle(), setText(), setIcon(), setStandardButtons(), setWindowModality()
 
 */
 QMessageBox::QMessageBox(QWidget *parent)
@@ -795,20 +814,22 @@ QMessageBox::QMessageBox(QWidget *parent)
 }
 
 /*!
-    Constructs a message box with the given \a icon, \a title, \a
-    text, and standard \a buttons. Standard or custom buttons can be
+    Constructs an \l{Qt::ApplicationModal} {application modal} message box with the given \a icon,
+    \a title, \a text, and standard \a buttons. Standard or custom buttons can be
     added at any time using addButton(). The \a parent and \a f
     arguments are passed to the QDialog constructor.
 
-    The message box is an \l{Qt::ApplicationModal} {application modal}
-    dialog box.
+    The window modality can be overridden via setWindowModality() before calling show().
+
+    \note Using open() or exec() to show the message box affects the window modality.
+    Please see the detailed documentation for each function for more information.
 
     On \macos, if \a parent is not \nullptr and you want your message box
     to appear as a Qt::Sheet of that parent, set the message box's
     \l{setWindowModality()} {window modality} to Qt::WindowModal
     (default). Otherwise, the message box will be a standard dialog.
 
-    \sa setWindowTitle(), setText(), setIcon(), setStandardButtons()
+    \sa setWindowTitle(), setText(), setIcon(), setStandardButtons(), setWindowModality()
 */
 QMessageBox::QMessageBox(Icon icon, const QString &title, const QString &text,
                          StandardButtons buttons, QWidget *parent,
@@ -843,11 +864,43 @@ void QMessageBox::addButton(QAbstractButton *button, ButtonRole role)
     if (!button)
         return;
     removeButton(button);
-    d->options->addButton(button->text(), static_cast<QPlatformDialogHelper::ButtonRole>(role),
-                          button);
+
+    if (button->text().isEmpty()) {
+        if (auto *platformTheme = QGuiApplicationPrivate::platformTheme()) {
+            if (auto standardButton = QMessageBoxPrivate::standardButtonForRole(role))
+                button->setText(platformTheme->standardButtonText(standardButton));
+        }
+
+        if (button->text().isEmpty()) {
+            qWarning() << "Cannot add" << button << "without title";
+            return;
+        }
+    }
+
+    // Add button to native dialog helper, unless it's the details button,
+    // since we don't do any plumbing for the button's action in that case.
+    if (button != d->detailsButton) {
+        d->options->addButton(button->text(),
+            static_cast<QPlatformDialogHelper::ButtonRole>(role), button);
+    }
     d->buttonBox->addButton(button, (QDialogButtonBox::ButtonRole)role);
     d->customButtonList.append(button);
     d->autoAddOkButton = false;
+}
+
+QMessageBox::StandardButton QMessageBoxPrivate::standardButtonForRole(QMessageBox::ButtonRole role)
+{
+    switch (role) {
+    case QMessageBox::AcceptRole: return QMessageBox::Ok;
+    case QMessageBox::RejectRole: return QMessageBox::Cancel;
+    case QMessageBox::DestructiveRole: return QMessageBox::Discard;
+    case QMessageBox::HelpRole: return QMessageBox::Help;
+    case QMessageBox::ApplyRole: return QMessageBox::Apply;
+    case QMessageBox::YesRole: return QMessageBox::Yes;
+    case QMessageBox::NoRole: return QMessageBox::No;
+    case QMessageBox::ResetRole: return QMessageBox::Reset;
+    default: return QMessageBox::NoButton;
+    }
 }
 
 /*!
@@ -953,6 +1006,12 @@ QMessageBox::StandardButton QMessageBox::standardButton(QAbstractButton *button)
 
     Returns a pointer corresponding to the standard button \a which,
     or \nullptr if the standard button doesn't exist in this message box.
+
+    \note Modifying the properties of the returned button may not be reflected
+    in native implementations of the message dialog. To customize dialog
+    buttons add a \l{addButton(QAbstractButton *button, QMessageBox::ButtonRole role)}
+    {custom button} or \l{addButton(const QString &text, QMessageBox::ButtonRole role)}
+    {button title} instead, or set the \l Option::DontUseNativeDialog option.
 
     \sa standardButtons, standardButton()
 */
@@ -1185,8 +1244,83 @@ QCheckBox* QMessageBox::checkBox() const
 }
 
 /*!
+    \since 6.6
+    Sets the given \a option to be enabled if \a on is true; otherwise,
+    clears the given \a option.
+
+    Options (particularly the \l Option::DontUseNativeDialog option) should be set
+    before showing the dialog.
+
+    Setting options while the dialog is visible is not guaranteed to have
+    an immediate effect on the dialog.
+
+    Setting options after changing other properties may cause these
+    values to have no effect.
+
+    \sa options, testOption()
+*/
+void QMessageBox::setOption(QMessageBox::Option option, bool on)
+{
+    const QMessageBox::Options previousOptions = options();
+    if (!(previousOptions & option) != !on)
+        setOptions(previousOptions ^ option);
+}
+
+/*!
+    \since 6.6
+
+    Returns \c true if the given \a option is enabled; otherwise, returns
+    false.
+
+    \sa options, setOption()
+*/
+bool QMessageBox::testOption(QMessageBox::Option option) const
+{
+    Q_D(const QMessageBox);
+    return d->options->testOption(static_cast<QMessageDialogOptions::Option>(option));
+}
+
+void QMessageBox::setOptions(QMessageBox::Options options)
+{
+    Q_D(QMessageBox);
+
+    if (QMessageBox::options() == options)
+        return;
+
+    d->options->setOptions(QMessageDialogOptions::Option(int(options)));
+}
+
+QMessageBox::Options QMessageBox::options() const
+{
+    Q_D(const QMessageBox);
+    return QMessageBox::Options(int(d->options->options()));
+}
+
+/*!
+    \property QMessageBox::options
+    \brief Options that affect the look and feel of the dialog.
+    \since 6.6
+
+    By default, these options are disabled.
+
+    The option \l Option::DontUseNativeDialog should be set
+    before changing dialog properties or showing the dialog.
+
+    Setting options while the dialog is visible is not guaranteed to have
+    an immediate effect on the dialog.
+
+    Setting options after changing other properties may cause these
+    values to have no effect.
+
+    \sa setOption(), testOption()
+*/
+
+/*!
   \property QMessageBox::text
   \brief the message box text to be displayed.
+
+  The text should be a brief sentence or phrase that describes the situation,
+  ideally formulated as a neutral statement, or a call-to-action question.
 
   The text will be interpreted either as a plain text or as rich text,
   depending on the text format setting (\l QMessageBox::textFormat).
@@ -1286,7 +1420,7 @@ void QMessageBox::setIcon(Icon icon)
 QPixmap QMessageBox::iconPixmap() const
 {
     Q_D(const QMessageBox);
-    return d->iconLabel->pixmap(Qt::ReturnByValue);
+    return d->iconLabel->pixmap();
 }
 
 void QMessageBox::setIconPixmap(const QPixmap &pixmap)
@@ -1520,6 +1654,23 @@ void QMessageBox::open(QObject *receiver, const char *member)
     d->receiverToDisconnectOnClose = receiver;
     d->memberToDisconnectOnClose = member;
     QDialog::open();
+}
+
+void QMessageBoxPrivate::setVisible(bool visible)
+{
+    Q_Q(QMessageBox);
+    if (q->testAttribute(Qt::WA_WState_ExplicitShowHide) && q->testAttribute(Qt::WA_WState_Hidden) != visible)
+        return;
+
+    if (canBeNativeDialog())
+        setNativeDialogVisible(visible);
+
+    // Update WA_DontShowOnScreen based on whether the native dialog was shown,
+    // so that QDialog::setVisible(visible) below updates the QWidget state correctly,
+    // but skips showing the non-native version.
+    q->setAttribute(Qt::WA_DontShowOnScreen, nativeDialogInUse);
+
+    QDialogPrivate::setVisible(visible);
 }
 
 /*!
@@ -1791,12 +1942,7 @@ void QMessageBox::about(QWidget *parent, const QString &title, const QString &te
     // should perhaps be a style hint
 #ifdef Q_OS_MAC
     oldMsgBox = msgBox;
-#if 0
-    // ### doesn't work until close button is enabled in title bar
-    msgBox->d_func()->autoAddOkButton = false;
-#else
     msgBox->d_func()->buttonBox->setCenterButtons(true);
-#endif
     msgBox->setModal(false);
     msgBox->show();
 #else
@@ -1861,7 +2007,7 @@ void QMessageBox::aboutQt(QWidget *parent, const QString &title)
         "<p>Qt and the Qt logo are trademarks of The Qt Company Ltd.</p>"
         "<p>Qt is The Qt Company Ltd product developed as an open source "
         "project. See <a href=\"http://%3/\">%3</a> for more information.</p>"
-        ).arg(QStringLiteral("2022"),
+        ).arg(QLatin1String(QT_COPYRIGHT_YEAR),
               QStringLiteral("qt.io/licensing"),
               QStringLiteral("qt.io"));
     QMessageBox *msgBox = new QMessageBox(parent);
@@ -1877,12 +2023,7 @@ void QMessageBox::aboutQt(QWidget *parent, const QString &title)
     // should perhaps be a style hint
 #ifdef Q_OS_MAC
     oldMsgBox = msgBox;
-#if 0
-    // ### doesn't work until close button is enabled in title bar
-    msgBox->d_func()->autoAddOkButton = false;
-#else
     msgBox->d_func()->buttonBox->setCenterButtons(true);
-#endif
     msgBox->setModal(false);
     msgBox->show();
 #else
@@ -2504,10 +2645,9 @@ void QMessageBox::setDetailedText(const QString &text)
 
   \since 4.2
 
-  Infromative text can be used to expand upon the text() to give more
-  information to the user. On the Mac, this text appears in small
-  system font below the text().  On other platforms, it is simply
-  appended to the existing text.
+  Informative text can be used to expand upon the text() to give more
+  information to the user, for example describing the consequences of
+  the situation, or suggestion alternative solutions.
 
   By default, this property contains an empty string.
 
@@ -2622,11 +2762,20 @@ void QMessageBoxPrivate::initHelper(QPlatformDialogHelper *h)
 {
     Q_Q(QMessageBox);
     QObject::connect(h, SIGNAL(clicked(QPlatformDialogHelper::StandardButton,QPlatformDialogHelper::ButtonRole)),
-                     q, SLOT(_q_clicked(QPlatformDialogHelper::StandardButton,QPlatformDialogHelper::ButtonRole)));
+                     q, SLOT(_q_helperClicked(QPlatformDialogHelper::StandardButton,QPlatformDialogHelper::ButtonRole)));
+
+    auto *messageDialogHelper = static_cast<QPlatformMessageDialogHelper *>(h);
+    QObject::connect(messageDialogHelper, &QPlatformMessageDialogHelper::checkBoxStateChanged, q,
+        [this](Qt::CheckState state) {
+            if (checkbox)
+                checkbox->setCheckState(state);
+        }
+    );
+
     static_cast<QPlatformMessageDialogHelper *>(h)->setOptions(options);
 }
 
-static QMessageDialogOptions::Icon helperIcon(QMessageBox::Icon i)
+static QMessageDialogOptions::StandardIcon helperIcon(QMessageBox::Icon i)
 {
     switch (i) {
     case QMessageBox::NoIcon:
@@ -2649,6 +2798,25 @@ static QPlatformDialogHelper::StandardButtons helperStandardButtons(QMessageBox 
     return buttons;
 }
 
+bool QMessageBoxPrivate::canBeNativeDialog() const
+{
+    // Don't use Q_Q here! This function is called from ~QDialog,
+    // so Q_Q calling q_func() invokes undefined behavior (invalid cast in q_func()).
+    const QDialog * const q = static_cast<const QMessageBox*>(q_ptr);
+    if (nativeDialogInUse)
+        return true;
+    if (QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs)
+        || q->testAttribute(Qt::WA_DontShowOnScreen)
+        || (options->options() & QMessageDialogOptions::Option::DontUseNativeDialog)) {
+        return false;
+    }
+
+    if (strcmp(QMessageBox::staticMetaObject.className(), q->metaObject()->className()) != 0)
+        return false;
+
+    return QDialogPrivate::canBeNativeDialog();
+}
+
 void QMessageBoxPrivate::helperPrepareShow(QPlatformDialogHelper *)
 {
     Q_Q(QMessageBox);
@@ -2658,18 +2826,27 @@ void QMessageBoxPrivate::helperPrepareShow(QPlatformDialogHelper *)
 #if QT_CONFIG(textedit)
     options->setDetailedText(q->detailedText());
 #endif
-    options->setIcon(helperIcon(q->icon()));
+    options->setStandardIcon(helperIcon(q->icon()));
+    options->setIconPixmap(q->iconPixmap());
     options->setStandardButtons(helperStandardButtons(q));
+    if (checkbox)
+        options->setCheckBox(checkbox->text(), checkbox->checkState());
 }
 
-void QMessageBoxPrivate::helperDone(QDialog::DialogCode code, QPlatformDialogHelper *)
+void qRequireVersion(int argc, char *argv[], QAnyStringView req)
 {
-    Q_Q(QMessageBox);
-    QAbstractButton *button = q->button(QMessageBox::StandardButton(code));
-    // If it was a custom button, a custom ID was used, so we won't get a valid pointer here.
-    // In that case, clickedButton has already been set in _q_buttonClicked.
-    if (button)
-        clickedButton = button;
+    const auto required = QVersionNumber::fromString(req).normalized();
+    const auto current = QVersionNumber::fromString(qVersion()).normalized();
+    if (current >= required)
+        return;
+    std::optional<QApplication> application;
+    if (!qApp)
+        application.emplace(argc, argv);
+    const QString message = QApplication::tr("Application \"%1\" requires Qt %2, found Qt %3.")
+                                    .arg(qAppName(), required.toString(), current.toString());
+    QMessageBox::critical(nullptr, QApplication::tr("Incompatible Qt Library Error"),
+                          message, QMessageBox::Abort);
+    qFatal("%ls", qUtf16Printable(message));
 }
 
 #if QT_DEPRECATED_SINCE(6,2)
@@ -2736,6 +2913,25 @@ QPixmap QMessageBox::standardIcon(Icon icon)
   button or by using a mechanism provided by the window system.
 
   \sa show(), result()
+*/
+
+/*!
+    \macro QT_REQUIRE_VERSION(int argc, char **argv, const char *version)
+    \relates <QMessageBox>
+
+    This macro can be used to ensure that the application is run
+    with a recent enough version of Qt. This is especially useful
+    if your application depends on a specific bug fix introduced in a
+    bug-fix release (for example, 6.1.2).
+
+    The \a argc and \a argv parameters are the \c main() function's
+    \c argc and \c argv parameters. The \a version parameter is a
+    string literal that specifies which version of Qt the application
+    requires (for example, "6.1.2").
+
+    Example:
+
+    \snippet code/src_gui_dialogs_qmessagebox.cpp 4
 */
 
 QT_END_NAMESPACE

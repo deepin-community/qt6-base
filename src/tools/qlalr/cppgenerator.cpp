@@ -10,6 +10,7 @@
 #include <QtCore/qtextstream.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qmap.h>
+#include <QtCore/private/qconfig_p.h>
 
 #include <iterator>
 
@@ -42,7 +43,7 @@ void generateList(const QList<int> &list, QTextStream &out)
 QString CppGenerator::copyrightHeader() const
 {
   return
-    "// Copyright (C) 2016 The Qt Company Ltd.\n"
+    "// " QT_COPYRIGHT "\n"
     "// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0\n"
     "\n"_L1;
 }
@@ -192,7 +193,15 @@ void CppGenerator::operator () ()
     {
       if (shift_reduce_conflict_count != grammar.expected_shift_reduce
           || reduce_reduce_conflict_count != grammar.expected_reduce_reduce)
-        qerr() << "*** Conflicts: " << shift_reduce_conflict_count << " shift/reduce, " << reduce_reduce_conflict_count << " reduce/reduce" << Qt::endl;
+        {
+          qerr() << "*** Conflicts: " << shift_reduce_conflict_count << " shift/reduce, " << reduce_reduce_conflict_count << " reduce/reduce" << Qt::endl;
+          if (warnings_are_errors)
+            {
+              qerr() << "qlalr: error: warning occurred, treating as error due to "
+                        "--exit-on-warn." << Qt::endl;
+              exit(2);
+            }
+        }
 
       if (verbose)
         qout() << Qt::endl << "*** Conflicts: " << shift_reduce_conflict_count << " shift/reduce, " << reduce_reduce_conflict_count << " reduce/reduce" << Qt::endl
@@ -219,7 +228,15 @@ void CppGenerator::operator () ()
       if (! used_rules.testBit (i))
         {
           if (rule != grammar.goal)
-            qerr() << "*** Warning: Rule ``" << *rule << "'' is useless!" << Qt::endl;
+            {
+              qerr() << "*** Warning: Rule ``" << *rule << "'' is useless!" << Qt::endl;
+              if (warnings_are_errors)
+                {
+                  qerr() << "qlalr: error: warning occurred, treating as error due to "
+                            "--exit-on-warn." << Qt::endl;
+                  exit(2);
+                }
+            }
         }
     }
 

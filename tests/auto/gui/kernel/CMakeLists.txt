@@ -1,4 +1,5 @@
-# Generated from kernel.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 if(QT_FEATURE_action)
     add_subdirectory(qaction)
@@ -28,7 +29,7 @@ endif()
 add_subdirectory(qpixelformat)
 add_subdirectory(qrasterwindow)
 add_subdirectory(qaddpostroutine)
-if(NOT ANDROID AND NOT UIKIT)
+if(NOT UIKIT)
     add_subdirectory(qclipboard)
 endif()
 if(TARGET Qt::Network)

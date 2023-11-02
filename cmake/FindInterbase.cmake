@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 #.rst:
 # FindInterbase
 # ---------
@@ -21,6 +24,7 @@
 find_path(Interbase_INCLUDE_DIR
           NAMES ibase.h
           HINTS ${Interbase_INCLUDEDIR}
+          PATH_SUFFIXES firebird
 )
 
 find_library(Interbase_LIBRARY

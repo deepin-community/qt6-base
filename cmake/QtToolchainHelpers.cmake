@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Create a CMake toolchain file for convenient configuration of both internal Qt builds
 # as well as CMake application projects.
 # Expects various global variables to be set.
@@ -26,6 +29,14 @@ set(__qt_chainload_toolchain_file \"\${__qt_initially_configured_toolchain_file}
         list(APPEND init_platform "set(CMAKE_SYSTEM_NAME Windows CACHE STRING \"\")")
         list(APPEND init_platform "set(CMAKE_SYSTEM_VERSION 10 CACHE STRING \"\")")
         list(APPEND init_platform "set(CMAKE_SYSTEM_PROCESSOR arm64 CACHE STRING \"\")")
+    endif()
+
+    if(QT_QMAKE_TARGET_MKSPEC)
+        list(APPEND init_platform
+            "if(NOT QT_QMAKE_TARGET_MKSPEC)"
+            "    set(QT_QMAKE_TARGET_MKSPEC ${QT_QMAKE_TARGET_MKSPEC} CACHE STRING \"\")"
+            "endif()"
+        )
     endif()
 
     if("${QT_QMAKE_TARGET_MKSPEC}" STREQUAL "linux-g++-32" AND NOT QT_NO_AUTO_DETECT_LINUX_X86)
@@ -118,14 +129,14 @@ set(__qt_chainload_toolchain_file \"\${__qt_initially_configured_toolchain_file}
     endif()
     if(__qt_embed_toolchain_compilers)
         list(APPEND init_platform "
-    set(__qt_initial_c_compiler \"${CMAKE_C_COMPILER}\")
-    set(__qt_initial_cxx_compiler \"${CMAKE_CXX_COMPILER}\")
-    if(NOT DEFINED CMAKE_C_COMPILER AND EXISTS \"\${__qt_initial_c_compiler}\")
-        set(CMAKE_C_COMPILER \"\${__qt_initial_c_compiler}\" CACHE STRING \"\")
-    endif()
-    if(NOT DEFINED CMAKE_CXX_COMPILER AND EXISTS \"\${__qt_initial_cxx_compiler}\")
-        set(CMAKE_CXX_COMPILER \"\${__qt_initial_cxx_compiler}\" CACHE STRING \"\")
-    endif()")
+set(__qt_initial_c_compiler \"${CMAKE_C_COMPILER}\")
+set(__qt_initial_cxx_compiler \"${CMAKE_CXX_COMPILER}\")
+if(NOT DEFINED CMAKE_C_COMPILER AND EXISTS \"\${__qt_initial_c_compiler}\")
+    set(CMAKE_C_COMPILER \"\${__qt_initial_c_compiler}\" CACHE STRING \"\")
+endif()
+if(NOT DEFINED CMAKE_CXX_COMPILER AND EXISTS \"\${__qt_initial_cxx_compiler}\")
+    set(CMAKE_CXX_COMPILER \"\${__qt_initial_cxx_compiler}\" CACHE STRING \"\")
+endif()")
     endif()
 
     unset(init_additional_used_variables)
@@ -219,15 +230,11 @@ set(__qt_chainload_toolchain_file \"\${__qt_initially_configured_toolchain_file}
     elseif(ANDROID)
         list(APPEND init_platform
 "# Detect Android SDK/NDK from environment before loading the Android platform toolchain file."
-"if(NOT DEFINED ANDROID_SDK_ROOT)"
-"    if(NOT \"\$ENV{ANDROID_SDK_ROOT}\" STREQUAL \"\")"
-"        set(ANDROID_SDK_ROOT \"\$ENV{ANDROID_SDK_ROOT}\" CACHE STRING \"Path to the Android SDK\")"
-"    endif()"
+"if(\"$\{ANDROID_SDK_ROOT}\" STREQUAL \"\" AND NOT \"\$ENV{ANDROID_SDK_ROOT}\" STREQUAL \"\")"
+"    set(ANDROID_SDK_ROOT \"\$ENV{ANDROID_SDK_ROOT}\" CACHE STRING \"Path to the Android SDK\")"
 "endif()"
-"if(NOT DEFINED ANDROID_NDK_ROOT)"
-"    if(NOT \"\$ENV{ANDROID_NDK_ROOT}\" STREQUAL \"\")"
-"        set(ANDROID_NDK_ROOT \"\$ENV{ANDROID_NDK_ROOT}\" CACHE STRING \"Path to the Android NDK\")"
-"    endif()"
+"if(\"$\{ANDROID_NDK_ROOT}\" STREQUAL \"\" AND NOT \"\$ENV{ANDROID_NDK_ROOT}\" STREQUAL \"\")"
+"    set(ANDROID_NDK_ROOT \"\$ENV{ANDROID_NDK_ROOT}\" CACHE STRING \"Path to the Android NDK\")"
 "endif()"
         )
 

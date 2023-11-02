@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 set(__GlobalConfig_path_suffix "${INSTALL_CMAKE_NAMESPACE}")
 qt_path_join(__GlobalConfig_build_dir ${QT_CONFIG_BUILD_DIR} ${__GlobalConfig_path_suffix})
 qt_path_join(__GlobalConfig_install_dir ${QT_CONFIG_INSTALL_DIR} ${__GlobalConfig_path_suffix})
@@ -87,17 +90,19 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/configure.cmake")
 
 qt_internal_get_first_osx_arch(__qt_osx_first_arch)
 set(__qt_apple_silicon_arches "arm64;arm64e")
-if((UIKIT AND NOT QT_UIKIT_SDK)
-        OR (MACOS AND QT_IS_MACOS_UNIVERSAL
-            AND __qt_osx_first_arch IN_LIST __qt_apple_silicon_arches))
-    set(QT_FORCE_FEATURE_sse2 ON CACHE INTERNAL "Force enable sse2 due to platform requirements.")
+if(MACOS AND QT_IS_MACOS_UNIVERSAL
+        AND __qt_osx_first_arch IN_LIST __qt_apple_silicon_arches)
+    # The test in configure.cmake will not be run, but we know that
+    # the compiler supports these intrinsics
+    set(QT_FORCE_FEATURE_x86intrin ON CACHE INTERNAL "Force-enable x86 intrinsics due to platform requirements.")
     set(__QtFeature_custom_enabled_cache_variables
-        TEST_subarch_sse2
-        FEATURE_sse2
-        QT_FEATURE_sse2)
+        TEST_x86intrin
+        FEATURE_x86intrin
+        QT_FEATURE_x86intrin)
 endif()
 
-if(MACOS AND QT_IS_MACOS_UNIVERSAL AND __qt_osx_first_arch STREQUAL "x86_64")
+if(MACOS AND QT_IS_MACOS_UNIVERSAL AND
+    (__qt_osx_first_arch STREQUAL "x86_64" OR __qt_osx_first_arch STREQUAL "x86_64h"))
     set(QT_FORCE_FEATURE_neon ON CACHE INTERNAL "Force enable neon due to platform requirements.")
     set(__QtFeature_custom_enabled_cache_variables
         TEST_subarch_neon
@@ -211,6 +216,7 @@ qt_copy_or_install(FILES
                    cmake/QtAndroidHelpers.cmake
                    cmake/QtAppHelpers.cmake
                    cmake/QtAutogenHelpers.cmake
+                   cmake/QtBaseTopLevelHelpers.cmake
                    cmake/QtBuild.cmake
                    cmake/QtBuildInformation.cmake
                    cmake/QtCMakeHelpers.cmake
@@ -219,6 +225,7 @@ qt_copy_or_install(FILES
                    cmake/QtCompilerFlags.cmake
                    cmake/QtCompilerOptimization.cmake
                    cmake/QtConfigDependencies.cmake.in
+                   cmake/QtConfigureTimeExecutableCMakeLists.txt.in
                    cmake/QtDeferredDependenciesHelpers.cmake
                    cmake/QtDbusHelpers.cmake
                    cmake/QtDocsHelpers.cmake
@@ -234,6 +241,7 @@ qt_copy_or_install(FILES
                    cmake/QtGenerateExtPri.cmake
                    cmake/QtGenerateLibHelpers.cmake
                    cmake/QtGenerateLibPri.cmake
+                   cmake/QtGenerateVersionScript.cmake
                    cmake/QtGlobalStateHelpers.cmake
                    cmake/QtHeadersClean.cmake
                    cmake/QtInstallHelpers.cmake
@@ -241,6 +249,7 @@ qt_copy_or_install(FILES
                    cmake/QtLalrHelpers.cmake
                    cmake/QtModuleConfig.cmake.in
                    cmake/QtModuleDependencies.cmake.in
+                   cmake/QtModuleHeadersCheck.cmake
                    cmake/QtModuleHelpers.cmake
                    cmake/QtModuleToolsConfig.cmake.in
                    cmake/QtModuleToolsDependencies.cmake.in
@@ -256,6 +265,7 @@ qt_copy_or_install(FILES
                    cmake/QtPostProcess.cmake
                    cmake/QtPostProcessHelpers.cmake
                    cmake/QtPrecompiledHeadersHelpers.cmake
+                   cmake/QtUnityBuildHelpers.cmake
                    cmake/QtPriHelpers.cmake
                    cmake/QtPrlHelpers.cmake
                    cmake/QtPlatformTargetHelpers.cmake
@@ -281,6 +291,7 @@ qt_copy_or_install(FILES
                    cmake/QtWriteArgsFile.cmake
                    cmake/modulecppexports.h.in
                    cmake/modulecppexports_p.h.in
+                   cmake/qbatchedtestrunner.in.cpp
     DESTINATION "${__GlobalConfig_install_dir}"
 )
 
@@ -322,6 +333,7 @@ set(__public_cmake_helpers
     cmake/QtCopyFileIfDifferent.cmake
     cmake/QtFeature.cmake
     cmake/QtFeatureCommon.cmake
+    cmake/QtInitProject.cmake
     cmake/QtPublicAppleHelpers.cmake
     cmake/QtPublicCMakeHelpers.cmake
     cmake/QtPublicCMakeVersionHelpers.cmake
@@ -349,7 +361,6 @@ if(QT_WILL_INSTALL)
     endforeach()
 endif()
 
-# TODO: Check whether this is the right place to install these
 qt_copy_or_install(DIRECTORY "cmake/3rdparty" DESTINATION "${__GlobalConfig_install_dir}")
 
 # In prefix builds we also need to copy the files into the build config directory, so that the
@@ -365,6 +376,10 @@ qt_copy_or_install(DIRECTORY cmake/
     FILES_MATCHING PATTERN "Find*.cmake"
     PATTERN "tests" EXCLUDE
     PATTERN "3rdparty" EXCLUDE
+    PATTERN "macos" EXCLUDE
+    PATTERN "ios" EXCLUDE
+    PATTERN "platforms" EXCLUDE
+    PATTERN "QtBuildInternals" EXCLUDE
 )
 
 # In prefix builds we also need to copy the files into the build config directory, so that the
@@ -375,20 +390,37 @@ if(QT_WILL_INSTALL)
         FILES_MATCHING PATTERN "Find*.cmake"
         PATTERN "tests" EXCLUDE
         PATTERN "3rdparty" EXCLUDE
+        PATTERN "macos" EXCLUDE
+        PATTERN "ios" EXCLUDE
+        PATTERN "platforms" EXCLUDE
+        PATTERN "QtBuildInternals" EXCLUDE
     )
 endif()
 
-if(MACOS)
-    qt_copy_or_install(FILES
-        cmake/macos/MacOSXBundleInfo.plist.in
-        DESTINATION "${__GlobalConfig_install_dir}/macos"
+if(APPLE)
+    if(MACOS)
+        set(platform_shortname "macos")
+    elseif(IOS)
+        set(platform_shortname "ios")
+    endif()
+
+    qt_copy_or_install(FILES "cmake/${platform_shortname}/Info.plist.app.in"
+        DESTINATION "${__GlobalConfig_install_dir}/${platform_shortname}"
     )
-elseif(IOS)
-    qt_copy_or_install(FILES
-        cmake/ios/Info.plist.app.in
-        cmake/ios/LaunchScreen.storyboard
-        DESTINATION "${__GlobalConfig_install_dir}/ios"
+    # For examples built as part of prefix build before install
+    file(COPY "cmake/${platform_shortname}/Info.plist.app.in"
+        DESTINATION "${__GlobalConfig_build_dir}/${platform_shortname}"
     )
+
+    if(IOS)
+        qt_copy_or_install(FILES "cmake/ios/LaunchScreen.storyboard"
+            DESTINATION "${__GlobalConfig_install_dir}/ios"
+        )
+        # For examples built as part of prefix build before install
+        file(COPY "cmake/ios/LaunchScreen.storyboard"
+            DESTINATION "${__GlobalConfig_build_dir}/ios"
+        )
+    endif()
 elseif(WASM)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/util/wasm/wasmtestrunner/qt-wasmtestrunner.py"
         "${QT_BUILD_DIR}/${INSTALL_LIBEXECDIR}/qt-wasmtestrunner.py" @ONLY)
@@ -402,4 +434,6 @@ qt_path_join(__qt_libexec_install_dir "${QT_INSTALL_DIR}" "${INSTALL_LIBEXECDIR}
 qt_copy_or_install(FILES coin/instructions/qmake/ensure_pro_file.cmake
     DESTINATION "${__qt_libexec_install_dir}")
 qt_copy_or_install(PROGRAMS "util/testrunner/qt-testrunner.py"
-                   DESTINATION "${__qt_libexec_install_dir}")
+    DESTINATION "${__qt_libexec_install_dir}")
+qt_copy_or_install(PROGRAMS "util/testrunner/sanitizer-testrunner.py"
+    DESTINATION "${__qt_libexec_install_dir}")

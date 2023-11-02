@@ -9,6 +9,8 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qglobalstatic.h>
 
+#include <new>
+
 QT_BEGIN_NAMESPACE
 
 namespace QtGlobalStatic {
@@ -28,7 +30,8 @@ template <typename QAS> struct ApplicationHolder
     Q_DISABLE_COPY_MOVE(ApplicationHolder)
     ~ApplicationHolder()
     {
-        if (guard.loadRelaxed() == QtGlobalStatic::Initialized) {
+        if (guard.loadAcquire() == QtGlobalStatic::Initialized) {
+            // No mutex! Up to external code to ensure no race happens.
             guard.storeRelease(QtGlobalStatic::Destroyed);
             realPointer()->~PlainType();
         }
@@ -36,30 +39,29 @@ template <typename QAS> struct ApplicationHolder
 
     static PlainType *realPointer()
     {
-        return reinterpret_cast<PlainType *>(&storage);
+        return std::launder(reinterpret_cast<PlainType *>(&storage));
     }
 
     // called from QGlobalStatic::instance()
     PlainType *pointer() noexcept(MutexLockIsNoexcept && ConstructionIsNoexcept)
     {
-        if (guard.loadRelaxed() == QtGlobalStatic::Initialized)
+        if (guard.loadAcquire() == QtGlobalStatic::Initialized)
             return realPointer();
         QMutexLocker locker(&mutex);
         if (guard.loadRelaxed() == QtGlobalStatic::Uninitialized) {
-            QAS::innerFunction(realPointer());
+            QAS::innerFunction(&storage);
             QObject::connect(QCoreApplication::instance(), &QObject::destroyed, reset);
-            guard.storeRelaxed(QtGlobalStatic::Initialized);
+            guard.storeRelease(QtGlobalStatic::Initialized);
         }
         return realPointer();
     }
 
     static void reset()
     {
-        if (guard.loadRelaxed() == QtGlobalStatic::Initialized) {
-            QMutexLocker locker(&mutex);
-            realPointer()->~PlainType();
-            guard.storeRelaxed(QtGlobalStatic::Uninitialized);
-        }
+        // we only synchronize using the mutex here, not the guard
+        QMutexLocker locker(&mutex);
+        realPointer()->~PlainType();
+        guard.storeRelaxed(QtGlobalStatic::Uninitialized);
     }
 };
 } // namespace QtGlobalStatic

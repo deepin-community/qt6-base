@@ -41,6 +41,7 @@ private slots:
     void setLocale();
     void lastModified();
     void resourcesInStaticPlugins();
+    void qtResourceEmpty();
 
 private:
     const QString m_runtimeResourceRcc;
@@ -168,6 +169,7 @@ void tst_QResourceEngine::checkStructure_data()
 #ifdef Q_OS_ANDROID
                  << QLatin1String("android_testdata")
 #endif
+                 << QLatin1String("empty")
                  << QLatin1String("otherdir")
                  << QLatin1String("runtime_resource")
                  << QLatin1String("searchpath1")
@@ -284,7 +286,7 @@ void tst_QResourceEngine::checkStructure_data()
 
 
         info = QFileInfo(QFINDTESTDATA("testqrc/test/test/test2.txt"));
-        QTest::addRow("%s test1 text", qPrintable(root))        << QString(root + "test/test/test2.txt")
+        QTest::addRow("%s test2 text", qPrintable(root))        << QString(root + "test/test/test2.txt")
                                                   << QByteArray("def\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -541,6 +543,15 @@ void tst_QResourceEngine::checkUnregisterResource()
     QVERIFY(QFile::exists(file_check));
     QVERIFY(QResource::unregisterResource(rcc_file, root));
     QVERIFY(!QFile::exists(file_check));
+    {
+        // QTBUG-86088
+        QVERIFY(QResource::registerResource(rcc_file, root));
+        QFile file(file_check);
+        QVERIFY(file.open(QFile::ReadOnly));
+        QVERIFY(!QResource::unregisterResource(rcc_file, root));
+        file.close();
+        QVERIFY(!QFile::exists(file_check));
+    }
     QVERIFY(QResource::registerResource(rcc_file, root));
     QVERIFY(QFile::exists(file_check));
     QFileInfo fileInfo(file_check);
@@ -609,6 +620,14 @@ void tst_QResourceEngine::resourcesInStaticPlugins()
     // the plugin via moc generated Q_INIT_RESOURCE calls in a
     // Q_CONSTRUCTOR_FUNCTION.
     QVERIFY(QFile::exists(":/staticplugin/main.cpp"));
+}
+
+void tst_QResourceEngine::qtResourceEmpty()
+{
+    QFile f(":/empty/world.txt");
+    QVERIFY(f.exists());
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QVERIFY(f.readAll().isEmpty());
 }
 
 QTEST_MAIN(tst_QResourceEngine)

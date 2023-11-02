@@ -218,7 +218,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value ObjectHide                       An object is hidden; for example, with QWidget::hide().
                                             Any children the object that is hidden has do not send
                                             this event. It is not sent when an object is hidden as
-                                            it is being obcured by others.
+                                            it is being obscured by others.
     \value ObjectReorder                    A layout or item view  has added, removed, or moved an
                                             object (Qt does not use this event).
     \value ObjectShow                       An object is displayed; for example, with
@@ -354,14 +354,29 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \enum QAccessible::RelationFlag
 
     This enum type defines bit flags that can be combined to indicate
-    the relationship between two accessible objects.
+    the relationship between two accessible objects. It is used by
+    the relations() function, which returns a list of all the related
+    interfaces of the calling object, together with the relations
+    for each object.
 
-    \value Label            The first object is the label of the second object.
-    \value Labelled         The first object is labelled by the second object.
-    \value Controller       The first object controls the second object.
-    \value Controlled       The first object is controlled by the second object.
-    \value AllRelations     Used as a mask to specify that we are interesting in information
-                            about all relations
+    Each entry in the list is a QPair where the \c second member stores
+    the relation type(s) between the \c returned object represented by the
+    \c first member and the \c origin (the caller) interface/object.
+
+    In the table below, the \c returned object refers to the object in
+    the returned list, and the \c origin object is the one represented
+    by the calling interface.
+
+    \value Label                        The \c returned object is the label for the \c origin object.
+    \value Labelled                     The \c returned object is labelled by the \c origin object.
+    \value Controller                   The \c returned object controls the \c origin object.
+    \value Controlled                   The \c returned object is controlled by the \c origin object.
+    \value [since 6.6] DescriptionFor   The \c returned object provides a description for the \c origin object.
+    \value [since 6.6] Described        The \c returned object is described by the \c origin object.
+    \value [since 6.6] FlowsFrom        Content logically flows from the \c returned object to the \c origin object.
+    \value [since 6.6] FlowsTo          Content logically flows to the \c returned object from the \c origin object.
+    \value AllRelations                 Used as a mask to specify that we are interesting in information
+                                        about all relations
 
     Implementations of relations() return a combination of these flags.
     Some values are mutually exclusive.
@@ -415,8 +430,9 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value TableInterface           For lists, tables and trees.
     \value TableCellInterface       For cells in a TableInterface object.
     \value HyperlinkInterface       For hyperlink nodes (usually embedded as children of text nodes)
+    \value [since 6.5] SelectionInterface For non-text objects that support selection of child objects.
 
-    \sa QAccessibleInterface::interface_cast(), QAccessibleTextInterface, QAccessibleValueInterface, QAccessibleActionInterface, QAccessibleTableInterface, QAccessibleTableCellInterface
+    \sa QAccessibleInterface::interface_cast(), QAccessibleTextInterface, QAccessibleValueInterface, QAccessibleActionInterface, QAccessibleTableInterface, QAccessibleTableCellInterface, QAccessibleSelectionInterface
 */
 
 #if QT_CONFIG(accessibility)
@@ -436,7 +452,7 @@ QAccessibleInterface::~QAccessibleInterface()
 
 
 /* accessible widgets plugin discovery stuff */
-Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
+Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, acLoader,
     (QAccessibleFactoryInterface_iid, "/accessible"_L1))
 typedef QHash<QString, QAccessiblePlugin*> QAccessiblePluginsHash;
 Q_GLOBAL_STATIC(QAccessiblePluginsHash, qAccessiblePlugins)
@@ -682,9 +698,9 @@ QAccessibleInterface *QAccessible::queryAccessibleInterface(QObject *object)
         // no entry in the cache try to create it using the plugin loader.
         if (!qAccessiblePlugins()->contains(cn)) {
             QAccessiblePlugin *factory = nullptr; // 0 means "no plugin found". This is cached as well.
-            const int index = loader()->indexOf(cn);
+            const int index = acLoader()->indexOf(cn);
             if (index != -1)
-                factory = qobject_cast<QAccessiblePlugin *>(loader()->instance(index));
+                factory = qobject_cast<QAccessiblePlugin *>(acLoader()->instance(index));
             qAccessiblePlugins()->insert(cn, factory);
         }
 
@@ -850,11 +866,11 @@ void QAccessible::updateAccessibility(QAccessibleEvent *event)
             if (iface->tableInterface())
                 iface->tableInterface()->modelChange(static_cast<QAccessibleTableModelChangeEvent*>(event));
         }
+    }
 
-        if (updateHandler) {
-            updateHandler(event);
-            return;
-        }
+    if (updateHandler) {
+        updateHandler(event);
+        return;
     }
 
     if (QPlatformAccessibility *pfAccessibility = platformAccessibility())
@@ -1270,6 +1286,11 @@ QColor QAccessibleInterface::backgroundColor() const
 /*!
     \fn QAccessibleImageInterface *QAccessibleInterface::imageInterface()
     \internal
+*/
+
+/*!
+    \fn QAccessibleSelectionInterface *QAccessibleInterface::selectionInterface()
+    \since 6.5
 */
 
 /*!
@@ -1828,13 +1849,13 @@ Q_GUI_EXPORT QDebug operator<<(QDebug d, const QAccessibleInterface *iface)
         QStringList stateStrings;
         QAccessible::State st = iface->state();
         if (st.focusable)
-            stateStrings << "focusable"_L1;
+            stateStrings << u"focusable"_s;
         if (st.focused)
-            stateStrings << "focused"_L1;
+            stateStrings << u"focused"_s;
         if (st.selected)
-            stateStrings << "selected"_L1;
+            stateStrings << u"selected"_s;
         if (st.invisible)
-            stateStrings << "invisible"_L1;
+            stateStrings << u"invisible"_s;
 
         if (!stateStrings.isEmpty())
             d << stateStrings.join(u'|');
@@ -2588,7 +2609,7 @@ QAccessibleTableInterface::~QAccessibleTableInterface()
 /*!
     \fn virtual QList<int> QAccessibleTableInterface::selectedRows() const
 
-    Returns the list of currently selected columns.
+    Returns the list of currently selected rows.
 */
 
 /*!
@@ -2940,6 +2961,114 @@ QString QAccessibleActionInterface::nextPageAction()
 {
     return accessibleActionStrings()->nextPageAction;
 }
+
+
+/*!
+    \since 6.5
+    \class QAccessibleSelectionInterface
+    \inmodule QtGui
+    \ingroup accessibility
+    \preliminary
+
+    \brief The QAccessibleSelectionInterface class implements support for
+    selection handling.
+
+    It provides methods for both, retrieving the current selection
+    as well as modifying the selection.
+
+    Only selections of direct children are supported.
+*/
+
+/*!
+
+    Destroys the QAccessibleSelectionInterface.
+*/
+QAccessibleSelectionInterface::~QAccessibleSelectionInterface()
+{
+}
+
+/*!
+    \fn virtual int QAccessibleSelectionInterface::selectedItemCount() const
+
+    Returns the total number of selected accessible items.
+*/
+
+/*!
+    \fn virtual QList<QAccessibleInterface *> QAccessibleSelectionInterface::selectedItems() const
+
+    Returns the list of selected accessible items.
+*/
+
+/*!
+    Returns the selected accessible item at index \a selectionIndex in the selection.
+
+    Note that the index refers to the n-th selected accessible item (i.e. the index in the current selection),
+    which generally differs from the index that would be passed to \l QAccessibleInterface::child()
+    in order to retrieve the same item.
+
+    The default implementation uses \a selectionIndex to retrieve the item from the list
+    of selected items retrieved by \l QAccessibleSelectionInterface::selectedItems().
+
+    In particular for implementations dealing with many selected items, reimplementing
+    this method in a more efficient way may be desirable for performance reasons.
+*/
+QAccessibleInterface* QAccessibleSelectionInterface::selectedItem(int selectionIndex) const
+{
+    QList<QAccessibleInterface*> items = selectedItems();
+    if (selectionIndex < 0 || selectionIndex > items.length() -1) {
+        qCWarning(lcAccessibilityCore) << "Selection index" << selectionIndex << "out of range.";
+        return nullptr;
+    }
+
+    return items.at(selectionIndex);
+}
+
+/*!
+    Returns whether \a childItem is part of the current selection.
+
+    The default implementation checks whether \a childItem is contained
+    in the list of items retrieved by \l QAccessibleSelectionInterface::selectedItems.
+*/
+bool QAccessibleSelectionInterface::isSelected(QAccessibleInterface *childItem) const
+{
+    return selectedItems().contains(childItem);
+}
+
+/*!
+    \fn virtual bool QAccessibleSelectionInterface::select(QAccessibleInterface *childItem)
+
+    Adds \a childItem to the selection.
+    Returns whether \a childItem has actually been added to the selection.
+
+    For implementations that only allow single selections,
+    this may replace the current selection.
+*/
+
+/*!
+    \fn virtual bool QAccessibleSelectionInterface::unselect(QAccessibleInterface *childItem)
+
+    Removes \a childItem from the selection.
+
+    Returns whether the accessible item has actually been removed from the selection.
+*/
+
+/*!
+    \fn virtual bool QAccessibleSelectionInterface::selectAll()
+
+    Selects all accessible child items.
+
+    Returns whether all accessible child items have actually been added to the selection.
+*/
+
+/*!
+    \fn virtual bool QAccessibleSelectionInterface::clear()
+
+    Unselects all accessible child items.
+
+    Returns whether all accessible child items have actually been removed from the selection,
+    i.e. whether the selection is empty after this method has been called.
+*/
+
 
 /*! \internal */
 QString qAccessibleLocalizedActionDescription(const QString &actionName)

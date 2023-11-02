@@ -1,10 +1,12 @@
-# Generated from dbus.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 add_subdirectory(qdbusconnection_delayed)
 add_subdirectory(qdbusconnection)
 add_subdirectory(qdbusconnection_no_app)
 add_subdirectory(qdbusconnection_no_bus)
 add_subdirectory(qdbusconnection_no_libdbus)
+add_subdirectory(qdbusconnection_signalorder)
 add_subdirectory(qdbusconnection_spyhook)
 add_subdirectory(qdbuscontext)
 add_subdirectory(qdbuslocalcalls)

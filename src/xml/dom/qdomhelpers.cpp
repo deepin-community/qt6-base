@@ -8,6 +8,7 @@
 #include "qdomhelpers_p.h"
 #include "qdom_p.h"
 #include "qxmlstream.h"
+#include "private/qxmlstream_p.h"
 
 #include <memory>
 #include <stack>
@@ -22,13 +23,9 @@ using namespace Qt::StringLiterals;
  *
  **************************************************************/
 
-QDomBuilder::QDomBuilder(QDomDocumentPrivate *d, QXmlStreamReader *r, bool namespaceProcessing)
-    : errorLine(0),
-      errorColumn(0),
-      doc(d),
-      node(d),
-      reader(r),
-      nsProcessing(namespaceProcessing)
+QDomBuilder::QDomBuilder(QDomDocumentPrivate *d, QXmlStreamReader *r,
+                         QDomDocument::ParseOptions options)
+    : doc(d), node(d), reader(r), parseOptions(options)
 {
     Q_ASSERT(doc);
     Q_ASSERT(reader);
@@ -84,6 +81,8 @@ bool QDomBuilder::parseDTD(const QString &dtd)
 bool QDomBuilder::startElement(const QString &nsURI, const QString &qName,
                                const QXmlStreamAttributes &atts)
 {
+    const bool nsProcessing =
+            parseOptions.testFlag(QDomDocument::ParseOption::UseNamespaceProcessing);
     QDomNodePrivate *n =
             nsProcessing ? doc->createElementNS(nsURI, qName) : doc->createElement(qName);
     if (!n)
@@ -168,14 +167,9 @@ bool QDomBuilder::skippedEntity(const QString &name)
 
 void QDomBuilder::fatalError(const QString &message)
 {
-    errorMsg = message;
-    errorLine = static_cast<int>(reader->lineNumber());
-    errorColumn = static_cast<int>(reader->columnNumber());
-}
-
-QDomBuilder::ErrorInfo QDomBuilder::error() const
-{
-    return ErrorInfo(errorMsg, errorLine, errorColumn);
+    parseResult.errorMessage = message;
+    parseResult.errorLine = reader->lineNumber();
+    parseResult.errorColumn = reader->columnNumber();
 }
 
 bool QDomBuilder::startEntity(const QString &name)
@@ -232,19 +226,15 @@ bool QDomBuilder::notationDecl(const QString &name, const QString &publicId,
  *
  **************************************************************/
 
-QDomParser::QDomParser(QDomDocumentPrivate *d, QXmlStreamReader *r, bool namespaceProcessing)
-    : reader(r), domBuilder(d, r, namespaceProcessing)
+QDomParser::QDomParser(QDomDocumentPrivate *d, QXmlStreamReader *r,
+                       QDomDocument::ParseOptions options)
+    : reader(r), domBuilder(d, r, options)
 {
 }
 
 bool QDomParser::parse()
 {
     return parseProlog() && parseBody();
-}
-
-QDomBuilder::ErrorInfo QDomParser::errorInfo() const
-{
-    return domBuilder.error();
 }
 
 bool QDomParser::parseProlog()
@@ -275,9 +265,9 @@ bool QDomParser::parseProlog()
                 if (reader->isStandaloneDocument()) {
                     value += u" standalone='yes'"_s;
                 } else {
-                    // TODO: Add standalone='no', if 'standalone' is specified. With the current
-                    // QXmlStreamReader there is no way to figure out if it was specified or not.
-                    // QXmlStreamReader needs to be modified for handling that case correctly.
+                    // Add the standalone attribute only if it was specified
+                    if (reader->hasStandaloneDeclaration())
+                        value += u" standalone='no'"_s;
                 }
 
                 if (!domBuilder.processingInstruction(u"xml"_s, value)) {
@@ -360,13 +350,14 @@ bool QDomParser::parseBody()
             }
             break;
         case QXmlStreamReader::Characters:
-            if (!reader->isWhitespace()) { // Skip the content consisting of only whitespaces
-                if (reader->isCDATA() || !reader->text().trimmed().isEmpty()) {
-                    if (!domBuilder.characters(reader->text().toString(), reader->isCDATA())) {
-                        domBuilder.fatalError(QDomParser::tr(
-                                "Error occurred while processing the element content"));
-                        return false;
-                    }
+            // Skip the content if it contains only spacing characters,
+            // unless it's CDATA or PreserveSpacingOnlyNodes was specified.
+            if (reader->isCDATA() || domBuilder.preserveSpacingOnlyNodes()
+                || !(reader->isWhitespace() || reader->text().trimmed().isEmpty())) {
+                if (!domBuilder.characters(reader->text().toString(), reader->isCDATA())) {
+                    domBuilder.fatalError(
+                            QDomParser::tr("Error occurred while processing the element content"));
+                    return false;
                 }
             }
             break;

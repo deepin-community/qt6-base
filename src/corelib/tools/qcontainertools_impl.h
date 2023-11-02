@@ -14,6 +14,8 @@
 #include <QtCore/qglobal.h>
 #include <QtCore/qtypeinfo.h>
 
+#include <QtCore/qxptype_traits.h>
+
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -37,6 +39,26 @@ static constexpr bool q_points_into_range(const T *p, const T *b, const T *e,
     return !less(p, b) && less(p, e);
 }
 
+/*!
+  \internal
+
+  Returns whether \a p is within container \a c. In its simplest form equivalent to:
+  c.data() <= p < c.data() + c.size()
+*/
+template <typename C, typename T>
+static constexpr bool q_points_into_range(const T &p, const C &c) noexcept
+{
+    static_assert(std::is_same_v<decltype(std::data(c)), T>);
+
+    // std::distance because QArrayDataPointer has a "qsizetype size"
+    // member but no size() function
+    return q_points_into_range(p, std::data(c),
+                               std::data(c) + std::distance(std::begin(c), std::end(c)));
+}
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Wmaybe-uninitialized")
+
 template <typename T, typename N>
 void q_uninitialized_move_if_noexcept_n(T* first, N n, T* out)
 {
@@ -50,16 +72,73 @@ template <typename T, typename N>
 void q_uninitialized_relocate_n(T* first, N n, T* out)
 {
     if constexpr (QTypeInfo<T>::isRelocatable) {
-        if (n != N(0)) { // even if N == 0, out == nullptr or first == nullptr are UB for memmove()
-            std::memmove(static_cast<void*>(out),
-                         static_cast<const void*>(first),
-                         n * sizeof(T));
+        if (n != N(0)) { // even if N == 0, out == nullptr or first == nullptr are UB for memcpy()
+            std::memcpy(static_cast<void *>(out),
+                        static_cast<const void *>(first),
+                        n * sizeof(T));
         }
     } else {
         q_uninitialized_move_if_noexcept_n(first, n, out);
         if constexpr (QTypeInfo<T>::isComplex)
             std::destroy_n(first, n);
     }
+}
+
+QT_WARNING_POP
+
+/*!
+    \internal
+
+    A wrapper around std::rotate(), with an optimization for
+    Q_RELOCATABLE_TYPEs. We omit the return value, as it would be more work to
+    compute in the Q_RELOCATABLE_TYPE case and, unlike std::rotate on
+    ForwardIterators, callers can compute the result in constant time
+    themselves.
+*/
+template <typename T>
+void q_rotate(T *first, T *mid, T *last)
+{
+    if constexpr (QTypeInfo<T>::isRelocatable) {
+        const auto cast = [](T *p) { return reinterpret_cast<uchar*>(p); };
+        std::rotate(cast(first), cast(mid), cast(last));
+    } else {
+        std::rotate(first, mid, last);
+    }
+}
+
+/*!
+    \internal
+    Copies all elements, except the ones for which \a pred returns \c true, from
+    range [first, last), to the uninitialized memory buffer starting at \a out.
+
+    It's undefined behavior if \a out points into [first, last).
+
+    Returns a pointer one past the last copied element.
+
+    If an exception is thrown, all the already copied elements in the destination
+    buffer are destroyed.
+*/
+template <typename T, typename Predicate>
+T *q_uninitialized_remove_copy_if(T *first, T *last, T *out, Predicate &pred)
+{
+    static_assert(std::is_nothrow_destructible_v<T>,
+                  "This algorithm requires that T has a non-throwing destructor");
+    Q_ASSERT(!q_points_into_range(out, first, last));
+
+    T *dest_begin = out;
+    QT_TRY {
+        while (first != last) {
+            if (!pred(*first)) {
+                new (std::addressof(*out)) T(*first);
+                ++out;
+            }
+            ++first;
+        }
+    } QT_CATCH (...) {
+        std::destroy(std::reverse_iterator(out), std::reverse_iterator(dest_begin));
+        QT_RETHROW;
+    }
+    return out;
 }
 
 template<typename iterator, typename N>
@@ -203,43 +282,34 @@ void reserveIfForwardIterator(Container *c, ForwardIterator f, ForwardIterator l
     c->reserve(static_cast<typename Container::size_type>(std::distance(f, l)));
 }
 
-template <typename Iterator, typename = std::void_t<>>
-struct AssociativeIteratorHasKeyAndValue : std::false_type
-{
-};
+template <typename Iterator>
+using KeyAndValueTest = decltype(
+    std::declval<Iterator &>().key(),
+    std::declval<Iterator &>().value()
+);
 
 template <typename Iterator>
-struct AssociativeIteratorHasKeyAndValue<
-        Iterator,
-        std::void_t<decltype(std::declval<Iterator &>().key()),
-                    decltype(std::declval<Iterator &>().value())>
-    >
-    : std::true_type
-{
-};
-
-template <typename Iterator, typename = std::void_t<>, typename = std::void_t<>>
-struct AssociativeIteratorHasFirstAndSecond : std::false_type
-{
-};
-
-template <typename Iterator>
-struct AssociativeIteratorHasFirstAndSecond<
-        Iterator,
-        std::void_t<decltype(std::declval<Iterator &>()->first),
-                    decltype(std::declval<Iterator &>()->second)>
-    >
-    : std::true_type
-{
-};
+using FirstAndSecondTest = decltype(
+    std::declval<Iterator &>()->first,
+    std::declval<Iterator &>()->second
+);
 
 template <typename Iterator>
 using IfAssociativeIteratorHasKeyAndValue =
-    typename std::enable_if<AssociativeIteratorHasKeyAndValue<Iterator>::value, bool>::type;
+    std::enable_if_t<qxp::is_detected_v<KeyAndValueTest, Iterator>, bool>;
 
 template <typename Iterator>
 using IfAssociativeIteratorHasFirstAndSecond =
-    typename std::enable_if<AssociativeIteratorHasFirstAndSecond<Iterator>::value, bool>::type;
+    std::enable_if_t<qxp::is_detected_v<FirstAndSecondTest, Iterator>, bool>;
+
+template <typename Iterator>
+using MoveBackwardsTest = decltype(
+    std::declval<Iterator &>().operator--()
+);
+
+template <typename Iterator>
+using IfIteratorCanMoveBackwards =
+    std::enable_if_t<qxp::is_detected_v<MoveBackwardsTest, Iterator>, bool>;
 
 template <typename T, typename U>
 using IfIsNotSame =

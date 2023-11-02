@@ -107,6 +107,7 @@ enum WindowsEventType // Simplify event types
     PointerActivateWindowEvent = WindowEventFlag + 24,
     DpiScaledSizeEvent = WindowEventFlag + 25,
     DpiChangedAfterParentEvent = WindowEventFlag + 27,
+    TaskbarButtonCreated = WindowEventFlag + 28,
     MouseEvent = MouseEventFlag + 1,
     MouseWheelEvent = MouseEventFlag + 2,
     CursorEvent = MouseEventFlag + 3,
@@ -149,19 +150,28 @@ enum WindowsEventType // Simplify event types
 Q_DECLARE_MIXED_ENUM_OPERATORS(bool, WindowsEventTypeFlags, WindowsEventType);
 Q_DECLARE_MIXED_ENUM_OPERATORS(bool, WindowsEventType, WindowsEventTypeFlags);
 
-// Matches Process_DPI_Awareness (Windows 8.1 onwards), used for SetProcessDpiAwareness()
-enum ProcessDpiAwareness
+enum class DpiAwareness
 {
-    ProcessDpiUnaware,
-    ProcessSystemDpiAware,
-    ProcessPerMonitorDpiAware,
-    ProcessPerMonitorV2DpiAware // Qt extension (not in Process_DPI_Awareness)
+    Invalid = -1,
+    Unaware,
+    System,
+    PerMonitor,
+    PerMonitorVersion2,
+    Unaware_GdiScaled
 };
 
 } // namespace QtWindows
 
 inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamIn, LPARAM lParamIn)
 {
+    static const UINT WM_TASKBAR_BUTTON_CREATED = []{
+        UINT message = RegisterWindowMessage(L"TaskbarButtonCreated");
+        // In case the application is run elevated, allow the
+        // TaskbarButtonCreated message through.
+        ChangeWindowMessageFilter(message, MSGFLT_ADD);
+        return message;
+    }();
+
     switch (message) {
     case WM_PAINT:
     case WM_ERASEBKGND:
@@ -312,8 +322,14 @@ inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamI
         return QtWindows::NonClientPointerEvent;
     if (message >= WM_POINTERUPDATE && message <= WM_POINTERHWHEEL)
         return QtWindows::PointerEvent;
+    if (message == WM_TASKBAR_BUTTON_CREATED)
+        return QtWindows::TaskbarButtonCreated;
     return QtWindows::UnknownEvent;
 }
+
+#ifndef QT_NO_DEBUG_STREAM
+extern QDebug operator<<(QDebug, QtWindows::DpiAwareness);
+#endif
 
 QT_END_NAMESPACE
 

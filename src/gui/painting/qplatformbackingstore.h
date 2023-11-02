@@ -23,7 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_GUI_EXPORT Q_DECLARE_LOGGING_CATEGORY(lcQpaBackingStore)
+Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcQpaBackingStore, Q_GUI_EXPORT)
 
 class QRegion;
 class QRect;
@@ -45,6 +45,7 @@ struct Q_GUI_EXPORT QPlatformBackingStoreRhiConfig
         Metal,
         Vulkan,
         D3D11,
+        D3D12,
         Null
     };
 
@@ -103,6 +104,7 @@ public:
     int count() const;
     bool isEmpty() const { return count() == 0; }
     QRhiTexture *texture(int index) const;
+    QRhiTexture *textureExtra(int index) const;
     QRect geometry(int index) const;
     QRect clipRect(int index) const;
     void *source(int index);
@@ -111,6 +113,9 @@ public:
     bool isLocked() const;
 
     void appendTexture(void *source, QRhiTexture *texture, const QRect &geometry,
+                       const QRect &clipRect = QRect(), Flags flags = { });
+
+    void appendTexture(void *source, QRhiTexture *textureLeft, QRhiTexture *textureRight, const QRect &geometry,
                        const QRect &clipRect = QRect(), Flags flags = { });
     void clear();
 

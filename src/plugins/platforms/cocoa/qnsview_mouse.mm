@@ -209,20 +209,19 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
         case NSEventTypeOtherMouseUp:
             return QEvent::NonClientAreaMouseButtonRelease;
 
+        case NSEventTypeMouseMoved:
         case NSEventTypeLeftMouseDragged:
         case NSEventTypeRightMouseDragged:
         case NSEventTypeOtherMouseDragged:
             return QEvent::NonClientAreaMouseMove;
 
         default:
-            break;
+            Q_UNREACHABLE();
         }
-
-        return QEvent::None;
     }();
 
     qCInfo(lcQpaMouse) << eventType << "at" << qtWindowPoint << "with" << m_frameStrutButtons << "in" << self.window;
-    QWindowSystemInterface::handleFrameStrutMouseEvent(m_platformWindow->window(),
+    QWindowSystemInterface::handleMouseEvent(m_platformWindow->window(),
         timestamp, qtWindowPoint, qtScreenPoint, m_frameStrutButtons, button, eventType);
 }
 @end
@@ -484,10 +483,6 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
 
 - (void)cursorUpdate:(NSEvent *)theEvent
 {
-    // Note: We do not get this callback when moving from a subview that
-    // uses the legacy cursorRect API, so the cursor is reset to the arrow
-    // cursor. See rdar://34183708
-
     if (!NSApp.active)
         return;
 
@@ -548,6 +543,30 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
     [self handleMouseEvent: theEvent];
 }
 
+- (BOOL)shouldPropagateMouseEnterExit
+{
+    Q_ASSERT(m_platformWindow);
+
+    // We send out enter and leave events mainly from mouse move events (mouseMovedImpl),
+    // but in some case (see mouseEnteredImpl:) we also want to propagate enter/leave
+    // events from the platform. We only do this for windows that themselves are not
+    // handled by another parent QWindow.
+
+    if (m_platformWindow->isContentView())
+        return true;
+
+    // Windows manually embedded into a native view does not have a QWindow parent
+    if (m_platformWindow->isEmbedded())
+        return true;
+
+    // Windows embedded via fromWinId do, but the parent isn't a QNSView
+    QPlatformWindow *parentWindow = m_platformWindow->QPlatformWindow::parent();
+    if (parentWindow && parentWindow->isForeignWindow())
+        return true;
+
+    return false;
+}
+
 - (void)mouseEnteredImpl:(NSEvent *)theEvent
 {
     Q_UNUSED(theEvent);
@@ -571,8 +590,7 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
     // in time (s_windowUnderMouse). The latter is also used to also send out enter/leave
     // events when the application is activated/deactivated.
 
-    // Root (top level or embedded) windows generate enter events for sub-windows
-    if (!m_platformWindow->isContentView() && !m_platformWindow->isEmbedded())
+    if (![self shouldPropagateMouseEnterExit])
         return;
 
     QPointF windowPoint;
@@ -598,8 +616,7 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
     if (!m_platformWindow)
         return;
 
-    // Root (top level or embedded) windows generate enter events for sub-windows
-    if (!m_platformWindow->isContentView() && !m_platformWindow->isEmbedded())
+    if (![self shouldPropagateMouseEnterExit])
         return;
 
     QCocoaWindow *windowToLeave = QCocoaWindow::s_windowUnderMouse;

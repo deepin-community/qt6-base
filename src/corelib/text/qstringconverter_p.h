@@ -29,6 +29,32 @@ enum qchar8_t : uchar {};
 using qchar8_t = char8_t;
 #endif
 
+struct QLatin1
+{
+    // Defined in qstring.cpp
+    static char16_t *convertToUnicode(char16_t *dst, QLatin1StringView in) noexcept;
+
+    static QChar *convertToUnicode(QChar *buffer, QLatin1StringView in) noexcept
+    {
+        char16_t *dst = reinterpret_cast<char16_t *>(buffer);
+        dst = convertToUnicode(dst, in);
+        return reinterpret_cast<QChar *>(dst);
+    }
+
+    static QChar *convertToUnicode(QChar *dst, QByteArrayView in,
+                                   [[maybe_unused]] QStringConverterBase::State *state) noexcept
+    {
+        Q_ASSERT(state);
+
+        return convertToUnicode(dst, QLatin1StringView(in.data(), in.size()));
+    }
+
+    static char *convertFromUnicode(char *out, QStringView in, QStringConverter::State *state) noexcept;
+
+    // Defined in qstring.cpp
+    static char *convertFromUnicode(char *out, QStringView in) noexcept;
+};
+
 struct QUtf8BaseTraits
 {
     static const bool isTrusted = false;
@@ -263,20 +289,41 @@ enum DataEndianness
 
 struct QUtf8
 {
-    Q_CORE_EXPORT static QChar *convertToUnicode(QChar *buffer, QByteArrayView in) noexcept;
+    static QChar *convertToUnicode(QChar *buffer, QByteArrayView in) noexcept
+    {
+        char16_t *dst = reinterpret_cast<char16_t *>(buffer);
+        dst = QUtf8::convertToUnicode(dst, in);
+        return reinterpret_cast<QChar *>(dst);
+    }
+
+    Q_CORE_EXPORT static char16_t* convertToUnicode(char16_t *dst, QByteArrayView in) noexcept;
     static QString convertToUnicode(QByteArrayView in);
     Q_CORE_EXPORT static QString convertToUnicode(QByteArrayView in, QStringConverter::State *state);
-    static QChar *convertToUnicode(QChar *out, QByteArrayView in, QStringConverter::State *state);
+
+    static QChar *convertToUnicode(QChar *out, QByteArrayView in, QStringConverter::State *state)
+    {
+        char16_t *buffer = reinterpret_cast<char16_t *>(out);
+        buffer = convertToUnicode(buffer, in, state);
+        return reinterpret_cast<QChar *>(buffer);
+    }
+
+    static char16_t *convertToUnicode(char16_t *dst, QByteArrayView in, QStringConverter::State *state);
+
     Q_CORE_EXPORT static QByteArray convertFromUnicode(QStringView in);
     Q_CORE_EXPORT static QByteArray convertFromUnicode(QStringView in, QStringConverterBase::State *state);
     static char *convertFromUnicode(char *out, QStringView in, QStringConverter::State *state);
+    Q_CORE_EXPORT static char *convertFromLatin1(char *out, QLatin1StringView in);
     struct ValidUtf8Result {
         bool isValidUtf8;
         bool isValidAscii;
     };
     static ValidUtf8Result isValidUtf8(QByteArrayView in);
-    static int compareUtf8(QByteArrayView utf8, QStringView utf16) noexcept;
-    static int compareUtf8(QByteArrayView utf8, QLatin1StringView s);
+    static int compareUtf8(QByteArrayView utf8, QStringView utf16,
+                           Qt::CaseSensitivity cs = Qt::CaseSensitive) noexcept;
+    static int compareUtf8(QByteArrayView utf8, QLatin1StringView s,
+                           Qt::CaseSensitivity cs = Qt::CaseSensitive);
+    static int compareUtf8(QByteArrayView lhs, QByteArrayView rhs,
+                           Qt::CaseSensitivity cs = Qt::CaseSensitive) noexcept;
 };
 
 struct QUtf16

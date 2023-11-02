@@ -138,7 +138,7 @@ Q_DECL_CONST_FUNCTION static inline int qt_fpclassify(float f)
     return qnumeric_std_wrapper::fpclassify(f);
 }
 
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
 namespace {
 /*!
     Returns true if the double \a v can be converted to type \c T, false if
@@ -180,7 +180,7 @@ static inline bool convertDoubleTo(double v, T *value, bool allow_precision_upgr
     // correct, but Clang, ICC and MSVC don't realize that it's a constant and
     // the math call stays in the compiled code.
 
-#ifdef Q_PROCESSOR_X86_64
+#if defined(Q_PROCESSOR_X86_64) && defined(__SSE2__)
     // Of course, UB doesn't apply if we use intrinsics, in which case we are
     // allowed to dpeend on exactly the processor's behavior. This
     // implementation uses the truncating conversions from Scalar Double to
@@ -312,7 +312,7 @@ template <auto V2, typename T> bool mul_overflow(T v1, T *r)
     return qMulOverflow<V2, T>(v1, r);
 }
 }
-#endif // Q_CLANG_QDOC
+#endif // Q_QDOC
 
 /*
     Safely narrows \a x to \c{To}. Let \c L be

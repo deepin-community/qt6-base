@@ -4,6 +4,10 @@
 #ifndef QEVENT_H
 #define QEVENT_H
 
+#if 0
+#pragma qt_class(QtEvents)
+#endif
+
 #include <QtGui/qtguiglobal.h>
 
 #include <QtCore/qcoreevent.h>
@@ -32,6 +36,9 @@ class QAction;
 class QMouseEvent;
 class QPointerEvent;
 class QScreen;
+#if QT_CONFIG(shortcut)
+class QShortcut;
+#endif
 class QTabletEvent;
 class QTouchEvent;
 #if QT_CONFIG(gestures)
@@ -845,7 +852,10 @@ public:
 
     inline QString file() const { return m_file; }
     QUrl url() const { return m_url; }
+#if QT_DEPRECATED_SINCE(6, 6)
+    QT_DEPRECATED_VERSION_X_6_6("Interpret the string returned by file()")
     bool openFile(QFile &file, QIODevice::OpenMode flags) const;
+#endif
 private:
     QString m_file;
     QUrl m_url;
@@ -869,9 +879,12 @@ class Q_GUI_EXPORT QShortcutEvent : public QEvent
 {
     Q_DECL_EVENT_COMMON(QShortcutEvent)
 public:
+    // Note this is publicly deprecated, but should remain as internal constructor:
     QShortcutEvent(const QKeySequence &key, int id, bool ambiguous = false);
+    QShortcutEvent(const QKeySequence &key, const QShortcut *shortcut = nullptr, bool ambiguous = false);
 
     inline const QKeySequence &key() const { return m_sequence; }
+    // Note this is publicly deprecated, but should remain as internal getter:
     inline int shortcutId() const { return m_shortcutId; }
     inline bool isAmbiguous() const { return m_ambiguous; }
 protected:

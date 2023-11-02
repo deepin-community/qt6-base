@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Generated from qmake.pro.
 
 #####################################################################
@@ -12,12 +15,15 @@ qt_add_library(QtLibraryInfo OBJECT
     propertyprinter.cpp propertyprinter.h
     qmakelibraryinfo.cpp qmakelibraryinfo.h
 )
-set_target_properties(QtLibraryInfo PROPERTIES
-    COMPILE_OPTIONS $<TARGET_PROPERTY:Qt::Core,INTERFACE_COMPILE_OPTIONS>
-    COMPILE_DEFINITIONS $<TARGET_PROPERTY:Qt::Core,INTERFACE_COMPILE_DEFINITIONS>
-    INCLUDE_DIRECTORIES $<TARGET_PROPERTY:Qt::Core,INTERFACE_INCLUDE_DIRECTORIES>
-    INCLUDE_DIRECTORIES $<TARGET_PROPERTY:Qt::CorePrivate,INTERFACE_INCLUDE_DIRECTORIES>
-)
+
+# Make sure we use same parameters when building QtLibraryInfo and other Qt libraries,
+# otherwise some compilers may have compilation errors, such as clang-cl.
+target_link_libraries(QtLibraryInfo PUBLIC PlatformCommonInternal)
+
+target_link_libraries(QtLibraryInfo PUBLIC Qt::CorePrivate)
+
+qt_internal_add_sync_header_dependencies(QtLibraryInfo Core)
+
 target_include_directories(QtLibraryInfo PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/library"
@@ -29,15 +35,19 @@ if("${hostdatadir}" STREQUAL "")
     set(hostdatadir ".")
 endif()
 
+qt_internal_library_deprecation_level(deprecation_define)
+
 target_compile_definitions(QtLibraryInfo PUBLIC
     PROEVALUATOR_FULL
     QT_BUILD_QMAKE
     QT_USE_QSTRINGBUILDER
-    QT_NO_FOREACH
     QT_HOST_MKSPEC="${QT_QMAKE_HOST_MKSPEC}"
     QT_TARGET_MKSPEC="${QT_QMAKE_TARGET_MKSPEC}"
     QT_HOST_DATADIR="${hostdatadir}"
+    ${deprecation_define}
 )
+
+qt_internal_set_exceptions_flags(QtLibraryInfo OFF)
 
 if(NOT QT_FEATURE_qmake)
     return()
@@ -45,8 +55,10 @@ endif()
 
 qt_get_tool_target_name(target_name qmake)
 qt_internal_add_tool(${target_name}
-    TOOLS_TARGET Core # special case
+    TRY_RUN
+    TOOLS_TARGET Core
     USER_FACING
+    NO_UNITY_BUILD
     INSTALL_VERSIONED_LINK
     SOURCES
         cachekeys.h
@@ -86,7 +98,6 @@ qt_internal_add_tool(${target_name}
     PRECOMPILED_HEADER
         "qmake_pch.h"
     LIBRARIES
-        Qt::CorePrivate
         QtLibraryInfo
 )
 qt_internal_return_unless_building_tools()
@@ -107,7 +118,6 @@ qt_internal_extend_target(${target_name} CONDITION MACOS
         "-fconstant-cfstrings"
 )
 
-# special case big
 qt_internal_extend_target(${target_name} CONDITION WIN32
     SOURCES
         library/registry.cpp
@@ -121,18 +131,15 @@ qt_internal_extend_target(${target_name} CONDITION CLANG AND WIN32
         "-Wno-microsoft-enum-value"
 )
 
-# special case:
 set_target_properties(${target_name} PROPERTIES
     AUTOMOC OFF
     AUTORCC OFF
     AUTOUIC OFF
 )
 
-qt_internal_apply_gc_binaries(${target_name} PRIVATE) # special case
-qt_skip_warnings_are_errors(${target_name}) # special case
+qt_internal_apply_gc_binaries(${target_name} PRIVATE)
+qt_skip_warnings_are_errors(${target_name})
 
-# special case begin
 qt_internal_add_docs(${target_name}
     doc/qmake.qdocconf
 )
-# special case end

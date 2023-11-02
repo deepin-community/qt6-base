@@ -8,6 +8,9 @@
 #include <QPointer>
 #include <QtCore/private/qcore_mac_p.h>
 
+#include <AppKit/NSWindow.h>
+#include <AppKit/NSPanel.h>
+
 QT_FORWARD_DECLARE_CLASS(QCocoaWindow)
 
 #if defined(__OBJC__)
@@ -32,6 +35,8 @@ QT_FORWARD_DECLARE_CLASS(QCocoaWindow)
 @end
 
 typedef NSWindow<QNSWindowProtocol> QCocoaNSWindow;
+
+QCocoaNSWindow *qnswindow_cast(NSWindow *window);
 
 #else
 class QCocoaNSWindow;

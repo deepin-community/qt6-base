@@ -21,6 +21,7 @@
 
 
 #include <memory>
+#include <optional>
 
 #ifndef QXMLSTREAM_P_H
 #define QXMLSTREAM_P_H
@@ -38,7 +39,7 @@ public:
 
     constexpr XmlStringRef() = default;
     constexpr inline XmlStringRef(const QString *string, qsizetype pos, qsizetype length)
-        : m_string(string), m_pos(pos), m_size(length)
+        : m_string(string), m_pos(pos), m_size((Q_ASSERT(length >= 0), length))
     {
     }
     XmlStringRef(const QString *string)
@@ -54,13 +55,39 @@ public:
         d.size = m_size;
         return QXmlString(std::move(d));
     }
-    operator QStringView() const { return view(); }
 
     void clear() { m_string = nullptr; m_pos = 0; m_size= 0; }
     QStringView view() const { return m_string ? QStringView(m_string->data() + m_pos, m_size) : QStringView(); }
     bool isEmpty() const { return m_size == 0; }
     bool isNull() const { return !m_string; }
     QString toString() const { return view().toString(); }
+
+    using value_type = QStringView::value_type;
+    using size_type = QStringView::size_type;
+    using difference_type = QStringView::difference_type;
+    using pointer = QStringView::pointer;
+    using const_pointer = QStringView::const_pointer;
+    using reference = QStringView::reference;
+    using const_reference = QStringView::const_reference;
+    using iterator = QStringView::iterator;
+    using const_iterator = QStringView::const_iterator;
+    using reverse_iterator = QStringView::reverse_iterator;
+    using const_reverse_iterator = QStringView::const_reverse_iterator;
+
+#define MAKE_MEMBER(name) \
+    auto name () const noexcept { return view(). name (); }
+    MAKE_MEMBER(data)
+    MAKE_MEMBER(size)
+    MAKE_MEMBER(empty)
+    MAKE_MEMBER(begin)
+    MAKE_MEMBER(end)
+    MAKE_MEMBER(cbegin)
+    MAKE_MEMBER(cend)
+    MAKE_MEMBER(rbegin)
+    MAKE_MEMBER(rend)
+    MAKE_MEMBER(crbegin)
+    MAKE_MEMBER(crend)
+#undef MAKE_MEMBER
 
 #define MAKE_OP(op) \
     friend auto operator op(const XmlStringRef &lhs, const XmlStringRef &rhs) noexcept { return lhs.view() op rhs.view(); } \
@@ -169,13 +196,13 @@ public:
     qsizetype initialTagStackStringStorageSize;
     bool tagsDone;
 
-    XmlStringRef addToStringStorage(QStringView s)
+    XmlStringRef addToStringStorage(QAnyStringView s)
     {
         qsizetype pos = tagStackStringStorageSize;
-        qsizetype sz = s.size();
         if (pos != tagStackStringStorage.size())
             tagStackStringStorage.resize(pos);
-        tagStackStringStorage.append(s.data(), sz);
+        s.visit([&](auto s) { tagStackStringStorage.append(s); });
+        qsizetype sz = (tagStackStringStorage.size() - pos);
         tagStackStringStorageSize += sz;
         return XmlStringRef(&tagStackStringStorage, pos, sz);
     }
@@ -270,6 +297,17 @@ public:
     QStringDecoder decoder;
     bool atEnd;
 
+    enum class XmlContext
+    {
+        Prolog,
+        Body,
+    };
+
+    XmlContext currentContext = XmlContext::Prolog;
+    bool foundDTD = false;
+    bool isValidToken(QXmlStreamReader::TokenType type);
+    void checkToken();
+
     /*!
       \sa setType()
      */
@@ -357,6 +395,7 @@ public:
     uint hasExternalDtdSubset : 1;
     uint lockEncoding : 1;
     uint namespaceProcessing : 1;
+    uint hasStandalone : 1; // TODO: expose in public API
 
     int resumeReduction;
     void resume(int rule);
@@ -471,7 +510,7 @@ public:
     qsizetype fastScanLiteralContent();
     qsizetype fastScanSpace();
     qsizetype fastScanContentCharList();
-    qsizetype fastScanName(qint16 *prefix = nullptr);
+    std::optional<qsizetype> fastScanName(Value *val = nullptr);
     inline qsizetype fastScanNMTOKEN();
 
 
@@ -480,6 +519,7 @@ public:
 
     void raiseError(QXmlStreamReader::Error error, const QString& message = QString());
     void raiseWellFormedError(const QString &message);
+    void raiseNamePrefixTooLongError();
 
     QXmlStreamEntityResolver *entityResolver;
 

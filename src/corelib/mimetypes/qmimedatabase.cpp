@@ -142,6 +142,19 @@ void QMimeDatabasePrivate::loadProviders()
             m_providers.push_back(std::move(*it));
         }
     }
+
+    // Handle mimetypes with glob-deleteall tags (from XML providers)
+    auto it = m_providers.begin();
+    const auto end = m_providers.end();
+    for (;it != end; ++it) {
+        const QStringList &list = (*it)->m_mimeTypesWithDeletedGlobs;
+        if (list.isEmpty())
+            continue;
+        // Each Provider affects Providers with lower precedence
+        auto nextIt = it + 1;
+        for (; nextIt != end; ++nextIt)
+            (*nextIt)->excludeMimeTypeGlobs(list);
+    }
 }
 
 const QMimeDatabasePrivate::Providers &QMimeDatabasePrivate::providers()
@@ -177,7 +190,7 @@ QMimeType QMimeDatabasePrivate::mimeTypeForName(const QString &nameOrAlias)
 {
     const QString mimeName = resolveAlias(nameOrAlias);
     for (const auto &provider : providers()) {
-        const QMimeType mime = provider->mimeTypeForName(mimeName);
+        QMimeType mime = provider->mimeTypeForName(mimeName);
         if (mime.isValid())
             return mime;
     }
@@ -444,31 +457,32 @@ QMimeType QMimeDatabasePrivate::mimeTypeForData(QIODevice *device)
 }
 
 QMimeType QMimeDatabasePrivate::mimeTypeForFile(const QString &fileName,
-                                                [[maybe_unused]] const QFileInfo *fileInfo,
+                                                const QFileInfo &fileInfo,
                                                 QMimeDatabase::MatchMode mode)
 {
+    if (false) {
 #ifdef Q_OS_UNIX
-    // Cannot access statBuf.st_mode from the filesystem engine, so we have to stat again.
-    // In addition we want to follow symlinks.
-    const QByteArray nativeFilePath = QFile::encodeName(fileName);
-    QT_STATBUF statBuffer;
-    if (QT_STAT(nativeFilePath.constData(), &statBuffer) == 0) {
-        if (S_ISDIR(statBuffer.st_mode))
-            return mimeTypeForName(directoryMimeType());
-        if (S_ISCHR(statBuffer.st_mode))
-            return mimeTypeForName(QStringLiteral("inode/chardevice"));
-        if (S_ISBLK(statBuffer.st_mode))
-            return mimeTypeForName(QStringLiteral("inode/blockdevice"));
-        if (S_ISFIFO(statBuffer.st_mode))
-            return mimeTypeForName(QStringLiteral("inode/fifo"));
-        if (S_ISSOCK(statBuffer.st_mode))
-            return mimeTypeForName(QStringLiteral("inode/socket"));
-    }
-#else
-    const bool isDirectory = fileInfo ? fileInfo->isDir() : QFileInfo(fileName).isDir();
-    if (isDirectory)
-        return mimeTypeForName(directoryMimeType());
+    } else if (fileInfo.isNativePath()) {
+        // If this is a local file, we'll want to do a stat() ourselves so we can
+        // detect additional inode types. In addition we want to follow symlinks.
+        const QByteArray nativeFilePath = QFile::encodeName(fileName);
+        QT_STATBUF statBuffer;
+        if (QT_STAT(nativeFilePath.constData(), &statBuffer) == 0) {
+            if (S_ISDIR(statBuffer.st_mode))
+                return mimeTypeForName(directoryMimeType());
+            if (S_ISCHR(statBuffer.st_mode))
+                return mimeTypeForName(QStringLiteral("inode/chardevice"));
+            if (S_ISBLK(statBuffer.st_mode))
+                return mimeTypeForName(QStringLiteral("inode/blockdevice"));
+            if (S_ISFIFO(statBuffer.st_mode))
+                return mimeTypeForName(QStringLiteral("inode/fifo"));
+            if (S_ISSOCK(statBuffer.st_mode))
+                return mimeTypeForName(QStringLiteral("inode/socket"));
+        }
 #endif
+    } else if (fileInfo.isDir()) {
+        return mimeTypeForName(directoryMimeType());
+    }
 
     switch (mode) {
     case QMimeDatabase::MatchDefault:
@@ -615,7 +629,7 @@ QMimeType QMimeDatabase::mimeTypeForFile(const QFileInfo &fileInfo, MatchMode mo
 {
     QMutexLocker locker(&d->mutex);
 
-    return d->mimeTypeForFile(fileInfo.filePath(), &fileInfo, mode);
+    return d->mimeTypeForFile(fileInfo.filePath(), fileInfo, mode);
 }
 
 /*!
@@ -630,7 +644,8 @@ QMimeType QMimeDatabase::mimeTypeForFile(const QString &fileName, MatchMode mode
     if (mode == MatchExtension) {
         return d->mimeTypeForFileExtension(fileName);
     } else {
-        return d->mimeTypeForFile(fileName, nullptr, mode);
+        QFileInfo fileInfo(fileName);
+        return d->mimeTypeForFile(fileName, fileInfo, mode);
     }
 }
 
@@ -666,7 +681,7 @@ QList<QMimeType> QMimeDatabase::mimeTypesForFileName(const QString &fileName) co
 QString QMimeDatabase::suffixForFileName(const QString &fileName) const
 {
     QMutexLocker locker(&d->mutex);
-    const int suffixLength = d->findByFileName(fileName).m_knownSuffixLength;
+    const qsizetype suffixLength = d->findByFileName(fileName).m_knownSuffixLength;
     return fileName.right(suffixLength);
 }
 

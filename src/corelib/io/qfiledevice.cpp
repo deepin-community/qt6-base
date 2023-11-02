@@ -89,9 +89,9 @@ void QFileDevicePrivate::setError(QFileDevice::FileError err, int errNum)
     \value ReadGroup The file is readable by the group.
     \value WriteGroup The file is writable by the group.
     \value ExeGroup The file is executable by the group.
-    \value ReadOther The file is readable by anyone.
-    \value WriteOther The file is writable by anyone.
-    \value ExeOther The file is executable by anyone.
+    \value ReadOther The file is readable by others.
+    \value WriteOther The file is writable by others.
+    \value ExeOther The file is executable by others.
 
     \warning Because of differences in the platforms supported by Qt,
     the semantics of ReadUser, WriteUser and ExeUser are
@@ -109,6 +109,25 @@ void QFileDevicePrivate::setError(QFileDevice::FileError err, int errNum)
     decrementing \c qt_ntfs_permission_lookup by 1.
 
     \snippet ntfsp.cpp 1
+
+    \note Since this is a non-atomic global variable, it is only safe
+    to increment or decrement \c qt_ntfs_permission_lookup before any
+    threads other than the main thread have started or after every thread
+    other than the main thread has ended.
+
+    \note From Qt 6.6 the variable \c qt_ntfs_permission_lookup is
+    deprecated. Please use the following alternatives.
+
+    The safe and easy way to manage permission checks is to use the RAII class
+    \c QNtfsPermissionCheckGuard.
+
+    \snippet ntfsp.cpp raii
+
+    If you need more fine-grained control, it is possible to manage the permission
+    with the following functions instead:
+
+    \snippet ntfsp.cpp free-funcs
+
 */
 
 //************* QFileDevice
@@ -127,10 +146,10 @@ void QFileDevicePrivate::setError(QFileDevice::FileError err, int errNum)
     QFileDevice is the base class for I/O devices that can read and write text and binary files
     and \l{The Qt Resource System}{resources}. QFile offers the main functionality,
     QFileDevice serves as a base class for sharing functionality with other file devices such
-    as QTemporaryFile, by providing all the operations that can be done on files that have
-    been opened by QFile or QTemporaryFile.
+    as QSaveFile, by providing all the operations that can be done on files that have
+    been opened by QFile or QSaveFile.
 
-    \sa QFile, QTemporaryFile
+    \sa QFile, QSaveFile
 */
 
 /*!

@@ -1,12 +1,7 @@
-# SymbolsHelper-Confirmed: 6.4.1 amd64
+# SymbolsHelper-Confirmed: 6.6.0 amd64
 libQt6OpenGL.so.6 libqt6opengl6 #MINVER#
-| libqt6opengl6 #MINVER#, qt6-base-abi (= 6.4.2)
+| libqt6opengl6 #MINVER#, qt6-base-private-abi (= 6.6.0)
 * Build-Depends-Package: qt6-base-dev
- Qt_6.0@Qt_6.0 6.1.2
- Qt_6.1@Qt_6.1 6.1.2
- Qt_6.2@Qt_6.2 6.2.0
- Qt_6.3@Qt_6.3 6.3.0
- Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _Z22qt_gl_read_framebufferRK5QSizebb@Qt_6 6.1.2
@@ -599,8 +594,6 @@ libQt6OpenGL.so.6 libqt6opengl6 #MINVER#
  _ZN30QOpenGLFramebufferObjectFormatD2Ev@Qt_6 6.1.2
  _ZN30QOpenGLFramebufferObjectFormataSERKS_@Qt_6 6.1.2
  _ZN30QOpenGLVersionFunctionsFactory3getERK21QOpenGLVersionProfileP14QOpenGLContext@Qt_6 6.1.2
- _ZN30QOpenGLVertexArrayObjectHelper21initializeFromContextEP14QOpenGLContext@Qt_6 6.1.2
- _ZN30QOpenGLVertexArrayObjectHelper33vertexArrayObjectHelperForContextEP14QOpenGLContext@Qt_6 6.1.2
  _ZN34QOpenGLFunctions_3_2_Compatibility14versionProfileEv@Qt_6 6.1.2
  _ZN34QOpenGLFunctions_3_2_Compatibility19isContextCompatibleEP14QOpenGLContext@Qt_6 6.1.2
  _ZN34QOpenGLFunctions_3_2_Compatibility25initializeOpenGLFunctionsEv@Qt_6 6.1.2

@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Generate deployment tool json
 
 # Locate newest Android sdk build tools revision
@@ -70,6 +73,17 @@ function(qt6_android_generate_deployment_settings target)
         _qt_is_android_generate_deployment_settings_called TRUE
     )
 
+    get_target_property(android_executable_finalizer_called
+        ${target} _qt_android_executable_finalizer_called)
+
+    if(android_executable_finalizer_called)
+        # Don't show deprecation when called by our own function implementations.
+    else()
+        message(DEPRECATION
+            "Calling qt_android_generate_deployment_settings directly is deprecated since Qt 6.5. "
+            "Use qt_add_executable instead.")
+    endif()
+
     get_target_property(target_type ${target} TYPE)
 
     if (NOT "${target_type}" STREQUAL "MODULE_LIBRARY")
@@ -119,31 +133,7 @@ function(qt6_android_generate_deployment_settings target)
         endif()
     endif()
 
-    set(abi_records "")
-    get_target_property(qt_android_abis ${target} _qt_android_abis)
-    if(NOT qt_android_abis)
-        set(qt_android_abis "")
-    endif()
-    foreach(abi IN LISTS qt_android_abis)
-        _qt_internal_get_android_abi_path(qt_abi_path ${abi})
-        file(TO_CMAKE_PATH "${qt_abi_path}" qt_android_install_dir_native)
-        list(APPEND abi_records "\"${abi}\": \"${qt_android_install_dir_native}\"")
-    endforeach()
-
-    # Required to build unit tests in developer build
-    if(QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX)
-        set(qt_android_install_dir "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}")
-    else()
-        set(qt_android_install_dir "${QT6_INSTALL_PREFIX}")
-    endif()
-    file(TO_CMAKE_PATH "${qt_android_install_dir}" qt_android_install_dir_native)
-    list(APPEND abi_records "\"${CMAKE_ANDROID_ARCH_ABI}\": \"${qt_android_install_dir_native}\"")
-
-    list(JOIN abi_records "," qt_android_install_dir_records)
-    set(qt_android_install_dir_records "{${qt_android_install_dir_records}}")
-
-    string(APPEND file_contents
-        "   \"qt\": ${qt_android_install_dir_records},\n")
+    _qt_internal_collect_qt_for_android_paths(file_contents)
 
     # Android SDK path
     file(TO_CMAKE_PATH "${ANDROID_SDK_ROOT}" android_sdk_root_native)
@@ -183,6 +173,10 @@ function(qt6_android_generate_deployment_settings target)
     string(APPEND file_contents
         "   \"ndk-host\": \"${ANDROID_NDK_HOST_SYSTEM_NAME}\",\n")
 
+    get_target_property(qt_android_abis ${target} _qt_android_abis)
+    if(NOT qt_android_abis)
+        set(qt_android_abis "")
+    endif()
     set(architecture_record_list "")
     foreach(abi IN LISTS qt_android_abis CMAKE_ANDROID_ARCH_ABI)
         if(abi STREQUAL "x86")
@@ -203,7 +197,7 @@ function(qt6_android_generate_deployment_settings target)
         "   \"architectures\": { ${architecture_records} },\n")
 
     # deployment dependencies
-    _qt_internal_add_android_deployment_multi_value_property(file_contents "dependencies"
+    _qt_internal_add_android_deployment_multi_value_property(file_contents "deployment-dependencies"
         ${target} "QT_ANDROID_DEPLOYMENT_DEPENDENCIES" )
 
     # Extra plugins
@@ -274,6 +268,12 @@ function(qt6_android_generate_deployment_settings target)
     string(APPEND file_contents
         "   \"extraPrefixDirs\" : [ ${extra_prefix_list} ],\n")
 
+    # Create an empty target for the cases when we need to generate deployment setting but
+    # qt_finalize_project is never called.
+    if(NOT TARGET _qt_internal_apk_dependencies AND NOT QT_NO_COLLECT_BUILD_TREE_APK_DEPS)
+        add_custom_target(_qt_internal_apk_dependencies)
+    endif()
+
     # Extra library paths that could be used as a dependency lookup path by androiddeployqt.
     #
     # Unlike 'extraPrefixDirs', the 'extraLibraryDirs' key doesn't expect the 'lib' subfolder
@@ -318,6 +318,16 @@ if(NOT QT_NO_CREATE_VERSIONLESS_FUNCTIONS)
 endif()
 
 function(qt6_android_apply_arch_suffix target)
+    get_target_property(called_from_qt_impl
+        ${target} _qt_android_apply_arch_suffix_called_from_qt_impl)
+    if(called_from_qt_impl)
+        # Don't show deprecation when called by our own function implementations.
+    else()
+        message(DEPRECATION
+            "Calling qt_android_apply_arch_suffix directly is deprecated since Qt 6.5. "
+            "Use qt_add_executable or qt_add_library instead.")
+    endif()
+
     get_target_property(target_type ${target} TYPE)
     if (target_type STREQUAL "SHARED_LIBRARY" OR target_type STREQUAL "MODULE_LIBRARY")
         set_property(TARGET "${target}" PROPERTY SUFFIX "_${CMAKE_ANDROID_ARCH_ABI}.so")
@@ -340,13 +350,28 @@ function(qt6_android_add_apk_target target)
         return()
     endif()
 
+    get_target_property(android_executable_finalizer_called
+        ${target} _qt_android_executable_finalizer_called)
+
+    if(android_executable_finalizer_called)
+        # Don't show deprecation when called by our own function implementations.
+    else()
+        message(DEPRECATION
+            "Calling qt_android_add_apk_target directly is deprecated since Qt 6.5. "
+            "Use qt_add_executable instead.")
+    endif()
+
     get_target_property(deployment_file ${target} QT_ANDROID_DEPLOYMENT_SETTINGS_FILE)
     if (NOT deployment_file)
         message(FATAL_ERROR "Target ${target} is not a valid android executable target\n")
     endif()
     # Use genex to get path to the deployment settings, the above check only to confirm that
     # qt6_android_add_apk_target is called on an android executable target.
-    set(deployment_file "$<TARGET_PROPERTY:${target},QT_ANDROID_DEPLOYMENT_SETTINGS_FILE>")
+    string(JOIN "" deployment_file
+        "$<GENEX_EVAL:"
+            "$<TARGET_PROPERTY:${target},QT_ANDROID_DEPLOYMENT_SETTINGS_FILE>"
+        ">"
+    )
 
     # Make global apk and aab targets depend on the current apk target.
     if(TARGET aab)
@@ -407,6 +432,16 @@ function(qt6_android_add_apk_target target)
     if(QT_ENABLE_VERBOSE_DEPLOYMENT)
         list(APPEND extra_args "--verbose")
     endif()
+    if(QT_ANDROID_DEPLOY_RELEASE)
+        list(APPEND extra_args "--release")
+    elseif(NOT QT_BUILD_TESTS)
+    # Workaround for tests: do not set automatically --release flag if QT_BUILD_TESTS is set.
+    # Release package need to be signed. Signing is currently not supported by CI.
+    # What is more, also androidtestrunner is not working on release APKs,
+    # For example running "adb shell run-as" on release APK will finish with the error:
+    #    run-as: Package '[PACKAGE-NAME]' is not debuggable
+        list(APPEND extra_args $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:--release>)
+    endif()
 
     _qt_internal_check_depfile_support(has_depfile_support)
 
@@ -434,8 +469,8 @@ function(qt6_android_add_apk_target target)
                 --apk "${apk_final_file_path}"
                 --depfile "${dep_file_path}"
                 --builddir "${relative_to_dir}"
-                ${sign_apk}
                 ${extra_args}
+                ${sign_apk}
             COMMENT "Creating APK for ${target}"
             DEPENDS "${target}" "${deployment_file}" ${extra_deps}
             DEPFILE "${dep_file_path}"
@@ -452,9 +487,10 @@ function(qt6_android_add_apk_target target)
                 --input ${deployment_file}
                 --output ${apk_final_dir}
                 --apk ${apk_final_file_path}
-                ${sign_apk}
                 ${extra_args}
+                ${sign_apk}
             COMMENT "Creating APK for ${target}"
+            VERBATIM
         )
     endif()
 
@@ -529,6 +565,7 @@ function(qt6_android_add_apk_target target)
 
     set_property(GLOBAL APPEND PROPERTY _qt_apk_targets ${target})
     _qt_internal_collect_apk_dependencies_defer()
+    _qt_internal_collect_apk_imported_dependencies_defer("${target}")
 endfunction()
 
 function(_qt_internal_create_global_android_targets)
@@ -604,6 +641,7 @@ function(_qt_internal_collect_apk_dependencies)
     get_property(apk_targets GLOBAL PROPERTY _qt_apk_targets)
 
     _qt_internal_collect_buildsystem_shared_libraries(libs "${CMAKE_SOURCE_DIR}")
+    list(REMOVE_DUPLICATES libs)
 
     if(NOT TARGET qt_internal_plugins)
         add_custom_target(qt_internal_plugins)
@@ -649,6 +687,81 @@ function(_qt_internal_collect_buildsystem_shared_libraries out_var subdir)
     foreach(dir IN LISTS subdirs)
         _qt_internal_collect_buildsystem_shared_libraries(result_inner "${dir}")
     endforeach()
+    list(APPEND result ${result_inner})
+    set(${out_var} "${result}" PARENT_SCOPE)
+endfunction()
+
+# This function collects all imported shared libraries that might be dependencies for
+# the main apk targets. The actual collection is deferred until the target's directory scope
+# is processed.
+# The function requires CMake 3.21 or later.
+function(_qt_internal_collect_apk_imported_dependencies_defer target)
+    # User opted-out of the functionality.
+    if(QT_NO_COLLECT_IMPORTED_TARGET_APK_DEPS)
+        return()
+    endif()
+
+    get_target_property(target_source_dir "${target}" SOURCE_DIR)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
+        cmake_language(EVAL CODE "cmake_language(DEFER DIRECTORY \"${target_source_dir}\"
+            CALL _qt_internal_collect_apk_imported_dependencies \"${target}\")")
+    endif()
+endfunction()
+
+# This function collects imported shared libraries that might be dependencies for
+# the main apk targets. It stores their locations on a custom target property for the given target.
+# The function requires CMake 3.21 or later.
+function(_qt_internal_collect_apk_imported_dependencies target)
+    # User opted-out the functionality
+    if(QT_NO_COLLECT_IMPORTED_TARGET_APK_DEPS)
+        return()
+    endif()
+
+    get_target_property(target_source_dir "${target}" SOURCE_DIR)
+    _qt_internal_collect_imported_shared_libraries_recursive(libs "${target_source_dir}")
+    list(REMOVE_DUPLICATES libs)
+
+    foreach(lib IN LISTS libs)
+        list(APPEND extra_library_dirs "$<TARGET_FILE_DIR:${lib}>")
+    endforeach()
+
+    set_property(TARGET "${target}" APPEND PROPERTY
+        _qt_android_extra_library_dirs "${extra_library_dirs}"
+    )
+endfunction()
+
+# This function recursively walks the current directory and its parent directories to collect
+# imported shared library targets.
+# The recursion goes upwards instead of downwards because imported targets are usually not global,
+# and we can't call get_target_property() on a target which is not available in the current
+# directory or parent scopes.
+# We also can't cache parent directories because the imported targets in a parent directory
+# might change in-between collection calls.
+# The function requires CMake 3.21 or later.
+function(_qt_internal_collect_imported_shared_libraries_recursive out_var subdir)
+    set(result "")
+
+    get_directory_property(imported_targets DIRECTORY "${subdir}" IMPORTED_TARGETS)
+    foreach(imported_target IN LISTS imported_targets)
+        get_target_property(target_type "${imported_target}" TYPE)
+        if(target_type STREQUAL "SHARED_LIBRARY" OR target_type STREQUAL "MODULE_LIBRARY")
+            # If the target has the _qt_package_version property set, it means it's an
+            # 'official' qt target like a module or plugin, so we don't want to add it
+            # to the list of extra paths to scan for in androiddeployqt, because they are
+            # already handled via the regular 'qt' code path in the androiddeployqt.
+            # Thus this will pick up only non-qt 3rd party targets.
+            get_target_property(qt_package_version "${imported_target}" _qt_package_version)
+            if(NOT qt_package_version)
+                list(APPEND result "${imported_target}")
+            endif()
+        endif()
+    endforeach()
+
+    get_directory_property(parent_dir DIRECTORY "${subdir}" PARENT_DIRECTORY)
+    if(parent_dir)
+        _qt_internal_collect_imported_shared_libraries_recursive(result_inner "${parent_dir}")
+    endif()
+
     list(APPEND result ${result_inner})
     set(${out_var} "${result}" PARENT_SCOPE)
 endfunction()
@@ -738,6 +851,9 @@ function(_qt_internal_add_android_deployment_list_property out_var json_key)
         set(add_quote_genex
             "$<$<BOOL:${property_genex}>:\">"
         )
+
+        # Add comma only if next property genex contains non-empty value.
+        set(add_comma_genex "$<$<BOOL:${property_genex}>:${add_comma_genex}>")
         string(JOIN "" list_join_genex
             "${list_join_genex}"
             "${add_comma_genex}${add_quote_genex}"
@@ -783,6 +899,38 @@ endfunction()
 # properties.
 function(_qt_internal_android_format_deployment_paths target)
     if(QT_BUILD_STANDALONE_TESTS OR QT_BUILDING_QT)
+        set(android_deployment_paths_policy NEW)
+    else()
+        set(policy_path_properties
+            QT_QML_IMPORT_PATH
+            QT_QML_ROOT_PATH
+            QT_ANDROID_PACKAGE_SOURCE_DIR
+            QT_ANDROID_EXTRA_PLUGINS
+            QT_ANDROID_EXTRA_LIBS
+        )
+
+        # Check if any of paths contains the value and stop the evaluation if all properties are
+        # empty or -NOTFOUND
+        set(has_android_paths FALSE)
+        foreach(prop_name IN LISTS policy_path_properties)
+            get_target_property(prop_value ${target} ${prop_name})
+            if(prop_value)
+                set(has_android_paths TRUE)
+                break()
+            endif()
+        endforeach()
+        if(NOT has_android_paths)
+            return()
+        endif()
+
+        __qt_internal_setup_policy(QTP0002 "6.6.0"
+            "Target properties that specify android-specific paths may contain generator\
+            expressions but they must evaluate to valid JSON strings.\
+            Check https://doc.qt.io/qt-6/qt-cmake-policy-qtp0002.html for policy details."
+        )
+        qt6_policy(GET QTP0002 android_deployment_paths_policy)
+    endif()
+    if(android_deployment_paths_policy STREQUAL "NEW")
         # When building standalone tests or Qt itself we obligate developers to not use
         # windows paths when setting QT_* properties below, so their values are used as is when
         # generating deployment settings.
@@ -848,8 +996,15 @@ endif()
 #   |__  android_armv7
 #   |__  android_x86
 #   |__  android_x86_64
-function(_qt_internal_get_android_abi_path out_path abi)
-    if(DEFINED QT_PATH_ANDROID_ABI_${abi})
+function(_qt_internal_get_android_abi_prefix_path out_path abi)
+    if(CMAKE_ANDROID_ARCH_ABI STREQUAL abi)
+        # Required to build unit tests in developer build
+        if(QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX)
+            set(${out_path} "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}")
+        else()
+            set(${out_path} "${QT6_INSTALL_PREFIX}")
+        endif()
+    elseif(DEFINED QT_PATH_ANDROID_ABI_${abi})
         get_filename_component(${out_path} "${QT_PATH_ANDROID_ABI_${abi}}" ABSOLUTE)
     else()
         # Map the ABI value to the Qt for Android folder.
@@ -869,9 +1024,86 @@ function(_qt_internal_get_android_abi_path out_path abi)
     set(${out_path} "${${out_path}}" PARENT_SCOPE)
 endfunction()
 
-# The function collects list of existing Qt for Android using _qt_internal_get_android_abi_path
-# and pre-defined set of known Android ABIs. The result is written to QT_DEFAULT_ANDROID_ABIS
-# cache variable.
+function(_qt_internal_get_android_abi_cmake_dir_path out_path abi)
+    if(DEFINED QT_ANDROID_PATH_CMAKE_DIR_${abi})
+        set(cmake_dir "${QT_ANDROID_PATH_CMAKE_DIR_${abi}}")
+    else()
+        _qt_internal_get_android_abi_prefix_path(prefix_path ${abi})
+        if((PROJECT_NAME STREQUAL "QtBase" OR QT_SUPERBUILD) AND QT_BUILDING_QT AND
+            NOT QT_BUILD_STANDALONE_TESTS)
+            set(cmake_dir "${QT_CONFIG_BUILD_DIR}")
+        else()
+            set(cmake_dir "${prefix_path}/${QT6_INSTALL_LIBS}/cmake")
+        endif()
+    endif()
+
+    set(${out_path} "${cmake_dir}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_get_android_abi_toolchain_path out_path abi)
+    set(toolchain_path "${QT_CMAKE_EXPORT_NAMESPACE}/qt.toolchain.cmake")
+    _qt_internal_get_android_abi_cmake_dir_path(cmake_dir ${abi})
+    get_filename_component(toolchain_path
+        "${cmake_dir}/${toolchain_path}" ABSOLUTE)
+    set(${out_path} "${toolchain_path}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_get_android_abi_subdir_path out_path subdir abi)
+    set(install_paths_path "${QT_CMAKE_EXPORT_NAMESPACE}Core/QtInstallPaths.cmake")
+    _qt_internal_get_android_abi_cmake_dir_path(cmake_dir ${abi})
+    include("${cmake_dir}/${install_paths_path}")
+    set(${out_path} "${${subdir}}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_collect_qt_for_android_paths out_var)
+    get_target_property(qt_android_abis ${target} _qt_android_abis)
+    if(NOT qt_android_abis)
+        set(qt_android_abis "")
+    endif()
+
+    set(custom_qt_paths data libexecs libs plugins qml)
+    foreach(type IN ITEMS prefix ${custom_qt_paths})
+        set(${type}_records "")
+    endforeach()
+
+    foreach(abi IN LISTS qt_android_abis CMAKE_ANDROID_ARCH_ABI)
+        _qt_internal_get_android_abi_prefix_path(qt_abi_prefix_path ${abi})
+        file(TO_CMAKE_PATH "${qt_abi_prefix_path}" qt_abi_prefix_path)
+        get_filename_component(qt_abi_prefix_path "${qt_abi_prefix_path}" ABSOLUTE)
+        list(APPEND prefix_records "      \"${abi}\": \"${qt_abi_prefix_path}\"")
+        foreach(type IN ITEMS ${custom_qt_paths})
+            string(TOUPPER "${type}" upper_case_type)
+            _qt_internal_get_android_abi_subdir_path(qt_abi_path
+                QT6_INSTALL_${upper_case_type} ${abi})
+            list(APPEND ${type}_records
+                "      \"${abi}\": \"${qt_abi_path}\"")
+        endforeach()
+    endforeach()
+
+    foreach(type IN ITEMS prefix ${custom_qt_paths})
+        list(JOIN ${type}_records ",\n" ${type}_records_string)
+        set(${type}_records_string "{\n${${type}_records_string}\n   }")
+    endforeach()
+
+    string(APPEND ${out_var}
+        "   \"qt\": ${prefix_records_string},\n")
+    string(APPEND ${out_var}
+        "   \"qtDataDirectory\": ${data_records_string},\n")
+    string(APPEND ${out_var}
+        "   \"qtLibExecsDirectory\": ${libexecs_records_string},\n")
+    string(APPEND ${out_var}
+        "   \"qtLibsDirectory\": ${libs_records_string},\n")
+    string(APPEND ${out_var}
+        "   \"qtPluginsDirectory\": ${plugins_records_string},\n")
+    string(APPEND ${out_var}
+        "   \"qtQmlDirectory\": ${qml_records_string},\n")
+
+    set(${out_var} "${${out_var}}" PARENT_SCOPE)
+endfunction()
+
+# The function collects list of existing Qt for Android using
+# _qt_internal_get_android_abi_prefix_path and pre-defined set of known Android ABIs. The result is
+# written to QT_DEFAULT_ANDROID_ABIS cache variable.
 # Note that QT_DEFAULT_ANDROID_ABIS is not intended to be set outside the function and will be
 # rewritten.
 function(_qt_internal_collect_default_android_abis)
@@ -879,9 +1111,9 @@ function(_qt_internal_collect_default_android_abis)
 
     set(default_abis)
     foreach(abi IN LISTS known_android_abis)
-        _qt_internal_get_android_abi_path(qt_abi_path ${abi})
+        _qt_internal_get_android_abi_toolchain_path(qt_abi_toolchain_path ${abi})
         # It's expected that Qt for Android contains ABI specific toolchain file.
-        if(EXISTS "${qt_abi_path}/lib/cmake/${QT_CMAKE_EXPORT_NAMESPACE}/qt.toolchain.cmake"
+        if(EXISTS "${qt_abi_toolchain_path}"
             OR CMAKE_ANDROID_ARCH_ABI STREQUAL abi)
             list(APPEND default_abis ${abi})
         endif()
@@ -996,6 +1228,12 @@ function(_qt_internal_configure_android_multiabi_target target)
             "-DCMAKE_CXX_COMPILER_LAUNCHER=${compiler_launcher}")
     endif()
 
+    unset(user_cmake_args)
+    foreach(var IN LISTS QT_ANDROID_MULTI_ABI_FORWARD_VARS)
+        string(REPLACE ";" "$<SEMICOLON>" var_value "${${var}}")
+        list(APPEND user_cmake_args "-D${var}=${var_value}")
+    endforeach()
+
     set(missing_qt_abi_toolchains "")
     set(previous_copy_apk_dependencies_target ${target})
     # Create external projects for each android ABI except the main one.
@@ -1013,9 +1251,7 @@ function(_qt_internal_configure_android_multiabi_target target)
             PROPERTY _qt_internal_abi_external_projects)
         if(NOT abi_external_projects
             OR NOT "qt_internal_android_${abi}" IN_LIST abi_external_projects)
-            _qt_internal_get_android_abi_path(qt_abi_path ${abi})
-            set(qt_abi_toolchain_path
-                "${qt_abi_path}/lib/cmake/${QT_CMAKE_EXPORT_NAMESPACE}/qt.toolchain.cmake")
+            _qt_internal_get_android_abi_toolchain_path(qt_abi_toolchain_path ${abi})
             ExternalProject_Add("qt_internal_android_${abi}"
                 SOURCE_DIR "${CMAKE_SOURCE_DIR}"
                 BINARY_DIR "${android_abi_build_dir}"
@@ -1028,6 +1264,7 @@ function(_qt_internal_configure_android_multiabi_target target)
                     "-DQT_INTERNAL_ANDROID_MULTI_ABI_BINARY_DIR=${CMAKE_BINARY_DIR}"
                     "${config_arg}"
                     "${extra_cmake_args}"
+                    "${user_cmake_args}"
                     "-B" "${android_abi_build_dir}"
                     "-S" "${CMAKE_SOURCE_DIR}"
                 EXCLUDE_FROM_ALL TRUE
@@ -1085,7 +1322,9 @@ function(_qt_internal_configure_android_multiabi_target target)
         message(FATAL_ERROR "Cannot find toolchain files for the manually specified Android"
             " ABIs: ${missing_qt_abi_toolchains_string}"
             "\nNote that you also may manually specify the path to the required Qt for"
-            " Android ABI using QT_PATH_ANDROID_ABI_<abi> CMake variable.\n")
+            " Android ABI using QT_PATH_ANDROID_ABI_<abi> CMake variable with the value"
+            " of the installation prefix, and QT_ANDROID_PATH_CMAKE_DIR_<abi> with"
+            " the location of the cmake directory for that ABI.\n")
     endif()
 
     list(JOIN android_abis ", " android_abis_string)
@@ -1105,7 +1344,35 @@ endfunction()
 # package for the executable 'target'. The function is added to the finalizer list of the Core
 # module and is executed implicitly when configuring user projects.
 function(_qt_internal_android_executable_finalizer target)
+    set_property(TARGET ${target} PROPERTY _qt_android_executable_finalizer_called TRUE)
+
+    _qt_internal_expose_android_package_source_dir_to_ide(${target})
+
     _qt_internal_configure_android_multiabi_target("${target}")
     qt6_android_generate_deployment_settings("${target}")
     qt6_android_add_apk_target("${target}")
+endfunction()
+
+function(_qt_internal_expose_android_package_source_dir_to_ide target)
+    get_target_property(android_package_source_dir ${target} QT_ANDROID_PACKAGE_SOURCE_DIR)
+    if(android_package_source_dir)
+        get_target_property(target_source_dir ${target} SOURCE_DIR)
+        if(NOT IS_ABSOLUTE "${android_package_source_dir}")
+            string(JOIN "/" android_package_source_dir
+                "${target_source_dir}"
+                "${android_package_source_dir}"
+            )
+        endif()
+
+        if(EXISTS "${android_package_source_dir}")
+            file(GLOB_RECURSE android_package_sources
+                RELATIVE "${target_source_dir}"
+                "${android_package_source_dir}/*"
+            )
+        endif()
+
+        foreach(f IN LISTS android_package_sources)
+            _qt_internal_expose_source_file_to_ide(${target} "${f}")
+        endforeach()
+    endif()
 endfunction()

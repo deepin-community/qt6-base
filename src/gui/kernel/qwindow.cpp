@@ -213,8 +213,10 @@ void QWindowPrivate::init(QScreen *targetScreen)
     isWindow = true;
     parentWindow = static_cast<QWindow *>(q->QObject::parent());
 
+    QScreen *connectScreen = targetScreen ? targetScreen : QGuiApplication::primaryScreen();
+
     if (!parentWindow)
-        connectToScreen(targetScreen ? targetScreen : QGuiApplication::primaryScreen());
+        connectToScreen(connectScreen);
 
     // If your application aborts here, you are probably creating a QWindow
     // before the screen list is populated.
@@ -224,6 +226,20 @@ void QWindowPrivate::init(QScreen *targetScreen)
     QGuiApplicationPrivate::window_list.prepend(q);
 
     requestedFormat = QSurfaceFormat::defaultFormat();
+    devicePixelRatio = connectScreen->devicePixelRatio();
+
+    QObject::connect(q, &QWindow::screenChanged, q, [q, this](QScreen *){
+        // We may have changed scaling; trigger resize event if needed,
+        // except on Windows, where we send resize events during WM_DPICHANGED
+        // event handling. FIXME: unify DPI change handling across all platforms.
+#ifndef Q_OS_WIN
+        if (q->handle()) {
+            QWindowSystemInterfacePrivate::GeometryChangeEvent gce(q, QHighDpi::fromNativePixels(q->handle()->geometry(), q));
+            QGuiApplicationPrivate::processGeometryChangeEvent(&gce);
+        }
+#endif
+        updateDevicePixelRatio();
+    });
 }
 
 /*!
@@ -428,14 +444,14 @@ void QWindowPrivate::updateSiblingPosition(SiblingPosition position)
 
     QObjectList &siblings = q->parent()->d_ptr->children;
 
-    const int siblingCount = siblings.size() - 1;
+    const qsizetype siblingCount = siblings.size() - 1;
     if (siblingCount == 0)
         return;
 
-    const int currentPosition = siblings.indexOf(q);
+    const qsizetype currentPosition = siblings.indexOf(q);
     Q_ASSERT(currentPosition >= 0);
 
-    const int targetPosition = position == PositionTop ? siblingCount : 0;
+    const qsizetype targetPosition = position == PositionTop ? siblingCount : 0;
 
     if (currentPosition == targetPosition)
         return;
@@ -550,6 +566,8 @@ void QWindowPrivate::create(bool recursive, WId nativeHandle)
     QPlatformSurfaceEvent e(QPlatformSurfaceEvent::SurfaceCreated);
     QGuiApplication::sendEvent(q, &e);
 
+    updateDevicePixelRatio();
+
     if (needsUpdate)
         q->requestUpdate();
 }
@@ -565,6 +583,38 @@ QRectF QWindowPrivate::closestAcceptableGeometry(const QRectF &rect) const
 {
     Q_UNUSED(rect);
     return QRectF();
+}
+
+void QWindowPrivate::setMinOrMaxSize(QSize *oldSizeMember, const QSize &size,
+                                     qxp::function_ref<void()> funcWidthChanged,
+                                     qxp::function_ref<void()> funcHeightChanged)
+{
+    Q_Q(QWindow);
+    Q_ASSERT(oldSizeMember);
+    const QSize adjustedSize =
+            size.expandedTo(QSize(0, 0)).boundedTo(QSize(QWINDOWSIZE_MAX, QWINDOWSIZE_MAX));
+    if (*oldSizeMember == adjustedSize)
+        return;
+    const bool widthChanged = adjustedSize.width() != oldSizeMember->width();
+    const bool heightChanged = adjustedSize.height() != oldSizeMember->height();
+    *oldSizeMember = adjustedSize;
+
+    if (platformWindow && q->isTopLevel())
+        platformWindow->propagateSizeHints();
+
+    if (widthChanged)
+        funcWidthChanged();
+    if (heightChanged)
+        funcHeightChanged();
+
+    // resize window if current size is outside of min and max limits
+    if (minimumSize.width() <= maximumSize.width()
+        || minimumSize.height() <= maximumSize.height()) {
+        const QSize currentSize = q->size();
+        const QSize boundedSize = currentSize.expandedTo(minimumSize).boundedTo(maximumSize);
+        if (currentSize != boundedSize)
+            q->resize(boundedSize);
+    }
 }
 
 /*!
@@ -636,7 +686,7 @@ bool QWindow::isVisible() const
     into an actual native surface. However, the window remains hidden until setVisible() is called.
 
     Note that it is not usually necessary to call this function directly, as it will be implicitly
-    called by show(), setVisible(), and other functions that require access to the platform
+    called by show(), setVisible(), winId(), and other functions that require access to the platform
     resources.
 
     Call destroy() to free the platform resources if necessary.
@@ -652,6 +702,9 @@ void QWindow::create()
 /*!
     Returns the window's platform id.
 
+    \note This function will cause the platform window to be created if it is not already.
+    Returns 0, if the platform window creation failed.
+
     For platforms where this id might be useful, the value returned
     will uniquely represent the window inside the corresponding screen.
 
@@ -663,6 +716,9 @@ WId QWindow::winId() const
 
     if (!d->platformWindow)
         const_cast<QWindow *>(this)->create();
+
+    if (!d->platformWindow)
+        return 0;
 
     return d->platformWindow->winId();
 }
@@ -1220,6 +1276,8 @@ bool QWindow::isExposed() const
     Typically active windows should appear active from a style perspective.
 
     To get the window that currently has focus, use QGuiApplication::focusWindow().
+
+    \sa requestActivate()
 */
 bool QWindow::isActive() const
 {
@@ -1293,14 +1351,29 @@ Qt::ScreenOrientation QWindow::contentOrientation() const
 qreal QWindow::devicePixelRatio() const
 {
     Q_D(const QWindow);
+    return d->devicePixelRatio;
+}
+
+/*
+    Updates the cached devicePixelRatio value by polling for a new value.
+    Sends QEvent::DevicePixelRatioChange to the window if the DPR has changed.
+*/
+void QWindowPrivate::updateDevicePixelRatio()
+{
+    Q_Q(QWindow);
 
     // If there is no platform window use the associated screen's devicePixelRatio,
     // which typically is the primary screen and will be correct for single-display
     // systems (a very common case).
-    if (!d->platformWindow)
-        return screen()->devicePixelRatio();
+    const qreal newDevicePixelRatio = platformWindow ?
+        platformWindow->devicePixelRatio() * QHighDpiScaling::factor(q) : q->screen()->devicePixelRatio();
 
-    return d->platformWindow->devicePixelRatio() * QHighDpiScaling::factor(this);
+    if (newDevicePixelRatio == devicePixelRatio)
+        return;
+
+    devicePixelRatio = newDevicePixelRatio;
+    QEvent dprChangeEvent(QEvent::DevicePixelRatioChange);
+    QGuiApplication::sendEvent(q, &dprChangeEvent);
 }
 
 Qt::WindowState QWindowPrivate::effectiveState(Qt::WindowStates state)
@@ -1355,8 +1428,13 @@ void QWindow::setWindowStates(Qt::WindowStates state)
 
     if (d->platformWindow)
         d->platformWindow->setWindowState(state);
+
+    auto originalEffectiveState = QWindowPrivate::effectiveState(d->windowState);
     d->windowState = state;
-    emit windowStateChanged(QWindowPrivate::effectiveState(d->windowState));
+    auto newEffectiveState = QWindowPrivate::effectiveState(d->windowState);
+    if (newEffectiveState != originalEffectiveState)
+        emit windowStateChanged(newEffectiveState);
+
     d->updateVisibility();
 }
 
@@ -1531,17 +1609,9 @@ QSize QWindow::sizeIncrement() const
 void QWindow::setMinimumSize(const QSize &size)
 {
     Q_D(QWindow);
-    QSize adjustedSize = QSize(qBound(0, size.width(), QWINDOWSIZE_MAX), qBound(0, size.height(), QWINDOWSIZE_MAX));
-    if (d->minimumSize == adjustedSize)
-        return;
-    QSize oldSize = d->minimumSize;
-    d->minimumSize = adjustedSize;
-    if (d->platformWindow && isTopLevel())
-        d->platformWindow->propagateSizeHints();
-    if (d->minimumSize.width() != oldSize.width())
-        emit minimumWidthChanged(d->minimumSize.width());
-    if (d->minimumSize.height() != oldSize.height())
-        emit minimumHeightChanged(d->minimumSize.height());
+    d->setMinOrMaxSize(
+            &d->minimumSize, size, [this, d]() { emit minimumWidthChanged(d->minimumSize.width()); },
+            [this, d]() { emit minimumHeightChanged(d->minimumSize.height()); });
 }
 
 /*!
@@ -1618,17 +1688,9 @@ void QWindow::setMinimumHeight(int h)
 void QWindow::setMaximumSize(const QSize &size)
 {
     Q_D(QWindow);
-    QSize adjustedSize = QSize(qBound(0, size.width(), QWINDOWSIZE_MAX), qBound(0, size.height(), QWINDOWSIZE_MAX));
-    if (d->maximumSize == adjustedSize)
-        return;
-    QSize oldSize = d->maximumSize;
-    d->maximumSize = adjustedSize;
-    if (d->platformWindow && isTopLevel())
-        d->platformWindow->propagateSizeHints();
-    if (d->maximumSize.width() != oldSize.width())
-        emit maximumWidthChanged(d->maximumSize.width());
-    if (d->maximumSize.height() != oldSize.height())
-        emit maximumHeightChanged(d->maximumSize.height());
+    d->setMinOrMaxSize(
+            &d->maximumSize, size, [this, d]() { emit maximumWidthChanged(d->maximumSize.width()); },
+            [this, d]() { emit maximumHeightChanged(d->maximumSize.height()); });
 }
 
 /*!
@@ -1855,6 +1917,10 @@ void QWindow::setFramePosition(const QPoint &point)
     For interactively moving windows, see startSystemMove(). For interactively
     resizing windows, see startSystemResize().
 
+    \note Not all windowing systems support setting or querying top level window positions.
+    On such a system, programmatically moving windows may not have any effect, and artificial
+    values may be returned for the current positions, such as \c QPoint(0, 0).
+
     \sa position(), startSystemMove()
 */
 void QWindow::setPosition(const QPoint &pt)
@@ -1877,6 +1943,10 @@ void QWindow::setPosition(int posx, int posy)
 /*!
     \fn QPoint QWindow::position() const
     \brief Returns the position of the window on the desktop excluding any window frame
+
+    \note Not all windowing systems support setting or querying top level window positions.
+    On such a system, programmatically moving windows may not have any effect, and artificial
+    values may be returned for the current positions, such as \c QPoint(0, 0).
 
     \sa setPosition()
 */
@@ -2488,13 +2558,6 @@ bool QWindow::event(QEvent *ev)
         setIcon(icon());
         break;
 
-    case QEvent::WindowStateChange: {
-        Q_D(QWindow);
-        emit windowStateChanged(QWindowPrivate::effectiveState(d->windowState));
-        d->updateVisibility();
-        break;
-    }
-
 #if QT_CONFIG(tabletevent)
     case QEvent::TabletPress:
     case QEvent::TabletMove:
@@ -2554,11 +2617,13 @@ bool QWindow::event(QEvent *ev)
 /*!
     Schedules a QEvent::UpdateRequest event to be delivered to this window.
 
-    The event is delivered in sync with the display vsync on platforms
-    where this is possible. Otherwise, the event is delivered after a
-    delay of 5 ms. The additional time is there to give the event loop
-    a bit of idle time to gather system events, and can be overridden
-    using the QT_QPA_UPDATE_IDLE_TIME environment variable.
+    The event is delivered in sync with the display vsync on platforms where
+    this is possible. Otherwise, the event is delivered after a delay of at
+    most 5 ms. If the window's associated screen reports a
+    \l{QScreen::refreshRate()}{refresh rate} higher than 60 Hz, the interval is
+    scaled down to a value smaller than 5. The additional time is there to give
+    the event loop a bit of idle time to gather system events, and can be
+    overridden using the QT_QPA_UPDATE_IDLE_TIME environment variable.
 
     When driving animations, this function should be called once after drawing
     has completed. Calling this function multiple times will result in a single
@@ -3016,6 +3081,14 @@ void *QWindow::resolveInterface(const char *name, int revision) const
     QT_NATIVE_INTERFACE_RETURN_IF(QCocoaWindow, platformWindow);
 #endif
 
+#if defined(Q_OS_UNIX)
+    QT_NATIVE_INTERFACE_RETURN_IF(QWaylandWindow, platformWindow);
+#endif
+
+#if defined(Q_OS_WASM)
+    QT_NATIVE_INTERFACE_RETURN_IF(QWasmWindow, platformWindow);
+#endif
+
     return nullptr;
 }
 
@@ -3058,7 +3131,7 @@ QDebug operator<<(QDebug debug, const QWindow *window)
 }
 #endif // !QT_NO_DEBUG_STREAM
 
-#if QT_CONFIG(vulkan) || defined(Q_CLANG_QDOC)
+#if QT_CONFIG(vulkan) || defined(Q_QDOC)
 
 /*!
     Associates this window with the specified Vulkan \a instance.

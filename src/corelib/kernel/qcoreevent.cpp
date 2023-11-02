@@ -14,6 +14,9 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_TRACE_POINT(qtcore, QEvent_ctor, QEvent *event, QEvent::Type type);
+Q_TRACE_POINT(qtcore, QEvent_dtor, QEvent *event, QEvent::Type type);
+
 /*!
     \class QEvent
     \inmodule QtCore
@@ -82,6 +85,8 @@ QT_BEGIN_NAMESPACE
     \value ContextMenu                      Context popup menu (QContextMenuEvent).
     \value CursorChange                     The widget's cursor has changed.
     \value DeferredDelete                   The object will be deleted after it has cleaned up (QDeferredDeleteEvent)
+    \value [since 6.6] DevicePixelRatioChange
+                                            The devicePixelRatio has changed for this widget's or window's underlying backing store.
     \value DragEnter                        The cursor enters a widget during a drag and drop operation (QDragEnterEvent).
     \value DragLeave                        The cursor leaves a widget during a drag and drop operation (QDragLeaveEvent).
     \value DragMove                         A drag and drop operation is in progress (QDragMoveEvent).
@@ -264,7 +269,7 @@ QEvent::QEvent(Type type)
     : t(type), m_reserved(0),
       m_inputEvent(false), m_pointerEvent(false), m_singlePointEvent(false)
 {
-    Q_TRACE(QEvent_ctor, this, t);
+    Q_TRACE(QEvent_ctor, this, type);
 }
 
 /*!
