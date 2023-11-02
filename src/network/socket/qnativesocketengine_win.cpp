@@ -2,13 +2,10 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-// Prevent windows system header files from defining min/max as macros.
-#define NOMINMAX 1
-
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include "qnativesocketengine_p.h"
+#include "qnativesocketengine_p_p.h"
 
 #include <qabstracteventdispatcher.h>
 #include <qsocketnotifier.h>

@@ -1,4 +1,5 @@
-# special case skip regeneration
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 # We need to include the features of a few modules before they are actually declared.
 # The feature values are used as conditions for deciding whether bundled 3rd party libraries
@@ -12,12 +13,15 @@ if(QT_FEATURE_gui)
     qt_feature_evaluate_features("${CMAKE_CURRENT_SOURCE_DIR}/gui/configure.cmake")
 endif()
 
+add_subdirectory(tools/syncqt)
+
 function(find_or_build_bootstrap_names)
     if (QT_WILL_BUILD_TOOLS)
         add_subdirectory(tools/bootstrap)  # bootstrap library
     endif()
     add_subdirectory(tools/moc)
     add_subdirectory(tools/rcc)
+    add_subdirectory(tools/tracepointgen)
     add_subdirectory(tools/tracegen)
     add_subdirectory(tools/cmake_automoc_parser)
 endfunction()
@@ -67,6 +71,7 @@ add_subdirectory(tools)
 
 if(QT_FEATURE_gui)
     add_subdirectory(gui)
+    add_subdirectory(assets)
 
     if(QT_FEATURE_opengl)
         add_subdirectory(opengl)

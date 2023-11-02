@@ -22,7 +22,9 @@
 
 #include <QtCore/private/qobject_p.h>
 #include <QtCore/qelapsedtimer.h>
-#include <QtGui/QIcon>
+#include <QtCore/qxpfunctional.h>
+#include <QtGui/qicon.h>
+#include <QtGui/qpalette.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -52,6 +54,7 @@ public:
     QWindow *topLevelWindow(QWindow::AncestorMode mode = QWindow::IncludeTransients) const;
 
     virtual QWindow *eventReceiver() { Q_Q(QWindow); return q; }
+    virtual QPalette windowPalette() const { return QPalette(); }
 
     virtual void setVisible(bool visible);
     void updateVisibility();
@@ -73,6 +76,10 @@ public:
     virtual void clearFocusObject();
     virtual QRectF closestAcceptableGeometry(const QRectF &rect) const;
 
+    void setMinOrMaxSize(QSize *oldSizeMember, const QSize &size,
+                         qxp::function_ref<void()> funcWidthChanged,
+                         qxp::function_ref<void()> funcHeightChanged);
+
     virtual void processSafeAreaMarginsChanged() {}
 
     virtual bool participatesInLastWindowClosed() const;
@@ -81,6 +88,8 @@ public:
     bool isPopup() const { return (windowFlags & Qt::WindowType_Mask) == Qt::Popup; }
     void setAutomaticPositionAndResizeEnabled(bool a)
     { positionAutomatic = resizeAutomatic = a; }
+
+    void updateDevicePixelRatio();
 
     static QWindowPrivate *get(QWindow *window) { return window->d_func(); }
 
@@ -99,6 +108,7 @@ public:
     QString windowFilePath;
     QIcon windowIcon;
     QRect geometry;
+    qreal devicePixelRatio = 1.0;
     Qt::WindowStates windowState = Qt::WindowNoState;
     QWindow::Visibility visibility = QWindow::Hidden;
     bool resizeEventPending = true;

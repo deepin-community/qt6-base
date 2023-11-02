@@ -17,6 +17,8 @@
 
 #include <qendian.h>
 #include <qlocale.h>
+#include <qdatetime.h>
+#include <qtimezone.h>
 #include <private/qbytearray_p.h>
 #include <private/qnumeric_p.h>
 #include <private/qsimd_p.h>
@@ -44,6 +46,7 @@ Q_DECL_UNUSED static constexpr quint64 MaximumPreallocatedElementCount =
     \class QCborValue
     \inmodule QtCore
     \ingroup cbor
+    \ingroup qtserialization
     \reentrant
     \since 5.12
 
@@ -188,9 +191,9 @@ Q_DECL_UNUSED static constexpr quint64 MaximumPreallocatedElementCount =
     array or map it refers to will be modified with the new value. In all other
     aspects, its API is identical to QCborValue.
 
-    \sa QCborArray, QCborMap, QCborStreamReader, QCborStreamWriter
-    \sa QJsonValue, QJsonDocument, {Cbordump Example}, {Convert Example}
-    \sa {JSON Save Game Example}
+    \sa QCborArray, QCborMap, QCborStreamReader, QCborStreamWriter,
+        QJsonValue, QJsonDocument, {Convert Example}, {JSON Save Game Example}
+        {Parsing and displaying CBOR data}
  */
 
 /*!
@@ -401,7 +404,7 @@ Q_DECL_UNUSED static constexpr quint64 MaximumPreallocatedElementCount =
 /*!
     \fn QCborValue::QCborValue(QCborSimpleType st)
 
-    Creates a QCborValue of simple type \a st. The type can later later be retrieved
+    Creates a QCborValue of simple type \a st. The type can later be retrieved
     using toSimpleType() as well as isSimpleType(st).
 
     CBOR simple types are types that do not have any associated value, like
@@ -784,9 +787,9 @@ static QCborValue::Type convertToExtendedType(QCborContainerPrivate *d)
             bool ok = false;
             if (e.type == QCborValue::Integer) {
 #if QT_POINTER_SIZE == 8
-                // we don't have a fast 64-bit mul_overflow implementation on
+                // we don't have a fast 64-bit qMulOverflow implementation on
                 // 32-bit architectures.
-                ok = !mul_overflow(e.value, qint64(1000), &msecs);
+                ok = !qMulOverflow(e.value, qint64(1000), &msecs);
 #else
                 static const qint64 Limit = std::numeric_limits<qint64>::max() / 1000;
                 ok = (e.value > -Limit && e.value < Limit);
@@ -797,7 +800,7 @@ static QCborValue::Type convertToExtendedType(QCborContainerPrivate *d)
                 ok = convertDoubleTo(round(e.fpvalue() * 1000), &msecs);
             }
             if (ok)
-                dt = QDateTime::fromMSecsSinceEpoch(msecs, Qt::UTC);
+                dt = QDateTime::fromMSecsSinceEpoch(msecs, QTimeZone::UTC);
         }
         if (dt.isValid()) {
             QByteArray text = dt.toString(Qt::ISODateWithMs).toLatin1();
@@ -886,7 +889,7 @@ static void writeDoubleToCbor(QCborStreamWriter &writer, double d, QCborValue::E
             // no data loss, we could use float
 #ifndef QT_BOOTSTRAPPED
             if ((opt & QCborValue::UseFloat16) == QCborValue::UseFloat16) {
-                qfloat16 f16 = f;
+                qfloat16 f16 = qfloat16(f);
                 if (f16 == f)
                     return writer.append(f16);
             }
@@ -970,7 +973,7 @@ QCborContainerPrivate *QCborContainerPrivate::grow(QCborContainerPrivate *d, qsi
     Q_ASSERT(index >= 0);
     d = detach(d, index + 1);
     Q_ASSERT(d);
-    int j = d->elements.size();
+    qsizetype j = d->elements.size();
     while (j++ < index)
         d->append(Undefined());
     return d;
@@ -1740,8 +1743,8 @@ QCborValue::QCborValue(QStringView s)
 /*!
     \overload
 
-    Creates a QCborValue with string value \a s. The value can later be
-    retrieved using toString().
+    Creates a QCborValue with the Latin-1 string viewed by \a s.
+    The value can later be retrieved using toString().
 
     \sa toString(), isString(), isByteArray()
  */
@@ -1806,7 +1809,7 @@ QCborValue::QCborValue(QCborTag tag, const QCborValue &tv)
 /*!
     Copies the contents of \a other into this object.
  */
-QCborValue::QCborValue(const QCborValue &other)
+QCborValue::QCborValue(const QCborValue &other) noexcept
     : n(other.n), container(other.container), t(other.t)
 {
     if (container)
@@ -1900,7 +1903,7 @@ void QCborValue::dispose()
 /*!
     Replaces the contents of this QCborObject with a copy of \a other.
  */
-QCborValue &QCborValue::operator=(const QCborValue &other)
+QCborValue &QCborValue::operator=(const QCborValue &other) noexcept
 {
     n = other.n;
     assignContainer(container, other.container);
@@ -2244,12 +2247,6 @@ static void convertArrayToMap(QCborContainerPrivate *&array)
     }
     for (qsizetype i = 0; i < size; ++i)
         dst[i * 2] = { i, QCborValue::Integer };
-
-    // only do this last portion if we're not modifying in-place
-    for (qsizetype i = 0; src != dst && i < size; ++i) {
-        if (dst[i * 2 + 1].flags & QtCbor::Element::IsContainer)
-            dst[i * 2 + 1].container->ref.ref();
-    }
 
     // update reference counts
     assignContainer(array, map);

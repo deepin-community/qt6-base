@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # We can't create the same interface imported target multiple times, CMake will complain if we do
 # that. This can happen if the find_package call is done in multiple different subdirectories.
 if(TARGET WrapOpenGL::WrapOpenGL)
@@ -14,14 +17,18 @@ if (OpenGL_FOUND)
 
     add_library(WrapOpenGL::WrapOpenGL INTERFACE IMPORTED)
     if(APPLE)
+        # CMake 3.27 and older:
         # On Darwin platforms FindOpenGL sets IMPORTED_LOCATION to the absolute path of the library
         # within the framework. This ends up as an absolute path link flag, which we don't want,
         # because that makes our .prl files un-relocatable.
         # Extract the framework path instead, and use that in INTERFACE_LINK_LIBRARIES,
-        # which CMake ends up transforming into a reloctable -framework flag.
+        # which CMake ends up transforming into a relocatable -framework flag.
         # See https://gitlab.kitware.com/cmake/cmake/-/issues/20871 for details.
+        #
+        # CMake 3.28 and above:
+        # IMPORTED_LOCATION is the absolute path the the OpenGL.framework folder.
         get_target_property(__opengl_fw_lib_path OpenGL::GL IMPORTED_LOCATION)
-        if(__opengl_fw_lib_path)
+        if(__opengl_fw_lib_path AND NOT __opengl_fw_lib_path MATCHES "/([^/]+)\\.framework$")
             get_filename_component(__opengl_fw_path "${__opengl_fw_lib_path}" DIRECTORY)
         endif()
 

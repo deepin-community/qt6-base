@@ -1,4 +1,5 @@
-# Generated from sql.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## Sql Module:
@@ -36,9 +37,6 @@ qt_internal_add_module(Sql
         "../corelib/global/qt_pch.h"
     GENERATE_CPP_EXPORTS
 )
-
-#### Keys ignored in scope 1:.:.:sql.pro:<TRUE>:
-# SQL_P = "sql"
 
 ## Scopes:
 #####################################################################

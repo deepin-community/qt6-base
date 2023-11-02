@@ -2,3 +2,5 @@
 qt6-base-dev: package-contains-documentation-outside-usr-share-doc [usr/lib/*/cmake/Qt6/config.tests/*/CMakeLists.txt]
 # script for the cmake build system
 qt6-base-dev: package-contains-documentation-outside-usr-share-doc [usr/lib/*/cmake/Qt6BuildInternals/QtStandaloneTestTemplateProject/CMakeLists.txt]
+
+qt6-base-dev: no-code-sections [usr/lib/x86_64-linux-gnu/libQt6ExampleIcons.a]

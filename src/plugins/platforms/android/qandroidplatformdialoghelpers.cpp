@@ -54,7 +54,10 @@ bool QAndroidPlatformMessageDialogHelper::show(Qt::WindowFlags windowFlags,
     if (!opt.data())
         return false;
 
-    m_javaMessageDialog.callMethod<void>("setIcon", "(I)V", opt->icon());
+    if (!opt->checkBoxLabel().isNull())
+        return false; // Can't support
+
+    m_javaMessageDialog.callMethod<void>("setStandardIcon", "(I)V", opt->standardIcon());
 
     QString str = htmlText(opt->windowTitle());
     if (!str.isEmpty()) {

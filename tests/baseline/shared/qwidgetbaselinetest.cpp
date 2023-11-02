@@ -9,6 +9,8 @@
 #include <QStyleHints>
 #include <QScreen>
 
+#include <QtWidgets/private/qapplication_p.h>
+
 QT_BEGIN_NAMESPACE
 
 QWidgetBaselineTest::QWidgetBaselineTest()
@@ -97,7 +99,7 @@ void QWidgetBaselineTest::makeVisible()
 {
     Q_ASSERT(window);
     window->show();
-    QApplication::setActiveWindow(window);
+    QApplicationPrivate::setActiveWindow(window);
     QVERIFY(QTest::qWaitForWindowActive(window));
     // explicitly unset focus, the test needs to control when focus is shown
     if (window->focusWidget())
@@ -113,6 +115,20 @@ QImage QWidgetBaselineTest::takeSnapshot()
     // make sure all effects are done
     QTest::qWait(250);
     return window->grab().toImage();
+}
+
+/*
+    Grabs the test window screen and returns the resulting QImage, without
+    compensating for DPR differences.
+    This can be used for popup windows.
+*/
+QImage QWidgetBaselineTest::takeScreenSnapshot(const QRect& windowRect)
+{
+    // make sure all effects are done - wait longer here because entire
+    // windows might be fading in and out.
+    QTest::qWait(750);
+    return window->screen()->grabWindow(0, windowRect.x(), windowRect.y(),
+                                        windowRect.width(), windowRect.height()).toImage();
 }
 
 /*!

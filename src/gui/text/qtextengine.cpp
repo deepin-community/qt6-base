@@ -7,6 +7,7 @@
 #include "qtextformat_p.h"
 #include "qtextengine_p.h"
 #include "qabstracttextdocumentlayout.h"
+#include "qabstracttextdocumentlayout_p.h"
 #include "qtextlayout.h"
 #include "qtextboundaryfinder.h"
 #include <QtCore/private/qunicodetables_p.h>
@@ -1395,8 +1396,7 @@ void QTextEngine::shapeText(int item) const
     }
 
     if (Q_UNLIKELY(!ensureSpace(itemLength))) {
-        Q_UNREACHABLE(); // ### report OOM error somehow
-        return;
+        Q_UNREACHABLE_RETURN(); // ### report OOM error somehow
     }
 
     QFontEngine *fontEngine = this->fontEngine(si, &si.ascent, &si.descent, &si.leading);
@@ -1404,6 +1404,7 @@ void QTextEngine::shapeText(int item) const
     bool kerningEnabled;
     bool letterSpacingIsAbsolute;
     bool shapingEnabled = false;
+    QHash<quint32, quint32> features;
     QFixed letterSpacing, wordSpacing;
 #ifndef QT_NO_RAWFONT
     if (useRawFont) {
@@ -1417,6 +1418,7 @@ void QTextEngine::shapeText(int item) const
         wordSpacing = QFixed::fromReal(font.wordSpacing());
         letterSpacing = QFixed::fromReal(font.letterSpacing());
         letterSpacingIsAbsolute = true;
+        features = font.d->features;
     } else
 #endif
     {
@@ -1429,6 +1431,7 @@ void QTextEngine::shapeText(int item) const
         letterSpacingIsAbsolute = font.d->letterSpacingIsAbsolute;
         letterSpacing = font.d->letterSpacing;
         wordSpacing = font.d->wordSpacing;
+        features = font.d->features;
 
         if (letterSpacingIsAbsolute && letterSpacing.value())
             letterSpacing *= font.d->dpi / qt_defaultDpiY();
@@ -1482,7 +1485,14 @@ void QTextEngine::shapeText(int item) const
 
 #if QT_CONFIG(harfbuzz)
     if (Q_LIKELY(shapingEnabled)) {
-        si.num_glyphs = shapeTextWithHarfbuzzNG(si, string, itemLength, fontEngine, itemBoundaries, kerningEnabled, letterSpacing != 0);
+        si.num_glyphs = shapeTextWithHarfbuzzNG(si,
+                                                string,
+                                                itemLength,
+                                                fontEngine,
+                                                itemBoundaries,
+                                                kerningEnabled,
+                                                letterSpacing != 0,
+                                                features);
     } else
 #endif
     {
@@ -1594,7 +1604,8 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
                                          QFontEngine *fontEngine,
                                          const QList<uint> &itemBoundaries,
                                          bool kerningEnabled,
-                                         bool hasLetterSpacing) const
+                                         bool hasLetterSpacing,
+                                         const QHash<quint32, quint32> &fontFeatures) const
 {
     uint glyphs_shaped = 0;
 
@@ -1648,14 +1659,24 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
                                          || script == QChar::Script_Khmer || script == QChar::Script_Nko);
 
             bool dontLigate = hasLetterSpacing && !scriptRequiresOpenType;
-            const hb_feature_t features[5] = {
-                { HB_TAG('k','e','r','n'), !!kerningEnabled, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END },
-                { HB_TAG('l','i','g','a'), false, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END },
-                { HB_TAG('c','l','i','g'), false, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END },
-                { HB_TAG('d','l','i','g'), false, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END },
-                { HB_TAG('h','l','i','g'), false, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END }
-            };
-            const int num_features = dontLigate ? 5 : 1;
+
+            QHash<quint32, quint32> features;
+            features.insert(HB_TAG('k','e','r','n'), !!kerningEnabled);
+            if (dontLigate) {
+                features.insert(HB_TAG('l','i','g','a'), false);
+                features.insert(HB_TAG('c','l','i','g'), false);
+                features.insert(HB_TAG('d','l','i','g'), false);
+                features.insert(HB_TAG('h','l','i','g'), false);
+            }
+            features.insert(fontFeatures);
+
+            QVarLengthArray<hb_feature_t, 16> featureArray;
+            for (auto it = features.constBegin(); it != features.constEnd(); ++it) {
+                featureArray.append({ it.key(),
+                                      it.value(),
+                                      HB_FEATURE_GLOBAL_START,
+                                      HB_FEATURE_GLOBAL_END });
+            }
 
             // whitelist cross-platforms shapers only
             static const char *shaper_list[] = {
@@ -1665,7 +1686,11 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
                 nullptr
             };
 
-            bool shapedOk = hb_shape_full(hb_font, buffer, features, num_features, shaper_list);
+            bool shapedOk = hb_shape_full(hb_font,
+                                          buffer,
+                                          featureArray.constData(),
+                                          features.size(),
+                                          shaper_list);
             if (Q_UNLIKELY(!shapedOk)) {
                 hb_buffer_destroy(buffer);
                 return 0;
@@ -1675,9 +1700,14 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
                 hb_buffer_reverse(buffer);
         }
 
-        const uint num_glyphs = hb_buffer_get_length(buffer);
+        uint num_glyphs = hb_buffer_get_length(buffer);
+        const bool has_glyphs = num_glyphs > 0;
+        // If Harfbuzz returns zero glyphs, we have to manually add a missing glyph
+        if (Q_UNLIKELY(!has_glyphs))
+            num_glyphs = 1;
+
         // ensure we have enough space for shaped glyphs and metrics
-        if (Q_UNLIKELY(num_glyphs == 0 || !ensureSpace(glyphs_shaped + num_glyphs))) {
+        if (Q_UNLIKELY(!ensureSpace(glyphs_shaped + num_glyphs))) {
             hb_buffer_destroy(buffer);
             return 0;
         }
@@ -1685,35 +1715,44 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
         // fetch the shaped glyphs and metrics
         QGlyphLayout g = availableGlyphs(&si).mid(glyphs_shaped, num_glyphs);
         ushort *log_clusters = logClusters(&si) + item_pos;
+        if (Q_LIKELY(has_glyphs)) {
+            hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
+            hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
+            uint str_pos = 0;
+            uint last_cluster = ~0u;
+            uint last_glyph_pos = glyphs_shaped;
+            for (uint i = 0; i < num_glyphs; ++i, ++infos, ++positions) {
+                g.glyphs[i] = infos->codepoint;
 
-        hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
-        hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
-        uint str_pos = 0;
-        uint last_cluster = ~0u;
-        uint last_glyph_pos = glyphs_shaped;
-        for (uint i = 0; i < num_glyphs; ++i, ++infos, ++positions) {
-            g.glyphs[i] = infos->codepoint;
+                g.advances[i] = QFixed::fromFixed(positions->x_advance);
+                g.offsets[i].x = QFixed::fromFixed(positions->x_offset);
+                g.offsets[i].y = QFixed::fromFixed(positions->y_offset);
 
-            g.advances[i] = QFixed::fromFixed(positions->x_advance);
-            g.offsets[i].x = QFixed::fromFixed(positions->x_offset);
-            g.offsets[i].y = QFixed::fromFixed(positions->y_offset);
+                uint cluster = infos->cluster;
+                if (Q_LIKELY(last_cluster != cluster)) {
+                    g.attributes[i].clusterStart = true;
 
-            uint cluster = infos->cluster;
-            if (Q_LIKELY(last_cluster != cluster)) {
-                g.attributes[i].clusterStart = true;
+                    // fix up clusters so that the cluster indices will be monotonic
+                    // and thus we never return out-of-order indices
+                    while (last_cluster++ < cluster && str_pos < item_length)
+                        log_clusters[str_pos++] = last_glyph_pos;
+                    last_glyph_pos = i + glyphs_shaped;
+                    last_cluster = cluster;
 
-                // fix up clusters so that the cluster indices will be monotonic
-                // and thus we never return out-of-order indices
-                while (last_cluster++ < cluster && str_pos < item_length)
-                    log_clusters[str_pos++] = last_glyph_pos;
-                last_glyph_pos = i + glyphs_shaped;
-                last_cluster = cluster;
-
-                applyVisibilityRules(string[item_pos + str_pos], &g, i, actualFontEngine);
+                    applyVisibilityRules(string[item_pos + str_pos], &g, i, actualFontEngine);
+                }
             }
+            while (str_pos < item_length)
+                log_clusters[str_pos++] = last_glyph_pos;
+        } else { // Harfbuzz did not return a glyph for the character, so we add a placeholder
+            g.glyphs[0] = 0;
+            g.advances[0] = QFixed{};
+            g.offsets[0].x = QFixed{};
+            g.offsets[0].y = QFixed{};
+            g.attributes[0].clusterStart = true;
+            g.attributes[0].dontPrint = true;
+            log_clusters[0] = glyphs_shaped;
         }
-        while (str_pos < item_length)
-            log_clusters[str_pos++] = last_glyph_pos;
 
         if (Q_UNLIKELY(engineIdx != 0)) {
             for (quint32 i = 0; i < num_glyphs; ++i)
@@ -1721,8 +1760,10 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
         }
 
         if (!actualFontEngine->supportsHorizontalSubPixelPositions()) {
-            for (uint i = 0; i < num_glyphs; ++i)
+            for (uint i = 0; i < num_glyphs; ++i) {
                 g.advances[i] = g.advances[i].round();
+                g.offsets[i].x = g.offsets[i].x.round();
+            }
         }
 
         glyphs_shaped += num_glyphs;
@@ -1918,7 +1959,17 @@ void QTextEngine::itemize() const
     while (uc < e) {
         switch (*uc) {
         case QChar::ObjectReplacementCharacter:
-            analysis->flags = QScriptAnalysis::Object;
+            {
+                const QTextDocumentPrivate *doc_p = QTextDocumentPrivate::get(block);
+                if (doc_p != nullptr
+                        && doc_p->layout() != nullptr
+                        && QAbstractTextDocumentLayoutPrivate::get(doc_p->layout()) != nullptr
+                        && QAbstractTextDocumentLayoutPrivate::get(doc_p->layout())->hasHandlers()) {
+                    analysis->flags = QScriptAnalysis::Object;
+                } else {
+                    analysis->flags = QScriptAnalysis::None;
+                }
+            }
             break;
         case QChar::LineSeparator:
             analysis->flags = QScriptAnalysis::LineOrParagraphSeparator;
@@ -2605,6 +2656,7 @@ QTextEngine::LayoutData::LayoutData()
     haveCharAttributes = false;
     logClustersPtr = nullptr;
     available_glyphs = 0;
+    currentMaxWidth = 0;
 }
 
 QTextEngine::LayoutData::LayoutData(const QString &str, void **stack_memory, int _allocated)
@@ -2637,6 +2689,7 @@ QTextEngine::LayoutData::LayoutData(const QString &str, void **stack_memory, int
     hasBidi = false;
     layoutState = LayoutEmpty;
     haveCharAttributes = false;
+    currentMaxWidth = 0;
 }
 
 QTextEngine::LayoutData::~LayoutData()
@@ -2722,6 +2775,7 @@ void QTextEngine::freeMemory()
         layoutData->hasBidi = false;
         layoutData->layoutState = LayoutEmpty;
         layoutData->haveCharAttributes = false;
+        layoutData->currentMaxWidth = 0;
         layoutData->items.clear();
     }
     if (specialData)

@@ -23,9 +23,9 @@
     \note TCP sockets cannot be opened in QIODevice::Unbuffered mode.
 
     \sa QTcpServer, QUdpSocket, QNetworkAccessManager,
-    {Fortune Server Example}, {Fortune Client Example},
-    {Threaded Fortune Server Example}, {Blocking Fortune Client Example},
-    {Loopback Example}, {Torrent Example}
+    {Fortune Server}, {Fortune Client},
+    {Threaded Fortune Server}, {Blocking Fortune Client},
+    {Torrent Example}
 */
 
 #include "qtcpsocket.h"

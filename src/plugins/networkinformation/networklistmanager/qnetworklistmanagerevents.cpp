@@ -2,24 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetworklistmanagerevents.h"
+#include <QtCore/private/qsystemerror_p.h>
 
 #include <QtCore/qpointer.h>
 
 #include <mutex>
 
-#ifdef SUPPORTS_WINRT
-#include <winrt/base.h>
-#include <QtCore/private/qfactorycacheregistration_p.h>
-// Workaround for Windows SDK bug.
-// See https://github.com/microsoft/Windows.UI.Composition-Win32-Samples/issues/47
-namespace winrt::impl
-{
-    template <typename Async>
-    auto wait_for(Async const& async, Windows::Foundation::TimeSpan const& timeout);
-}
+#if QT_CONFIG(cpp_winrt)
+#include <QtCore/private/qt_winrtbase_p.h>
 
 #include <winrt/Windows.Networking.Connectivity.h>
-#endif
+#endif // QT_CONFIG(cpp_winrt)
 
 QT_BEGIN_NAMESPACE
 
@@ -42,7 +35,7 @@ QNetworkListManagerEvents::QNetworkListManagerEvents() : QObject(nullptr)
                                IID_INetworkListManager, &networkListManager);
     if (FAILED(hr)) {
         qCWarning(lcNetInfoNLM) << "Could not get a NetworkListManager instance:"
-                                << errorStringFromHResult(hr);
+                                << QSystemError::windowsComString(hr);
         return;
     }
 
@@ -54,7 +47,7 @@ QNetworkListManagerEvents::QNetworkListManagerEvents() : QObject(nullptr)
     }
     if (FAILED(hr)) {
         qCWarning(lcNetInfoNLM) << "Failed to get connection point for network list manager events:"
-                                << errorStringFromHResult(hr);
+                                << QSystemError::windowsComString(hr);
     }
 }
 
@@ -92,31 +85,39 @@ bool QNetworkListManagerEvents::start()
     auto hr = connectionPoint->Advise(this, &cookie);
     if (FAILED(hr)) {
         qCWarning(lcNetInfoNLM) << "Failed to subscribe to network connectivity events:"
-                                << errorStringFromHResult(hr);
+                                << QSystemError::windowsComString(hr);
         return false;
     }
 
     // Update connectivity since it might have changed since this class was constructed
     NLM_CONNECTIVITY connectivity;
     hr = networkListManager->GetConnectivity(&connectivity);
-    if (FAILED(hr))
-        qCWarning(lcNetInfoNLM) << "Could not get connectivity:" << errorStringFromHResult(hr);
-    else
+    if (FAILED(hr)) {
+        qCWarning(lcNetInfoNLM) << "Could not get connectivity:"
+                                << QSystemError::windowsComString(hr);
+    } else {
         emit connectivityChanged(connectivity);
+    }
 
-#ifdef SUPPORTS_WINRT
+#if QT_CONFIG(cpp_winrt)
     using namespace winrt::Windows::Networking::Connectivity;
     using winrt::Windows::Foundation::IInspectable;
-    // Register for changes in the network and store a token to unregister later:
-    token = NetworkInformation::NetworkStatusChanged(
-            [owner = QPointer(this)](const IInspectable sender) {
-                Q_UNUSED(sender);
-                if (owner) {
-                    std::scoped_lock locker(owner->winrtLock);
-                    if (owner->token)
-                        owner->emitWinRTUpdates();
-                }
-            });
+    try {
+        // Register for changes in the network and store a token to unregister later:
+        token = NetworkInformation::NetworkStatusChanged(
+                [owner = QPointer(this)](const IInspectable sender) {
+                    Q_UNUSED(sender);
+                    if (owner) {
+                        std::scoped_lock locker(owner->winrtLock);
+                        if (owner->token)
+                            owner->emitWinRTUpdates();
+                    }
+                });
+    } catch (const winrt::hresult_error &ex) {
+        qCWarning(lcNetInfoNLM) << "Failed to register network status changed callback:"
+                                << QSystemError::windowsComString(ex.code());
+    }
+
     // Emit initial state
     emitWinRTUpdates();
 #endif
@@ -130,13 +131,13 @@ void QNetworkListManagerEvents::stop()
     auto hr = connectionPoint->Unadvise(cookie);
     if (FAILED(hr)) {
         qCWarning(lcNetInfoNLM) << "Failed to unsubscribe from network connectivity events:"
-                                << errorStringFromHResult(hr);
+                                << QSystemError::windowsComString(hr);
     } else {
         cookie = 0;
     }
     // Even if we fail we should still try to unregister from winrt events:
 
-#ifdef SUPPORTS_WINRT
+#if QT_CONFIG(cpp_winrt)
     // Try to synchronize unregistering with potentially in-progress callbacks
     std::scoped_lock locker(winrtLock);
     if (token) {
@@ -169,7 +170,7 @@ bool QNetworkListManagerEvents::checkBehindCaptivePortal()
             VariantInit(&variant);
             const auto scopedVariantClear = qScopeGuard([&variant]() { VariantClear(&variant); });
 
-            const wchar_t *versions[] = { NA_InternetConnectivityV6, NA_InternetConnectivityV4 };
+            const wchar_t *versions[] = { L"NA_InternetConnectivityV6", L"NA_InternetConnectivityV4" };
             for (const auto version : versions) {
                 hr = propertyBag->Read(version, &variant, nullptr);
                 if (SUCCEEDED(hr)
@@ -186,7 +187,7 @@ bool QNetworkListManagerEvents::checkBehindCaptivePortal()
     return false;
 }
 
-#ifdef SUPPORTS_WINRT
+#if QT_CONFIG(cpp_winrt)
 namespace {
 using namespace winrt::Windows::Networking::Connectivity;
 // NB: this isn't part of "network list manager", but sadly NLM doesn't have an
@@ -202,7 +203,9 @@ QNetworkInformation::TransportMedium getTransportMedium(const ConnectionProfile 
     NetworkAdapter adapter(nullptr);
     try {
         adapter = profile.NetworkAdapter();
-    } catch (...) {
+    } catch (const winrt::hresult_error &ex) {
+        qCWarning(lcNetInfoNLM) << "Failed to obtain network adapter:"
+                                << QSystemError::windowsComString(ex.code());
         // pass, we will return Unknown anyway
     }
     if (adapter == nullptr)
@@ -230,7 +233,9 @@ QNetworkInformation::TransportMedium getTransportMedium(const ConnectionProfile 
     ConnectionCost cost(nullptr);
     try {
         cost = profile.GetConnectionCost();
-    } catch (...) {
+    } catch (const winrt::hresult_error &ex) {
+        qCWarning(lcNetInfoNLM) << "Failed to obtain connection cost:"
+                                << QSystemError::windowsComString(ex.code());
         // pass, we return false if we get an empty object back anyway
     }
     if (cost == nullptr)
@@ -246,7 +251,9 @@ void QNetworkListManagerEvents::emitWinRTUpdates()
     ConnectionProfile profile = nullptr;
     try {
         profile = NetworkInformation::GetInternetConnectionProfile();
-    } catch (...) {
+    } catch (const winrt::hresult_error &ex) {
+        qCWarning(lcNetInfoNLM) << "Failed to obtain connection profile:"
+                                << QSystemError::windowsComString(ex.code());
         // pass, we would just return early if we get an empty object back anyway
     }
     if (profile == nullptr)
@@ -254,6 +261,6 @@ void QNetworkListManagerEvents::emitWinRTUpdates()
     emit transportMediumChanged(getTransportMedium(profile));
     emit isMeteredChanged(getMetered(profile));
 }
-#endif
+#endif // QT_CONFIG(cpp_winrt)
 
 QT_END_NAMESPACE

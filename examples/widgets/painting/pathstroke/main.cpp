@@ -7,11 +7,6 @@
 
 int main(int argc, char **argv)
 {
-    Q_INIT_RESOURCE(pathstroke);
-#ifdef Q_OS_ANDROID
-    qputenv("QT_SCALE_FACTOR", "2");
-#endif
-
     QApplication app(argc, argv);
 
     bool smallScreen = QApplication::arguments().contains("-small-screen");

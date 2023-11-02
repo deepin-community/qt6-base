@@ -5,9 +5,9 @@
 
 #include "qwasminputcontext.h"
 #include "qwasmintegration.h"
+#include "qwasmplatform.h"
 #include <QRectF>
 #include <qpa/qplatforminputcontext.h>
-#include "qwasmeventtranslator.h"
 #include "qwasmscreen.h"
 #include <qguiapplication.h>
 #include <qwindow.h>
@@ -24,14 +24,13 @@ static void inputCallback(emscripten::val event)
     if (length <= 0)
         return;
 
-    // use only last character
-    emscripten::val _incomingCharVal = event["target"]["value"][length - 1];
+    emscripten::val _incomingCharVal = event["data"];
     if (_incomingCharVal != emscripten::val::undefined() && _incomingCharVal != emscripten::val::null()) {
 
         QString str = QString::fromStdString(_incomingCharVal.as<std::string>());
         QWasmInputContext *wasmInput =
-                reinterpret_cast<QWasmInputContext*>(event["target"]["data-context"].as<quintptr>());
-        wasmInput->inputStringChanged(str, wasmInput);
+                reinterpret_cast<QWasmInputContext*>(event["target"]["data-qinputcontext"].as<quintptr>());
+        wasmInput->inputStringChanged(str, EMSCRIPTEN_EVENT_KEYDOWN, wasmInput);
     }
     // this clears the input string, so backspaces do not send a character
     // but stops suggestions
@@ -39,7 +38,7 @@ static void inputCallback(emscripten::val event)
 }
 
 EMSCRIPTEN_BINDINGS(clipboard_module) {
-    function("qt_InputContextCallback", &inputCallback);
+    function("qtInputContextCallback", &inputCallback);
 }
 
 QWasmInputContext::QWasmInputContext()
@@ -50,23 +49,25 @@ QWasmInputContext::QWasmInputContext()
     m_inputElement.set("style", "position:absolute;left:-1000px;top:-1000px"); // offscreen
     m_inputElement.set("contenteditable","true");
 
-    if (platform() == Platform::Android) {
+    if (platform() == Platform::Android || platform() == Platform::Windows) {
+        const std::string inputType = platform() == Platform::Windows ? "textInput" : "input";
+
+        document.call<void>("addEventListener", inputType,
+                                  emscripten::val::module_property("qtInputContextCallback"),
+                                  emscripten::val(false));
+        m_inputElement.set("data-qinputcontext",
+                           emscripten::val(quintptr(reinterpret_cast<void *>(this))));
         emscripten::val body = document["body"];
         body.call<void>("appendChild", m_inputElement);
 
-        m_inputElement.call<void>("addEventListener", std::string("input"),
-                                  emscripten::val::module_property("qt_InputContextCallback"),
-                                  emscripten::val(false));
-        m_inputElement.set("data-context",
-                           emscripten::val(quintptr(reinterpret_cast<void *>(this))));
-
-        // android sends Enter through target window, let's just handle this here
+        // Enter is sent through target window, let's just handle this here
         emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, (void *)this, 1,
-                                        &androidKeyboardCallback);
-
+                                        &inputMethodKeyboardCallback);
+        emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, (void *)this, 1,
+                                      &inputMethodKeyboardCallback);
     }
-    if (platform() == Platform::MacOS || platform() == Platform::iPhone)
-     {
+
+    if (platform() == Platform::MacOS || platform() == Platform::iOS) {
         auto callback = [=](emscripten::val) {
             m_inputElement["parentElement"].call<void>("removeChild", m_inputElement);
             inputPanelIsOpen = false;
@@ -80,7 +81,7 @@ QWasmInputContext::QWasmInputContext()
 
 QWasmInputContext::~QWasmInputContext()
 {
-    if (platform() == Platform::Android)
+    if (platform() == Platform::Android || platform() == Platform::Windows)
         emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 0, NULL);
 }
 
@@ -89,14 +90,11 @@ void QWasmInputContext::focusWindowChanged(QWindow *focusWindow)
     m_focusWindow = focusWindow;
 }
 
-emscripten::val QWasmInputContext::focusCanvas()
+emscripten::val QWasmInputContext::inputHandlerElementForFocusedWindow()
 {
     if (!m_focusWindow)
         return emscripten::val::undefined();
-    QScreen *screen = m_focusWindow->screen();
-    if (!screen)
-        return emscripten::val::undefined();
-    return QWasmScreen::get(screen)->canvas();
+    return static_cast<QWasmWindow *>(m_focusWindow->handle())->inputHandlerElement();
 }
 
 void QWasmInputContext::update(Qt::InputMethodQueries queries)
@@ -107,24 +105,26 @@ void QWasmInputContext::update(Qt::InputMethodQueries queries)
 void QWasmInputContext::showInputPanel()
 {
     if (platform() == Platform::Windows
-        && inputPanelIsOpen) // call this only once for win32
-        return;
+        && !inputPanelIsOpen) { // call this only once for win32
+            m_inputElement.call<void>("focus");
+            return;
+        }
     // this is called each time the keyboard is touched
 
-    // Add the input element as a child of the canvas for the
+    // Add the input element as a child of the screen for the
     // currently focused window and give it focus. The browser
     // will not display the input element, but mobile browsers
     // should display the virtual keyboard. Key events will be
     // captured by the keyboard event handler installed on the
-    // canvas.
+    // screen element.
 
     if (platform() == Platform::MacOS // keep for compatibility
-     || platform() == Platform::iPhone
+     || platform() == Platform::iOS
      || platform() == Platform::Windows) {
-        emscripten::val canvas = focusCanvas();
-        if (canvas == emscripten::val::undefined())
+        emscripten::val inputWrapper = inputHandlerElementForFocusedWindow();
+        if (inputWrapper.isUndefined())
             return;
-        canvas.call<void>("appendChild", m_inputElement);
+        inputWrapper.call<void>("appendChild", m_inputElement);
     }
 
     m_inputElement.call<void>("focus");
@@ -139,27 +139,41 @@ void QWasmInputContext::hideInputPanel()
     inputPanelIsOpen = false;
 }
 
-void QWasmInputContext::inputStringChanged(QString &inputString, QWasmInputContext *context)
+void QWasmInputContext::inputStringChanged(QString &inputString, int eventType, QWasmInputContext *context)
 {
     Q_UNUSED(context)
     QKeySequence keys = QKeySequence::fromString(inputString);
+    Qt::Key thisKey = keys[0].key();
+
     // synthesize this keyevent as android is not normal
-    QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
-                0, QEvent::KeyPress,keys[0].key(), keys[0].keyboardModifiers(), inputString);
+    if (inputString.size() > 2 && (thisKey < Qt::Key_F35
+                                   || thisKey > Qt::Key_Back)) {
+        inputString.clear();
+    }
+    if (inputString == QStringLiteral("Escape")) {
+        thisKey = Qt::Key_Escape;
+        inputString.clear();
+    } else if (thisKey == Qt::Key(0)) {
+        thisKey = Qt::Key_Return;
+    }
+
+    QWindowSystemInterface::handleKeyEvent(
+        0, eventType == EMSCRIPTEN_EVENT_KEYDOWN ? QEvent::KeyPress : QEvent::KeyRelease,
+        thisKey, keys[0].keyboardModifiers(),
+        eventType == EMSCRIPTEN_EVENT_KEYDOWN ? inputString : QStringLiteral(""));
 }
 
-int QWasmInputContext::androidKeyboardCallback(int eventType,
+int QWasmInputContext::inputMethodKeyboardCallback(int eventType,
                                                const EmscriptenKeyboardEvent *keyEvent,
                                                void *userData)
 {
     // we get Enter, Backspace and function keys via emscripten on target window
-    Q_UNUSED(eventType)
     QString strKey(keyEvent->key);
     if (strKey == "Unidentified" || strKey == "Process")
         return false;
 
     QWasmInputContext *wasmInput = reinterpret_cast<QWasmInputContext*>(userData);
-    wasmInput->inputStringChanged(strKey, wasmInput);
+    wasmInput->inputStringChanged(strKey, eventType, wasmInput);
 
     return true;
 }

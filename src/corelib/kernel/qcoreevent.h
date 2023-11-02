@@ -34,7 +34,7 @@ protected: \
     Class* Class::clone() const \
     { \
         auto c = new Class(*this); \
-        QEvent *e = c; \
+        [[maybe_unused]] QEvent *e = c; \
         /* check that covariant return is safe to add */ \
         Q_ASSERT(reinterpret_cast<quintptr>(c) == reinterpret_cast<quintptr>(e)); \
         return c; \
@@ -283,6 +283,8 @@ public:
 
         // GraphicsSceneLeave = 220,
         WindowAboutToChangeInternal = 221,      // internal for QQuickWidget and texture-based widgets
+
+        DevicePixelRatioChange = 222,
 
         // 512 reserved for Qt Jambi's MetaCall event
         // 513 reserved for Qt Jambi's DeleteOnMainThread event

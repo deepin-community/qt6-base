@@ -16,6 +16,7 @@
 #include "qcocoamenuloader.h"
 #include <QtGui/private/qcoregraphics_p.h>
 #include <QtCore/qregularexpression.h>
+#include <QtCore/private/qcore_mac_p.h>
 #include <QtGui/private/qapplekeymapper_p.h>
 
 #include <QtCore/QDebug>
@@ -179,38 +180,71 @@ void QCocoaMenuItem::setNativeContents(WId item)
     m_itemView.needsDisplay = YES;
 }
 
-static QPlatformMenuItem::MenuRole detectMenuRole(const QString &caption)
+static QPlatformMenuItem::MenuRole detectMenuRole(const QString &captionWithPossibleMnemonic)
 {
-    QString captionNoAmpersand(caption);
-    captionNoAmpersand.remove(u'&');
-    const QString aboutString = QCoreApplication::translate("QCocoaMenuItem", "About");
-    if (captionNoAmpersand.startsWith(aboutString, Qt::CaseInsensitive)
-        || captionNoAmpersand.endsWith(aboutString, Qt::CaseInsensitive)) {
+    QString itemCaption(captionWithPossibleMnemonic);
+    itemCaption.remove(u'&');
+
+    static const std::tuple<QPlatformMenuItem::MenuRole, std::vector<std::tuple<Qt::MatchFlags, const char *>>> roleMap[] = {
+        { QPlatformMenuItem::AboutRole, {
+            { Qt::MatchStartsWith | Qt::MatchEndsWith, QT_TRANSLATE_NOOP("QCocoaMenuItem", "About") }
+        }},
+        { QPlatformMenuItem::PreferencesRole, {
+            { Qt::MatchStartsWith, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Config") },
+            { Qt::MatchStartsWith, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Preference") },
+            { Qt::MatchStartsWith, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Options") },
+            { Qt::MatchStartsWith, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Setting") },
+            { Qt::MatchStartsWith, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Setup") },
+        }},
+        { QPlatformMenuItem::QuitRole, {
+            { Qt::MatchStartsWith, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Quit") },
+            { Qt::MatchStartsWith, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Exit") },
+        }},
+        { QPlatformMenuItem::CutRole, {
+            { Qt::MatchExactly, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Cut") }
+        }},
+        { QPlatformMenuItem::CopyRole, {
+            { Qt::MatchExactly, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Copy") }
+        }},
+        { QPlatformMenuItem::PasteRole, {
+            { Qt::MatchExactly, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Paste") }
+        }},
+        { QPlatformMenuItem::SelectAllRole, {
+            { Qt::MatchExactly, QT_TRANSLATE_NOOP("QCocoaMenuItem", "Select All") }
+        }},
+    };
+
+    auto match = [](const QString &caption, const QString &itemCaption, Qt::MatchFlags matchFlags) {
+        if (matchFlags.testFlag(Qt::MatchExactly))
+            return !itemCaption.compare(caption, Qt::CaseInsensitive);
+        if (matchFlags.testFlag(Qt::MatchStartsWith) && itemCaption.startsWith(caption, Qt::CaseInsensitive))
+            return true;
+        if (matchFlags.testFlag(Qt::MatchEndsWith) && itemCaption.endsWith(caption, Qt::CaseInsensitive))
+            return true;
+        return false;
+    };
+
+    QPlatformMenuItem::MenuRole detectedRole = [&]{
+        for (const auto &[role, captions] : roleMap) {
+            for (const auto &[matchFlags, caption] : captions) {
+                // Check for untranslated match
+                if (match(caption, itemCaption, matchFlags))
+                    return role;
+                // Then translated with the current Qt translation
+                if (match(QCoreApplication::translate("QCocoaMenuItem", caption), itemCaption, matchFlags))
+                    return role;
+            }
+        }
+        return QPlatformMenuItem::NoRole;
+    }();
+
+    if (detectedRole == QPlatformMenuItem::AboutRole) {
         static const QRegularExpression qtRegExp("qt$"_L1, QRegularExpression::CaseInsensitiveOption);
-        if (captionNoAmpersand.contains(qtRegExp))
-            return QPlatformMenuItem::AboutQtRole;
-        return QPlatformMenuItem::AboutRole;
+        if (itemCaption.contains(qtRegExp))
+            detectedRole = QPlatformMenuItem::AboutQtRole;
     }
-    if (captionNoAmpersand.startsWith(QCoreApplication::translate("QCocoaMenuItem", "Config"), Qt::CaseInsensitive)
-        || captionNoAmpersand.startsWith(QCoreApplication::translate("QCocoaMenuItem", "Preference"), Qt::CaseInsensitive)
-        || captionNoAmpersand.startsWith(QCoreApplication::translate("QCocoaMenuItem", "Options"), Qt::CaseInsensitive)
-        || captionNoAmpersand.startsWith(QCoreApplication::translate("QCocoaMenuItem", "Setting"), Qt::CaseInsensitive)
-        || captionNoAmpersand.startsWith(QCoreApplication::translate("QCocoaMenuItem", "Setup"), Qt::CaseInsensitive)) {
-        return QPlatformMenuItem::PreferencesRole;
-    }
-    if (captionNoAmpersand.startsWith(QCoreApplication::translate("QCocoaMenuItem", "Quit"), Qt::CaseInsensitive)
-        || captionNoAmpersand.startsWith(QCoreApplication::translate("QCocoaMenuItem", "Exit"), Qt::CaseInsensitive)) {
-        return QPlatformMenuItem::QuitRole;
-    }
-    if (!captionNoAmpersand.compare(QCoreApplication::translate("QCocoaMenuItem", "Cut"), Qt::CaseInsensitive))
-        return QPlatformMenuItem::CutRole;
-    if (!captionNoAmpersand.compare(QCoreApplication::translate("QCocoaMenuItem", "Copy"), Qt::CaseInsensitive))
-        return QPlatformMenuItem::CopyRole;
-    if (!captionNoAmpersand.compare(QCoreApplication::translate("QCocoaMenuItem", "Paste"), Qt::CaseInsensitive))
-        return QPlatformMenuItem::PasteRole;
-    if (!captionNoAmpersand.compare(QCoreApplication::translate("QCocoaMenuItem", "Select All"), Qt::CaseInsensitive))
-        return QPlatformMenuItem::SelectAllRole;
-    return QPlatformMenuItem::NoRole;
+
+    return detectedRole;
 }
 
 NSMenuItem *QCocoaMenuItem::sync()
@@ -382,7 +416,7 @@ QKeySequence QCocoaMenuItem::mergeAccel()
 void QCocoaMenuItem::syncMerged()
 {
     if (!m_merged) {
-        qWarning("Trying to sync a non-merged item");
+        qCWarning(lcQpaMenus) << "Trying to sync non-merged" << this;
         return;
     }
 
@@ -439,7 +473,20 @@ void QCocoaMenuItem::resolveTargetAction()
         roleAction = @selector(selectAll:);
         break;
     default:
-        roleAction = @selector(qt_itemFired:);
+        if (m_menu) {
+            // Menu items that represent sub menus should have submenuAction: as their
+            // action, so that clicking the menu item opens the sub menu without closing
+            // the entire menu hierarchy. A menu item with this action and a valid submenu
+            // will disable NSMenuValidation for the item, which is normally not an issue
+            // as NSMenuItems are enabled by default. But in our case, we haven't attached
+            // the submenu yet, which results in AppKit concluding that there's no validator
+            // for the item (the target is nil, and nothing responds to submenuAction:), and
+            // will in response disable the menu item. To work around this we explicitly
+            // enable the menu item in QCocoaMenu::setAttachedItem() once we have a submenu.
+            roleAction = @selector(submenuAction:);
+        } else {
+            roleAction = @selector(qt_itemFired:);
+        }
     }
 
     m_native.action = roleAction;

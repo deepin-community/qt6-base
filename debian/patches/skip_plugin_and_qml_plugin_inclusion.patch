@@ -1,0 +1,43 @@
+Description: disable unnecesary plugin search at build time.
+ This patch sets
+ QT_SKIP_AUTO_PLUGIN_INCLUSION and QT_SKIP_AUTO_QML_PLUGIN_INCLUSION to ON
+ by default, thus avoiding unnecesary build dependencies on plugins.
+ .
+ The variables can still be set to OFF by the user at build time, allowing
+ them to find the packages if necessary. But if you need so for a Debian
+ package please reach the Qt maintainers first. We want to know why you
+ need to do so. Thanks in advance!
+Author: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
+Forwarded: not-needed
+
+---
+ cmake/QtPlugins.cmake.in         |    4 ++++
+ cmake/QtPostProcessHelpers.cmake |    4 ++++
+ 2 files changed, 8 insertions(+)
+
+--- a/cmake/QtPlugins.cmake.in
++++ b/cmake/QtPlugins.cmake.in
+@@ -1,6 +1,10 @@
+ include_guard(DIRECTORY)
+ @QT_MODULE_PLUGIN_INCLUDES@
+ 
++if(NOT DEFINED QT_SKIP_AUTO_PLUGIN_INCLUSION)
++    set(QT_SKIP_AUTO_PLUGIN_INCLUSION ON)
++endif()
++
+ if(NOT QT_NO_CREATE_TARGETS AND NOT QT_SKIP_AUTO_PLUGIN_INCLUSION)
+     __qt_internal_include_plugin_packages(@QT_MODULE@)
+ endif()
+--- a/cmake/QtPostProcessHelpers.cmake
++++ b/cmake/QtPostProcessHelpers.cmake
+@@ -446,6 +446,10 @@ function(qt_internal_create_plugins_auto
+ # TODO: Find a better way to deal with this, perhaps by using find_package() instead of include
+ # for the Qml PluginConfig.cmake files.
+ 
++if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
++    set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION ON)
++endif()
++
+ file(GLOB __qt_qml_plugins_config_file_list \"\${CMAKE_CURRENT_LIST_DIR}/QmlPlugins/${INSTALL_CMAKE_NAMESPACE}*Config.cmake\")
+ if (__qt_qml_plugins_config_file_list AND NOT QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
+     # First round of inclusions ensure all qml plugin targets are brought into scope.

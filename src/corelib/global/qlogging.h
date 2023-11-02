@@ -1,14 +1,18 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <QtCore/qglobal.h>
-
 #ifndef QLOGGING_H
 #define QLOGGING_H
+
+#include <QtCore/qtclasshelpermacros.h>
+#include <QtCore/qtconfigmacros.h>
+#include <QtCore/qtcoreexports.h>
+#include <QtCore/qcontainerfwd.h>
 
 #if 0
 // header is automatically included in qglobal.h
 #pragma qt_no_master_include
+#pragma qt_class(QtLogging)
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -20,6 +24,7 @@ QT_BEGIN_NAMESPACE
 */
 class QDebug;
 class QNoDebug;
+
 
 enum QtMsgType {
     QtDebugMsg,
@@ -53,6 +58,12 @@ private:
 
 class QLoggingCategory;
 
+#if defined(Q_CC_MSVC_ONLY)
+#  define QT_MESSAGE_LOGGER_NORETURN
+#else
+#  define QT_MESSAGE_LOGGER_NORETURN Q_NORETURN
+#endif
+
 class Q_CORE_EXPORT QMessageLogger
 {
     Q_DISABLE_COPY(QMessageLogger)
@@ -71,6 +82,8 @@ public:
     void warning(const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
     Q_DECL_COLD_FUNCTION
     void critical(const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
+    QT_MESSAGE_LOGGER_NORETURN Q_DECL_COLD_FUNCTION
+    void fatal(const char *msg, ...) const noexcept Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
 
     typedef const QLoggingCategory &(*CategoryFunction)();
 
@@ -86,12 +99,10 @@ public:
     void critical(const QLoggingCategory &cat, const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
     Q_DECL_COLD_FUNCTION
     void critical(CategoryFunction catFunc, const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
-
-#ifndef Q_CC_MSVC
-    Q_NORETURN
-#endif
-    Q_DECL_COLD_FUNCTION
-    void fatal(const char *msg, ...) const noexcept Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
+    QT_MESSAGE_LOGGER_NORETURN Q_DECL_COLD_FUNCTION
+    void fatal(const QLoggingCategory &cat, const char *msg, ...) const noexcept Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
+    QT_MESSAGE_LOGGER_NORETURN Q_DECL_COLD_FUNCTION
+    void fatal(CategoryFunction catFunc, const char *msg, ...) const noexcept Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
 
 #ifndef QT_NO_DEBUG_STREAM
     QDebug debug() const;
@@ -112,6 +123,12 @@ public:
     QDebug critical(const QLoggingCategory &cat) const;
     Q_DECL_COLD_FUNCTION
     QDebug critical(CategoryFunction catFunc) const;
+    Q_DECL_COLD_FUNCTION
+    QDebug fatal() const;
+    Q_DECL_COLD_FUNCTION
+    QDebug fatal(const QLoggingCategory &cat) const;
+    Q_DECL_COLD_FUNCTION
+    QDebug fatal(CategoryFunction catFunc) const;
 
     QNoDebug noDebug() const noexcept;
 #endif // QT_NO_DEBUG_STREAM
@@ -119,6 +136,8 @@ public:
 private:
     QMessageLogContext context;
 };
+
+#undef QT_MESSAGE_LOGGER_NORETURN
 
 #if !defined(QT_MESSAGELOGCONTEXT) && !defined(QT_NO_MESSAGELOGCONTEXT)
 #  if defined(QT_NO_DEBUG)
@@ -171,6 +190,9 @@ Q_CORE_EXPORT QtMessageHandler qInstallMessageHandler(QtMessageHandler);
 Q_CORE_EXPORT void qSetMessagePattern(const QString &messagePattern);
 Q_CORE_EXPORT QString qFormatLogMessage(QtMsgType type, const QMessageLogContext &context,
                                         const QString &buf);
+
+Q_DECL_COLD_FUNCTION
+Q_CORE_EXPORT QString qt_error_string(int errorCode = -1);
 
 QT_END_NAMESPACE
 #endif // QLOGGING_H

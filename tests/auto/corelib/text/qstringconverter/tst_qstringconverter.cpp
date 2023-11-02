@@ -6,9 +6,11 @@
 
 #include <QtCore/private/qglobal_p.h>
 #include <qstringconverter.h>
+#include <private/qstringconverter_p.h>
 #include <qthreadpool.h>
 
 #include <array>
+#include <numeric>
 
 using namespace Qt::StringLiterals;
 
@@ -130,6 +132,10 @@ private slots:
     void roundtrip_data();
     void roundtrip();
 
+    void convertL1U8();
+
+    void convertL1U16();
+
 #if QT_CONFIG(icu)
     void roundtripIcu_data();
     void roundtripIcu();
@@ -246,8 +252,8 @@ void tst_QStringConverter::invalidConverter()
 
         decoder.resetState();
         QVERIFY(!decoder.hasError());
-        QChar buffer[100];
-        QChar *position = decoder.appendToBuffer(buffer, "Even more");
+        char16_t buffer[100];
+        char16_t *position = decoder.appendToBuffer(buffer, "Even more");
         QCOMPARE(position, buffer);
         QVERIFY(decoder.hasError());
     }
@@ -349,12 +355,39 @@ void tst_QStringConverter::convertUtf8CharByChar()
     QCOMPARE(reencoded, ba);
 }
 
+void tst_QStringConverter::convertL1U16()
+{
+    const QLatin1StringView latin1("some plain latin1 text");
+    const QString qstr(latin1);
+
+    QStringDecoder decoder(QStringConverter::Latin1);
+    QVERIFY(decoder.isValid());
+    QString uniString = decoder(latin1);
+    QCOMPARE(uniString, qstr);
+    QCOMPARE(latin1, uniString.toLatin1());
+
+    // do it again (using .decode())
+    uniString = decoder.decode(latin1);
+    QCOMPARE(uniString, qstr);
+    QCOMPARE(latin1, uniString.toLatin1());
+
+    QStringEncoder encoder(QStringConverter::Latin1);
+    QByteArray reencoded = encoder(uniString);
+    QCOMPARE(reencoded, QByteArrayView(latin1));
+    QCOMPARE(reencoded, uniString.toLatin1());
+
+    // do it again (using .encode())
+    reencoded = encoder.encode(uniString);
+    QCOMPARE(reencoded, QByteArrayView(latin1));
+    QCOMPARE(reencoded, uniString.toLatin1());
+}
+
 void tst_QStringConverter::roundtrip_data()
 {
     QTest::addColumn<QStringView>("utf16");
     QTest::addColumn<QStringConverter::Encoding>("code");
 
-    for (const auto code : codes) {
+    for (const auto &code : codes) {
         for (const TestString &s : testStrings) {
             // rules:
             // 1) don't pass the null character to the System codec
@@ -425,6 +458,18 @@ void tst_QStringConverter::roundtrip()
     QStringDecoder back2(code, flag);
     decoded = back2.decode(out2.encode(uniString));
     QCOMPARE(decoded, uniString);
+}
+
+void tst_QStringConverter::convertL1U8()
+{
+    {
+        std::array<char, 256> latin1;
+        std::iota(latin1.data(), latin1.data() + latin1.size(), uchar(0));
+        std::array<char, 512> utf8;
+        auto out = QUtf8::convertFromLatin1(utf8.data(), QLatin1StringView{latin1.data(), latin1.size()});
+        QCOMPARE(QString::fromLatin1(latin1.data(), latin1.size()),
+                 QString::fromUtf8(utf8.data(), out - utf8.data()));
+    }
 }
 
 #if QT_CONFIG(icu)
@@ -1806,7 +1851,7 @@ void tst_QStringConverter::roundtripBom_data()
     QTest::addColumn<QStringView>("utf16");
     QTest::addColumn<QStringConverter::Encoding>("code");
 
-    for (const auto code : codes) {
+    for (const auto &code : codes) {
         if (size_t(code.code) >= encodedBoms.size())
             break;
         if (code.limitation != FullUnicode)
@@ -2115,7 +2160,7 @@ void tst_QStringConverter::utfHeaders()
         QVERIFY(decode.isValid());
 
         QString result = decode(encoded);
-        QCOMPARE(result.length(), unicode.length());
+        QCOMPARE(result.size(), unicode.size());
         QCOMPARE(result, unicode);
     }
 
@@ -2126,7 +2171,7 @@ void tst_QStringConverter::utfHeaders()
         QString result;
         for (char c : encoded)
             result += decode(QByteArrayView(&c, 1));
-        QCOMPARE(result.length(), unicode.length());
+        QCOMPARE(result.size(), unicode.size());
         QCOMPARE(result, unicode);
     }
 
@@ -2411,6 +2456,10 @@ void tst_QStringConverter::initTestCase()
 
 void tst_QStringConverter::threadSafety()
 {
+#if defined(Q_OS_WASM)
+    QSKIP("This test misbehaves on WASM. Investigation needed (QTBUG-110067)");
+#endif
+
     QThreadPool::globalInstance()->setMaxThreadCount(12);
 
     QList<QString> res;

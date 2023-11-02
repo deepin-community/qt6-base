@@ -67,11 +67,6 @@ template <QtMsgType Which> struct QLoggingCategoryMacroHolder
         if (IsOutputEnabled)
             init(cat);
     }
-    explicit QLoggingCategoryMacroHolder(QMessageLogger::CategoryFunction catfunc)
-    {
-        if (IsOutputEnabled)
-            init(catfunc());
-    }
     void init(const QLoggingCategory &cat) noexcept
     {
         category = &cat;
@@ -84,8 +79,12 @@ template <QtMsgType Which> struct QLoggingCategoryMacroHolder
             control = cat.isInfoEnabled();
         } else if constexpr (Which == QtWarningMsg) {
             control = cat.isWarningEnabled();
-        } else {
+        } else if constexpr (Which == QtCriticalMsg) {
             control = cat.isCriticalEnabled();
+        } else if constexpr (Which == QtFatalMsg) {
+            control = true;
+        } else {
+            static_assert(QtPrivate::value_dependent_false<Which>(), "Unknown Qt message type");
         }
     }
     const char *name() const { return category->categoryName(); }
@@ -105,7 +104,10 @@ template <> const bool QLoggingCategoryMacroHolder<QtWarningMsg>::IsOutputEnable
 } // unnamed namespace
 
 #define Q_DECLARE_LOGGING_CATEGORY(name) \
-    extern const QLoggingCategory &name();
+    const QLoggingCategory &name();
+
+#define Q_DECLARE_EXPORTED_LOGGING_CATEGORY(name, export_macro) \
+    export_macro Q_DECLARE_LOGGING_CATEGORY(name)
 
 #define Q_LOGGING_CATEGORY(name, ...) \
     const QLoggingCategory &name() \
@@ -115,13 +117,14 @@ template <> const bool QLoggingCategoryMacroHolder<QtWarningMsg>::IsOutputEnable
     }
 
 #define QT_MESSAGE_LOGGER_COMMON(category, level) \
-    for (QLoggingCategoryMacroHolder<level> qt_category(category); qt_category; qt_category.control = false) \
+    for (QLoggingCategoryMacroHolder<level> qt_category(category()); qt_category; qt_category.control = false) \
         QMessageLogger(QT_MESSAGELOG_FILE, QT_MESSAGELOG_LINE, QT_MESSAGELOG_FUNC, qt_category.name())
 
 #define qCDebug(category, ...) QT_MESSAGE_LOGGER_COMMON(category, QtDebugMsg).debug(__VA_ARGS__)
 #define qCInfo(category, ...) QT_MESSAGE_LOGGER_COMMON(category, QtInfoMsg).info(__VA_ARGS__)
 #define qCWarning(category, ...) QT_MESSAGE_LOGGER_COMMON(category, QtWarningMsg).warning(__VA_ARGS__)
 #define qCCritical(category, ...) QT_MESSAGE_LOGGER_COMMON(category, QtCriticalMsg).critical(__VA_ARGS__)
+#define qCFatal(category, ...) QT_MESSAGE_LOGGER_COMMON(category, QtFatalMsg).fatal(__VA_ARGS__)
 
 QT_END_NAMESPACE
 

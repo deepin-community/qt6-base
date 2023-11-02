@@ -12,31 +12,31 @@
 #include <QtCore/QDebug>
 #include <qendian.h>
 
+#include <private/qoffsetstringarray_p.h>
+#include <private/qtools_p.h>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace QtMiscUtils;
 
 // in the same order as Type!
-static const char magicRuleTypes_string[] =
-    "invalid\0"
-    "string\0"
-    "host16\0"
-    "host32\0"
-    "big16\0"
-    "big32\0"
-    "little16\0"
-    "little32\0"
-    "byte\0"
-    "\0";
-
-static const int magicRuleTypes_indices[] = {
-    0, 8, 15, 22, 29, 35, 41, 50, 59, 64, 0
-};
+static constexpr auto magicRuleTypes = qOffsetStringArray(
+    "invalid",
+    "string",
+    "host16",
+    "host32",
+    "big16",
+    "big32",
+    "little16",
+    "little32",
+    "byte"
+);
 
 QMimeMagicRule::Type QMimeMagicRule::type(const QByteArray &theTypeName)
 {
     for (int i = String; i <= Byte; ++i) {
-        if (theTypeName == magicRuleTypes_string + magicRuleTypes_indices[i])
+        if (theTypeName == magicRuleTypes.at(i))
             return Type(i);
     }
     return Invalid;
@@ -44,7 +44,7 @@ QMimeMagicRule::Type QMimeMagicRule::type(const QByteArray &theTypeName)
 
 QByteArray QMimeMagicRule::typeName(QMimeMagicRule::Type theType)
 {
-    return magicRuleTypes_string + magicRuleTypes_indices[theType];
+    return magicRuleTypes.at(theType);
 }
 
 bool QMimeMagicRule::operator==(const QMimeMagicRule &other) const
@@ -61,12 +61,12 @@ bool QMimeMagicRule::operator==(const QMimeMagicRule &other) const
 }
 
 // Used by both providers
-bool QMimeMagicRule::matchSubstring(const char *dataPtr, int dataSize, int rangeStart, int rangeLength,
-                                    int valueLength, const char *valueData, const char *mask)
+bool QMimeMagicRule::matchSubstring(const char *dataPtr, qsizetype dataSize, int rangeStart, int rangeLength,
+                                    qsizetype valueLength, const char *valueData, const char *mask)
 {
     // Size of searched data.
     // Example: value="ABC", rangeLength=3 -> we need 3+3-1=5 bytes (ABCxx,xABCx,xxABC would match)
-    const int dataNeeded = qMin(rangeLength + valueLength - 1, dataSize - rangeStart);
+    const qsizetype dataNeeded = qMin(rangeLength + valueLength - 1, dataSize - rangeStart);
 
     if (!mask) {
         // callgrind says QByteArray::indexOf is much slower, since our strings are typically too
@@ -90,7 +90,7 @@ bool QMimeMagicRule::matchSubstring(const char *dataPtr, int dataSize, int range
         // deviceSize is 4, so dataNeeded was max'ed to 4.
         // maxStartPos = 4 - 3 + 1 = 2, and indeed
         // we need to check for a match a positions 0 and 1 (ABCx and xABC).
-        const int maxStartPos = dataNeeded - valueLength + 1;
+        const qsizetype maxStartPos = dataNeeded - valueLength + 1;
         for (int i = 0; i < maxStartPos; ++i) {
             const char *d = readDataBase + i;
             bool valid = true;
@@ -148,21 +148,17 @@ static inline QByteArray makePattern(const QByteArray &value)
                 char c = 0;
                 for (int i = 0; i < 2 && p + 1 < e; ++i) {
                     ++p;
-                    if (*p >= '0' && *p <= '9')
-                        c = (c << 4) + *p - '0';
-                    else if (*p >= 'a' && *p <= 'f')
-                        c = (c << 4) + *p - 'a' + 10;
-                    else if (*p >= 'A' && *p <= 'F')
-                        c = (c << 4) + *p - 'A' + 10;
+                    if (const int h = fromHex(*p); h != -1)
+                        c = (c << 4) + h;
                     else
                         continue;
                 }
                 *data++ = c;
-            } else if (*p >= '0' && *p <= '7') { // oct (\\7, or \\77, or \\377)
+            } else if (isOctalDigit(*p)) { // oct (\\7, or \\77, or \\377)
                 char c = *p - '0';
-                if (p + 1 < e && p[1] >= '0' && p[1] <= '7') {
+                if (p + 1 < e && isOctalDigit(p[1])) {
                     c = (c << 3) + *(++p) - '0';
-                    if (p + 1 < e && p[1] >= '0' && p[1] <= '7' && p[-1] <= '3')
+                    if (p + 1 < e && isOctalDigit(p[1]) && p[-1] <= '3')
                         c = (c << 3) + *(++p) - '0';
                 }
                 *data++ = c;
@@ -205,7 +201,7 @@ QMimeMagicRule::QMimeMagicRule(const QString &type,
     }
 
     // Parse for offset as "1" or "1:10"
-    const int colonIndex = offsets.indexOf(u':');
+    const qsizetype colonIndex = offsets.indexOf(u':');
     const QStringView startPosStr = QStringView{offsets}.mid(0, colonIndex); // \ These decay to returning 'offsets'
     const QStringView endPosStr   = QStringView{offsets}.mid(colonIndex + 1);// / unchanged when colonIndex == -1
     if (Q_UNLIKELY(!QMimeTypeParserBase::parseNumber(startPosStr, &m_startPos, errorString)) ||

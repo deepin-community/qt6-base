@@ -18,7 +18,7 @@
 #include <algorithm>
 #include <initializer_list>
 #include <iterator>
-#include <memory>
+#include <QtCore/q20memory.h>
 #include <new>
 
 #include <string.h>
@@ -52,7 +52,8 @@ protected:
     qsizetype s;      // size
     void *ptr;     // data
 
-    Q_ALWAYS_INLINE constexpr void verify(qsizetype pos = 0, qsizetype n = 1) const
+    Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos = 0,
+                                          [[maybe_unused]] qsizetype n = 1) const
     {
         Q_ASSERT(pos >= 0);
         Q_ASSERT(pos <= size());
@@ -172,6 +173,13 @@ public:
     template <typename Predicate>
     qsizetype removeIf(Predicate pred);
 
+    void clear()
+    {
+        if constexpr (QTypeInfo<T>::isComplex)
+            std::destroy_n(data(), size());
+        s = 0;
+    }
+
     iterator erase(const_iterator begin, const_iterator end);
     iterator erase(const_iterator pos) { return erase(pos, pos + 1); }
 
@@ -180,12 +188,14 @@ public:
         return qHashRange(begin(), end(), seed);
     }
 protected:
+    void growBy(qsizetype prealloc, void *array, qsizetype increment)
+    { reallocate_impl(prealloc, array, size(), (std::max)(size() * 2, size() + increment)); }
     template <typename...Args>
     reference emplace_back_impl(qsizetype prealloc, void *array, Args&&...args)
     {
         if (size() == capacity()) // ie. size() != 0
-            reallocate_impl(prealloc, array, size(), size() << 1);
-        reference r = *new (end()) T(std::forward<Args>(args)...);
+            growBy(prealloc, array, 1);
+        reference r = *q20::construct_at(end(), std::forward<Args>(args)...);
         ++s;
         return r;
     }
@@ -206,9 +216,36 @@ protected:
     }
 
     void append_impl(qsizetype prealloc, void *array, const T *buf, qsizetype n);
-    void reallocate_impl(qsizetype prealloc, void *array, qsizetype size, qsizetype alloc, const T *v = nullptr);
-    void resize_impl(qsizetype prealloc, void *array, qsizetype sz, const T *v = nullptr)
-    { reallocate_impl(prealloc, array, sz, qMax(sz, capacity()), v); }
+    void reallocate_impl(qsizetype prealloc, void *array, qsizetype size, qsizetype alloc);
+    void resize_impl(qsizetype prealloc, void *array, qsizetype sz, const T &v)
+    {
+        if (QtPrivate::q_points_into_range(&v, begin(), end())) {
+            resize_impl(prealloc, array, sz, T(v));
+            return;
+        }
+        reallocate_impl(prealloc, array, sz, qMax(sz, capacity()));
+        while (size() < sz) {
+            q20::construct_at(data() + size(), v);
+            ++s;
+        }
+    }
+    void resize_impl(qsizetype prealloc, void *array, qsizetype sz)
+    {
+        reallocate_impl(prealloc, array, sz, qMax(sz, capacity()));
+        if constexpr (QTypeInfo<T>::isComplex) {
+            // call default constructor for new objects (which can throw)
+            while (size() < sz) {
+                q20::construct_at(data() + size());
+                ++s;
+            }
+        } else {
+            s = sz;
+        }
+    }
+
+    void assign_impl(qsizetype prealloc, void *array, qsizetype n, const T &t);
+    template <typename Iterator>
+    void assign_impl(qsizetype prealloc, void *array, Iterator first, Iterator last);
 
     bool isValidIterator(const const_iterator &i) const
     {
@@ -220,18 +257,26 @@ protected:
 // Prealloc = 256 by default, specified in qcontainerfwd.h
 template<class T, qsizetype Prealloc>
 class QVarLengthArray
-    : public QVLABase<T>, // ### Qt 7: swap base class order
+#if QT_VERSION >= QT_VERSION_CHECK(7,0,0) || defined(QT_BOOTSTRAPPED)
+    : public QVLAStorage<sizeof(T), alignof(T), Prealloc>,
+      public QVLABase<T>
+#else
+    : public QVLABase<T>,
       public QVLAStorage<sizeof(T), alignof(T), Prealloc>
+#endif
 {
     template <class S, qsizetype Prealloc2>
     friend class QVarLengthArray;
     using Base = QVLABase<T>;
     using Storage = QVLAStorage<sizeof(T), alignof(T), Prealloc>;
+    static_assert(Prealloc > 0, "QVarLengthArray Prealloc must be greater than 0.");
     static_assert(std::is_nothrow_destructible_v<T>, "Types with throwing destructors are not supported in Qt containers.");
     using Base::verify;
 
     template <typename U>
     using if_copyable = std::enable_if_t<std::is_copy_constructible_v<U>, bool>;
+    template <typename InputIterator>
+    using if_input_iterator = QtPrivate::IfIsInputIterator<InputIterator>;
 public:
     using size_type = typename Base::size_type;
     using value_type = typename Base::value_type;
@@ -293,7 +338,7 @@ public:
     {
     }
 
-    template <typename InputIterator, QtPrivate::IfIsInputIterator<InputIterator> = true>
+    template <typename InputIterator, if_input_iterator<InputIterator> = true>
     inline QVarLengthArray(InputIterator first, InputIterator last)
         : QVarLengthArray()
     {
@@ -340,9 +385,7 @@ public:
 
     QVarLengthArray<T, Prealloc> &operator=(std::initializer_list<T> list)
     {
-        resize(qsizetype(list.size()));
-        std::copy(list.begin(), list.end(),
-                  QT_MAKE_CHECKED_ARRAY_ITERATOR(begin(), size()));
+        assign(list);
         return *this;
     }
 
@@ -378,8 +421,11 @@ public:
     template <typename U = T, if_copyable<U> = true>
 #endif
     void resize(qsizetype sz, const T &v)
-    { Base::resize_impl(Prealloc, this->array, sz, &v); }
+    { Base::resize_impl(Prealloc, this->array, sz, v); }
+    using Base::clear;
+#ifdef Q_QDOC
     inline void clear() { resize(0); }
+#endif
     void squeeze() { reallocate(size(), size()); }
 
     using Base::capacity;
@@ -454,6 +500,15 @@ public:
     void insert(qsizetype i, T &&t);
     void insert(qsizetype i, const T &t);
     void insert(qsizetype i, qsizetype n, const T &t);
+
+    QVarLengthArray &assign(qsizetype n, const T &t)
+    { Base::assign_impl(Prealloc, this->array, n, t); return *this; }
+    template <typename InputIterator, if_input_iterator<InputIterator> = true>
+    QVarLengthArray &assign(InputIterator first, InputIterator last)
+    { Base::assign_impl(Prealloc, this->array, first, last); return *this; }
+    QVarLengthArray &assign(std::initializer_list<T> list)
+    { assign(list.begin(), list.end()); return *this; }
+
 #ifdef Q_QDOC
     void replace(qsizetype i, const T &t);
     void remove(qsizetype i, qsizetype n = 1);
@@ -618,23 +673,22 @@ QVarLengthArray(InputIterator, InputIterator) -> QVarLengthArray<ValueType>;
 
 template <class T, qsizetype Prealloc>
 Q_INLINE_TEMPLATE QVarLengthArray<T, Prealloc>::QVarLengthArray(qsizetype asize)
+    : QVarLengthArray()
 {
+    Q_ASSERT_X(asize >= 0, "QVarLengthArray::QVarLengthArray(qsizetype)",
+               "Size must be greater than or equal to 0.");
+
+    // historically, this ctor worked for non-copyable/non-movable T, so keep it working, why not?
+    // resize(asize) // this requires a movable or copyable T, can't use, need to do it by hand
+
+    if (asize > Prealloc) {
+        this->ptr = malloc(asize * sizeof(T));
+        Q_CHECK_PTR(this->ptr);
+        this->a = asize;
+    }
+    if constexpr (QTypeInfo<T>::isComplex)
+        std::uninitialized_default_construct_n(data(), asize);
     this->s = asize;
-    static_assert(Prealloc > 0, "QVarLengthArray Prealloc must be greater than 0.");
-    Q_ASSERT_X(size() >= 0, "QVarLengthArray::QVarLengthArray()", "Size must be greater than or equal to 0.");
-    if (size() > Prealloc) {
-        this->ptr = malloc(size() * sizeof(T));
-        Q_CHECK_PTR(data());
-        this->a = size();
-    } else {
-        this->ptr = this->array;
-        this->a = Prealloc;
-    }
-    if constexpr (QTypeInfo<T>::isComplex) {
-        T *i = end();
-        while (i != begin())
-            new (--i) T;
-    }
 }
 
 template <class T>
@@ -695,7 +749,7 @@ Q_OUTOFLINE_TEMPLATE void QVLABase<T>::append_impl(qsizetype prealloc, void *arr
     const qsizetype asize = size() + increment;
 
     if (asize >= capacity())
-        reallocate_impl(prealloc, array, size(), qMax(size() * 2, asize));
+        growBy(prealloc, array, increment);
 
     if constexpr (QTypeInfo<T>::isComplex)
         std::uninitialized_copy_n(abuf, increment, end());
@@ -706,7 +760,62 @@ Q_OUTOFLINE_TEMPLATE void QVLABase<T>::append_impl(qsizetype prealloc, void *arr
 }
 
 template <class T>
-Q_OUTOFLINE_TEMPLATE void QVLABase<T>::reallocate_impl(qsizetype prealloc, void *array, qsizetype asize, qsizetype aalloc, const T *v)
+Q_OUTOFLINE_TEMPLATE void QVLABase<T>::assign_impl(qsizetype prealloc, void *array, qsizetype n, const T &t)
+{
+    Q_ASSERT(n >= 0);
+    if (n > capacity()) {
+        reallocate_impl(prealloc, array, 0, capacity()); // clear
+        resize_impl(prealloc, array, n, t);
+    } else {
+        auto mid = (std::min)(n, size());
+        std::fill(data(), data() + mid, t);
+        std::uninitialized_fill(data() + mid, data() + n, t);
+        s = n;
+        erase(data() + n, data() + size());
+    }
+}
+
+template <class T>
+template <typename Iterator>
+Q_OUTOFLINE_TEMPLATE void QVLABase<T>::assign_impl(qsizetype prealloc, void *array, Iterator first, Iterator last)
+{
+    // This function only provides the basic exception guarantee.
+    constexpr bool IsFwdIt =
+            std::is_convertible_v<typename std::iterator_traits<Iterator>::iterator_category,
+                                  std::forward_iterator_tag>;
+    if constexpr (IsFwdIt) {
+        const qsizetype n = std::distance(first, last);
+        if (n > capacity())
+            reallocate_impl(prealloc, array, 0, n); // clear & reserve n
+    }
+
+    auto dst = begin();
+    const auto dend = end();
+    while (true) {
+        if (first == last) {          // ran out of elements to assign
+            std::destroy(dst, dend);
+            break;
+        }
+        if (dst == dend) {            // ran out of existing elements to overwrite
+            if constexpr (IsFwdIt) {
+                dst = std::uninitialized_copy(first, last, dst);
+                break;
+            } else {
+                do {
+                    emplace_back_impl(prealloc, array, *first);
+                } while (++first != last);
+                return; // size() is already correct (and dst invalidated)!
+            }
+        }
+        *dst = *first;                // overwrite existing element
+        ++dst;
+        ++first;
+    }
+    this->s = dst - begin();
+}
+
+template <class T>
+Q_OUTOFLINE_TEMPLATE void QVLABase<T>::reallocate_impl(qsizetype prealloc, void *array, qsizetype asize, qsizetype aalloc)
 {
     Q_ASSERT(aalloc >= asize);
     Q_ASSERT(data());
@@ -747,26 +856,6 @@ Q_OUTOFLINE_TEMPLATE void QVLABase<T>::reallocate_impl(qsizetype prealloc, void 
 
     if (oldPtr != reinterpret_cast<T *>(array) && oldPtr != data())
         free(oldPtr);
-
-    if (v) {
-        if constexpr (std::is_copy_constructible_v<T>) {
-            while (size() < asize) {
-                new (data() + size()) T(*v);
-                ++s;
-            }
-        } else {
-            Q_UNREACHABLE();
-        }
-    } else if constexpr (QTypeInfo<T>::isComplex) {
-        // call default constructor for new objects (which can throw)
-        while (size() < asize) {
-            new (data() + size()) T;
-            ++s;
-        }
-    } else {
-        s = asize;
-    }
-
 }
 
 template <class T>
@@ -834,29 +923,12 @@ Q_OUTOFLINE_TEMPLATE auto QVLABase<T>::emplace_impl(qsizetype prealloc, void *ar
     Q_ASSERT(size() <= capacity());
     Q_ASSERT(capacity() > 0);
 
-    qsizetype offset = qsizetype(before - cbegin());
-    if (size() == capacity())
-        reallocate_impl(prealloc, array, size(), size() * 2);
-    if constexpr (!QTypeInfo<T>::isRelocatable) {
-        T *b = begin() + offset;
-        T *i = end();
-        T *j = i + 1;
-        // The new end-element needs to be constructed, the rest must be move assigned
-        if (i != b) {
-            new (--j) T(std::move(*--i));
-            while (i != b)
-                *--j = std::move(*--i);
-            *b = T(std::forward<Args>(args)...);
-        } else {
-            new (b) T(std::forward<Args>(args)...);
-        }
-    } else {
-        T *b = begin() + offset;
-        memmove(static_cast<void *>(b + 1), static_cast<const void *>(b), (size() - offset) * sizeof(T));
-        new (b) T(std::forward<Args>(args)...);
-    }
-    this->s += 1;
-    return data() + offset;
+    const qsizetype offset = qsizetype(before - cbegin());
+    emplace_back_impl(prealloc, array, std::forward<Args>(args)...);
+    const auto b = begin() + offset;
+    const auto e = end();
+    QtPrivate::q_rotate(b, e - 1, e);
+    return b;
 }
 
 template <class T>
@@ -864,28 +936,12 @@ Q_OUTOFLINE_TEMPLATE auto QVLABase<T>::insert_impl(qsizetype prealloc, void *arr
 {
     Q_ASSERT_X(isValidIterator(before), "QVarLengthArray::insert", "The specified const_iterator argument 'before' is invalid");
 
-    qsizetype offset = qsizetype(before - cbegin());
-    if (n != 0) {
-        const T copy(t); // `t` could alias an element in [begin(), end()[
-        resize_impl(prealloc, array, size() + n);
-        if constexpr (!QTypeInfo<T>::isRelocatable) {
-            T *b = begin() + offset;
-            T *j = end();
-            T *i = j - n;
-            while (i != b)
-                *--j = *--i;
-            i = b + n;
-            while (i != b)
-                *--i = copy;
-        } else {
-            T *b = begin() + offset;
-            T *i = b + n;
-            memmove(static_cast<void *>(i), static_cast<const void *>(b), (size() - offset - n) * sizeof(T));
-            while (i != b)
-                new (--i) T(copy);
-        }
-    }
-    return data() + offset;
+    const qsizetype offset = qsizetype(before - cbegin());
+    resize_impl(prealloc, array, size() + n, t);
+    const auto b = begin() + offset;
+    const auto e = end();
+    QtPrivate::q_rotate(b, e - n, e);
+    return b;
 }
 
 template <class T>

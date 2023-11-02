@@ -22,19 +22,6 @@ aWidget->window()->setWindowTitle("New Window Title");
 //! [3]
 
 
-//! [4]
-QFont font("Helvetica", 12, QFont::Bold);
-setFont(font);
-//! [4]
-
-
-//! [5]
-QFont font;
-font.setBold(false);
-setFont(font);
-//! [5]
-
-
 //! [6]
 setCursor(Qt::IBeamCursor);
 //! [6]
@@ -59,6 +46,11 @@ setTabOrder(a, b); // a to b
 setTabOrder(b, c); // a to b to c
 setTabOrder(c, d); // a to b to c to d
 //! [9]
+
+
+//! [9.list]
+setTabOrder({a, b, c, d}); // a to b to c to d
+//! [9.list]
 
 
 //! [10]

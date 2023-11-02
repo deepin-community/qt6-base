@@ -1,4 +1,5 @@
-# Generated from opengl.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## OpenGL Module:
@@ -25,12 +26,15 @@ qt_internal_add_module(OpenGL
         qopengltextureglyphcache.cpp qopengltextureglyphcache_p.h
         qopengltexturehelper.cpp qopengltexturehelper_p.h
         qopengltextureuploader.cpp qopengltextureuploader_p.h
+        qopengltimerquery.h
         qopenglversionfunctions.cpp qopenglversionfunctions.h qopenglversionfunctions_p.h
         qopenglversionfunctionsfactory.cpp qopenglversionfunctionsfactory.h
         qopenglversionprofile.cpp qopenglversionprofile.h
         qopenglvertexarrayobject.cpp qopenglvertexarrayobject.h qopenglvertexarrayobject_p.h
         qopenglwindow.cpp qopenglwindow.h
         qtopenglglobal.h
+    NO_UNITY_BUILD_SOURCES
+        qopengltextureblitter.cpp       # qDebug()<< ambiguities
     DEFINES
         QT_NO_FOREACH
         QT_NO_USING_NAMESPACE
@@ -48,6 +52,11 @@ qt_internal_add_module(OpenGL
 
 ## Scopes:
 #####################################################################
+
+qt_internal_extend_target(OpenGL CONDITION APPLE
+    NO_UNITY_BUILD_SOURCES
+        qopenglversionfunctionsfactory.cpp
+)
 
 qt_internal_extend_target(OpenGL CONDITION QT_FEATURE_opengles2
     SOURCES
@@ -83,7 +92,7 @@ qt_internal_extend_target(OpenGL CONDITION NOT QT_FEATURE_opengles2
         qopenglfunctions_4_5_compatibility.cpp qopenglfunctions_4_5_compatibility.h
         qopenglfunctions_4_5_core.cpp qopenglfunctions_4_5_core.h
         qopenglqueryhelper_p.h
-        qopengltimerquery.cpp qopengltimerquery.h
+        qopengltimerquery.cpp
 )
 
 qt_internal_extend_target(OpenGL CONDITION QT_FEATURE_vulkan
@@ -101,9 +110,12 @@ qt_internal_extend_target(OpenGL CONDITION QT_FEATURE_egl
         qopenglcompositorbackingstore.cpp qopenglcompositorbackingstore_p.h
 )
 
-
-qt_internal_create_tracepoints(OpenGL qtopengl.tracepoints)
+qt_internal_generate_tracepoints(OpenGL opengl
+    SOURCES
+        qopenglframebufferobject.cpp
+        qopenglpaintengine.cpp
+        qopengltexturecache.cpp
+)
 qt_internal_add_docs(OpenGL
     doc/qtopengl.qdocconf
 )
-

@@ -39,9 +39,9 @@ class QDebug;
 // QCocoaWindow
 //
 // QCocoaWindow is an NSView (not an NSWindow!) in the sense
-// that it relies on a NSView for all event handling and
-// graphics output and does not require a NSWindow, except for
-// for the window-related functions like setWindowTitle.
+// that it relies on an NSView for all event handling and
+// graphics output and does not require an NSWindow, except for
+// the window-related functions like setWindowTitle.
 //
 // As a consequence of this it is possible to embed the QCocoaWindow
 // in an NSView hierarchy by getting a pointer to the "backing"
@@ -158,17 +158,18 @@ public:
     void setWindowCursor(NSCursor *cursor);
 
     void registerTouch(bool enable);
-    void setContentBorderThickness(int topThickness, int bottomThickness);
+
     void registerContentBorderArea(quintptr identifier, int upper, int lower);
     void setContentBorderAreaEnabled(quintptr identifier, bool enable);
     void setContentBorderEnabled(bool enable) override;
     bool testContentBorderAreaPosition(int position) const;
     void applyContentBorderThickness(NSWindow *window = nullptr);
-    void updateNSToolbar();
 
     qreal devicePixelRatio() const override;
     QWindow *childWindowAt(QPoint windowPoint);
     bool shouldRefuseKeyWindowAndFirstResponder();
+
+    bool windowEvent(QEvent *event) override;
 
     QPoint bottomLeftClippedByNSWindowOffset() const override;
 
@@ -219,32 +220,31 @@ public: // for QNSView
     static void setupPopupMonitor();
     static void removePopupMonitor();
 
-    NSView *m_view;
-    QCocoaNSWindow *m_nsWindow;
+    NSView *m_view = nil;
+    QCocoaNSWindow *m_nsWindow = nil;
 
-    Qt::WindowStates m_lastReportedWindowState;
-    Qt::WindowModality m_windowModality;
+    Qt::WindowStates m_lastReportedWindowState = Qt::WindowNoState;
+    Qt::WindowModality m_windowModality = Qt::NonModal;
 
     static QPointer<QCocoaWindow> s_windowUnderMouse;
 
-    bool m_initialized;
-    bool m_inSetVisible;
-    bool m_inSetGeometry;
-    bool m_inSetStyleMask;
-    QCocoaMenuBar *m_menubar;
+    bool m_initialized = false;
+    bool m_inSetVisible = false;
+    bool m_inSetGeometry = false;
+    bool m_inSetStyleMask = false;
 
-    bool m_frameStrutEventsEnabled;
+    QCocoaMenuBar *m_menubar = nullptr;
+
+    bool m_frameStrutEventsEnabled = false;
     QRect m_exposedRect;
     QRect m_normalGeometry;
-    int m_registerTouchCount;
-    bool m_resizableTransientParent;
+    int m_registerTouchCount = 0;
+    bool m_resizableTransientParent = false;
 
     static const int NoAlertRequest;
-    NSInteger m_alertRequest;
+    NSInteger m_alertRequest = NoAlertRequest;
 
-    bool m_drawContentBorderGradient;
-    int m_topContentBorderThickness;
-    int m_bottomContentBorderThickness;
+    bool m_drawContentBorderGradient = false;
 
     struct BorderRange {
         BorderRange(quintptr i, int u, int l) : identifier(i), upper(u), lower(l) { }

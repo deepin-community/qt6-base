@@ -267,6 +267,8 @@ private slots:
     void inputMethodQueryImHints_data();
     void inputMethodQueryImHints();
 
+    void inputMethodQueryEnterKeyType();
+
     void inputMethodUpdate();
 
     void undoRedoAndEchoModes_data();
@@ -290,6 +292,8 @@ private slots:
     void QTBUG_60319_setInputMaskCheckImSurroundingText();
     void testQuickSelectionWithMouse();
     void inputRejected();
+    void keyReleasePropagates();
+
 protected slots:
     void editingFinished();
 
@@ -1586,14 +1590,44 @@ void tst_QLineEdit::textMask()
     QCOMPARE( testWidget->text(), insertString );
 }
 
+class LineEditChangingText : public QLineEdit
+{
+    Q_OBJECT
+
+public:
+    LineEditChangingText(QWidget *parent) : QLineEdit(parent)
+    {
+        connect(this, &QLineEdit::textEdited, this, &LineEditChangingText::onTextEdited);
+    }
+
+public slots:
+    void onTextEdited(const QString &text)
+    {
+        if (text.length() == 3)
+            setText(text + "-");
+    }
+};
+
 void tst_QLineEdit::setText()
 {
     QLineEdit *testWidget = ensureTestWidget();
-    QSignalSpy editedSpy(testWidget, SIGNAL(textEdited(QString)));
-    QSignalSpy changedSpy(testWidget, SIGNAL(textChanged(QString)));
-    testWidget->setText("hello");
-    QCOMPARE(editedSpy.size(), 0);
-    QCOMPARE(changedSpy.value(0).value(0).toString(), QString("hello"));
+    {
+        QSignalSpy editedSpy(testWidget, &QLineEdit::textEdited);
+        QSignalSpy changedSpy(testWidget, &QLineEdit::textChanged);
+        testWidget->setText("hello");
+        QCOMPARE(editedSpy.size(), 0);
+        QCOMPARE(changedSpy.value(0).value(0).toString(), QString("hello"));
+    }
+
+    QTestEventList keys;
+    keys.addKeyClick(Qt::Key_A);
+    keys.addKeyClick(Qt::Key_B);
+    keys.addKeyClick(Qt::Key_C);
+
+    LineEditChangingText lineEdit(nullptr);
+    keys.simulate(&lineEdit);
+    QCOMPARE(lineEdit.text(), "abc-");
+    QCOMPARE(lineEdit.cursorPosition(), 4);
 }
 
 void tst_QLineEdit::displayText_data()
@@ -3712,7 +3746,7 @@ void tst_QLineEdit::task174640_editingFinished()
     layout->addWidget(le2);
 
     mw.show();
-    QApplication::setActiveWindow(&mw);
+    QApplicationPrivate::setActiveWindow(&mw);
     mw.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&mw));
     QCOMPARE(&mw, QApplication::activeWindow());
@@ -3820,7 +3854,7 @@ void tst_QLineEdit::task210502_caseInsensitiveInlineCompletion()
     completer.setCompletionMode(QCompleter::InlineCompletion);
     lineEdit.setCompleter(&completer);
     lineEdit.show();
-    QApplication::setActiveWindow(&lineEdit);
+    QApplicationPrivate::setActiveWindow(&lineEdit);
     QVERIFY(QTest::qWaitForWindowActive(&lineEdit));
     lineEdit.setFocus();
     QTRY_VERIFY(lineEdit.hasFocus());
@@ -3921,7 +3955,7 @@ void tst_QLineEdit::task241436_passwordEchoOnEditRestoreEchoMode()
     testWidget->setFocus();
     centerOnScreen(testWidget);
     testWidget->show();
-    QApplication::setActiveWindow(testWidget);
+    QApplicationPrivate::setActiveWindow(testWidget);
     QVERIFY(QTest::qWaitForWindowActive(testWidget));
     QVERIFY(testWidget->hasFocus());
 
@@ -3972,7 +4006,7 @@ void tst_QLineEdit::taskQTBUG_4401_enterKeyClearsPassword()
     testWidget->selectAll();
     centerOnScreen(testWidget);
     testWidget->show();
-    QApplication::setActiveWindow(testWidget);
+    QApplicationPrivate::setActiveWindow(testWidget);
     QVERIFY(QTest::qWaitForWindowActive(testWidget));
 
     QTest::keyPress(testWidget, Qt::Key_Enter);
@@ -4055,7 +4089,7 @@ void tst_QLineEdit::taskQTBUG_7395_readOnlyShortcut()
 
     le.show();
     QVERIFY(QTest::qWaitForWindowExposed(&le));
-    QApplication::setActiveWindow(&le);
+    QApplicationPrivate::setActiveWindow(&le);
     QVERIFY(QTest::qWaitForWindowActive(&le));
     le.setFocus();
     QTRY_VERIFY(le.hasFocus());
@@ -4077,7 +4111,7 @@ void tst_QLineEdit::QTBUG697_paletteCurrentColorGroup()
     le.setPalette(p);
 
     le.show();
-    QApplication::setActiveWindow(&le);
+    QApplicationPrivate::setActiveWindow(&le);
     QVERIFY(QTest::qWaitForWindowActive(&le));
     le.setFocus();
     QTRY_VERIFY(le.hasFocus());
@@ -4409,6 +4443,33 @@ void tst_QLineEdit::inputMethodQueryImHints()
     QCOMPARE(static_cast<Qt::InputMethodHints>(value.toInt()), hints);
 }
 
+void tst_QLineEdit::inputMethodQueryEnterKeyType()
+{
+    QWidget mw;
+    QVBoxLayout layout(&mw);
+    QLineEdit le1(&mw);
+    layout.addWidget(&le1);
+    mw.show();
+    QVariant enterType = le1.inputMethodQuery(Qt::ImEnterKeyType);
+    QCOMPARE(enterType.value<Qt::EnterKeyType>(), Qt::EnterKeyDefault);
+
+    mw.hide();
+    QLineEdit le2(&mw);
+    layout.addWidget(&le2);
+    mw.show();
+
+    enterType = le1.inputMethodQuery(Qt::ImEnterKeyType);
+#ifdef Q_OS_ANDROID
+    // QTBUG-61652
+    // EnterKey is changed to EnterKeyNext if the focus can be moved to widget below
+    QCOMPARE(enterType.value<Qt::EnterKeyType>(), Qt::EnterKeyNext);
+#else
+    QCOMPARE(enterType.value<Qt::EnterKeyType>(), Qt::EnterKeyDefault);
+#endif
+    enterType = le2.inputMethodQuery(Qt::ImEnterKeyType);
+    QCOMPARE(enterType.value<Qt::EnterKeyType>(), Qt::EnterKeyDefault);
+}
+
 void tst_QLineEdit::inputMethodUpdate()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
@@ -4545,7 +4606,7 @@ void tst_QLineEdit::clearButton()
     l->addWidget(listView);
     testWidget.move(300, 300);
     testWidget.show();
-    qApp->setActiveWindow(&testWidget);
+    QApplicationPrivate::setActiveWindow(&testWidget);
     QVERIFY(QTest::qWaitForWindowActive(&testWidget));
     // Flip the clear button on,off, trying to detect crashes.
     filterLineEdit->setClearButtonEnabled(true);
@@ -4656,7 +4717,8 @@ void tst_QLineEdit::sideWidgets()
     testWidget.move(300, 300);
     testWidget.show();
     QVERIFY(QTest::qWaitForWindowExposed(&testWidget));
-    foreach (QToolButton *button, lineEdit->findChildren<QToolButton *>())
+    const auto buttons = lineEdit->findChildren<QToolButton *>();
+    for (QToolButton *button : buttons)
         QCOMPARE(button->cursor().shape(), Qt::ArrowCursor);
     // Arbitrarily add/remove actions, trying to detect crashes. Add QTRY_VERIFY(false) to view the result.
     delete label3Action;
@@ -4671,7 +4733,8 @@ void tst_QLineEdit::sideWidgets()
 
 template <class T> T *findAssociatedWidget(const QAction *a)
 {
-    foreach (QObject *w, a->associatedObjects()) {
+    const auto associatedObjects = a->associatedObjects();
+    for (QObject *w : associatedObjects) {
         if (T *result = qobject_cast<T *>(w))
             return result;
     }
@@ -5113,6 +5176,44 @@ void tst_QLineEdit::inputRejected()
     QTest::keyClicks(testWidget, "a#");
     QCOMPARE(spyInputRejected.size(), 2);
 }
+
+void tst_QLineEdit::keyReleasePropagates()
+{
+    struct Dialog : QWidget
+    {
+        QLineEdit *lineEdit;
+        int releasedKey = {};
+
+        Dialog()
+        {
+            lineEdit = new QLineEdit;
+            QHBoxLayout *hbox = new QHBoxLayout;
+
+            hbox->addWidget(lineEdit);
+            setLayout(hbox);
+        }
+
+    protected:
+        void keyReleaseEvent(QKeyEvent *e) override
+        {
+            releasedKey = e->key();
+        }
+    } dialog;
+
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    QTest::keyPress(dialog.lineEdit, Qt::Key_A);
+    QTest::keyRelease(dialog.lineEdit, Qt::Key_A);
+
+    QCOMPARE(dialog.releasedKey, Qt::Key_A);
+
+    QTest::keyPress(dialog.lineEdit, Qt::Key_Alt);
+    QTest::keyRelease(dialog.lineEdit, Qt::Key_Alt);
+
+    QCOMPARE(dialog.releasedKey, Qt::Key_Alt);
+}
+
 
 QTEST_MAIN(tst_QLineEdit)
 #include "tst_qlineedit.moc"

@@ -1,6 +1,8 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 add_library(testlib_code_snippets OBJECT
     doc_src_qtqskip.cpp
-    doc_src_qttest.cpp
     src_corelib_kernel_qtestsupport_core.cpp
 )
 

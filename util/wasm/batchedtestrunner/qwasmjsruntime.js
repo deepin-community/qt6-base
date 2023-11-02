@@ -145,8 +145,7 @@ export class CompiledModule {
                 params.arguments = parameters?.args;
                 let data = '';
                 params.print = (out) => {
-                    if (parameters?.printStdout === true)
-                        console.log(out);
+                    parameters?.onStdout?.(out);
                     data += `${out}\n`;
                 };
                 params.printErr = () => { };
@@ -167,7 +166,7 @@ export class CompiledModule {
         const instanceParams = {};
         instanceParams.instantiateWasm = async (imports, onDone) => {
             try {
-                onDone(await WebAssembly.instantiate(this.#wasm, imports));
+                onDone(await WebAssembly.instantiate(this.#wasm, imports), this.#wasm);
             } catch (e) {
                 params?.onInstantiationError?.(e);
             }
@@ -177,12 +176,6 @@ export class CompiledModule {
         instanceParams.monitorRunDependencies = (name) => { };
         instanceParams.print = (text) => true && console.log(text);
         instanceParams.printErr = (text) => true && console.warn(text);
-        instanceParams.preRun = [
-            (instance) => {
-                const env = {};
-                instance.ENV = env;
-            },
-        ];
 
         instanceParams.mainScriptUrlOrBlob = new Blob([this.#js], {
             type: 'text/javascript',

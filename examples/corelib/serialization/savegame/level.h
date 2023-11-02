@@ -4,27 +4,30 @@
 #ifndef LEVEL_H
 #define LEVEL_H
 
+#include "character.h"
+
 #include <QJsonObject>
 #include <QList>
 
-#include "character.h"
+QT_FORWARD_DECLARE_CLASS(QTextStream)
 
 //! [0]
 class Level
 {
 public:
     Level() = default;
-    Level(const QString &name);
+    explicit Level(const QString &name);
 
     QString name() const;
 
     QList<Character> npcs() const;
     void setNpcs(const QList<Character> &npcs);
 
-    void read(const QJsonObject &json);
-    void write(QJsonObject &json) const;
+    static Level fromJson(const QJsonObject &json);
+    QJsonObject toJson() const;
 
-    void print(int indentation = 0) const;
+    void print(QTextStream &s, int indentation = 0) const;
+
 private:
     QString mName;
     QList<Character> mNpcs;

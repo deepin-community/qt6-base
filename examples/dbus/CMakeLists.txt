@@ -1,12 +1,16 @@
-if(NOT TARGET Qt::DBus)
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
+if(NOT TARGET Qt6::DBus)
     return()
 endif()
-qt_internal_add_example(listnames)
-qt_internal_add_example(pingpong)
-if(QT_FEATURE_process)
-    qt_internal_add_example(complexpingpong)
+if(NOT ANDROID)
+    qt_internal_add_example(pingpong)
+    if(QT_FEATURE_process)
+        qt_internal_add_example(complexpingpong)
+    endif()
 endif()
-if(TARGET Qt::Widgets)
+if(TARGET Qt6::Widgets)
     qt_internal_add_example(chat)
-    add_subdirectory(remotecontrolledcar)
+    qt_internal_add_example(remotecontrolledcar)
 endif()

@@ -160,10 +160,14 @@ template<typename T>
 void QOpenGL2PaintEngineExPrivate::updateTexture(GLenum textureUnit, const T &texture, GLenum wrapMode, GLenum filterMode, TextureUpdateMode updateMode)
 {
     static const GLenum target = GL_TEXTURE_2D;
+    bool newTextureCreated = false;
 
     activateTextureUnit(textureUnit);
 
-    GLuint textureId = bindTexture(texture);
+    GLuint textureId = bindTexture(texture, &newTextureCreated);
+
+    if (newTextureCreated)
+        lastTextureUsed = GLuint(-1);
 
     if (updateMode == UpdateIfNeeded && textureId == lastTextureUsed)
         return;
@@ -192,8 +196,11 @@ void QOpenGL2PaintEngineExPrivate::activateTextureUnit(GLenum textureUnit)
 }
 
 template<>
-GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const GLuint &textureId)
+GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const GLuint &textureId, bool *newTextureCreated)
 {
+    if (newTextureCreated)
+        *newTextureCreated = false;
+
     if (textureId != lastTextureUsed)
         funcs.glBindTexture(GL_TEXTURE_2D, textureId);
 
@@ -201,19 +208,25 @@ GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const GLuint &textureId)
 }
 
 template<>
-GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const QImage &image)
+GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const QImage &image, bool *newTextureCreated)
 {
-    return QOpenGLTextureCache::cacheForContext(ctx)->bindTexture(ctx, image);
+    QOpenGLTextureCache::BindResult result = QOpenGLTextureCache::cacheForContext(ctx)->bindTexture(ctx, image);
+    if (newTextureCreated)
+        *newTextureCreated = result.flags.testFlag(QOpenGLTextureCache::BindResultFlag::NewTexture);
+    return result.id;
 }
 
 template<>
-GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const QPixmap &pixmap)
+GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const QPixmap &pixmap, bool *newTextureCreated)
 {
-    return QOpenGLTextureCache::cacheForContext(ctx)->bindTexture(ctx, pixmap);
+    QOpenGLTextureCache::BindResult result = QOpenGLTextureCache::cacheForContext(ctx)->bindTexture(ctx, pixmap);
+    if (newTextureCreated)
+        *newTextureCreated = result.flags.testFlag(QOpenGLTextureCache::BindResultFlag::NewTexture);
+    return result.id;
 }
 
 template<>
-GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const QGradient &gradient)
+GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const QGradient &gradient, bool *newTextureCreated)
 {
     // We apply global opacity in the fragment shaders, so we always pass 1.0
     // for opacity to the cache.
@@ -223,7 +236,7 @@ GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const QGradient &gradient)
     // hasn't been cached yet, but will otherwise return an unbound texture id. To
     // be sure that the texture is bound, we unfortunately have to bind again,
     // which results in the initial generation of the texture doing two binds.
-    return bindTexture(textureId);
+    return bindTexture(textureId, newTextureCreated);
 }
 
 struct ImageWithBindOptions
@@ -233,9 +246,14 @@ struct ImageWithBindOptions
 };
 
 template<>
-GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const ImageWithBindOptions &imageWithOptions)
+GLuint QOpenGL2PaintEngineExPrivate::bindTexture(const ImageWithBindOptions &imageWithOptions, bool *newTextureCreated)
 {
-    return QOpenGLTextureCache::cacheForContext(ctx)->bindTexture(ctx, imageWithOptions.image, imageWithOptions.options);
+    QOpenGLTextureCache::BindResult result = QOpenGLTextureCache::cacheForContext(ctx)->bindTexture(ctx,
+                                                                                                    imageWithOptions.image,
+                                                                                                    imageWithOptions.options);
+    if (newTextureCreated)
+        *newTextureCreated = result.flags.testFlag(QOpenGLTextureCache::BindResultFlag::NewTexture);
+    return result.id;
 }
 
 inline static bool isPowerOfTwo(int x)
@@ -606,8 +624,9 @@ static inline void setCoords(GLfloat *coords, const QOpenGLRect &rect)
     coords[7] = rect.bottom;
 }
 
-void QOpenGL2PaintEngineExPrivate::drawTexture(const QOpenGLRect& dest, const QOpenGLRect& src, const QSize &textureSize, bool opaque, bool pattern)
+void Q_TRACE_INSTRUMENT(qtopengl) QOpenGL2PaintEngineExPrivate::drawTexture(const QOpenGLRect& dest, const QOpenGLRect& src, const QSize &textureSize, bool opaque, bool pattern)
 {
+    Q_TRACE_PARAM_REPLACE(QOpenGLRect, QRectF);
     Q_TRACE_SCOPE(QOpenGL2PaintEngineExPrivate_drawTexture, dest, src, textureSize, opaque, pattern);
 
     // Setup for texture drawing
@@ -2131,6 +2150,10 @@ void QOpenGL2PaintEngineExPrivate::drawPixmapFragments(const QPainter::PixmapFra
     }
 
     transferMode(ImageOpacityArrayDrawingMode);
+
+    uploadData(QT_VERTEX_COORDS_ATTR, (GLfloat*)vertexCoordinateArray.data(), vertexCoordinateArray.vertexCount() * 2);
+    uploadData(QT_TEXTURE_COORDS_ATTR, (GLfloat*)textureCoordinateArray.data(), textureCoordinateArray.vertexCount() * 2);
+    uploadData(QT_OPACITY_ATTR, (GLfloat*)opacityArray.data(), opacityArray.size());
 
     GLenum filterMode = q->state()->renderHints & QPainter::SmoothPixmapTransform ? GL_LINEAR : GL_NEAREST;
     updateTexture(QT_IMAGE_TEXTURE_UNIT, pixmap, GL_CLAMP_TO_EDGE, filterMode);

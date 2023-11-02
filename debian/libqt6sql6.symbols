@@ -1,12 +1,7 @@
-# SymbolsHelper-Confirmed: 6.4.1 amd64
+# SymbolsHelper-Confirmed: 6.6.0 amd64
 libQt6Sql.so.6 libqt6sql6 #MINVER#
-| libqt6sql6 #MINVER#, qt6-base-abi (= 6.4.2)
+| libqt6sql6 #MINVER#, qt6-base-private-abi (= 6.6.0)
 * Build-Depends-Package: qt6-base-dev
- Qt_6.0@Qt_6.0 6.1.2
- Qt_6.1@Qt_6.1 6.1.2
- Qt_6.2@Qt_6.2 6.2.0
- Qt_6.3@Qt_6.3 6.3.0
- Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _ZN10QSqlDriver11cancelQueryEv@Qt_6 6.1.2
@@ -24,9 +19,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN10QSqlDriver27unsubscribeFromNotificationERK7QString@Qt_6 6.1.2
  _ZN10QSqlDriver7setOpenEb@Qt_6 6.1.2
  _ZN10QSqlDriverC1EP7QObject@Qt_6 6.1.2
- _ZN10QSqlDriverC1ER17QSqlDriverPrivateP7QObject@Qt_6 6.1.2
  _ZN10QSqlDriverC2EP7QObject@Qt_6 6.1.2
- _ZN10QSqlDriverC2ER17QSqlDriverPrivateP7QObject@Qt_6 6.1.2
  _ZN10QSqlDriverD0Ev@Qt_6 6.1.2
  _ZN10QSqlDriverD1Ev@Qt_6 6.1.2
  _ZN10QSqlDriverD2Ev@Qt_6 6.1.2
@@ -51,6 +44,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN10QSqlRecordD2Ev@Qt_6 6.1.2
  _ZN10QSqlRecordaSERKS_@Qt_6 6.1.2
  _ZN10QSqlResult10nextResultEv@Qt_6 6.1.2
+ _ZN10QSqlResult11boundValuesEN2Qt15Disambiguated_tE@Qt_6 6.6.0
  _ZN10QSqlResult11savePrepareERK7QString@Qt_6 6.1.2
  _ZN10QSqlResult12addBindValueERK8QVariant6QFlagsIN4QSql13ParamTypeFlagEE@Qt_6 6.1.2
  _ZN10QSqlResult12setLastErrorERK9QSqlError@Qt_6 6.1.2
@@ -136,9 +130,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN14QSqlQueryModel8setQueryERK9QSqlQuery@Qt_6 6.1.2
  _ZN14QSqlQueryModel9fetchMoreERK11QModelIndex@Qt_6 6.1.2
  _ZN14QSqlQueryModelC1EP7QObject@Qt_6 6.1.2
- _ZN14QSqlQueryModelC1ER21QSqlQueryModelPrivateP7QObject@Qt_6 6.1.2
  _ZN14QSqlQueryModelC2EP7QObject@Qt_6 6.1.2
- _ZN14QSqlQueryModelC2ER21QSqlQueryModelPrivateP7QObject@Qt_6 6.1.2
  _ZN14QSqlQueryModelD0Ev@Qt_6 6.1.2
  _ZN14QSqlQueryModelD1Ev@Qt_6 6.1.2
  _ZN14QSqlQueryModelD2Ev@Qt_6 6.1.2
@@ -205,6 +197,12 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN24QSqlRelationalTableModelD0Ev@Qt_6 6.1.2
  _ZN24QSqlRelationalTableModelD1Ev@Qt_6 6.1.2
  _ZN24QSqlRelationalTableModelD2Ev@Qt_6 6.1.2
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI16QSqlErrorPrivateED1Ev@Qt_6 6.6.0
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI16QSqlErrorPrivateED2Ev@Qt_6 6.6.0
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI16QSqlFieldPrivateED1Ev@Qt_6 6.6.0
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI16QSqlFieldPrivateED2Ev@Qt_6 6.6.0
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI17QSqlRecordPrivateED1Ev@Qt_6 6.6.0
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI17QSqlRecordPrivateED2Ev@Qt_6 6.6.0
  _ZN9QSqlErrorC1ERK7QStringS2_NS_9ErrorTypeES2_@Qt_6 6.1.2
  _ZN9QSqlErrorC1ERKS_@Qt_6 6.1.2
  _ZN9QSqlErrorC2ERK7QStringS2_NS_9ErrorTypeES2_@Qt_6 6.1.2
@@ -307,6 +305,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK10QSqlRecordeqERKS_@Qt_6 6.1.2
  _ZNK10QSqlResult10boundValueERK7QString@Qt_6 6.1.2
  _ZNK10QSqlResult10boundValueEi@Qt_6 6.1.2
+ _ZNK10QSqlResult11boundValuesEN2Qt15Disambiguated_tE@Qt_6 6.6.0
  _ZNK10QSqlResult11boundValuesEv@Qt_6 6.1.2
  _ZNK10QSqlResult12hasOutValuesEv@Qt_6 6.1.2
  _ZNK10QSqlResult12lastInsertIdEv@Qt_6 6.1.2
@@ -317,6 +316,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK10QSqlResult13isForwardOnlyEv@Qt_6 6.1.2
  _ZNK10QSqlResult14boundValueNameEi@Qt_6 6.1.2
  _ZNK10QSqlResult15boundValueCountEv@Qt_6 6.1.2
+ _ZNK10QSqlResult15boundValueNamesEv@Qt_6 6.6.0
  _ZNK10QSqlResult24numericalPrecisionPolicyEv@Qt_6 6.1.2
  _ZNK10QSqlResult2atEv@Qt_6 6.1.2
  _ZNK10QSqlResult6driverEv@Qt_6 6.1.2
@@ -351,6 +351,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK14QSqlQueryModel12canFetchMoreERK11QModelIndex@Qt_6 6.1.2
  _ZNK14QSqlQueryModel12indexInQueryERK11QModelIndex@Qt_6 6.1.2
  _ZNK14QSqlQueryModel4dataERK11QModelIndexi@Qt_6 6.1.2
+ _ZNK14QSqlQueryModel5queryEN2Qt15Disambiguated_tE@Qt_6 6.6.0
  _ZNK14QSqlQueryModel5queryEv@Qt_6 6.1.2
  _ZNK14QSqlQueryModel6recordEi@Qt_6 6.1.2
  _ZNK14QSqlQueryModel6recordEv@Qt_6 6.1.2
@@ -413,6 +414,8 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK9QSqlQuery12lastInsertIdEv@Qt_6 6.1.2
  _ZNK9QSqlQuery13executedQueryEv@Qt_6 6.1.2
  _ZNK9QSqlQuery13isForwardOnlyEv@Qt_6 6.1.2
+ _ZNK9QSqlQuery14boundValueNameEi@Qt_6 6.6.0
+ _ZNK9QSqlQuery15boundValueNamesEv@Qt_6 6.6.0
  _ZNK9QSqlQuery15numRowsAffectedEv@Qt_6 6.1.2
  _ZNK9QSqlQuery24numericalPrecisionPolicyEv@Qt_6 6.1.2
  _ZNK9QSqlQuery2atEv@Qt_6 6.1.2

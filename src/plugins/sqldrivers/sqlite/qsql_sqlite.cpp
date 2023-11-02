@@ -49,9 +49,9 @@ static QString _q_escapeIdentifier(const QString &identifier, QSqlDriver::Identi
         return res;
     if (!identifier.isEmpty() && !identifier.startsWith(u'"') && !identifier.endsWith(u'"')) {
         res.replace(u'"', "\"\""_L1);
-        res.prepend(u'"').append(u'"');
         if (type == QSqlDriver::TableName)
             res.replace(u'.', "\".\""_L1);
+        res = u'"' + res + u'"';
     }
     return res;
 }
@@ -158,7 +158,7 @@ void QSQLiteResultPrivate::finalize()
         return;
 
     sqlite3_finalize(stmt);
-    stmt = 0;
+    stmt = nullptr;
 }
 
 void QSQLiteResultPrivate::initColumns(bool emptyResultset)
@@ -765,7 +765,7 @@ bool QSQLiteDriver::open(const QString & db, const QString &, const QString &, c
 
         if (d->access) {
             sqlite3_close(d->access);
-            d->access = 0;
+            d->access = nullptr;
         }
 
         return false;
@@ -788,7 +788,7 @@ void QSQLiteDriver::close()
 
         if (res != SQLITE_OK)
             setLastError(qMakeError(d->access, tr("Error closing database"), QSqlError::ConnectionError, res));
-        d->access = 0;
+        d->access = nullptr;
         setOpen(false);
         setOpenError(false);
     }
@@ -984,7 +984,7 @@ bool QSQLiteDriver::subscribeToNotification(const QString &name)
     }
 
     if (d->notificationid.contains(name)) {
-        qWarning("Already subscribing to '%s'.", qPrintable(name));
+        qWarning("Already subscribing to '%ls'.", qUtf16Printable(name));
         return false;
     }
 
@@ -1005,7 +1005,7 @@ bool QSQLiteDriver::unsubscribeFromNotification(const QString &name)
     }
 
     if (!d->notificationid.contains(name)) {
-        qWarning("Not subscribed to '%s'.", qPrintable(name));
+        qWarning("Not subscribed to '%ls'.", qUtf16Printable(name));
         return false;
     }
 

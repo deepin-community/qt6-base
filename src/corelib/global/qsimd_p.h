@@ -34,33 +34,6 @@ QT_WARNING_DISABLE_INTEL(103)
     for (int _i = 0; _i < max && i < length; ++i, ++_i)
 
 /*
- * qt_module_config.prf defines the QT_COMPILER_SUPPORTS_XXX macros.
- * They mean the compiler supports the necessary flags and the headers
- * for the x86 and ARM intrinsics:
- *  - GCC: the -mXXX or march=YYY flag is necessary before #include
- *    up to 4.8; GCC >= 4.9 can include unconditionally
- *  - Intel CC: #include can happen unconditionally
- *  - MSVC: #include can happen unconditionally
- *  - RVCT: ???
- *
- * We will try to include all headers possible under this configuration.
- *
- * MSVC does not define __SSE2__ & family, so we will define them. MSVC 2013 &
- * up do define __AVX__ if the -arch:AVX option is passed on the command-line.
- *
- * Supported XXX are:
- *   Flag    | Arch |  GCC  | Intel CC |  MSVC  |
- *  ARM_NEON | ARM  | I & C | None     |   ?    |
- *  SSE2     | x86  | I & C | I & C    | I & C  |
- *  SSE3     | x86  | I & C | I & C    | I only |
- *  SSSE3    | x86  | I & C | I & C    | I only |
- *  SSE4_1   | x86  | I & C | I & C    | I only |
- *  SSE4_2   | x86  | I & C | I & C    | I only |
- *  AVX      | x86  | I & C | I & C    | I & C  |
- *  AVX2     | x86  | I & C | I & C    | I only |
- *  AVX512xx | x86  | I & C | I & C    | I only |
- * I = intrinsics; C = code generation
- *
  * Code can use the following constructs to determine compiler support & status:
  * - #ifdef __XXX__      (e.g: #ifdef __AVX__  or #ifdef __ARM_NEON__)
  *   If this test passes, then the compiler is already generating code for that
@@ -160,9 +133,50 @@ QT_WARNING_DISABLE_INTEL(103)
 #  define QT_FUNCTION_TARGET(x)
 #endif
 
+#if defined(__SSE2__) && !defined(QT_COMPILER_SUPPORTS_SSE2) && !defined(QT_BOOTSTRAPPED)
+// Intrinsic support appears to be missing, so pretend these features don't exist
+#  undef __SSE__
+#  undef __SSE2__
+#  undef __SSE3__
+#  undef __SSSE3__
+#  undef __SSE4_1__
+#  undef __SSE4_2__
+#  undef __AES__
+#  undef __POPCNT__
+#  undef __AVX__
+#  undef __F16C__
+#  undef __RDRND__
+#  undef __AVX2__
+#  undef __BMI__
+#  undef __BMI2__
+#  undef __FMA__
+#  undef __MOVBE__
+#  undef __RDSEED__
+#  undef __AVX512F__
+#  undef __AVX512ER__
+#  undef __AVX512CD__
+#  undef __AVX512PF__
+#  undef __AVX512DQ__
+#  undef __AVX512BW__
+#  undef __AVX512VL__
+#  undef __AVX512IFMA__
+#  undef __AVX512VBMI__
+#  undef __SHA__
+#  undef __AVX512VBMI2__
+#  undef __AVX512BITALG__
+#  undef __AVX512VNNI__
+#  undef __AVX512VPOPCNTDQ__
+#  undef __GFNI__
+#  undef __VAES__
+#endif
+
 #ifdef Q_PROCESSOR_X86
 /* -- x86 intrinsic support -- */
 
+#  if defined(QT_COMPILER_SUPPORTS_RDSEED) && defined(Q_OS_QNX)
+// The compiler for QNX is missing the intrinsic
+#    undef QT_COMPILER_SUPPORTS_RDSEED
+#  endif
 #  if defined(Q_CC_MSVC) && (defined(_M_X64) || _M_IX86_FP >= 2)
 // MSVC doesn't define __SSE2__, so do it ourselves
 #    define __SSE__                         1
@@ -199,7 +213,7 @@ asm(
 #   include <immintrin.h>
 # endif
 
-#  include "qsimd_x86_p.h"
+#  include <QtCore/private/qsimd_x86_p.h>
 
 // x86-64 sub-architecture version 3
 //
@@ -212,9 +226,9 @@ asm(
 //
 // macOS's fat binaries support the "x86_64h" sub-architecture and the GNU libc
 // ELF loader also supports a "haswell/" subdir (e.g., /usr/lib/haswell).
-#  define ARCH_HASWELL_MACROS       (__AVX2__ + __BMI2__ + __FMA__ + __LZCNT__)
+#  define ARCH_HASWELL_MACROS       (__AVX2__ + __FMA__)
 #  if ARCH_HASWELL_MACROS != 0
-#    if ARCH_HASWELL_MACROS != 4
+#    if ARCH_HASWELL_MACROS != 2
 #      error "Please enable all x86-64-v3 extensions; you probably want to use -march=haswell or -march=x86-64-v3 instead of -mavx2"
 #    endif
 static_assert(ARCH_HASWELL_MACROS, "Undeclared identifiers indicate which features are missing.");

@@ -21,6 +21,7 @@
 #include <QtCore/QPointer>
 #include <QtCore/QSet>
 #include <QtCore/qsysinfo.h>
+#include <QtCore/private/qcore_mac_p.h>
 #include <QtGui/QAccessible>
 #include <QtGui/QImage>
 #include <private/qguiapplication_p.h>
@@ -33,13 +34,7 @@
 #include "qcocoaglcontext.h"
 #endif
 #include "qcocoaintegration.h"
-
-// Private interface
-@interface QNSView ()
-- (BOOL)isTransparentForUserInput;
-@property (assign) NSView* previousSuperview;
-@property (assign) NSWindow* previousWindow;
-@end
+#include <QtGui/private/qmacmimeregistry_p.h>
 
 @interface QNSView (Drawing) <CALayerDelegate>
 - (void)initDrawing;
@@ -81,6 +76,20 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
 @end
 
 @interface QNSView (ComplexText) <NSTextInputClient>
+@property (readonly) QObject* focusObject;
+@end
+
+@interface QT_MANGLE_NAMESPACE(QNSViewMenuHelper) : NSObject
+- (instancetype)initWithView:(QNSView *)theView;
+@end
+QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
+
+// Private interface
+@interface QNSView ()
+- (BOOL)isTransparentForUserInput;
+@property (assign) NSView* previousSuperview;
+@property (assign) NSWindow* previousWindow;
+@property (retain) QNSViewMenuHelper* menuHelper;
 @end
 
 @implementation QNSView {
@@ -107,12 +116,20 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
     // Text
     QString m_composingText;
     QPointer<QObject> m_composingFocusObject;
+    NSDraggingContext m_lastSeenContext;
 }
 
 - (instancetype)initWithCocoaWindow:(QCocoaWindow *)platformWindow
 {
     if ((self = [super initWithFrame:NSZeroRect])) {
         m_platformWindow = platformWindow;
+
+        // NSViews are by default visible, but QWindows are not.
+        // We should ideally pick up the actual QWindow state here,
+        // but QWindowPrivate::setVisible() expects to control the
+        // order of events tightly, so we need to wait for a call
+        // to QCocoaWindow::setVisible().
+        self.hidden = YES;
 
         self.focusRingType = NSFocusRingTypeNone;
 
@@ -128,6 +145,9 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
         m_lastKeyDead = false;
         m_sendKeyEvent = false;
         m_currentlyInterpretedKeyEvent = nil;
+        m_lastSeenContext = NSDraggingContextWithinApplication;
+
+        self.menuHelper = [[[QNSViewMenuHelper alloc] initWithView:self] autorelease];
     }
     return self;
 }

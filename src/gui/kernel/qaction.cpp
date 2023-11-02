@@ -150,17 +150,18 @@ QObject *QActionPrivate::menu() const
     user interface used, it is useful to represent each command as
     an \e action.
 
-    Actions can be added to menus and toolbars, and will
-    automatically keep them in sync. For example, in a word processor,
-    if the user presses a Bold toolbar button, the Bold menu item
+    Actions can be added to user interface elements such as menus and toolbars,
+    and will automatically keep the UI in sync. For example, in a word
+    processor, if the user presses a Bold toolbar button, the Bold menu item
     will automatically be checked.
 
-    A QAction may contain an icon, menu text, a shortcut, status text,
-    "What's This?" text, and a tooltip. Most of these can be set in
-    the constructor. They can also be set independently with
-    setIcon(), setText(), setIconText(), setShortcut(),
-    setStatusTip(), setWhatsThis(), and setToolTip(). For menu items,
-    it is possible to set an individual font with setFont().
+    A QAction may contain an icon, descriptive text, icon text, a keyboard
+    shortcut, status text, "What's This?" text, and a tooltip. All properties
+    can be set independently with setIcon(), setText(), setIconText(),
+    setShortcut(), setStatusTip(), setWhatsThis(), and setToolTip(). Icon and
+    text, as the two most important properties, can also be set in the
+    constructor. It's possible to set an individual font with setFont(), which
+    e.g. menus respect when displaying the action as a menu item.
 
     We recommend that actions are created as children of the window
     they are used in. In most cases actions will be children of
@@ -170,9 +171,7 @@ QObject *QActionPrivate::menu() const
 
     Once a QAction has been created, it should be added to the relevant
     menu and toolbar, then connected to the slot which will perform
-    the action. For example:
-
-    \snippet ../widgets/mainwindows/application/mainwindow.cpp 19
+    the action.
 
     Actions are added to widgets using QWidget::addAction() or
     QGraphicsWidget::addAction(). Note that an action must be added to a
@@ -185,7 +184,7 @@ QObject *QActionPrivate::menu() const
     use as menu items.
 
 
-    \sa QMenu, QToolBar, {Qt Widgets - Application Example}
+    \sa QMenu, QToolBar
 */
 
 /*!
@@ -238,13 +237,11 @@ QAction::QAction(QObject *parent)
     parent is an action group the action will be automatically
     inserted into the group.
 
-    The action uses a stripped version of \a text (e.g. "\&Menu
-    Option..." becomes "Menu Option") as descriptive text for
-    tool buttons. You can override this by setting a specific
-    description with setText(). The same text will be used for
-    tooltips unless you specify a different text using
-    setToolTip().
+    A stripped version of \a text (for example, "\&Menu Option..." becomes
+    "Menu Option") will be used for tooltips and icon text unless you specify a
+    different text using setToolTip() or setIconText(), respectively.
 
+    \sa text
 */
 QAction::QAction(const QString &text, QObject *parent)
     : QAction(parent)
@@ -258,12 +255,11 @@ QAction::QAction(const QString &text, QObject *parent)
     parent. If \a parent is an action group the action will be
     automatically inserted into the group.
 
-    The action uses a stripped version of \a text (e.g. "\&Menu
-    Option..." becomes "Menu Option") as descriptive text for
-    tool buttons. You can override this by setting a specific
-    description with setText(). The same text will be used for
-    tooltips unless you specify a different text using
-    setToolTip().
+    A stripped version of \a text (for example, "\&Menu Option..." becomes
+    "Menu Option") will be used for tooltips and icon text unless you specify a
+    different text using setToolTip() or setIconText(), respectively.
+
+    \sa text, icon
 */
 QAction::QAction(const QIcon &icon, const QString &text, QObject *parent)
     : QAction(text, parent)
@@ -601,6 +597,14 @@ bool QAction::isSeparator() const
     is one). If the text is not explicitly set in the constructor, or
     by using setText(), the action's description icon text will be
     used as text. There is no default text.
+
+    Certain UI elements, such as menus or buttons, can use '&' in front of a
+    character to automatically create a mnemonic (a shortcut) for that
+    character. For example, "&File" for a menu will create the shortcut
+    \uicontrol Alt+F, which will open the File menu. "E&xit" will create the
+    shortcut \uicontrol Alt+X for a button, or in a menu allow navigating to
+    the menu item by pressing "x". (use '&&' to display an actual ampersand).
+    The widget might consume and perform an action on a given shortcut.
 
     \sa iconText
 */

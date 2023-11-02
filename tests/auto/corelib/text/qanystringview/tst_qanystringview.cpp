@@ -7,6 +7,10 @@
 #include <QString>
 #include <QStringBuilder>
 #include <QVarLengthArray>
+#if QT_CONFIG(cpp_winrt)
+#  include <private/qt_winrtbase_p.h>
+#endif
+#include <private/qxmlstream_p.h>
 
 #include <QTest>
 
@@ -58,6 +62,16 @@ constexpr inline bool CanConvert = std::is_convertible_v<T, QAnyStringView>;
 static_assert(CanConvert<QLatin1String>);
 static_assert(CanConvert<const char*>);
 static_assert(CanConvert<QByteArray>);
+
+template <typename T>
+struct ImplicitlyConvertibleTo
+{
+    operator T() const;
+};
+
+static_assert(CanConvert<ImplicitlyConvertibleTo<QString>>);
+static_assert(CanConvert<ImplicitlyConvertibleTo<QByteArray>>);
+static_assert(!CanConvert<ImplicitlyConvertibleTo<QLatin1StringView>>);
 
 // QAnyStringView qchar_does_not_compile() { return QAnyStringView(QChar('a')); }
 // QAnyStringView qlatin1string_does_not_compile() { return QAnyStringView(QLatin1String("a")); }
@@ -155,6 +169,8 @@ static_assert(CanConvert<std::array<char16_t, 123>>);
 static_assert(!CanConvert<std::deque<char16_t>>);
 static_assert(!CanConvert<std::list<char16_t>>);
 
+static_assert(CanConvert<QtPrivate::XmlStringRef>);
+
 //
 // char32_t
 //
@@ -222,6 +238,19 @@ static_assert(!CanConvert<std::list<wchar_t>>);
 //
 
 static_assert(CanConvert<QStringBuilder<QString, QString>>);
+
+#if QT_CONFIG(cpp_winrt)
+
+//
+// winrt::hstring (QTBUG-111886)
+//
+
+static_assert(CanConvert<      winrt::hstring >);
+static_assert(CanConvert<const winrt::hstring >);
+static_assert(CanConvert<      winrt::hstring&>);
+static_assert(CanConvert<const winrt::hstring&>);
+
+#endif // QT_CONFIG(cpp_winrt)
 
 
 class tst_QAnyStringView : public QObject
@@ -655,7 +684,9 @@ void tst_QAnyStringView::compare3way()
     const QAnyStringView bb = u"bb";
     COMPARE_3WAY(aa, aa, std::strong_ordering::equal);
     COMPARE_3WAY(aa, bb, std::strong_ordering::less);
-    COMPARE_3WAY(bb, aa, std::strong_ordering::greater)
+    COMPARE_3WAY(bb, aa, std::strong_ordering::greater);
+    COMPARE_3WAY(upperAa, aa, std::strong_ordering::less);
+    COMPARE_3WAY(aa, upperAa, std::strong_ordering::greater);
     );
 #undef COMPARE_3WAY
 }

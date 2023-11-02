@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 #.rst:
 # FindZstd
 # ---------
@@ -25,10 +28,10 @@ include(FindPackageHandleStandardArgs)
 if(TARGET zstd::libzstd_static OR TARGET zstd::libzstd_shared)
     find_package_handle_standard_args(WrapZSTD
                                       REQUIRED_VARS zstd_VERSION VERSION_VAR zstd_VERSION)
-    if(TARGET zstd::libzstd_static)
-        set(zstdtargetsuffix "_static")
-    else()
+    if(TARGET zstd::libzstd_shared)
         set(zstdtargetsuffix "_shared")
+    else()
+        set(zstdtargetsuffix "_static")
     endif()
     if(NOT TARGET WrapZSTD::WrapZSTD)
         add_library(WrapZSTD::WrapZSTD INTERFACE IMPORTED)
@@ -37,7 +40,7 @@ if(TARGET zstd::libzstd_static OR TARGET zstd::libzstd_shared)
     endif()
 else()
     find_package(PkgConfig QUIET)
-    pkg_check_modules(PC_ZSTD QUIET libzstd)
+    pkg_check_modules(PC_ZSTD QUIET "libzstd")
 
     find_path(ZSTD_INCLUDE_DIRS
               NAMES zstd.h

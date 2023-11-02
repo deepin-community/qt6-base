@@ -1,14 +1,15 @@
-# Generated from android.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## QAndroidIntegrationPlugin Plugin:
 #####################################################################
-qt_find_package(EGL) # special case
+qt_find_package(EGL)
 
 qt_internal_add_plugin(QAndroidIntegrationPlugin
     OUTPUT_NAME qtforandroid
     PLUGIN_TYPE platforms
-    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES android # special case
+    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES android
     SOURCES
         androidcontentfileengine.cpp androidcontentfileengine.h
         androiddeadlockprotector.h
@@ -41,6 +42,18 @@ qt_internal_add_plugin(QAndroidIntegrationPlugin
         qandroidplatformtheme.cpp qandroidplatformtheme.h
         qandroidplatformwindow.cpp qandroidplatformwindow.h
         qandroidsystemlocale.cpp qandroidsystemlocale.h
+    NO_UNITY_BUILD_SOURCES
+        # Conflicting symbols and macros with androidjnimain.cpp
+        # TODO: Unify the usage of FIND_AND_CHECK_CLASS, and similar
+        #       macros. Q_JNI_FIND_AND_CHECK_CLASS in `qjnihelpers_p.h`
+        #       seems to be doing most of the work already.
+        androidjnimenu.cpp
+        qandroidinputcontext.cpp
+        androidjniaccessibility.cpp
+        qandroidplatformdialoghelpers.cpp
+        # Conflicting JNI classes, and types
+        androidcontentfileengine.cpp
+        qandroidplatformintegration.cpp
     DEFINES
         QT_USE_QSTRINGBUILDER
     INCLUDE_DIRECTORIES
@@ -54,11 +67,8 @@ qt_internal_add_plugin(QAndroidIntegrationPlugin
         Qt::GuiPrivate
         android
         jnigraphics
-        EGL::EGL # special case
+        EGL::EGL
 )
-
-#### Keys ignored in scope 1:.:.:android.pro:<TRUE>:
-# OTHER_FILES = "$$PWD/android.json"
 
 ## Scopes:
 #####################################################################
@@ -77,4 +87,7 @@ qt_internal_extend_target(QAndroidIntegrationPlugin CONDITION QT_FEATURE_vulkan
     SOURCES
         qandroidplatformvulkaninstance.cpp qandroidplatformvulkaninstance.h
         qandroidplatformvulkanwindow.cpp qandroidplatformvulkanwindow.h
+    NO_UNITY_BUILD_SOURCES
+        # To avoid undefined symbols due to missing VK_USE_PLATFORM_ANDROID_KHR
+        qandroidplatformvulkaninstance.cpp qandroidplatformvulkanwindow.cpp
 )

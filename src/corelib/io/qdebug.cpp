@@ -14,13 +14,12 @@
 #include "qmetaobject.h"
 #include <private/qtextstream_p.h>
 #include <private/qtools_p.h>
-#include <ctype.h>
+
+#include <q20chrono.h>
 
 QT_BEGIN_NAMESPACE
 
-using QtMiscUtils::toHexUpper;
-using QtMiscUtils::toHexLower;
-using QtMiscUtils::fromHex;
+using namespace QtMiscUtils;
 
 /*
     Returns a human readable representation of the first \a maxSize
@@ -35,7 +34,7 @@ QByteArray QtDebugUtils::toPrintable(const char *data, qint64 len, qsizetype max
     QByteArray out;
     for (qsizetype i = 0; i < qMin(len, maxSize); ++i) {
         char c = data[i];
-        if (isprint(c)) {
+        if (isAsciiPrintable(c)) {
             out += c;
         } else {
             switch (c) {
@@ -195,12 +194,10 @@ void QDebug::putUcs4(uint ucs4)
 // These two functions return true if the character should be printed by QDebug.
 // For QByteArray, this is technically identical to US-ASCII isprint();
 // for QString, we use QChar::isPrint, which requires a full UCS-4 decode.
-static inline bool isPrintable(uint ucs4)
-{ return QChar::isPrint(ucs4); }
-static inline bool isPrintable(ushort uc)
-{ return QChar::isPrint(uc); }
+static inline bool isPrintable(char32_t ucs4) { return QChar::isPrint(ucs4); }
+static inline bool isPrintable(char16_t uc) { return QChar::isPrint(uc); }
 static inline bool isPrintable(uchar c)
-{ return c >= ' ' && c < 0x7f; }
+{ return isAsciiPrintable(c); }
 
 template <typename Char>
 static inline void putEscapedString(QTextStreamPrivate *d, const Char *begin, size_t length, bool isUnicode = true)
@@ -239,8 +236,8 @@ static inline void putEscapedString(QTextStreamPrivate *d, const Char *begin, si
         }
 
         // print as an escape sequence (maybe, see below for surrogate pairs)
-        int buflen = 2;
-        ushort buf[sizeof "\\U12345678" - 1];
+        qsizetype buflen = 2;
+        char16_t buf[std::char_traits<char>::length("\\U12345678")];
         buf[0] = '\\';
 
         switch (*p) {
@@ -276,7 +273,7 @@ static inline void putEscapedString(QTextStreamPrivate *d, const Char *begin, si
             if (QChar::isHighSurrogate(*p)) {
                 if ((p + 1) != end && QChar::isLowSurrogate(p[1])) {
                     // properly-paired surrogates
-                    uint ucs4 = QChar::surrogateToUcs4(*p, p[1]);
+                    char32_t ucs4 = QChar::surrogateToUcs4(*p, p[1]);
                     if (isPrintable(ucs4)) {
                         buf[0] = *p;
                         buf[1] = p[1];
@@ -299,8 +296,8 @@ static inline void putEscapedString(QTextStreamPrivate *d, const Char *begin, si
                 // improperly-paired surrogates, fall through
             }
             buf[1] = 'u';
-            buf[2] = toHexUpper(ushort(*p) >> 12);
-            buf[3] = toHexUpper(ushort(*p) >> 8);
+            buf[2] = toHexUpper(char16_t(*p) >> 12);
+            buf[3] = toHexUpper(char16_t(*p) >> 8);
             buf[4] = toHexUpper(*p >> 4);
             buf[5] = toHexUpper(*p);
             buflen = 6;
@@ -325,7 +322,7 @@ void QDebug::putString(const QChar *begin, size_t length)
         // we'll reset the QTextStream formatting mechanisms, so save the state
         QDebugStateSaver saver(*this);
         stream->ts.d_ptr->params.reset();
-        putEscapedString(stream->ts.d_ptr.data(), reinterpret_cast<const ushort *>(begin), length);
+        putEscapedString(stream->ts.d_ptr.data(), reinterpret_cast<const char16_t *>(begin), length);
     }
 }
 
@@ -348,6 +345,95 @@ void QDebug::putByteArray(const char *begin, size_t length, Latin1Content conten
         putEscapedString(stream->ts.d_ptr.data(), reinterpret_cast<const uchar *>(begin),
                          length, content == ContainsLatin1);
     }
+}
+
+static QByteArray timeUnit(qint64 num, qint64 den)
+{
+    using namespace std::chrono;
+    using namespace q20::chrono;
+
+    if (num == 1 && den > 1) {
+        // sub-multiple of seconds
+        char prefix = '\0';
+        auto tryprefix = [&](auto d, char c) {
+            static_assert(decltype(d)::num == 1, "not an SI prefix");
+            if (den == decltype(d)::den)
+                prefix = c;
+        };
+
+        // "u" should be "µ", but debugging output is not always UTF-8-safe
+        tryprefix(std::milli{}, 'm');
+        tryprefix(std::micro{}, 'u');
+        tryprefix(std::nano{}, 'n');
+        tryprefix(std::pico{}, 'p');
+        tryprefix(std::femto{}, 'f');
+        tryprefix(std::atto{}, 'a');
+        // uncommon ones later
+        tryprefix(std::centi{}, 'c');
+        tryprefix(std::deci{}, 'd');
+        if (prefix) {
+            char unit[3] = { prefix, 's' };
+            return QByteArray(unit, sizeof(unit) - 1);
+        }
+    }
+
+    const char *unit = nullptr;
+    if (num > 1 && den == 1) {
+        // multiple of seconds - but we don't use SI prefixes
+        auto tryunit = [&](auto d, const char *name) {
+            static_assert(decltype(d)::period::den == 1, "not a multiple of a second");
+            if (unit || num % decltype(d)::period::num)
+                return;
+            unit = name;
+            num /= decltype(d)::period::num;
+        };
+        tryunit(years{}, "yr");
+        tryunit(weeks{}, "wk");
+        tryunit(days{}, "d");
+        tryunit(hours{}, "h");
+        tryunit(minutes{}, "min");
+    }
+    if (!unit)
+        unit = "s";
+
+    if (num == 1 && den == 1)
+        return unit;
+    if (Q_UNLIKELY(num < 1 || den < 1))
+        return QString::asprintf("<invalid time unit %lld/%lld>", num, den).toLatin1();
+
+    // uncommon units: will return something like "[2/3]s"
+    //  strlen("[/]min") = 6
+    char buf[2 * (std::numeric_limits<qint64>::digits10 + 2) + 10];
+    size_t len = 0;
+    auto appendChar = [&](char c) {
+        Q_ASSERT(len < sizeof(buf));
+        buf[len++] = c;
+    };
+    auto appendNumber = [&](qint64 value) {
+        if (value >= 10'000 && (value % 1000) == 0)
+            len += qsnprintf(buf + len, sizeof(buf) - len, "%.6g", double(value));  // "1e+06"
+        else
+            len += qsnprintf(buf + len, sizeof(buf) - len, "%lld", value);
+    };
+    appendChar('[');
+    appendNumber(num);
+    if (den != 1) {
+        appendChar('/');
+        appendNumber(den);
+    }
+    appendChar(']');
+    memcpy(buf + len, unit, strlen(unit));
+    return QByteArray(buf, len + strlen(unit));
+}
+
+/*!
+    \since 6.6
+    \internal
+    Helper to the std::chrono::duration debug streaming output.
+ */
+void QDebug::putTimeUnit(qint64 num, qint64 den)
+{
+    stream->ts << timeUnit(num, den); // ### optimize
 }
 
 /*!
@@ -764,6 +850,36 @@ QDebug &QDebug::resetFormat()
 */
 
 /*!
+    \since 6.5
+    \fn template <typename Char, typename...Args> QDebug &QDebug::operator<<(const std::basic_string<Char, Args...> &s)
+    \fn template <typename Char, typename...Args> QDebug &QDebug::operator<<(std::basic_string_view<Char, Args...> s)
+
+    Writes the string or string-view \a s to the stream and returns a reference
+    to the stream.
+
+    These operators only participate in overload resolution if \c Char is one of
+    \list
+    \li char
+    \li char8_t (C++20 only)
+    \li char16_t
+    \li char32_t
+    \li wchar_t
+    \endlist
+*/
+
+/*!
+    \since 6.6
+    \fn template <typename Rep, typename Period> QDebug &QDebug::operator<<(std::chrono::duration<Rep, Period> duration)
+
+    Prints the time duration \a duration to the stream and returns a reference
+    to the stream. The printed string is the numeric representation of the
+    period followed by the time unit, similar to what the C++ Standard Library
+    would produce with \c{std::ostream}.
+
+    The unit is not localized.
+*/
+
+/*!
     \fn template <class T> QString QDebug::toString(T &&object)
     \since 6.0
 
@@ -1010,7 +1126,6 @@ void qt_QMetaEnum_flagDebugOperator(QDebug &debug, size_t sizeofT, int value)
 
 #ifndef QT_NO_QOBJECT
 /*!
-    \fn QDebug qt_QMetaEnum_debugOperator(QDebug &, int value, const QMetaObject *, const char *name)
     \internal
 
     Formats the given enum \a value for debug output.
@@ -1057,7 +1172,7 @@ QDebug qt_QMetaEnum_debugOperator(QDebug &dbg, qint64 value, const QMetaObject *
             dbg << scope << u"::";
     }
 
-    const char *key = me.valueToKey(value);
+    const char *key = me.valueToKey(static_cast<int>(value));
     const bool scoped = me.isScoped() || verbosity & 1;
     if (scoped || !key)
         dbg << me.enumName() << (!key ? u"(" : u"::");
@@ -1126,7 +1241,7 @@ QDebug qt_QMetaEnum_flagDebugOperator(QDebug &debug, quint64 value, const QMetaO
         debug << '(';
     }
 
-    debug << me.valueToKeys(value);
+    debug << me.valueToKeys(static_cast<int>(value));
 
     if (enumScope)
         debug << ')';

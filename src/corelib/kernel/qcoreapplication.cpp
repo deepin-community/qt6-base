@@ -31,6 +31,7 @@
 #include <private/qthread_p.h>
 #if QT_CONFIG(thread)
 #include <qthreadpool.h>
+#include <private/qthreadpool_p.h>
 #endif
 #endif
 #include <qelapsedtimer.h>
@@ -41,6 +42,10 @@
 #include <private/qlocale_p.h>
 #include <private/qlocking_p.h>
 #include <private/qhooks_p.h>
+
+#if QT_CONFIG(permissions)
+#include <private/qpermissions_p.h>
+#endif
 
 #ifndef QT_NO_QOBJECT
 #if defined(Q_OS_UNIX)
@@ -62,7 +67,7 @@
 #include <QtCore/qjniobject.h>
 #endif
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
 #  include "qcore_mac_p.h"
 #endif
 
@@ -99,12 +104,26 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-#if defined(Q_OS_WIN) || defined(Q_OS_MAC)
+Q_TRACE_PREFIX(qtcore,
+   "#include <qcoreevent.h>"
+);
+Q_TRACE_METADATA(qtcore, "ENUM { AUTO, RANGE User ... MaxUser } QEvent::Type;");
+Q_TRACE_POINT(qtcore, QCoreApplication_postEvent_entry, QObject *receiver, QEvent *event, QEvent::Type type);
+Q_TRACE_POINT(qtcore, QCoreApplication_postEvent_exit);
+Q_TRACE_POINT(qtcore, QCoreApplication_postEvent_event_compressed, QObject *receiver, QEvent *event);
+Q_TRACE_POINT(qtcore, QCoreApplication_postEvent_event_posted, QObject *receiver, QEvent *event, QEvent::Type type);
+Q_TRACE_POINT(qtcore, QCoreApplication_sendEvent, QObject *receiver, QEvent *event, QEvent::Type type);
+Q_TRACE_POINT(qtcore, QCoreApplication_sendSpontaneousEvent, QObject *receiver, QEvent *event, QEvent::Type type);
+Q_TRACE_POINT(qtcore, QCoreApplication_notify_entry, QObject *receiver, QEvent *event, QEvent::Type type);
+Q_TRACE_POINT(qtcore, QCoreApplication_notify_exit, bool consumed, bool filtered);
+
+#if defined(Q_OS_WIN) || defined(Q_OS_DARWIN)
 extern QString qAppFileName();
 #endif
 
@@ -447,6 +466,8 @@ QCoreApplicationPrivate::~QCoreApplicationPrivate()
 #endif
 #if defined(Q_OS_WIN)
     delete [] origArgv;
+    if (consoleAllocated)
+        FreeConsole();
 #endif
     QCoreApplicationPrivate::clearApplicationFilePath();
 }
@@ -545,26 +566,82 @@ QString qAppName()
     return QCoreApplication::instance()->d_func()->appName();
 }
 
+void QCoreApplicationPrivate::initConsole()
+{
+#ifdef Q_OS_WINDOWS
+    const QString env = qEnvironmentVariable("QT_WIN_DEBUG_CONSOLE");
+    if (env.isEmpty())
+        return;
+    if (env.compare(u"new"_s, Qt::CaseInsensitive) == 0) {
+        if (AllocConsole() == FALSE)
+            return;
+        consoleAllocated = true;
+    } else if (env.compare(u"attach"_s, Qt::CaseInsensitive) == 0) {
+        if (AttachConsole(ATTACH_PARENT_PROCESS) == FALSE)
+            return;
+    } else {
+        // Unknown input, don't make any decision for the user.
+        return;
+    }
+    // The std{in,out,err} handles are read-only, so we need to pass in dummies.
+    FILE *in = nullptr;
+    FILE *out = nullptr;
+    FILE *err = nullptr;
+    freopen_s(&in, "CONIN$", "r", stdin);
+    freopen_s(&out, "CONOUT$", "w", stdout);
+    freopen_s(&err, "CONOUT$", "w", stderr);
+    // However, things wouldn't work if the runtime did not preserve the pointers.
+    Q_ASSERT(in == stdin);
+    Q_ASSERT(out == stdout);
+    Q_ASSERT(err == stderr);
+#endif
+}
+
 void QCoreApplicationPrivate::initLocale()
 {
-#if defined(Q_OS_UNIX) && !defined(QT_BOOTSTRAPPED)
+#if defined(QT_BOOTSTRAPPED)
+    // Don't try to control bootstrap library locale or encoding.
+#elif defined(Q_OS_UNIX)
     Q_CONSTINIT static bool qt_locale_initialized = false;
     if (qt_locale_initialized)
         return;
     qt_locale_initialized = true;
 
-#ifdef Q_OS_INTEGRITY
-    setlocale(LC_CTYPE, "UTF-8");
-#else
-    // Android's Bionic didn't get nl_langinfo until NDK 15 (Android 8.0),
-    // which is too new for Qt, so we just assume it's always UTF-8.
-    auto nl_langinfo = [](int) { return "UTF-8"; };
+    // By default the portable "C"/POSIX locale is selected and active.
+    // Apply the locale from the environment, via setlocale(), which will
+    // read LC_ALL, LC_<category>, and LANG, in order (for each category).
+    setlocale(LC_ALL, "");
 
-    const char *locale = setlocale(LC_ALL, "");
-    const char *codec = nl_langinfo(CODESET);
-    if (Q_UNLIKELY(strcmp(codec, "UTF-8") != 0 && strcmp(codec, "utf8") != 0)) {
-        QByteArray oldLocale = locale;
-        QByteArray newLocale = setlocale(LC_CTYPE, nullptr);
+    // Next, let's ensure that LC_CTYPE is UTF-8, since QStringConverter's
+    // QLocal8Bit hard-codes this, and we need to be consistent.
+#  if defined(Q_OS_INTEGRITY)
+    setlocale(LC_CTYPE, "UTF-8");
+#  elif defined(Q_OS_QNX)
+    // QNX has no nl_langinfo, so we can't check.
+    // FIXME: Shouldn't we still setlocale("UTF-8")?
+#  elif defined(Q_OS_ANDROID) && __ANDROID_API__ < __ANDROID_API_O__
+    // Android 6 still lacks nl_langinfo(), so we can't check.
+    // FIXME: Shouldn't we still setlocale("UTF-8")?
+#  else
+    // std::string's SSO usually saves this the need to allocate:
+    const std::string oldEncoding = nl_langinfo(CODESET);
+    if (!Q_LIKELY(qstricmp(oldEncoding.data(), "UTF-8") == 0
+                  || qstricmp(oldEncoding.data(), "utf8") == 0)) {
+        const QByteArray oldLocale = setlocale(LC_ALL, nullptr);
+        QByteArray newLocale;
+        bool warnOnOverride = true;
+#    if defined(Q_OS_DARWIN)
+        // Don't warn unless the char encoding has been changed from the
+        // default "C" encoding, or the user touched any of the locale
+        // environment variables to force the "C" char encoding.
+        warnOnOverride = qstrcmp(setlocale(LC_CTYPE, nullptr), "C") != 0
+            || getenv("LC_ALL") || getenv("LC_CTYPE") || getenv("LANG");
+
+        // No need to try language or region specific CTYPEs, as they
+        // all point back to the same generic UTF-8 CTYPE.
+        newLocale = setlocale(LC_CTYPE, "UTF-8");
+#    else
+        newLocale = setlocale(LC_CTYPE, nullptr);
         if (qsizetype dot = newLocale.indexOf('.'); dot != -1)
             newLocale.truncate(dot);    // remove encoding, if any
         if (qsizetype at = newLocale.indexOf('@'); at != -1)
@@ -572,23 +649,30 @@ void QCoreApplicationPrivate::initLocale()
         newLocale += ".UTF-8";
         newLocale = setlocale(LC_CTYPE, newLocale);
 
-        // if locale doesn't exist, try some fallbacks
-#  ifdef Q_OS_DARWIN
-        if (newLocale.isEmpty())
-            newLocale = setlocale(LC_CTYPE, "UTF-8");
-#  endif
+        // If that locale doesn't exist, try some fallbacks:
         if (newLocale.isEmpty())
             newLocale = setlocale(LC_CTYPE, "C.UTF-8");
         if (newLocale.isEmpty())
             newLocale = setlocale(LC_CTYPE, "C.utf8");
+#    endif
 
-        qWarning("Detected system locale encoding (%s, locale \"%s\") is not UTF-8.\n"
-                 "Qt shall use a UTF-8 locale (\"%s\") instead. If this causes problems,\n"
-                 "reconfigure your locale. See the locale(1) manual for more information.",
-                 codec, oldLocale.constData(), newLocale.constData());
+        if (newLocale.isEmpty()) {
+            // Failed to set a UTF-8 locale.
+            qWarning("Detected locale \"%s\" with character encoding \"%s\", which is not UTF-8.\n"
+                     "Qt depends on a UTF-8 locale, but has failed to switch to one.\n"
+                     "If this causes problems, reconfigure your locale. See the locale(1) manual\n"
+                     "for more information.", oldLocale.constData(), oldEncoding.data());
+        } else if (warnOnOverride) {
+            // Let the user know we over-rode their configuration.
+            qWarning("Detected locale \"%s\" with character encoding \"%s\", which is not UTF-8.\n"
+                     "Qt depends on a UTF-8 locale, and has switched to \"%s\" instead.\n"
+                     "If this causes problems, reconfigure your locale. See the locale(1) manual\n"
+                     "for more information.",
+                     oldLocale.constData(), oldEncoding.data(), newLocale.constData());
+        }
     }
-#endif
-#endif
+#  endif // Platform choice
+#endif // Unix
 }
 
 
@@ -730,7 +814,7 @@ QCoreApplication::QCoreApplication(int &argc, char **argv
   \value ApplicationFlags QT_VERSION
 */
 
-void QCoreApplicationPrivate::init()
+void Q_TRACE_INSTRUMENT(qtcore) QCoreApplicationPrivate::init()
 {
     Q_TRACE_SCOPE(QCoreApplicationPrivate_init);
 
@@ -739,6 +823,8 @@ void QCoreApplicationPrivate::init()
 #endif
 
     Q_Q(QCoreApplication);
+
+    initConsole();
 
     initLocale();
 
@@ -853,14 +939,20 @@ QCoreApplication::~QCoreApplication()
 #if QT_CONFIG(thread)
     // Synchronize and stop the global thread pool threads.
     QThreadPool *globalThreadPool = nullptr;
+    QThreadPool *guiThreadPool = nullptr;
     QT_TRY {
         globalThreadPool = QThreadPool::globalInstance();
+        guiThreadPool = QThreadPoolPrivate::qtGuiInstance();
     } QT_CATCH (...) {
         // swallow the exception, since destructors shouldn't throw
     }
     if (globalThreadPool) {
         globalThreadPool->waitForDone();
         delete globalThreadPool;
+    }
+    if (guiThreadPool) {
+        guiThreadPool->waitForDone();
+        delete guiThreadPool;
     }
 #endif
 
@@ -1363,9 +1455,6 @@ void QCoreApplicationPrivate::execCleanup()
 {
     threadData.loadRelaxed()->quitNow = false;
     in_exec = false;
-    if (!aboutToQuitEmitted)
-        emit q_func()->aboutToQuit(QCoreApplication::QPrivateSignal());
-    aboutToQuitEmitted = true;
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
@@ -1404,7 +1493,12 @@ void QCoreApplication::exit(int returnCode)
 {
     if (!self)
         return;
-    QThreadData *data = self->d_func()->threadData.loadRelaxed();
+    QCoreApplicationPrivate *d = self->d_func();
+    if (!d->aboutToQuitEmitted) {
+        emit self->aboutToQuit(QCoreApplication::QPrivateSignal());
+        d->aboutToQuitEmitted = true;
+    }
+    QThreadData *data = d->threadData.loadRelaxed();
     data->quitNow = true;
     for (qsizetype i = 0; i < data->eventLoops.size(); ++i) {
         QEventLoop *eventLoop = data->eventLoops.at(i);
@@ -2041,6 +2135,12 @@ void QCoreApplicationPrivate::quit()
   last-second cleanup. Note that no user interaction is possible in
   this state.
 
+  \note At this point the main event loop is still running, but will
+  not process further events on return except QEvent::DeferredDelete
+  events for objects deleted via deleteLater(). If event processing is
+  needed, use a nested event loop or call QCoreApplication::processEvents()
+  manually.
+
   \sa quit()
 */
 
@@ -2071,7 +2171,8 @@ void QCoreApplicationPrivate::quit()
 
     \note QCoreApplication does \e not take ownership of \a translationFile.
 
-    \sa removeTranslator(), translate(), QTranslator::load(), {Dynamic Translation}
+    \sa removeTranslator(), translate(), QTranslator::load(),
+        {Writing Source Code for Translation#Prepare for Dynamic Language Changes}{Prepare for Dynamic Language Changes}
 */
 
 bool QCoreApplication::installTranslator(QTranslator *translationFile)
@@ -2189,7 +2290,8 @@ static void replacePercentN(QString *result, int n)
     This function is not virtual. You can use alternative translation
     techniques by subclassing \l QTranslator.
 
-    \sa QObject::tr(), installTranslator(), removeTranslator(), translate()
+    \sa QObject::tr(), installTranslator(), removeTranslator(),
+        {Internationalization and Translations}
 */
 QString QCoreApplication::translate(const char *context, const char *sourceText,
                                     const char *disambiguation, int n)
@@ -2350,7 +2452,7 @@ QString QCoreApplication::applicationFilePath()
         if (procName != d->argv[0]) {
             // clear the cache if the procname changes, so we reprocess it.
             QCoreApplicationPrivate::clearApplicationFilePath();
-            procName = QByteArray(d->argv[0]);
+            procName.assign(d->argv[0]);
         }
     }
 
@@ -2494,7 +2596,7 @@ QStringList QCoreApplication::arguments()
     \brief the name of the organization that wrote this application
 
     The value is used by the QSettings class when it is constructed
-    using the empty constructor. This saves having to repeat this
+    using the default constructor. This saves having to repeat this
     information each time a QSettings object is created.
 
     On Mac, QSettings uses \l {QCoreApplication::}{organizationDomain()} as the organization
@@ -2534,7 +2636,7 @@ QString QCoreApplication::organizationName()
     \brief the Internet domain of the organization that wrote this application
 
     The value is used by the QSettings class when it is constructed
-    using the empty constructor. This saves having to repeat this
+    using the default constructor. This saves having to repeat this
     information each time a QSettings object is created.
 
     On Mac, QSettings uses organizationDomain() as the organization
@@ -2570,11 +2672,15 @@ QString QCoreApplication::organizationDomain()
     \property QCoreApplication::applicationName
     \brief the name of this application
 
-    The value is used by the QSettings class when it is constructed
-    using the empty constructor. This saves having to repeat this
-    information each time a QSettings object is created.
+    The application name is used in various Qt classes and modules,
+    most prominently in \l{QSettings} when it is constructed using the default constructor.
+    Other uses are in formatted logging output (see \l{qSetMessagePattern()}),
+    in output by \l{QCommandLineParser}, in \l{QTemporaryDir} and \l{QTemporaryFile}
+    default paths, and in some file locations of \l{QStandardPaths}.
+    \l{Qt D-Bus}, \l{Accessibility}, and the XCB platform integration make use
+    of the application name, too.
 
-    If not set, the application name defaults to the executable name (since 5.0).
+    If not set, the application name defaults to the executable name.
 
     \sa organizationName, organizationDomain, applicationVersion, applicationFilePath()
 */
@@ -2656,6 +2762,175 @@ QString QCoreApplication::applicationVersion()
 {
     return coreappdata() ? coreappdata()->applicationVersion : QString();
 }
+
+#if QT_CONFIG(permissions) || defined(Q_QDOC)
+
+/*!
+    Checks the status of the given \a permission
+
+    If the result is Qt::PermissionStatus::Undetermined then permission should be
+    requested via requestPermission() to determine the user's intent.
+
+    \since 6.5
+    \sa requestPermission(), {Application Permissions}
+*/
+Qt::PermissionStatus QCoreApplication::checkPermission(const QPermission &permission)
+{
+    return QPermissions::Private::checkPermission(permission);
+}
+
+/*!
+    \fn template<typename Functor> void QCoreApplication::requestPermission(
+        const QPermission &permission, Functor &&functor)
+
+    Requests the given \a permission.
+
+    \include permissions.qdocinc requestPermission-functor
+
+    The \a functor can be a free-standing or static member function:
+
+    \code
+    qApp->requestPermission(QCameraPermission{}, &permissionUpdated);
+    \endcode
+
+    or a lambda:
+
+    \code
+    qApp->requestPermission(QCameraPermission{}, [](const QPermission &permission) {
+    });
+    \endcode
+
+    \include permissions.qdocinc requestPermission-postamble
+
+    \since 6.5
+    \sa checkPermission(), {Application Permissions}
+*/
+
+/*!
+    \fn template<typename Functor> void QCoreApplication::requestPermission(
+        const QPermission &permission, const QObject *context,
+        Functor functor)
+
+    Requests the given \a permission, in the context of \a context.
+
+    \include permissions.qdocinc requestPermission-functor
+
+    The \a functor can be a free-standing or static member function:
+
+    \code
+    qApp->requestPermission(QCameraPermission{}, context, &permissionUpdated);
+    \endcode
+
+    a lambda:
+
+    \code
+    qApp->requestPermission(QCameraPermission{}, context, [](const QPermission &permission) {
+    });
+    \endcode
+
+    or a slot in the \a context object:
+
+    \code
+    qApp->requestPermission(QCameraPermission{}, this, &CamerWidget::permissionUpdated);
+    \endcode
+
+    The \a functor will be called in the thread of the \a context object. If
+    \a context is destroyed before the request completes, the \a functor will
+    not be called.
+
+    \include permissions.qdocinc requestPermission-postamble
+
+    \since 6.5
+    \overload
+    \sa checkPermission(), {Application Permissions}
+*/
+
+/*!
+    \internal
+
+    Called by the various requestPermission overloads to perform the request.
+
+    Calls the functor encapsulated in the \a slotObjRaw in the given \a context
+    (which may be \c nullptr).
+*/
+void QCoreApplication::requestPermission(const QPermission &requestedPermission,
+    QtPrivate::QSlotObjectBase *slotObjRaw, const QObject *context)
+{
+    QtPrivate::SlotObjSharedPtr slotObj(QtPrivate::SlotObjUniquePtr{slotObjRaw}); // adopts
+    if (QThread::currentThread() != QCoreApplicationPrivate::mainThread()) {
+        qWarning(lcPermissions, "Permissions can only be requested from the GUI (main) thread");
+        return;
+    }
+
+    Q_ASSERT(slotObj);
+
+    // Used as the signalID in the metacall event and only used to
+    // verify that we are not processing an unrelated event, not to
+    // emit the right signal. So using a value that can never clash
+    // with any signal index. Clang doesn't like this to be a static
+    // member of the PermissionReceiver.
+    static constexpr ushort PermissionReceivedID = 0xffff;
+
+    // If we have a context object, then we dispatch the permission response
+    // asynchronously through a received object that lives in the same thread
+    // as the context object. Otherwise we call the functor synchronously when
+    // we get a response (which might still be asynchronous for the caller).
+    class PermissionReceiver : public QObject
+    {
+    public:
+        explicit PermissionReceiver(const QtPrivate::SlotObjSharedPtr &slotObject, const QObject *context)
+            : slotObject(slotObject), context(context)
+        {}
+
+    protected:
+        bool event(QEvent *event) override {
+            if (event->type() == QEvent::MetaCall) {
+                auto metaCallEvent = static_cast<QMetaCallEvent *>(event);
+                if (metaCallEvent->id() == PermissionReceivedID) {
+                    Q_ASSERT(slotObject);
+                    // only execute if context object is still alive
+                    if (context)
+                        slotObject->call(const_cast<QObject*>(context.data()), metaCallEvent->args());
+                    deleteLater();
+
+                    return true;
+                }
+            }
+            return QObject::event(event);
+        }
+    private:
+        QtPrivate::SlotObjSharedPtr slotObject;
+        QPointer<const QObject> context;
+    };
+    PermissionReceiver *receiver = nullptr;
+    if (context) {
+        receiver = new PermissionReceiver(slotObj, context);
+        receiver->moveToThread(context->thread());
+    }
+
+    QPermissions::Private::requestPermission(requestedPermission, [=](Qt::PermissionStatus status) {
+        Q_ASSERT_X(status != Qt::PermissionStatus::Undetermined, "QPermission",
+            "QCoreApplication::requestPermission() should never return Undetermined");
+        if (status == Qt::PermissionStatus::Undetermined)
+            status = Qt::PermissionStatus::Denied;
+
+        if (QCoreApplication::self) {
+            QPermission permission = requestedPermission;
+            permission.m_status = status;
+
+            if (receiver) {
+                auto metaCallEvent = QMetaCallEvent::create(slotObj.get(), qApp,
+                                                            PermissionReceivedID, permission);
+                qApp->postEvent(receiver, metaCallEvent);
+            } else {
+                void *argv[] = { nullptr, &permission };
+                slotObj->call(const_cast<QObject*>(context), argv);
+            }
+        }
+    });
+}
+
+#endif // QT_CONFIG(permissions)
 
 #if QT_CONFIG(library)
 

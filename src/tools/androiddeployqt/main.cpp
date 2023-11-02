@@ -70,10 +70,18 @@ struct QtDependency
 
 struct QtInstallDirectoryWithTriple
 {
-    QtInstallDirectoryWithTriple(const QString &dir = QString(), const QString &t = QString()) :
-        qtInstallDirectory(dir), triple(t), enabled(false) {}
+    QtInstallDirectoryWithTriple(const QString &dir = QString(),
+                                 const QString &t = QString(),
+                                 const QHash<QString, QString> &dirs = QHash<QString, QString>()
+                                ) :
+        qtInstallDirectory(dir),
+        qtDirectories(dirs),
+        triple(t),
+        enabled(false)
+        {}
 
     QString qtInstallDirectory;
+    QHash<QString, QString> qtDirectories;
     QString triple;
     bool enabled;
 };
@@ -128,6 +136,12 @@ struct Options
 
     // Build paths
     QString qtInstallDirectory;
+    QHash<QString, QString> qtDirectories;
+    QString qtDataDirectory;
+    QString qtLibsDirectory;
+    QString qtLibExecsDirectory;
+    QString qtPluginsDirectory;
+    QString qtQmlDirectory;
     QString qtHostDirectory;
     std::vector<QString> extraPrefixDirs;
     // Unlike 'extraPrefixDirs', the 'extraLibraryDirs' key doesn't expect the 'lib' subfolder
@@ -149,7 +163,7 @@ struct Options
     QString versionName;
     QString versionCode;
     QByteArray minSdkVersion{"23"};
-    QByteArray targetSdkVersion{"30"};
+    QByteArray targetSdkVersion{"31"};
 
     // lib c++ path
     QString stdCppPath;
@@ -198,10 +212,17 @@ struct Options
     QString installLocation;
 
     // Per architecture collected information
-    void setCurrentQtArchitecture(const QString &arch, const QString &directory)
+    void setCurrentQtArchitecture(const QString &arch,
+                                  const QString &directory,
+                                  const QHash<QString, QString> &directories)
     {
         currentArchitecture = arch;
         qtInstallDirectory = directory;
+        qtDataDirectory = directories["qtDataDirectory"_L1];
+        qtLibsDirectory = directories["qtLibsDirectory"_L1];
+        qtLibExecsDirectory = directories["qtLibExecsDirectory"_L1];
+        qtPluginsDirectory = directories["qtPluginsDirectory"_L1];
+        qtQmlDirectory = directories["qtQmlDirectory"_L1];
     }
     typedef QPair<QString, QString> BundledFile;
     QHash<QString, QList<BundledFile>> bundledFiles;
@@ -225,6 +246,12 @@ static const QHash<QByteArray, QByteArray> elfArchitectures = {
     {"i386", "x86"},
     {"x86_64", "x86_64"}
 };
+
+bool goodToCopy(const Options *options, const QString &file, QStringList *unmetDependencies);
+bool checkCanImportFromRootPaths(const Options *options, const QString &absolutePath,
+                                 const QString &moduleUrl);
+bool readDependenciesFromElf(Options *options, const QString &fileName,
+                             QSet<QString> *usedDependencies, QSet<QString> *remainingDependencies);
 
 QString architectureFromName(const QString &name)
 {
@@ -291,7 +318,6 @@ QString fileArchitecture(const Options &options, const QString &path)
     char buffer[512];
     while (fgets(buffer, sizeof(buffer), readElfCommand) != nullptr) {
         QByteArray line = QByteArray::fromRawData(buffer, qstrlen(buffer));
-        QString library;
         line = line.trimmed();
         if (line.startsWith("Arch: ")) {
             auto it = elfArchitectures.find(line.mid(6));
@@ -320,7 +346,7 @@ void deleteMissingFiles(const Options &options, const QDir &srcDir, const QDir &
         for (const QFileInfo &src : srcEntries)
             if (dst.fileName() == src.fileName()) {
                 if (dst.isDir())
-                    deleteMissingFiles(options, src.absoluteDir(), dst.absoluteDir());
+                    deleteMissingFiles(options, src.absoluteFilePath(), dst.absoluteFilePath());
                 found = true;
                 break;
             }
@@ -423,18 +449,22 @@ Options parseOptions()
                 const QString storeAlias = qEnvironmentVariable("QT_ANDROID_KEYSTORE_ALIAS");
                 if (keyStore.isEmpty() || storeAlias.isEmpty()) {
                     options.helpRequested = true;
+                    fprintf(stderr, "Package signing path and alias values are not specified.\n");
                 } else {
                     fprintf(stdout,
                             "Using package signing path and alias values found from the "
                             "environment variables.\n");
-                    options.releasePackage = true;
                     options.keyStore = keyStore;
                     options.keyStoreAlias = storeAlias;
                 }
-            } else {
-                options.releasePackage = true;
+            } else if (!arguments.at(i + 1).startsWith("--"_L1) &&
+                       !arguments.at(i + 2).startsWith("--"_L1)) {
                 options.keyStore = arguments.at(++i);
                 options.keyStoreAlias = arguments.at(++i);
+            } else {
+                options.helpRequested = true;
+                fprintf(stderr, "Package signing path and alias values are not "
+                                "specified.\n");
             }
 
             // Do not override if the passwords are provided through arguments
@@ -529,113 +559,112 @@ Options parseOptions()
 
 void printHelp()
 {
-    fprintf(stderr, "Syntax: %s --output <destination> [options]\n"
-                    "\n"
-                    "  Creates an Android package in the build directory <destination> and\n"
-                    "  builds it into an .apk file.\n"
-                    "\n"
-                    "  Optional arguments:\n"
-                    "    --input <inputfile>: Reads <inputfile> for options generated by\n"
-                    "       qmake. A default file name based on the current working\n"
-                    "       directory will be used if nothing else is specified.\n"
-                    "\n"
-                    "    --deployment <mechanism>: Supported deployment mechanisms:\n"
-                    "       bundled (default): Includes Qt files in stand-alone package.\n"
-                    "       unbundled: Assumes native libraries are present on the device\n"
-                    "       and does not include them in the APK.\n"
-                    "\n"
-                    "    --aab: Build an Android App Bundle.\n"
-                    "\n"
-                    "    --no-build: Do not build the package, it is useful to just install\n"
-                    "       a package previously built.\n"
-                    "\n"
-                    "    --install: Installs apk to device/emulator. By default this step is\n"
-                    "       not taken. If the application has previously been installed on\n"
-                    "       the device, it will be uninstalled first.\n"
-                    "\n"
-                    "    --reinstall: Installs apk to device/emulator. By default this step\n"
-                    "       is not taken. If the application has previously been installed on\n"
-                    "       the device, it will be overwritten, but its data will be left\n"
-                    "       intact.\n"
-                    "\n"
-                    "    --device [device ID]: Use specified device for deployment. Default\n"
-                    "       is the device selected by default by adb.\n"
-                    "\n"
-                    "    --android-platform <platform>: Builds against the given android\n"
-                    "       platform. By default, the highest available version will be\n"
-                    "       used.\n"
-                    "\n"
-                    "    --release: Builds a package ready for release. By default, the\n"
-                    "       package will be signed with a debug key.\n"
-                    "\n"
-                    "    --sign <url/to/keystore> <alias>: Signs the package with the\n"
-                    "       specified keystore, alias and store password. Also implies the\n"
-                    "       --release option.\n"
-                    "       Optional arguments for use with signing:\n"
-                    "         --storepass <password>: Keystore password.\n"
-                    "         --storetype <type>: Keystore type.\n"
-                    "         --keypass <password>: Password for private key (if different\n"
-                    "           from keystore password.)\n"
-                    "         --sigfile <file>: Name of .SF/.DSA file.\n"
-                    "         --digestalg <name>: Name of digest algorithm. Default is\n"
-                    "           \"SHA1\".\n"
-                    "         --sigalg <name>: Name of signature algorithm. Default is\n"
-                    "           \"SHA1withRSA\".\n"
-                    "         --tsa <url>: Location of the Time Stamping Authority.\n"
-                    "         --tsacert <alias>: Public key certificate for TSA.\n"
-                    "         --internalsf: Include the .SF file inside the signature block.\n"
-                    "         --sectionsonly: Don't compute hash of entire manifest.\n"
-                    "         --protected: Keystore has protected authentication path.\n"
-                    "         --jarsigner: Deprecated, ignored.\n"
-                    "\n"
-                    "       NOTE: To conceal the keystore information, the environment variables\n"
-                    "         QT_ANDROID_KEYSTORE_PATH, and QT_ANDROID_KEYSTORE_ALIAS are used to\n"
-                    "         set the values keysotore and alias respectively.\n"
-                    "         Also the environment variables QT_ANDROID_KEYSTORE_STORE_PASS,\n"
-                    "         and QT_ANDROID_KEYSTORE_KEY_PASS are used to set the store and key\n"
-                    "         passwords respectively. This option needs only the --sign parameter.\n"
-                    "\n"
-                    "    --jdk <path/to/jdk>: Used to find the jarsigner tool when used\n"
-                    "       in combination with the --release argument. By default,\n"
-                    "       an attempt is made to detect the tool using the JAVA_HOME and\n"
-                    "       PATH environment variables, in that order.\n"
-                    "\n"
-                    "    --qml-import-paths: Specify additional search paths for QML\n"
-                    "       imports.\n"
-                    "\n"
-                    "    --verbose: Prints out information during processing.\n"
-                    "\n"
-                    "    --no-generated-assets-cache: Do not pregenerate the entry list for\n"
-                    "       the assets file engine.\n"
-                    "\n"
-                    "    --aux-mode: Operate in auxiliary mode. This will only copy the\n"
-                    "       dependencies into the build directory and update the XML templates.\n"
-                    "       The project will not be built or installed.\n"
-                    "\n"
-                    "    --apk <path/where/to/copy/the/apk>: Path where to copy the built apk.\n"
-                    "\n"
-                    "    --qml-importscanner-binary <path/to/qmlimportscanner>: Override the\n"
-                    "       default qmlimportscanner binary path. By default the\n"
-                    "       qmlimportscanner binary is located using the Qt directory\n"
-                    "       specified in the input file.\n"
-                    "\n"
-                    "    --depfile <path/to/depfile>: Output a dependency file.\n"
-                    "\n"
-                    "    --builddir <path/to/build/directory>: build directory. Necessary when\n"
-                    "       generating a depfile because ninja requires relative paths.\n"
-                    "\n"
-                    "    --no-rcc-bundle-cleanup: skip cleaning rcc bundle directory after\n"
-                    "       running androiddeployqt. This option simplifies debugging of\n"
-                    "       the resource bundle content, but it should not be used when deploying\n"
-                    "       a project, since it litters the 'assets' directory.\n"
-                    "\n"
-                    "    --copy-dependencies-only: resolve application dependencies and stop\n"
-                    "       deploying process after all libraries and resources that the\n"
-                    "       application depends on have been copied.\n"
-                    "\n"
-                    "    --help: Displays this information.\n",
-                    qPrintable(QCoreApplication::arguments().at(0))
-            );
+    fprintf(stderr, R"(
+Syntax: androiddeployqt --output <destination> [options]
+
+Creates an Android package in the build directory <destination> and
+builds it into an .apk file.
+
+Optional arguments:
+    --input <inputfile>: Reads <inputfile> for options generated by
+       qmake. A default file name based on the current working
+       directory will be used if nothing else is specified.
+
+    --deployment <mechanism>: Supported deployment mechanisms:
+       bundled (default): Includes Qt files in stand-alone package.
+       unbundled: Assumes native libraries are present on the device
+       and does not include them in the APK.
+
+    --aab: Build an Android App Bundle.
+
+    --no-build: Do not build the package, it is useful to just install
+       a package previously built.
+
+    --install: Installs apk to device/emulator. By default this step is
+       not taken. If the application has previously been installed on
+       the device, it will be uninstalled first.
+
+    --reinstall: Installs apk to device/emulator. By default this step
+       is not taken. If the application has previously been installed on
+       the device, it will be overwritten, but its data will be left
+       intact.
+
+    --device [device ID]: Use specified device for deployment. Default
+       is the device selected by default by adb.
+
+    --android-platform <platform>: Builds against the given android
+       platform. By default, the highest available version will be
+       used.
+
+    --release: Builds a package ready for release. By default, the
+       package will be signed with a debug key.
+
+    --sign <url/to/keystore> <alias>: Signs the package with the
+       specified keystore, alias and store password.
+       Optional arguments for use with signing:
+         --storepass <password>: Keystore password.
+         --storetype <type>: Keystore type.
+         --keypass <password>: Password for private key (if different
+           from keystore password.)
+         --sigfile <file>: Name of .SF/.DSA file.
+         --digestalg <name>: Name of digest algorithm. Default is
+           "SHA1".
+         --sigalg <name>: Name of signature algorithm. Default is
+           "SHA1withRSA".
+         --tsa <url>: Location of the Time Stamping Authority.
+         --tsacert <alias>: Public key certificate for TSA.
+         --internalsf: Include the .SF file inside the signature block.
+         --sectionsonly: Don't compute hash of entire manifest.
+         --protected: Keystore has protected authentication path.
+         --jarsigner: Deprecated, ignored.
+
+       NOTE: To conceal the keystore information, the environment variables
+         QT_ANDROID_KEYSTORE_PATH, and QT_ANDROID_KEYSTORE_ALIAS are used to
+         set the values keysotore and alias respectively.
+         Also the environment variables QT_ANDROID_KEYSTORE_STORE_PASS,
+         and QT_ANDROID_KEYSTORE_KEY_PASS are used to set the store and key
+         passwords respectively. This option needs only the --sign parameter.
+
+    --jdk <path/to/jdk>: Used to find the jarsigner tool when used
+       in combination with the --release argument. By default,
+       an attempt is made to detect the tool using the JAVA_HOME and
+       PATH environment variables, in that order.
+
+    --qml-import-paths: Specify additional search paths for QML
+       imports.
+
+    --verbose: Prints out information during processing.
+
+    --no-generated-assets-cache: Do not pregenerate the entry list for
+       the assets file engine.
+
+    --aux-mode: Operate in auxiliary mode. This will only copy the
+       dependencies into the build directory and update the XML templates.
+       The project will not be built or installed.
+
+    --apk <path/where/to/copy/the/apk>: Path where to copy the built apk.
+
+    --qml-importscanner-binary <path/to/qmlimportscanner>: Override the
+       default qmlimportscanner binary path. By default the
+       qmlimportscanner binary is located using the Qt directory
+       specified in the input file.
+
+    --depfile <path/to/depfile>: Output a dependency file.
+
+    --builddir <path/to/build/directory>: build directory. Necessary when
+       generating a depfile because ninja requires relative paths.
+
+    --no-rcc-bundle-cleanup: skip cleaning rcc bundle directory after
+       running androiddeployqt. This option simplifies debugging of
+       the resource bundle content, but it should not be used when deploying
+       a project, since it litters the 'assets' directory.
+
+    --copy-dependencies-only: resolve application dependencies and stop
+       deploying process after all libraries and resources that the
+       application depends on have been copied.
+
+    --help: Displays this information.
+)");
 }
 
 // Since strings compared will all start with the same letters,
@@ -807,6 +836,66 @@ bool parseCmakeBoolean(const QJsonValue &value)
                  || stringValue.toInt() > 0);
 }
 
+bool readInputFileDirectory(Options *options, QJsonObject &jsonObject, const QString keyName)
+{
+    const QJsonValue qtDirectory = jsonObject.value(keyName);
+    if (qtDirectory.isUndefined()) {
+        for (auto it = options->architectures.constBegin(); it != options->architectures.constEnd(); ++it) {
+            if (keyName == "qtDataDirectory"_L1) {
+                    options->architectures[it.key()].qtDirectories[keyName] = "."_L1;
+                    break;
+            } else if (keyName == "qtLibsDirectory"_L1) {
+                    options->architectures[it.key()].qtDirectories[keyName] = "lib"_L1;
+                    break;
+            } else if (keyName == "qtLibExecsDirectory"_L1) {
+                    options->architectures[it.key()].qtDirectories[keyName] = defaultLibexecDir();
+                    break;
+            } else if (keyName == "qtPluginsDirectory"_L1) {
+                    options->architectures[it.key()].qtDirectories[keyName] = "plugins"_L1;
+                    break;
+            } else if (keyName == "qtQmlDirectory"_L1) {
+                    options->architectures[it.key()].qtDirectories[keyName] = "qml"_L1;
+                    break;
+            }
+        }
+        return true;
+    }
+
+    if (qtDirectory.isObject()) {
+        const QJsonObject object = qtDirectory.toObject();
+        for (auto it = object.constBegin(); it != object.constEnd(); ++it) {
+            if (it.value().isUndefined()) {
+                    fprintf(stderr,
+                            "Invalid '%s' record in deployment settings: %s\n",
+                            qPrintable(keyName),
+                            qPrintable(it.value().toString()));
+                    return false;
+            }
+            if (it.value().isNull())
+                continue;
+            if (!options->architectures.contains(it.key())) {
+                fprintf(stderr, "Architecture %s unknown (%s).", qPrintable(it.key()),
+                        qPrintable(options->architectures.keys().join(u',')));
+                return false;
+            }
+            options->architectures[it.key()].qtDirectories[keyName] = it.value().toString();
+        }
+    } else if (qtDirectory.isString()) {
+        // Format for Qt < 6 or when using the tool with Qt >= 6 but in single arch.
+        // We assume Qt > 5.14 where all architectures are in the same directory.
+        const QString directory = qtDirectory.toString();
+        options->architectures["arm64-v8a"_L1].qtDirectories[keyName] = directory;
+        options->architectures["armeabi-v7a"_L1].qtDirectories[keyName] = directory;
+        options->architectures["x86"_L1].qtDirectories[keyName] = directory;
+        options->architectures["x86_64"_L1].qtDirectories[keyName] = directory;
+    } else {
+        fprintf(stderr, "Invalid format for %s in json file %s.\n",
+                qPrintable(keyName), qPrintable(options->inputFileName));
+        return false;
+    }
+    return true;
+}
+
 bool readInputFile(Options *options)
 {
     QFile file(options->inputFileName);
@@ -863,7 +952,8 @@ bool readInputFile(Options *options)
             const QJsonObject object = qtInstallDirectory.toObject();
             for (auto it = object.constBegin(); it != object.constEnd(); ++it) {
                 if (it.value().isUndefined()) {
-                    fprintf(stderr, "Invalid architecture: %s\n",
+                    fprintf(stderr,
+                            "Invalid 'qt' record in deployment settings: %s\n",
                             qPrintable(it.value().toString()));
                     return false;
                 }
@@ -891,6 +981,14 @@ bool readInputFile(Options *options)
             return false;
         }
     }
+
+    if (!readInputFileDirectory(options, jsonObject, "qtDataDirectory"_L1) ||
+        !readInputFileDirectory(options, jsonObject, "qtLibsDirectory"_L1) ||
+        !readInputFileDirectory(options, jsonObject, "qtLibExecsDirectory"_L1) ||
+        !readInputFileDirectory(options, jsonObject, "qtPluginsDirectory"_L1) ||
+        !readInputFileDirectory(options, jsonObject, "qtQmlDirectory"_L1))
+        return false;
+
     {
         const QJsonValue qtHostDirectory = jsonObject.value("qtHostDir"_L1);
         if (!qtHostDirectory.isUndefined()) {
@@ -1142,12 +1240,24 @@ bool readInputFile(Options *options)
                         }
                     }
                 } else {
-                    auto arch = fileArchitecture(*options, path);
-                    if (!arch.isEmpty()) {
-                        options->qtDependencies[arch].append(QtDependency(dependency.toString(), path));
-                    } else if (options->verbose) {
-                        fprintf(stderr, "Skipping \"%s\", unknown architecture\n", qPrintable(path));
-                        fflush(stderr);
+                    auto qtDependency = [options](const QStringView &dependency,
+                                                  const QString &arch) {
+                        const auto installDir = options->architectures[arch].qtInstallDirectory;
+                        const auto absolutePath = "%1/%2"_L1.arg(installDir, dependency.toString());
+                        return QtDependency(dependency.toString(), absolutePath);
+                    };
+
+                    if (dependency.endsWith(QLatin1String(".so"))) {
+                        auto arch = fileArchitecture(*options, path);
+                        if (!arch.isEmpty()) {
+                            options->qtDependencies[arch].append(qtDependency(dependency, arch));
+                        } else if (options->verbose) {
+                            fprintf(stderr, "Skipping \"%s\", unknown architecture\n", qPrintable(path));
+                            fflush(stderr);
+                        }
+                    } else {
+                        for (auto arch : options->architectures.keys())
+                            options->qtDependencies[arch].append(qtDependency(dependency, arch));
                     }
                 }
             }
@@ -1203,7 +1313,7 @@ void cleanTopFolders(const Options &options, const QDir &srcDir, const QString &
     const auto dirs = srcDir.entryInfoList(QDir::NoDotAndDotDot | QDir::Dirs);
     for (const QFileInfo &dir : dirs) {
         if (dir.fileName() != "libs"_L1)
-            deleteMissingFiles(options, dir.absoluteDir(), QDir(dstDir + dir.fileName()));
+            deleteMissingFiles(options, dir.absoluteFilePath(), QDir(dstDir + dir.fileName()));
     }
 }
 
@@ -1212,13 +1322,15 @@ void cleanAndroidFiles(const Options &options)
     if (!options.androidSourceDirectory.isEmpty())
         cleanTopFolders(options, QDir(options.androidSourceDirectory), options.outputDirectory);
 
-    cleanTopFolders(options, QDir(options.qtInstallDirectory + "/src/android/templates"_L1),
+    cleanTopFolders(options,
+                    QDir(options.qtInstallDirectory + u'/' +
+                         options.qtDataDirectory + "/src/android/templates"_L1),
                     options.outputDirectory);
 }
 
 bool copyAndroidTemplate(const Options &options, const QString &androidTemplate, const QString &outDirPrefix = QString())
 {
-    QDir sourceDirectory(options.qtInstallDirectory + androidTemplate);
+    QDir sourceDirectory(options.qtInstallDirectory + u'/' + options.qtDataDirectory + androidTemplate);
     if (!sourceDirectory.exists()) {
         fprintf(stderr, "Cannot find template directory %s\n", qPrintable(sourceDirectory.absolutePath()));
         return false;
@@ -1236,7 +1348,8 @@ bool copyAndroidTemplate(const Options &options, const QString &androidTemplate,
 
 bool copyGradleTemplate(const Options &options)
 {
-    QDir sourceDirectory(options.qtInstallDirectory + "/src/3rdparty/gradle"_L1);
+    QDir sourceDirectory(options.qtInstallDirectory + u'/' +
+                         options.qtDataDirectory + "/src/3rdparty/gradle"_L1);
     if (!sourceDirectory.exists()) {
         fprintf(stderr, "Cannot find template directory %s\n", qPrintable(sourceDirectory.absolutePath()));
         return false;
@@ -1361,7 +1474,8 @@ bool copyAndroidExtraResources(Options *options)
         }
 
         QDir resourceDir(extraResource);
-        QString assetsDir = options->outputDirectory + "/assets/"_L1 + resourceDir.dirName() + u'/';
+        QString assetsDir = options->outputDirectory + "/assets/"_L1 +
+                            resourceDir.dirName() + u'/';
         QString libsDir = options->outputDirectory + "/libs/"_L1 + options->currentArchitecture + u'/';
 
         const QStringList files = allFilesInside(resourceDir, resourceDir);
@@ -1448,7 +1562,6 @@ bool updateLibsXml(Options *options)
     for (auto it = options->architectures.constBegin(); it != options->architectures.constEnd(); ++it) {
         if (!it->enabled)
             continue;
-        QString libsPath = "libs/"_L1 + it.key() + u'/';
 
         qtLibs += "        <item>%1;%2</item>\n"_L1.arg(it.key(), options->stdCppName);
         for (const Options::BundledFile &bundledFile : options->bundledFiles[it.key()]) {
@@ -1490,27 +1603,21 @@ bool updateLibsXml(Options *options)
         if (localLibs.isEmpty()) {
             QString plugin;
             for (const QtDependency &qtDependency : options->qtDependencies[it.key()]) {
-                if (qtDependency.relativePath.endsWith("libqtforandroid.so"_L1)
-                        || qtDependency.relativePath.endsWith("libqtforandroidGL.so"_L1)) {
-                    if (!plugin.isEmpty() && plugin != qtDependency.relativePath) {
-                        fprintf(stderr, "Both platform plugins libqtforandroid.so and libqtforandroidGL.so included in package. Please include only one.\n");
-                        return false;
-                    }
-
+                if (qtDependency.relativePath.contains("libplugins_platforms_qtforandroid_"_L1))
                     plugin = qtDependency.relativePath;
-                }
+
                 if (qtDependency.relativePath.contains(
                             QString::asprintf("libQt%dOpenGL", QT_VERSION_MAJOR))
                     || qtDependency.relativePath.contains(
                             QString::asprintf("libQt%dQuick", QT_VERSION_MAJOR))) {
                     options->usesOpenGL |= true;
-                    break;
                 }
             }
 
             if (plugin.isEmpty()) {
                 fflush(stdout);
-                fprintf(stderr, "No platform plugin, neither libqtforandroid.so or libqtforandroidGL.so, included in package. Please include one.\n");
+                fprintf(stderr, "No platform plugin (libplugins_platforms_qtforandroid.so) included"
+                                " in the deployment. Make sure the app links to Qt Gui library.\n");
                 fflush(stderr);
                 return false;
             }
@@ -1699,6 +1806,21 @@ static QString absoluteFilePath(const Options *options, const QString &relativeF
         if (QFile::exists(path))
             return path;
     }
+
+    if (relativeFileName.endsWith("-android-dependencies.xml"_L1)) {
+        return options->qtInstallDirectory + u'/' + options->qtLibsDirectory +
+               u'/' + relativeFileName;
+    }
+
+    if (relativeFileName.startsWith("jar/"_L1)) {
+        return options->qtInstallDirectory + u'/' + options->qtDataDirectory +
+               u'/' + relativeFileName;
+    }
+
+    if (relativeFileName.startsWith("lib/"_L1)) {
+        return options->qtInstallDirectory + u'/' + options->qtLibsDirectory +
+               u'/' + relativeFileName.mid(sizeof("lib/") - 1);
+    }
     return options->qtInstallDirectory + u'/' + relativeFileName;
 }
 
@@ -1727,13 +1849,31 @@ QList<QtDependency> findFilesRecursively(const Options &options, const QFileInfo
 
 QList<QtDependency> findFilesRecursively(const Options &options, const QString &fileName)
 {
+    // We try to find the fileName in extraPrefixDirs first. The function behaves differently
+    // depending on what the fileName points to. If fileName is a file then we try to find the
+    // first occurrence in extraPrefixDirs and return this file. If fileName is directory function
+    // iterates over it and looks for deployment artifacts in each 'extraPrefixDirs' entry.
+    // Also we assume that if the fileName is recognized as a directory once it will be directory
+    // for every 'extraPrefixDirs' entry.
+    QList<QtDependency> deps;
     for (const auto &prefix : options.extraPrefixDirs) {
         QFileInfo info(prefix + u'/' + fileName);
-        if (info.exists())
-            return findFilesRecursively(options, info, prefix + u'/');
+        if (info.exists()) {
+            if (info.isDir())
+                deps.append(findFilesRecursively(options, info, prefix + u'/'));
+            else
+                return findFilesRecursively(options, info, prefix + u'/');
+        }
     }
-    QFileInfo info(options.qtInstallDirectory + u'/' + fileName);
-    return findFilesRecursively(options, info, options.qtInstallDirectory + u'/');
+
+    // Usually android deployment settings contain Qt install directory in extraPrefixDirs.
+    if (std::find(options.extraPrefixDirs.begin(), options.extraPrefixDirs.end(),
+                  options.qtInstallDirectory) == options.extraPrefixDirs.end()) {
+        QFileInfo info(options.qtInstallDirectory + "/"_L1 + fileName);
+        QFileInfo rootPath(options.qtInstallDirectory + "/"_L1);
+        deps.append(findFilesRecursively(options, info, rootPath.absolutePath()));
+    }
+    return deps;
 }
 
 bool readAndroidDependencyXml(Options *options,
@@ -1741,7 +1881,7 @@ bool readAndroidDependencyXml(Options *options,
                               QSet<QString> *usedDependencies,
                               QSet<QString> *remainingDependencies)
 {
-    QString androidDependencyName = absoluteFilePath(options, "/lib/%1-android-dependencies.xml"_L1.arg(moduleName));
+    QString androidDependencyName = absoluteFilePath(options, "%1-android-dependencies.xml"_L1.arg(moduleName));
 
     QFile androidDependencyFile(androidDependencyName);
     if (androidDependencyFile.exists()) {
@@ -1766,16 +1906,22 @@ bool readAndroidDependencyXml(Options *options,
 
                     QString file = reader.attributes().value("file"_L1).toString();
 
-                    // Special case, since this is handled by qmlimportscanner instead
-                    if (!options->rootPaths.empty()
-                        && (file == "qml"_L1 || file == "qml/"_L1))
-                        continue;
-
                     const QList<QtDependency> fileNames = findFilesRecursively(*options, file);
+
                     for (const QtDependency &fileName : fileNames) {
                         if (usedDependencies->contains(fileName.absolutePath))
                             continue;
 
+                        if (fileName.absolutePath.endsWith(".so"_L1)) {
+                            QSet<QString> remainingDependencies;
+                            if (!readDependenciesFromElf(options, fileName.absolutePath,
+                                                         usedDependencies,
+                                                         &remainingDependencies)) {
+                                fprintf(stdout, "Skipping dependencies from xml: %s\n",
+                                        qPrintable(fileName.relativePath));
+                                continue;
+                            }
+                        }
                         usedDependencies->insert(fileName.absolutePath);
 
                         if (options->verbose)
@@ -1930,10 +2076,6 @@ bool readDependenciesFromElf(Options *options,
     return true;
 }
 
-bool goodToCopy(const Options *options, const QString &file, QStringList *unmetDependencies);
-bool checkCanImportFromRootPaths(const Options *options, const QString &absolutePath,
-                                 const QString &moduleUrlPath);
-
 bool scanImports(Options *options, QSet<QString> *usedDependencies)
 {
     if (options->verbose)
@@ -1943,8 +2085,8 @@ bool scanImports(Options *options, QSet<QString> *usedDependencies)
     if (!options->qmlImportScannerBinaryPath.isEmpty()) {
         qmlImportScanner = options->qmlImportScannerBinaryPath;
     } else {
-        qmlImportScanner = execSuffixAppended(options->qtInstallDirectory + u'/'
-                                              + defaultLibexecDir() + "/qmlimportscanner"_L1);
+        qmlImportScanner = execSuffixAppended(options->qtLibExecsDirectory +
+                                              "/qmlimportscanner"_L1);
     }
 
     QStringList importPaths;
@@ -1953,7 +2095,7 @@ bool scanImports(Options *options, QSet<QString> *usedDependencies)
     // lacks a qml directory. We don't want to pass it as an import path if it doesn't exist
     // because it will cause qmlimportscanner to fail.
     // This also covers the case when only qtbase is installed in a regular Qt build.
-    const QString mainImportPath = options->qtInstallDirectory + "/qml"_L1;
+    const QString mainImportPath = options->qtInstallDirectory + u'/' + options->qtQmlDirectory;
     if (QFile::exists(mainImportPath))
         importPaths += shellQuote(mainImportPath);
 
@@ -2207,8 +2349,7 @@ bool createRcc(const Options &options)
     if (!options.rccBinaryPath.isEmpty()) {
         rcc = options.rccBinaryPath;
     } else {
-        rcc = execSuffixAppended(options.qtInstallDirectory + u'/' + defaultLibexecDir() +
-                                 "/rcc"_L1);
+        rcc = execSuffixAppended(options.qtLibExecsDirectory + "/rcc"_L1);
     }
 
     if (!QFile::exists(rcc)) {
@@ -2308,7 +2449,6 @@ bool containsApplicationBinary(Options *options)
     if (options->verbose)
         fprintf(stdout, "Checking if application binary is in package.\n");
 
-    QFileInfo applicationBinary(options->applicationBinary);
     QString applicationFileName = "lib%1_%2.so"_L1.arg(options->applicationBinary,
                                                        options->currentArchitecture);
 
@@ -2402,12 +2542,8 @@ bool copyQtFiles(Options *options)
         QString destinationFileName;
         bool isSharedLibrary = qtDependency.relativePath.endsWith(".so"_L1);
         if (isSharedLibrary) {
-            QString garbledFileName;
-            if (QDir::fromNativeSeparators(qtDependency.relativePath).startsWith("lib/"_L1)) {
-                garbledFileName = qtDependency.relativePath.mid(sizeof("lib/") - 1);
-            } else {
-                garbledFileName = qtDependency.relativePath.mid(qtDependency.relativePath.lastIndexOf(u'/') + 1);
-            }
+            QString garbledFileName = qtDependency.relativePath.mid(
+                qtDependency.relativePath.lastIndexOf(u'/') + 1);
             destinationFileName = libsDirectory + options->currentArchitecture + u'/' + garbledFileName;
         } else if (QDir::fromNativeSeparators(qtDependency.relativePath).startsWith("jar/"_L1)) {
             destinationFileName = libsDirectory + qtDependency.relativePath.mid(sizeof("jar/") - 1);
@@ -2540,7 +2676,7 @@ static bool mergeGradleProperties(const QString &path, GradleProperties properti
                     continue;
                 }
             }
-            file.write(line);
+            file.write(line.trimmed() + '\n');
         }
         oldFile.close();
         QFile::remove(oldPathStr);
@@ -2574,22 +2710,36 @@ void checkAndWarnGradleLongPaths(const QString &outputDirectory)
 }
 #endif
 
-bool gradleSetsLegacyPackagingProperty(const QString &path)
+struct GradleFlags {
+    bool setsLegacyPackaging = false;
+    bool usesIntegerCompileSdkVersion = false;
+};
+
+GradleFlags gradleBuildFlags(const QString &path)
 {
+    GradleFlags flags;
+
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
-        return false;
+        return flags;
+
+    auto isComment = [](const QByteArray &line) {
+        const auto trimmed = line.trimmed();
+        return trimmed.startsWith("//") || trimmed.startsWith('*') || trimmed.startsWith("/*");
+    };
 
     const auto lines = file.readAll().split('\n');
     for (const auto &line : lines) {
+        if (isComment(line))
+            continue;
         if (line.contains("useLegacyPackaging")) {
-            const auto trimmed = line.trimmed();
-            if (!trimmed.startsWith("//") && !trimmed.startsWith('*') && !trimmed.startsWith("/*"))
-                return true;
+            flags.setsLegacyPackaging = true;
+        } else if (line.contains("compileSdkVersion androidCompileSdkVersion.toInteger()")) {
+            flags.usesIntegerCompileSdkVersion = true;
         }
     }
 
-    return false;
+    return flags;
 }
 
 bool buildAndroidProject(const Options &options)
@@ -2604,16 +2754,42 @@ bool buildAndroidProject(const Options &options)
     GradleProperties gradleProperties = readGradleProperties(gradlePropertiesPath);
 
     const QString gradleBuildFilePath = options.outputDirectory + "build.gradle"_L1;
-    if (!gradleSetsLegacyPackagingProperty(gradleBuildFilePath))
+    GradleFlags gradleFlags = gradleBuildFlags(gradleBuildFilePath);
+    if (!gradleFlags.setsLegacyPackaging)
         gradleProperties["android.bundle.enableUncompressedNativeLibs"] = "false";
 
     gradleProperties["buildDir"] = "build";
-    gradleProperties["qtAndroidDir"] = (options.qtInstallDirectory + "/src/android/java"_L1).toUtf8();
+    gradleProperties["qtAndroidDir"] =
+        (options.qtInstallDirectory + u'/' + options.qtDataDirectory +
+         "/src/android/java"_L1)
+            .toUtf8();
     // The following property "qt5AndroidDir" is only for compatibility.
     // Projects using a custom build.gradle file may use this variable.
     // ### Qt7: Remove the following line
-    gradleProperties["qt5AndroidDir"] = (options.qtInstallDirectory + "/src/android/java"_L1).toUtf8();
-    gradleProperties["androidCompileSdkVersion"] = options.androidPlatform.split(u'-').last().toLocal8Bit();
+    gradleProperties["qt5AndroidDir"] =
+        (options.qtInstallDirectory + u'/' + options.qtDataDirectory +
+         "/src/android/java"_L1)
+            .toUtf8();
+
+    QByteArray sdkPlatformVersion;
+    // Provide the integer version only if build.gradle explicitly converts to Integer,
+    // to avoid regression to existing projects that build for sdk platform of form android-xx.
+    if (gradleFlags.usesIntegerCompileSdkVersion) {
+        const QByteArray tmp = options.androidPlatform.split(u'-').last().toLocal8Bit();
+        bool ok;
+        tmp.toInt(&ok);
+        if (ok) {
+            sdkPlatformVersion = tmp;
+        } else {
+            fprintf(stderr, "Warning: Gradle expects SDK platform version to be an integer, "
+                            "but the set version is not convertible to an integer.");
+        }
+    }
+
+    if (sdkPlatformVersion.isEmpty())
+        sdkPlatformVersion = options.androidPlatform.toLocal8Bit();
+
+    gradleProperties["androidCompileSdkVersion"] = sdkPlatformVersion;
     gradleProperties["qtMinSdkVersion"] = options.minSdkVersion;
     gradleProperties["qtTargetSdkVersion"] = options.targetSdkVersion;
     gradleProperties["androidNdkVersion"] = options.ndkVersion.toUtf8();
@@ -3124,7 +3300,9 @@ int main(int argc, char *argv[])
     for (auto it = options.architectures.constBegin(); it != options.architectures.constEnd(); ++it) {
         if (!it->enabled)
             continue;
-        options.setCurrentQtArchitecture(it.key(), it.value().qtInstallDirectory);
+        options.setCurrentQtArchitecture(it.key(),
+                                         it.value().qtInstallDirectory,
+                                         it.value().qtDirectories);
 
         // All architectures have a copy of the gradle files but only one set needs to be copied.
         if (!androidTemplatetCopied && options.build && !options.auxMode && !options.copyDependenciesOnly) {

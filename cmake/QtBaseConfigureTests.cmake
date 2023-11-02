@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 include(CheckCXXSourceCompiles)
 
 function(qt_run_config_test_architecture)
@@ -9,10 +12,14 @@ function(qt_run_config_test_architecture)
     qt_get_platform_try_compile_vars(platform_try_compile_vars)
     list(APPEND flags ${platform_try_compile_vars})
 
-    list(TRANSFORM flags PREPEND "    " OUTPUT_VARIABLE flags_indented)
+    list(TRANSFORM flags PREPEND "            " OUTPUT_VARIABLE flags_indented)
     list(JOIN flags_indented "\n" flags_indented)
+
     message(STATUS
-            "Building architecture extraction project with the following CMake arguments:\n${flags_indented}")
+            "Building architecture extraction project with the following CMake arguments:")
+    list(POP_BACK CMAKE_MESSAGE_CONTEXT _context)
+    message(NOTICE ${flags_indented})
+    list(APPEND CMAKE_MESSAGE_CONTEXT ${_context})
 
     try_compile(
         _arch_result
@@ -108,41 +115,38 @@ endfunction()
 
 
 function(qt_run_linker_version_script_support)
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/version_flag.map" "VERS_1 { global: sym; };
-VERS_2 { global: sym; }
-VERS_1;
-")
-    if(DEFINED CMAKE_REQUIRED_FLAGS)
-        set(CMAKE_REQUIRED_FLAGS_SAVE ${CMAKE_REQUIRED_FLAGS})
-    else()
-        set(CMAKE_REQUIRED_FLAGS "")
-    endif()
-    set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} "-Wl,--version-script=\"${CMAKE_CURRENT_BINARY_DIR}/version_flag.map\"")
-
-    # Pass the linker that the main project uses to the version script compile test.
-    qt_internal_get_active_linker_flags(linker_flags)
-    if(linker_flags)
-        set(CMAKE_REQUIRED_LINK_OPTIONS ${linker_flags})
-    endif()
-
-    check_cxx_source_compiles("int main(void){return 0;}" HAVE_LD_VERSION_SCRIPT)
-    if(DEFINED CMAKE_REQUIRED_FLAGS_SAVE)
-        set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS_SAVE})
-    endif()
-    file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/conftest.map")
-
     # For some reason the linker command line written by the XCode generator, which is
     # subsequently executed by xcodebuild, ignores the linker flag, and thus the test
     # seemingly succeeds. Explicitly disable the version script test on darwin platforms.
-    if(APPLE)
-        set(HAVE_LD_VERSION_SCRIPT OFF)
-    endif()
     # Also makes no sense with MSVC-style command-line
-    if(MSVC)
+    if(NOT APPLE AND NOT MSVC)
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/version_flag.map" [=[
+            VERS_1 { global: sym1; };
+            VERS_2 { global: sym2; } VERS_1;
+        ]=])
+        set(CMAKE_REQUIRED_LINK_OPTIONS "")
+        list(APPEND CMAKE_REQUIRED_LINK_OPTIONS
+             "-Wl,--version-script=${CMAKE_CURRENT_BINARY_DIR}/version_flag.map")
+        # Pass the linker that the main project uses to the version script compile test.
+        qt_internal_get_active_linker_flags(linker_flags)
+        if(linker_flags)
+            list(APPEND CMAKE_REQUIRED_LINK_OPTIONS ${linker_flags})
+        endif()
+        check_cxx_source_compiles([=[
+            int sym1;
+            int sym2;
+            int main(void) { return 0; }
+        ]=] HAVE_LD_VERSION_SCRIPT)
+        file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/version_flag.map")
+    else()
         set(HAVE_LD_VERSION_SCRIPT OFF)
     endif()
 
-    set(TEST_ld_version_script "${HAVE_LD_VERSION_SCRIPT}" CACHE INTERNAL "linker version script support")
+    set(TEST_ld_version_script "${HAVE_LD_VERSION_SCRIPT}"
+        CACHE INTERNAL "linker version script support")
+    list(APPEND QT_BASE_CONFIGURE_TESTS_VARS_TO_EXPORT TEST_ld_version_script)
+    set(QT_BASE_CONFIGURE_TESTS_VARS_TO_EXPORT ${QT_BASE_CONFIGURE_TESTS_VARS_TO_EXPORT}
+        CACHE INTERNAL "Test variables that should be exported")
 endfunction()
 
 function(qt_internal_ensure_latest_win_nt_api)

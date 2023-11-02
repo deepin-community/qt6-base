@@ -5,6 +5,10 @@
 #ifndef QENDIAN_H
 #define QENDIAN_H
 
+#if 0
+#pragma qt_class(QtEndian)
+#endif
+
 #include <QtCore/qfloat16.h>
 #include <QtCore/qglobal.h>
 
@@ -100,6 +104,23 @@ inline constexpr T qbswap(T source)
 {
     return T(qbswap_helper(typename QIntegerForSizeof<T>::Unsigned(source)));
 }
+
+#ifdef QT_SUPPORTS_INT128
+// extra definitions for q(u)int128, in case std::is_integral_v<~~> == false
+inline constexpr quint128 qbswap(quint128 source)
+{
+    quint128 result = {};
+    result = qbswap_helper(quint64(source));
+    result <<= 64;
+    result |= qbswap_helper(quint64(source >> 64));
+    return result;
+}
+
+inline constexpr quint128 qbswap(qint128 source)
+{
+    return qint128(qbswap(quint128(source)));
+}
+#endif
 
 // floating specializations
 template<typename Float>
@@ -298,7 +319,7 @@ public:
     static constexpr T fromSpecial(T source) { return qFromBigEndian(source); }
 };
 
-#ifdef Q_CLANG_QDOC
+#ifdef Q_QDOC
 template<typename T>
 class QLEInteger {
 public:

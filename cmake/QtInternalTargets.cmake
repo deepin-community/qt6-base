@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 
 function(qt_internal_set_warnings_are_errors_flags target target_scope)
     set(flags "")
@@ -45,6 +48,11 @@ function(qt_internal_set_warnings_are_errors_flags target target_scope)
         if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0.0")
             # We do mixed enum arithmetic all over the place:
             list(APPEND flags -Wno-error=deprecated-enum-enum-conversion -Wno-error=deprecated-enum-float-conversion)
+
+            # GCC has some false positive, and it specifically comes through in MINGW
+            if (MINGW)
+                list(APPEND flags -Wno-error=stringop-overread)
+            endif()
         endif()
 
         if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0.0" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11.2.0")
@@ -94,7 +102,7 @@ function(qt_internal_add_global_definition definition)
     set(optional_args)
     set(single_value_args VALUE)
     set(multi_value_args SCOPE)
-    cmake_parse_arguments(args
+    cmake_parse_arguments(arg
         "${optional_args}"
         "${single_value_args}"
         "${multi_value_args}"
@@ -148,7 +156,10 @@ qt_internal_add_target_aliases(PlatformToolInternal)
 target_link_libraries(PlatformToolInternal INTERFACE PlatformAppInternal)
 
 qt_internal_add_global_definition(QT_NO_JAVA_STYLE_ITERATORS)
+qt_internal_add_global_definition(QT_NO_AS_CONST)
+qt_internal_add_global_definition(QT_NO_QEXCHANGE)
 qt_internal_add_global_definition(QT_NO_NARROWING_CONVERSIONS_IN_CONNECT)
+qt_internal_add_global_definition(QT_EXPLICIT_QFILE_CONSTRUCTION_FROM_PATH)
 
 if(WARNINGS_ARE_ERRORS)
     qt_internal_set_warnings_are_errors_flags(PlatformModuleInternal INTERFACE)
@@ -159,6 +170,8 @@ if(WIN32)
     # Needed for M_PI define. Same as mkspecs/features/qt_module.prf.
     # It's set for every module being built, but it's not propagated to user apps.
     target_compile_definitions(PlatformModuleInternal INTERFACE _USE_MATH_DEFINES)
+    # Not disabling min/max macros may result in unintended substitutions of std::min/max
+    target_compile_definitions(PlatformCommonInternal INTERFACE NOMINMAX)
 endif()
 if(FEATURE_largefile AND UNIX)
     target_compile_definitions(PlatformCommonInternal
@@ -196,6 +209,14 @@ function(qt_internal_apply_bitcode_flags target)
     target_compile_options("${target}" INTERFACE ${bitcode_flags})
 endfunction()
 
+# Function guards linker options that are applicable for internal Qt targets only from propagating
+# them to user projects.
+function(qt_internal_platform_link_options target scope)
+    set(options ${ARGN})
+    set(is_internal_target_genex "$<BOOL:$<TARGET_PROPERTY:_qt_is_internal_target>>")
+    target_link_options(${target} ${scope} "$<${is_internal_target_genex}:${options}>")
+endfunction()
+
 # Apple deprecated the entire OpenGL API in favor of Metal, which
 # we are aware of, so silence the deprecation warnings in code.
 # This does not apply to user-code, which will need to silence
@@ -206,23 +227,26 @@ elseif(UIKIT)
     target_compile_definitions(PlatformCommonInternal INTERFACE GLES_SILENCE_DEPRECATION)
 endif()
 
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang"
+    AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "14.0.0"
+)
+    # Xcode 14's Clang will emit objc_msgSend stubs by default, which ld
+    # from earlier Xcode versions will fail to understand when linking
+    # against static libraries with these stubs. Disable the stubs explicitly,
+    # for as long as we do support Xcode < 14.
+    set(is_static_lib "$<STREQUAL:$<TARGET_PROPERTY:TYPE>,STATIC_LIBRARY>")
+    set(is_objc "$<COMPILE_LANGUAGE:OBJC,OBJCXX>")
+    set(is_static_and_objc "$<AND:${is_static_lib},${is_objc}>")
+    target_compile_options(PlatformCommonInternal INTERFACE
+        "$<${is_static_and_objc}:-fno-objc-msgsend-selector-stubs>"
+    )
+endif()
+
 if(MSVC)
     target_compile_definitions(PlatformCommonInternal INTERFACE
         "_CRT_SECURE_NO_WARNINGS"
         "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>:_WINDLL>"
     )
-endif()
-
-if(UIKIT)
-    # Do what mkspecs/features/uikit/default_pre.prf does, aka enable sse2 for
-    # simulator_and_device_builds.
-    if(FEATURE_simulator_and_device)
-        # Setting the definition on PlatformCommonInternal behaves slightly differently from what
-        # is done in qmake land. This way the define is not propagated to tests, examples, or
-        # user projects built with qmake, but only modules, plugins and tools.
-        # TODO: Figure out if this ok or not (sounds ok to me).
-        target_compile_definitions(PlatformCommonInternal INTERFACE QT_COMPILER_SUPPORTS_SSE2)
-    endif()
 endif()
 
 if(WASM AND QT_FEATURE_sse2)
@@ -248,14 +272,17 @@ if (MSVC)
             )
         endif()
     endif()
-    if (MSVC_VERSION GREATER_EQUAL 1909 AND NOT CLANG)
+    if (MSVC_VERSION GREATER_EQUAL 1909 AND NOT CLANG) # MSVC 2017
         target_compile_options(PlatformCommonInternal INTERFACE
             -Zc:referenceBinding
+            -Zc:ternary
         )
     endif()
-    if (MSVC_VERSION GREATER_EQUAL 1919 AND NOT CLANG)
+    if (MSVC_VERSION GREATER_EQUAL 1919 AND NOT CLANG) # MSVC 2019
         target_compile_options(PlatformCommonInternal INTERFACE
             -Zc:externConstexpr
+            #-Zc:lambda # Buggy. TODO: Enable again when stable enough.
+            #-Zc:preprocessor # breaks build due to bug in default Windows SDK 10.0.19041
         )
     endif()
 
@@ -268,7 +295,7 @@ if (MSVC)
         $<$<NOT:$<CONFIG:Debug>>:-guard:cf -Gw>
     )
 
-    target_link_options(PlatformCommonInternal INTERFACE
+    qt_internal_platform_link_options(PlatformCommonInternal INTERFACE
         -DYNAMICBASE -NXCOMPAT -LARGEADDRESSAWARE
         $<$<NOT:$<CONFIG:Debug>>:-OPT:REF -OPT:ICF -GUARD:CF>
     )
@@ -284,12 +311,12 @@ endif()
 
 if(QT_FEATURE_intelcet)
     if(MSVC)
-        target_link_options(PlatformCommonInternal INTERFACE
+        qt_internal_platform_link_options(PlatformCommonInternal INTERFACE
             -CETCOMPAT
         )
     else()
         target_compile_options(PlatformCommonInternal INTERFACE
-            -fcf-protection
+            -fcf-protection=full
         )
     endif()
 endif()
@@ -313,30 +340,31 @@ endif()
 if(DEFINED QT_EXTRA_FRAMEWORKPATHS AND APPLE)
     list(TRANSFORM QT_EXTRA_FRAMEWORKPATHS PREPEND "-F" OUTPUT_VARIABLE __qt_fw_flags)
     target_compile_options(PlatformCommonInternal INTERFACE ${__qt_fw_flags})
-    target_link_options(PlatformCommonInternal INTERFACE ${__qt_fw_flags})
+    qt_internal_platform_link_options(PlatformCommonInternal INTERFACE ${__qt_fw_flags})
     unset(__qt_fw_flags)
 endif()
 
 qt_internal_get_active_linker_flags(__qt_internal_active_linker_flags)
 if(__qt_internal_active_linker_flags)
-    target_link_options(PlatformCommonInternal INTERFACE "${__qt_internal_active_linker_flags}")
+    qt_internal_platform_link_options(PlatformCommonInternal INTERFACE
+        "${__qt_internal_active_linker_flags}")
 endif()
 unset(__qt_internal_active_linker_flags)
 
 if(QT_FEATURE_enable_gdb_index)
-    target_link_options(PlatformCommonInternal INTERFACE "-Wl,--gdb-index")
+    qt_internal_platform_link_options(PlatformCommonInternal INTERFACE "-Wl,--gdb-index")
 endif()
 
 if(QT_FEATURE_enable_new_dtags)
-    target_link_options(PlatformCommonInternal INTERFACE "-Wl,--enable-new-dtags")
+    qt_internal_platform_link_options(PlatformCommonInternal INTERFACE "-Wl,--enable-new-dtags")
 endif()
 
 function(qt_get_implicit_sse2_genex_condition out_var)
     set(is_shared_lib "$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>")
     set(is_static_lib "$<STREQUAL:$<TARGET_PROPERTY:TYPE>,STATIC_LIBRARY>")
     set(is_static_qt_build "$<NOT:$<BOOL:${QT_BUILD_SHARED_LIBS}>>")
-    set(is_staitc_lib_during_static_qt_build "$<AND:${is_static_qt_build},${is_static_lib}>")
-    set(enable_sse2_condition "$<OR:${is_shared_lib},${is_staitc_lib_during_static_qt_build}>")
+    set(is_static_lib_during_static_qt_build "$<AND:${is_static_qt_build},${is_static_lib}>")
+    set(enable_sse2_condition "$<OR:${is_shared_lib},${is_static_lib_during_static_qt_build}>")
     set(${out_var} "${enable_sse2_condition}" PARENT_SCOPE)
 endfunction()
 

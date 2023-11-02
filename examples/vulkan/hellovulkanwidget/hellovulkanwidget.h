@@ -1,16 +1,17 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#ifndef HELLOVULKANWIDGET_H
+#define HELLOVULKANWIDGET_H
+
 #include "../shared/trianglerenderer.h"
 #include <QWidget>
 
-class VulkanWindow;
+QT_FORWARD_DECLARE_CLASS(QTabWidget)
+QT_FORWARD_DECLARE_CLASS(QPlainTextEdit)
+QT_FORWARD_DECLARE_CLASS(QLCDNumber)
 
-QT_BEGIN_NAMESPACE
-class QTabWidget;
-class QPlainTextEdit;
-class QLCDNumber;
-QT_END_NAMESPACE
+class VulkanWindow;
 
 class MainWindow : public QWidget
 {
@@ -51,3 +52,5 @@ signals:
     void vulkanInfoReceived(const QString &text);
     void frameQueued(int colorValue);
 };
+
+#endif // HELLOVULKANWIDGET_H

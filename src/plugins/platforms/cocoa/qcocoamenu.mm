@@ -18,6 +18,8 @@
 #include "qcocoascreen.h"
 #include "qcocoaapplicationdelegate.h"
 
+#include <QtCore/private/qcore_mac_p.h>
+
 QT_BEGIN_NAMESPACE
 
 QCocoaMenu::QCocoaMenu() :
@@ -40,6 +42,8 @@ QCocoaMenu::~QCocoaMenu()
             item->setMenuParent(nullptr);
     }
 
+    if (isOpen())
+        dismiss();
     [m_nativeMenu release];
 }
 
@@ -86,7 +90,7 @@ void QCocoaMenu::insertMenuItem(QPlatformMenuItem *menuItem, QPlatformMenuItem *
         int index = m_menuItems.indexOf(beforeItem);
         // if a before item is supplied, it should be in the menu
         if (index < 0) {
-            qWarning("Before menu item not found");
+            qCWarning(lcQpaMenus) << beforeItem << "not in" << m_menuItems;
             return;
         }
         m_menuItems.insert(index, cocoaItem);
@@ -124,13 +128,13 @@ void QCocoaMenu::insertNative(QCocoaMenuItem *item, QCocoaMenuItem *beforeItem)
     }
 
     if (nativeItem.menu) {
-        qWarning() << "Menu item" << item->text() << "already in menu" << QString::fromNSString(nativeItem.menu.title);
+        qCWarning(lcQpaMenus) << "Menu item" << item->text() << "already in menu" << QString::fromNSString(nativeItem.menu.title);
         return;
     }
 
     if (beforeItem) {
         if (beforeItem->isMerged()) {
-            qWarning("No non-merged before menu item found");
+            qCWarning(lcQpaMenus, "No non-merged before menu item found");
             return;
         }
         const NSInteger nativeIndex = [m_nativeMenu indexOfItem:beforeItem->nsItem()];
@@ -166,7 +170,7 @@ void QCocoaMenu::removeMenuItem(QPlatformMenuItem *menuItem)
     QMacAutoReleasePool pool;
     QCocoaMenuItem *cocoaItem = static_cast<QCocoaMenuItem *>(menuItem);
     if (!m_menuItems.contains(cocoaItem)) {
-        qWarning("Menu does not contain the item to be removed");
+        qCWarning(lcQpaMenus) << m_menuItems << "does not contain" << cocoaItem;
         return;
     }
 
@@ -179,7 +183,7 @@ void QCocoaMenu::removeMenuItem(QPlatformMenuItem *menuItem)
     m_menuItems.removeOne(cocoaItem);
     if (!cocoaItem->isMerged()) {
         if (m_nativeMenu != cocoaItem->nsItem().menu) {
-            qWarning("Item to remove does not belong to this menu");
+            qCWarning(lcQpaMenus) << cocoaItem << "does not belong to" << m_nativeMenu;
             return;
         }
         [m_nativeMenu removeItem:cocoaItem->nsItem()];
@@ -219,7 +223,7 @@ void QCocoaMenu::syncMenuItem_helper(QPlatformMenuItem *menuItem, bool menubarUp
     QMacAutoReleasePool pool;
     QCocoaMenuItem *cocoaItem = static_cast<QCocoaMenuItem *>(menuItem);
     if (!m_menuItems.contains(cocoaItem)) {
-        qWarning("Item does not belong to this menu");
+        qCWarning(lcQpaMenus) << cocoaItem << "does not belong to" << this;
         return;
     }
 
@@ -318,6 +322,8 @@ void QCocoaMenu::showPopup(const QWindow *parentWindow, const QRect &targetRect,
 {
     QMacAutoReleasePool pool;
 
+    QPointer<QCocoaMenu> guard = this;
+
     QPoint pos =  QPoint(targetRect.left(), targetRect.top() + targetRect.height());
     QCocoaWindow *cocoaWindow = parentWindow ? static_cast<QCocoaWindow *>(parentWindow->handle()) : nullptr;
     NSView *view = cocoaWindow ? cocoaWindow->view() : nil;
@@ -402,6 +408,11 @@ void QCocoaMenu::showPopup(const QWindow *parentWindow, const QRect &targetRect,
         }
     }
 
+    if (!guard) {
+        menuParentGuard.dismiss();
+        return;
+    }
+
     // The calls above block, and also swallow any mouse release event,
     // so we need to clear any mouse button that triggered the menu popup.
     if (cocoaWindow && !cocoaWindow->isForeignWindow())
@@ -481,6 +492,10 @@ void QCocoaMenu::setAttachedItem(NSMenuItem *item)
     if (m_attachedItem)
         m_attachedItem.submenu = m_nativeMenu;
 
+    // NSMenuItems with a submenu and submenuAction: as the item's action
+    // will not take part in NSMenuValidation, so explicitly enable/disable
+    // the item here. See also QCocoaMenuItem::resolveTargetAction()
+    m_attachedItem.enabled = m_attachedItem.hasSubmenu;
 }
 
 NSMenuItem *QCocoaMenu::attachedItem() const

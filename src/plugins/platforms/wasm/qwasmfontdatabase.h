@@ -18,6 +18,10 @@ public:
                                    QChar::Script script) const override;
     void releaseHandle(void *handle) override;
     QFont defaultFont() const override;
+
+    void populateLocalfonts();
+
+    static void notifyFontsChanged();
 };
 QT_END_NAMESPACE
 #endif

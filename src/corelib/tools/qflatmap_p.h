@@ -74,7 +74,7 @@ public:
 
     using value_type = std::pair<const Key, T>;
     static constexpr bool is_comparator_noexcept = noexcept(
-        std::declval<Compare>()(std::declval<Key>(), std::declval<Key>()));
+        std::declval<Compare>()(std::declval<const Key &>(), std::declval<const Key &>()));
 
     bool operator()(const value_type &lhs, const value_type &rhs) const
         noexcept(is_comparator_noexcept)
@@ -83,27 +83,34 @@ public:
     }
 };
 
+namespace qflatmap {
+namespace detail {
+template <class T>
+class QFlatMapMockPointer
+{
+    T ref;
+public:
+    QFlatMapMockPointer(T r)
+        : ref(r)
+    {
+    }
+
+    T *operator->()
+    {
+        return &ref;
+    }
+};
+} // namespace detail
+} // namespace qflatmap
+
 template<class Key, class T, class Compare = std::less<Key>, class KeyContainer = QList<Key>,
          class MappedContainer = QList<T>>
 class QFlatMap : private QFlatMapValueCompare<Key, T, Compare>
 {
     static_assert(std::is_nothrow_destructible_v<T>, "Types with throwing destructors are not supported in Qt containers.");
 
-    template <class U>
-    class mock_pointer
-    {
-        U ref;
-    public:
-        mock_pointer(U r)
-            : ref(r)
-        {
-        }
-
-        U *operator->()
-        {
-            return &ref;
-        }
-    };
+    template<class U>
+    using mock_pointer = qflatmap::detail::QFlatMapMockPointer<U>;
 
 public:
     using key_type = Key;
@@ -844,7 +851,6 @@ public:
     size_type remove_if(Predicate pred)
     {
         const auto indirect_call_to_pred = [pred = std::move(pred)](iterator it) {
-            [[maybe_unused]] auto dependent_false = [](auto &&...) { return false; };
             using Pair = decltype(*it);
             using K = decltype(it.key());
             using V = decltype(it.value());
@@ -856,7 +862,7 @@ public:
             } else if constexpr (std::is_invocable_v<P, K> && !std::is_invocable_v<P, Pair>) {
                 return pred(it.key());
             } else {
-                static_assert(dependent_false(pred),
+                static_assert(QtPrivate::type_dependent_false<Predicate>(),
                     "Don't know how to call the predicate.\n"
                     "Options:\n"
                     "- pred(*it)\n"

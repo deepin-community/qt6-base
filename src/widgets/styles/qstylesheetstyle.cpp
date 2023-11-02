@@ -59,7 +59,7 @@
 #include <private/qstyleanimation_p.h>
 #endif
 #if QT_CONFIG(tabbar)
-#include <qtabbar.h>
+#include <private/qtabbar_p.h>
 #endif
 #include <QMetaProperty>
 #if QT_CONFIG(mainwindow)
@@ -137,8 +137,6 @@ class QStyleSheetStyleRecursionGuard
 #define RECURSION_GUARD(RETURN) \
     if (globalStyleSheetStyle != 0 && globalStyleSheetStyle != this) { RETURN; } \
     QStyleSheetStyleRecursionGuard recursion_guard(this);
-
-#define ceil(x) ((int)(x) + ((x) > 0 && (x) != (int)(x)))
 
 enum PseudoElement {
     PseudoElement_None,
@@ -436,15 +434,26 @@ struct QStyleSheetBoxData : public QSharedData
 
 struct QStyleSheetPaletteData : public QSharedData
 {
-    QStyleSheetPaletteData(const QBrush &fg, const QBrush &sfg, const QBrush &sbg,
-                           const QBrush &abg)
-        : foreground(fg), selectionForeground(sfg), selectionBackground(sbg),
-          alternateBackground(abg) { }
+     QStyleSheetPaletteData(const QBrush &foreground,
+                            const QBrush &selectedForeground,
+                            const QBrush &selectedBackground,
+                            const QBrush &alternateBackground,
+                            const QBrush &placeHolderTextForeground,
+                            const QBrush &accent)
+        : foreground(foreground)
+        , selectionForeground(selectedForeground)
+        , selectionBackground(selectedBackground)
+        , alternateBackground(alternateBackground)
+        , placeholderForeground(placeHolderTextForeground)
+        , accent(accent)
+     { }
 
     QBrush foreground;
     QBrush selectionForeground;
     QBrush selectionBackground;
     QBrush alternateBackground;
+    QBrush placeholderForeground;
+    QBrush accent;
 };
 
 struct QStyleSheetGeometryData : public QSharedData
@@ -956,10 +965,17 @@ QRenderRule::QRenderRule(const QList<Declaration> &declarations, const QObject *
         bg = new QStyleSheetBackgroundData(brush, pixmap, repeat, alignment, origin, attachment, clip);
     }
 
-    QBrush sfg, fg;
-    QBrush sbg, abg;
-    if (v.extractPalette(&fg, &sfg, &sbg, &abg))
-        pal = new QStyleSheetPaletteData(fg, sfg, sbg, abg);
+    QBrush foreground;
+    QBrush selectedForeground;
+    QBrush selectedBackground;
+    QBrush alternateBackground;
+    QBrush placeHolderTextForeground;
+    QBrush accent;
+    if (v.extractPalette(&foreground, &selectedForeground, &selectedBackground,
+                         &alternateBackground, &placeHolderTextForeground, &accent)) {
+        pal = new QStyleSheetPaletteData(foreground, selectedForeground, selectedBackground,
+                                         alternateBackground, placeHolderTextForeground, accent);
+    }
 
     QIcon imgIcon;
     alignment = Qt::AlignCenter;
@@ -1055,8 +1071,8 @@ QRenderRule::QRenderRule(const QList<Declaration> &declarations, const QObject *
                         }
                     } else if (hintName.endsWith("icon"_L1)) {
                         hintValue = decl.iconValue();
-                    } else if (hintName == "button-layout"_L1
-                                && decl.d->values.size() != 0 && decl.d->values.at(0).type == Value::String) {
+                    } else if (hintName == "button-layout"_L1 && decl.d->values.size() != 0
+                               && decl.d->values.at(0).type == QCss::Value::String) {
                         hintValue = subControlLayout(decl.d->values.at(0).variant.toString());
                     } else {
                         int integer;
@@ -1449,6 +1465,16 @@ void QRenderRule::configurePalette(QPalette *p, QPalette::ColorRole fr, QPalette
         p->setBrush(QPalette::AlternateBase, pal->alternateBackground);
 }
 
+void setDefault(QPalette *palette, QPalette::ColorGroup group, QPalette::ColorRole role,
+                const QBrush &defaultBrush, const QWidget *widget)
+{
+    const QPalette &widgetPalette = widget->palette();
+    if (widgetPalette.isBrushSet(group, role))
+        palette->setBrush(group, role, widgetPalette.brush(group, role));
+    else
+        palette->setBrush(group, role, defaultBrush);
+}
+
 void QRenderRule::configurePalette(QPalette *p, QPalette::ColorGroup cg, const QWidget *w, bool embedded)
 {
     if (bg && bg->brush.style() != Qt::NoBrush) {
@@ -1470,15 +1496,15 @@ void QRenderRule::configurePalette(QPalette *p, QPalette::ColorGroup cg, const Q
         return;
 
     if (pal->foreground.style() != Qt::NoBrush) {
-        p->setBrush(cg, QPalette::ButtonText, pal->foreground);
-        p->setBrush(cg, w->foregroundRole(), pal->foreground);
-        p->setBrush(cg, QPalette::WindowText, pal->foreground);
-        p->setBrush(cg, QPalette::Text, pal->foreground);
+        setDefault(p, cg, QPalette::ButtonText, pal->foreground, w);
+        setDefault(p, cg, w->foregroundRole(), pal->foreground, w);
+        setDefault(p, cg, QPalette::WindowText, pal->foreground, w);
+        setDefault(p, cg, QPalette::Text, pal->foreground, w);
         QColor phColor(pal->foreground.color());
         phColor.setAlpha((phColor.alpha() + 1) / 2);
         QBrush placeholder = pal->foreground;
         placeholder.setColor(phColor);
-        p->setBrush(cg, QPalette::PlaceholderText, placeholder);
+        setDefault(p, cg, QPalette::PlaceholderText, placeholder, w);
     }
     if (pal->selectionBackground.style() != Qt::NoBrush)
         p->setBrush(cg, QPalette::Highlight, pal->selectionBackground);
@@ -1486,6 +1512,10 @@ void QRenderRule::configurePalette(QPalette *p, QPalette::ColorGroup cg, const Q
         p->setBrush(cg, QPalette::HighlightedText, pal->selectionForeground);
     if (pal->alternateBackground.style() != Qt::NoBrush)
         p->setBrush(cg, QPalette::AlternateBase, pal->alternateBackground);
+    if (pal->placeholderForeground.style() != Qt::NoBrush)
+        p->setBrush(cg, QPalette::PlaceholderText, pal->placeholderForeground);
+    if (pal->accent.style() != Qt::NoBrush)
+        p->setBrush(cg, QPalette::Accent, pal->accent);
 }
 
 bool QRenderRule::hasModification() const
@@ -1600,8 +1630,8 @@ public:
             return nodeName == "QToolTip"_L1;
 #endif
         do {
-            const ushort *uc = (const ushort *)nodeName.constData();
-            const ushort *e = uc + nodeName.size();
+            const auto *uc = reinterpret_cast<const char16_t *>(nodeName.constData());
+            const auto *e = uc + nodeName.size();
             const uchar *c = (const uchar *)metaObject->className();
             while (*c && uc != e && (*uc == *c || (*c == ':' && *uc == '-'))) {
                 ++uc;
@@ -2167,7 +2197,7 @@ bool QStyleSheetStyle::hasStyleRule(const QObject *obj, int part) const
         return result;
     }
 
-    QString pseudoElement = QLatin1StringView(knownPseudoElements[part].name);
+    auto pseudoElement = QLatin1StringView(knownPseudoElements[part].name);
     for (int i = 0; i < rules.size(); i++) {
         const Selector& selector = rules.at(i).selectors.at(0);
         if (pseudoElement.compare(selector.pseudoElement(), Qt::CaseInsensitive) == 0) {
@@ -2568,8 +2598,9 @@ static quint64 extendedPseudoClass(const QWidget *w)
     } else
     if (const QPlainTextEdit *edit = qobject_cast<const QPlainTextEdit *>(w)) {
         pc |= (edit->isReadOnly() ? PseudoClass_ReadOnly : PseudoClass_Editable);
-    }
+    } else
 #endif
+    {}
     return pc;
 }
 
@@ -3044,16 +3075,6 @@ void QStyleSheetStyle::unpolish(QApplication *app)
     styleSheetCaches->renderRulesCache.clear();
     styleSheetCaches->styleSheetCache.remove(qApp);
 }
-
-#if QT_CONFIG(tabbar)
-inline static bool verticalTabs(QTabBar::Shape shape)
-{
-    return shape == QTabBar::RoundedWest
-           || shape == QTabBar::RoundedEast
-           || shape == QTabBar::TriangularWest
-           || shape == QTabBar::TriangularEast;
-}
-#endif // QT_CONFIG(tabbar)
 
 void QStyleSheetStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex *opt, QPainter *p,
                                           const QWidget *w) const
@@ -4097,7 +4118,12 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
 
     case CE_HeaderLabel:
         if (const QStyleOptionHeader *header = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
-            QStyleOptionHeader hdr(*header);
+          QStyleOptionHeaderV2 hdr;
+          QStyleOptionHeader &v1Copy = hdr;
+          if (auto v2 = qstyleoption_cast<const QStyleOptionHeaderV2 *>(opt))
+              hdr = *v2;
+          else
+              v1Copy = *header;
             QRenderRule subRule = renderRule(w, opt, PseudoElement_HeaderViewSection);
             if (hasStyleRule(w, PseudoElement_HeaderViewUpArrow)
              || hasStyleRule(w, PseudoElement_HeaderViewDownArrow)) {
@@ -4205,6 +4231,7 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
                         --chunkCount;
                     };
                 } else if (chunkWidth > 0) {
+                    const auto ceil = [](qreal x) { return int(x) + (x > 0 && x != int(x)); };
                     const int chunkCount = ceil(qreal(fillWidth)/chunkWidth);
                     int x = reverse ? r.left() + r.width() - chunkWidth : r.x();
 
@@ -4245,12 +4272,11 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
             if (rule.hasDrawable()) {
                 rule.drawFrame(p, opt->rect);
                 p->save();
-                switch (sgOpt->corner) {
-                case Qt::BottomRightCorner: break;
-                case Qt::BottomLeftCorner: p->rotate(90); break;
-                case Qt::TopLeftCorner: p->rotate(180); break;
-                case Qt::TopRightCorner: p->rotate(270); break;
-                default: break;
+                static constexpr int rotation[] = { 180, 270, 90, 0 };
+                if (rotation[sgOpt->corner]) {
+                    p->translate(opt->rect.center());
+                    p->rotate(rotation[sgOpt->corner]);
+                    p->translate(-opt->rect.center());
                 }
                 rule.drawImage(p, opt->rect);
                 p->restore();
@@ -4357,6 +4383,11 @@ void QStyleSheetStyle::drawControl(ControlElement ce, const QStyleOption *opt, Q
                     optIndicator.backgroundBrush = Qt::NoBrush; // no background
                     optIndicator.text.clear();
                     QWindowsStyle::drawControl(ce, &optIndicator, p, w);
+
+                    // If the indicator has an icon, it has been drawn now.
+                    // => don't draw it again.
+                    optCopy.icon = QIcon();
+
                     // Now draw text, background, and highlight, but not the indicator  with the
                     // base style. Since we can't turn off HasCheckIndicator to prevent the base
                     // style from drawing the check indicator again (it would change how the item
@@ -5099,7 +5130,7 @@ int QStyleSheetStyle::pixelMetric(PixelMetric m, const QStyleOption *opt, const 
         break;
 
     case PM_ScrollView_ScrollBarOverlap:
-        if (!rule.hasNativeBorder() || rule.hasBox())
+        if (!proxy()->styleHint(SH_ScrollBar_Transient, opt, w))
             return 0;
         break;
 #endif // QT_CONFIG(scrollbar)
@@ -5709,7 +5740,7 @@ int QStyleSheetStyle::styleHint(StyleHint sh, const QStyleOption *opt, const QWi
         case SH_TitleBar_ShowToolTipsOnButtons: s = "titlebar-show-tooltips-on-buttons"_L1; break;
         case SH_Widget_Animation_Duration: s = "widget-animation-duration"_L1; break;
         case SH_ScrollBar_Transient:
-            if (!rule.hasNativeBorder() || rule.hasBox())
+            if (!rule.hasNativeBorder() || rule.hasBox() || rule.hasDrawable())
                 return 0;
             break;
         default: break;

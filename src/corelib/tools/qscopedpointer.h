@@ -67,9 +67,10 @@ typedef QScopedPointerObjectDeleteLater<QObject> QScopedPointerDeleteLater;
 #endif
 
 template <typename T, typename Cleanup = QScopedPointerDeleter<T> >
-class [[nodiscard]] QScopedPointer
+class QScopedPointer
 {
 public:
+    Q_NODISCARD_CTOR
     explicit QScopedPointer(T *p = nullptr) noexcept : d(p)
     {
     }
@@ -120,7 +121,7 @@ public:
     {
         if (d == other)
             return;
-        T *oldD = qExchange(d, other);
+        T *oldD = std::exchange(d, other);
         Cleanup::cleanup(oldD);
     }
 
@@ -128,7 +129,7 @@ public:
     QT_DEPRECATED_VERSION_X_6_1("Use std::unique_ptr instead, and call release().")
     T *take() noexcept
     {
-        T *oldD = qExchange(d, nullptr);
+        T *oldD = std::exchange(d, nullptr);
         return oldD;
     }
 #endif
@@ -187,26 +188,28 @@ private:
 };
 
 template <typename T, typename Cleanup = QScopedPointerArrayDeleter<T> >
-class [[nodiscard]] QScopedArrayPointer : public QScopedPointer<T, Cleanup>
+class QScopedArrayPointer : public QScopedPointer<T, Cleanup>
 {
     template <typename Ptr>
     using if_same_type = typename std::enable_if<std::is_same<typename std::remove_cv<T>::type, Ptr>::value, bool>::type;
 public:
+    Q_NODISCARD_CTOR
     inline QScopedArrayPointer() : QScopedPointer<T, Cleanup>(nullptr) {}
     inline ~QScopedArrayPointer() = default;
 
     template <typename D, if_same_type<D> = true>
+    Q_NODISCARD_CTOR
     explicit QScopedArrayPointer(D *p)
         : QScopedPointer<T, Cleanup>(p)
     {
     }
 
-    inline T &operator[](int i)
+    T &operator[](qsizetype i)
     {
         return this->d[i];
     }
 
-    inline const T &operator[](int i) const
+    const T &operator[](qsizetype i) const
     {
         return this->d[i];
     }

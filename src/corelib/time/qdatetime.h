@@ -5,10 +5,10 @@
 #ifndef QDATETIME_H
 #define QDATETIME_H
 
-#include <QtCore/qstring.h>
+#include <QtCore/qcalendar.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qshareddata.h>
-#include <QtCore/qcalendar.h>
+#include <QtCore/qstring.h>
 
 #include <limits>
 #include <chrono>
@@ -20,9 +20,7 @@ Q_FORWARD_DECLARE_OBJC_CLASS(NSDate);
 
 QT_BEGIN_NAMESPACE
 
-#if QT_CONFIG(timezone)
 class QTimeZone;
-#endif
 class QDateTime;
 
 class Q_CORE_EXPORT QDate
@@ -105,12 +103,17 @@ public:
     int daysInMonth(QCalendar cal) const;
     int daysInYear(QCalendar cal) const;
 
-    QDateTime startOfDay(Qt::TimeSpec spec = Qt::LocalTime, int offsetSeconds = 0) const;
-    QDateTime endOfDay(Qt::TimeSpec spec = Qt::LocalTime, int offsetSeconds = 0) const;
-#if QT_CONFIG(timezone)
+#if QT_DEPRECATED_SINCE(6, 9)
+    QT_DEPRECATED_VERSION_X_6_9("Pass QTimeZone instead")
+    QDateTime startOfDay(Qt::TimeSpec spec, int offsetSeconds = 0) const;
+    QT_DEPRECATED_VERSION_X_6_9("Pass QTimeZone instead")
+    QDateTime endOfDay(Qt::TimeSpec spec, int offsetSeconds = 0) const;
+#endif
+
     QDateTime startOfDay(const QTimeZone &zone) const;
     QDateTime endOfDay(const QTimeZone &zone) const;
-#endif
+    QDateTime startOfDay() const;
+    QDateTime endOfDay() const;
 
 #if QT_CONFIG(datestring)
     QString toString(Qt::DateFormat format = Qt::TextDate) const;
@@ -273,21 +276,22 @@ class Q_CORE_EXPORT QDateTime
         quintptr status : 8;
 #  endif
 #endif
+        friend constexpr bool operator==(const ShortData &lhs, const ShortData &rhs)
+        { return lhs.status == rhs.status && lhs.msecs == rhs.msecs; }
     };
 
     union Data {
-        enum {
-            // To be of any use, we need at least 60 years around 1970, which
-            // is 1,893,456,000,000 ms. That requires 41 bits to store, plus
-            // the sign bit. With the status byte, the minimum size is 50 bits.
-            CanBeSmall = sizeof(ShortData) * 8 > 50
-        };
+        // To be of any use, we need at least 60 years around 1970, which
+        // is 1,893,456,000,000 ms. That requires 41 bits to store, plus
+        // the sign bit. With the status byte, the minimum size is 50 bits.
+        static constexpr bool CanBeSmall = sizeof(ShortData) * 8 > 50;
 
         Data() noexcept;
-        Data(Qt::TimeSpec);
-        Data(const Data &other);
-        Data(Data &&other);
-        Data &operator=(const Data &other);
+        Data(const QTimeZone &);
+        Data(const Data &other) noexcept;
+        Data(Data &&other) noexcept;
+        Data &operator=(const Data &other) noexcept;
+        Data &operator=(Data &&other) noexcept { swap(other); return *this; }
         ~Data();
 
         void swap(Data &other) noexcept
@@ -295,6 +299,7 @@ class Q_CORE_EXPORT QDateTime
 
         bool isShort() const;
         void detach();
+        QTimeZone timeZone() const;
 
         const QDateTimePrivate *operator->() const;
         QDateTimePrivate *operator->();
@@ -305,10 +310,12 @@ class Q_CORE_EXPORT QDateTime
 
 public:
     QDateTime() noexcept;
-    QDateTime(QDate date, QTime time, Qt::TimeSpec spec = Qt::LocalTime, int offsetSeconds = 0);
-#if QT_CONFIG(timezone)
+#if QT_DEPRECATED_SINCE(6, 9)
+    QT_DEPRECATED_VERSION_X_6_9("Pass QTimeZone instead")
+    QDateTime(QDate date, QTime time, Qt::TimeSpec spec, int offsetSeconds = 0);
+#endif
     QDateTime(QDate date, QTime time, const QTimeZone &timeZone);
-#endif // timezone
+    QDateTime(QDate date, QTime time);
     QDateTime(const QDateTime &other) noexcept;
     QDateTime(QDateTime &&other) noexcept;
     ~QDateTime();
@@ -325,6 +332,7 @@ public:
     QTime time() const;
     Qt::TimeSpec timeSpec() const;
     int offsetFromUtc() const;
+    QTimeZone timeRepresentation() const;
 #if QT_CONFIG(timezone)
     QTimeZone timeZone() const;
 #endif // timezone
@@ -336,11 +344,13 @@ public:
 
     void setDate(QDate date);
     void setTime(QTime time);
+#if QT_DEPRECATED_SINCE(6, 9)
+    QT_DEPRECATED_VERSION_X_6_9("Use setTimeZone() instead")
     void setTimeSpec(Qt::TimeSpec spec);
+    QT_DEPRECATED_VERSION_X_6_9("Use setTimeZone() instead")
     void setOffsetFromUtc(int offsetSeconds);
-#if QT_CONFIG(timezone)
+#endif
     void setTimeZone(const QTimeZone &toZone);
-#endif // timezone
     void setMSecsSinceEpoch(qint64 msecs);
     void setSecsSinceEpoch(qint64 secs);
 
@@ -360,18 +370,20 @@ public:
         return addMSecs(msecs.count());
     }
 
+#if QT_DEPRECATED_SINCE(6, 9)
+    QT_DEPRECATED_VERSION_X_6_9("Use toTimeZone instead")
     QDateTime toTimeSpec(Qt::TimeSpec spec) const;
-    inline QDateTime toLocalTime() const { return toTimeSpec(Qt::LocalTime); }
-    inline QDateTime toUTC() const { return toTimeSpec(Qt::UTC); }
+#endif
+    QDateTime toLocalTime() const;
+    QDateTime toUTC() const;
     QDateTime toOffsetFromUtc(int offsetSeconds) const;
-#if QT_CONFIG(timezone)
     QDateTime toTimeZone(const QTimeZone &toZone) const;
-#endif // timezone
 
     qint64 daysTo(const QDateTime &) const;
     qint64 secsTo(const QDateTime &) const;
     qint64 msecsTo(const QDateTime &) const;
 
+    static QDateTime currentDateTime(const QTimeZone &zone);
     static QDateTime currentDateTime();
     static QDateTime currentDateTimeUtc();
 #if QT_CONFIG(datestring)
@@ -388,15 +400,17 @@ public:
     { return fromString(string, qToStringViewIgnoringNull(format), cal); }
 #endif
 
-    static QDateTime fromMSecsSinceEpoch(qint64 msecs, Qt::TimeSpec spec = Qt::LocalTime,
-                                         int offsetFromUtc = 0);
-    static QDateTime fromSecsSinceEpoch(qint64 secs, Qt::TimeSpec spec = Qt::LocalTime,
-                                        int offsetFromUtc = 0);
+#if QT_DEPRECATED_SINCE(6, 9)
+    QT_DEPRECATED_VERSION_X_6_9("Pass QTimeZone instead of time-spec, offset")
+    static QDateTime fromMSecsSinceEpoch(qint64 msecs, Qt::TimeSpec spec, int offsetFromUtc = 0);
+    QT_DEPRECATED_VERSION_X_6_9("Pass QTimeZone instead of time-spec, offset")
+    static QDateTime fromSecsSinceEpoch(qint64 secs, Qt::TimeSpec spec, int offsetFromUtc = 0);
+#endif
 
-#if QT_CONFIG(timezone)
     static QDateTime fromMSecsSinceEpoch(qint64 msecs, const QTimeZone &timeZone);
     static QDateTime fromSecsSinceEpoch(qint64 secs, const QTimeZone &timeZone);
-#endif
+    static QDateTime fromMSecsSinceEpoch(qint64 msecs);
+    static QDateTime fromSecsSinceEpoch(qint64 secs);
 
     static qint64 currentMSecsSinceEpoch() noexcept;
     static qint64 currentSecsSinceEpoch() noexcept;
@@ -438,11 +452,11 @@ public:
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
     static QDateTime fromStdLocalTime(const std::chrono::local_time<std::chrono::milliseconds> &time)
     {
-        QDateTime result(QDate(1970, 1, 1), QTime(0, 0, 0), Qt::LocalTime);
+        QDateTime result(QDate(1970, 1, 1), QTime(0, 0, 0));
         return result.addMSecs(time.time_since_epoch().count());
     }
 
-#if QT_CONFIG(timezone)
+#if QT_CONFIG(timezone) && (__cpp_lib_chrono >= 201907L || defined(Q_QDOC))
     // zoned_time. defined in qtimezone.h
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
     static QDateTime fromStdZonedTime(const std::chrono::zoned_time<

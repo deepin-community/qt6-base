@@ -7,8 +7,8 @@
 #include <QtGui/qtguiglobal.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qpoint.h>
-#include <QtCore/qsharedpointer.h>
 #include <QtGui/qrawfont.h>
+#include <QtCore/qshareddata.h>
 
 #if !defined(QT_NO_RAWFONT)
 
@@ -73,6 +73,12 @@ public:
 
     void setBoundingRect(const QRectF &boundingRect);
     QRectF boundingRect() const;
+
+    QList<qsizetype> stringIndexes() const;
+    void setStringIndexes(const QList<qsizetype> &stringIndexes);
+
+    void setSourceString(const QString &sourceString);
+    QString sourceString() const;
 
     bool isEmpty() const;
 

@@ -11,7 +11,6 @@
     \inmodule QtGui
     \reentrant
     \ingroup painting
-    \ingroup io
 
     The most common way to read images is through QImage and QPixmap's
     constructors, or by calling QImage::load() and
@@ -137,6 +136,9 @@ QT_BEGIN_NAMESPACE
 
 using namespace QImageReaderWriterHelpers;
 using namespace Qt::StringLiterals;
+
+Q_TRACE_POINT(qtgui, QImageReader_read_before_reading, QImageReader *reader, const QString &filename);
+Q_TRACE_POINT(qtgui, QImageReader_read_after_reading, QImageReader *reader, bool result);
 
 static QImageIOHandler *createReadHandlerHelper(QIODevice *device,
                                                 const QByteArray &format,
@@ -461,7 +463,7 @@ public:
     static int maxAlloc;
 };
 
-int QImageReaderPrivate::maxAlloc = 128; // 128 MB is enough for an 8K 32bpp image
+int QImageReaderPrivate::maxAlloc = 256; // 256 MB is enough for an 8K 64bpp image
 
 /*!
     \internal
@@ -484,9 +486,9 @@ QImageReaderPrivate::QImageReaderPrivate(QImageReader *qq)
 */
 QImageReaderPrivate::~QImageReaderPrivate()
 {
+    delete handler;
     if (deleteDevice)
         delete device;
-    delete handler;
 }
 
 /*!
@@ -746,12 +748,12 @@ bool QImageReader::decideFormatFromContent() const
 */
 void QImageReader::setDevice(QIODevice *device)
 {
+    delete d->handler;
+    d->handler = nullptr;
     if (d->device && d->deleteDevice)
         delete d->device;
     d->device = device;
     d->deleteDevice = false;
-    delete d->handler;
-    d->handler = nullptr;
     d->text.clear();
 }
 
@@ -1569,6 +1571,8 @@ int QImageReader::allocationLimit()
     This limit helps applications avoid unexpectedly large memory usage from
     loading corrupt image files. It is normally not needed to change it. The
     default limit is large enough for all commonly used image sizes.
+
+    At runtime, this value may be overridden by the environment variable \c QT_IMAGEIO_MAXALLOC.
 
     \note The memory requirements are calculated for a minimum of 32 bits per pixel, since Qt will
     typically convert an image to that depth when it is used in GUI. This means that the effective

@@ -21,6 +21,7 @@
 #include "QtCore/qcoreapplication.h"
 
 #include <QtCore/private/qthread_p.h>
+#include <QtCore/private/qtools_p.h>
 
 #include "qnetworkcookiejar.h"
 #include "qnetconmonitor_p.h"
@@ -32,14 +33,9 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace QtMiscUtils;
 
 class QNetworkProxy;
-
-static inline bool isSeparator(char c)
-{
-    static const char separators[] = "()<>@,;:\\\"/[]?={}";
-    return isLWS(c) || strchr(separators, c) != nullptr;
-}
 
 // ### merge with nextField in cookiejar.cpp
 static QHash<QByteArray, QByteArray> parseHttpOptionHeader(const QByteArray &header)
@@ -107,6 +103,11 @@ static QHash<QByteArray, QByteArray> parseHttpOptionHeader(const QByteArray &hea
                     ++pos;
                 }
             } else {
+                const auto isSeparator = [](char c) {
+                    static const char separators[] = "()<>@,;:\\\"/[]?={}";
+                    return isLWS(c) || strchr(separators, c) != nullptr;
+                };
+
                 // case: token
                 while (pos < header.size()) {
                     char c = header.at(pos);
@@ -151,6 +152,9 @@ QNetworkReplyHttpImpl::QNetworkReplyHttpImpl(QNetworkAccessManager* const manage
     if (request.url().scheme() == "https"_L1)
         d->sslConfiguration.reset(new QSslConfiguration(request.sslConfiguration()));
 #endif
+
+    QObjectPrivate::connect(this, &QNetworkReplyHttpImpl::redirectAllowed, d,
+            &QNetworkReplyHttpImplPrivate::followRedirect, Qt::QueuedConnection);
 
     // FIXME Later maybe set to Unbuffered, especially if it is zerocopy or from cache?
     QIODevice::open(QIODevice::ReadOnly);
@@ -499,6 +503,13 @@ bool QNetworkReplyHttpImplPrivate::loadFromCacheIfAllowed(QHttpNetworkRequest &h
     QNetworkHeadersPrivate::RawHeadersList::ConstIterator it;
     cacheHeaders.setAllRawHeaders(metaData.rawHeaders());
 
+    it = cacheHeaders.findRawHeader("content-length");
+    if (it != cacheHeaders.rawHeaders.constEnd()) {
+        QIODevice *data = nc->data(httpRequest.url());
+        if (!data || data->size() < it->second.toLongLong())
+            return false; // The data is smaller than the content-length specified
+    }
+
     it = cacheHeaders.findRawHeader("etag");
     if (it != cacheHeaders.rawHeaders.constEnd())
         httpRequest.setHeaderField("If-None-Match", it->second);
@@ -784,6 +795,7 @@ void QNetworkReplyHttpImplPrivate::postRequest(const QNetworkRequest &newHttpReq
     QHttpThreadDelegate *delegate = new QHttpThreadDelegate;
     // Propagate Http/2 settings:
     delegate->http2Parameters = request.http2Configuration();
+    delegate->http1Parameters = request.http1Configuration();
 
     if (request.attribute(QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute).isValid())
         delegate->connectionCacheExpiryTimeoutSeconds = request.attribute(QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute).toInt();
@@ -860,9 +872,6 @@ void QNetworkReplyHttpImplPrivate::postRequest(const QNetworkRequest &newHttpReq
         QObject::connect(delegate, SIGNAL(redirected(QUrl,int,int)),
                 q, SLOT(onRedirected(QUrl,int,int)),
                 Qt::QueuedConnection);
-
-        QObject::connect(q, SIGNAL(redirectAllowed()), q, SLOT(followRedirect()),
-                         Qt::QueuedConnection);
 
 #ifndef QT_NO_SSL
         QObject::connect(delegate, SIGNAL(sslConfigurationChanged(QSslConfiguration)),
@@ -1719,8 +1728,8 @@ QNetworkCacheMetaData QNetworkReplyHttpImplPrivate::fetchCacheMetaData(const QNe
             QByteArray v = q->rawHeader(header);
             if (v.size() == 3
                 && v[0] == '1'
-                && v[1] >= '0' && v[1] <= '9'
-                && v[2] >= '0' && v[2] <= '9')
+                && isAsciiDigit(v[1])
+                && isAsciiDigit(v[2]))
                 continue;
         }
 

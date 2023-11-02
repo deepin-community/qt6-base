@@ -44,14 +44,14 @@ public:
     static int keysymToQtKey(xkb_keysym_t keysym, Qt::KeyboardModifiers modifiers);
     static int keysymToQtKey(xkb_keysym_t keysym, Qt::KeyboardModifiers modifiers,
                              xkb_state *state, xkb_keycode_t code,
-                             bool superAsMeta = false, bool hyperAsMeta = false);
+                             bool superAsMeta = true, bool hyperAsMeta = true);
 
     // xkbcommon_* API is part of libxkbcommon internals, with modifications as
     // described in the header of the implementation file.
     static void xkbcommon_XConvertCase(xkb_keysym_t sym, xkb_keysym_t *lower, xkb_keysym_t *upper);
     static xkb_keysym_t qxkbcommon_xkb_keysym_to_upper(xkb_keysym_t ks);
 
-    static Qt::KeyboardModifiers modifiers(struct xkb_state *state);
+    static Qt::KeyboardModifiers modifiers(struct xkb_state *state, xkb_keysym_t keysym = XKB_KEY_VoidSymbol);
 
     static QList<int> possibleKeys(xkb_state *state, const QKeyEvent *event,
                                    bool superAsMeta = false, bool hyperAsMeta = false);
@@ -60,7 +60,7 @@ public:
     static xkb_keysym_t lookupLatinKeysym(xkb_state *state, xkb_keycode_t keycode);
 
     static bool isLatin1(xkb_keysym_t sym) {
-        return sym <= 0xff;
+        return sym >= 0x20 && sym <= 0xff;
     }
     static bool isKeypad(xkb_keysym_t sym) {
         return sym >= XKB_KEY_KP_Space && sym <= XKB_KEY_KP_9;

@@ -23,8 +23,6 @@
 
 QT_BEGIN_NAMESPACE
 
-size_t qHash(const QPixmapCache::Key &k, size_t seed = 0);
-
 class QPixmapCache::KeyData
 {
 public:
@@ -33,6 +31,7 @@ public:
      : isValid(other.isValid), key(other.key), ref(1) {}
     ~KeyData() {}
 
+    QString stringKey;
     bool isValid;
     int key;
     int ref;

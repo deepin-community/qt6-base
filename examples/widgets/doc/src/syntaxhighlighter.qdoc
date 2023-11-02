@@ -4,6 +4,7 @@
 /*!
     \example richtext/syntaxhighlighter
     \title Syntax Highlighter Example
+    \examplecategory {User Interface Components}
     \ingroup examples-richtext
     \brief The Syntax Highlighter example shows how to perform
     simple syntax highlighting.
@@ -219,10 +220,4 @@
     function. The QSyntaxHighlighter class also provides the \l
     {QSyntaxHighlighter::document()}{document()} function which
     returns the currently set document.
-
-    \section1 Other Code Editor Features
-
-    The \l{Code Editor Example} shows how to implement line
-    numbers and how to highlight the current line.
-
 */

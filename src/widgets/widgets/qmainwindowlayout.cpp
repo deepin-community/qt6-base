@@ -24,6 +24,10 @@
 #endif
 
 #include <qapplication.h>
+#if QT_CONFIG(draganddrop)
+#include <qdrag.h>
+#endif
+#include <qmimedata.h>
 #if QT_CONFIG(statusbar)
 #include <qstatusbar.h>
 #endif
@@ -45,6 +49,8 @@
 #include <private/qapplication_p.h>
 #include <private/qlayoutengine_p.h>
 #include <private/qwidgetresizehandler_p.h>
+
+#include <QScopedValueRollback>
 
 QT_BEGIN_NAMESPACE
 
@@ -426,6 +432,25 @@ void QDockWidgetGroupWindow::destroyOrHideIfEmpty()
     deleteLater();
 }
 
+/*!
+   \internal
+   \return \c true if the group window has at least one visible QDockWidget child,
+   otherwise false.
+ */
+bool QDockWidgetGroupWindow::hasVisibleDockWidgets() const
+{
+    const auto &children = findChildren<QDockWidget *>(Qt::FindChildrenRecursively);
+    for (auto child : children) {
+        // WA_WState_Visible is set on the dock widget, associated to the active tab
+        // and unset on all others.
+        // WA_WState_Hidden is set if the dock widgets have been explicitly hidden.
+        // This is the relevant information to check (equivalent to !child->isHidden()).
+        if (!child->testAttribute(Qt::WA_WState_Hidden))
+            return true;
+    }
+    return false;
+}
+
 /*! \internal
     Sets the flags of this window in accordance to the capabilities of the dock widgets
  */
@@ -474,7 +499,7 @@ void QDockWidgetGroupWindow::adjustFlags()
             m_removedFrameSize = QSize();
         }
 
-        show(); // setWindowFlags hides the window
+        setVisible(hasVisibleDockWidgets());
     }
 
     QWidget *titleBarOf = top ? top : parentWidget();
@@ -535,8 +560,12 @@ bool QDockWidgetGroupWindow::hover(QLayoutItem *widgetItem, const QPoint &mouseP
 
     auto newGapPos = newState.gapIndex(mousePos, nestingEnabled, tabMode);
     Q_ASSERT(!newGapPos.isEmpty());
-    if (newGapPos == currentGapPos)
-        return false; // gap is already there
+
+    // Do not insert a new gap item, if the current position already is a gap,
+    // or if the group window contains one
+    if (newGapPos == currentGapPos || newState.hasGapItem(newGapPos))
+        return false;
+
     currentGapPos = newGapPos;
     newState.insertGap(currentGapPos, widgetItem);
     newState.fitItems();
@@ -1651,19 +1680,7 @@ void QMainWindowLayout::setTabPosition(Qt::DockWidgetAreas areas, QTabWidget::Ta
     updateTabBarShapes();
 }
 
-static inline QTabBar::Shape tabBarShapeFrom(QTabWidget::TabShape shape, QTabWidget::TabPosition position)
-{
-    const bool rounded = (shape == QTabWidget::Rounded);
-    if (position == QTabWidget::North)
-        return rounded ? QTabBar::RoundedNorth : QTabBar::TriangularNorth;
-    if (position == QTabWidget::South)
-        return rounded ? QTabBar::RoundedSouth : QTabBar::TriangularSouth;
-    if (position == QTabWidget::East)
-        return rounded ? QTabBar::RoundedEast : QTabBar::TriangularEast;
-    if (position == QTabWidget::West)
-        return rounded ? QTabBar::RoundedWest : QTabBar::TriangularWest;
-    return QTabBar::RoundedNorth;
-}
+QTabBar::Shape _q_tb_tabBarShapeFrom(QTabWidget::TabShape shape, QTabWidget::TabPosition position);
 #endif // QT_CONFIG(tabwidget)
 
 void QMainWindowLayout::updateTabBarShapes()
@@ -1689,7 +1706,7 @@ void QMainWindowLayout::updateTabBarShapes()
     for (int i = 0; i < QInternal::DockCount; ++i) {
 #if QT_CONFIG(tabwidget)
         QTabWidget::TabPosition pos = verticalTabsEnabled ? vertical[i] : tabPositions[i];
-        QTabBar::Shape shape = tabBarShapeFrom(_tabShape, pos);
+        QTabBar::Shape shape = _q_tb_tabBarShapeFrom(_tabShape, pos);
 #else
         QTabBar::Shape shape = verticalTabsEnabled ? vertical[i] : QTabBar::RoundedSouth;
 #endif
@@ -1825,7 +1842,7 @@ bool QMainWindowTabBar::event(QEvent *e)
 
 QTabBar *QMainWindowLayout::getTabBar()
 {
-    if (!usedTabBars.isEmpty()) {
+    if (!usedTabBars.isEmpty() && !isInRestoreState) {
         /*
             If dock widgets have been removed and added while the main window was
             hidden, then the layout hasn't been activated yet, and tab bars from empty
@@ -2654,21 +2671,36 @@ QLayoutItem *QMainWindowLayout::unplug(QWidget *widget, bool group)
         } else
 #endif // QT_CONFIG(tabwidget)
         {
-            // Dock widget is unplugged from the main window
-            // => geometry needs to be adjusted by separator size
+            // Dock widget is unplugged from a main window dock
+            // => height or width need to be decreased by separator size
             switch (dockWidgetArea(dw)) {
             case Qt::LeftDockWidgetArea:
             case Qt::RightDockWidgetArea:
-                r.adjust(0, 0, 0, -sep);
+                r.setHeight(r.height() - sep);
                 break;
             case Qt::TopDockWidgetArea:
             case Qt::BottomDockWidgetArea:
-                r.adjust(0, 0, -sep, 0);
+                r.setWidth(r.width() - sep);
                 break;
             case Qt::NoDockWidgetArea:
             case Qt::DockWidgetArea_Mask:
                 break;
             }
+
+            // Depending on the title bar layout (vertical / horizontal),
+            // width and height have to provide minimum space for window handles
+            // and mouse dragging.
+            // Assuming horizontal title bar, if the dock widget does not have a layout.
+            const auto *layout = qobject_cast<QDockWidgetLayout *>(dw->layout());
+            const bool verticalTitleBar = layout ? layout->verticalTitleBar : false;
+            const int tbHeight = QApplication::style()
+                      ? QApplication::style()->pixelMetric(QStyle::PixelMetric::PM_TitleBarHeight)
+                      : 20;
+            const int minHeight = verticalTitleBar ? 2 * tbHeight : tbHeight;
+            const int minWidth = verticalTitleBar ? tbHeight : 2 * tbHeight;
+            r.setSize(r.size().expandedTo(QSize(minWidth, minHeight)));
+            qCDebug(lcQpaDockWidgets) << dw << "will be unplugged with size" << r.size();
+
             dw->d_func()->unplug(r);
         }
     }
@@ -2957,6 +2989,7 @@ void QMainWindowLayout::saveState(QDataStream &stream) const
 
 bool QMainWindowLayout::restoreState(QDataStream &stream)
 {
+    QScopedValueRollback<bool> guard(isInRestoreState, true);
     savedState = layoutState;
     layoutState.clear();
     layoutState.rect = savedState.rect;
@@ -3001,6 +3034,41 @@ bool QMainWindowLayout::restoreState(QDataStream &stream)
 
     return true;
 }
+
+#if QT_CONFIG(draganddrop)
+bool QMainWindowLayout::needsPlatformDrag()
+{
+    static const bool wayland =
+            QGuiApplication::platformName().startsWith("wayland"_L1, Qt::CaseInsensitive);
+    return wayland;
+}
+
+Qt::DropAction QMainWindowLayout::performPlatformWidgetDrag(QLayoutItem *widgetItem,
+                                                            const QPoint &pressPosition)
+{
+    draggingWidget = widgetItem;
+    QWidget *widget = widgetItem->widget();
+    auto drag = QDrag(widget);
+    auto mimeData = new QMimeData();
+    auto window = widgetItem->widget()->windowHandle();
+
+    auto serialize = [](const auto &object) {
+        QByteArray data;
+        QDataStream dataStream(&data, QIODevice::WriteOnly);
+        dataStream << object;
+        return data;
+    };
+    mimeData->setData("application/x-qt-mainwindowdrag-window"_L1,
+                      serialize(reinterpret_cast<qintptr>(window)));
+    mimeData->setData("application/x-qt-mainwindowdrag-position"_L1, serialize(pressPosition));
+    drag.setMimeData(mimeData);
+
+    auto result = drag.exec();
+
+    draggingWidget = nullptr;
+    return result;
+}
+#endif
 
 QT_END_NAMESPACE
 

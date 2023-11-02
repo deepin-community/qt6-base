@@ -85,15 +85,18 @@ template <typename T, typename U, auto RetainFunction, auto ReleaseFunction>
 class QAppleRefCounted
 {
 public:
-    QAppleRefCounted() : value() {}
-    QAppleRefCounted(const T &t) : value(t) {}
-    QAppleRefCounted(T &&t) noexcept(std::is_nothrow_move_constructible<T>::value)
+    Q_NODISCARD_CTOR QAppleRefCounted() : value() {}
+    Q_NODISCARD_CTOR QAppleRefCounted(const T &t) : value(t) {}
+    Q_NODISCARD_CTOR QAppleRefCounted(T &&t)
+            noexcept(std::is_nothrow_move_constructible<T>::value)
         : value(std::move(t)) {}
-    QAppleRefCounted(QAppleRefCounted &&other)
+    Q_NODISCARD_CTOR QAppleRefCounted(QAppleRefCounted &&other)
             noexcept(std::is_nothrow_move_assignable<T>::value &&
                      std::is_nothrow_move_constructible<T>::value)
-        : value(qExchange(other.value, T())) {}
-    QAppleRefCounted(const QAppleRefCounted &other) : value(other.value) { if (value) RetainFunction(value); }
+        : value(std::exchange(other.value, T())) {}
+    Q_NODISCARD_CTOR QAppleRefCounted(const QAppleRefCounted &other)
+        : value(other.value)
+    { if (value) RetainFunction(value); }
     ~QAppleRefCounted() { if (value) ReleaseFunction(value); }
     operator T() const { return value; }
     void swap(QAppleRefCounted &other) noexcept(noexcept(qSwap(value, other.value)))
@@ -109,12 +112,21 @@ protected:
     T value;
 };
 
+class QMacAutoReleasePool
+{
+public:
+    Q_NODISCARD_CTOR Q_CORE_EXPORT QMacAutoReleasePool();
+    Q_CORE_EXPORT ~QMacAutoReleasePool();
+private:
+    Q_DISABLE_COPY(QMacAutoReleasePool)
+    void *pool;
+};
 
 #ifdef Q_OS_MACOS
 class QMacRootLevelAutoReleasePool
 {
 public:
-    QMacRootLevelAutoReleasePool();
+    Q_NODISCARD_CTOR QMacRootLevelAutoReleasePool();
     ~QMacRootLevelAutoReleasePool();
 private:
     QScopedPointer<QMacAutoReleasePool> pool;
@@ -139,7 +151,7 @@ class QCFType : public QAppleRefCounted<T, CFTypeRef, CFRetain, CFRelease>
     using Base = QAppleRefCounted<T, CFTypeRef, CFRetain, CFRelease>;
 public:
     using Base::Base;
-    explicit QCFType(CFTypeRef r) : Base(static_cast<T>(r)) {}
+    Q_NODISCARD_CTOR explicit QCFType(CFTypeRef r) : Base(static_cast<T>(r)) {}
     template <typename X> X as() const { return reinterpret_cast<X>(this->value); }
     static QCFType constructFromGet(const T &t)
     {
@@ -157,15 +169,15 @@ class QIOType : public QAppleRefCounted<T, io_object_t, IOObjectRetain, IOObject
 };
 #endif
 
-class Q_CORE_EXPORT QCFString : public QCFType<CFStringRef>
+class QCFString : public QCFType<CFStringRef>
 {
 public:
     using QCFType<CFStringRef>::QCFType;
-    inline QCFString(const QString &str) : QCFType<CFStringRef>(0), string(str) {}
-    inline QCFString(const CFStringRef cfstr = 0) : QCFType<CFStringRef>(cfstr) {}
-    inline QCFString(const QCFType<CFStringRef> &other) : QCFType<CFStringRef>(other) {}
-    operator QString() const;
-    operator CFStringRef() const;
+    Q_NODISCARD_CTOR QCFString(const QString &str) : QCFType<CFStringRef>(0), string(str) {}
+    Q_NODISCARD_CTOR QCFString(const CFStringRef cfstr = 0) : QCFType<CFStringRef>(cfstr) {}
+    Q_NODISCARD_CTOR QCFString(const QCFType<CFStringRef> &other) : QCFType<CFStringRef>(other) {}
+    Q_CORE_EXPORT operator QString() const;
+    Q_CORE_EXPORT operator CFStringRef() const;
 
 private:
     QString string;
@@ -175,7 +187,9 @@ private:
 Q_CORE_EXPORT bool qt_mac_applicationIsInDarkMode();
 Q_CORE_EXPORT bool qt_mac_runningUnderRosetta();
 Q_CORE_EXPORT std::optional<uint32_t> qt_mac_sipConfiguration();
-Q_CORE_EXPORT void qt_mac_ensureResponsible();
+#ifdef QT_BUILD_INTERNAL
+Q_AUTOTEST_EXPORT void qt_mac_ensureResponsible();
+#endif
 #endif
 
 #ifndef QT_NO_DEBUG_STREAM
@@ -184,15 +198,18 @@ Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QCFString &string);
 #endif
 
 Q_CORE_EXPORT bool qt_apple_isApplicationExtension();
+
+#if !defined(QT_BOOTSTRAPPED)
 Q_CORE_EXPORT bool qt_apple_isSandboxed();
 
-#if !defined(QT_BOOTSTRAPPED) && defined(__OBJC__)
+#if defined(__OBJC__)
 QT_END_NAMESPACE
 @interface NSObject (QtSandboxHelpers)
 - (id)qt_valueForPrivateKey:(NSString *)key;
 @end
 QT_BEGIN_NAMESPACE
 #endif
+#endif // !QT_BOOTSTRAPPED
 
 #if !defined(QT_BOOTSTRAPPED) && !defined(Q_OS_WATCHOS)
 QT_END_NAMESPACE
@@ -221,7 +238,7 @@ class Q_CORE_EXPORT AppleUnifiedLogger
 public:
     static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context, const QString &message,
         const QString &subsystem = QString());
-    static bool willMirrorToStderr();
+    static bool preventsStderrLogging();
 private:
     static os_log_type_t logTypeForMessageType(QtMsgType msgType);
     static os_log_t cachedLog(const QString &subsystem, const QString &category);
@@ -249,7 +266,7 @@ public:
     Q_DISABLE_COPY(QAppleLogActivity)
 
     QAppleLogActivity(QAppleLogActivity &&other)
-        : activity(qExchange(other.activity, nullptr)), state(other.state)
+        : activity(std::exchange(other.activity, nullptr)), state(other.state)
     {
     }
 
@@ -324,7 +341,7 @@ public:
 
     QMacNotificationObserver(const QMacNotificationObserver &other) = delete;
     QMacNotificationObserver(QMacNotificationObserver &&other)
-        : observer(qExchange(other.observer, nullptr))
+        : observer(std::exchange(other.observer, nullptr))
     {
     }
 
@@ -421,6 +438,20 @@ private:
     static VersionTuple applicationVersion();
     static VersionTuple libraryVersion();
 };
+
+// -------------------------------------------------------------------------
+
+#ifdef __OBJC__
+template <typename T>
+typename std::enable_if<std::is_pointer<T>::value, T>::type
+qt_objc_cast(id object)
+{
+    if ([object isKindOfClass:[typename std::remove_pointer<T>::type class]])
+        return static_cast<T>(object);
+
+    return nil;
+}
+#endif
 
 // -------------------------------------------------------------------------
 

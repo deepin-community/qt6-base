@@ -58,7 +58,7 @@
 %token PCDATA "PCDATA"
 
 -- error
-%token ERROR
+%token XML_ERROR
 
 -- entities
 %token PARSE_ENTITY
@@ -149,7 +149,7 @@
 
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_XMLSTREAMREADER
+#if QT_CONFIG(xmlstreamreader)
 
 bool QXmlStreamReaderPrivate::parse()
 {
@@ -251,7 +251,7 @@ bool QXmlStreamReaderPrivate::parse()
             } else switch (token_char) {
             case 0xfffe:
             case 0xffff:
-                token = ERROR;
+                token = XML_ERROR;
                 break;
             case '\r':
                 token = SPACE;
@@ -1419,7 +1419,12 @@ space_opt ::= space;
 qname ::= LETTER;
 /.
         case $rule_number: {
-            sym(1).len += fastScanName(&sym(1).prefix);
+            Value &val = sym(1);
+            if (auto res = fastScanName(&val))
+                val.len += *res;
+            else
+                return false;
+
             if (atEnd) {
                 resume($rule_number);
                 return false;
@@ -1430,7 +1435,11 @@ qname ::= LETTER;
 name ::= LETTER;
 /.
         case $rule_number:
-            sym(1).len += fastScanName();
+            if (auto res = fastScanName())
+                sym(1).len += *res;
+            else
+                return false;
+
             if (atEnd) {
                 resume($rule_number);
                 return false;
@@ -1478,7 +1487,7 @@ nmtoken ::= COLON;
     return false;
 }
 
-#endif
+#endif // feature xmlstreamreader
 
 QT_END_NAMESPACE
 

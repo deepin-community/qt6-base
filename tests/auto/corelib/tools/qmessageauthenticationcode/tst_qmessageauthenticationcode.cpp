@@ -12,15 +12,63 @@ class tst_QMessageAuthenticationCode : public QObject
 {
     Q_OBJECT
 private slots:
+    void repeated_setKey_data();
+    void repeated_setKey();
     void result_data();
     void result();
     void result_incremental_data();
     void result_incremental();
     void addData_overloads_data();
     void addData_overloads();
+    void move();
+    void swap();
 };
 
 Q_DECLARE_METATYPE(QCryptographicHash::Algorithm)
+
+void tst_QMessageAuthenticationCode::repeated_setKey_data()
+{
+    using A = QCryptographicHash::Algorithm;
+    QTest::addColumn<A>("algo");
+
+    const auto me = QMetaEnum::fromType<A>();
+    for (int i = 0, value; (value = me.value(i)) != -1; ++i)
+        QTest::addRow("%s", me.key(i)) << A(value);
+}
+
+void tst_QMessageAuthenticationCode::repeated_setKey()
+{
+    QFETCH(const QCryptographicHash::Algorithm, algo);
+
+    if (!QCryptographicHash::supportsAlgorithm(algo))
+        QSKIP("QCryptographicHash doesn't support this algorithm");
+
+    // GIVEN: two long keys, so we're sure the key needs to be hashed in order
+    //        to fit into the hash algorithm's block
+
+    static const QByteArray key1(1024, 'a');
+    static const QByteArray key2(2048, 'b');
+
+    // WHEN: processing the same message
+
+    QMessageAuthenticationCode macX(algo);
+    QMessageAuthenticationCode mac1(algo, key1);
+    QMessageAuthenticationCode mac2(algo, key2);
+
+    const auto check = [](QMessageAuthenticationCode &mac) {
+        mac.addData("This is nonsense, ignore it, please.");
+        return mac.result();
+    };
+
+    macX.setKey(key1);
+    QCOMPARE(check(macX), check(mac1));
+
+    // THEN: the result does not depend on whether a new QMAC instance was used
+    //       or an old one re-used (iow: setKey() reset()s)
+
+    macX.setKey(key2);
+    QCOMPARE(check(macX), check(mac2));
+}
 
 void tst_QMessageAuthenticationCode::result_data()
 {
@@ -99,14 +147,13 @@ void tst_QMessageAuthenticationCode::result()
     QFETCH(QByteArray, message);
     QFETCH(QByteArray, code);
 
-    QMessageAuthenticationCode mac(algo);
-    mac.setKey(key);
+    QMessageAuthenticationCode mac(algo, key);
     mac.addData(message);
-    QByteArray result = mac.result();
+    QByteArrayView resultView = mac.resultView();
 
-    QCOMPARE(result, code);
+    QCOMPARE(resultView, code);
 
-    result = QMessageAuthenticationCode::hash(message, key, algo);
+    const auto result = QMessageAuthenticationCode::hash(message, key, algo);
     QCOMPARE(result, code);
 }
 
@@ -128,11 +175,10 @@ void tst_QMessageAuthenticationCode::result_incremental()
 
     QCOMPARE(leftPart + rightPart, message);
 
-    QMessageAuthenticationCode mac(algo);
-    mac.setKey(key);
+    QMessageAuthenticationCode mac(algo, key);
     mac.addData(leftPart);
     mac.addData(rightPart);
-    QByteArray result = mac.result();
+    QByteArrayView result = mac.resultView();
 
     QCOMPARE(result, code);
 }
@@ -154,7 +200,7 @@ void tst_QMessageAuthenticationCode::addData_overloads()
         QMessageAuthenticationCode mac(algo);
         mac.setKey(key);
         mac.addData(message.constData(), message.size());
-        QByteArray result = mac.result();
+        QByteArrayView result = mac.resultView();
 
         QCOMPARE(result, code);
     }
@@ -166,11 +212,54 @@ void tst_QMessageAuthenticationCode::addData_overloads()
         QMessageAuthenticationCode mac(algo);
         mac.setKey(key);
         QVERIFY(mac.addData(&buffer));
-        QByteArray result = mac.result();
+        QByteArrayView result = mac.resultView();
         buffer.close();
 
         QCOMPARE(result, code);
     }
+}
+
+void tst_QMessageAuthenticationCode::move()
+{
+    const QByteArray key = "123";
+
+    QMessageAuthenticationCode src(QCryptographicHash::Sha1, key);
+    src.addData("a");
+
+    // move constructor
+    auto intermediary = std::move(src);
+    intermediary.addData("b");
+
+    // move assign operator
+    QMessageAuthenticationCode dst(QCryptographicHash::Sha256, key);
+    dst.addData("no effect on the end result");
+    dst = std::move(intermediary);
+    dst.addData("c");
+
+    QCOMPARE(dst.resultView(),
+             QMessageAuthenticationCode::hash("abc", key, QCryptographicHash::Sha1));
+}
+
+void tst_QMessageAuthenticationCode::swap()
+{
+    const QByteArray key1 = "123";
+    const QByteArray key2 = "abcdefg";
+
+    QMessageAuthenticationCode mac1(QCryptographicHash::Sha1,   key1);
+    QMessageAuthenticationCode mac2(QCryptographicHash::Sha256, key2);
+
+    mac1.addData("da");
+    mac2.addData("te");
+
+    mac1.swap(mac2);
+
+    mac2.addData("ta");
+    mac1.addData("st");
+
+    QCOMPARE(mac2.resultView(),
+             QMessageAuthenticationCode::hash("data", key1, QCryptographicHash::Sha1));
+    QCOMPARE(mac1.resultView(),
+             QMessageAuthenticationCode::hash("test", key2, QCryptographicHash::Sha256));
 }
 
 QTEST_MAIN(tst_QMessageAuthenticationCode)

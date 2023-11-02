@@ -46,11 +46,23 @@ public:
 
     // Core QPromise APIs
     QFuture<T> future() const { return d.future(); }
-    template<typename U, typename = QtPrivate::EnableIfSameOrConvertible<U, T>>
+    template<typename...Args, std::enable_if_t<std::is_constructible_v<T, Args...>, bool> = true>
+    bool emplaceResultAt(int index, Args&&...args)
+    {
+        return d.reportAndEmplaceResult(index, std::forward<Args>(args)...);
+    }
+    template<typename...Args, std::enable_if_t<std::is_constructible_v<T, Args...>, bool> = true>
+    bool emplaceResult(Args&&...args)
+    {
+        return d.reportAndEmplaceResult(-1, std::forward<Args>(args)...);
+    }
+    template<typename U = T, typename = QtPrivate::EnableIfSameOrConvertible<U, T>>
     bool addResult(U &&result, int index = -1)
     {
-        return d.reportResult(std::forward<U>(result), index);
+        return d.reportAndEmplaceResult(index, std::forward<U>(result));
     }
+    bool addResults(const QList<T> &result)
+    { return d.reportResults(result); }
 #ifndef QT_NO_EXCEPTIONS
     void setException(const QException &e) { d.reportException(e); }
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
@@ -79,7 +91,7 @@ public:
         d.swap(other.d);
     }
 
-#if defined(Q_CLANG_QDOC)  // documentation-only simplified signatures
+#if defined(Q_QDOC)  // documentation-only simplified signatures
     bool addResult(const T &result, int index = -1) { }
     bool addResult(T &&result, int index = -1) { }
 #endif

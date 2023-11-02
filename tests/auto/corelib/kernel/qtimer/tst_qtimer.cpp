@@ -11,6 +11,7 @@
 #include <QtCore/private/qglobal_p.h>
 #include <QTest>
 #include <QSignalSpy>
+#include <QtTest/private/qpropertytesthelper_p.h>
 
 #include <qtimer.h>
 #include <qthread.h>
@@ -32,6 +33,12 @@ private slots:
     void zeroTimer();
     void singleShotTimeout();
     void timeout();
+    void singleShotNormalizes_data();
+    void singleShotNormalizes();
+    void sequentialTimers_data();
+    void sequentialTimers();
+    void singleShotSequentialTimers_data();
+    void singleShotSequentialTimers();
     void remainingTime();
     void remainingTimeInitial_data();
     void remainingTimeInitial();
@@ -56,6 +63,7 @@ private slots:
     void singleShotToFunctors();
     void singleShot_chrono();
     void singleShot_static();
+    void crossThreadSingleShotToFunctor_data();
     void crossThreadSingleShotToFunctor();
     void timerOrder();
     void timerOrder_data();
@@ -68,6 +76,7 @@ private slots:
 
     void bindToTimer();
     void bindTimer();
+    void automatedBindingTests();
 };
 
 void tst_QTimer::zeroTimer()
@@ -117,6 +126,142 @@ void tst_QTimer::timeout()
     int oldCount = timeoutSpy.size();
 
     QTRY_VERIFY_WITH_TIMEOUT(timeoutSpy.size() > oldCount, TIMEOUT_TIMEOUT);
+}
+
+void tst_QTimer::singleShotNormalizes_data()
+{
+    QTest::addColumn<QByteArray>("slotName");
+
+    QTest::newRow("normalized") << QByteArray(SLOT(exitLoop()));
+
+    QTest::newRow("space-before") << QByteArray(SLOT( exitLoop()));
+    QTest::newRow("space-after") << QByteArray(SLOT(exitLoop ()));
+    QTest::newRow("space-around") << QByteArray(SLOT( exitLoop ()));
+    QTest::newRow("spaces-before") << QByteArray(SLOT(  exitLoop()));
+    QTest::newRow("spaces-after") << QByteArray(SLOT(exitLoop  ()));
+    QTest::newRow("spaces-around") << QByteArray(SLOT(  exitLoop  ()));
+
+    QTest::newRow("space-in-parens") << QByteArray(SLOT(exitLoop( )));
+    QTest::newRow("spaces-in-parens") << QByteArray(SLOT(exitLoop(  )));
+    QTest::newRow("space-after-parens") << QByteArray(SLOT(exitLoop() ));
+    QTest::newRow("spaces-after-parens") << QByteArray(SLOT(exitLoop()  ));
+}
+
+void tst_QTimer::singleShotNormalizes()
+{
+    using namespace std::chrono_literals;
+    static constexpr auto TestTimeout = 250ms;
+    QFETCH(QByteArray, slotName);
+    QEventLoop loop;
+
+    // control test: regular connection
+    {
+        QTimer timer;
+        QVERIFY(QObject::connect(&timer, SIGNAL(timeout()), &QTestEventLoop::instance(), slotName));
+        timer.setSingleShot(true);
+        timer.start(1);
+        QTestEventLoop::instance().enterLoop(TestTimeout);
+        QVERIFY(!QTestEventLoop::instance().timeout());
+    }
+
+    // non-zero time
+    QTimer::singleShot(1, &QTestEventLoop::instance(), slotName);
+    QTestEventLoop::instance().enterLoop(TestTimeout);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+
+    QTimer::singleShot(1ms, &QTestEventLoop::instance(), slotName);
+    QTestEventLoop::instance().enterLoop(TestTimeout);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+
+    // zero time
+    QTimer::singleShot(0, &QTestEventLoop::instance(), slotName);
+    QTestEventLoop::instance().enterLoop(TestTimeout);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+
+    QTimer::singleShot(0ms, &QTestEventLoop::instance(), slotName);
+    QTestEventLoop::instance().enterLoop(TestTimeout);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+}
+
+void tst_QTimer::sequentialTimers_data()
+{
+#ifdef Q_OS_WIN
+    QSKIP("The API used by QEventDispatcherWin32 doesn't respect the order");
+#endif
+    QTest::addColumn<QList<int>>("timeouts");
+    auto addRow = [](const QList<int> &l) {
+        QByteArray name;
+        int last = -1;
+        for (int i = 0; i < l.size(); ++i) {
+            Q_ASSERT_X(l[i] >= last, "tst_QTimer", "input list must be sorted");
+            name += QByteArray::number(l[i]) + ',';
+        }
+        name.chop(1);
+        QTest::addRow("%s", name.constData()) << l;
+    };
+    // PreciseTimers
+    addRow({0, 0, 0, 0, 0, 0});
+    addRow({0, 1, 2});
+    addRow({1, 1, 1, 2, 2, 2, 2});
+    addRow({1, 2, 3});
+    addRow({19, 19, 19});
+    // CoarseTimer for setInterval
+    addRow({20, 20, 20, 20, 20});
+    addRow({25, 25, 25, 25, 25, 25, 50});
+}
+
+void tst_QTimer::sequentialTimers()
+{
+    QFETCH(const QList<int>, timeouts);
+    QByteArray result, expected;
+    std::vector<std::unique_ptr<QTimer>> timers;
+    expected.resize(timeouts.size());
+    result.reserve(timeouts.size());
+    timers.reserve(timeouts.size());
+    for (int i = 0; i < timeouts.size(); ++i) {
+        auto timer = std::make_unique<QTimer>();
+        timer->setSingleShot(true);
+        timer->setInterval(timeouts[i]);
+
+        char c = 'A' + i;
+        expected[i] = c;
+        QObject::connect(timer.get(), &QTimer::timeout, this, [&result, c = c]() {
+            result.append(c);
+        });
+        timers.push_back(std::move(timer));
+    }
+
+    // start the timers
+    for (auto &timer : timers)
+        timer->start();
+
+    QTestEventLoop::instance().enterLoopMSecs(timeouts.last() * 2 + 10);
+
+    QCOMPARE(result, expected);
+}
+
+void tst_QTimer::singleShotSequentialTimers_data()
+{
+    sequentialTimers_data();
+}
+
+void tst_QTimer::singleShotSequentialTimers()
+{
+    QFETCH(const QList<int>, timeouts);
+    QByteArray result, expected;
+    expected.resize(timeouts.size());
+    result.reserve(timeouts.size());
+    for (int i = 0; i < timeouts.size(); ++i) {
+        char c = 'A' + i;
+        expected[i] = c;
+        QTimer::singleShot(timeouts[i], this, [&result, c = c]() {
+            result.append(c);
+        });
+    }
+
+    QTestEventLoop::instance().enterLoopMSecs(timeouts.last() * 2 + 10);
+
+    QCOMPARE(result, expected);
 }
 
 void tst_QTimer::remainingTime()
@@ -512,6 +657,7 @@ void tst_QTimer::moveToThread()
 #endif
     QTimer ti1;
     QTimer ti2;
+    ti1.setSingleShot(true);
     ti1.start(MOVETOTHREAD_TIMEOUT);
     ti2.start(MOVETOTHREAD_TIMEOUT);
     QVERIFY((ti1.timerId() & 0xffffff) != (ti2.timerId() & 0xffffff));
@@ -1005,26 +1151,53 @@ void tst_QTimer::postedEventsShouldNotStarveTimers()
 }
 
 struct DummyFunctor {
-    void operator()() {}
+    static QThread *callThread;
+    void operator()() {
+        callThread = QThread::currentThread();
+        callThread->quit();
+    }
 };
+QThread *DummyFunctor::callThread = nullptr;
+
+void tst_QTimer::crossThreadSingleShotToFunctor_data()
+{
+    QTest::addColumn<int>("timeout");
+
+    QTest::addRow("zero-timer") << 0;
+    QTest::addRow("1ms") << 1;
+}
 
 void tst_QTimer::crossThreadSingleShotToFunctor()
 {
-    // We're testing for crashes here, so the test simply running to
-    // completion is considered a success
-    QThread t;
-    t.start();
+    QFETCH(int, timeout);
+    // We're also testing for crashes here, so the test simply running to
+    // completion is part of the success
+    DummyFunctor::callThread = nullptr;
 
-    QObject* o = new QObject();
+    QThread t;
+    std::unique_ptr<QObject> o(new QObject());
     o->moveToThread(&t);
 
-    for (int i = 0; i < 10000; i++) {
-        QTimer::singleShot(0, o, DummyFunctor());
-    }
+    QTimer::singleShot(timeout, o.get(), DummyFunctor());
 
-    t.quit();
+    // wait enough time for the timer to have timed out before the timer
+    // could be start in the receiver's thread.
+    QTest::qWait(10 + timeout * 10);
+    t.start();
     t.wait();
-    delete o;
+    QCOMPARE(DummyFunctor::callThread, &t);
+
+    // continue with a stress test - the calling thread is busy, the
+    // timer should still fire and no crashes.
+    DummyFunctor::callThread = nullptr;
+    t.start();
+    for (int i = 0; i < 10000; i++)
+        QTimer::singleShot(timeout, o.get(), DummyFunctor());
+
+    t.wait();
+    o.reset();
+
+    QCOMPARE(DummyFunctor::callThread, &t);
 }
 
 void tst_QTimer::callOnTimeout()
@@ -1139,6 +1312,42 @@ void tst_QTimer::bindTimer()
     QCOMPARE(timer.timerType(), Qt::PreciseTimer);
     timerType = Qt::VeryCoarseTimer;
     QCOMPARE(timer.timerType(), Qt::VeryCoarseTimer);
+}
+
+void tst_QTimer::automatedBindingTests()
+{
+    QTimer timer;
+
+    QVERIFY(!timer.isSingleShot());
+    QTestPrivate::testReadWritePropertyBasics(timer, true, false, "singleShot");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QTimer::singleShot");
+        return;
+    }
+
+    QCOMPARE_NE(timer.interval(), 10);
+    QTestPrivate::testReadWritePropertyBasics(timer, 10, 20, "interval");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QTimer::interval");
+        return;
+    }
+
+    QCOMPARE_NE(timer.timerType(), Qt::PreciseTimer);
+    QTestPrivate::testReadWritePropertyBasics(timer, Qt::PreciseTimer, Qt::CoarseTimer,
+                                              "timerType");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QTimer::timerType");
+        return;
+    }
+
+    timer.start(1000);
+    QVERIFY(timer.isActive());
+    QTestPrivate::testReadOnlyPropertyBasics(timer, true, false, "active",
+                                             [&timer]() { timer.stop(); });
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QTimer::active");
+        return;
+    }
 }
 
 class OrderHelper : public QObject

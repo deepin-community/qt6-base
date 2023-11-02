@@ -1,8 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: qtbase-everywhere-src
 Source: https://download.qt.io/archive/qt/*/submodules/
-Files-Excluded: examples/xml/htmlinfo
-                src/3rdparty/gradle/gradle/wrapper/gradle-wrapper.jar
+Files-Excluded: src/3rdparty/gradle/gradle/wrapper/gradle-wrapper.jar
                 src/3rdparty/iaccessible2
                 src/3rdparty/sqlite
                 src/3rdparty/wintab
@@ -17,7 +16,6 @@ Files-Excluded: examples/xml/htmlinfo
 
 # Removed non-free files:
 # * RFCs (see QTBUG-30544 and QTBUG-30545)
-# * htmlinfo example which contains non-free websites snapshots
 # * src/3rdparty/gradle — built .jar file without source code
 # * src/3rdparty/iaccessible2 — not preferred form of modification
 # * src/3rdparty/sqlite — not preferred form of modification

@@ -20,7 +20,7 @@
 #include <QtCore/qmutex.h>
 #include <QtCore/QLoggingCategory>
 #include <QtGui/private/qopenglcontext_p.h>
-#include <QtGui/private/qshader_p.h>
+#include <rhi/qshader.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -28,7 +28,7 @@ QT_BEGIN_NAMESPACE
 // therefore stay independent from QOpenGLShader(Program). Must rely only on
 // QOpenGLContext/Functions.
 
-Q_GUI_EXPORT Q_DECLARE_LOGGING_CATEGORY(lcOpenGLProgramDiskCache)
+Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcOpenGLProgramDiskCache, Q_GUI_EXPORT)
 
 class Q_GUI_EXPORT QOpenGLProgramBinaryCache
 {

@@ -280,9 +280,9 @@ QVariant QMimeDataPrivate::retrieveTypedData(const QString &format, QMetaType ty
     \snippet code/src_corelib_kernel_qmimedata.cpp 8
 
     On Windows, the MIME format does not always map directly to the
-    clipboard formats. Qt provides QWinMime to map clipboard
+    clipboard formats. Qt provides QWindowsMimeConverter to map clipboard
     formats to open-standard MIME formats. Similarly, the
-    QMacPasteboardMime maps MIME to Mac flavors.
+    QUtiMimeConverter maps MIME to Uniform Type Identifiers on macOS and iOS.
 
     \sa QClipboard, QDragEnterEvent, QDragMoveEvent, QDropEvent, QDrag,
         {Drag and Drop}
@@ -341,13 +341,7 @@ QList<QUrl> QMimeData::urls() const
 void QMimeData::setUrls(const QList<QUrl> &urls)
 {
     Q_D(QMimeData);
-    QList<QVariant> list;
-    const int numUrls = urls.size();
-    list.reserve(numUrls);
-    for (int i = 0; i < numUrls; ++i)
-        list.append(urls.at(i));
-
-    d->setData(textUriListLiteral(), list);
+    d->setData(textUriListLiteral(), QList<QVariant>(urls.cbegin(), urls.cend()));
 }
 
 /*!

@@ -151,12 +151,12 @@ QRect QStatusBarPrivate::messageRect() const
 
     Use the showMessage() slot to display a \e temporary message:
 
-    \snippet mainwindows/dockwidgets/mainwindow.cpp 8
+    \snippet code/src_gui_widgets_qstatusbar.cpp 1
 
     To remove a temporary message, use the clearMessage() slot, or set
     a time limit when calling showMessage(). For example:
 
-    \snippet mainwindows/dockwidgets/mainwindow.cpp 3
+    \snippet code/src_gui_widgets_qstatusbar.cpp 2
 
     Use the currentMessage() function to retrieve the temporary
     message currently shown. The QStatusBar class also provide the
@@ -179,7 +179,7 @@ QRect QStatusBarPrivate::messageRect() const
 
     \image fusion-statusbar-sizegrip.png A status bar shown in the Fusion widget style
 
-    \sa QMainWindow, QStatusTipEvent, {Qt Widgets - Application Example}
+    \sa QMainWindow, QStatusTipEvent
 */
 
 
@@ -286,7 +286,7 @@ int QStatusBar::insertWidget(int index, QWidget *widget, int stretch)
     minimum of space.
 
     Permanently means that the widget may not be obscured by temporary
-    messages. It is is located at the far right of the status bar.
+    messages. It is located at the far right of the status bar.
 
     \sa insertPermanentWidget(), removeWidget(), addWidget()
 */
@@ -297,7 +297,6 @@ void QStatusBar::addPermanentWidget(QWidget * widget, int stretch)
         return;
     insertPermanentWidget(d_func()->items.size(), widget, stretch);
 }
-
 
 /*!
     \since 4.2
@@ -313,7 +312,7 @@ void QStatusBar::addPermanentWidget(QWidget * widget, int stretch)
     minimum of space.
 
     Permanently means that the widget may not be obscured by temporary
-    messages. It is is located at the far right of the status bar.
+    messages. It is located at the far right of the status bar.
 
     \sa addPermanentWidget(), removeWidget(), addWidget()
 */
@@ -355,19 +354,10 @@ void QStatusBar::removeWidget(QWidget *widget)
         return;
 
     Q_D(QStatusBar);
-    bool found = false;
-    for (int i = 0; i < d->items.size(); ++i) {
-        const auto &item = d->items.at(i);
-        if (item.widget == widget) {
-            d->items.removeAt(i);
-            item.widget->hide();
-            found = true;
-            break;
-        }
-    }
-
-    if (found)
+    if (d->items.removeIf([widget](const auto &item) { return item.widget == widget; })) {
+        widget->hide();
         reformat();
+    }
 #if defined(QT_DEBUG)
     else
         qDebug("QStatusBar::removeWidget(): Widget not found.");

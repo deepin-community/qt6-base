@@ -45,7 +45,7 @@ settings.value("HKEY_CURRENT_USER\\MySoft\\Star Runner\\Galaxy\\Default"); // re
 
 
 //! [7]
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
     QSettings settings("grenoullelogique.fr", "Squash");
 #else
     QSettings settings("Grenoulle Logique", "Squash");
@@ -138,10 +138,10 @@ QList<Login> logins;
 
 QSettings settings;
 settings.beginWriteArray("logins");
-for (int i = 0; i < logins.size(); ++i) {
+for (qsizetype i = 0; i < logins.size(); ++i) {
     settings.setArrayIndex(i);
-    settings.setValue("userName", list.at(i).userName);
-    settings.setValue("password", list.at(i).password);
+    settings.setValue("userName", logins.at(i).userName);
+    settings.setValue("password", logins.at(i).password);
 }
 settings.endArray();
 //! [16]

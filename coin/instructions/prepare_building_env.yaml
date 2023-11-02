@@ -26,7 +26,6 @@ instructions:
       property: host.os
       equals_value: Windows
 
-
   # Export ICC specific env. variables
   - type: Group
     instructions:
@@ -306,6 +305,14 @@ instructions:
         condition: property
         property: target.osVersion
         in_values: [QEMU]
+    # This fixes an issue where binfmts is sometimes disabled on the test VMs
+    - type: ExecuteCommand
+      command: sudo update-binfmts --enable
+      userMessageOnFailure: "Failed to enable binfmts"
+      enable_if:
+        condition: property
+        property: target.osVersion
+        equals_value: QEMU
 
   # Windows on Arm, cross-compilation with MSVC
   - type: Group
@@ -406,6 +413,27 @@ instructions:
       condition: property
       property: features
       contains_value: WarningsAreErrors
+
+  - type: Group
+    enable_if:
+      condition: property
+      property: features
+      contains_value: UseAddressSanitizer
+    instructions:
+    - type: AppendToEnvironmentVariable
+      variableName: COMMON_CMAKE_ARGS
+      variableValue: " -DFEATURE_sanitize_address=ON"
+      disable_if:
+        condition: property
+        property: features
+        contains_value: UseConfigure
+    - type: AppendToEnvironmentVariable
+      variableName: CONFIGURE_ARGS
+      variableValue: " -sanitize address"
+      enable_if:
+        condition: property
+        property: features
+        contains_value: UseConfigure
 
   - type: Group
     instructions:
@@ -518,3 +546,44 @@ instructions:
         - condition: property
           property: host.os
           contains_value: Windows
+
+  - type: EnvironmentVariable
+    variableName: HOST_INSTALL_DIR
+    variableValue: "{{$android_host_artifact_path := index .Env \"QT_CI_ARTIFACT_ID_PATH_Android-host\" }}{{index .Env $android_host_artifact_path}}/install"
+    enable_if:
+      condition: and
+      conditions:
+        - condition: property
+          property: target.osVersion
+          equals_value: Android_ANY
+        - condition: property
+          property: target.arch
+          equals_value: Multi
+
+  - type: EnvironmentVariable
+    variableName: HOST_INSTALL_DIR
+    variableValue: "{{.InstallDir}}"
+    disable_if:
+      condition: and
+      conditions:
+        - condition: property
+          property: target.osVersion
+          equals_value: Android_ANY
+        - condition: property
+          property: target.arch
+          equals_value: Multi
+
+  - type: EnvironmentVariable
+    variableName: LIBEXEC_INSTALL_DIR
+    variableValue: "{{.Env.HOST_INSTALL_DIR}}\\bin\\"
+    enable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows
+  - type: EnvironmentVariable
+    variableName: LIBEXEC_INSTALL_DIR
+    variableValue: "{{.Env.HOST_INSTALL_DIR}}/libexec/"
+    disable_if:
+      condition: property
+      property: host.os
+      equals_value: Windows

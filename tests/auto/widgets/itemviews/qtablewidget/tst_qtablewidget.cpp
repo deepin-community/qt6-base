@@ -4,6 +4,7 @@
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QMimeData>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QTableWidget>
 #include <QTest>
@@ -63,6 +64,7 @@ private slots:
     void task219380_removeLastRow();
     void task262056_sortDuplicate();
     void itemWithHeaderItems();
+    void checkHeaderItemFlagsConflict();
     void mimeData();
     void selectedRowAfterSorting();
     void search();
@@ -1555,6 +1557,12 @@ void tst_QTableWidget::sizeHint()
     QFETCH(Qt::ScrollBarPolicy, scrollBarPolicy);
     QFETCH(QSize, viewSize);
 
+    const QString defaultStyle = QApplication::style()->name();
+    QApplication::setStyle("windows");
+    const auto resetStyle = qScopeGuard([defaultStyle]{
+        QApplication::setStyle(defaultStyle);
+    });
+
     QTableWidget view(2, 2);
     view.setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
     view.setVerticalScrollBarPolicy(scrollBarPolicy);
@@ -1574,18 +1582,21 @@ void tst_QTableWidget::sizeHint()
         QTRY_COMPARE(view.size(), viewSize);
     }
 
+    QApplication::processEvents(); // execute delayed layouts
     auto sizeHint = view.sizeHint();
     view.hide();
     QCOMPARE(view.sizeHint(), sizeHint);
 
     view.horizontalHeader()->hide();
     view.show();
+    QApplication::processEvents(); // execute delayed layouts
     sizeHint = view.sizeHint();
     view.hide();
     QCOMPARE(view.sizeHint(), sizeHint);
 
     view.verticalHeader()->hide();
     view.show();
+    QApplication::processEvents(); // execute delayed layouts
     sizeHint = view.sizeHint();
     view.hide();
     QCOMPARE(view.sizeHint(), sizeHint);
@@ -1667,6 +1678,25 @@ void tst_QTableWidget::itemWithHeaderItems()
     table.setItem(1, 0, item1_0);
 
     QCOMPARE(table.item(0, 1), nullptr);
+}
+
+void tst_QTableWidget::checkHeaderItemFlagsConflict()
+{
+    // QTBUG-113209
+    // Check that setting header item doesn't set Qt::ItemNeverHasChildren
+    // Chech that header items do not emit itemChanged.
+    QTableWidget table(1, 1);
+    QSignalSpy itemChangeSpy(&table, &QTableWidget::itemChanged);
+    QVERIFY(itemChangeSpy.isValid());
+
+    QTableWidgetItem *item = new QTableWidgetItem("Initial");
+    table.setHorizontalHeaderItem(0, item);
+
+    QVERIFY(!(item->flags() & Qt::ItemNeverHasChildren));
+
+    item->setData(Qt::DisplayRole, "updated");
+
+    QCOMPARE(itemChangeSpy.size(), 0);
 }
 
 class TestTableWidget : public QTableWidget

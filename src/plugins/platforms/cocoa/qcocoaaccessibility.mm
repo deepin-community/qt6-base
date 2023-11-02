@@ -54,6 +54,10 @@ void QCocoaAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
     case QAccessible::NameChanged:
         NSAccessibilityPostNotification(element, NSAccessibilityTitleChangedNotification);
         break;
+    case QAccessible::TableModelChanged:
+        // ### Could NSAccessibilityRowCountChangedNotification be relevant here?
+        [element updateTableModel];
+        break;
     default:
         break;
     }
@@ -113,7 +117,6 @@ static void populateRoleMap()
     roleMap[QAccessible::ColumnHeader] = NSAccessibilityColumnRole;
     roleMap[QAccessible::Row] = NSAccessibilityRowRole;
     roleMap[QAccessible::RowHeader] = NSAccessibilityRowRole;
-    roleMap[QAccessible::Cell] = NSAccessibilityTextFieldRole;
     roleMap[QAccessible::Button] = NSAccessibilityButtonRole;
     roleMap[QAccessible::EditableText] = NSAccessibilityTextFieldRole;
     roleMap[QAccessible::Link] = NSAccessibilityLinkRole;
@@ -121,7 +124,7 @@ static void populateRoleMap()
     roleMap[QAccessible::Splitter] = NSAccessibilitySplitGroupRole;
     roleMap[QAccessible::List] = NSAccessibilityListRole;
     roleMap[QAccessible::ListItem] = NSAccessibilityStaticTextRole;
-    roleMap[QAccessible::Cell] = NSAccessibilityStaticTextRole;
+    roleMap[QAccessible::Cell] = NSAccessibilityCellRole;
     roleMap[QAccessible::Client] = NSAccessibilityGroupRole;
     roleMap[QAccessible::Paragraph] = NSAccessibilityGroupRole;
     roleMap[QAccessible::Section] = NSAccessibilityGroupRole;
@@ -133,6 +136,7 @@ static void populateRoleMap()
     roleMap[QAccessible::Note] = NSAccessibilityGroupRole;
     roleMap[QAccessible::ComplementaryContent] = NSAccessibilityGroupRole;
     roleMap[QAccessible::Graphic] = NSAccessibilityImageRole;
+    roleMap[QAccessible::Tree] = NSAccessibilityOutlineRole;
 }
 
 /*
@@ -151,6 +155,8 @@ NSString *macRole(QAccessibleInterface *interface)
 
     if (roleMap.contains(qtRole)) {
        // MAC_ACCESSIBILTY_DEBUG() << "return" <<  roleMap[qtRole];
+        if (roleMap[qtRole] == NSAccessibilityComboBoxRole && !interface->state().editable)
+            return NSAccessibilityMenuButtonRole;
         if (roleMap[qtRole] == NSAccessibilityTextFieldRole && interface->state().multiLine)
             return NSAccessibilityTextAreaRole;
         return roleMap[qtRole];

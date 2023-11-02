@@ -36,13 +36,11 @@ QT_WARNING_POP
 
 static CborError _cbor_value_dup_string(const CborValue *, void **, size_t *, CborValue *)
 {
-    Q_UNREACHABLE();
-    return CborErrorInternalError;
+    Q_UNREACHABLE_RETURN(CborErrorInternalError);
 }
 [[maybe_unused]] static CborError cbor_value_get_half_float_as_float(const CborValue *, float *)
 {
-    Q_UNREACHABLE();
-    return CborErrorInternalError;
+    Q_UNREACHABLE_RETURN(CborErrorInternalError);
 }
 
 // confirm our constants match TinyCBOR's
@@ -62,6 +60,7 @@ static_assert(int(QCborStreamReader::Invalid) == CborInvalidType);
    \class QCborStreamReader
    \inmodule QtCore
    \ingroup cbor
+   \ingroup qtserialization
    \reentrant
    \since 5.12
 
@@ -151,8 +150,9 @@ static_assert(int(QCborStreamReader::Invalid) == CborInvalidType);
    parsing from a QByteArray, or reparse(), if it is instead reading directly
    a the QIDOevice that now has more data available (see setDevice()).
 
-   \sa QCborStreamWriter, QCborValue, QXmlStreamReader, {Cbordump Example}
-   \sa {Convert Example}, {JSON Save Game Example}
+   \sa QCborStreamWriter, QCborValue, QXmlStreamReader,
+       {Parsing and displaying CBOR data}, {Convert Example},
+       {JSON Save Game Example}
  */
 
 /*!
@@ -682,7 +682,7 @@ static CborError qt_cbor_decoder_transfer_string(void *token, const void **userp
     // (otherwise, we'd lose the length information)
     qsizetype total;
     if (len > size_t(std::numeric_limits<QByteArray::size_type>::max())
-            || add_overflow<qsizetype>(offset, len, &total))
+            || qAddOverflow<qsizetype>(offset, len, &total))
         return CborErrorDataTooLarge;
 
     // our string transfer is just saving the offset to the userptr
@@ -1544,7 +1544,7 @@ QCborStreamReaderPrivate::readStringChunk_byte(ReadStringChunk params, qsizetype
         // See note above on having ensured there is enough incoming data.
         auto oldSize = params.array->size();
         auto newSize = oldSize;
-        if (add_overflow<decltype(newSize)>(oldSize, toRead, &newSize)) {
+        if (qAddOverflow<decltype(newSize)>(oldSize, toRead, &newSize)) {
             handleError(CborErrorDataTooLarge);
             return -1;
         }

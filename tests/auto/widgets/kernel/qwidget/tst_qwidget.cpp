@@ -49,10 +49,7 @@
 #include <QtGui/qwindow.h>
 #include <qtimer.h>
 #include <QtWidgets/QDoubleSpinBox>
-
-#if defined(Q_OS_MACOS)
-#include "tst_qwidget_mac_helpers.h"  // Abstract the ObjC stuff out so not everyone must run an ObjC++ compile.
-#endif
+#include <QtWidgets/QComboBox>
 
 #include <QtTest/QTest>
 #include <QtTest/private/qtesthelpers_p.h>
@@ -168,6 +165,8 @@ private slots:
     void tabOrderWithProxyDisabled();
     void tabOrderWithProxyOutOfOrder();
     void tabOrderWithCompoundWidgets();
+    void tabOrderWithCompoundWidgetsInflection_data();
+    void tabOrderWithCompoundWidgetsInflection();
     void tabOrderWithCompoundWidgetsNoFocusPolicy();
     void tabOrderNoChange();
     void tabOrderNoChange2();
@@ -175,6 +174,9 @@ private slots:
     void appFocusWidgetWhenLosingFocusProxy();
     void explicitTabOrderWithComplexWidget();
     void explicitTabOrderWithSpinBox_QTBUG81097();
+    void tabOrderList();
+    void tabOrderComboBox_data();
+    void tabOrderComboBox();
 #if defined(Q_OS_WIN)
     void activation();
 #endif
@@ -199,6 +201,8 @@ private slots:
     void saveRestoreGeometry();
     void restoreVersion1Geometry_data();
     void restoreVersion1Geometry();
+    void restoreGeometryAfterScreenChange_data();
+    void restoreGeometryAfterScreenChange();
 
     void widgetAt();
 #ifdef Q_OS_MACOS
@@ -438,6 +442,15 @@ private:
     QPointingDevice *m_touchScreen;
     const int m_fuzz;
     QPalette simplePalette();
+
+private:
+    enum class ScreenPosition {
+        OffAbove,
+        OffLeft,
+        OffBelow,
+        OffRight,
+        Contained
+    };
 };
 
 // Testing get/set functions
@@ -1859,7 +1872,7 @@ void tst_QWidget::focusChainOnHide()
     QWidget::setTabOrder(child, parent.data());
 
     parent->show();
-    QApplication::setActiveWindow(parent->window());
+    QApplicationPrivate::setActiveWindow(parent->window());
     child->activateWindow();
     child->setFocus();
 
@@ -1920,6 +1933,26 @@ public:
     QLineEdit *lineEdit3;
 };
 
+static QList<QWidget *> getFocusChain(QWidget *start, bool bForward)
+{
+    QList<QWidget *> ret;
+    QWidget *cur = start;
+    // detect infinite loop
+    int count = 100;
+    auto loopGuard = qScopeGuard([]{
+        QFAIL("Inifinite loop detected in focus chain");
+    });
+    do {
+        ret += cur;
+        auto widgetPrivate = static_cast<QWidgetPrivate *>(qt_widget_private(cur));
+        cur = bForward ? widgetPrivate->focus_next : widgetPrivate->focus_prev;
+        if (!--count)
+            return ret;
+    } while (cur != start);
+    loopGuard.dismiss();
+    return ret;
+}
+
 void tst_QWidget::defaultTabOrder()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
@@ -1943,7 +1976,7 @@ void tst_QWidget::defaultTabOrder()
     container.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     container.show();
     container.activateWindow();
-    QApplication::setActiveWindow(&container);
+    QApplicationPrivate::setActiveWindow(&container);
     QVERIFY(QTest::qWaitForWindowActive(&container));
 
     QTRY_VERIFY(firstEdit->hasFocus());
@@ -2004,7 +2037,7 @@ void tst_QWidget::reverseTabOrder()
 
     container.show();
     container.activateWindow();
-    QApplication::setActiveWindow(&container);
+    QApplicationPrivate::setActiveWindow(&container);
     QVERIFY(QTest::qWaitForWindowActive(&container));
 
     QTRY_VERIFY(firstEdit->hasFocus());
@@ -2039,6 +2072,139 @@ void tst_QWidget::reverseTabOrder()
     QVERIFY(firstEdit->hasFocus());
 }
 
+void tst_QWidget::tabOrderList()
+{
+    Composite c;
+    QCOMPARE(getFocusChain(&c, true),
+             QList<QWidget *>({&c, c.lineEdit1, c.lineEdit2, c.lineEdit3}));
+    QWidget::setTabOrder({c.lineEdit3, c.lineEdit2, c.lineEdit1});
+    // not starting with 3 like one would maybe expect, but still 3, 2, 1
+    QCOMPARE(getFocusChain(&c, true),
+             QList<QWidget *>({&c, c.lineEdit1, c.lineEdit3, c.lineEdit2}));
+}
+
+void tst_QWidget::tabOrderComboBox_data()
+{
+    QTest::addColumn<const bool>("editableAtBeginning");
+    QTest::addColumn<const QList<int>>("firstTabOrder");
+    QTest::addColumn<const QList<int>>("secondTabOrder");
+
+    QTest::addRow("3 not editable") << false << QList<int>{2, 1, 0} << QList<int>{0, 1, 2};
+    QTest::addRow("4 editable") << true << QList<int>{2, 1, 0, 3} << QList<int>{3, 0, 2, 1};
+}
+
+QWidgetList expectedFocusChain(const QList<QComboBox *> &boxes, const QList<int> &sequence)
+{
+    Q_ASSERT(boxes.count() == sequence.count());
+    QWidgetList widgets;
+    for (int i : sequence) {
+        Q_ASSERT(i >= 0);
+        Q_ASSERT(i < boxes.count());
+        QComboBox *box = boxes.at(i);
+        widgets.append(box);
+        if (box->lineEdit())
+            widgets.append(box->lineEdit());
+    }
+
+    return widgets;
+}
+
+QWidgetList realFocusChain(const QList<QComboBox *> &boxes, const QList<int> &sequence)
+{
+    QWidgetList widgets = getFocusChain(boxes.at(sequence.at(0)), true);
+    // Filter everything with NoFocus
+    for (auto *widget : widgets) {
+        if (widget->focusPolicy() == Qt::NoFocus)
+            widgets.removeOne(widget);
+    }
+    return widgets;
+}
+
+void setTabOrder(const QList<QComboBox *> &boxes, const QList<int> &sequence)
+{
+    Q_ASSERT(boxes.count() == sequence.count());
+    QWidget *previous = nullptr;
+    for (int i : sequence) {
+        Q_ASSERT(i >= 0);
+        Q_ASSERT(i < boxes.count());
+        QWidget *box = boxes.at(i);
+        if (!previous) {
+            previous = box;
+        } else {
+            QWidget::setTabOrder(previous, box);
+            previous = box;
+        }
+    }
+}
+
+void tst_QWidget::tabOrderComboBox()
+{
+    QFETCH(const bool, editableAtBeginning);
+    QFETCH(const QList<int>, firstTabOrder);
+    QFETCH(const QList<int>, secondTabOrder);
+    const int count = firstTabOrder.count();
+    Q_ASSERT(count == secondTabOrder.count());
+    Q_ASSERT(count > 1);
+
+    QWidget w;
+    w.setObjectName("MainWidget");
+    QVBoxLayout* layout = new QVBoxLayout();
+    w.setLayout(layout);
+
+    QList<QComboBox *> boxes;
+    for (int i = 0; i < count; ++i) {
+        auto box = new QComboBox;
+        box->setObjectName("ComboBox " + QString::number(i));
+        if (editableAtBeginning) {
+            box->setEditable(true);
+            box->lineEdit()->setObjectName("LineEdit " + QString::number(i));
+        }
+        boxes.append(box);
+        layout->addWidget(box);
+    }
+    layout->addStretch();
+
+#define COMPARE(seq)\
+    setTabOrder(boxes, seq);\
+    QCOMPARE(realFocusChain(boxes, seq), expectedFocusChain(boxes, seq))
+
+    COMPARE(firstTabOrder);
+
+    if (!editableAtBeginning) {
+        for (auto *box : boxes)
+            box->setEditable(box);
+    }
+
+    COMPARE(secondTabOrder);
+
+    // Remove the focus proxy of the first combobox's line edit.
+    QComboBox *box = boxes.at(0);
+    QLineEdit *lineEdit = box->lineEdit();
+    QWidgetPrivate *lePriv = QWidgetPrivate::get(lineEdit);
+    const QWidget *prev = lePriv->focus_prev;
+    const QWidget *next = lePriv->focus_next;
+    const QWidget *proxy = lePriv->extra->focus_proxy;
+    QCOMPARE(proxy, box);
+    lineEdit->setFocusProxy(nullptr);
+    QCOMPARE(lePriv->extra->focus_proxy, nullptr);
+    QCOMPARE(lePriv->focus_prev, prev);
+    QCOMPARE(lePriv->focus_next, next);
+
+    // Remove first item and check chain consistency
+    boxes.removeFirst();
+    delete box;
+
+    // Create new list with 0 removed and other indexes updated
+    QList<int> thirdTabOrder(secondTabOrder);
+    thirdTabOrder.removeIf([](int i){ return i == 0; });
+    for (int &i : thirdTabOrder)
+        --i;
+
+    COMPARE(thirdTabOrder);
+
+#undef COMPARE
+}
+
 void tst_QWidget::tabOrderWithProxy()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
@@ -2066,7 +2232,7 @@ void tst_QWidget::tabOrderWithProxy()
 
     container.show();
     container.activateWindow();
-    QApplication::setActiveWindow(&container);
+    QApplicationPrivate::setActiveWindow(&container);
     QVERIFY(QTest::qWaitForWindowActive(&container));
 
     QTRY_VERIFY(firstEdit->hasFocus());
@@ -2127,7 +2293,7 @@ void tst_QWidget::tabOrderWithProxyDisabled()
     container.show();
     container.activateWindow();
 
-    QApplication::setActiveWindow(&container);
+    QApplicationPrivate::setActiveWindow(&container);
     if (!QTest::qWaitForWindowActive(&container))
         QSKIP("Window failed to activate, skipping test");
 
@@ -2209,7 +2375,7 @@ void tst_QWidget::tabOrderWithCompoundWidgets()
 
     container.show();
     container.activateWindow();
-    QApplication::setActiveWindow(&container);
+    QApplicationPrivate::setActiveWindow(&container);
     QVERIFY(QTest::qWaitForWindowActive(&container));
 
     lastEdit->setFocus();
@@ -2260,18 +2426,6 @@ void tst_QWidget::tabOrderWithCompoundWidgets()
     QVERIFY(lastEdit->hasFocus());
 }
 
-static QList<QWidget *> getFocusChain(QWidget *start, bool bForward)
-{
-    QList<QWidget *> ret;
-    QWidget *cur = start;
-    do {
-        ret += cur;
-        auto widgetPrivate = static_cast<QWidgetPrivate *>(qt_widget_private(cur));
-        cur = bForward ? widgetPrivate->focus_next : widgetPrivate->focus_prev;
-    } while (cur != start);
-    return ret;
-}
-
 void tst_QWidget::tabOrderWithProxyOutOfOrder()
 {
     Container container;
@@ -2311,7 +2465,7 @@ void tst_QWidget::tabOrderWithProxyOutOfOrder()
 
     container.show();
     container.activateWindow();
-    QApplication::setActiveWindow(&container);
+    QApplicationPrivate::setActiveWindow(&container);
     if (!QTest::qWaitForWindowActive(&container))
         QSKIP("Window failed to activate, skipping test");
 
@@ -2331,6 +2485,121 @@ void tst_QWidget::tabOrderWithProxyOutOfOrder()
     QCOMPARE(QApplication::focusWidget(), &outsideButton);
     container.backTab();
     QCOMPARE(QApplication::focusWidget(), &cancelButton);
+}
+
+static bool isFocusChainConsistent(QWidget *widget)
+{
+    auto forward = getFocusChain(widget, true);
+    auto backward = getFocusChain(widget, false);
+    auto logger = qScopeGuard([=]{
+        qCritical("Focus chain is not consistent!");
+        qWarning() << forward.size() << "forwards: " << forward;
+        qWarning() << backward.size() << "backwards:" << backward;
+    });
+    // both lists start with the same, the widget
+    if (forward.takeFirst() != backward.takeFirst())
+        return false;
+    const qsizetype chainLength = forward.size();
+    if (backward.size() != chainLength)
+        return false;
+    for (qsizetype i = 0; i < chainLength; ++i) {
+        if (forward.at(i) != backward.at(chainLength - i - 1))
+            return false;
+    }
+    logger.dismiss();
+    return true;
+}
+
+/*
+    This tests that we end up with consistent and complete chains when we set
+    the tab order from a widget (the lineEdit) inside a compound (the tabWidget)
+    to the compound, or visa versa. In that case, QWidget::setTabOrder will walk
+    the focus chain to the focus child inside the compound to replace the compound
+    itself when manipulating the tab order. If that last focus child is then
+    however also the lineEdit, then we must not create an inconsistent or
+    incomplete loop.
+
+    The tabWidget is seen as a compound because QTabWidget sets the tab bar as
+    the focus proxy, and it has more widgets inside, like pages, toolbuttons etc.
+*/
+void tst_QWidget::tabOrderWithCompoundWidgetsInflection_data()
+{
+    QTest::addColumn<QByteArrayList>("tabOrder");
+
+    QTest::addRow("forward")
+        << QByteArrayList{"dialog", "tabWidget", "lineEdit", "compound", "okButton", "cancelButton"};
+    QTest::addRow("backward")
+        << QByteArrayList{"dialog", "cancelButton", "okButton", "compound", "lineEdit", "tabWidget"};
+}
+
+void tst_QWidget::tabOrderWithCompoundWidgetsInflection()
+{
+    QFETCH(const QByteArrayList, tabOrder);
+
+    QDialog dialog;
+    dialog.setObjectName("dialog");
+    QTabWidget *tabWidget = new QTabWidget;
+    tabWidget->setObjectName("tabWidget");
+    tabWidget->setFocusPolicy(Qt::TabFocus);
+    QWidget *page = new QWidget;
+    page->setObjectName("page");
+    QLineEdit *lineEdit = new QLineEdit;
+    lineEdit->setObjectName("lineEdit");
+    QWidget *compound = new QWidget;
+    compound->setObjectName("compound");
+    compound->setFocusPolicy(Qt::TabFocus);
+    QPushButton *okButton = new QPushButton("Ok");
+    okButton->setObjectName("okButton");
+    okButton->setFocusPolicy(Qt::TabFocus);
+    QPushButton *cancelButton = new QPushButton("Cancel");
+    cancelButton->setObjectName("cancelButton");
+    cancelButton->setFocusPolicy(Qt::TabFocus);
+
+    QVBoxLayout *pageLayout = new QVBoxLayout;
+    pageLayout->addWidget(lineEdit);
+    page->setLayout(pageLayout);
+    tabWidget->addTab(page, "Tab");
+
+    QHBoxLayout *compoundLayout = new QHBoxLayout;
+    compoundLayout->addStretch();
+    compoundLayout->addWidget(cancelButton);
+    compoundLayout->addWidget(okButton);
+    compound->setFocusProxy(okButton);
+    compound->setLayout(compoundLayout);
+
+    QVBoxLayout *dialogLayout = new QVBoxLayout;
+    dialogLayout->addWidget(tabWidget);
+    dialogLayout->addWidget(compound);
+    dialog.setLayout(dialogLayout);
+
+    QVERIFY(isFocusChainConsistent(&dialog));
+
+    QList<QWidget *> expectedFocusChain;
+    for (qsizetype i = 0; i < tabOrder.size() - 1; ++i) {
+        QWidget *first = dialog.findChild<QWidget *>(tabOrder.at(i));
+        if (!first && tabOrder.at(i) == dialog.objectName())
+            first = &dialog;
+        QVERIFY(first);
+        if (i == 0)
+            expectedFocusChain.append(first);
+        QWidget *second = dialog.findChild<QWidget *>(tabOrder.at(i + 1));
+        QVERIFY(second);
+        expectedFocusChain.append(second);
+        QWidget::setTabOrder(first, second);
+        QVERIFY(isFocusChainConsistent(&dialog));
+    }
+
+    const auto forwardChain = getFocusChain(&dialog, true);
+    auto logger = qScopeGuard([=]{
+        qCritical("Order of widgets in focus chain not matching:");
+        qCritical() << " Actual  :" << forwardChain;
+        qCritical() << " Expected:" << expectedFocusChain;
+    });
+        for (qsizetype i = 0; i < expectedFocusChain.size() - 2; ++i) {
+        QCOMPARE_LT(forwardChain.indexOf(expectedFocusChain.at(i)),
+                    forwardChain.indexOf(expectedFocusChain.at(i + 1)));
+    }
+    logger.dismiss();
 }
 
 void tst_QWidget::tabOrderWithCompoundWidgetsNoFocusPolicy()
@@ -2354,7 +2623,7 @@ void tst_QWidget::tabOrderWithCompoundWidgetsNoFocusPolicy()
     container.show();
     container.activateWindow();
 
-    QApplication::setActiveWindow(&container);
+    QApplicationPrivate::setActiveWindow(&container);
     if (!QTest::qWaitForWindowActive(&container))
         QSKIP("Window failed to activate, skipping test");
 
@@ -2460,7 +2729,7 @@ void tst_QWidget::appFocusWidgetWithFocusProxyLater()
     QLineEdit *lineEdit = new QLineEdit(&window);
     lineEdit->setFocus();
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QCOMPARE(QApplication::focusWidget(), lineEdit);
 
@@ -2488,7 +2757,7 @@ void tst_QWidget::appFocusWidgetWhenLosingFocusProxy()
     lineEdit->setFocusProxy(lineEditFocusProxy);
     lineEdit->setFocus();
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QCOMPARE(QApplication::focusWidget(), lineEditFocusProxy);
     QVERIFY(lineEdit->hasFocus());
@@ -2515,7 +2784,7 @@ void tst_QWidget::explicitTabOrderWithComplexWidget()
     QWidget::setTabOrder(lineEditOne, lineEditTwo);
     lineEditOne->setFocus();
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QTRY_COMPARE(QApplication::focusWidget(), lineEditOne);
 
@@ -2544,7 +2813,7 @@ void tst_QWidget::explicitTabOrderWithSpinBox_QTBUG81097()
     QWidget::setTabOrder(spinBoxTwo, lineEdit);
     spinBoxOne->setFocus();
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QTRY_COMPARE(QApplication::focusWidget(), spinBoxOne);
 
@@ -2757,18 +3026,15 @@ void tst_QWidget::resizePropagation()
         QSKIP("resizePropagation test is designed for XCB only");
 #endif
 
-    // Platform specific notes:
-    // Linux/XCB:
-    // - Unless maximized, a widget and its corresponding window can have different sizes
-    // - windowStateChanged can be fired multiple times (QTBUG-102478) when widget is maximized
-    //
     // Windows:
     // When a widget is maximized after it has been resized, the widget retains its original size,
-    // while the window shows maximum size
+    // while the window shows maximum size.
+    // windowStateChanged signal gets fired on a no-op change from/to WindowNoState
 
     // Initialize widget and signal spy for window handle
     QWidget widget;
     widget.showMaximized();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
     QWindow *window = widget.windowHandle();
     QTRY_VERIFY(window);
     QSignalSpy spy(window, &QWindow::windowStateChanged);
@@ -2778,11 +3044,15 @@ void tst_QWidget::resizePropagation()
     const QSize size1 = QSize(screenSize.width() * 0.5, screenSize.height() * 0.5);
     const QSize size2 = QSize(screenSize.width() * 0.625, screenSize.height() * 0.833);
 
-    auto verifyResize = [&](const QSize &size, Qt::WindowState windowState, bool checkCountIncrement, bool checkTargetSize)
+    enum CountIncrementCheck {Equal, Greater};
+    enum TargetSizeCheck {Fail, Warn};
+    auto verifyResize = [&](const QSize &size, Qt::WindowState windowState,
+                            CountIncrementCheck checkCountIncrement,
+                            TargetSizeCheck checkTargetSize)
     {
         // Capture count of latest async signals
-        if (!checkCountIncrement)
-            count = spy.size();
+        if (checkCountIncrement == Equal)
+            count = spy.count();
 
         // Resize if required
         if (size.isValid())
@@ -2792,13 +3062,24 @@ void tst_QWidget::resizePropagation()
         QVERIFY(QTest::qWaitForWindowExposed(&widget));
 
         // Check signal count and qDebug output for fail analysis
-        if (checkCountIncrement) {
-            QTRY_VERIFY(spy.size() > count);
-            qDebug() << "spy count:" << spy.size() << "previous count:" << count;
-            count = spy.size();
-        } else {
-            qDebug() << spy << widget.windowState() << window->windowState();
-            QCOMPARE(spy.size(), count);
+        switch (checkCountIncrement) {
+        case Greater: {
+                auto logger = qScopeGuard([&](){
+                    qDebug() << "spy count:" << spy.count() << "previous count:" << count;
+                });
+                QTRY_VERIFY(spy.count() > count);
+                logger.dismiss();
+                count = spy.count();
+            }
+            break;
+        case Equal: {
+                auto logger = qScopeGuard([&](){
+                   qDebug() << spy << widget.windowState() << window->windowState();
+                });
+                QCOMPARE(spy.count(), count);
+                logger.dismiss();
+            }
+            break;
         }
 
         // QTRY necessary because state changes are propagated async
@@ -2806,32 +3087,37 @@ void tst_QWidget::resizePropagation()
         QTRY_COMPARE(window->windowState(), windowState);
 
         // Check target size with fail or warning
-        if (checkTargetSize) {
+        switch (checkTargetSize) {
+        case Fail:
             QCOMPARE(widget.size(), window->size());
-        } else if (widget.size() != window->size()) {
-            qWarning() << m_platform << "size mismtach tolerated. Widget:"
-                       << widget.size() << "Window:" << window->size();
+            break;
+        case Warn:
+            if (widget.size() != window->size()) {
+                qWarning() << m_platform << "size mismtach tolerated. Widget:"
+                           << widget.size() << "Window:" << window->size();
+            }
+            break;
         }
     };
 
     // test state and size consistency of maximized window
-    verifyResize(QSize(), Qt::WindowMaximized, true, true);
+    verifyResize(QSize(), Qt::WindowMaximized, Equal, Fail);
     if (QTest::currentTestFailed())
         return;
 
     // test state transition, state and size consistency after resize
-    verifyResize(size1, Qt::WindowNoState, true, !xcb );
+    verifyResize(size1, Qt::WindowNoState, Greater, xcb ? Warn : Fail );
     if (QTest::currentTestFailed())
         return;
 
     // test unchanged state, state and size consistency after resize
-    verifyResize(size2, Qt::WindowNoState, false, !xcb);
+    verifyResize(size2, Qt::WindowNoState, Equal, xcb ? Warn : Fail);
     if (QTest::currentTestFailed())
         return;
 
     // test state transition, state and size consistency after maximize
     widget.showMaximized();
-    verifyResize(QSize(), Qt::WindowMaximized, true, xcb);
+    verifyResize(QSize(), Qt::WindowMaximized, Greater, xcb ? Fail : Warn);
     if (QTest::currentTestFailed())
         return;
 
@@ -3131,7 +3417,7 @@ void tst_QWidget::showMinimizedKeepsFocus()
         child1.setFocusPolicy(Qt::StrongFocus);
         child2.setFocusPolicy(Qt::StrongFocus);
         window.show();
-        QApplication::setActiveWindow(&window);
+        QApplicationPrivate::setActiveWindow(&window);
         QVERIFY(QTest::qWaitForWindowActive(&window));
         child2.setFocus();
 
@@ -3155,7 +3441,7 @@ void tst_QWidget::showMinimizedKeepsFocus()
         QWidget *child = new QWidget(&window);
         child->setFocusPolicy(Qt::StrongFocus);
         window.show();
-        QApplication::setActiveWindow(&window);
+        QApplicationPrivate::setActiveWindow(&window);
         QVERIFY(QTest::qWaitForWindowActive(&window));
         child->setFocus();
         QTRY_COMPARE(window.focusWidget(), child);
@@ -3174,7 +3460,7 @@ void tst_QWidget::showMinimizedKeepsFocus()
         QWidget *child = new QWidget(&window);
         child->setFocusPolicy(Qt::StrongFocus);
         window.show();
-        QApplication::setActiveWindow(&window);
+        QApplicationPrivate::setActiveWindow(&window);
         QVERIFY(QTest::qWaitForWindowActive(&window));
         child->setFocus();
         QTRY_COMPARE(window.focusWidget(), child);
@@ -3194,7 +3480,7 @@ void tst_QWidget::showMinimizedKeepsFocus()
         QWidget *child = new QWidget(&window);
         child->setFocusPolicy(Qt::StrongFocus);
         window.show();
-        QApplication::setActiveWindow(&window);
+        QApplicationPrivate::setActiveWindow(&window);
         QVERIFY(QTest::qWaitForWindowActive(&window));
         child->setFocus();
         QTRY_COMPARE(window.focusWidget(), child);
@@ -3215,7 +3501,7 @@ void tst_QWidget::showMinimizedKeepsFocus()
         QWidget *child = new QWidget(&window);
         child->setFocusPolicy(Qt::StrongFocus);
         window.show();
-        QApplication::setActiveWindow(&window);
+        QApplicationPrivate::setActiveWindow(&window);
         QVERIFY(QTest::qWaitForWindowActive(&window));
         child->setFocus();
         QTRY_COMPARE(window.focusWidget(), child);
@@ -3232,7 +3518,7 @@ void tst_QWidget::showMinimizedKeepsFocus()
         QTRY_COMPARE(QApplication::focusWidget(), nullptr);
 
         window.showNormal();
-        QApplication::setActiveWindow(&window);
+        QApplicationPrivate::setActiveWindow(&window);
         QVERIFY(QTest::qWaitForWindowActive(&window));
 #ifdef Q_OS_MACOS
         if (!macHasAccessToWindowsServer())
@@ -4013,6 +4299,13 @@ void tst_QWidget::saveRestoreGeometry()
         QVERIFY(QTest::qWaitForWindowExposed(&widget));
         QApplication::processEvents();
 
+
+    /* ---------------------------------------------------------------------
+     * This test function is likely to flake when debugged with Qt Creator.
+     * (29px offset making the following QTRY_VERIFY2 fail)
+     * ---------------------------------------------------------------------
+     */
+
         QTRY_VERIFY2(HighDpi::fuzzyCompare(widget.pos(), position, m_fuzz),
                      qPrintable(HighDpi::msgPointMismatch(widget.pos(), position)));
         QCOMPARE(widget.size(), size);
@@ -4223,6 +4516,68 @@ void tst_QWidget::restoreVersion1Geometry()
         f.close();
     }
 #endif
+}
+
+void tst_QWidget::restoreGeometryAfterScreenChange_data()
+{
+    QTest::addColumn<ScreenPosition>("screenPosition");
+    QTest::addColumn<int>("deltaWidth");
+    QTest::addColumn<int>("deltaHeight");
+    QTest::addColumn<int>("frameMargin");
+    QTest::addColumn<bool>("outside");
+
+    QTest::newRow("offAboveLarge") << ScreenPosition::OffAbove << 200 << 250 << 20 << true;
+    QTest::newRow("fitting") << ScreenPosition::Contained << 80 << 80 << 20 << false;
+    QTest::newRow("offRightWide") << ScreenPosition::OffRight << 150 << 80 << 20 << false;
+    QTest::newRow("offLeftFitting") << ScreenPosition::OffLeft << 70 << 70 << 20 << true;
+    QTest::newRow("offBelowHigh") << ScreenPosition::OffBelow << 80 << 200 << 20 << false;
+}
+
+void tst_QWidget::restoreGeometryAfterScreenChange()
+{
+    const QList<QScreen *> &screens = QApplication::screens();
+    QVERIFY2(!screens.isEmpty(), "No screens found.");
+    const QRect screenGeometry = screens.at(0)->geometry();
+
+    QFETCH(ScreenPosition, screenPosition);
+    QFETCH(int, deltaWidth);
+    QFETCH(int, deltaHeight);
+    QFETCH(int, frameMargin);
+    QFETCH(bool, outside);
+
+    QRect restoredGeometry = screenGeometry;
+    restoredGeometry.setHeight(screenGeometry.height() * deltaHeight / 100);
+    restoredGeometry.setWidth(screenGeometry.width() * deltaWidth / 100);
+    const float moveMargin = outside ? 1.2 : 0.75;
+
+    switch (screenPosition) {
+    case ScreenPosition::OffLeft:
+        restoredGeometry.setLeft(restoredGeometry.width() * (-moveMargin));
+        break;
+    case ScreenPosition::OffAbove:
+        restoredGeometry.setTop(restoredGeometry.height() * (-moveMargin));
+        break;
+    case ScreenPosition::OffRight:
+        restoredGeometry.setRight(restoredGeometry.width() * moveMargin);
+        break;
+    case ScreenPosition::OffBelow:
+        restoredGeometry.setBottom(restoredGeometry.height() * moveMargin);
+        break;
+    case ScreenPosition::Contained:
+        break;
+    }
+
+    // If restored geometry fits into screen and has not been moved,
+    // it is changed only by frame margin plus one pixel at each edge
+    const QRect originalGeometry = restoredGeometry.adjusted(1, frameMargin + 1, 1, frameMargin + 1);
+
+    QWidgetPrivate::checkRestoredGeometry(screenGeometry, &restoredGeometry, frameMargin);
+
+    if (deltaHeight < 100 && deltaWidth < 100 && screenPosition == ScreenPosition::Contained)
+        QCOMPARE(originalGeometry, restoredGeometry);
+
+    // new geometry has to fit on the screen
+    QVERIFY(screenGeometry.contains(restoredGeometry));
 }
 
 void tst_QWidget::widgetAt()
@@ -4490,22 +4845,20 @@ class StaticWidget : public QWidget
 Q_OBJECT
 public:
     bool partial = false;
-    bool gotPaintEvent = false;
     QRegion paintedRegion;
 
-    explicit StaticWidget(QWidget *parent = nullptr) : QWidget(parent)
+    explicit StaticWidget(const QPalette &palette, QWidget *parent = nullptr) : QWidget(parent)
     {
         setAttribute(Qt::WA_StaticContents);
         setAttribute(Qt::WA_OpaquePaintEvent);
-        setPalette(Qt::red); // Make sure we have an opaque palette.
+        setPalette(palette);
         setAutoFillBackground(true);
     }
 
     void paintEvent(QPaintEvent *e) override
     {
         paintedRegion += e->region();
-        gotPaintEvent = true;
-//        qDebug() << "paint" << e->region();
+        ++paintEvents;
         // Look for a full update, set partial to false if found.
         for (QRect r : e->region()) {
             partial = (r != rect());
@@ -4513,6 +4866,28 @@ public:
                 break;
         }
     }
+
+    // Wait timeout ms until at least one paint event has been consumed
+    // and the counter is no longer increasing.
+    // => making sure to consume multiple paint events relating to one operation
+    // before returning true.
+    bool waitForPaintEvent(int timeout = 100)
+    {
+        QDeadlineTimer deadline(timeout);
+        int count = -1;
+        while (!deadline.hasExpired() && count != paintEvents) {
+            count = paintEvents;
+            QCoreApplication::processEvents();
+            if (count == paintEvents && count > 0) {
+                paintEvents = 0;
+                return true;
+            }
+        }
+        paintEvents = 0;
+        return false;
+    }
+private:
+    int paintEvents = 0;
 };
 
 /*
@@ -4521,102 +4896,84 @@ public:
 */
 void tst_QWidget::optimizedResizeMove()
 {
-    if (m_platform == QStringLiteral("wayland"))
-        QSKIP("Wayland: This fails. Figure out why.");
+    const bool wayland = QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive);
+
     QWidget parent;
     parent.setPalette(simplePalette());
-    parent.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
+    parent.setWindowTitle(QTest::currentTestFunction());
     parent.resize(400, 400);
 
-    StaticWidget staticWidget(&parent);
-    staticWidget.setPalette(simplePalette());
-    staticWidget.gotPaintEvent = false;
+    StaticWidget staticWidget(simplePalette(), &parent);
     staticWidget.move(150, 150);
     staticWidget.resize(150, 150);
     parent.show();
     QVERIFY(QTest::qWaitForWindowExposed(&parent));
-    QTRY_VERIFY(staticWidget.gotPaintEvent);
+    QVERIFY(staticWidget.waitForPaintEvent());
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.move(staticWidget.pos() + QPoint(10, 10));
-    QTest::qWait(20);
-    QCOMPARE(staticWidget.gotPaintEvent, false);
+    if (!wayland) {
+        QVERIFY(!staticWidget.waitForPaintEvent());
+    } else {
+        if (staticWidget.waitForPaintEvent())
+            QSKIP("Wayland is not optimising paint events. Skipping test.");
+    }
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.move(staticWidget.pos() + QPoint(-10, -10));
-    QTest::qWait(20);
-    QCOMPARE(staticWidget.gotPaintEvent, false);
+    QVERIFY(!staticWidget.waitForPaintEvent());
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.move(staticWidget.pos() + QPoint(-10, 10));
-    QTest::qWait(20);
-    QCOMPARE(staticWidget.gotPaintEvent, false);
+    QVERIFY(!staticWidget.waitForPaintEvent());
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.resize(staticWidget.size() + QSize(10, 10));
-    QTRY_VERIFY(staticWidget.gotPaintEvent);
+    QVERIFY(staticWidget.waitForPaintEvent());
     QCOMPARE(staticWidget.partial, true);
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.resize(staticWidget.size() + QSize(-10, -10));
-    QTest::qWait(20);
-    QCOMPARE(staticWidget.gotPaintEvent, false);
+    QVERIFY(!staticWidget.waitForPaintEvent());
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.resize(staticWidget.size() + QSize(10, -10));
-    QTRY_VERIFY(staticWidget.gotPaintEvent);
+    QVERIFY(staticWidget.waitForPaintEvent());
     QCOMPARE(staticWidget.partial, true);
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.move(staticWidget.pos() + QPoint(10, 10));
     staticWidget.resize(staticWidget.size() + QSize(-10, -10));
-    QTest::qWait(20);
-    QCOMPARE(staticWidget.gotPaintEvent, false);
+    QVERIFY(!staticWidget.waitForPaintEvent());
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.move(staticWidget.pos() + QPoint(10, 10));
     staticWidget.resize(staticWidget.size() + QSize(10, 10));
-    QTRY_VERIFY(staticWidget.gotPaintEvent);
+    QVERIFY(staticWidget.waitForPaintEvent());
     QCOMPARE(staticWidget.partial, true);
 
-    staticWidget.gotPaintEvent = false;
     staticWidget.move(staticWidget.pos() + QPoint(-10, -10));
     staticWidget.resize(staticWidget.size() + QSize(-10, -10));
-    QTest::qWait(20);
-    QCOMPARE(staticWidget.gotPaintEvent, false);
+    QVERIFY(!staticWidget.waitForPaintEvent());
 
     staticWidget.setAttribute(Qt::WA_StaticContents, false);
-    staticWidget.gotPaintEvent = false;
     staticWidget.move(staticWidget.pos() + QPoint(-10, -10));
     staticWidget.resize(staticWidget.size() + QSize(-10, -10));
-    QTRY_VERIFY(staticWidget.gotPaintEvent);
+    QVERIFY(staticWidget.waitForPaintEvent());
     QCOMPARE(staticWidget.partial, false);
     staticWidget.setAttribute(Qt::WA_StaticContents, true);
 
     staticWidget.setAttribute(Qt::WA_StaticContents, false);
-    staticWidget.gotPaintEvent = false;
     staticWidget.move(staticWidget.pos() + QPoint(10, 10));
-    QTest::qWait(20);
-    QCOMPARE(staticWidget.gotPaintEvent, false);
+    QVERIFY(!staticWidget.waitForPaintEvent());
     staticWidget.setAttribute(Qt::WA_StaticContents, true);
 }
 
 void tst_QWidget::optimizedResize_topLevel()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
+    const bool wayland = QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive);
 
     if (QHighDpiScaling::isActive())
         QSKIP("Skip due to rounding errors in the regions.");
-    StaticWidget topLevel;
+    StaticWidget topLevel(simplePalette());
     topLevel.setPalette(simplePalette());
     topLevel.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
-    topLevel.gotPaintEvent = false;
     topLevel.show();
     QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
-    QTRY_VERIFY(topLevel.gotPaintEvent);
+    QVERIFY(topLevel.waitForPaintEvent());
 
-    topLevel.gotPaintEvent = false;
     topLevel.partial = false;
     topLevel.paintedRegion = QRegion();
 
@@ -4641,10 +4998,15 @@ void tst_QWidget::optimizedResize_topLevel()
     QRegion expectedUpdateRegion(topLevel.rect());
     expectedUpdateRegion -= QRect(QPoint(), topLevel.size() - QSize(10, 10));
 
-    QTRY_VERIFY(topLevel.gotPaintEvent);
+    QVERIFY(topLevel.waitForPaintEvent());
     if (m_platform == QStringLiteral("xcb") || m_platform == QStringLiteral("offscreen"))
         QSKIP("QTBUG-26424");
-    QCOMPARE(topLevel.partial, true);
+    if (!wayland) {
+        QCOMPARE(topLevel.partial, true);
+    } else {
+        if (!topLevel.partial)
+            QSKIP("Wayland does repaint partially. Skipping test.");
+    }
     QCOMPARE(topLevel.paintedRegion, expectedUpdateRegion);
 }
 
@@ -5478,7 +5840,7 @@ void tst_QWidget::scroll()
     updateWidget.reset();
     updateWidget.move(m_availableTopLeft);
     updateWidget.showNormal();
-    QApplication::setActiveWindow(&updateWidget);
+    QApplicationPrivate::setActiveWindow(&updateWidget);
     QVERIFY(QTest::qWaitForWindowActive(&updateWidget));
     QVERIFY(updateWidget.numPaintEvents > 0);
 
@@ -5592,7 +5954,7 @@ public:
     }
 
     QObjectCastChecker(QObjectCastChecker &&other) noexcept
-        : m_target(qExchange(other.m_target, nullptr))
+        : m_target(std::exchange(other.m_target, nullptr))
     {}
 
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QObjectCastChecker)
@@ -6228,7 +6590,7 @@ void tst_QWidget::showAndMoveChild()
     parent.setGeometry(desktopDimensions);
     parent.setPalette(Qt::red);
     parent.show();
-    QApplication::setActiveWindow(&parent);
+    QApplicationPrivate::setActiveWindow(&parent);
     QVERIFY(QTest::qWaitForWindowActive(&parent));
 
     QWidget child(&parent);
@@ -6347,17 +6709,17 @@ void tst_QWidget::multipleToplevelFocusCheck()
     w2.show();
     QVERIFY(QTest::qWaitForWindowExposed(&w2));
 
-    QApplication::setActiveWindow(&w1);
     w1.activateWindow();
+    QApplicationPrivate::setActiveWindow(&w1);
     QVERIFY(QTest::qWaitForWindowActive(&w1));
-    QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&w1));
+    QTRY_COMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&w1));
     QTest::mouseDClick(&w1, Qt::LeftButton);
     QTRY_COMPARE(QApplication::focusWidget(), static_cast<QWidget *>(w1.edit));
 
     w2.activateWindow();
-    QApplication::setActiveWindow(&w2);
+    QApplicationPrivate::setActiveWindow(&w2);
     QVERIFY(QTest::qWaitForWindowActive(&w2));
-    QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&w2));
+    QTRY_COMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&w2));
     QTest::mouseClick(&w2, Qt::LeftButton);
     QTRY_COMPARE(QApplication::focusWidget(), nullptr);
 
@@ -6365,16 +6727,16 @@ void tst_QWidget::multipleToplevelFocusCheck()
     QTRY_COMPARE(QApplication::focusWidget(), static_cast<QWidget *>(w2.edit));
 
     w1.activateWindow();
-    QApplication::setActiveWindow(&w1);
+    QApplicationPrivate::setActiveWindow(&w1);
     QVERIFY(QTest::qWaitForWindowActive(&w1));
-    QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&w1));
+    QTRY_COMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&w1));
     QTest::mouseDClick(&w1, Qt::LeftButton);
     QTRY_COMPARE(QApplication::focusWidget(), static_cast<QWidget *>(w1.edit));
 
     w2.activateWindow();
-    QApplication::setActiveWindow(&w2);
+    QApplicationPrivate::setActiveWindow(&w2);
     QVERIFY(QTest::qWaitForWindowActive(&w2));
-    QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&w2));
+    QTRY_COMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&w2));
     QTest::mouseClick(&w2, Qt::LeftButton);
     QTRY_COMPARE(QApplication::focusWidget(), nullptr);
 }
@@ -6437,7 +6799,7 @@ void tst_QWidget::setFocus()
     {
         // move focus to another window
         testWidget->activateWindow();
-        QApplication::setActiveWindow(testWidget.data());
+        QApplicationPrivate::setActiveWindow(testWidget.data());
         if (testWidget->focusWidget())
             testWidget->focusWidget()->clearFocus();
         else
@@ -6483,7 +6845,7 @@ void tst_QWidget::setFocus()
 
         // note: window may be active, but we don't want it to be
         testWidget->activateWindow();
-        QApplication::setActiveWindow(testWidget.data());
+        QApplicationPrivate::setActiveWindow(testWidget.data());
         if (testWidget->focusWidget())
             testWidget->focusWidget()->clearFocus();
         else
@@ -7111,7 +7473,7 @@ void tst_QWidget::clean_qt_x11_enforce_cursor()
         child->setAttribute(Qt::WA_SetCursor, true);
 
         window.show();
-        QApplication::setActiveWindow(&window);
+        QApplicationPrivate::setActiveWindow(&window);
         QVERIFY(QTest::qWaitForWindowActive(&window));
         QTest::qWait(100);
         QCursor::setPos(window.geometry().center());
@@ -9184,7 +9546,7 @@ void tst_QWidget::resizeInPaintEvent()
     widget.setPalette(simplePalette());
     window.resize(200, 200);
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowExposed(&window));
     QTRY_VERIFY(widget.numPaintEvents > 0);
 
@@ -9265,7 +9627,7 @@ void tst_QWidget::dumpObjectTree()
     }
 
     QTestPrivate::androidCompatibleShow(&w);
-    QApplication::setActiveWindow(&w);
+    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     {
@@ -9850,7 +10212,7 @@ void tst_QWidget::setClearAndResizeMask()
     topLevel.resize(160, 160);
     centerOnScreen(&topLevel);
     topLevel.show();
-    QApplication::setActiveWindow(&topLevel);
+    QApplicationPrivate::setActiveWindow(&topLevel);
     QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
     QTRY_VERIFY(topLevel.numPaintEvents > 0);
     topLevel.reset();
@@ -10346,7 +10708,7 @@ void tst_QWidget::enterLeaveOnWindowShowHide()
     if (!QTest::qWaitFor([&]{ return widget.geometry().contains(QCursor::pos()); }))
         QSKIP("We can't move the cursor");
     widget.show();
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     ++expectedEnter;
@@ -11166,7 +11528,7 @@ void tst_QWidget::imEnabledNotImplemented()
     topLevel.show();
 
     QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
-    QApplication::setActiveWindow(&topLevel);
+    QApplicationPrivate::setActiveWindow(&topLevel);
     QVERIFY(QTest::qWaitForWindowActive(&topLevel));
 
     // A plain widget should return false for ImEnabled
@@ -11546,7 +11908,7 @@ void tst_QWidget::grabMouse()
     layout->addWidget(grabber);
     centerOnScreen(&w);
     w.show();
-    QApplication::setActiveWindow(&w);
+    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QStringList expectedLog;
@@ -11583,7 +11945,7 @@ void tst_QWidget::grabKeyboard()
     layout->addWidget(nonGrabber);
     centerOnScreen(&w);
     w.show();
-    QApplication::setActiveWindow(&w);
+    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
     nonGrabber->setFocus();
     grabber->grabKeyboard();
@@ -12487,60 +12849,54 @@ void tst_QWidget::testForOutsideWSRangeFlag()
     }
 }
 
-class TabletWidget : public QWidget
-{
-public:
-    TabletWidget(QWidget *parent) : QWidget(parent) { }
-
-    int tabletEventCount = 0;
-    int pressEventCount = 0;
-    int moveEventCount = 0;
-    int releaseEventCount = 0;
-    int trackingChangeEventCount = 0;
-    qint64 uid = -1;
-
-protected:
-    void tabletEvent(QTabletEvent *event) override {
-        ++tabletEventCount;
-        uid = event->pointingDevice()->uniqueId().numericId();
-        switch (event->type()) {
-        case QEvent::TabletMove:
-            ++moveEventCount;
-            break;
-        case QEvent::TabletPress:
-            ++pressEventCount;
-            break;
-        case QEvent::TabletRelease:
-            ++releaseEventCount;
-            break;
-        default:
-            break;
-        }
-    }
-
-    bool event(QEvent *ev) override {
-        if (ev->type() == QEvent::TabletTrackingChange)
-            ++trackingChangeEventCount;
-        return QWidget::event(ev);
-    }
-};
-
 void tst_QWidget::tabletTracking()
 {
-    QWidget parent;
-    parent.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
-    parent.resize(200,200);
-    // QWidgetWindow::handleTabletEvent doesn't deliver tablet events to the window's widget, only to a child.
-    // So it doesn't do any good to show a TabletWidget directly: it needs a parent.
-    TabletWidget widget(&parent);
+    class TabletWidget : public QWidget
+    {
+    public:
+        using QWidget::QWidget;
+
+        int tabletEventCount = 0;
+        int pressEventCount = 0;
+        int moveEventCount = 0;
+        int releaseEventCount = 0;
+        int trackingChangeEventCount = 0;
+        qint64 uid = -1;
+
+    protected:
+        void tabletEvent(QTabletEvent *event) override {
+            ++tabletEventCount;
+            uid = event->pointingDevice()->uniqueId().numericId();
+            switch (event->type()) {
+            case QEvent::TabletMove:
+                ++moveEventCount;
+                break;
+            case QEvent::TabletPress:
+                ++pressEventCount;
+                break;
+            case QEvent::TabletRelease:
+                ++releaseEventCount;
+                break;
+            default:
+                break;
+            }
+        }
+
+        bool event(QEvent *ev) override {
+            if (ev->type() == QEvent::TabletTrackingChange)
+                ++trackingChangeEventCount;
+            return QWidget::event(ev);
+        }
+    } widget;
+    widget.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     widget.resize(200,200);
-    parent.showNormal();
-    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    widget.showNormal();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
     widget.setAttribute(Qt::WA_TabletTracking);
     QTRY_COMPARE(widget.trackingChangeEventCount, 1);
     QVERIFY(widget.hasTabletTracking());
 
-    QWindow *window = parent.windowHandle();
+    QWindow *window = widget.windowHandle();
     QPointF local(10, 10);
     QPointF global = window->mapToGlobal(local.toPoint());
     QPointF deviceLocal = QHighDpi::toNativeLocalPosition(local, window);
@@ -12951,13 +13307,13 @@ void tst_QWidget::setParentChangesFocus()
             QCOMPARE(secondary->focusWidget()->objectName(), focusWidget);
     }
     secondary->show();
-    QApplication::setActiveWindow(secondary.get());
+    QApplicationPrivate::setActiveWindow(secondary.get());
     QVERIFY(QTest::qWaitForWindowActive(secondary.get()));
 
     if (!reparentBeforeShow) {
         secondary->setParent(targetParent ? &window : nullptr, targetType);
         secondary->show(); // reparenting hides, so show again
-        QApplication::setActiveWindow(secondary.get());
+        QApplicationPrivate::setActiveWindow(secondary.get());
         QVERIFY(QTest::qWaitForWindowActive(secondary.get()));
     }
     QCOMPARE(QApplication::focusWidget()->objectName(), focusWidget);

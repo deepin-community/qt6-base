@@ -1,14 +1,10 @@
-# SymbolsHelper-Confirmed: 6.4.1 amd64
+# SymbolsHelper-Confirmed: 6.6.0 amd64 arm64 armel armhf hppa i386 loong64 mips64el powerpc ppc64 ppc64el riscv64 s390x sparc64
 libQt6Gui.so.6 libqt6gui6 #MINVER#
-| libqt6gui6 #MINVER#, qt6-base-abi (= 6.4.2)
+| libqt6gui6 #MINVER#, qt6-base-private-abi (= 6.6.0)
 * Build-Depends-Package: qt6-base-dev
- Qt_6.0@Qt_6.0 6.1.2
- Qt_6.1@Qt_6.1 6.1.2
- Qt_6.2@Qt_6.2 6.2.0
- Qt_6.3@Qt_6.3 6.3.0
- Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
+ _Z10lcQpaFontsv@Qt_6 6.6.0
  _Z11qDrawBorderP8QPainterRK5QRectPKN4QCss11BorderStyleEPKiPK6QBrushPK5QSize@Qt_6 6.1.2
  _Z12qTriangulatePKdijRK10QTransformb@Qt_6 6.1.2
  _Z12qTriangulateRK12QPainterPathRK10QTransformdb@Qt_6 6.1.2
@@ -21,10 +17,8 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _Z14qglx_buildSpecRK14QSurfaceFormatii@Qt_6 6.1.2
  _Z14qt_defaultDpiXv@Qt_6 6.1.2
  _Z14qt_defaultDpiYv@Qt_6 6.1.2
- _Z14qt_draw_helperP15QPainterPrivateRK12QPainterPathNS_13DrawOperationE@Qt_6 6.1.2
  _Z14qt_getFreetypev@Qt_6 6.1.2
  _Z14qt_memrotate90PK10QRgbaFloatIfEiiiPS0_i@Qt_6 6.2.0
- _Z14qt_memrotate90PK7quint24iiiPS_i@Qt_6 6.1.2
  _Z14qt_memrotate90PKhiiiPhi@Qt_6 6.1.2
  _Z14qt_memrotate90PKjiiiPji@Qt_6 6.1.2
  _Z14qt_memrotate90PKtiiiPti@Qt_6 6.1.2
@@ -34,13 +28,11 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _Z15qt_findAtNxFileRK7QStringdPd@Qt_6 6.1.2
  _Z15qt_getImageTextRK6QImageRK7QString@Qt_6 6.1.2
  _Z15qt_memrotate180PK10QRgbaFloatIfEiiiPS0_i@Qt_6 6.2.0
- _Z15qt_memrotate180PK7quint24iiiPS_i@Qt_6 6.1.2
  _Z15qt_memrotate180PKhiiiPhi@Qt_6 6.1.2
  _Z15qt_memrotate180PKjiiiPji@Qt_6 6.1.2
  _Z15qt_memrotate180PKtiiiPti@Qt_6 6.1.2
  _Z15qt_memrotate180PKyiiiPyi@Qt_6 6.1.2
  _Z15qt_memrotate270PK10QRgbaFloatIfEiiiPS0_i@Qt_6 6.2.0
- _Z15qt_memrotate270PK7quint24iiiPS_i@Qt_6 6.1.2
  _Z15qt_memrotate270PKhiiiPhi@Qt_6 6.1.2
  _Z15qt_memrotate270PKjiiiPji@Qt_6 6.1.2
  _Z15qt_memrotate270PKtiiiPti@Qt_6 6.1.2
@@ -152,48 +144,23 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _Z61qRegisterNormalizedMetaType_QPlatformDialogHelper__ButtonRoleRK10QByteArray@Qt_6 6.4.0
  _Z65qRegisterNormalizedMetaType_QPlatformDialogHelper__StandardButtonRK10QByteArray@Qt_6 6.4.0
  _Z9qPolylineRK12QPainterPathRK10QTransformdb@Qt_6 6.1.2
- _ZGVZN9QMetaType21registerConverterImplI4QMapI7QStringS2_E9QIterableI16QMetaAssociationEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI10QSpiActionE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI13QDBusMenuItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI13QSpiTextRangeE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI14QDBusMenuEventE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI17QDBusMenuItemKeysE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI17QSpiEventListenerE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI19QDBusMenuLayoutItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI19QSpiObjectReferenceE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI19QXdgDBusImageStructE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (arch=linux-any)_ZGVZN9QMetaType21registerConverterImplI5QListI23QDBusUnixFileDescriptorE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI23QSpiAccessibleCacheItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListI5QSizeE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListI6QPointE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.4.0
  _ZGVZN9QMetaType21registerConverterImplI5QListIS1_I7QStringEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListISt4pairI7QString9QFileInfoEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplI5QListISt4pairIjS1_I19QSpiObjectReferenceEEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListIiE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListIjE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplISt4pairI7QString9QFileInfoEN17QtMetaTypePrivate25QPairVariantInterfaceImplEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType21registerConverterImplISt4pairIj5QListI19QSpiObjectReferenceEEN17QtMetaTypePrivate25QPairVariantInterfaceImplEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI4QMapI7QStringS2_E9QIterableI16QMetaAssociationEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI10QSpiActionE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI13QDBusMenuItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI13QSpiTextRangeE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI14QDBusMenuEventE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI17QDBusMenuItemKeysE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI17QSpiEventListenerE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI19QDBusMenuLayoutItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI19QSpiObjectReferenceE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI19QXdgDBusImageStructE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (arch=linux-any)_ZGVZN9QMetaType23registerMutableViewImplI5QListI23QDBusUnixFileDescriptorE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI23QSpiAccessibleCacheItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListI5QSizeE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListI6QPointE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Qt_6 6.4.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListIS1_I7QStringEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListISt4pairI7QString9QFileInfoEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvSB_EES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListISt4pairIjS1_I19QSpiObjectReferenceEEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvSB_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListIiE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS7_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListIjE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS7_EES_S_E10unregister@Qt_6 6.2.0
  _ZN10QClipboard11dataChangedEv@Qt_6 6.1.2
@@ -239,6 +206,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN10QMatrix4x411perspectiveEffff@Qt_6 6.1.2
  _ZN10QMatrix4x415flipCoordinatesEv@Qt_6 6.1.2
  _ZN10QMatrix4x415projectedRotateEffff@Qt_6 6.1.2
+ _ZN10QMatrix4x415projectedRotateEfffff@Qt_6 6.6.0
  _ZN10QMatrix4x45orthoERK5QRect@Qt_6 6.1.2
  _ZN10QMatrix4x45orthoERK6QRectF@Qt_6 6.1.2
  _ZN10QMatrix4x45orthoEffffff@Qt_6 6.1.2
@@ -309,9 +277,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN10QTextFrame8iteratormmEv@Qt_6 6.1.2
  _ZN10QTextFrame8iteratorppEv@Qt_6 6.1.2
  _ZN10QTextFrameC1EP13QTextDocument@Qt_6 6.1.2
- _ZN10QTextFrameC1ER17QTextFramePrivateP13QTextDocument@Qt_6 6.1.2
  _ZN10QTextFrameC2EP13QTextDocument@Qt_6 6.1.2
- _ZN10QTextFrameC2ER17QTextFramePrivateP13QTextDocument@Qt_6 6.1.2
  _ZN10QTextFrameD0Ev@Qt_6 6.1.2
  _ZN10QTextFrameD1Ev@Qt_6 6.1.2
  _ZN10QTextFrameD2Ev@Qt_6 6.1.2
@@ -339,10 +305,12 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN10QTransform12squareToQuadERK9QPolygonFRS_@Qt_6 6.1.2
  _ZN10QTransform13fromTranslateEdd@Qt_6 6.1.2
  _ZN10QTransform13rotateRadiansEdN2Qt4AxisE@Qt_6 6.1.2
+ _ZN10QTransform13rotateRadiansEdN2Qt4AxisEd@Qt_6 6.6.0
  _ZN10QTransform5resetEv@Qt_6 6.1.2
  _ZN10QTransform5scaleEdd@Qt_6 6.1.2
  _ZN10QTransform5shearEdd@Qt_6 6.1.2
  _ZN10QTransform6rotateEdN2Qt4AxisE@Qt_6 6.1.2
+ _ZN10QTransform6rotateEdN2Qt4AxisEd@Qt_6 6.6.0
  _ZN10QTransform9fromScaleEdd@Qt_6 6.1.2
  _ZN10QTransform9setMatrixEddddddddd@Qt_6 6.1.2
  _ZN10QTransform9translateEdd@Qt_6 6.1.2
@@ -608,6 +576,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN11QStyleHints11qt_metacastEPKc@Qt_6 6.1.2
  _ZN11QStyleHints16setStartDragTimeEi@Qt_6 6.1.2
  _ZN11QStyleHints16staticMetaObjectE@Qt_6 6.1.2
+ _ZN11QStyleHints18colorSchemeChangedEN2Qt11ColorSchemeE@Qt_6 6.6.0
  _ZN11QStyleHints18setCursorFlashTimeEi@Qt_6 6.1.2
  _ZN11QStyleHints18setUseHoverEffectsEb@Qt_6 6.1.2
  _ZN11QStyleHints19setTabFocusBehaviorEN2Qt16TabFocusBehaviorE@Qt_6 6.1.2
@@ -727,9 +696,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN11QTextObject16staticMetaObjectE@Qt_6 6.1.2
  _ZN11QTextObject9setFormatERK11QTextFormat@Qt_6 6.1.2
  _ZN11QTextObjectC1EP13QTextDocument@Qt_6 6.1.2
- _ZN11QTextObjectC1ER18QTextObjectPrivateP13QTextDocument@Qt_6 6.1.2
  _ZN11QTextObjectC2EP13QTextDocument@Qt_6 6.1.2
- _ZN11QTextObjectC2ER18QTextObjectPrivateP13QTextDocument@Qt_6 6.1.2
  _ZN11QTextObjectD0Ev@Qt_6 6.1.2
  _ZN11QTextObjectD1Ev@Qt_6 6.1.2
  _ZN11QTextObjectD2Ev@Qt_6 6.1.2
@@ -991,7 +958,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN12QPainterPathpLERKS_@Qt_6 6.1.2
  _ZN12QPixmapCache10cacheLimitEv@Qt_6 6.1.2
  _ZN12QPixmapCache13setCacheLimitEi@Qt_6 6.1.2
- _ZN12QPixmapCache20flushDetachedPixmapsEv@Qt_6 6.1.2
  _ZN12QPixmapCache3KeyC1ERKS0_@Qt_6 6.1.2
  _ZN12QPixmapCache3KeyC1Ev@Qt_6 6.1.2
  _ZN12QPixmapCache3KeyC2ERKS0_@Qt_6 6.1.2
@@ -1007,7 +973,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN12QPixmapCache6removeERK7QString@Qt_6 6.1.2
  _ZN12QPixmapCache6removeERKNS_3KeyE@Qt_6 6.1.2
  _ZN12QPixmapCache7replaceERKNS_3KeyERK7QPixmap@Qt_6 6.1.2
- _ZN12QPixmapCache9totalUsedEv@Qt_6 6.1.2
  _ZN12QResizeEventC1ERK5QSizeS2_@Qt_6 6.1.2
  _ZN12QResizeEventC1ERKS_@Qt_6 6.4.0
  _ZN12QResizeEventC2ERK5QSizeS2_@Qt_6 6.1.2
@@ -1107,26 +1072,13 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN13QIntValidatorD0Ev@Qt_6 6.1.2
  _ZN13QIntValidatorD1Ev@Qt_6 6.1.2
  _ZN13QIntValidatorD2Ev@Qt_6 6.1.2
- _ZN13QLayoutPolicy14setControlTypeENS_11ControlTypeE@Qt_6 6.3.0
- _ZN13QLayoutPolicy16staticMetaObjectE@Qt_6 6.3.0
- _ZN13QMetaSequence12MetaSequenceI5QListI10QSpiActionEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI13QDBusMenuItemEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI13QSpiTextRangeEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI14QDBusMenuEventEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI17QDBusMenuItemKeysEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI17QSpiEventListenerEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI19QDBusMenuLayoutItemEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI19QSpiObjectReferenceEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI19QXdgDBusImageStructEE5valueE@Qt_6 6.1.2
  (arch=linux-any)_ZN13QMetaSequence12MetaSequenceI5QListI23QDBusUnixFileDescriptorEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI23QSpiAccessibleCacheItemEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListI4QUrlEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListI5QSizeEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListI6QPointEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListIN2Qt3KeyEEE5valueE@Qt_6 6.4.0
  _ZN13QMetaSequence12MetaSequenceI5QListIS1_I7QStringEEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListISt4pairI7QString9QFileInfoEEE5valueE@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListISt4pairIjS1_I19QSpiObjectReferenceEEEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListIiEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListIjEE5valueE@Qt_6 6.1.2
  _ZN13QPointerEvent11setAcceptedEb@Qt_6 6.1.2
@@ -1183,13 +1135,11 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN13QStandardItem9insertRowEiRK5QListIPS_E@Qt_6 6.1.2
  _ZN13QStandardItem9removeRowEi@Qt_6 6.1.2
  _ZN13QStandardItem9takeChildEii@Qt_6 6.1.2
- _ZN13QStandardItemC1ER20QStandardItemPrivate@Qt_6 6.1.2
  _ZN13QStandardItemC1ERK5QIconRK7QString@Qt_6 6.1.2
  _ZN13QStandardItemC1ERK7QString@Qt_6 6.1.2
  _ZN13QStandardItemC1ERKS_@Qt_6 6.1.2
  _ZN13QStandardItemC1Eii@Qt_6 6.1.2
  _ZN13QStandardItemC1Ev@Qt_6 6.1.2
- _ZN13QStandardItemC2ER20QStandardItemPrivate@Qt_6 6.1.2
  _ZN13QStandardItemC2ERK5QIconRK7QString@Qt_6 6.1.2
  _ZN13QStandardItemC2ERK7QString@Qt_6 6.1.2
  _ZN13QStandardItemC2ERKS_@Qt_6 6.1.2
@@ -1345,8 +1295,10 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN14QOpenGLContextD0Ev@Qt_6 6.1.2
  _ZN14QOpenGLContextD1Ev@Qt_6 6.1.2
  _ZN14QOpenGLContextD2Ev@Qt_6 6.1.2
+ _ZN14QShortcutEventC1ERK12QKeySequencePK9QShortcutb@Qt_6 6.6.0
  _ZN14QShortcutEventC1ERK12QKeySequenceib@Qt_6 6.1.2
  _ZN14QShortcutEventC1ERKS_@Qt_6 6.4.0
+ _ZN14QShortcutEventC2ERK12QKeySequencePK9QShortcutb@Qt_6 6.6.0
  _ZN14QShortcutEventC2ERK12QKeySequenceib@Qt_6 6.1.2
  _ZN14QShortcutEventC2ERKS_@Qt_6 6.4.0
  _ZN14QShortcutEventD0Ev@Qt_6 6.1.2
@@ -1424,6 +1376,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN15QGuiApplication13setWindowIconERK5QIcon@Qt_6 6.1.2
  _ZN15QGuiApplication14overrideCursorEv@Qt_6 6.1.2
  _ZN15QGuiApplication14paletteChangedERK8QPalette@Qt_6 6.1.2
+ _ZN15QGuiApplication14setBadgeNumberEx@Qt_6 6.6.0
  _ZN15QGuiApplication15desktopFileNameEv@Qt_6 6.1.2
  _ZN15QGuiApplication15layoutDirectionEv@Qt_6 6.1.2
  _ZN15QGuiApplication15topLevelWindowsEv@Qt_6 6.1.2
@@ -1562,9 +1515,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN15QTextBlockGroup16staticMetaObjectE@Qt_6 6.1.2
  _ZN15QTextBlockGroup18blockFormatChangedERK10QTextBlock@Qt_6 6.1.2
  _ZN15QTextBlockGroupC1EP13QTextDocument@Qt_6 6.1.2
- _ZN15QTextBlockGroupC1ER22QTextBlockGroupPrivateP13QTextDocument@Qt_6 6.1.2
  _ZN15QTextBlockGroupC2EP13QTextDocument@Qt_6 6.1.2
- _ZN15QTextBlockGroupC2ER22QTextBlockGroupPrivateP13QTextDocument@Qt_6 6.1.2
  _ZN15QTextBlockGroupD0Ev@Qt_6 6.1.2
  _ZN15QTextBlockGroupD1Ev@Qt_6 6.1.2
  _ZN15QTextBlockGroupD2Ev@Qt_6 6.1.2
@@ -1574,7 +1525,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN15QTextCharFormatC1Ev@Qt_6 6.1.2
  _ZN15QTextCharFormatC2ERK11QTextFormat@Qt_6 6.1.2
  _ZN15QTextCharFormatC2Ev@Qt_6 6.1.2
- _ZN15QTextHtmlParser11parseEntityE11QStringView@Qt_6 6.2.0
  _ZN15QTextListFormatC1ERK11QTextFormat@Qt_6 6.1.2
  _ZN15QTextListFormatC1Ev@Qt_6 6.1.2
  _ZN15QTextListFormatC2ERK11QTextFormat@Qt_6 6.1.2
@@ -1591,8 +1541,10 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  (arch=linux-any)_ZN15QVulkanInstance19supportedExtensionsEv@Qt_6 6.1.2
  (arch=linux-any)_ZN15QVulkanInstance20resetDeviceFunctionsEP10VkDevice_T@Qt_6 6.1.2
  (arch=linux-any)_ZN15QVulkanInstance22presentAboutToBeQueuedEP7QWindow@Qt_6 6.1.2
+ _ZN15QVulkanInstance23clearDebugOutputFiltersEv@Qt_6 6.6.0
  (subst|arch=linux-any)_ZN15QVulkanInstance23removeDebugOutputFilterEPFbj26VkDebugReportObjectTypeEXT{uint64_t}{size_t}iPKcS2_E@Qt_6 6.1.2
  (subst|arch=linux-any)_ZN15QVulkanInstance24installDebugOutputFilterEPFbj26VkDebugReportObjectTypeEXT{uint64_t}{size_t}iPKcS2_E@Qt_6 6.1.2
+ _ZN15QVulkanInstance24installDebugOutputFilterESt8functionIFb6QFlagsINS_24DebugMessageSeverityFlagEES1_INS_20DebugMessageTypeFlagEEPKvEE@Qt_6 6.6.0
  (arch=linux-any)_ZN15QVulkanInstance6createEv@Qt_6 6.1.2
  (arch=linux-any)_ZN15QVulkanInstance7destroyEv@Qt_6 6.1.2
  (arch=linux-any)_ZN15QVulkanInstance8setFlagsE6QFlagsINS_4FlagEE@Qt_6 6.1.2
@@ -1666,19 +1618,13 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN16QFileSystemModelD0Ev@Qt_6 6.1.2
  _ZN16QFileSystemModelD1Ev@Qt_6 6.1.2
  _ZN16QFileSystemModelD2Ev@Qt_6 6.1.2
- _ZN16QMetaAssociation15MetaAssociationI4QMapI7QStringS2_EE5valueE@Qt_6 6.1.2
  _ZN16QNativeInterface11QEGLContext10fromNativeEPvS1_P14QOpenGLContext@Qt_6 6.1.2
  _ZN16QNativeInterface11QEGLContextD0Ev@Qt_6 6.1.2
  _ZN16QNativeInterface11QEGLContextD1Ev@Qt_6 6.1.2
  _ZN16QNativeInterface11QEGLContextD2Ev@Qt_6 6.1.2
- _ZN16QNativeInterface11QGLXContext10fromNativeEP15__GLXcontextRecP14QOpenGLContext@Qt_6 6.1.2
- _ZN16QNativeInterface11QGLXContext10fromNativeEP15__GLXcontextRecPvP14QOpenGLContext@Qt_6 6.1.2
- _ZN16QNativeInterface11QGLXContextD0Ev@Qt_6 6.1.2
- _ZN16QNativeInterface11QGLXContextD1Ev@Qt_6 6.1.2
- _ZN16QNativeInterface11QGLXContextD2Ev@Qt_6 6.1.2
- _ZN16QNativeInterface15QX11ApplicationD0Ev@Qt_6 6.2.0
- _ZN16QNativeInterface15QX11ApplicationD1Ev@Qt_6 6.2.0
- _ZN16QNativeInterface15QX11ApplicationD2Ev@Qt_6 6.2.0
+ _ZN16QNativeInterface19QWaylandApplicationD0Ev@Qt_6 6.6.0
+ _ZN16QNativeInterface19QWaylandApplicationD1Ev@Qt_6 6.6.0
+ _ZN16QNativeInterface19QWaylandApplicationD2Ev@Qt_6 6.6.0
  _ZN16QOpenGLFunctions25initializeOpenGLFunctionsEv@Qt_6 6.1.2
  _ZN16QOpenGLFunctionsC1EP14QOpenGLContext@Qt_6 6.1.2
  _ZN16QOpenGLFunctionsC1Ev@Qt_6 6.1.2
@@ -1733,7 +1679,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN17QIconEnginePluginD0Ev@Qt_6 6.1.2
  _ZN17QIconEnginePluginD1Ev@Qt_6 6.1.2
  _ZN17QIconEnginePluginD2Ev@Qt_6 6.1.2
- _ZN17QIconLoaderEngine12entryForSizeERK14QThemeIconInfoRK5QSizei@Qt_6 6.1.2
  _ZN17QInputMethodEvent15setCommitStringERK7QStringii@Qt_6 6.1.2
  _ZN17QInputMethodEventC1ERK7QStringRK5QListINS_9AttributeEE@Qt_6 6.1.2
  _ZN17QInputMethodEventC1ERKS_@Qt_6 6.4.0
@@ -1780,9 +1725,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN17QTextInlineObject10setDescentEd@Qt_6 6.1.2
  _ZN17QTextInlineObject8setWidthEd@Qt_6 6.1.2
  _ZN17QTextInlineObject9setAscentEd@Qt_6 6.1.2
- _ZN18QMutableEventPoint12setTimestampER11QEventPointm@Qt_6 6.3.0
- _ZN18QMutableEventPoint6detachER11QEventPoint@Qt_6 6.3.0
- _ZN18QMutableEventPoint6updateERK11QEventPointRS0_@Qt_6 6.3.0
  _ZN18QPaintDeviceWindow10paintEventEP11QPaintEvent@Qt_6 6.1.2
  _ZN18QPaintDeviceWindow11exposeEventEP12QExposeEvent@Qt_6 6.1.2
  _ZN18QPaintDeviceWindow11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
@@ -1828,10 +1770,8 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN18QStandardItemModel9appendRowERK5QListIP13QStandardItemE@Qt_6 6.1.2
  _ZN18QStandardItemModel9insertRowEiRK5QListIP13QStandardItemE@Qt_6 6.1.2
  _ZN18QStandardItemModelC1EP7QObject@Qt_6 6.1.2
- _ZN18QStandardItemModelC1ER25QStandardItemModelPrivateP7QObject@Qt_6 6.1.2
  _ZN18QStandardItemModelC1EiiP7QObject@Qt_6 6.1.2
  _ZN18QStandardItemModelC2EP7QObject@Qt_6 6.1.2
- _ZN18QStandardItemModelC2ER25QStandardItemModelPrivateP7QObject@Qt_6 6.1.2
  _ZN18QStandardItemModelC2EiiP7QObject@Qt_6 6.1.2
  _ZN18QStandardItemModelD0Ev@Qt_6 6.1.2
  _ZN18QStandardItemModelD1Ev@Qt_6 6.1.2
@@ -1857,7 +1797,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN18QTextBlockUserDataD0Ev@Qt_6 6.1.2
  _ZN18QTextBlockUserDataD1Ev@Qt_6 6.1.2
  _ZN18QTextBlockUserDataD2Ev@Qt_6 6.1.2
- _ZN19QKeySequencePrivate7keyNameEiN12QKeySequence14SequenceFormatE@Qt_6 6.1.2
  _ZN19QNativeGestureEventC1EN2Qt17NativeGestureTypeEPK15QPointingDeviceRK7QPointFS7_S7_dyy@Qt_6 6.1.2
  _ZN19QNativeGestureEventC1EN2Qt17NativeGestureTypeEPK15QPointingDeviceiRK7QPointFS7_S7_dS7_y@Qt_6 6.2.0
  _ZN19QNativeGestureEventC1ERKS_@Qt_6 6.4.0
@@ -1976,7 +1915,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN22QAccessibleApplicationC2Ev@Qt_6 6.1.2
  _ZN22QAccessibleBridgeUtils20effectiveActionNamesEP20QAccessibleInterface@Qt_6 6.1.2
  _ZN22QAccessibleBridgeUtils22performEffectiveActionEP20QAccessibleInterfaceRK7QString@Qt_6 6.1.2
- _ZN22QColorTransformPrivate7prepareEv@Qt_6 6.4.0
  _ZN22QInputMethodQueryEvent8setValueEN2Qt16InputMethodQueryERK8QVariant@Qt_6 6.1.2
  _ZN22QInputMethodQueryEventC1E6QFlagsIN2Qt16InputMethodQueryEE@Qt_6 6.1.2
  _ZN22QInputMethodQueryEventC1ERKS_@Qt_6 6.4.0
@@ -2013,16 +1951,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN24QAccessibleTextInterfaceD0Ev@Qt_6 6.1.2
  _ZN24QAccessibleTextInterfaceD1Ev@Qt_6 6.1.2
  _ZN24QAccessibleTextInterfaceD2Ev@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmap19setDevicePixelRatioEd@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmap4fillERK6QColor@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmap6bufferEv@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmap6resizeEii@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmap9fromImageERK6QImage6QFlagsIN2Qt19ImageConversionFlagEE@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmapC1Ev@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmapC2Ev@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmapD0Ev@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmapD1Ev@Qt_6 6.1.2
- _ZN24QBlittablePlatformPixmapD2Ev@Qt_6 6.1.2
  _ZN25QAbstractFileIconProvider10setOptionsE6QFlagsINS_6OptionEE@Qt_6 6.1.2
  _ZN25QAbstractFileIconProviderC1Ev@Qt_6 6.1.2
  _ZN25QAbstractFileIconProviderC2Ev@Qt_6 6.1.2
@@ -2110,17 +2038,12 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN28QApplicationStateChangeEventD0Ev@Qt_6 6.4.0
  _ZN28QApplicationStateChangeEventD1Ev@Qt_6 6.4.0
  _ZN28QApplicationStateChangeEventD2Ev@Qt_6 6.4.0
- (optional=templinst)_ZN28QExplicitlySharedDataPointerI18QColorSpacePrivateED1Ev@Qt_6 6.1.2
- (optional=templinst)_ZN28QExplicitlySharedDataPointerI18QColorSpacePrivateED2Ev@Qt_6 6.1.2
- (optional=templinst)_ZN28QExplicitlySharedDataPointerI18QEventPointPrivateED1Ev@Qt_6 6.1.2
- (optional=templinst)_ZN28QExplicitlySharedDataPointerI18QEventPointPrivateED2Ev@Qt_6 6.1.2
- (optional=templinst)_ZN28QExplicitlySharedDataPointerI18QPageRangesPrivateED1Ev@Qt_6 6.1.2
- (optional=templinst)_ZN28QExplicitlySharedDataPointerI18QPageRangesPrivateED2Ev@Qt_6 6.1.2
- (optional=templinst)_ZN28QExplicitlySharedDataPointerI22QColorTransformPrivateED1Ev@Qt_6 6.1.2
- (optional=templinst)_ZN28QExplicitlySharedDataPointerI22QColorTransformPrivateED2Ev@Qt_6 6.1.2
  _ZN29QAccessibleHyperlinkInterfaceD0Ev@Qt_6 6.2.0
  _ZN29QAccessibleHyperlinkInterfaceD1Ev@Qt_6 6.2.0
  _ZN29QAccessibleHyperlinkInterfaceD2Ev@Qt_6 6.2.0
+ _ZN29QAccessibleSelectionInterfaceD0Ev@Qt_6 6.6.0
+ _ZN29QAccessibleSelectionInterfaceD1Ev@Qt_6 6.6.0
+ _ZN29QAccessibleSelectionInterfaceD2Ev@Qt_6 6.6.0
  _ZN29QAccessibleTableCellInterfaceD0Ev@Qt_6 6.1.2
  _ZN29QAccessibleTableCellInterfaceD1Ev@Qt_6 6.1.2
  _ZN29QAccessibleTableCellInterfaceD2Ev@Qt_6 6.1.2
@@ -2143,6 +2066,73 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN32QAccessibleTableModelChangeEventD1Ev@Qt_6 6.1.2
  _ZN32QAccessibleTableModelChangeEventD2Ev@Qt_6 6.1.2
  _ZN4QCss10StyleSheet12buildIndexesEN2Qt15CaseSensitivityE@Qt_6 6.1.2
+ _ZN4QCss13StyleSelector15selectorMatchesERKNS_8SelectorENS0_7NodePtrE@Qt_6 6.6.0
+ _ZN4QCss13StyleSelector17styleRulesForNodeENS0_7NodePtrE@Qt_6 6.6.0
+ _ZN4QCss13StyleSelector19declarationsForNodeENS0_7NodePtrEPKc@Qt_6 6.6.0
+ _ZN4QCss13StyleSelector20basicSelectorMatchesERKNS_13BasicSelectorENS0_7NodePtrE@Qt_6 6.6.0
+ _ZN4QCss13StyleSelector9matchRuleENS0_7NodePtrERKNS_9StyleRuleENS_16StyleSheetOriginEiP9QMultiMapIjS2_E@Qt_6 6.6.0
+ _ZN4QCss13StyleSelectorD0Ev@Qt_6 6.6.0
+ _ZN4QCss13StyleSelectorD1Ev@Qt_6 6.6.0
+ _ZN4QCss13StyleSelectorD2Ev@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor10extractBoxEPiS1_S1_@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor10sizeValuesERKNS_11DeclarationEP5QSize@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor11borderValueERKNS_11DeclarationEPiPNS_11BorderStyleEP6QBrush@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor11extractFontEP5QFontPi@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor11extractFontEv@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor11extractIconEP5QIconP5QSize@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor11lengthValueERKNS_11DeclarationE@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor11lengthValueERKNS_5ValueE@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor12extractImageEP5QIconP6QFlagsIN2Qt13AlignmentFlagEEP5QSize@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor12lengthValuesERKNS_11DeclarationEPi@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor13extractBorderEPiP6QBrushPNS_11BorderStyleEP5QSize@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor14extractOutlineEPiP6QBrushPNS_11BorderStyleEP5QSizeS1_@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor14extractPaletteEP6QBrushS2_S2_S2_S2_S2_@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor15extractGeometryEPiS1_S1_S1_S1_S1_@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor15extractPositionEPiS1_S1_S1_PNS_6OriginEP6QFlagsIN2Qt13AlignmentFlagEEPNS_12PositionModeES8_@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor17extractBackgroundEP6QBrushP7QStringPNS_6RepeatEP6QFlagsIN2Qt13AlignmentFlagEEPNS_6OriginEPNS_10AttachmentESD_@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor20extractStyleFeaturesEv@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractor9sizeValueERKNS_11DeclarationE@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractorC1ERK5QListINS_11DeclarationEERK8QPalette@Qt_6 6.6.0
+ _ZN4QCss14ValueExtractorC2ERK5QListINS_11DeclarationEERK8QPalette@Qt_6 6.6.0
+ _ZN4QCss6Parser10lexemUntilENS_9TokenTypeE@Qt_6 6.6.0
+ _ZN4QCss6Parser10parseClassEP7QString@Qt_6 6.6.0
+ _ZN4QCss6Parser10parseMediaEPNS_9MediaRuleE@Qt_6 6.6.0
+ _ZN4QCss6Parser11errorSymbolEv@Qt_6 6.6.0
+ _ZN4QCss6Parser11parseAttribEPNS_17AttributeSelectorE@Qt_6 6.6.0
+ _ZN4QCss6Parser11parseImportEPNS_10ImportRuleE@Qt_6 6.6.0
+ _ZN4QCss6Parser11parseMediumEP5QListI7QStringE@Qt_6 6.6.0
+ _ZN4QCss6Parser11parsePseudoEPNS_6PseudoE@Qt_6 6.6.0
+ _ZN4QCss6Parser12parseRulesetEPNS_9StyleRuleE@Qt_6 6.6.0
+ _ZN4QCss6Parser13parseFunctionEP7QStringS2_@Qt_6 6.6.0
+ _ZN4QCss6Parser13parseHexColorEP6QColor@Qt_6 6.6.0
+ _ZN4QCss6Parser13parsePropertyEPNS_11DeclarationE@Qt_6 6.6.0
+ _ZN4QCss6Parser13parseSelectorEPNS_8SelectorE@Qt_6 6.6.0
+ _ZN4QCss6Parser15parseCombinatorEPNS_13BasicSelector8RelationE@Qt_6 6.6.0
+ _ZN4QCss6Parser15parsePseudoPageEP7QString@Qt_6 6.6.0
+ _ZN4QCss6Parser15testAndParseUriEP7QString@Qt_6 6.6.0
+ _ZN4QCss6Parser16parseElementNameEP7QString@Qt_6 6.6.0
+ _ZN4QCss6Parser17parseNextOperatorEPNS_5ValueE@Qt_6 6.6.0
+ _ZN4QCss6Parser18testSimpleSelectorEv@Qt_6 6.6.0
+ _ZN4QCss6Parser19parseSimpleSelectorEPNS_13BasicSelectorE@Qt_6 6.6.0
+ _ZN4QCss6Parser20parseNextDeclarationEPNS_11DeclarationE@Qt_6 6.6.0
+ _ZN4QCss6Parser20testTokenAndEndsWithENS_9TokenTypeE13QLatin1String@Qt_6 6.6.0
+ _ZN4QCss6Parser4initERK7QStringb@Qt_6 6.6.0
+ _ZN4QCss6Parser4nextENS_9TokenTypeE@Qt_6 6.6.0
+ _ZN4QCss6Parser4testENS_9TokenTypeE@Qt_6 6.6.0
+ _ZN4QCss6Parser5parseEPNS_10StyleSheetEN2Qt15CaseSensitivityE@Qt_6 6.6.0
+ _ZN4QCss6Parser5untilENS_9TokenTypeES1_@Qt_6 6.6.0
+ _ZN4QCss6Parser8testPrioEv@Qt_6 6.6.0
+ _ZN4QCss6Parser8testTermEv@Qt_6 6.6.0
+ _ZN4QCss6Parser9parseExprEP5QListINS_5ValueEE@Qt_6 6.6.0
+ _ZN4QCss6Parser9parsePageEPNS_8PageRuleE@Qt_6 6.6.0
+ _ZN4QCss6Parser9parsePrioEPNS_11DeclarationE@Qt_6 6.6.0
+ _ZN4QCss6Parser9parseTermEPNS_5ValueE@Qt_6 6.6.0
+ _ZN4QCss6ParserC1ERK7QStringb@Qt_6 6.6.0
+ _ZN4QCss6ParserC1Ev@Qt_6 6.6.0
+ _ZN4QCss6ParserC2ERK7QStringb@Qt_6 6.6.0
+ _ZN4QCss6ParserC2Ev@Qt_6 6.6.0
+ _ZN4QCss7Scanner10preprocessERK7QStringPb@Qt_6 6.6.0
+ _ZN4QCss7Scanner4scanERK7QStringP5QListINS_6SymbolEE@Qt_6 6.6.0
  _ZN4QPen10isDetachedEv@Qt_6 6.1.2
  _ZN4QPen11setCapStyleEN2Qt11PenCapStyleE@Qt_6 6.1.2
  _ZN4QPen11setCosmeticEb@Qt_6 6.1.2
@@ -2188,18 +2178,25 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN5QDragD2Ev@Qt_6 6.1.2
  _ZN5QFont10fromStringERK7QString@Qt_6 6.1.2
  _ZN5QFont10initializeEv@Qt_6 6.1.2
+ _ZN5QFont10setFeatureEPKcj@Qt_6 6.6.0
+ _ZN5QFont10setFeatureEjj@Qt_6 6.6.0
  _ZN5QFont10setKerningEb@Qt_6 6.1.2
  _ZN5QFont10setStretchEi@Qt_6 6.1.2
  _ZN5QFont10substituteERK7QString@Qt_6 6.1.2
  _ZN5QFont11setFamiliesERK5QListI7QStringE@Qt_6 6.1.2
  _ZN5QFont11setOverlineEb@Qt_6 6.1.2
+ _ZN5QFont11stringToTagEPKc@Qt_6 6.6.0
  _ZN5QFont11substitutesERK7QString@Qt_6 6.1.2
+ _ZN5QFont11tagToStringEj@Qt_6 6.6.0
  _ZN5QFont12setPixelSizeEi@Qt_6 6.1.2
  _ZN5QFont12setPointSizeEi@Qt_6 6.1.2
  _ZN5QFont12setStrikeOutEb@Qt_6 6.1.2
  _ZN5QFont12setStyleHintENS_9StyleHintENS_13StyleStrategyE@Qt_6 6.1.2
  _ZN5QFont12setStyleNameERK7QString@Qt_6 6.1.2
  _ZN5QFont12setUnderlineEb@Qt_6 6.1.2
+ _ZN5QFont12unsetFeatureEPKc@Qt_6 6.6.0
+ _ZN5QFont12unsetFeatureEj@Qt_6 6.6.0
+ _ZN5QFont13clearFeaturesEv@Qt_6 6.6.0
  _ZN5QFont13setFixedPitchEb@Qt_6 6.1.2
  _ZN5QFont13setPointSizeFEd@Qt_6 6.1.2
  _ZN5QFont13substitutionsEv@Qt_6 6.1.2
@@ -2845,10 +2842,8 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN8QPicture4saveERK7QString@Qt_6 6.1.2
  _ZN8QPicture6detachEv@Qt_6 6.1.2
  _ZN8QPicture7setDataEPKcj@Qt_6 6.1.2
- _ZN8QPictureC1ER15QPicturePrivate@Qt_6 6.1.2
  _ZN8QPictureC1ERKS_@Qt_6 6.1.2
  _ZN8QPictureC1Ei@Qt_6 6.1.2
- _ZN8QPictureC2ER15QPicturePrivate@Qt_6 6.1.2
  _ZN8QPictureC2ERKS_@Qt_6 6.1.2
  _ZN8QPictureC2Ei@Qt_6 6.1.2
  _ZN8QPictureD0Ev@Qt_6 6.1.2
@@ -2903,6 +2898,8 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN9QGlyphRun14setRightToLeftEb@Qt_6 6.1.2
  _ZN9QGlyphRun15setBoundingRectERK6QRectF@Qt_6 6.1.2
  _ZN9QGlyphRun15setGlyphIndexesERK5QListIjE@Qt_6 6.1.2
+ _ZN9QGlyphRun15setSourceStringERK7QString@Qt_6 6.6.0
+ (subst)_ZN9QGlyphRun16setStringIndexesERK5QListI{qptrdiff}E@Qt_6 6.6.0
  _ZN9QGlyphRun5clearEv@Qt_6 6.1.2
  _ZN9QGlyphRun6detachEv@Qt_6 6.1.2
  _ZN9QGlyphRun7setFlagENS_12GlyphRunFlagEb@Qt_6 6.1.2
@@ -3240,6 +3237,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK11QStaticTexteqERKS_@Qt_6 6.1.2
  _ZNK11QStaticTextneERKS_@Qt_6 6.1.2
  _ZNK11QStyleHints10metaObjectEv@Qt_6 6.1.2
+ _ZNK11QStyleHints11colorSchemeEv@Qt_6 6.6.0
  _ZNK11QStyleHints13startDragTimeEv@Qt_6 6.1.2
  _ZNK11QStyleHints15cursorFlashTimeEv@Qt_6 6.1.2
  _ZNK11QStyleHints15showIsMaximizedEv@Qt_6 6.1.2
@@ -3258,6 +3256,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK11QStyleHints22keyboardAutoRepeatRateEv@Qt_6 6.1.2
  _ZNK11QStyleHints22setFocusOnTouchReleaseEv@Qt_6 6.1.2
  _ZNK11QStyleHints22touchDoubleTapDistanceEv@Qt_6 6.1.2
+ _ZNK11QStyleHints23keyboardAutoRepeatRateFEv@Qt_6 6.6.0
  _ZNK11QStyleHints24mouseDoubleClickDistanceEv@Qt_6 6.1.2
  _ZNK11QStyleHints24mouseDoubleClickIntervalEv@Qt_6 6.1.2
  _ZNK11QStyleHints25mousePressAndHoldIntervalEv@Qt_6 6.1.2
@@ -3344,6 +3343,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK11QTextLayout6lineAtEi@Qt_6 6.1.2
  _ZNK11QTextLayout7formatsEv@Qt_6 6.1.2
  _ZNK11QTextLayout8positionEv@Qt_6 6.1.2
+ _ZNK11QTextLayout9glyphRunsEii6QFlagsINS_21GlyphRunRetrievalFlagEE@Qt_6 6.6.0
  _ZNK11QTextLayout9glyphRunsEii@Qt_6 6.1.2
  _ZNK11QTextLayout9lineCountEv@Qt_6 6.1.2
  _ZNK11QTextLengthcv8QVariantEv@Qt_6 6.1.2
@@ -3518,6 +3518,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK12QPainterPathneERKS_@Qt_6 6.1.2
  _ZNK12QPainterPathorERKS_@Qt_6 6.1.2
  _ZNK12QPainterPathplERKS_@Qt_6 6.1.2
+ (subst)_ZNK12QPixmapCache3Key4hashE{size_t}@Qt_6 6.6.0
  _ZNK12QPixmapCache3Key7isValidEv@Qt_6 6.1.2
  _ZNK12QPixmapCache3KeyeqERKS0_@Qt_6 6.1.2
  _ZNK12QResizeEvent5cloneEv@Qt_6 6.4.0
@@ -3569,7 +3570,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK13QIntValidator10metaObjectEv@Qt_6 6.1.2
  _ZNK13QIntValidator5fixupER7QString@Qt_6 6.1.2
  _ZNK13QIntValidator8validateER7QStringRi@Qt_6 6.1.2
- _ZNK13QLayoutPolicy11controlTypeEv@Qt_6 6.3.0
  _ZNK13QPointerEvent14pointingDeviceEv@Qt_6 6.1.2
  _ZNK13QPointerEvent15passiveGrabbersERK11QEventPoint@Qt_6 6.1.2
  _ZNK13QPointerEvent16allPointsGrabbedEv@Qt_6 6.1.2
@@ -3828,6 +3828,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK16QFileSystemModel12canFetchMoreERK11QModelIndex@Qt_6 6.1.2
  _ZNK16QFileSystemModel12iconProviderEv@Qt_6 6.1.2
  _ZNK16QFileSystemModel12lastModifiedERK11QModelIndex@Qt_6 6.1.2
+ _ZNK16QFileSystemModel12lastModifiedERK11QModelIndexRK9QTimeZone@Qt_6 6.6.0
  _ZNK16QFileSystemModel13rootDirectoryEv@Qt_6 6.1.2
  _ZNK16QFileSystemModel15resolveSymlinksEv@Qt_6 6.1.2
  _ZNK16QFileSystemModel18nameFilterDisablesEv@Qt_6 6.1.2
@@ -3987,12 +3988,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK24QAccessibleTextInterface12textAtOffsetEiN11QAccessible16TextBoundaryTypeEPiS2_@Qt_6 6.1.2
  _ZNK24QAccessibleTextInterface15textAfterOffsetEiN11QAccessible16TextBoundaryTypeEPiS2_@Qt_6 6.1.2
  _ZNK24QAccessibleTextInterface16textBeforeOffsetEiN11QAccessible16TextBoundaryTypeEPiS2_@Qt_6 6.1.2
- _ZNK24QBlittablePlatformPixmap11paintEngineEv@Qt_6 6.1.2
- _ZNK24QBlittablePlatformPixmap15hasAlphaChannelEv@Qt_6 6.1.2
- _ZNK24QBlittablePlatformPixmap16devicePixelRatioEv@Qt_6 6.1.2
- _ZNK24QBlittablePlatformPixmap6metricEN12QPaintDevice17PaintDeviceMetricE@Qt_6 6.1.2
- _ZNK24QBlittablePlatformPixmap7toImageEv@Qt_6 6.1.2
- _ZNK24QBlittablePlatformPixmap9blittableEv@Qt_6 6.1.2
  _ZNK25QAbstractFileIconProvider4iconENS_8IconTypeE@Qt_6 6.1.2
  _ZNK25QAbstractFileIconProvider4iconERK9QFileInfo@Qt_6 6.1.2
  _ZNK25QAbstractFileIconProvider4typeERK9QFileInfo@Qt_6 6.1.2
@@ -4011,9 +4006,37 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK27QRegularExpressionValidator17regularExpressionEv@Qt_6 6.1.2
  _ZNK27QRegularExpressionValidator8validateER7QStringRi@Qt_6 6.1.2
  _ZNK28QApplicationStateChangeEvent5cloneEv@Qt_6 6.4.0
+ _ZNK29QAccessibleSelectionInterface10isSelectedEP20QAccessibleInterface@Qt_6 6.6.0
+ _ZNK29QAccessibleSelectionInterface12selectedItemEi@Qt_6 6.6.0
  _ZNK29QScreenOrientationChangeEvent5cloneEv@Qt_6 6.4.0
+ _ZNK4QCss11Declaration10brushValueERK8QPalette@Qt_6 6.6.0
+ _ZNK4QCss11Declaration10colorValueERK8QPalette@Qt_6 6.6.0
+ _ZNK4QCss11Declaration10styleValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration11brushValuesEP6QBrushRK8QPalette@Qt_6 6.6.0
+ _ZNK4QCss11Declaration11colorValuesEP6QColorRK8QPalette@Qt_6 6.6.0
+ _ZNK4QCss11Declaration11originValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration11repeatValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration11styleValuesEPNS_11BorderStyleE@Qt_6 6.6.0
+ _ZNK4QCss11Declaration13positionValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration14alignmentValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration15attachmentValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration16borderImageValueEP7QStringPiPNS_8TileModeES5_@Qt_6 6.6.0
+ _ZNK4QCss11Declaration18styleFeaturesValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration19borderCollapseValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration8intValueEPiPKc@Qt_6 6.6.0
+ _ZNK4QCss11Declaration8uriValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration9iconValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration9realValueEPdPKc@Qt_6 6.6.0
+ _ZNK4QCss11Declaration9rectValueEv@Qt_6 6.6.0
+ _ZNK4QCss11Declaration9sizeValueEv@Qt_6 6.6.0
+ _ZNK4QCss13StyleSelector14nodeNameEqualsENS0_7NodePtrERK7QString@Qt_6 6.6.0
+ _ZNK4QCss13StyleSelector7nodeIdsENS0_7NodePtrE@Qt_6 6.6.0
  _ZNK4QCss5Value8toStringEv@Qt_6 6.1.2
+ _ZNK4QCss6Parser13unquotedLexemEv@Qt_6 6.6.0
  _ZNK4QCss6Symbol5lexemEv@Qt_6 6.1.2
+ _ZNK4QCss8Selector11pseudoClassEPy@Qt_6 6.6.0
+ _ZNK4QCss8Selector11specificityEv@Qt_6 6.6.0
+ _ZNK4QCss8Selector13pseudoElementEv@Qt_6 6.6.0
  _ZNK4QPen10dashOffsetEv@Qt_6 6.1.2
  _ZNK4QPen10isCosmeticEv@Qt_6 6.1.2
  _ZNK4QPen10miterLimitEv@Qt_6 6.1.2
@@ -4040,7 +4063,10 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK5QFont10exactMatchEv@Qt_6 6.1.2
  _ZNK5QFont10fixedPitchEv@Qt_6 6.1.2
  _ZNK5QFont10pointSizeFEv@Qt_6 6.1.2
+ _ZNK5QFont11featureTagsEv@Qt_6 6.6.0
  _ZNK5QFont11wordSpacingEv@Qt_6 6.1.2
+ _ZNK5QFont12featureValueEj@Qt_6 6.6.0
+ _ZNK5QFont12isFeatureSetEj@Qt_6 6.6.0
  _ZNK5QFont12legacyWeightEv@Qt_6 6.1.2
  _ZNK5QFont13defaultFamilyEv@Qt_6 6.1.2
  _ZNK5QFont13letterSpacingEv@Qt_6 6.1.2
@@ -4489,7 +4515,9 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK9QFontInfo9underlineEv@Qt_6 6.1.2
  _ZNK9QGlyphRun12boundingRectEv@Qt_6 6.1.2
  _ZNK9QGlyphRun12glyphIndexesEv@Qt_6 6.1.2
+ _ZNK9QGlyphRun12sourceStringEv@Qt_6 6.6.0
  _ZNK9QGlyphRun13isRightToLeftEv@Qt_6 6.1.2
+ _ZNK9QGlyphRun13stringIndexesEv@Qt_6 6.6.0
  _ZNK9QGlyphRun5flagsEv@Qt_6 6.1.2
  _ZNK9QGlyphRun7isEmptyEv@Qt_6 6.1.2
  _ZNK9QGlyphRun7rawFontEv@Qt_6 6.1.2
@@ -4560,6 +4588,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZNK9QTextLine7leadingEv@Qt_6 6.1.2
  _ZNK9QTextLine8positionEv@Qt_6 6.1.2
  _ZNK9QTextLine9cursorToXEPiNS_4EdgeE@Qt_6 6.1.2
+ _ZNK9QTextLine9glyphRunsEii6QFlagsIN11QTextLayout21GlyphRunRetrievalFlagEE@Qt_6 6.6.0
  _ZNK9QTextLine9glyphRunsEii@Qt_6 6.1.2
  _ZNK9QTextLine9textStartEv@Qt_6 6.1.2
  _ZNK9QTextLine9xToCursorEdNS_14CursorPositionE@Qt_6 6.1.2
@@ -4663,7 +4692,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTI23QAccessibleBridgePlugin@Qt_6 6.1.2
  _ZTI23QWindowStateChangeEvent@Qt_6 6.1.2
  _ZTI24QAccessibleTextInterface@Qt_6 6.1.2
- _ZTI24QBlittablePlatformPixmap@Qt_6 6.1.2
  _ZTI25QAbstractFileIconProvider@Qt_6 6.1.2
  _ZTI25QAccessibleImageInterface@Qt_6 6.1.2
  _ZTI25QAccessibleTableInterface@Qt_6 6.1.2
@@ -4680,6 +4708,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTI27QRegularExpressionValidator@Qt_6 6.1.2
  _ZTI28QApplicationStateChangeEvent@Qt_6 6.1.2
  _ZTI29QAccessibleHyperlinkInterface@Qt_6 6.2.0
+ _ZTI29QAccessibleSelectionInterface@Qt_6 6.6.0
  _ZTI29QAccessibleTableCellInterface@Qt_6 6.1.2
  _ZTI29QAccessibleTextSelectionEvent@Qt_6 6.1.2
  _ZTI29QScreenOrientationChangeEvent@Qt_6 6.1.2
@@ -4700,57 +4729,32 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTI9QTextList@Qt_6 6.1.2
  _ZTIN11QAccessible18ActivationObserverE@Qt_6 6.1.2
  _ZTIN16QNativeInterface11QEGLContextE@Qt_6 6.1.2
- _ZTIN16QNativeInterface11QGLXContextE@Qt_6 6.1.2
- _ZTIN16QNativeInterface15QX11ApplicationE@Qt_6 6.2.0
+ _ZTIN16QNativeInterface19QWaylandApplicationE@Qt_6 6.6.0
+ _ZTIN4QCss13StyleSelectorE@Qt_6 6.6.0
  _ZTIN5QTest19QTouchEventSequenceE@Qt_6 6.1.2
  (arch=armel riscv64)_ZTIN9__gnu_cxx7__mutexE@Qt_6 6.3.0
  (arch=armel riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
  (arch=!armel !riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
  (arch=armel riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
  (arch=!armel !riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
- (arch=armel armhf)_ZTISt19_Sp_make_shared_tag@Qt_6 6.3.0
- _ZTIZN9QMetaType17registerConverterI4QMapI7QStringS2_E9QIterableI16QMetaAssociationEN9QtPrivate34QAssociativeIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI10QSpiActionE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI13QDBusMenuItemE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI13QSpiTextRangeE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI14QDBusMenuEventE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI17QDBusMenuItemKeysE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI17QSpiEventListenerE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI19QDBusMenuLayoutItemE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI19QSpiObjectReferenceE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI19QXdgDBusImageStructE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
+ _ZTISt19_Sp_make_shared_tag@Qt_6 6.6.0
  (arch=linux-any)_ZTIZN9QMetaType17registerConverterI5QListI23QDBusUnixFileDescriptorE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI23QSpiAccessibleCacheItemE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListI4QUrlE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListI5QSizeE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListI6QPointE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS4_EEEEbT1_EUlPKvPvE_@Qt_6 6.4.0
  _ZTIZN9QMetaType17registerConverterI5QListIS1_I7QStringEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS4_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListISt4pairI7QString9QFileInfoEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS6_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListISt4pairIjS1_I19QSpiObjectReferenceEEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS6_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListIiE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS2_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListIjE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS2_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterISt4pairI7QString9QFileInfoEN17QtMetaTypePrivate25QPairVariantInterfaceImplENS5_35QPairVariantInterfaceConvertFunctorIS4_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterISt4pairIj5QListI19QSpiObjectReferenceEEN17QtMetaTypePrivate25QPairVariantInterfaceImplENS6_35QPairVariantInterfaceConvertFunctorIS5_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI4QMapI7QStringS2_E9QIterableI16QMetaAssociationEN9QtPrivate38QAssociativeIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI10QSpiActionE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI13QDBusMenuItemE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI13QSpiTextRangeE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI14QDBusMenuEventE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI17QDBusMenuItemKeysE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI17QSpiEventListenerE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI19QDBusMenuLayoutItemE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI19QSpiObjectReferenceE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI19QXdgDBusImageStructE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  (arch=linux-any)_ZTIZN9QMetaType19registerMutableViewI5QListI23QDBusUnixFileDescriptorE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI23QSpiAccessibleCacheItemE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListI4QUrlE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListI5QSizeE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListI6QPointE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Qt_6 6.4.0
  _ZTIZN9QMetaType19registerMutableViewI5QListIS1_I7QStringEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListISt4pairI7QString9QFileInfoEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS6_EEEEbT1_EUlPvSE_E_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListISt4pairIjS1_I19QSpiObjectReferenceEEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS6_EEEEbT1_EUlPvSE_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListIiE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS2_EEEEbT1_EUlPvSA_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListIjE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS2_EEEEbT1_EUlPvSA_E_@Qt_6 6.1.2
  _ZTS10QClipboard@Qt_6 6.1.2
@@ -4840,7 +4844,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTS23QAccessibleBridgePlugin@Qt_6 6.1.2
  _ZTS23QWindowStateChangeEvent@Qt_6 6.1.2
  _ZTS24QAccessibleTextInterface@Qt_6 6.1.2
- _ZTS24QBlittablePlatformPixmap@Qt_6 6.1.2
  _ZTS25QAbstractFileIconProvider@Qt_6 6.1.2
  _ZTS25QAccessibleImageInterface@Qt_6 6.1.2
  _ZTS25QAccessibleTableInterface@Qt_6 6.1.2
@@ -4857,6 +4860,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTS27QRegularExpressionValidator@Qt_6 6.1.2
  _ZTS28QApplicationStateChangeEvent@Qt_6 6.1.2
  _ZTS29QAccessibleHyperlinkInterface@Qt_6 6.2.0
+ _ZTS29QAccessibleSelectionInterface@Qt_6 6.6.0
  _ZTS29QAccessibleTableCellInterface@Qt_6 6.1.2
  _ZTS29QAccessibleTextSelectionEvent@Qt_6 6.1.2
  _ZTS29QScreenOrientationChangeEvent@Qt_6 6.1.2
@@ -4877,8 +4881,8 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTS9QTextList@Qt_6 6.1.2
  _ZTSN11QAccessible18ActivationObserverE@Qt_6 6.1.2
  _ZTSN16QNativeInterface11QEGLContextE@Qt_6 6.1.2
- _ZTSN16QNativeInterface11QGLXContextE@Qt_6 6.1.2
- _ZTSN16QNativeInterface15QX11ApplicationE@Qt_6 6.2.0
+ _ZTSN16QNativeInterface19QWaylandApplicationE@Qt_6 6.6.0
+ _ZTSN4QCss13StyleSelectorE@Qt_6 6.6.0
  _ZTSN5QTest19QTouchEventSequenceE@Qt_6 6.1.2
  (arch=armel riscv64)_ZTSN9__gnu_cxx7__mutexE@Qt_6 6.3.0
  (arch=armel riscv64)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
@@ -4886,48 +4890,23 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  (arch=armel riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
  (arch=!armel !riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
  _ZTSSt19_Sp_make_shared_tag@Qt_6 6.3.0
- _ZTSZN9QMetaType17registerConverterI4QMapI7QStringS2_E9QIterableI16QMetaAssociationEN9QtPrivate34QAssociativeIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI10QSpiActionE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI13QDBusMenuItemE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI13QSpiTextRangeE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI14QDBusMenuEventE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI17QDBusMenuItemKeysE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI17QSpiEventListenerE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI19QDBusMenuLayoutItemE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI19QSpiObjectReferenceE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI19QXdgDBusImageStructE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  (arch=linux-any)_ZTSZN9QMetaType17registerConverterI5QListI23QDBusUnixFileDescriptorE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI23QSpiAccessibleCacheItemE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListI4QUrlE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListI5QSizeE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListI6QPointE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS4_EEEEbT1_EUlPKvPvE_@Qt_6 6.4.0
  _ZTSZN9QMetaType17registerConverterI5QListIS1_I7QStringEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS4_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListISt4pairI7QString9QFileInfoEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS6_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListISt4pairIjS1_I19QSpiObjectReferenceEEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS6_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListIiE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS2_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListIjE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS2_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterISt4pairI7QString9QFileInfoEN17QtMetaTypePrivate25QPairVariantInterfaceImplENS5_35QPairVariantInterfaceConvertFunctorIS4_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterISt4pairIj5QListI19QSpiObjectReferenceEEN17QtMetaTypePrivate25QPairVariantInterfaceImplENS6_35QPairVariantInterfaceConvertFunctorIS5_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI4QMapI7QStringS2_E9QIterableI16QMetaAssociationEN9QtPrivate38QAssociativeIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI10QSpiActionE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI13QDBusMenuItemE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI13QSpiTextRangeE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI14QDBusMenuEventE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI17QDBusMenuItemKeysE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI17QSpiEventListenerE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI19QDBusMenuLayoutItemE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI19QSpiObjectReferenceE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI19QXdgDBusImageStructE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  (arch=linux-any)_ZTSZN9QMetaType19registerMutableViewI5QListI23QDBusUnixFileDescriptorE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI23QSpiAccessibleCacheItemE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListI4QUrlE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListI5QSizeE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListI6QPointE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Qt_6 6.4.0
  _ZTSZN9QMetaType19registerMutableViewI5QListIS1_I7QStringEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListISt4pairI7QString9QFileInfoEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS6_EEEEbT1_EUlPvSE_E_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListISt4pairIjS1_I19QSpiObjectReferenceEEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS6_EEEEbT1_EUlPvSE_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListIiE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS2_EEEEbT1_EUlPvSA_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListIjE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS2_EEEEbT1_EUlPvSA_E_@Qt_6 6.1.2
  _ZTV10QClipboard@Qt_6 6.1.2
@@ -5016,7 +4995,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTV23QAccessibleBridgePlugin@Qt_6 6.1.2
  _ZTV23QWindowStateChangeEvent@Qt_6 6.1.2
  _ZTV24QAccessibleTextInterface@Qt_6 6.1.2
- _ZTV24QBlittablePlatformPixmap@Qt_6 6.1.2
  _ZTV25QAbstractFileIconProvider@Qt_6 6.1.2
  _ZTV25QAccessibleImageInterface@Qt_6 6.1.2
  _ZTV25QAccessibleTableInterface@Qt_6 6.1.2
@@ -5032,6 +5010,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTV27QRegularExpressionValidator@Qt_6 6.1.2
  _ZTV28QApplicationStateChangeEvent@Qt_6 6.1.2
  _ZTV29QAccessibleHyperlinkInterface@Qt_6 6.2.0
+ _ZTV29QAccessibleSelectionInterface@Qt_6 6.6.0
  _ZTV29QAccessibleTableCellInterface@Qt_6 6.1.2
  _ZTV29QAccessibleTextSelectionEvent@Qt_6 6.1.2
  _ZTV29QScreenOrientationChangeEvent@Qt_6 6.1.2
@@ -5052,51 +5031,26 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZTV9QTextList@Qt_6 6.1.2
  _ZTVN11QAccessible18ActivationObserverE@Qt_6 6.1.2
  _ZTVN16QNativeInterface11QEGLContextE@Qt_6 6.1.2
- _ZTVN16QNativeInterface11QGLXContextE@Qt_6 6.1.2
- _ZTVN16QNativeInterface15QX11ApplicationE@Qt_6 6.2.0
+ _ZTVN16QNativeInterface19QWaylandApplicationE@Qt_6 6.6.0
+ _ZTVN4QCss13StyleSelectorE@Qt_6 6.6.0
  _ZTVN5QTest19QTouchEventSequenceE@Qt_6 6.1.2
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI4QMapI7QStringS2_E9QIterableI16QMetaAssociationEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI10QSpiActionE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI13QDBusMenuItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI13QSpiTextRangeE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI14QDBusMenuEventE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI17QDBusMenuItemKeysE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI17QSpiEventListenerE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI19QDBusMenuLayoutItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI19QSpiObjectReferenceE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI19QXdgDBusImageStructE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst|arch=linux-any)_ZZN9QMetaType21registerConverterImplI5QListI23QDBusUnixFileDescriptorE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI23QSpiAccessibleCacheItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI5QSizeE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI6QPointE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.4.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListIS1_I7QStringEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListISt4pairI7QString9QFileInfoEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListISt4pairIjS1_I19QSpiObjectReferenceEEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListIiE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListIjE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplISt4pairI7QString9QFileInfoEN17QtMetaTypePrivate25QPairVariantInterfaceImplEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType21registerConverterImplISt4pairIj5QListI19QSpiObjectReferenceEEN17QtMetaTypePrivate25QPairVariantInterfaceImplEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI4QMapI7QStringS2_E9QIterableI16QMetaAssociationEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI10QSpiActionE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI13QDBusMenuItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI13QSpiTextRangeE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI14QDBusMenuEventE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI17QDBusMenuItemKeysE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI17QSpiEventListenerE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI19QDBusMenuLayoutItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI19QSpiObjectReferenceE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI19QXdgDBusImageStructE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst|arch=linux-any)_ZZN9QMetaType23registerMutableViewImplI5QListI23QDBusUnixFileDescriptorE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI23QSpiAccessibleCacheItemE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI5QSizeE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI6QPointE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Qt_6 6.4.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListIS1_I7QStringEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListISt4pairI7QString9QFileInfoEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvSB_EES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListISt4pairIjS1_I19QSpiObjectReferenceEEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvSB_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListIiE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS7_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListIjE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS7_EES_S_E10unregister@Qt_6 6.2.0
  _ZZNSt19_Sp_make_shared_tag5_S_tiEvE5__tag@Qt_6 6.3.0
@@ -5130,7 +5084,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _Zls6QDebugRK14QSurfaceFormat@Qt_6 6.1.2
  _Zls6QDebugRK16QAccessibleEvent@Qt_6 6.1.2
  (arch=linux-any)_Zls6QDebugRK16QVulkanExtension@Qt_6 6.1.2
- _Zls6QDebugRK20QRhiSwapChainHdrInfo@Qt_6 6.4.0
  _Zls6QDebugRK4QPen@Qt_6 6.1.2
  _Zls6QDebugRK5QFont@Qt_6 6.1.2
  _Zls6QDebugRK5QIcon@Qt_6 6.1.2

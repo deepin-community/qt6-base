@@ -20,7 +20,7 @@ QT_BEGIN_NAMESPACE
 
 class QHostAddressPrivate;
 
-class Q_NETWORK_EXPORT QIPv6Address
+class QT6_ONLY(Q_NETWORK_EXPORT) QIPv6Address
 {
 public:
     inline quint8 &operator [](int index) { return c[index]; }
@@ -127,6 +127,7 @@ public:
     bool isUniqueLocalUnicast() const;
     bool isMulticast() const;
     bool isBroadcast() const;
+    bool isPrivateUse() const;
 
     static QPair<QHostAddress, int> parseSubnet(const QString &subnet);
 

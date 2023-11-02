@@ -3,7 +3,7 @@ Description: remove RPATH/RUNPATH from examples' binaries.
  need to set RPATH/RUNPATH.
 Author: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
 Forwarded: not-needed
-Last-Update: 2023-07-23
+Last-Update: 2023-10-10
 
 ---
  cmake/QtBuildInternals/QtBuildInternalsConfig.cmake |    2 +-
@@ -11,12 +11,12 @@ Last-Update: 2023-07-23
 
 --- a/cmake/QtBuildInternals/QtBuildInternalsConfig.cmake
 +++ b/cmake/QtBuildInternals/QtBuildInternalsConfig.cmake
-@@ -849,7 +849,7 @@ macro(qt_examples_build_begin)
+@@ -981,7 +981,7 @@ macro(qt_examples_build_begin)
      # This means that installed examples are not relocatable at the moment. We would need to
      # annotate where each example is installed to, to be able to derive a relative rpath, and it
      # seems there's no way to query such information from CMake itself.
 -    set(CMAKE_INSTALL_RPATH "${_default_install_rpath}")
 +    #set(CMAKE_INSTALL_RPATH "${_default_install_rpath}")
-     set(QT_DISABLE_QT_ADD_PLUGIN_COMPATIBILITY TRUE)
- 
+
      install(CODE "
+ # Backup CMAKE_INSTALL_PREFIX because we're going to change it in each example subdirectory

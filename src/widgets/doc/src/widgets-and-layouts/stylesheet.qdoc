@@ -85,22 +85,7 @@
     buttons and check boxes to make them stand out. Using this
     technique, you can also achieve minor customizations that would
     normally require subclassing several style classes, such as
-    specifying a \l{QStyle::styleHint()}{style hint}. The
-    \l{widgets/stylesheet}{Style Sheet} example depicted below defines
-    two distinctive style sheets that you can try out and modify at
-    will.
-
-    \table
-    \row \li \inlineimage stylesheet-pagefold.png
-    \row \li Pagefold theme running on Windows
-    \endtable
-
-    \table
-    \row \li \inlineimage stylesheet-coffee-cleanlooks.png
-         \li \inlineimage stylesheet-pagefold-mac.png
-    \row \li Coffee theme running on Ubuntu Linux
-         \li Pagefold theme running on \macos
-    \endtable
+    specifying a \l{QStyle::styleHint()}{style hint}.
 
     When a style sheet is active, the QStyle returned by QWidget::style()
     is a wrapper "style sheet" style, \e not the platform-specific style. The
@@ -513,7 +498,7 @@
     the QObject::className() returns <namespace>::<classname>. This conflicts
     with the syntax for \l{Sub-Controls}. To overcome this problem,
     when using the Type Selector for widgets inside namespaces, we must
-    replace the "::" with "--". For example,
+    replace the \c{::} with \c{--}. For example,
 
     \snippet code/doc_src_stylesheet.cpp 27
 
@@ -525,8 +510,8 @@
     For example,
     \snippet code/doc_src_stylesheet.qdoc 28
 
-    If the property references an enum declared with Q_ENUMS, you should
-    reference its constants by name, i.e., not their numeric value.
+    If the property references an enum declared with Q_ENUM, you should
+    reference its constants by name, not their numeric value.
 
     \note Use the qproperty syntax with care, as it modifies the
     widget that is being painted. Also, the qproperty syntax is evaluated only
@@ -732,6 +717,9 @@
            subcontrol. By default, the arrow is placed in the center of the
            contents rectangle of the drop-down subcontrol.
 
+           The color of the placeholder text can be set using the
+           \l{#placeholder-text-color-prop}{placeholder-text-color} property.
+
            See \l{Qt Style Sheets Examples#Customizing QComboBox}{Customizing QComboBox}
            for an example.
 
@@ -841,12 +829,15 @@
 
     \row
         \li QLineEdit \target qlineedit-widget
-        \li Support the \l{box model}.
+        \li Supports the \l{box model}.
 
            The color and background of the selected item is styled using
            \l{#selection-color-prop}{selection-color} and
            \l{#selection-background-color-prop}{selection-background-color}
            respectively.
+
+           The color of the placeholder text can be set using the
+           \l{#placeholder-text-color-prop}{placeholder-text-color} property.
 
            The password character can be styled using the
            \l{#lineedit-password-character-prop}{lineedit-password-character}
@@ -1202,6 +1193,9 @@
            \l{#selection-background-color-prop}{selection-background-color}
            respectively.
 
+           The color of the placeholder text can be set using the
+           \l{#placeholder-text-color-prop}{placeholder-text-color} property.
+
            See \l{qabstractscrollarea-widget}{QAbsractScrollArea} to
            style scrollable backgrounds.
 
@@ -1347,6 +1341,13 @@
         \li Property
         \li Type
         \li Description
+
+    \row
+        \li \b{\c accent-color}
+        \li \l{#Brush}{Brush} \br
+        \li The property sets the \c Accent, which is used to emphasize
+           interactive UI elements.
+           If this property is not set, it defaults to the \c highlight color.
 
     \row
         \li \b{\c alternate-background-color} \target alternate-background-color-prop
@@ -2299,6 +2300,21 @@
            area (i.e the area where there are no items)
 
     \row
+        \li \b{\c placeholder-text-color*} \target placeholder-text-color-prop
+        \li \l{#Brush}{Brush} \br
+        \li The color used for the placeholder text of text editing widgets.
+
+           If this property is not set, the default value is whatever
+           is set for the palette's \l{QPalette::}{PlaceholderText}
+           role.
+
+           Example:
+
+           \snippet code/doc_src_stylesheet.qdoc 163
+
+           Available since 6.5.
+
+    \row
         \li \b{\c position} \target position-prop
         \li \c relative \br
            | \c absolute
@@ -3040,6 +3056,7 @@
     \row
         \li \b{PaletteRole} \target PaletteRole
         \li \c alternate-base \br
+              | \c accent \br
               | \c base \br
               | \c bright-text \br
               | \c button \br
@@ -4041,7 +4058,7 @@
 
     \image stylesheet-treeview.png
 
-    \sa {Style Sheet Example}, {Supported HTML Subset}, QStyle
+    \sa {Supported HTML Subset}, QStyle
 
 
     \section1 Common Mistakes

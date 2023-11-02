@@ -1,4 +1,5 @@
-# Generated from widgets.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## Widgets Module:
@@ -64,7 +65,14 @@ qt_internal_add_module(Widgets
         Qt::GuiPrivate
     PRECOMPILED_HEADER
         "kernel/qt_widgets_pch.h"
+    NO_PCH_SOURCES
+        compat/removed_api.cpp
     GENERATE_CPP_EXPORTS
+)
+
+qt_internal_extend_target(Widgets CONDITION APPLE
+    NO_UNITY_BUILD_SOURCES
+        kernel/qapplication.cpp
 )
 
 # Resources:
@@ -238,15 +246,6 @@ set(qstyle_resource_files
     "styles/images/viewlist-32.png"
 )
 
-set(widgets_no_pch_sources
-    compat/removed_api.cpp
-)
-
-foreach(src ${widgets_no_pch_sources})
-    qt_update_ignore_pch_source(Widgets ${src})
-endforeach()
-
-
 qt_internal_add_resource(Widgets "qstyle"
     PREFIX
         "/qt-project.org/styles/commonstyle"
@@ -297,10 +296,6 @@ if(QT_FEATURE_reduce_relocations AND UNIX AND GCC)
     target_link_options(Widgets PRIVATE
                         "LINKER:--dynamic-list=${CMAKE_CURRENT_LIST_DIR}/QtWidgets.dynlist")
 endif()
-
-#### Keys ignored in scope 1:.:.:widgets.pro:<TRUE>:
-# MODULE_CONFIG = "uic"
-# QMAKE_LIBS = "$$QMAKE_LIBS_GUI"
 
 ## Scopes:
 #####################################################################
@@ -508,7 +503,7 @@ qt_internal_extend_target(Widgets CONDITION QT_FEATURE_resizehandler
 
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_dialogbuttonbox
     SOURCES
-        widgets/qdialogbuttonbox.cpp widgets/qdialogbuttonbox.h
+        widgets/qdialogbuttonbox.cpp widgets/qdialogbuttonbox.h widgets/qdialogbuttonbox_p.h
 )
 
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_rubberband
@@ -659,6 +654,8 @@ qt_internal_extend_target(Widgets CONDITION QT_FEATURE_inputdialog
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_messagebox
     SOURCES
         dialogs/qmessagebox.cpp dialogs/qmessagebox.h
+    NO_UNITY_BUILD_SOURCES
+        dialogs/qmessagebox.cpp # error: ‘Old_Ok’ [etc] was not declared in this scope
 )
 
 if(QT_FEATURE_messagebox)
@@ -682,15 +679,25 @@ qt_internal_extend_target(Widgets CONDITION QT_FEATURE_progressdialog
         dialogs/qprogressdialog.cpp dialogs/qprogressdialog.h
 )
 
-qt_internal_extend_target(Widgets CONDITION QT_FEATURE_wizard
-    SOURCES
-        dialogs/qwizard.cpp dialogs/qwizard.h
-)
+if(QT_FEATURE_wizard)
+    qt_internal_extend_target(Widgets CONDITION
+        SOURCES
+            dialogs/qwizard.cpp dialogs/qwizard.h
+    )
 
-qt_internal_extend_target(Widgets CONDITION QT_FEATURE_wizard AND WIN32
-    SOURCES
-        dialogs/qwizard_win.cpp dialogs/qwizard_win_p.h
-)
+    if(APPLE)
+        set_source_files_properties(dialogs/qwizard.cpp
+            PROPERTIES
+                LANGUAGE OBJCXX
+                SKIP_PRECOMPILE_HEADERS ON
+        )
+    endif()
+
+    qt_internal_extend_target(Widgets CONDITION WIN32
+        SOURCES
+            dialogs/qwizard_win.cpp dialogs/qwizard_win_p.h
+    )
+endif()
 
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_accessibility
     SOURCES
@@ -830,7 +837,11 @@ qt_internal_extend_target(Widgets CONDITION NOT QT_FEATURE_xcb
 )
 
 
-qt_internal_create_tracepoints(Widgets qtwidgets.tracepoints)
+qt_internal_generate_tracepoints(Widgets widgets
+    SOURCES
+        kernel/qapplication.cpp
+)
+
 qt_internal_add_docs(Widgets
     doc/qtwidgets.qdocconf
 )

@@ -11,6 +11,10 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSpinBox>
+#include <QProperty>
+#include <QString>
+#include <QDateTimeEdit>
+#include <QBindable>
 
 int main(int argc, char *argv[])
 {
@@ -19,6 +23,8 @@ int main(int argc, char *argv[])
     BindableSubscription subscription(&user);
 
     SubscriptionWindow w;
+    // clazy:excludeall=lambda-in-connect
+    // when subscription is out of scope so is window
 
     // Initialize subscription data
     QRadioButton *monthly = w.findChild<QRadioButton *>("btnMonthly");
@@ -37,28 +43,28 @@ int main(int argc, char *argv[])
     // Initialize user data
     QPushButton *germany = w.findChild<QPushButton *>("btnGermany");
     QObject::connect(germany, &QPushButton::clicked, [&] {
-        user.setCountry(BindableUser::Germany);
+        user.setCountry(BindableUser::Country::Germany);
     });
     QPushButton *finland = w.findChild<QPushButton *>("btnFinland");
     QObject::connect(finland, &QPushButton::clicked, [&] {
-        user.setCountry(BindableUser::Finland);
+        user.setCountry(BindableUser::Country::Finland);
     });
     QPushButton *norway = w.findChild<QPushButton *>("btnNorway");
     QObject::connect(norway, &QPushButton::clicked, [&] {
-        user.setCountry(BindableUser::Norway);
+        user.setCountry(BindableUser::Country::Norway);
     });
 
     QSpinBox *ageSpinBox = w.findChild<QSpinBox *>("ageSpinBox");
-    QObject::connect(ageSpinBox, &QSpinBox::valueChanged, [&](int value) {
-        user.setAge(value);
-    });
+    QBindable<int> ageBindable(ageSpinBox, "value");
+    user.bindableAge().setBinding([ageBindable](){ return ageBindable.value();});
 
     QLabel *priceDisplay = w.findChild<QLabel *>("priceDisplay");
 
     // Track price changes
 //! [update-ui]
     auto priceChangeHandler = subscription.bindablePrice().subscribe([&] {
-        priceDisplay->setText(QString::number(subscription.price()));
+        QLocale lc{QLocale::AnyLanguage, user.country()};
+        priceDisplay->setText(lc.toCurrencyString(subscription.price() / subscription.duration()));
     });
 
     auto priceValidHandler = subscription.bindableIsValid().subscribe([&] {

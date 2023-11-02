@@ -1,8 +1,11 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 qt_feature("androiddeployqt" PRIVATE
     SECTION "Deployment"
     LABEL "Android deployment tool"
     PURPOSE "The Android deployment tool automates the process of creating Android packages."
-    CONDITION NOT CMAKE_CROSSCOMPILING AND QT_FEATURE_regularexpression)
+    CONDITION NOT CMAKE_CROSSCOMPILING AND QT_FEATURE_regularexpression AND QT_FEATURE_settings)
 
 qt_feature("macdeployqt" PRIVATE
     SECTION "Deployment"

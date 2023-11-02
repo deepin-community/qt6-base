@@ -63,7 +63,6 @@ usr/share/qt6/doc/qttestlib/*.html
 usr/share/qt6/doc/qttestlib/*.index
 usr/share/qt6/doc/qttestlib/*.qhp
 usr/share/qt6/doc/qttestlib/*.sha1
-usr/share/qt6/doc/qttestlib/*.xml
 usr/share/qt6/doc/qttestlib/images/
 usr/share/qt6/doc/qttestlib/style/
 usr/share/qt6/doc/qtwidgets/*.html

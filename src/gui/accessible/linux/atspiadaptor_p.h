@@ -19,7 +19,6 @@
 #include <atspi/atspi-constants.h>
 
 #include <QtGui/private/qtguiglobal_p.h>
-#include <QtCore/qsharedpointer.h>
 #include <QtDBus/qdbusvirtualobject.h>
 #include <QtGui/qaccessible.h>
 
@@ -31,7 +30,6 @@ QT_REQUIRE_CONFIG(accessibility);
 QT_BEGIN_NAMESPACE
 
 class QAccessibleInterface;
-class QSpiAccessibleInterface;
 class QSpiApplicationAdaptor;
 
 
@@ -48,8 +46,6 @@ public:
     bool handleMessage(const QDBusMessage &message, const QDBusConnection &connection) override;
     void notify(QAccessibleEvent *event);
 
-    void init();
-    void checkInitializedAndEnabled();
 public Q_SLOTS:
     void eventListenerRegistered(const QString &bus, const QString &path);
     void eventListenerDeregistered(const QString &bus, const QString &path);
@@ -77,7 +73,9 @@ private:
     bool textInterface(QAccessibleInterface *interface, const QString &function, const QDBusMessage &message, const QDBusConnection &connection);
     bool editableTextInterface(QAccessibleInterface *interface, const QString &function, const QDBusMessage &message, const QDBusConnection &connection);
     bool valueInterface(QAccessibleInterface *interface, const QString &function, const QDBusMessage &message, const QDBusConnection &connection);
+    bool selectionInterface(QAccessibleInterface *interface, const QString &function, const QDBusMessage &message, const QDBusConnection &connection);
     bool tableInterface(QAccessibleInterface *interface, const QString &function, const QDBusMessage &message, const QDBusConnection &connection);
+    bool tableCellInterface(QAccessibleInterface *interface, const QString &function, const QDBusMessage &message, const QDBusConnection &connection);
 
     void sendReply(const QDBusConnection &connection, const QDBusMessage &message, const QVariant &argument) const;
 
@@ -94,7 +92,9 @@ private:
 
     // component helper functions
     static QRect getExtents(QAccessibleInterface *interface, uint coordType);
-    static QRect translateRectToWindowCoordinates(QAccessibleInterface *interface, const QRect &rect);
+    static bool isValidCoordType(uint coordType);
+    static QRect translateFromScreenCoordinates(QAccessibleInterface *interface, const QRect &rect, uint targetCoordType);
+    static QPoint translateToScreenCoordinates(QAccessibleInterface *interface, const QPoint &pos, uint fromCoordType);
 
     // action helper functions
     QSpiActionArray getActions(QAccessibleInterface *interface) const;
@@ -104,7 +104,9 @@ private:
     QString getAttributeValue(QAccessibleInterface *, int offset, const QString &attributeName) const;
     QList<QVariant> getCharacterExtents(QAccessibleInterface *, int offset, uint coordType) const;
     QList<QVariant> getRangeExtents(QAccessibleInterface *, int startOffset, int endOffset, uint coordType) const;
-    QAccessible::TextBoundaryType qAccessibleBoundaryType(int atspiTextBoundaryType) const;
+    static QAccessible::TextBoundaryType qAccessibleBoundaryTypeFromAtspiBoundaryType(int atspiTextBoundaryType);
+    static bool isValidAtspiTextGranularity(uint coordType);
+    static QAccessible::TextBoundaryType qAccessibleBoundaryTypeFromAtspiTextGranularity(uint atspiTextGranularity);
     static bool inheritsQAction(QObject *object);
 
     // private vars

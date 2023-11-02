@@ -22,6 +22,7 @@
 #include <QtGui/QIconEngine>
 #include <QtGui/QPixmapCache>
 #include <private/qicon_p.h>
+#include <private/qiconengine_p.h>
 #include <private/qfactoryloader_p.h>
 #include <QtCore/QHash>
 #include <QtCore/QList>
@@ -86,6 +87,27 @@ struct QThemeIconInfo
     QString iconName;
 };
 
+class QThemeIconEngine : public QProxyIconEngine
+{
+public:
+    QThemeIconEngine(const QString& iconName = QString());
+    QIconEngine *clone() const override;
+    bool read(QDataStream &in) override;
+    bool write(QDataStream &out) const override;
+
+protected:
+    QIconEngine *proxiedEngine() const override;
+
+private:
+    QThemeIconEngine(const QThemeIconEngine &other);
+    QString key() const override;
+
+    QString m_iconName;
+    mutable uint m_themeKey = 0;
+
+    mutable std::unique_ptr<QIconEngine> m_proxiedEngine;
+};
+
 class QIconLoaderEngine : public QIconEngine
 {
 public:
@@ -96,8 +118,6 @@ public:
     QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override;
     QSize actualSize(const QSize &size, QIcon::Mode mode, QIcon::State state) override;
     QIconEngine *clone() const override;
-    bool read(QDataStream &in) override;
-    bool write(QDataStream &out) const override;
 
     QString iconName() override;
     bool isNull() override;
@@ -107,14 +127,13 @@ public:
     Q_GUI_EXPORT static QIconLoaderEngineEntry *entryForSize(const QThemeIconInfo &info, const QSize &size, int scale = 1);
 
 private:
+    Q_DISABLE_COPY(QIconLoaderEngine)
+
     QString key() const override;
     bool hasIcon() const;
-    void ensureLoaded();
 
-    QIconLoaderEngine(const QIconLoaderEngine &other);
-    QThemeIconInfo m_info;
     QString m_iconName;
-    uint m_key;
+    QThemeIconInfo m_info;
 
     friend class QIconLoader;
 };
@@ -126,7 +145,7 @@ class QIconTheme
 public:
     QIconTheme(const QString &name);
     QIconTheme() : m_valid(false) {}
-    QStringList parents() { return m_parents; }
+    QStringList parents() const;
     QList<QIconDirInfo> keyList() { return m_keyList; }
     QStringList contentDirs() { return m_contentDirs; }
     bool isValid() { return m_valid; }
@@ -146,7 +165,7 @@ public:
     QThemeIconInfo loadIcon(const QString &iconName) const;
     uint themeKey() const { return m_themeKey; }
 
-    QString themeName() const { return m_userTheme.isEmpty() ? m_systemTheme : m_userTheme; }
+    QString themeName() const;
     void setThemeName(const QString &themeName);
     QString fallbackThemeName() const;
     void setFallbackThemeName(const QString &themeName);
@@ -158,9 +177,11 @@ public:
     QIconDirInfo dirInfo(int dirindex);
     static QIconLoader *instance();
     void updateSystemTheme();
-    void invalidateKey() { m_themeKey++; }
+    void invalidateKey();
     void ensureInitialized();
     bool hasUserTheme() const { return !m_userTheme.isEmpty(); }
+
+    QIconEngine *iconEngine(const QString &iconName) const;
 
 private:
     QThemeIconInfo findIconHelper(const QString &themeName,

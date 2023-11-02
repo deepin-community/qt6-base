@@ -88,6 +88,11 @@ private slots:
     void activateDeactivateEvent();
     void qobject_castOnDestruction();
     void touchToMouseTranslationByPopup();
+    void stateChangeSignal();
+#ifndef QT_NO_CURSOR
+    void enterLeaveOnWindowShowHide_data();
+    void enterLeaveOnWindowShowHide();
+#endif
 
 private:
     QPoint m_availableTopLeft;
@@ -97,6 +102,11 @@ private:
             QTest::createTouchDevice(QInputDevice::DeviceType::TouchScreen,
                                      QInputDevice::Capability::Position | QInputDevice::Capability::MouseEmulation);
 };
+
+static bool isPlatformWayland()
+{
+    return QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive);
+}
 
 void tst_QWindow::initTestCase()
 {
@@ -109,6 +119,10 @@ void tst_QWindow::initTestCase()
     if (screenWidth > 2000)
         width = 100 * ((screenWidth + 500) / 1000);
     m_testWindowSize = QSize(width, width);
+
+    // Make sure test runs consistently on all compositors by force-disabling window decorations
+    if (isPlatformWayland())
+        qputenv("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1");
 }
 
 void tst_QWindow::cleanup()
@@ -487,13 +501,11 @@ static QString msgRectMismatch(const QRect &r1, const QRect &r2)
     return result;
 }
 
-static bool isPlatformWayland()
-{
-    return QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive);
-}
-
 void tst_QWindow::positioning()
 {
+#ifdef Q_OS_ANDROID
+    QSKIP("Fails on Android. QTBUG-105201");
+#endif
     if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(
                 QPlatformIntegration::NonFullScreenWindows)) {
         QSKIP("This platform does not support non-fullscreen windows");
@@ -515,9 +527,8 @@ void tst_QWindow::positioning()
     QCOMPARE(window.geometry(), geometry);
     //  explicitly use non-fullscreen show. show() can be fullscreen on some platforms
     window.showNormal();
-    QCoreApplication::processEvents();
 
-    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY(QTest::qWaitForWindowActive(&window));
 
     QMargins originalMargins = window.frameMargins();
 
@@ -1558,6 +1569,24 @@ void tst_QWindow::sizes()
     QCOMPARE(minimumHeightSpy.size(), 1);
     QCOMPARE(maximumWidthSpy.size(), 1);
     QCOMPARE(maximumHeightSpy.size(), 1);
+
+    // test if min and max limits will change the size
+    QVERIFY(window.minimumWidth() < 50 && window.maximumWidth() > 80);
+    QVERIFY(window.minimumHeight() < 50 && window.maximumHeight() > 80);
+    window.resize(50, 50);
+    QCOMPARE(window.size(), QSize(50, 50));
+    window.setMinimumSize(QSize(60, 60));
+    QCOMPARE(window.size(), QSize(60, 60));
+    window.resize(80, 80);
+    window.setMaximumSize(QSize(70, 70));
+    QCOMPARE(window.size(), QSize(70, 70));
+
+    // QTBUG-113233
+    // test for an invalid min/max pair
+    window.setMinimumSize(QSize(80, 80)); // current maximumSize = QSize(70, 70)
+    QCOMPARE(window.size(), QSize(70, 70));
+    window.setMaximumSize(QSize(90, 90));
+    QCOMPARE(window.size(), QSize(80, 80));
 }
 
 class CloseOnCloseEventWindow : public QWindow
@@ -2542,8 +2571,6 @@ void tst_QWindow::requestUpdate()
     QCoreApplication::processEvents();
     QTRY_VERIFY(window.isExposed());
 
-    if (isPlatformWayland())
-        QEXPECT_FAIL("", "Wayland: This fails. See QTBUG-100889.", Abort);
     QCOMPARE(window.received(QEvent::UpdateRequest), 0);
 
     window.requestUpdate();
@@ -2762,6 +2789,184 @@ void tst_QWindow::touchToMouseTranslationByPopup()
     QTest::touchEvent(&window, touchDevice).release(1, tp1, &window);
     QTRY_COMPARE(window.mouseReleaseButton, int(Qt::LeftButton));
 }
+
+// Test that windowStateChanged is not emitted on noop change (QTBUG-102478)
+void tst_QWindow::stateChangeSignal()
+{
+    // Test only for Windows, Linux and macOS
+#if !defined(Q_OS_LINUX) && !defined(Q_OS_WINDOWS) && !defined(Q_OS_DARWIN)
+    QSKIP("Singular windowStateChanged signal emission is guaranteed for Linux, Windows and macOS only.\n"
+          "On other operating systems, the signal may be emitted twice.");
+#endif
+    QWindow w;
+    Q_ASSUME(connect (&w, &QWindow::windowStateChanged, [](Qt::WindowState s){qCDebug(lcTests) << "State change to" << s;}));
+    QSignalSpy spy(&w, SIGNAL(windowStateChanged(Qt::WindowState)));
+    unsigned short signalCount = 0;
+    QList<Qt::WindowState> effectiveStates;
+    Q_ASSUME(connect(&w, &QWindow::windowStateChanged, [&effectiveStates](Qt::WindowState state)
+            { effectiveStates.append(state); }));
+    // Part 1:
+    // => test signal emission on programmatic state changes
+    QCOMPARE(w.windowState(), Qt::WindowNoState);
+    // - wait for target state to be set
+    // - wait for signal spy to have reached target count
+    // - extract state from signal and compare to target
+#define CHECK_STATE(State)\
+    QTRY_VERIFY(QTest::qWaitFor([&w](){return (w.windowState() == State); }));\
+    CHECK_SIGNAL(State)
+#define CHECK_SIGNAL(State)\
+    QTRY_COMPARE(spy.count(), signalCount);\
+    if (signalCount > 0) {\
+        QVariantList list = spy.at(signalCount - 1).toList();\
+        QCOMPARE(list.count(), 1);\
+        bool ok;\
+        const int stateInt = list.at(0).toInt(&ok);\
+        QVERIFY(ok);\
+        const Qt::WindowState newState = static_cast<Qt::WindowState>(stateInt);\
+        QCOMPARE(newState, State);\
+    }
+    // Check initialization
+    CHECK_STATE(Qt::WindowNoState);
+    // showMaximized after init
+    // expected behavior: signal emitted once with state == WindowMaximized
+    ++signalCount;
+    w.showMaximized();
+    CHECK_STATE(Qt::WindowMaximized);
+    // setWindowState to normal
+    // expected behavior: signal emitted once with state == WindowNoState
+    ++signalCount;
+    w.setWindowState(Qt::WindowNoState);
+    CHECK_STATE(Qt::WindowNoState);
+    // redundant setWindowState to normal - except windows, where the no-op is counted
+    // expected behavior: No emits.
+    // On Windows, a no-op state change causes a no-op resize and repaint, leading to a
+    // no-op state change and singal emission.
+#ifdef Q_OS_WINDOWS
+    ++signalCount;
+    ++signalCount;
+#endif
+    w.setWindowState(Qt::WindowNoState);
+    CHECK_STATE(Qt::WindowNoState);
+    // setWindowState to minimized
+    // expected behavior: signal emitted once with state == WindowMinimized
+    ++signalCount;
+    w.showMinimized();
+    CHECK_STATE(Qt::WindowMinimized);
+    // setWindowState to Normal
+    // expected behavior: signal emitted once with state == WindowNoState
+    ++signalCount;
+    w.showNormal();
+    CHECK_STATE(Qt::WindowNoState);
+    /*
+     - Testcase showFullScreen is omitted: Depending on window manager,
+     WindowFullScreen can be mapped to WindowMaximized
+     - Transition from WindowMinimized to WindowMaximized is omitted:
+     WindowNoState to WindowMaximized
+     */
+    // Part 2:
+    // => test signal emission on simulated user interaction
+    // To test the code path, inject state change events into the QPA event queue.
+    // Test the signal emission only, not the window's actual visible state.
+
+    // Flush pending events and clear
+    QCoreApplication::processEvents();
+    spy.clear();
+    effectiveStates.clear();
+    signalCount = 0;
+    // Maximize window
+    QWindowSystemInterface::handleWindowStateChanged(&w, Qt::WindowMaximized, w.windowState());
+    ++signalCount;
+    CHECK_SIGNAL(Qt::WindowMaximized);
+    // Normalize window
+    QWindowSystemInterface::handleWindowStateChanged(&w, Qt::WindowNoState, w.windowState());
+    ++signalCount;
+    CHECK_SIGNAL(Qt::WindowNoState);
+    // Minimize window
+    QWindowSystemInterface::handleWindowStateChanged(&w, Qt::WindowMinimized, w.windowState());
+    ++signalCount;
+    CHECK_SIGNAL(Qt::WindowMinimized);
+}
+
+#ifndef QT_NO_CURSOR
+void tst_QWindow::enterLeaveOnWindowShowHide_data()
+{
+    QTest::addColumn<Qt::WindowType>("windowType");
+    QTest::addRow("dialog") << Qt::Dialog;
+    QTest::addRow("popup") << Qt::Popup;
+}
+
+/*!
+    Verify that we get enter and leave events if the window under the mouse
+    opens and closes a modal dialog or popup. QWindow might get multiple
+    events in a row, as the various QPA plugins need to use different techniques
+    to synthesize events if the native platform doesn't provide them for us.
+*/
+void tst_QWindow::enterLeaveOnWindowShowHide()
+{
+    if (isPlatformWayland())
+        QSKIP("Can't set cursor position and qWaitForWindowActive on Wayland");
+
+    QFETCH(Qt::WindowType, windowType);
+
+    class Window : public QWindow
+    {
+    public:
+        int numEnterEvents = 0;
+        int numLeaveEvents = 0;
+        QPoint enterPosition;
+    protected:
+        bool event(QEvent *e) override
+        {
+            switch (e->type()) {
+            case QEvent::Enter:
+                ++numEnterEvents;
+                enterPosition = static_cast<QEnterEvent*>(e)->position().toPoint();
+                break;
+            case QEvent::Leave:
+                ++numLeaveEvents;
+                break;
+            default:
+                break;
+            }
+            return QWindow::event(e);
+        }
+    };
+
+    int expectedEnter = 0;
+    int expectedLeave = 0;
+
+    Window window;
+    const QRect screenGeometry = window.screen()->availableGeometry();
+    const QPoint cursorPos = screenGeometry.topLeft() + QPoint(50, 50);
+    window.setGeometry(QRect(cursorPos - QPoint(50, 50), screenGeometry.size() / 4));
+    QCursor::setPos(cursorPos);
+
+    if (!QTest::qWaitFor([&]{ return window.geometry().contains(QCursor::pos()); }))
+        QSKIP("We can't move the cursor");
+
+    window.show();
+    window.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    ++expectedEnter;
+    QTRY_COMPARE_WITH_TIMEOUT(window.numEnterEvents, expectedEnter, 250);
+    QCOMPARE(window.enterPosition, window.mapFromGlobal(QCursor::pos()));
+
+    QWindow secondary;
+    secondary.setFlag(windowType);
+    secondary.setModality(Qt::WindowModal);
+    secondary.setTransientParent(&window);
+    secondary.setPosition(cursorPos + QPoint(50, 50));
+    secondary.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&secondary));
+    ++expectedLeave;
+    QTRY_VERIFY(window.numLeaveEvents >= expectedLeave);
+    secondary.close();
+    ++expectedEnter;
+    QTRY_VERIFY(window.numEnterEvents >= expectedEnter);
+    QCOMPARE(window.enterPosition, window.mapFromGlobal(QCursor::pos()));
+}
+#endif
 
 #include <tst_qwindow.moc>
 QTEST_MAIN(tst_QWindow)

@@ -596,11 +596,13 @@ void QMenuBar::initStyleOption(QStyleOptionMenuItem *option, const QAction *acti
 
     Qt for \macos also provides a menu bar merging feature to make
     QMenuBar conform more closely to accepted \macos menu bar layout.
-    The merging functionality is based on string matching the title of
-    a QMenu entry. These strings are translated (using QObject::tr())
-    in the "QMenuBar" context. If an entry is moved its slots will still
-    fire as if it was in the original place. The table below outlines
-    the strings looked for and where the entry is placed if matched:
+    If an entry is moved its slots will still fire as if it was in the
+    original place.
+
+    The merging functionality is based on the QAction::menuRole() of
+    the menu entries. If an item has QAction::TextHeuristicRole,
+    the role is determined by string matching the title using the
+    following heuristics:
 
     \table
     \header \li String matches \li Placement \li Notes
@@ -618,8 +620,8 @@ void QMenuBar::initStyleOption(QStyleOptionMenuItem *option, const QAction *acti
             created to call QCoreApplication::quit()
     \endtable
 
-    You can override this behavior by using the QAction::menuRole()
-    property.
+    You can override this behavior by setting the QAction::menuRole()
+    property to QAction::NoRole.
 
     If you want all windows in a Mac application to share one menu
     bar, you must create a menu bar that does not have a parent.
@@ -1356,7 +1358,7 @@ bool QMenuBar::event(QEvent *e)
     Q_D(QMenuBar);
     switch (e->type()) {
     case QEvent::KeyPress: {
-        QKeyEvent *ke = (QKeyEvent*)e;
+        QKeyEvent *ke = static_cast<QKeyEvent *>(e);
 #if 0
         if (!d->keyboardState) { //all keypresses..
             d->setCurrentAction(0);
@@ -1384,7 +1386,7 @@ bool QMenuBar::event(QEvent *e)
     break;
 #ifndef QT_NO_SHORTCUT
     case QEvent::ShortcutOverride: {
-        QKeyEvent *kev = static_cast<QKeyEvent*>(e);
+        QKeyEvent *kev = static_cast<QKeyEvent *>(e);
         //we only filter out escape if there is a current action
         if (kev->matches(QKeySequence::Cancel) && d->currentAction) {
             e->accept();
@@ -1772,6 +1774,7 @@ void QMenuBar::setNativeMenuBar(bool nativeMenuBar)
         if (!nativeMenuBar) {
             delete d->platformMenuBar;
             d->platformMenuBar = nullptr;
+            d->itemsDirty = true;
         } else {
             if (!d->platformMenuBar)
                 d->platformMenuBar = QGuiApplicationPrivate::platformTheme()->createPlatformMenuBar();

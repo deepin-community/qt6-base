@@ -330,11 +330,11 @@ private:
     mutable QExplicitlySharedDataPointer<const QIcuTimeZonePrivate> m_icu;
 #endif
     QTzTimeZoneCacheEntry cached_data;
-    QList<QTzTransitionTime> tranCache() const { return cached_data.m_tranTimes; }
+    const QList<QTzTransitionTime> &tranCache() const { return cached_data.m_tranTimes; }
 };
 #endif // Q_OS_UNIX
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
 class Q_AUTOTEST_EXPORT QMacTimeZonePrivate final : public QTimeZonePrivate
 {
 public:
@@ -377,7 +377,7 @@ private:
 
     NSTimeZone *m_nstz;
 };
-#endif // Q_OS_MAC
+#endif // Q_OS_DARWIN
 
 #ifdef Q_OS_WIN
 class Q_AUTOTEST_EXPORT QWinTimeZonePrivate final : public QTimeZonePrivate

@@ -922,7 +922,11 @@ void QSslConfiguration::setPreSharedKeyIdentityHint(const QByteArray &hint)
     Retrieves the current set of Diffie-Hellman parameters.
 
     If no Diffie-Hellman parameters have been set, the QSslConfiguration object
-    defaults to using the 1024-bit MODP group from RFC 2409.
+    defaults to using the 2048-bit MODP group from RFC 3526.
+
+    \note The default parameters may change in future Qt versions.
+    Please check the documentation of the \e{exact Qt version} that you
+    are using in order to know what defaults that version uses.
  */
 QSslDiffieHellmanParameters QSslConfiguration::diffieHellmanParameters() const
 {
@@ -936,7 +940,11 @@ QSslDiffieHellmanParameters QSslConfiguration::diffieHellmanParameters() const
     a server to \a dhparams.
 
     If no Diffie-Hellman parameters have been set, the QSslConfiguration object
-    defaults to using the 1024-bit MODP group from RFC 2409.
+    defaults to using the 2048-bit MODP group from RFC 3526.
+
+    \note The default parameters may change in future Qt versions.
+    Please check the documentation of the \e{exact Qt version} that you
+    are using in order to know what defaults that version uses.
  */
 void QSslConfiguration::setDiffieHellmanParameters(const QSslDiffieHellmanParameters &dhparams)
 {
@@ -1098,7 +1106,7 @@ void QSslConfiguration::setDefaultConfiguration(const QSslConfiguration &configu
     QSslConfigurationPrivate::setDefaultConfiguration(configuration);
 }
 
-#if QT_CONFIG(dtls) || defined(Q_CLANG_QDOC)
+#if QT_CONFIG(dtls) || defined(Q_QDOC)
 
 /*!
   This function returns true if DTLS cookie verification was enabled on a

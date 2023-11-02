@@ -83,18 +83,23 @@ private slots:
     void initTestCase();
     void cleanup();
 
-    void load();
     void load_data();
-    void library_data();
+    void load();
     void resolve_data();
     void resolve();
     void unload_data();
     void unload();
     void unload_after_implicit_load();
+    void setFilenameAfterFailedLoad();
+    void loadAfterFailedLoad();
     void isLibrary_data();
     void isLibrary();
     void version_data();
     void version();
+    void loadTwoVersions();
+    void setFileNameAndVersionTwice();
+    void setFileNameAndVersionAfterFailedLoad_data() { version_data(); }
+    void setFileNameAndVersionAfterFailedLoad();
     void errorString_data();
     void errorString();
     void loadHints();
@@ -193,6 +198,70 @@ void tst_QLibrary::version()
 #endif
 }
 
+void tst_QLibrary::loadTwoVersions()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
+    QSKIP("Versioned files are not generated for this OS, so this test is not applicable.");
+#endif
+
+    QLibrary lib1(directory + "/mylib", 1);
+    QLibrary lib2(directory + "/mylib", 2);
+    QVERIFY(!lib1.isLoaded());
+    QVERIFY(!lib2.isLoaded());
+
+    // load the first one
+    QVERIFY(lib1.load());
+    QVERIFY(lib1.isLoaded());
+
+    // let's see if we can load the second one too
+    QVERIFY(lib2.load());
+    QVERIFY(lib2.isLoaded());
+
+    auto p1 = (VersionFunction)lib1.resolve("mylibversion");
+    QVERIFY(p1);
+
+    auto p2 = (VersionFunction)lib2.resolve("mylibversion");
+    QVERIFY(p2);
+
+    QCOMPARE_NE(p1(), p2());
+
+    lib2.unload();
+    lib1.unload();
+}
+
+void tst_QLibrary::setFileNameAndVersionTwice()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
+    QSKIP("Versioned files are not generated for this OS, so this test is not applicable.");
+#endif
+
+    QLibrary library(directory + "/mylib", 1);
+    QVERIFY(library.load());
+    QVERIFY(library.isLoaded());
+
+    auto p1 = (VersionFunction)library.resolve("mylibversion");
+    QVERIFY(p1);
+    // don't .unload()
+
+    library.setFileNameAndVersion(directory + "/mylib", 2);
+    QVERIFY(!library.isLoaded());
+    QVERIFY(library.load());
+    QVERIFY(library.isLoaded());
+
+    auto p2 = (VersionFunction)library.resolve("mylibversion");
+    QVERIFY(p2);
+    QCOMPARE_NE(p1(), p2());
+
+    QVERIFY(library.unload());
+    QVERIFY(!library.isLoaded());
+
+    // set back
+    // it'll look like it isn't loaded, but it is and we can't unload it!
+    library.setFileNameAndVersion(directory + "/mylib", 1);
+    QVERIFY(!library.isLoaded());
+    QVERIFY(!library.unload());
+}
+
 void tst_QLibrary::load_data()
 {
     QTest::addColumn<QString>("lib");
@@ -204,7 +273,7 @@ void tst_QLibrary::load_data()
     QTest::newRow( "notexist" ) << appDir + "/nolib" << false;
     QTest::newRow( "badlibrary" ) << appDir + "/qlibrary.pro" << false;
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
     QTest::newRow("ok (libmylib ver. 1)") << appDir + "/libmylib" <<true;
 #endif
 
@@ -273,6 +342,76 @@ void tst_QLibrary::unload_after_implicit_load()
     QCOMPARE(library.isLoaded(), false);
 }
 
+void tst_QLibrary::setFilenameAfterFailedLoad()
+{
+#if defined(Q_OS_WIN) || defined(Q_OS_ANDROID)
+    QSKIP("### FIXME: The helper libraries are currently messed up in the CMakeLists.txt");
+#endif
+
+    QLibrary library(directory + "/nolib");
+    QVERIFY(!library.load());
+    QVERIFY(!library.isLoaded());
+    QVERIFY(!library.load());
+    QVERIFY(!library.isLoaded());
+
+    library.setFileName(directory + "/mylib");
+    QVERIFY(library.load());
+    QVERIFY(library.isLoaded());
+    auto p = (VersionFunction)library.resolve("mylibversion");
+    QVERIFY(p);
+    QCOMPARE(p(), 2);
+    library.unload();
+}
+
+void tst_QLibrary::setFileNameAndVersionAfterFailedLoad()
+{
+    QLibrary library(directory + "/nolib");
+    QVERIFY(!library.load());
+    QVERIFY(!library.isLoaded());
+    QVERIFY(!library.load());
+    QVERIFY(!library.isLoaded());
+
+#if !defined(Q_OS_AIX) && !defined(Q_OS_WIN)
+    QFETCH(QString, lib);
+    QFETCH(int, loadversion);
+    QFETCH(int, resultversion);
+
+    library.setFileNameAndVersion(directory + '/' + lib, loadversion);
+    QVERIFY(library.load());
+    QVERIFY(library.isLoaded());
+    auto p = (VersionFunction)library.resolve("mylibversion");
+    QVERIFY(p);
+    QCOMPARE(p(), resultversion);
+    library.unload();
+#endif
+}
+
+void tst_QLibrary::loadAfterFailedLoad()
+{
+#if defined(Q_OS_WIN) || defined(Q_OS_ANDROID)
+    QSKIP("### FIXME: The helper libraries are currently messed up in the CMakeLists.txt");
+#endif
+
+    QTemporaryDir dir;
+    QLibrary library(dir.path() + "/mylib");
+    QVERIFY(!library.load());
+    QVERIFY(!library.isLoaded());
+    QVERIFY(!library.load());
+    QVERIFY(!library.isLoaded());
+
+    // now copy the actual lib file into our dir
+    QString actualLib = PREFIX "mylib" SUFFIX;
+    QVERIFY(QFile::copy(directory + '/' + actualLib, dir.filePath(actualLib)));
+
+    // try again, must succeed now
+    QVERIFY(library.load());
+    QVERIFY(library.isLoaded());
+    auto p = (VersionFunction)library.resolve("mylibversion");
+    QVERIFY(p);
+    QCOMPARE(p(), 2);
+    library.unload();
+}
+
 void tst_QLibrary::resolve_data()
 {
     QTest::addColumn<QString>("lib");
@@ -293,19 +432,25 @@ void tst_QLibrary::resolve()
     QFETCH( QString, symbol );
     QFETCH( bool, goodPointer );
 
-    QLibrary library( lib );
-    testFunc func = (testFunc) library.resolve( symbol.toLatin1() );
-    if ( goodPointer ) {
-        QVERIFY( func != 0 );
+    QLibrary library(lib);
+    QVERIFY(!library.isLoaded());
+    testFunc func = (testFunc) library.resolve(symbol.toLatin1());
+
+    if (goodPointer) {
+        QVERIFY(library.isLoaded());
+        QVERIFY(func);
+
+        QLibrary lib2(lib);
+        QVERIFY(!lib2.isLoaded());
+        QVERIFY(lib2.load());
+
+        // this unload() won't unload and it must still be loaded
+        QVERIFY(!lib2.unload());
+        func();                     // doesn't crash
     } else {
-        QVERIFY( func == 0 );
+        QVERIFY(func == nullptr);
     }
     library.unload();
-}
-
-void tst_QLibrary::library_data()
-{
-    QTest::addColumn<QString>("lib");
 }
 
 void tst_QLibrary::isLibrary_data()
@@ -328,7 +473,7 @@ void tst_QLibrary::isLibrary_data()
     QTest::newRow("version+.so+version") << QString("liboil-0.3.so.0.1.0") << so_VALID;
 
     // special tests:
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
     QTest::newRow("good (libmylib.1.0.0.dylib)") << QString("libmylib.1.0.0.dylib") << true;
     QTest::newRow("good (libmylib.dylib)") << QString("libmylib.dylib") << true;
     QTest::newRow("good (libmylib.so)") << QString("libmylib.so") << true;
@@ -365,7 +510,7 @@ void tst_QLibrary::errorString_data()
 #ifdef Q_OS_WIN
     QTest::newRow("bad load() with .dll suffix") << (int)Load << QString("nosuchlib.dll") << false << QString("Cannot load library nosuchlib.dll: The specified module could not be found.");
 //    QTest::newRow("bad unload") << (int)Unload << QString("nosuchlib.dll") << false << QString("QLibrary::unload_sys: Cannot unload nosuchlib.dll (The specified module could not be found.)");
-#elif defined Q_OS_MAC
+#elif defined Q_OS_DARWIN
 #else
     QTest::newRow("load invalid file") << (int)Load << QFINDTESTDATA("library_path/invalid.so") << false << QString("Cannot load library.*");
 #endif
@@ -513,7 +658,7 @@ void tst_QLibrary::multipleInstancesForOneLibrary()
         QCOMPARE(lib2.isLoaded(), false);
         lib1.load();
         QCOMPARE(lib1.isLoaded(), true);
-        QCOMPARE(lib2.isLoaded(), true);
+        QCOMPARE(lib2.isLoaded(), false);   // lib2 didn't call load()
         QCOMPARE(lib1.unload(), true);
         QCOMPARE(lib1.isLoaded(), false);
         QCOMPARE(lib2.isLoaded(), false);
@@ -522,7 +667,7 @@ void tst_QLibrary::multipleInstancesForOneLibrary()
         QCOMPARE(lib1.isLoaded(), true);
         QCOMPARE(lib2.isLoaded(), true);
         QCOMPARE(lib1.unload(), false);
-        QCOMPARE(lib1.isLoaded(), true);
+        QCOMPARE(lib1.isLoaded(), false);   // lib1 did call unload()
         QCOMPARE(lib2.isLoaded(), true);
         QCOMPARE(lib2.unload(), true);
         QCOMPARE(lib1.isLoaded(), false);
@@ -531,17 +676,6 @@ void tst_QLibrary::multipleInstancesForOneLibrary()
         // Finally; unload on that is already unloaded
         QCOMPARE(lib1.unload(), false);
     }
-
-    //now let's try with a 3rd one that will go out of scope
-    {
-        QLibrary lib1(lib);
-        QCOMPARE(lib1.isLoaded(), false);
-        lib1.load();
-        QCOMPARE(lib1.isLoaded(), true);
-    }
-    QLibrary lib2(lib);
-    //lib2 should be loaded because lib1 was loaded and never unloaded
-    QCOMPARE(lib2.isLoaded(), true);
 }
 
 QTEST_MAIN(tst_QLibrary)

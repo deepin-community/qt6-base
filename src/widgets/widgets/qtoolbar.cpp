@@ -7,6 +7,9 @@
 #if QT_CONFIG(combobox)
 #include <qcombobox.h>
 #endif
+#if QT_CONFIG(draganddrop)
+#include <qdrag.h>
+#endif
 #include <qevent.h>
 #include <qlayout.h>
 #include <qmainwindow.h>
@@ -14,6 +17,7 @@
 #if QT_CONFIG(menubar)
 #include <qmenubar.h>
 #endif
+#include <qmimedata.h>
 #if QT_CONFIG(rubberband)
 #include <qrubberband.h>
 #endif
@@ -24,6 +28,7 @@
 #include <qtimer.h>
 #include <private/qwidgetaction_p.h>
 #include <private/qmainwindowlayout_p.h>
+#include <private/qhighdpiscaling_p.h>
 
 #ifdef Q_OS_MACOS
 #include <qpa/qplatformnativeinterface.h>
@@ -38,6 +43,8 @@
 #define POPUP_TIMER_INTERVAL 500
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // qmainwindow.cpp
 extern QMainWindowLayout *qt_mainwindow_layout(const QMainWindow *window);
@@ -104,7 +111,9 @@ void QToolBarPrivate::updateWindowFlags(bool floating, bool unplug)
 
     flags |= Qt::FramelessWindowHint;
 
-    if (unplug)
+    // If we are performing a platform drag the flag is not needed and we want to avoid recreating
+    // the platform window when it would be removed later
+    if (unplug && !QMainWindowLayout::needsPlatformDrag())
         flags |= Qt::X11BypassWindowManagerHint;
 
     q->setWindowFlags(flags);
@@ -115,8 +124,6 @@ void QToolBarPrivate::setWindowState(bool floating, bool unplug, const QRect &re
     Q_Q(QToolBar);
     bool visible = !q->isHidden();
     bool wasFloating = q->isFloating(); // ...is also currently using popup menus
-
-    q->hide();
 
     updateWindowFlags(floating, unplug);
 
@@ -171,12 +178,27 @@ void QToolBarPrivate::startDrag(bool moving)
     QMainWindowLayout *layout = qt_mainwindow_layout(win);
     Q_ASSERT(layout != nullptr);
 
+    const bool wasFloating = q->isFloating();
+
     if (!moving) {
         state->widgetItem = layout->unplug(q);
         Q_ASSERT(state->widgetItem != nullptr);
     }
     state->dragging = !moving;
     state->moving = moving;
+
+#if QT_CONFIG(draganddrop)
+    if (QMainWindowLayout::needsPlatformDrag() && state->dragging) {
+        auto result = layout->performPlatformWidgetDrag(state->widgetItem, state->pressPos);
+        if (result == Qt::IgnoreAction && !wasFloating) {
+            layout->revert(state->widgetItem);
+            delete state;
+            state = nullptr;
+        } else {
+            endDrag();
+        }
+    }
+#endif
 }
 
 void QToolBarPrivate::endDrag()
@@ -242,6 +264,11 @@ bool QToolBarPrivate::mousePressEvent(QMouseEvent *event)
 
 bool QToolBarPrivate::mouseReleaseEvent(QMouseEvent*)
 {
+    // if we are peforming a platform drag ignore the release here and  end the drag when the actual
+    // drag ends.
+    if (QMainWindowLayout::needsPlatformDrag())
+        return false;
+
     if (state != nullptr) {
         endDrag();
         return true;
@@ -292,6 +319,11 @@ bool QToolBarPrivate::mouseMoveEvent(QMouseEvent *event)
                 q->grabMouse();
     }
 
+    if (!state) {
+        q->releaseMouse();
+        return true;
+    }
+
     if (state->dragging) {
         QPoint pos = event->globalPosition().toPoint();
         // if we are right-to-left, we move so as to keep the right edge the same distance
@@ -309,7 +341,12 @@ bool QToolBarPrivate::mouseMoveEvent(QMouseEvent *event)
         const QPoint globalPressPos = q->mapToGlobal(q->isRightToLeft() ? rtl : state->pressPos);
         int pos = 0;
 
-        QPoint delta = event->globalPosition().toPoint() - globalPressPos;
+        const QWindow *handle = q->window() ? q->window()->windowHandle() : nullptr;
+        const QPoint delta = handle
+                ? QHighDpi::fromNativePixels(event->globalPosition(), handle).toPoint()
+                  - QHighDpi::fromNativePixels(globalPressPos, handle)
+                : event->globalPosition().toPoint() - globalPressPos;
+
         if (orientation == Qt::Vertical) {
             pos = q->y() + delta.y();
         } else {
@@ -352,6 +389,10 @@ void QToolBarPrivate::plug(const QRect &r)
     \ingroup mainwindow-classes
     \inmodule QtWidgets
 
+    A toolbar is typically created by calling
+    \l QMainWindow::addToolBar(const QString &title), but it can also
+    be added as the first widget in a QVBoxLayout, for example.
+
     Toolbar buttons are added by adding \e actions, using addAction()
     or insertAction(). Groups of buttons can be separated using
     addSeparator() or insertSeparator(). If a toolbar button is not
@@ -375,7 +416,7 @@ void QToolBarPrivate::plug(const QRect &r)
     addWidget(). Please use widget actions created by inheriting QWidgetAction
     and implementing QWidgetAction::createWidget() instead.
 
-    \sa QToolButton, QMenu, QAction, {Qt Widgets - Application Example}
+    \sa QToolButton, QMenu, QAction
 */
 
 /*!

@@ -76,7 +76,7 @@ static const int groupBoxTopMargin       =  3;
 
 #if QT_CONFIG(imageformat_xpm)
 /* XPM */
-static const char * const dock_widget_close_xpm[] = {
+static const char * const fusion_dock_widget_close_xpm[] = {
     "11 13 7 1",
     "  c None",
     ". c #D5CFCB",
@@ -224,9 +224,10 @@ static void qt_fusion_draw_arrow(Qt::ArrowType type, QPainter *painter, const QS
     const int size = qMin(arrowMax, rectMax);
 
     QPixmap cachePixmap;
-    QString cacheKey = QStyleHelper::uniqueName("fusion-arrow"_L1, option, rect.size())
-            % HexString<uint>(type)
-            % HexString<uint>(color.rgba());
+    const QString cacheKey = QStyleHelper::uniqueName("fusion-arrow"_L1
+                                                          % HexString<uint>(type)
+                                                          % HexString<uint>(color.rgba()),
+                                                      option, rect.size());
     if (!QPixmapCache::find(cacheKey, &cachePixmap)) {
         cachePixmap = styleCachePixmap(rect.size());
         cachePixmap.fill(Qt::transparent);
@@ -240,8 +241,7 @@ static void qt_fusion_draw_arrow(Qt::ArrowType type, QPainter *painter, const QS
         arrowRect.moveTo((rect.width() - arrowRect.width()) / 2.0,
                          (rect.height() - arrowRect.height()) / 2.0);
 
-        QPolygonF triangle;
-        triangle.reserve(3);
+        QVarLengthArray<QPointF, 3> triangle;
         switch (type) {
         case Qt::DownArrow:
             triangle << arrowRect.topLeft() << arrowRect.topRight() << QPointF(arrowRect.center().x(), arrowRect.bottom());
@@ -260,7 +260,7 @@ static void qt_fusion_draw_arrow(Qt::ArrowType type, QPainter *painter, const QS
         cachePainter.setPen(Qt::NoPen);
         cachePainter.setBrush(color);
         cachePainter.setRenderHint(QPainter::Antialiasing);
-        cachePainter.drawPolygon(triangle);
+        cachePainter.drawPolygon(triangle.data(), int(triangle.size()));
 
         QPixmapCache::insert(cacheKey, cachePixmap);
     }
@@ -1236,12 +1236,12 @@ void QFusionStyle::drawControl(ControlElement element, const QStyleOption *optio
         // Draws the header in tables.
         if (const QStyleOptionHeader *header = qstyleoption_cast<const QStyleOptionHeader *>(option)) {
             const QStyleOptionHeaderV2 *headerV2 = qstyleoption_cast<const QStyleOptionHeaderV2 *>(option);
-            QString pixmapName = QStyleHelper::uniqueName("headersection"_L1, option, option->rect.size());
-            pixmapName += QString::number(- int(header->position));
-            pixmapName += QString::number(- int(header->orientation));
-            if (headerV2)
-                pixmapName += QString::number(- int(headerV2->isSectionDragTarget));
-
+            const bool isSectionDragTarget = headerV2 ? headerV2->isSectionDragTarget : false;
+            const QString pixmapName = QStyleHelper::uniqueName("headersection-"_L1
+                                                                    % HexString(header->position)
+                                                                    % HexString(header->orientation)
+                                                                    % QLatin1Char(isSectionDragTarget ? '1' : '0'),
+                                                                option, option->rect.size());
             QPixmap cache;
             if (!QPixmapCache::find(pixmapName, &cache)) {
                 cache = styleCachePixmap(rect.size());
@@ -1251,7 +1251,7 @@ void QFusionStyle::drawControl(ControlElement element, const QStyleOption *optio
                 QColor buttonColor = d->buttonColor(option->palette);
                 QColor gradientStartColor = buttonColor.lighter(104);
                 QColor gradientStopColor = buttonColor.darker(102);
-                if (headerV2 && headerV2->isSectionDragTarget) {
+                if (isSectionDragTarget) {
                     gradientStopColor = gradientStartColor.darker(130);
                     gradientStartColor = gradientStartColor.darker(130);
                 }
@@ -2044,9 +2044,9 @@ void QFusionStyle::drawComplexControl(ComplexControl control, const QStyleOption
                     // and a tiny rect painted in the corner.
                     cachePainter.setPen(outline);
                     if (spinBox->direction == Qt::RightToLeft)
-                        cachePainter.drawLine(upRect.right(), upRect.top() - 1, upRect.right(), downRect.bottom() + 1);
+                        cachePainter.drawLine(QLineF(upRect.right(), upRect.top() - 0.5, upRect.right(), downRect.bottom() + 1.5));
                     else
-                        cachePainter.drawLine(upRect.left(), upRect.top() - 1, upRect.left(), downRect.bottom() + 1);
+                        cachePainter.drawLine(QLineF(upRect.left(), upRect.top() - 0.5, upRect.left(), downRect.bottom() + 1.5));
                 }
 
                 if (upIsActive && sunken) {
@@ -2665,16 +2665,12 @@ void QFusionStyle::drawComplexControl(ComplexControl control, const QStyleOption
             bool sunken = comboBox->state & State_On; // play dead, if combobox has no items
             bool isEnabled = (comboBox->state & State_Enabled);
             QPixmap cache;
-            QString pixmapName = QStyleHelper::uniqueName("combobox"_L1, option, comboBox->rect.size());
-            if (sunken)
-                pixmapName += "-sunken"_L1;
-            if (comboBox->editable)
-                pixmapName += "-editable"_L1;
-            if (isEnabled)
-                pixmapName += "-enabled"_L1;
-            if (!comboBox->frame)
-                pixmapName += "-frameless"_L1;
-
+            const QString pixmapName = QStyleHelper::uniqueName("combobox"_L1
+                                                                    % QLatin1StringView(sunken ? "-sunken" : "")
+                                                                    % QLatin1StringView(comboBox->editable ? "-editable" : "")
+                                                                    % QLatin1StringView(isEnabled ? "-enabled" : "")
+                                                                    % QLatin1StringView(!comboBox->frame ? "-frameless" : ""),
+                                                                option, comboBox->rect.size());
             if (!QPixmapCache::find(pixmapName, &cache)) {
                 cache = styleCachePixmap(comboBox->rect.size());
                 cache.fill(Qt::transparent);
@@ -2817,7 +2813,8 @@ void QFusionStyle::drawComplexControl(ComplexControl control, const QStyleOption
 
                 // draw blue groove highlight
                 QRect clipRect;
-                groovePixmapName += "_blue"_L1;
+                if (!groovePixmapName.isEmpty())
+                    groovePixmapName += "_blue"_L1;
                 if (!QPixmapCache::find(groovePixmapName, &cache)) {
                     cache = styleCachePixmap(pixmapRect.size());
                     cache.fill(Qt::transparent);
@@ -3731,7 +3728,7 @@ QIcon QFusionStyle::standardIcon(StandardPixmap standardIcon, const QStyleOption
         return QIcon(QPixmap(workspace_minimize));
     case SP_TitleBarCloseButton:
     case SP_DockWidgetCloseButton:
-        return QIcon(QPixmap(dock_widget_close_xpm));
+        return QIcon(QPixmap(fusion_dock_widget_close_xpm));
     default:
         break;
     }
@@ -3753,7 +3750,7 @@ QPixmap QFusionStyle::standardPixmap(StandardPixmap standardPixmap, const QStyle
         return QPixmap(workspace_minimize);
     case SP_TitleBarCloseButton:
     case SP_DockWidgetCloseButton:
-        return QPixmap(dock_widget_close_xpm);
+        return QPixmap(fusion_dock_widget_close_xpm);
 
     default:
         break;

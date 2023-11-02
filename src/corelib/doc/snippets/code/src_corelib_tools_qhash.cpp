@@ -42,7 +42,7 @@ QHash<int, QWidget *> hash;
 ...
 for (int i = 0; i < 1000; ++i) {
     if (hash[i] == okButton)
-        cout << "Found button at index " << i << Qt::endl;
+        cout << "Found button at index " << i << endl;
 }
 //! [6]
 
@@ -51,17 +51,14 @@ for (int i = 0; i < 1000; ++i) {
 QHashIterator<QString, int> i(hash);
 while (i.hasNext()) {
     i.next();
-    cout << i.key() << ": " << i.value() << Qt::endl;
+    cout << qPrintable(i.key()) << ": " << i.value() << endl;
 }
 //! [7]
 
 
 //! [8]
-QHash<QString, int>::const_iterator i = hash.constBegin();
-while (i != hash.constEnd()) {
-    cout << i.key() << ": " << i.value() << Qt::endl;
-    ++i;
-}
+for (auto i = hash.cbegin(), end = hash.cend(); i != end; ++i)
+    cout << qPrintable(i.key()) << ": " << i.value() << endl;
 //! [8]
 
 
@@ -75,8 +72,8 @@ hash.insert("plenty", 2000);
 //! [12]
 QHash<QString, int> hash;
 ...
-foreach (int value, hash)
-    cout << value << Qt::endl;
+for (int value : std::as_const(hash))
+    cout << value << endl;
 //! [12]
 
 
@@ -138,7 +135,7 @@ QHash<QString, int> hash;
 ...
 QHash<QString, int>::const_iterator i = hash.find("HDR");
 while (i != hash.end() && i.key() == "HDR") {
-    cout << i.value() << Qt::endl;
+    cout << i.value() << endl;
     ++i;
 }
 //! [16]
@@ -151,50 +148,20 @@ hash.insert("February", 2);
 ...
 hash.insert("December", 12);
 
-QHash<QString, int>::iterator i;
-for (i = hash.begin(); i != hash.end(); ++i)
-    cout << i.key() << ": " << i.value() << Qt::endl;
+for (auto i = hash.cbegin(), end = hash.cend(); i != end; ++i)
+    cout << qPrintable(key()) << ": " << i.value() << endl;
 //! [17]
 
 
 //! [18]
-QHash<QString, int>::iterator i;
-for (i = hash.begin(); i != hash.end(); ++i)
+for (auto i = hash.begin(), end = hash.end(); i != end; ++i)
     i.value() += 2;
 //! [18]
 
-
-//! [19]
-QHash<QString, int>::iterator i = hash.begin();
-while (i != hash.end()) {
-    if (i.key().startsWith('_'))
-        i = hash.erase(i);
-    else
-        ++i;
-}
-//! [19]
-
-
-//! [20]
-QHash<QString, int>::iterator i = hash.begin();
-while (i != hash.end()) {
-    QHash<QString, int>::iterator prev = i;
-    ++i;
-    if (prev.key().startsWith('_'))
-        hash.erase(prev);
-}
-//! [20]
-
-
 //! [21]
-// WRONG
-while (i != hash.end()) {
-    if (i.key().startsWith('_'))
-        hash.erase(i);
-    ++i;
-}
+erase_if(hash, [](const QHash<QString, int>::iterator it) { return it.value() > 10; });
 //! [21]
-
+}
 
 //! [22]
 if (i.key() == "Hello")
@@ -209,9 +176,8 @@ hash.insert("February", 2);
 ...
 hash.insert("December", 12);
 
-QHash<QString, int>::const_iterator i;
-for (i = hash.constBegin(); i != hash.constEnd(); ++i)
-    cout << i.key() << ": " << i.value() << Qt::endl;
+for (auto i = hash.cbegin(), end = hash.cend(); i != end; ++i)
+    cout << qPrintable(i.key()) << ": " << i.value() << endl;
 //! [23]
 
 
@@ -232,24 +198,24 @@ hash3 = hash1 + hash2;
 
 //! [25]
 QList<int> values = hash.values("plenty");
-for (int i = 0; i < values.size(); ++i)
-    cout << values.at(i) << Qt::endl;
+for (auto i : std::as_const(values))
+    cout << i << endl;
 //! [25]
 
 
 //! [26]
-QMultiHash<QString, int>::iterator i = hash.find("plenty");
-while (i != hash.end() && i.key() == "plenty") {
-    cout << i.value() << Qt::endl;
+auto i = hash.constFind("plenty");
+while (i != hash.cend() && i.key() == "plenty") {
+    cout << i.value() << endl;
     ++i;
 }
 //! [26]
 
 //! [27]
-for (QHash<int, QString>::const_iterator it = hash.cbegin(), end = hash.cend(); it != end; ++it) {
-    cout << "The key: " << it.key() << Qt::endl
-    cout << "The value: " << it.value() << Qt::endl;
-    cout << "Also the value: " << (*it) << Qt::endl;
+for (auto it = hash.cbegin(), end = hash.cend(); it != end; ++it) {
+    cout << "The key: " << it.key() << endl;
+    cout << "The value: " << qPrintable(it.value()) << endl;
+    cout << "Also the value: " << qPrintable(*it) << endl;
 }
 //! [27]
 
@@ -297,11 +263,11 @@ inline size_t qHash(const std::unordered_set<int> &key, size_t seed = 0)
 //! [31]
 
 //! [32]
-size_t qHash(K key);
-size_t qHash(const K &key);
-
 size_t qHash(K key, size_t seed);
 size_t qHash(const K &key, size_t seed);
+
+size_t qHash(K key);        // deprecated, do not use
+size_t qHash(const K &key); // deprecated, do not use
 //! [32]
 
 //! [33]
@@ -322,7 +288,7 @@ hash.insert("February", 2);
 hash.insert("December", 12);
 
 for (auto [key, value] : hash.asKeyValueRange()) {
-    cout << key << ": " << value << Qt::endl;
+    cout << qPrintable(key) << ": " << value << endl;
     --value; // convert to JS month indexing
 }
 //! [34]
@@ -335,7 +301,7 @@ hash.insert("February", 2);
 hash.insert("December", 12);
 
 for (auto [key, value] : hash.asKeyValueRange()) {
-    cout << key << ": " << value << Qt::endl;
+    cout << qPrintable(key) << ": " << value << endl;
     --value; // convert to JS month indexing
 }
 //! [35]

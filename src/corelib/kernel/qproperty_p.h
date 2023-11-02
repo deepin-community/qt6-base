@@ -18,8 +18,10 @@
 #include <private/qglobal_p.h>
 #include <qproperty.h>
 
+#include <qmetaobject.h>
 #include <qscopedpointer.h>
 #include <qscopedvaluerollback.h>
+#include <qvariant.h>
 #include <vector>
 #include <QtCore/QVarLengthArray>
 
@@ -46,13 +48,13 @@ public:
     Q_DISABLE_COPY(QBindingObserverPtr);
     void swap(QBindingObserverPtr &other) noexcept
     { qt_ptr_swap(d, other.d); }
-    QBindingObserverPtr(QBindingObserverPtr &&other) : d(std::exchange(other.d, nullptr)) {}
+    QBindingObserverPtr(QBindingObserverPtr &&other) noexcept : d(std::exchange(other.d, nullptr)) {}
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QBindingObserverPtr);
 
 
-    inline QBindingObserverPtr(QPropertyObserver *observer);
+    inline QBindingObserverPtr(QPropertyObserver *observer) noexcept;
     inline ~QBindingObserverPtr();
-    inline QPropertyBindingPrivate *binding() const;
+    inline QPropertyBindingPrivate *binding() const noexcept;
     inline QPropertyObserver *operator ->();
 };
 
@@ -81,6 +83,7 @@ struct QPropertyBindingDataPointer
     void Q_ALWAYS_INLINE addObserver(QPropertyObserver *observer);
     inline void setFirstObserver(QPropertyObserver *observer);
     inline QPropertyObserverPointer firstObserver() const;
+    static QPropertyProxyBindingData *proxyData(QtPrivate::QPropertyBindingData *ptr);
 
     inline int observerCount() const;
 
@@ -91,11 +94,12 @@ struct QPropertyBindingDataPointer
     }
 };
 
-struct [[nodiscard]] QPropertyObserverNodeProtector
+struct QPropertyObserverNodeProtector
 {
     Q_DISABLE_COPY_MOVE(QPropertyObserverNodeProtector)
 
     QPropertyObserverBase m_placeHolder;
+    Q_NODISCARD_CTOR
     QPropertyObserverNodeProtector(QPropertyObserver *observer)
     {
         // insert m_placeholder after observer into the linked list
@@ -121,13 +125,21 @@ struct QPropertyObserverPointer
     void unlink()
     {
         unlink_common();
+#if QT_DEPRECATED_SINCE(6, 6)
+        QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
         if (ptr->next.tag() == QPropertyObserver::ObserverIsAlias)
             ptr->aliasData = nullptr;
+        QT_WARNING_POP
+#endif
     }
 
     void unlink_fast()
     {
+#if QT_DEPRECATED_SINCE(6, 6)
+        QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
         Q_ASSERT(ptr->next.tag() != QPropertyObserver::ObserverIsAlias);
+        QT_WARNING_POP
+#endif
         unlink_common();
     }
 
@@ -137,9 +149,7 @@ struct QPropertyObserverPointer
 
     enum class Notify {Everything, OnlyChangeHandlers};
 
-    template<Notify notifyPolicy = Notify::Everything>
     void notify(QUntypedPropertyData *propertyDataPtr);
-    void notifyOnlyChangeHandler(QUntypedPropertyData *propertyDataPtr);
 #ifndef QT_NO_DEBUG
     void noSelfDependencies(QPropertyBindingPrivate *binding);
 #else
@@ -190,6 +200,7 @@ struct BindingEvaluationState
     QPropertyBindingPrivate *binding;
     BindingEvaluationState *previousState = nullptr;
     BindingEvaluationState **currentState = nullptr;
+    QVarLengthArray<const QPropertyBindingData *, 8> alreadyCaptureProperties;
 };
 
 /*!
@@ -360,18 +371,10 @@ public:
 
     void unlinkAndDeref();
 
-    void evaluateRecursive(PendingBindingObserverList &bindingObservers, QBindingStatus *status = nullptr);
+    bool evaluateRecursive(PendingBindingObserverList &bindingObservers, QBindingStatus *status = nullptr);
 
-    // ### TODO: remove as soon as declarative no longer needs this overload
-    void evaluateRecursive()
-    {
-        PendingBindingObserverList bindingObservers;
-        evaluateRecursive(bindingObservers);
-    }
+    bool Q_ALWAYS_INLINE evaluateRecursive_inline(PendingBindingObserverList &bindingObservers, QBindingStatus *status);
 
-    void Q_ALWAYS_INLINE evaluateRecursive_inline(PendingBindingObserverList &bindingObservers, QBindingStatus *status);
-
-    void notifyRecursive();
     void notifyNonRecursive(const PendingBindingObserverList &bindingObservers);
     enum NotificationState : bool { Delayed, Sent };
     NotificationState notifyNonRecursive();
@@ -423,9 +426,9 @@ inline void QPropertyBindingDataPointer::fixupAfterMove(QtPrivate::QPropertyBind
 {
     auto &d = ptr->d_ref();
     if (ptr->isNotificationDelayed()) {
-        QPropertyProxyBindingData *proxyData
-                = reinterpret_cast<QPropertyProxyBindingData*>(d & ~QtPrivate::QPropertyBindingData::BindingBit);
-        proxyData->originalBindingData = ptr;
+        QPropertyProxyBindingData *proxy = ptr->proxyData();
+        Q_ASSERT(proxy);
+        proxy->originalBindingData = ptr;
     }
     // If QPropertyBindingData has been moved, and it has an observer
     // we have to adjust the firstObserver's prev pointer to point to
@@ -441,6 +444,17 @@ inline QPropertyObserverPointer QPropertyBindingDataPointer::firstObserver() con
     if (auto *b = binding())
         return b->firstObserver;
     return { reinterpret_cast<QPropertyObserver *>(ptr->d()) };
+}
+
+/*!
+    \internal
+    Returns the proxy data of \a ptr, or \c nullptr if \a ptr has no delayed notification
+ */
+inline QPropertyProxyBindingData *QPropertyBindingDataPointer::proxyData(QtPrivate::QPropertyBindingData *ptr)
+{
+    if (!ptr->isNotificationDelayed())
+        return nullptr;
+    return ptr->proxyData();
 }
 
 inline int QPropertyBindingDataPointer::observerCount() const
@@ -577,7 +591,7 @@ public:
         return true;
     }
 
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
     template <typename Functor>
     QPropertyBinding<T> setBinding(Functor &&f,
                                    const QPropertyBindingSourceLocation &location = QT_PROPERTY_DEFAULT_BINDING_LOCATION,
@@ -621,7 +635,7 @@ public:
                                 == QtPrivate::QPropertyBindingData::Evaluated) {
                             // evaluateBindings() can trash the observers. We need to re-fetch here.
                             if (QPropertyObserverPointer observer = d.firstObserver())
-                                observer.notifyOnlyChangeHandler(this);
+                                observer.notify(this);
                             for (auto&& bindingObserver: bindingObservers)
                                 bindingObserver.binding()->notifyNonRecursive();
                         }
@@ -780,13 +794,13 @@ struct QUntypedBindablePrivate
     }
 };
 
-inline void QPropertyBindingPrivate::evaluateRecursive_inline(PendingBindingObserverList &bindingObservers, QBindingStatus *status)
+inline bool QPropertyBindingPrivate::evaluateRecursive_inline(PendingBindingObserverList &bindingObservers, QBindingStatus *status)
 {
     if (updating) {
         error = QPropertyBindingError(QPropertyBindingError::BindingLoop);
         if (isQQmlPropertyBinding)
             errorCallBack(this);
-        return;
+        return false;
     }
 
     /*
@@ -816,13 +830,21 @@ inline void QPropertyBindingPrivate::evaluateRecursive_inline(PendingBindingObse
     // If there was not, we must not clear it, as that only should happen in notifyRecursive
     pendingNotify = pendingNotify || changed;
     if (!changed || !firstObserver)
-        return;
+        return changed;
 
     firstObserver.noSelfDependencies(this);
     firstObserver.evaluateBindings(bindingObservers, status);
+    return true;
 }
 
-template<QPropertyObserverPointer::Notify notifyPolicy>
+/*!
+    \internal
+
+    Walks through the list of property observers, and calls any ChangeHandler
+    found there.
+    It doesn't do anything with bindings, which are only handled in
+    QPropertyBindingPrivate::evaluateRecursive.
+ */
 inline void QPropertyObserverPointer::notify(QUntypedPropertyData *propertyDataPtr)
 {
     auto observer = const_cast<QPropertyObserver*>(ptr);
@@ -861,29 +883,20 @@ inline void QPropertyObserverPointer::notify(QUntypedPropertyData *propertyDataP
             break;
         }
         case QPropertyObserver::ObserverNotifiesBinding:
-        {
-            if constexpr (notifyPolicy == Notify::Everything) {
-                auto bindingToNotify =  observer->binding;
-                QPropertyObserverNodeProtector protector(observer);
-                bindingToNotify->notifyRecursive();
-                next = protector.next();
-            }
             break;
-        }
         case QPropertyObserver::ObserverIsPlaceholder:
             // recursion is already properly handled somewhere else
             break;
+#if QT_DEPRECATED_SINCE(6, 6)
+        QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
         case QPropertyObserver::ObserverIsAlias:
             break;
+        QT_WARNING_POP
+#endif
         default: Q_UNREACHABLE();
         }
         observer = next;
     }
-}
-
-inline void QPropertyObserverPointer::notifyOnlyChangeHandler(QUntypedPropertyData *propertyDataPtr)
-{
-    notify<Notify::OnlyChangeHandlers>(propertyDataPtr);
 }
 
 inline QPropertyObserverNodeProtector::~QPropertyObserverNodeProtector()
@@ -892,7 +905,7 @@ inline QPropertyObserverNodeProtector::~QPropertyObserverNodeProtector()
     d.unlink_fast();
 }
 
-QBindingObserverPtr::QBindingObserverPtr(QPropertyObserver *observer) : d(observer)
+QBindingObserverPtr::QBindingObserverPtr(QPropertyObserver *observer) noexcept : d(observer)
 {
     Q_ASSERT(d);
     QPropertyObserverPointer{d}.binding()->addRef();
@@ -900,9 +913,44 @@ QBindingObserverPtr::QBindingObserverPtr(QPropertyObserver *observer) : d(observ
 
 QBindingObserverPtr::~QBindingObserverPtr() { if (d)  QPropertyObserverPointer{d}.binding()->deref(); }
 
-QPropertyBindingPrivate *QBindingObserverPtr::binding() const { return QPropertyObserverPointer{d}.binding(); }
+QPropertyBindingPrivate *QBindingObserverPtr::binding() const noexcept { return QPropertyObserverPointer{d}.binding(); }
 
 QPropertyObserver *QBindingObserverPtr::operator->() { return d; }
+
+namespace QtPrivate {
+class QPropertyAdaptorSlotObject : public QUntypedPropertyData, public QSlotObjectBase
+{
+    QPropertyBindingData bindingData_;
+    QObject *obj;
+    QMetaProperty metaProperty_;
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    static void impl(int which, QSlotObjectBase *this_, QObject *r, void **a, bool *ret);
+#else
+    static void impl(QSlotObjectBase *this_, QObject *r, void **a, int which, bool *ret);
+#endif
+
+    QPropertyAdaptorSlotObject(QObject *o, const QMetaProperty& p);
+
+public:
+    static QPropertyAdaptorSlotObject *cast(QSlotObjectBase *ptr, int propertyIndex)
+    {
+        if (ptr->isImpl(&QPropertyAdaptorSlotObject::impl)) {
+            auto p = static_cast<QPropertyAdaptorSlotObject *>(ptr);
+            if (p->metaProperty_.propertyIndex() == propertyIndex)
+                return p;
+        }
+        return nullptr;
+    }
+
+    inline const QPropertyBindingData &bindingData() const { return bindingData_; }
+    inline QPropertyBindingData &bindingData() { return bindingData_; }
+    inline QObject *object() const { return obj; }
+    inline const QMetaProperty &metaProperty() const { return metaProperty_; }
+
+    friend class QT_PREPEND_NAMESPACE(QUntypedBindable);
+};
+}
 
 QT_END_NAMESPACE
 

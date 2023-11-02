@@ -59,7 +59,7 @@ QT_BEGIN_NAMESPACE
   improperly-encoded strings are passed to the setter or query methods,
   QUrlQuery will attempt to recover instead of failing. That is to say, all
   functions in this class parse their string arguments as if the
-  {{QUrl::TolerantMode}} decoding mode was specified.
+  QUrl::TolerantMode decoding mode was specified.
 
   Application code should strive to always ensure proper encoding and not rely
   on TolerantMode parsing fixing the strings. Notably, all user input must be
@@ -364,6 +364,16 @@ QUrlQuery::QUrlQuery(const QUrlQuery &other)
 }
 
 /*!
+    \since 6.5
+    Moves the contents of the \a other QUrlQuery object, including the query
+    delimiters.
+*/
+QUrlQuery::QUrlQuery(QUrlQuery &&other) noexcept
+    : d(std::move(other.d))
+{
+}
+
+/*!
     Copies the contents of the \a other QUrlQuery object, including the query
     delimiters.
 */
@@ -401,7 +411,11 @@ bool QUrlQuery::operator ==(const QUrlQuery &other) const
         return d->valueDelimiter == other.d->valueDelimiter &&
                 d->pairDelimiter == other.d->pairDelimiter &&
                 d->itemList == other.d->itemList;
-    return false;
+
+    const QUrlQueryPrivate *x = d ? d.data() : other.d.data();
+    return x->valueDelimiter == defaultQueryValueDelimiter() &&
+            x->pairDelimiter == defaultQueryPairDelimiter() &&
+            x->itemList.isEmpty();
 }
 
 /*!
@@ -803,3 +817,7 @@ void QUrlQuery::removeAllQueryItems(const QString &key)
     \sa operator==()
 */
 QT_END_NAMESPACE
+
+#undef decode
+#undef leave
+#undef encode

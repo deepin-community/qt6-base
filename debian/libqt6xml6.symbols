@@ -1,25 +1,16 @@
-# SymbolsHelper-Confirmed: 6.4.1 amd64
+# SymbolsHelper-Confirmed: 6.6.0 amd64
 libQt6Xml.so.6 libqt6xml6 #MINVER#
-| libqt6xml6 #MINVER#, qt6-base-abi (= 6.4.2)
+| libqt6xml6 #MINVER#, qt6-base-private-abi (= 6.6.0)
 * Build-Depends-Package: qt6-base-dev
- Qt_6.0@Qt_6.0 6.1.2
- Qt_6.1@Qt_6.1 6.1.2
- Qt_6.2@Qt_6.2 6.2.0
- Qt_6.3@Qt_6.3 6.3.0
- Qt_6.4@Qt_6.4 6.4.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
- _ZN10QDomEntityC1EP17QDomEntityPrivate@Qt_6 6.1.2
  _ZN10QDomEntityC1ERKS_@Qt_6 6.1.2
  _ZN10QDomEntityC1Ev@Qt_6 6.1.2
- _ZN10QDomEntityC2EP17QDomEntityPrivate@Qt_6 6.1.2
  _ZN10QDomEntityC2ERKS_@Qt_6 6.1.2
  _ZN10QDomEntityC2Ev@Qt_6 6.1.2
  _ZN10QDomEntityaSERKS_@Qt_6 6.1.2
- _ZN11QDomCommentC1EP18QDomCommentPrivate@Qt_6 6.1.2
  _ZN11QDomCommentC1ERKS_@Qt_6 6.1.2
  _ZN11QDomCommentC1Ev@Qt_6 6.1.2
- _ZN11QDomCommentC2EP18QDomCommentPrivate@Qt_6 6.1.2
  _ZN11QDomCommentC2ERKS_@Qt_6 6.1.2
  _ZN11QDomCommentC2Ev@Qt_6 6.1.2
  _ZN11QDomCommentaSERKS_@Qt_6 6.1.2
@@ -40,15 +31,16 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZN11QDomElement17removeAttributeNSERK7QStringS2_@Qt_6 6.1.2
  _ZN11QDomElement18setAttributeNodeNSERK8QDomAttr@Qt_6 6.1.2
  _ZN11QDomElement19removeAttributeNodeERK8QDomAttr@Qt_6 6.1.2
- _ZN11QDomElementC1EP18QDomElementPrivate@Qt_6 6.1.2
  _ZN11QDomElementC1ERKS_@Qt_6 6.1.2
  _ZN11QDomElementC1Ev@Qt_6 6.1.2
- _ZN11QDomElementC2EP18QDomElementPrivate@Qt_6 6.1.2
  _ZN11QDomElementC2ERKS_@Qt_6 6.1.2
  _ZN11QDomElementC2Ev@Qt_6 6.1.2
  _ZN11QDomElementaSERKS_@Qt_6 6.1.2
  _ZN12QDomDocument10importNodeERK8QDomNodeb@Qt_6 6.1.2
+ _ZN12QDomDocument10setContentE14QAnyStringView6QFlagsINS_11ParseOptionEE@Qt_6 6.6.0
+ _ZN12QDomDocument10setContentEP16QXmlStreamReader6QFlagsINS_11ParseOptionEE@Qt_6 6.6.0
  _ZN12QDomDocument10setContentEP16QXmlStreamReaderbP7QStringPiS4_@Qt_6 6.1.2
+ _ZN12QDomDocument10setContentEP9QIODevice6QFlagsINS_11ParseOptionEE@Qt_6 6.6.0
  _ZN12QDomDocument10setContentEP9QIODeviceP7QStringPiS4_@Qt_6 6.1.2
  _ZN12QDomDocument10setContentEP9QIODevicebP7QStringPiS4_@Qt_6 6.1.2
  _ZN12QDomDocument10setContentERK10QByteArrayP7QStringPiS5_@Qt_6 6.1.2
@@ -59,6 +51,7 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZN12QDomDocument13createCommentERK7QString@Qt_6 6.1.2
  _ZN12QDomDocument13createElementERK7QString@Qt_6 6.1.2
  _ZN12QDomDocument14createTextNodeERK7QString@Qt_6 6.1.2
+ _ZN12QDomDocument14setContentImplERK10QByteArray6QFlagsINS_11ParseOptionEE@Qt_6 6.6.0
  _ZN12QDomDocument15createAttributeERK7QString@Qt_6 6.1.2
  _ZN12QDomDocument15createElementNSERK7QStringS2_@Qt_6 6.1.2
  _ZN12QDomDocument17createAttributeNSERK7QStringS2_@Qt_6 6.1.2
@@ -67,12 +60,10 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZN12QDomDocument21createEntityReferenceERK7QString@Qt_6 6.1.2
  _ZN12QDomDocument22createDocumentFragmentEv@Qt_6 6.1.2
  _ZN12QDomDocument27createProcessingInstructionERK7QStringS2_@Qt_6 6.1.2
- _ZN12QDomDocumentC1EP19QDomDocumentPrivate@Qt_6 6.1.2
  _ZN12QDomDocumentC1ERK16QDomDocumentType@Qt_6 6.1.2
  _ZN12QDomDocumentC1ERK7QString@Qt_6 6.1.2
  _ZN12QDomDocumentC1ERKS_@Qt_6 6.1.2
  _ZN12QDomDocumentC1Ev@Qt_6 6.1.2
- _ZN12QDomDocumentC2EP19QDomDocumentPrivate@Qt_6 6.1.2
  _ZN12QDomDocumentC2ERK16QDomDocumentType@Qt_6 6.1.2
  _ZN12QDomDocumentC2ERK7QString@Qt_6 6.1.2
  _ZN12QDomDocumentC2ERKS_@Qt_6 6.1.2
@@ -80,33 +71,25 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZN12QDomDocumentD1Ev@Qt_6 6.1.2
  _ZN12QDomDocumentD2Ev@Qt_6 6.1.2
  _ZN12QDomDocumentaSERKS_@Qt_6 6.1.2
- _ZN12QDomNodeListC1EP19QDomNodeListPrivate@Qt_6 6.1.2
  _ZN12QDomNodeListC1ERKS_@Qt_6 6.1.2
  _ZN12QDomNodeListC1Ev@Qt_6 6.1.2
- _ZN12QDomNodeListC2EP19QDomNodeListPrivate@Qt_6 6.1.2
  _ZN12QDomNodeListC2ERKS_@Qt_6 6.1.2
  _ZN12QDomNodeListC2Ev@Qt_6 6.1.2
  _ZN12QDomNodeListD1Ev@Qt_6 6.1.2
  _ZN12QDomNodeListD2Ev@Qt_6 6.1.2
  _ZN12QDomNodeListaSERKS_@Qt_6 6.1.2
- _ZN12QDomNotationC1EP19QDomNotationPrivate@Qt_6 6.1.2
  _ZN12QDomNotationC1ERKS_@Qt_6 6.1.2
  _ZN12QDomNotationC1Ev@Qt_6 6.1.2
- _ZN12QDomNotationC2EP19QDomNotationPrivate@Qt_6 6.1.2
  _ZN12QDomNotationC2ERKS_@Qt_6 6.1.2
  _ZN12QDomNotationC2Ev@Qt_6 6.1.2
  _ZN12QDomNotationaSERKS_@Qt_6 6.1.2
- _ZN16QDomCDATASectionC1EP23QDomCDATASectionPrivate@Qt_6 6.1.2
  _ZN16QDomCDATASectionC1ERKS_@Qt_6 6.1.2
  _ZN16QDomCDATASectionC1Ev@Qt_6 6.1.2
- _ZN16QDomCDATASectionC2EP23QDomCDATASectionPrivate@Qt_6 6.1.2
  _ZN16QDomCDATASectionC2ERKS_@Qt_6 6.1.2
  _ZN16QDomCDATASectionC2Ev@Qt_6 6.1.2
  _ZN16QDomCDATASectionaSERKS_@Qt_6 6.1.2
- _ZN16QDomDocumentTypeC1EP23QDomDocumentTypePrivate@Qt_6 6.1.2
  _ZN16QDomDocumentTypeC1ERKS_@Qt_6 6.1.2
  _ZN16QDomDocumentTypeC1Ev@Qt_6 6.1.2
- _ZN16QDomDocumentTypeC2EP23QDomDocumentTypePrivate@Qt_6 6.1.2
  _ZN16QDomDocumentTypeC2ERKS_@Qt_6 6.1.2
  _ZN16QDomDocumentTypeC2Ev@Qt_6 6.1.2
  _ZN16QDomDocumentTypeaSERKS_@Qt_6 6.1.2
@@ -114,10 +97,8 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZN16QDomNamedNodeMap14setNamedItemNSERK8QDomNode@Qt_6 6.1.2
  _ZN16QDomNamedNodeMap15removeNamedItemERK7QString@Qt_6 6.1.2
  _ZN16QDomNamedNodeMap17removeNamedItemNSERK7QStringS2_@Qt_6 6.1.2
- _ZN16QDomNamedNodeMapC1EP23QDomNamedNodeMapPrivate@Qt_6 6.1.2
  _ZN16QDomNamedNodeMapC1ERKS_@Qt_6 6.1.2
  _ZN16QDomNamedNodeMapC1Ev@Qt_6 6.1.2
- _ZN16QDomNamedNodeMapC2EP23QDomNamedNodeMapPrivate@Qt_6 6.1.2
  _ZN16QDomNamedNodeMapC2ERKS_@Qt_6 6.1.2
  _ZN16QDomNamedNodeMapC2Ev@Qt_6 6.1.2
  _ZN16QDomNamedNodeMapD1Ev@Qt_6 6.1.2
@@ -129,10 +110,8 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZN17QDomCharacterData11replaceDataEmmRK7QString@Qt_6 6.1.2
  _ZN17QDomCharacterData13substringDataEmm@Qt_6 6.1.2
  _ZN17QDomCharacterData7setDataERK7QString@Qt_6 6.1.2
- _ZN17QDomCharacterDataC1EP24QDomCharacterDataPrivate@Qt_6 6.1.2
  _ZN17QDomCharacterDataC1ERKS_@Qt_6 6.1.2
  _ZN17QDomCharacterDataC1Ev@Qt_6 6.1.2
- _ZN17QDomCharacterDataC2EP24QDomCharacterDataPrivate@Qt_6 6.1.2
  _ZN17QDomCharacterDataC2ERKS_@Qt_6 6.1.2
  _ZN17QDomCharacterDataC2Ev@Qt_6 6.1.2
  _ZN17QDomCharacterDataaSERKS_@Qt_6 6.1.2
@@ -141,42 +120,32 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZN18QDomImplementation18createDocumentTypeERK7QStringS2_S2_@Qt_6 6.1.2
  _ZN18QDomImplementation20setInvalidDataPolicyENS_17InvalidDataPolicyE@Qt_6 6.1.2
  _ZN18QDomImplementation6isNullEv@Qt_6 6.1.2
- _ZN18QDomImplementationC1EP25QDomImplementationPrivate@Qt_6 6.1.2
  _ZN18QDomImplementationC1ERKS_@Qt_6 6.1.2
  _ZN18QDomImplementationC1Ev@Qt_6 6.1.2
- _ZN18QDomImplementationC2EP25QDomImplementationPrivate@Qt_6 6.1.2
  _ZN18QDomImplementationC2ERKS_@Qt_6 6.1.2
  _ZN18QDomImplementationC2Ev@Qt_6 6.1.2
  _ZN18QDomImplementationD1Ev@Qt_6 6.1.2
  _ZN18QDomImplementationD2Ev@Qt_6 6.1.2
  _ZN18QDomImplementationaSERKS_@Qt_6 6.1.2
- _ZN19QDomEntityReferenceC1EP26QDomEntityReferencePrivate@Qt_6 6.1.2
  _ZN19QDomEntityReferenceC1ERKS_@Qt_6 6.1.2
  _ZN19QDomEntityReferenceC1Ev@Qt_6 6.1.2
- _ZN19QDomEntityReferenceC2EP26QDomEntityReferencePrivate@Qt_6 6.1.2
  _ZN19QDomEntityReferenceC2ERKS_@Qt_6 6.1.2
  _ZN19QDomEntityReferenceC2Ev@Qt_6 6.1.2
  _ZN19QDomEntityReferenceaSERKS_@Qt_6 6.1.2
- _ZN20QDomDocumentFragmentC1EP27QDomDocumentFragmentPrivate@Qt_6 6.1.2
  _ZN20QDomDocumentFragmentC1ERKS_@Qt_6 6.1.2
  _ZN20QDomDocumentFragmentC1Ev@Qt_6 6.1.2
- _ZN20QDomDocumentFragmentC2EP27QDomDocumentFragmentPrivate@Qt_6 6.1.2
  _ZN20QDomDocumentFragmentC2ERKS_@Qt_6 6.1.2
  _ZN20QDomDocumentFragmentC2Ev@Qt_6 6.1.2
  _ZN20QDomDocumentFragmentaSERKS_@Qt_6 6.1.2
  _ZN25QDomProcessingInstruction7setDataERK7QString@Qt_6 6.1.2
- _ZN25QDomProcessingInstructionC1EP32QDomProcessingInstructionPrivate@Qt_6 6.1.2
  _ZN25QDomProcessingInstructionC1ERKS_@Qt_6 6.1.2
  _ZN25QDomProcessingInstructionC1Ev@Qt_6 6.1.2
- _ZN25QDomProcessingInstructionC2EP32QDomProcessingInstructionPrivate@Qt_6 6.1.2
  _ZN25QDomProcessingInstructionC2ERKS_@Qt_6 6.1.2
  _ZN25QDomProcessingInstructionC2Ev@Qt_6 6.1.2
  _ZN25QDomProcessingInstructionaSERKS_@Qt_6 6.1.2
  _ZN8QDomAttr8setValueERK7QString@Qt_6 6.1.2
- _ZN8QDomAttrC1EP15QDomAttrPrivate@Qt_6 6.1.2
  _ZN8QDomAttrC1ERKS_@Qt_6 6.1.2
  _ZN8QDomAttrC1Ev@Qt_6 6.1.2
- _ZN8QDomAttrC2EP15QDomAttrPrivate@Qt_6 6.1.2
  _ZN8QDomAttrC2ERKS_@Qt_6 6.1.2
  _ZN8QDomAttrC2Ev@Qt_6 6.1.2
  _ZN8QDomAttraSERKS_@Qt_6 6.1.2
@@ -189,20 +158,16 @@ libQt6Xml.so.6 libqt6xml6 #MINVER#
  _ZN8QDomNode5clearEv@Qt_6 6.1.2
  _ZN8QDomNode9normalizeEv@Qt_6 6.1.2
  _ZN8QDomNode9setPrefixERK7QString@Qt_6 6.1.2
- _ZN8QDomNodeC1EP15QDomNodePrivate@Qt_6 6.1.2
  _ZN8QDomNodeC1ERKS_@Qt_6 6.1.2
  _ZN8QDomNodeC1Ev@Qt_6 6.1.2
- _ZN8QDomNodeC2EP15QDomNodePrivate@Qt_6 6.1.2
  _ZN8QDomNodeC2ERKS_@Qt_6 6.1.2
  _ZN8QDomNodeC2Ev@Qt_6 6.1.2
  _ZN8QDomNodeD1Ev@Qt_6 6.1.2
  _ZN8QDomNodeD2Ev@Qt_6 6.1.2
  _ZN8QDomNodeaSERKS_@Qt_6 6.1.2
  _ZN8QDomText9splitTextEi@Qt_6 6.1.2
- _ZN8QDomTextC1EP15QDomTextPrivate@Qt_6 6.1.2
  _ZN8QDomTextC1ERKS_@Qt_6 6.1.2
  _ZN8QDomTextC1Ev@Qt_6 6.1.2
- _ZN8QDomTextC2EP15QDomTextPrivate@Qt_6 6.1.2
  _ZN8QDomTextC2ERKS_@Qt_6 6.1.2
  _ZN8QDomTextC2Ev@Qt_6 6.1.2
  _ZN8QDomTextaSERKS_@Qt_6 6.1.2

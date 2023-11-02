@@ -1,12 +1,20 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # This function creates a CMake target for a Qt internal app.
 # Such projects had a load(qt_app) command.
 function(qt_internal_add_app target)
-    qt_parse_all_arguments(arg
-        "qt_internal_add_app"
-        "NO_INSTALL;INSTALL_VERSIONED_LINK"
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+        "NO_INSTALL;INSTALL_VERSIONED_LINK;EXCEPTIONS;NO_UNITY_BUILD"
         "${__default_target_info_args};INSTALL_DIR"
-        "${__default_private_args}"
-        ${ARGN})
+        "${__default_private_args};PUBLIC_LIBRARIES"
+    )
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    set(exceptions "")
+    if(arg_EXCEPTIONS)
+        set(exceptions EXCEPTIONS)
+    endif()
 
     if(DEFINED arg_INSTALL_DIR)
         set(forward_install_dir INSTALL_DIRECTORY ${arg_INSTALL_DIR})
@@ -21,29 +29,53 @@ function(qt_internal_add_app target)
         set(no_install NO_INSTALL)
     endif()
 
+    if(arg_PUBLIC_LIBRARIES)
+        message(WARNING
+            "qt_internal_add_app's PUBLIC_LIBRARIES option is deprecated, and will be removed in "
+            "a future Qt version. Use the LIBRARIES option instead.")
+    endif()
+
+    qt_internal_library_deprecation_level(deprecation_define)
+
+    if(arg_NO_UNITY_BUILD)
+        set(arg_NO_UNITY_BUILD "NO_UNITY_BUILD")
+    else()
+        set(arg_NO_UNITY_BUILD "")
+    endif()
+
     qt_internal_add_executable("${target}"
         QT_APP
         DELAY_RC
         DELAY_TARGET_INFO
         OUTPUT_DIRECTORY "${output_directory}"
+        ${exceptions}
         ${no_install}
+        ${arg_NO_UNITY_BUILD}
         ${forward_install_dir}
         SOURCES ${arg_SOURCES}
+        NO_PCH_SOURCES ${arg_NO_PCH_SOURCES}
+        NO_UNITY_BUILD_SOURCES ${arg_NO_UNITY_BUILD_SOURCES}
         INCLUDE_DIRECTORIES
             ${arg_INCLUDE_DIRECTORIES}
         DEFINES
             ${arg_DEFINES}
-        LIBRARIES ${arg_LIBRARIES} Qt::PlatformAppInternal
+            ${deprecation_define}
+        LIBRARIES
+            ${arg_LIBRARIES}
+            ${arg_PUBLIC_LIBRARIES}
+            Qt::PlatformAppInternal
         COMPILE_OPTIONS ${arg_COMPILE_OPTIONS}
         LINK_OPTIONS ${arg_LINK_OPTIONS}
         MOC_OPTIONS ${arg_MOC_OPTIONS}
         ENABLE_AUTOGEN_TOOLS ${arg_ENABLE_AUTOGEN_TOOLS}
         DISABLE_AUTOGEN_TOOLS ${arg_DISABLE_AUTOGEN_TOOLS}
-        TARGET_VERSION "${arg_TARGET_VERSION}"
-        TARGET_PRODUCT "${arg_TARGET_PRODUCT}"
-        TARGET_DESCRIPTION "${arg_TARGET_DESCRIPTION}"
-        TARGET_COMPANY "${arg_TARGET_COMPANY}"
-        TARGET_COPYRIGHT "${arg_TARGET_COPYRIGHT}"
+        TARGET_VERSION ${arg_TARGET_VERSION}
+        TARGET_PRODUCT ${arg_TARGET_PRODUCT}
+        TARGET_DESCRIPTION ${arg_TARGET_DESCRIPTION}
+        TARGET_COMPANY ${arg_TARGET_COMPANY}
+        TARGET_COPYRIGHT ${arg_TARGET_COPYRIGHT}
+        # If you are putting anything after these, make sure that
+        # qt_set_target_info_properties knows how to process them
     )
     qt_internal_add_target_aliases("${target}")
     _qt_internal_apply_strict_cpp("${target}")
@@ -62,7 +94,8 @@ function(qt_internal_add_app target)
 
     # Install versioned link if requested.
     if(NOT arg_NO_INSTALL AND arg_INSTALL_VERSIONED_LINK)
-        qt_internal_install_versioned_link("${arg_INSTALL_DIR}" ${target})
+        qt_internal_install_versioned_link(WORKING_DIRECTORY "${arg_INSTALL_DIR}"
+        TARGETS ${target})
     endif()
 
     qt_add_list_file_finalizer(qt_internal_finalize_app ${target})

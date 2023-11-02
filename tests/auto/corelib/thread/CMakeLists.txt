@@ -1,4 +1,5 @@
-# Generated from thread.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 if(QT_FEATURE_thread)
     add_subdirectory(qatomicint)
@@ -14,12 +15,10 @@ if(QT_FEATURE_thread)
     add_subdirectory(qreadlocker)
     add_subdirectory(qreadwritelock)
     add_subdirectory(qsemaphore)
-    # special case begin
     # QTBUG-85364
     if(NOT CMAKE_CROSSCOMPILING)
         add_subdirectory(qthread)
     endif()
-    # special case end
     add_subdirectory(qthreadonce)
     add_subdirectory(qthreadpool)
     add_subdirectory(qthreadstorage)
@@ -29,9 +28,8 @@ if(QT_FEATURE_thread)
         add_subdirectory(qpromise)
     endif()
 endif()
-# special case begin
+
 # QTBUG-87431
 if(TARGET Qt::Concurrent AND NOT INTEGRITY)
     add_subdirectory(qfuturewatcher)
 endif()
-# special case end

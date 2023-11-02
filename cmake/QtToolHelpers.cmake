@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # This function is used to define a "Qt tool", such as moc, uic or rcc.
 #
 # USER_FACING can be passed to mark the tool as a program that is supposed to be
@@ -12,6 +15,13 @@
 #     INSTALL_VERSIONED_LINK
 #         Prefix build only. On installation, create a versioned hard-link of the installed file.
 #         E.g. create a link of "bin/qmake6" to "bin/qmake".
+#     TRY_RUN
+#         On Windows, it creates a helper batch script that tests whether the tool can be executed
+#         successfully or not. If not, build halts and an error will be show, with tips on what
+#         might be cause, and how to fix it. TRY_RUN is disabled when cross-compiling.
+#     TRY_RUN_FLAGS
+#         Command line flags that are going to be passed to the tool for testing its correctness.
+#         If no flags were given, we default to `-v`.
 #
 # One-value Arguments:
 #     EXTRA_CMAKE_FILES
@@ -34,158 +44,35 @@
 #         linked to the executable target by default.
 function(qt_internal_add_tool target_name)
     qt_tool_target_to_name(name ${target_name})
-    set(option_keywords NO_INSTALL USER_FACING INSTALL_VERSIONED_LINK EXCEPTIONS)
+    set(option_keywords
+        NO_INSTALL
+        USER_FACING
+        INSTALL_VERSIONED_LINK
+        EXCEPTIONS
+        NO_UNITY_BUILD
+        TRY_RUN)
     set(one_value_keywords
         TOOLS_TARGET
         INSTALL_DIR
         CORE_LIBRARY
+        TRY_RUN_FLAGS
         ${__default_target_info_args})
     set(multi_value_keywords
         EXTRA_CMAKE_FILES
         EXTRA_CMAKE_INCLUDES
+        PUBLIC_LIBRARIES
         ${__default_private_args})
-    qt_parse_all_arguments(arg "qt_internal_add_tool" "${option_keywords}"
-                               "${one_value_keywords}"
-                               "${multi_value_keywords}" ${ARGN})
 
-    # Handle case when a tool does not belong to a module and it can't be built either (like
-    # during a cross-compile).
-    if(NOT arg_TOOLS_TARGET AND NOT QT_WILL_BUILD_TOOLS)
-        message(FATAL_ERROR "The tool \"${name}\" has not been assigned to a module via"
-                            " TOOLS_TARGET (so it can't be found) and it can't be built"
-                            " (QT_WILL_BUILD_TOOLS is ${QT_WILL_BUILD_TOOLS}).")
-    endif()
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+        "${option_keywords}"
+        "${one_value_keywords}"
+        "${multi_value_keywords}")
+    _qt_internal_validate_all_args_are_parsed(arg)
 
-    if(QT_WILL_RENAME_TOOL_TARGETS AND (name STREQUAL target_name))
-        message(FATAL_ERROR
-            "qt_internal_add_tool must be passed a target obtained from qt_get_tool_target_name.")
-    endif()
+    qt_internal_find_tool(will_build_tools ${target_name} "${arg_TOOLS_TARGET}")
 
-    set(full_name "${QT_CMAKE_EXPORT_NAMESPACE}::${name}")
-    set(imported_tool_target_already_found FALSE)
-
-    # This condition can only be TRUE if a previous find_package(Qt6${arg_TOOLS_TARGET}Tools)
-    # was already done. That can happen if QT_FORCE_FIND_TOOLS was ON or we're cross-compiling.
-    # In such a case, we need to exit early if we're not going to also build the tools.
-    if(TARGET ${full_name})
-        get_property(path TARGET ${full_name} PROPERTY LOCATION)
-        message(STATUS "Tool '${full_name}' was found at ${path}.")
-        set(imported_tool_target_already_found TRUE)
-        if(NOT QT_WILL_BUILD_TOOLS)
-            return()
-        endif()
-    endif()
-
-    # We need to search for the host Tools package when doing a cross-build
-    # or when QT_FORCE_FIND_TOOLS is ON.
-    # As an optimiziation, we don't search for the package one more time if the target
-    # was already brought into scope from a previous find_package.
-    set(search_for_host_package FALSE)
-    if(NOT QT_WILL_BUILD_TOOLS OR QT_WILL_RENAME_TOOL_TARGETS)
-        set(search_for_host_package TRUE)
-    endif()
-    if(search_for_host_package AND NOT imported_tool_target_already_found)
-        set(tools_package_name "Qt6${arg_TOOLS_TARGET}Tools")
-        message(STATUS "Searching for tool '${full_name}' in package ${tools_package_name}.")
-
-        # Create the tool targets, even if QT_NO_CREATE_TARGETS is set.
-        # Otherwise targets like Qt6::moc are not available in a top-level cross-build.
-        set(BACKUP_QT_NO_CREATE_TARGETS ${QT_NO_CREATE_TARGETS})
-        set(QT_NO_CREATE_TARGETS OFF)
-
-        # When cross-compiling, we want to search for Tools packages in QT_HOST_PATH.
-        # To do that, we override CMAKE_PREFIX_PATH and CMAKE_FIND_ROOT_PATH.
-        #
-        # We don't use find_package + PATHS option because any recursive find_dependency call
-        # inside a Tools package would not inherit the initial PATHS value given.
-        # TODO: Potentially we could set a global __qt_cmake_host_dir var like we currently
-        # do with _qt_cmake_dir in Qt6Config and change all our host tool find_package calls
-        # everywhere to specify that var in PATHS.
-        #
-        # Note though that due to path rerooting issue in
-        # https://gitlab.kitware.com/cmake/cmake/-/issues/21937
-        # we have to append a lib/cmake suffix to CMAKE_PREFIX_PATH so the value does not get
-        # rerooted on top of CMAKE_FIND_ROOT_PATH.
-        # Use QT_HOST_PATH_CMAKE_DIR for the suffix when available (it would be set by
-        # the qt.toolchain.cmake file when building other repos or given by the user when
-        # configuring qtbase) or derive it from from the Qt6HostInfo package which is
-        # found in QtSetup.
-        set(${tools_package_name}_BACKUP_CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH})
-        set(${tools_package_name}_BACKUP_CMAKE_FIND_ROOT_PATH "${CMAKE_FIND_ROOT_PATH}")
-        if(QT_HOST_PATH_CMAKE_DIR)
-            set(qt_host_path_cmake_dir_absolute "${QT_HOST_PATH_CMAKE_DIR}")
-        elseif(Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR)
-            get_filename_component(qt_host_path_cmake_dir_absolute
-                "${Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR}/.." ABSOLUTE)
-        else()
-            # This should never happen, serves as an assert.
-            message(FATAL_ERROR
-                "Neither QT_HOST_PATH_CMAKE_DIR nor "
-                "Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR available.")
-        endif()
-        set(CMAKE_PREFIX_PATH "${qt_host_path_cmake_dir_absolute}")
-
-        # Look for tools in additional host Qt installations. This is done for conan support where
-        # we have separate installation prefixes per package. For simplicity, we assume here that
-        # all host Qt installations use the same value of INSTALL_LIBDIR.
-        if(DEFINED QT_ADDITIONAL_HOST_PACKAGES_PREFIX_PATH)
-            file(RELATIVE_PATH rel_host_cmake_dir "${QT_HOST_PATH}"
-                "${qt_host_path_cmake_dir_absolute}")
-            foreach(host_path IN LISTS QT_ADDITIONAL_HOST_PACKAGES_PREFIX_PATH)
-                set(host_cmake_dir "${host_path}/${rel_host_cmake_dir}")
-                list(PREPEND CMAKE_PREFIX_PATH "${host_cmake_dir}")
-            endforeach()
-
-            list(PREPEND CMAKE_FIND_ROOT_PATH "${QT_ADDITIONAL_HOST_PACKAGES_PREFIX_PATH}")
-        endif()
-        list(PREPEND CMAKE_FIND_ROOT_PATH "${QT_HOST_PATH}")
-
-        find_package(
-            ${tools_package_name}
-            ${PROJECT_VERSION}
-            NO_PACKAGE_ROOT_PATH
-            NO_CMAKE_ENVIRONMENT_PATH
-            NO_SYSTEM_ENVIRONMENT_PATH
-            NO_CMAKE_PACKAGE_REGISTRY
-            NO_CMAKE_SYSTEM_PATH
-            NO_CMAKE_SYSTEM_PACKAGE_REGISTRY)
-
-        # Restore backups.
-        set(CMAKE_FIND_ROOT_PATH "${${tools_package_name}_BACKUP_CMAKE_FIND_ROOT_PATH}")
-        set(CMAKE_PREFIX_PATH "${${tools_package_name}_BACKUP_CMAKE_PREFIX_PATH}")
-        set(QT_NO_CREATE_TARGETS ${BACKUP_QT_NO_CREATE_TARGETS})
-
-        if(${${tools_package_name}_FOUND} AND TARGET ${full_name})
-            # Even if the tool is already visible, make sure that our modules remain associated
-            # with the tools.
-            qt_internal_append_known_modules_with_tools("${arg_TOOLS_TARGET}")
-            get_property(path TARGET ${full_name} PROPERTY LOCATION)
-            message(STATUS "${full_name} was found at ${path} using package ${tools_package_name}.")
-            if (NOT QT_FORCE_BUILD_TOOLS)
-                return()
-            endif()
-        endif()
-    endif()
-
-    if(NOT QT_WILL_BUILD_TOOLS)
-        if(${${tools_package_name}_FOUND})
-            set(pkg_found_msg "")
-            string(APPEND pkg_found_msg
-                "the ${tools_package_name} package, but the package did not contain the tool. "
-                "Make sure that the host module ${arg_TOOLS_TARGET} was built with all features "
-                "enabled (no explicitly disabled tools).")
-        else()
-            set(pkg_found_msg "")
-            string(APPEND pkg_found_msg
-                "the ${tools_package_name} package, but the package could not be found. "
-                "Make sure you have built and installed the host ${arg_TOOLS_TARGET} module, "
-                "which will ensure the creation of the ${tools_package_name} package.")
-        endif()
-        message(FATAL_ERROR
-            "Failed to find the host tool \"${full_name}\". It is part of "
-            ${pkg_found_msg})
-    else()
-        message(STATUS "Tool '${full_name}' will be built from source.")
+    if(NOT will_build_tools)
+        return()
     endif()
 
     set(disable_autogen_tools "${arg_DISABLE_AUTOGEN_TOOLS}")
@@ -207,31 +94,58 @@ function(qt_internal_add_tool target_name)
 
     set(output_dir "${QT_BUILD_DIR}/${install_dir}")
 
+    if(arg_PUBLIC_LIBRARIES)
+        message(WARNING
+            "qt_internal_add_tool's PUBLIC_LIBRARIES option is deprecated, and will be "
+            "removed in a future Qt version. Use the LIBRARIES option instead.")
+    endif()
+
+    qt_internal_library_deprecation_level(deprecation_define)
+
+    if(arg_NO_UNITY_BUILD)
+        set(arg_NO_UNITY_BUILD "NO_UNITY_BUILD")
+    else()
+        set(arg_NO_UNITY_BUILD "")
+    endif()
+
     qt_internal_add_executable("${target_name}"
         OUTPUT_DIRECTORY "${output_dir}"
         ${exceptions}
         NO_INSTALL
+        ${arg_NO_UNITY_BUILD}
         SOURCES ${arg_SOURCES}
+        NO_PCH_SOURCES ${arg_NO_PCH_SOURCES}
+        NO_UNITY_BUILD_SOURCES ${arg_NO_UNITY_BUILD_SOURCES}
         INCLUDE_DIRECTORIES
             ${arg_INCLUDE_DIRECTORIES}
         DEFINES
             QT_USE_QSTRINGBUILDER
             ${arg_DEFINES}
+            ${deprecation_define}
         ${corelib}
-        LIBRARIES ${arg_LIBRARIES} Qt::PlatformToolInternal
+        LIBRARIES
+            ${arg_LIBRARIES}
+            ${arg_PUBLIC_LIBRARIES}
+            Qt::PlatformToolInternal
         COMPILE_OPTIONS ${arg_COMPILE_OPTIONS}
         LINK_OPTIONS ${arg_LINK_OPTIONS}
         MOC_OPTIONS ${arg_MOC_OPTIONS}
         DISABLE_AUTOGEN_TOOLS ${disable_autogen_tools}
-        TARGET_VERSION "${arg_TARGET_VERSION}"
-        TARGET_PRODUCT "${arg_TARGET_PRODUCT}"
-        TARGET_DESCRIPTION "${arg_TARGET_DESCRIPTION}"
-        TARGET_COMPANY "${arg_TARGET_COMPANY}"
-        TARGET_COPYRIGHT "${arg_TARGET_COPYRIGHT}"
+        TARGET_VERSION ${arg_TARGET_VERSION}
+        TARGET_PRODUCT ${arg_TARGET_PRODUCT}
+        TARGET_DESCRIPTION ${arg_TARGET_DESCRIPTION}
+        TARGET_COMPANY ${arg_TARGET_COMPANY}
+        TARGET_COPYRIGHT ${arg_TARGET_COPYRIGHT}
+        # If you are putting anything after these, make sure that
+        # qt_set_target_info_properties knows how to process them
     )
     qt_internal_add_target_aliases("${target_name}")
     _qt_internal_apply_strict_cpp("${target_name}")
     qt_internal_adjust_main_config_runtime_output_dir("${target_name}" "${output_dir}")
+
+    if (WIN32)
+        _qt_internal_generate_longpath_win32_rc_file_and_manifest("${target_name}")
+    endif()
 
     set_target_properties(${target_name} PROPERTIES
         _qt_package_version "${PROJECT_VERSION}"
@@ -312,15 +226,68 @@ function(qt_internal_add_tool target_name)
         endforeach()
 
         if(arg_INSTALL_VERSIONED_LINK)
-            qt_internal_install_versioned_link("${install_dir}" "${target_name}")
+            qt_internal_install_versioned_link(WORKING_DIRECTORY "${install_dir}"
+            TARGETS "${target_name}")
         endif()
 
         qt_apply_rpaths(TARGET "${target_name}" INSTALL_PATH "${install_dir}" RELATIVE_RPATH)
         qt_internal_apply_staging_prefix_build_rpath_workaround()
     endif()
 
+    if(arg_TRY_RUN AND WIN32 AND NOT CMAKE_CROSSCOMPILING)
+        if(NOT arg_TRY_RUN_FLAGS)
+            set(arg_TRY_RUN_FLAGS "-v")
+        endif()
+        _qt_internal_add_try_run_post_build("${target_name}" "${arg_TRY_RUN_FLAGS}")
+    endif()
+
     qt_enable_separate_debug_info(${target_name} "${install_dir}" QT_EXECUTABLE)
     qt_internal_install_pdb_files(${target_name} "${install_dir}")
+endfunction()
+
+function(_qt_internal_add_try_run_post_build target try_run_flags)
+    qt_internal_get_upper_case_main_cmake_configuration(main_cmake_configuration)
+    get_target_property(target_out_dir ${target}
+                        RUNTIME_OUTPUT_DIRECTORY_${main_cmake_configuration})
+    get_target_property(target_bin_dir ${target}
+                        BINARY_DIR)
+
+    set(try_run_scripts_path "${target_bin_dir}/${target}_try_run.bat")
+    # The only reason -h is passed is because some of the tools, e.g., moc
+    # wait for an input without any arguments.
+
+    qt_configure_file(OUTPUT "${try_run_scripts_path}"
+        CONTENT "@echo off
+
+${target_out_dir}/${target}.exe ${try_run_flags} > nul 2>&1
+
+if \"%errorlevel%\" == \"-1073741515\" (
+echo
+echo     '${target}' is built successfully, but some of the libraries
+echo     necessary for running it are missing. If you are building Qt with
+echo     3rdparty libraries, make sure that you add their directory to the
+echo     PATH environment variable.
+echo
+exit /b %errorlevel%
+)
+echo. > ${target_bin_dir}/${target}_try_run_passed"
+        )
+
+    add_custom_command(
+        OUTPUT
+            ${target_bin_dir}/${target}_try_run_passed
+        DEPENDS
+            ${target}
+        COMMAND
+            ${CMAKE_COMMAND} -E env QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES=1
+            ${try_run_scripts_path}
+        COMMENT
+            "Testing ${target} by trying to run it."
+        VERBATIM
+    )
+
+    add_custom_target(${target}_try_run ALL
+                      DEPENDS ${target_bin_dir}/${target}_try_run_passed)
 endfunction()
 
 function(qt_export_tools module_name)
@@ -382,7 +349,7 @@ function(qt_export_tools module_name)
             string(REGEX REPLACE "_native$" "" tool_name ${tool_name})
         endif()
         set(extra_cmake_statements "${extra_cmake_statements}
-if (NOT QT_NO_CREATE_TARGETS)
+if(NOT QT_NO_CREATE_TARGETS AND ${INSTALL_CMAKE_NAMESPACE}${target}_FOUND)
     __qt_internal_promote_target_to_global(${INSTALL_CMAKE_NAMESPACE}::${tool_name})
 endif()
 ")
@@ -574,5 +541,209 @@ function(qt_exclude_tool_directories_from_default_target)
             list(APPEND absolute_path_directories "${CMAKE_CURRENT_SOURCE_DIR}/${directory}")
         endforeach()
         set(__qt_exclude_tool_directories "${absolute_path_directories}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(qt_internal_find_tool out_var target_name tools_target)
+    qt_tool_target_to_name(name ${target_name})
+
+    # Handle case when a tool does not belong to a module and it can't be built either (like
+    # during a cross-compile).
+    if(NOT tools_target AND NOT QT_WILL_BUILD_TOOLS)
+        message(FATAL_ERROR "The tool \"${name}\" has not been assigned to a module via"
+                            " TOOLS_TARGET (so it can't be found) and it can't be built"
+                            " (QT_WILL_BUILD_TOOLS is ${QT_WILL_BUILD_TOOLS}).")
+    endif()
+
+    if(QT_WILL_RENAME_TOOL_TARGETS AND (name STREQUAL target_name))
+        message(FATAL_ERROR
+            "qt_internal_add_tool must be passed a target obtained from qt_get_tool_target_name.")
+    endif()
+
+    set(full_name "${QT_CMAKE_EXPORT_NAMESPACE}::${name}")
+    set(imported_tool_target_already_found FALSE)
+
+    # This condition can only be TRUE if a previous find_package(Qt6${tools_target}Tools)
+    # was already done. That can happen if QT_FORCE_FIND_TOOLS was ON or we're cross-compiling.
+    # In such a case, we need to exit early if we're not going to also build the tools.
+    if(TARGET ${full_name})
+        get_property(path TARGET ${full_name} PROPERTY LOCATION)
+        message(STATUS "Tool '${full_name}' was found at ${path}.")
+        set(imported_tool_target_already_found TRUE)
+        if(NOT QT_WILL_BUILD_TOOLS)
+            set(${out_var} "FALSE" PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+
+    # We need to search for the host Tools package when doing a cross-build
+    # or when QT_FORCE_FIND_TOOLS is ON.
+    # As an optimiziation, we don't search for the package one more time if the target
+    # was already brought into scope from a previous find_package.
+    set(search_for_host_package FALSE)
+    if(NOT QT_WILL_BUILD_TOOLS OR QT_WILL_RENAME_TOOL_TARGETS)
+        set(search_for_host_package TRUE)
+    endif()
+    if(search_for_host_package AND NOT imported_tool_target_already_found)
+        set(tools_package_name "${INSTALL_CMAKE_NAMESPACE}${tools_target}Tools")
+        message(STATUS "Searching for tool '${full_name}' in package ${tools_package_name}.")
+
+        # Create the tool targets, even if QT_NO_CREATE_TARGETS is set.
+        # Otherwise targets like Qt6::moc are not available in a top-level cross-build.
+        set(BACKUP_QT_NO_CREATE_TARGETS ${QT_NO_CREATE_TARGETS})
+        set(QT_NO_CREATE_TARGETS OFF)
+
+        # When cross-compiling, we want to search for Tools packages in QT_HOST_PATH.
+        # To do that, we override CMAKE_PREFIX_PATH and CMAKE_FIND_ROOT_PATH.
+        #
+        # We don't use find_package + PATHS option because any recursive find_dependency call
+        # inside a Tools package would not inherit the initial PATHS value given.
+        # TODO: Potentially we could set a global __qt_cmake_host_dir var like we currently
+        # do with _qt_cmake_dir in Qt6Config and change all our host tool find_package calls
+        # everywhere to specify that var in PATHS.
+        #
+        # Note though that due to path rerooting issue in
+        # https://gitlab.kitware.com/cmake/cmake/-/issues/21937
+        # we have to append a lib/cmake suffix to CMAKE_PREFIX_PATH so the value does not get
+        # rerooted on top of CMAKE_FIND_ROOT_PATH.
+        # Use QT_HOST_PATH_CMAKE_DIR for the suffix when available (it would be set by
+        # the qt.toolchain.cmake file when building other repos or given by the user when
+        # configuring qtbase) or derive it from from the Qt6HostInfo package which is
+        # found in QtSetup.
+        set(${tools_package_name}_BACKUP_CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH})
+        set(${tools_package_name}_BACKUP_CMAKE_FIND_ROOT_PATH "${CMAKE_FIND_ROOT_PATH}")
+        if(QT_HOST_PATH_CMAKE_DIR)
+            set(qt_host_path_cmake_dir_absolute "${QT_HOST_PATH_CMAKE_DIR}")
+        elseif(Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR)
+            get_filename_component(qt_host_path_cmake_dir_absolute
+                "${Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR}/.." ABSOLUTE)
+        else()
+            # This should never happen, serves as an assert.
+            message(FATAL_ERROR
+                "Neither QT_HOST_PATH_CMAKE_DIR nor "
+                "Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR available.")
+        endif()
+        set(CMAKE_PREFIX_PATH "${qt_host_path_cmake_dir_absolute}")
+
+        # Look for tools in additional host Qt installations. This is done for conan support where
+        # we have separate installation prefixes per package. For simplicity, we assume here that
+        # all host Qt installations use the same value of INSTALL_LIBDIR.
+        if(DEFINED QT_ADDITIONAL_HOST_PACKAGES_PREFIX_PATH)
+            file(RELATIVE_PATH rel_host_cmake_dir "${QT_HOST_PATH}"
+                "${qt_host_path_cmake_dir_absolute}")
+            foreach(host_path IN LISTS QT_ADDITIONAL_HOST_PACKAGES_PREFIX_PATH)
+                set(host_cmake_dir "${host_path}/${rel_host_cmake_dir}")
+                list(PREPEND CMAKE_PREFIX_PATH "${host_cmake_dir}")
+            endforeach()
+
+            list(PREPEND CMAKE_FIND_ROOT_PATH "${QT_ADDITIONAL_HOST_PACKAGES_PREFIX_PATH}")
+        endif()
+        list(PREPEND CMAKE_FIND_ROOT_PATH "${QT_HOST_PATH}")
+
+        find_package(
+            ${tools_package_name}
+            ${PROJECT_VERSION}
+            NO_PACKAGE_ROOT_PATH
+            NO_CMAKE_ENVIRONMENT_PATH
+            NO_SYSTEM_ENVIRONMENT_PATH
+            NO_CMAKE_PACKAGE_REGISTRY
+            NO_CMAKE_SYSTEM_PATH
+            NO_CMAKE_SYSTEM_PACKAGE_REGISTRY)
+
+        # Restore backups.
+        set(CMAKE_FIND_ROOT_PATH "${${tools_package_name}_BACKUP_CMAKE_FIND_ROOT_PATH}")
+        set(CMAKE_PREFIX_PATH "${${tools_package_name}_BACKUP_CMAKE_PREFIX_PATH}")
+        set(QT_NO_CREATE_TARGETS ${BACKUP_QT_NO_CREATE_TARGETS})
+
+        if(${${tools_package_name}_FOUND} AND TARGET ${full_name})
+            # Even if the tool is already visible, make sure that our modules remain associated
+            # with the tools.
+            qt_internal_append_known_modules_with_tools("${tools_target}")
+            get_property(path TARGET ${full_name} PROPERTY LOCATION)
+            message(STATUS "${full_name} was found at ${path} using package ${tools_package_name}.")
+            if (NOT QT_FORCE_BUILD_TOOLS)
+                set(${out_var} "FALSE" PARENT_SCOPE)
+                return()
+            endif()
+        endif()
+    endif()
+
+    if(NOT QT_WILL_BUILD_TOOLS)
+        if(${${tools_package_name}_FOUND})
+            set(pkg_found_msg "")
+            string(APPEND pkg_found_msg
+                "the ${tools_package_name} package, but the package did not contain the tool. "
+                "Make sure that the host module ${tools_target} was built with all features "
+                "enabled (no explicitly disabled tools).")
+        else()
+            set(pkg_found_msg "")
+            string(APPEND pkg_found_msg
+                "the ${tools_package_name} package, but the package could not be found. "
+                "Make sure you have built and installed the host ${tools_target} module, "
+                "which will ensure the creation of the ${tools_package_name} package.")
+        endif()
+        message(FATAL_ERROR
+            "Failed to find the host tool \"${full_name}\". It is part of "
+            ${pkg_found_msg})
+    else()
+        message(STATUS "Tool '${full_name}' will be built from source.")
+    endif()
+    set(${out_var} "TRUE" PARENT_SCOPE)
+endfunction()
+
+# This function adds an internal tool that should be compiled at configure time.
+#     TOOLS_TARGET
+#         Specifies the module this tool belongs to. The Qt6${TOOLS_TARGET}Tools module
+#         will then expose targets for this tool. Ignored if NO_INSTALL is set.
+function(qt_internal_add_configure_time_tool target_name)
+    set(one_value_args INSTALL_DIRECTORY TOOLS_TARGET CONFIG)
+    set(multi_value_args)
+    set(option_args NO_INSTALL)
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+        "${option_args}" "${one_value_args}" "${multi_value_args}")
+
+    qt_internal_find_tool(will_build_tools ${target_name} "${arg_TOOLS_TARGET}")
+    if(NOT will_build_tools)
+        return()
+    endif()
+
+    qt_tool_target_to_name(name ${target_name})
+    set(extra_args "")
+    if(arg_NO_INSTALL OR NOT arg_TOOLS_TARGET)
+        list(APPEND extra_args "NO_INSTALL")
+    else()
+        set(install_dir "${INSTALL_BINDIR}")
+        if(arg_INSTALL_DIRECTORY)
+            set(install_dir "${arg_INSTALL_DIRECTORY}")
+        endif()
+        set(extra_args "INSTALL_DIRECTORY" "${install_dir}")
+    endif()
+
+    if(arg_CONFIG)
+        set(tool_config "${arg_CONFIG}")
+    elseif(QT_MULTI_CONFIG_FIRST_CONFIG)
+        set(tool_config "${arg_QT_MULTI_CONFIG_FIRST_CONFIG}")
+    else()
+        set(tool_config "${CMAKE_BUILD_TYPE}")
+    endif()
+
+    string(REPLACE "\\\;" "\\\\\\\;" unparsed_arguments "${arg_UNPARSED_ARGUMENTS}")
+    qt_internal_add_configure_time_executable(${target_name}
+        OUTPUT_NAME ${name}
+        CONFIG ${tool_config}
+        ${extra_args}
+        ${unparsed_arguments}
+    )
+
+    if(TARGET host_tools)
+        add_dependencies(host_tools "${target_name}_build")
+    endif()
+
+    if(NOT arg_NO_INSTALL AND arg_TOOLS_TARGET)
+        qt_internal_add_targets_to_additional_targets_export_file(
+            TARGETS ${target_name}
+            TARGET_EXPORT_NAMES ${QT_CMAKE_EXPORT_NAMESPACE}::${name}
+            EXPORT_NAME_PREFIX ${INSTALL_CMAKE_NAMESPACE}${arg_TOOLS_TARGET}Tools
+        )
     endif()
 endfunction()

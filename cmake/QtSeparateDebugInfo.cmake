@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 include(CMakeFindBinUtils)
 
 if(CMAKE_VERSION VERSION_LESS 3.17.0)
@@ -198,7 +201,11 @@ endfunction()
 # Enable separate debug information for the given target
 function(qt_enable_separate_debug_info target installDestination)
     set(flags QT_EXECUTABLE)
-    set(options)
+    if(APPLE)
+      set(options DSYM_OUTPUT_DIR)
+    else()
+      set(options)
+    endif()
     set(multiopts ADDITIONAL_INSTALL_ARGS)
     cmake_parse_arguments(arg "${flags}" "${options}" "${multiopts}" ${ARGN})
 
@@ -245,12 +252,20 @@ function(qt_enable_separate_debug_info target installDestination)
         get_target_property(is_framework ${target} FRAMEWORK)
         if(is_framework)
             qt_internal_get_framework_info(fw ${target})
-            set(debug_info_bundle_dir "$<TARGET_BUNDLE_DIR:${target}>.${debug_info_suffix}")
             set(BUNDLE_ID ${fw_name})
         else()
-            set(debug_info_bundle_dir "$<TARGET_FILE:${target}>.${debug_info_suffix}")
             set(BUNDLE_ID ${target})
         endif()
+
+        if (NOT "x${arg_DSYM_OUTPUT_DIR}" STREQUAL "x")
+            set(debug_info_bundle_dir "${arg_DSYM_OUTPUT_DIR}/${target}")
+        elseif(is_framework)
+            set(debug_info_bundle_dir "$<TARGET_BUNDLE_DIR:${target}>")
+        else()
+            set(debug_info_bundle_dir "$<TARGET_FILE:${target}>")
+        endif()
+        set(debug_info_bundle_dir "${debug_info_bundle_dir}.${debug_info_suffix}")
+
         set(debug_info_contents_dir "${debug_info_bundle_dir}/Contents")
         set(debug_info_target_dir "${debug_info_contents_dir}/Resources/DWARF")
         configure_file(

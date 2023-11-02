@@ -5,11 +5,11 @@
 #ifndef QHASH_H
 #define QHASH_H
 
+#include <QtCore/qalgorithms.h>
 #include <QtCore/qcontainertools_impl.h>
 #include <QtCore/qhashfunctions.h>
 #include <QtCore/qiterator.h>
 #include <QtCore/qlist.h>
-#include <QtCore/qmath.h>
 #include <QtCore/qrefcount.h>
 
 #include <initializer_list>
@@ -172,7 +172,7 @@ struct MultiNode
 
     MultiNode(MultiNode &&other)
         : key(other.key),
-          value(qExchange(other.value, nullptr))
+          value(std::exchange(other.value, nullptr))
     {
     }
 
@@ -203,7 +203,7 @@ struct MultiNode
     void insertMulti(Args &&... args)
     {
         Chain *e = new Chain{ T(std::forward<Args>(args)...), nullptr };
-        e->next = qExchange(value, e);
+        e->next = std::exchange(value, e);
     }
     template<typename ...Args>
     void emplaceValue(Args &&... args)
@@ -414,28 +414,25 @@ struct Span {
 
 // QHash uses a power of two growth policy.
 namespace GrowthPolicy {
-inline constexpr size_t maxNumBuckets() noexcept
-{
-    // ensure the size of a Span does not depend on the template parameters
-    using Node1 = Node<int, int>;
-    using Node2 = Node<char, void *>;
-    using Node3 = Node<qsizetype, QHashDummyValue>;
-    static_assert(sizeof(Span<Node1>) == sizeof(Span<Node2>));
-    static_assert(sizeof(Span<Node1>) == sizeof(Span<Node3>));
-
-    // Maximum is 2^31-1 or 2^63-1 bytes (limited by qsizetype and ptrdiff_t)
-    size_t max = (std::numeric_limits<ptrdiff_t>::max)();
-    return max / sizeof(Span<Node1>) * SpanConstants::NEntries;
-}
 inline constexpr size_t bucketsForCapacity(size_t requestedCapacity) noexcept
 {
+    constexpr int SizeDigits = std::numeric_limits<size_t>::digits;
+
     // We want to use at minimum a full span (128 entries), so we hardcode it for any requested
     // capacity <= 64. Any capacity above that gets rounded to a later power of two.
     if (requestedCapacity <= 64)
         return SpanConstants::NEntries;
-    if (requestedCapacity >= maxNumBuckets())
-        return maxNumBuckets();
-    return qNextPowerOfTwo(QIntegerForSize<sizeof(size_t)>::Unsigned(2 * requestedCapacity - 1));
+
+    // Same as
+    //    qNextPowerOfTwo(2 * requestedCapacity);
+    //
+    // but ensuring neither our multiplication nor the function overflow.
+    // Additionally, the maximum memory allocation is 2^31-1 or 2^63-1 bytes
+    // (limited by qsizetype and ptrdiff_t).
+    int count = qCountLeadingZeroBits(requestedCapacity);
+    if (count < 2)
+        return (std::numeric_limits<size_t>::max)();    // will cause std::bad_alloc
+    return size_t(1) << (SizeDigits - count + 1);
 }
 inline constexpr size_t bucketForHash(size_t nBuckets, size_t hash) noexcept
 {
@@ -459,6 +456,11 @@ struct Data
     size_t numBuckets = 0;
     size_t seed = 0;
     Span *spans = nullptr;
+
+    static constexpr size_t maxNumBuckets() noexcept
+    {
+        return (std::numeric_limits<ptrdiff_t>::max)() / sizeof(Span);
+    }
 
     struct Bucket {
         Span *span;
@@ -529,11 +531,29 @@ struct Data
         }
     };
 
+    static auto allocateSpans(size_t numBuckets)
+    {
+        struct R {
+            Span *spans;
+            size_t nSpans;
+        };
+
+        constexpr qptrdiff MaxSpanCount = (std::numeric_limits<qptrdiff>::max)() / sizeof(Span);
+        constexpr size_t MaxBucketCount = MaxSpanCount << SpanConstants::SpanShift;
+
+        if (numBuckets > MaxBucketCount) {
+            Q_CHECK_PTR(false);
+            Q_UNREACHABLE();    // no exceptions and no assertions -> no error reporting
+        }
+
+        size_t nSpans = numBuckets >> SpanConstants::SpanShift;
+        return R{ new Span[nSpans], nSpans };
+    }
+
     Data(size_t reserve = 0)
     {
         numBuckets = GrowthPolicy::bucketsForCapacity(reserve);
-        size_t nSpans = numBuckets >> SpanConstants::SpanShift;
-        spans = new Span[nSpans];
+        spans = allocateSpans(numBuckets).spans;
         seed = QHashSeed::globalSeed();
     }
 
@@ -555,15 +575,14 @@ struct Data
 
     Data(const Data &other) : size(other.size), numBuckets(other.numBuckets), seed(other.seed)
     {
-        size_t nSpans = numBuckets >> SpanConstants::SpanShift;
-        spans = new Span[nSpans];
-        reallocationHelper(other, nSpans, false);
+        auto r = allocateSpans(numBuckets);
+        spans = r.spans;
+        reallocationHelper(other, r.nSpans, false);
     }
     Data(const Data &other, size_t reserved) : size(other.size), seed(other.seed)
     {
         numBuckets = GrowthPolicy::bucketsForCapacity(qMax(size, reserved));
-        size_t nSpans = numBuckets >> SpanConstants::SpanShift;
-        spans = new Span[nSpans];
+        spans = allocateSpans(numBuckets).spans;
         size_t otherNSpans = other.numBuckets >> SpanConstants::SpanShift;
         reallocationHelper(other, otherNSpans, true);
     }
@@ -621,8 +640,7 @@ struct Data
 
         Span *oldSpans = spans;
         size_t oldBucketCount = numBuckets;
-        size_t nSpans = newBucketCount >> SpanConstants::SpanShift;
-        spans = new Span[nSpans];
+        spans = allocateSpans(newBucketCount).spans;
         numBuckets = newBucketCount;
         size_t oldNSpans = oldBucketCount >> SpanConstants::SpanShift;
 
@@ -681,22 +699,10 @@ struct Data
 
     Node *findNode(const Key &key) const noexcept
     {
-        Q_ASSERT(numBuckets > 0);
-        size_t hash = QHashPrivate::calculateHash(key, seed);
-        Bucket bucket(this, GrowthPolicy::bucketForHash(numBuckets, hash));
-        // loop over the buckets until we find the entry we search for
-        // or an empty slot, in which case we know the entry doesn't exist
-        while (true) {
-            size_t offset = bucket.offset();
-            if (offset == SpanConstants::UnusedEntry) {
-                return nullptr;
-            } else {
-                Node &n = bucket.nodeAtOffset(offset);
-                if (qHashEquals(n.key, key))
-                    return &n;
-            }
-            bucket.advanceWrapped(this);
-        }
+        auto bucket = findBucket(key);
+        if (bucket.isUnused())
+            return nullptr;
+        return bucket.node();
     }
 
     struct InsertionResult
@@ -891,7 +897,7 @@ public:
 #endif
     void swap(QHash &other) noexcept { qt_ptr_swap(d, other.d); }
 
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
     template <typename AKey = Key, typename AT = T>
     QTypeTraits::compare_eq_result_container<QHash, AKey, AT> operator==(const QHash &other) const noexcept
     {
@@ -914,7 +920,7 @@ public:
 #else
     bool operator==(const QHash &other) const;
     bool operator!=(const QHash &other) const;
-#endif // Q_CLANG_QDOC
+#endif // Q_QDOC
 
     inline qsizetype size() const noexcept { return d ? qsizetype(d->size) : 0; }
     inline bool isEmpty() const noexcept { return !d || d->size == 0; }
@@ -1318,7 +1324,7 @@ public:
     float load_factor() const noexcept { return d ? d->loadFactor() : 0; }
     static float max_load_factor() noexcept { return 0.5; }
     size_t bucket_count() const noexcept { return d ? d->numBuckets : 0; }
-    static size_t max_bucket_count() noexcept { return QHashPrivate::GrowthPolicy::maxNumBuckets(); }
+    static size_t max_bucket_count() noexcept { return Data::maxNumBuckets(); }
 
     inline bool empty() const noexcept { return isEmpty(); }
 
@@ -1412,8 +1418,8 @@ public:
         return *this;
     }
     QMultiHash(QMultiHash &&other) noexcept
-        : d(qExchange(other.d, nullptr)),
-          m_size(qExchange(other.m_size, 0))
+        : d(std::exchange(other.d, nullptr)),
+          m_size(std::exchange(other.m_size, 0))
     {
     }
     QMultiHash &operator=(QMultiHash &&other) noexcept(std::is_nothrow_destructible<Node>::value)
@@ -1438,7 +1444,7 @@ public:
         std::swap(m_size, other.m_size);
     }
 
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
     template <typename AKey = Key, typename AT = T>
     QTypeTraits::compare_eq_result_container<QMultiHash, AKey, AT> operator==(const QMultiHash &other) const noexcept
     {
@@ -1479,7 +1485,7 @@ public:
 #else
     bool operator==(const QMultiHash &other) const;
     bool operator!=(const QMultiHash &other) const;
-#endif // Q_CLANG_QDOC
+#endif // Q_QDOC
 
     inline qsizetype size() const noexcept { return m_size; }
 
@@ -1630,8 +1636,10 @@ public:
         detach();
         auto result = d->findOrInsert(key);
         Q_ASSERT(!result.it.atEnd());
-        if (!result.initialized)
+        if (!result.initialized) {
             Node::createInPlace(result.it.node(), key, T());
+            ++m_size;
+        }
         return result.it.node()->value->value;
     }
 
@@ -1948,7 +1956,7 @@ public:
     float load_factor() const noexcept { return d ? d->loadFactor() : 0; }
     static float max_load_factor() noexcept { return 0.5; }
     size_t bucket_count() const noexcept { return d ? d->numBuckets : 0; }
-    static size_t max_bucket_count() noexcept { return QHashPrivate::GrowthPolicy::maxNumBuckets(); }
+    static size_t max_bucket_count() noexcept { return Data::maxNumBuckets(); }
 
     inline bool empty() const noexcept { return isEmpty(); }
 

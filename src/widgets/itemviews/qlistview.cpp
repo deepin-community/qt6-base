@@ -88,7 +88,7 @@ extern bool qt_sendSpontaneousEvent(QObject *receiver, QEvent *event);
     that can be taken for views that are intended to display items with equal sizes
     is to set the \l uniformItemSizes property to true.
 
-    \sa {View Classes}, {Item Views Puzzle Example}, QTreeView, QTableView, QListWidget
+    \sa {View Classes}, QTreeView, QTableView, QListWidget
 */
 
 /*!
@@ -910,7 +910,8 @@ void QListView::dropEvent(QDropEvent *event)
                 bool dataMoved = false;
                 for (int i = 0; i < persIndexes.size(); ++i) {
                     const QPersistentModelIndex &pIndex = persIndexes.at(i);
-                    if (r != pIndex.row()) {
+                    // only generate a move when not same row or behind itself
+                    if (r != pIndex.row() && r != pIndex.row() + 1) {
                         // try to move (preserves selection)
                         dataMoved |= model()->moveRow(QModelIndex(), pIndex.row(), QModelIndex(), r);
                         if (!dataMoved) // can't move - abort and let QAbstractItemView handle this
@@ -1621,6 +1622,12 @@ void QListView::setModelColumn(int column)
         return;
     d->column = column;
     d->doDelayedItemsLayout();
+#if QT_CONFIG(accessibility)
+    if (QAccessible::isActive()) {
+        QAccessibleTableModelChangeEvent event(this, QAccessibleTableModelChangeEvent::ModelReset);
+        QAccessible::updateAccessibility(&event);
+    }
+#endif
 }
 
 int QListView::modelColumn() const

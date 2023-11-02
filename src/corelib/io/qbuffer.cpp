@@ -267,16 +267,31 @@ void QBuffer::setData(const QByteArray &data)
 }
 
 /*!
-    \fn void QBuffer::setData(const char *data, int size)
-
     \overload
 
     Sets the contents of the internal buffer to be the first \a size
     bytes of \a data.
+
+    \note In Qt versions prior to 6.5, this function took the length as
+    an \c{int} parameter, potentially truncating sizes.
 */
+void QBuffer::setData(const char *data, qsizetype size)
+{
+    Q_D(QBuffer);
+    if (isOpen()) {
+        qWarning("QBuffer::setData: Buffer is open");
+        return;
+    }
+    d->buf->replace(qsizetype(0), d->buf->size(), // ### QByteArray lacks assign(ptr, n)
+                    data, size);
+}
 
 /*!
    \reimp
+
+   Unlike QFile, opening a QBuffer QIODevice::WriteOnly does not truncate it.
+   However, pos() is set to 0. Use QIODevice::Append or QIODevice::Truncate to
+   change either behavior.
 */
 bool QBuffer::open(OpenMode flags)
 {

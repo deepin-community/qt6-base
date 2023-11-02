@@ -2,14 +2,15 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <QtCore/qglobal.h>
+#ifndef QTYPEINFO_H
+#define QTYPEINFO_H
+
+#include <QtCore/qcompilerdetection.h>
 #include <QtCore/qcontainerfwd.h>
+
 #include <variant>
 #include <optional>
 #include <tuple>
-
-#ifndef QTYPEINFO_H
-#define QTYPEINFO_H
 
 QT_BEGIN_NAMESPACE
 
@@ -19,8 +20,22 @@ class QDebug;
    QTypeInfo     - type trait functionality
 */
 
+namespace QtPrivate {
+
 template <typename T>
 inline constexpr bool qIsRelocatable =  std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>;
+
+// Denotes types that are trivially default constructible, and for which
+// value-initialization can be achieved by filling their storage with 0 bits.
+// There is no type trait we can use for this, so we hardcode a list of
+// possibilities that we know are OK on the architectures that we support.
+// The most notable exception are pointers to data members, which for instance
+// on the Itanium ABI are initialized to -1.
+template <typename T>
+inline constexpr bool qIsValueInitializationBitwiseZero =
+        std::is_scalar_v<T> && !std::is_member_object_pointer_v<T>;
+
+}
 
 /*
   The catch-all template.
@@ -31,10 +46,11 @@ class QTypeInfo
 {
 public:
     enum {
-        isPointer = std::is_pointer_v<T>,
-        isIntegral = std::is_integral_v<T>,
+        isPointer [[deprecated("Use std::is_pointer instead")]] = std::is_pointer_v<T>,
+        isIntegral [[deprecated("Use std::is_integral instead")]] = std::is_integral_v<T>,
         isComplex = !std::is_trivial_v<T>,
-        isRelocatable = qIsRelocatable<T>,
+        isRelocatable = QtPrivate::qIsRelocatable<T>,
+        isValueInitializationBitwiseZero = QtPrivate::qIsValueInitializationBitwiseZero<T>,
     };
 };
 
@@ -43,10 +59,11 @@ class QTypeInfo<void>
 {
 public:
     enum {
-        isPointer = false,
-        isIntegral = false,
+        isPointer [[deprecated("Use std::is_pointer instead")]] = false,
+        isIntegral [[deprecated("Use std::is_integral instead")]] = false,
         isComplex = false,
         isRelocatable = false,
+        isValueInitializationBitwiseZero = false,
     };
 };
 
@@ -77,9 +94,16 @@ class QTypeInfoMerger
 public:
     static constexpr bool isComplex = ((QTypeInfo<Ts>::isComplex) || ...);
     static constexpr bool isRelocatable = ((QTypeInfo<Ts>::isRelocatable) && ...);
-    static constexpr bool isPointer = false;
-    static constexpr bool isIntegral = false;
+    [[deprecated("Use std::is_pointer instead")]] static constexpr bool isPointer = false;
+    [[deprecated("Use std::is_integral instead")]] static constexpr bool isIntegral = false;
+    static constexpr bool isValueInitializationBitwiseZero = false;
 };
+
+// QTypeInfo for std::pair:
+//   std::pair is spec'ed to be struct { T1 first; T2 second; }, so, unlike tuple<>,
+//   we _can_ specialize QTypeInfo for pair<>:
+template <class T1, class T2>
+class QTypeInfo<std::pair<T1, T2>> : public QTypeInfoMerger<std::pair<T1, T2>, T1, T2> {};
 
 #define Q_DECLARE_MOVABLE_CONTAINER(CONTAINER) \
 template <typename ...T> \
@@ -87,10 +111,11 @@ class QTypeInfo<CONTAINER<T...>> \
 { \
 public: \
     enum { \
-        isPointer = false, \
-        isIntegral = false, \
+        isPointer [[deprecated("Use std::is_pointer instead")]] = false, \
+        isIntegral [[deprecated("Use std::is_integral instead")]] = false, \
         isComplex = true, \
         isRelocatable = true, \
+        isValueInitializationBitwiseZero = false, \
     }; \
 }
 
@@ -128,9 +153,10 @@ class QTypeInfo<TYPE > \
 public: \
     enum { \
         isComplex = (((FLAGS) & Q_PRIMITIVE_TYPE) == 0) && !std::is_trivial_v<TYPE>, \
-        isRelocatable = !isComplex || ((FLAGS) & Q_RELOCATABLE_TYPE) || qIsRelocatable<TYPE>, \
-        isPointer = false, \
-        isIntegral = std::is_integral< TYPE >::value, \
+        isRelocatable = !isComplex || ((FLAGS) & Q_RELOCATABLE_TYPE) || QtPrivate::qIsRelocatable<TYPE>, \
+        isPointer [[deprecated("Use std::is_pointer instead")]] = std::is_pointer_v< TYPE >, \
+        isIntegral [[deprecated("Use std::is_integral instead")]] = std::is_integral< TYPE >::value, \
+        isValueInitializationBitwiseZero = QtPrivate::qIsValueInitializationBitwiseZero<TYPE>, \
     }; \
 }
 
@@ -142,23 +168,6 @@ Q_DECLARE_TYPEINFO_BODY(TYPE, FLAGS)
 template<typename T> class QFlags;
 template<typename T>
 Q_DECLARE_TYPEINFO_BODY(QFlags<T>, Q_PRIMITIVE_TYPE);
-
-/*
-   Specialize a shared type with:
-
-     Q_DECLARE_SHARED(type)
-
-   where 'type' is the name of the type to specialize.  NOTE: shared
-   types must define a member-swap, and be defined in the same
-   namespace as Qt for this to work.
-*/
-
-#define Q_DECLARE_SHARED_IMPL(TYPE, FLAGS) \
-Q_DECLARE_TYPEINFO(TYPE, FLAGS); \
-inline void swap(TYPE &value1, TYPE &value2) \
-    noexcept(noexcept(value1.swap(value2))) \
-{ value1.swap(value2); }
-#define Q_DECLARE_SHARED(TYPE) Q_DECLARE_SHARED_IMPL(TYPE, Q_RELOCATABLE_TYPE)
 
 namespace QTypeTraits
 {
@@ -228,7 +237,7 @@ using expand_operator_equal_recursive = std::conjunction<expand_operator_equal<T
 template<typename T>
 struct expand_operator_equal_tuple : has_operator_equal<T> {};
 template<typename T>
-struct expand_operator_equal_tuple<std::optional<T>> : has_operator_equal<T> {};
+struct expand_operator_equal_tuple<std::optional<T>> : expand_operator_equal_recursive<T> {};
 template<typename T1, typename T2>
 struct expand_operator_equal_tuple<std::pair<T1, T2>> : expand_operator_equal_recursive<T1, T2> {};
 template<typename ...T>
@@ -268,7 +277,7 @@ using expand_operator_less_than_recursive = std::conjunction<expand_operator_les
 template<typename T>
 struct expand_operator_less_than_tuple : has_operator_less_than<T> {};
 template<typename T>
-struct expand_operator_less_than_tuple<std::optional<T>> : has_operator_less_than<T> {};
+struct expand_operator_less_than_tuple<std::optional<T>> : expand_operator_less_than_recursive<T> {};
 template<typename T1, typename T2>
 struct expand_operator_less_than_tuple<std::pair<T1, T2>> : expand_operator_less_than_recursive<T1, T2> {};
 template<typename ...T>

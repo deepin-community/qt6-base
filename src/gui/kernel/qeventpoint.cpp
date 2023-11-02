@@ -339,7 +339,7 @@ ulong QEventPoint::pressTimestamp() const
 
 /*!
     \property QEventPoint::timeHeld
-    \brief the duration, in milliseconds, since this point was pressed and not released.
+    \brief the duration, in seconds, since this point was pressed and not released.
 
     \sa pressTimestamp, timestamp
 */
@@ -536,6 +536,7 @@ void QMutableEventPoint::update(const QEventPoint &other, QEventPoint &target)
     setEllipseDiameters(target, other.ellipseDiameters());
     setRotation(target, other.rotation());
     setVelocity(target, other.velocity());
+    setUniqueId(target, other.uniqueId()); // for TUIO
 }
 
 /*! \internal

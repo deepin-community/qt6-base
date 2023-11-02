@@ -18,7 +18,7 @@
 #endif
 #include <stdio.h>
 #include <stdlib.h>
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_DARWIN)
 # include <private/qcore_mac_p.h>
 #endif
 
@@ -328,7 +328,7 @@ bool QFSFileEnginePrivate::openFd(QIODevice::OpenMode openMode, int fd)
 
     // Seek to the end when in Append mode.
     if (openMode & QFile::Append) {
-        int ret;
+        QT_OFF_T ret;
         do {
             ret = QT_LSEEK(fd, 0, SEEK_END);
         } while (ret == -1 && errno == EINTR);

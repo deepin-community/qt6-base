@@ -4,6 +4,7 @@
 #include <QtOpenGLWidgets/QOpenGLWidget>
 #include <QtGui/QOpenGLFunctions>
 #include <QtGui/QPainter>
+#include <QtGui/QBackingStore>
 #include <QtGui/QScreen>
 #include <QtGui/QStaticText>
 #include <QtWidgets/QGraphicsView>
@@ -21,7 +22,9 @@
 #include <private/qopengltextureglyphcache_p.h>
 #include <qpa/qplatformintegration.h>
 #include <private/qguiapplication_p.h>
+#include <qpa/qplatformbackingstore.h>
 #include <qpa/qplatformintegration.h>
+#include <rhi/qrhi.h>
 
 class tst_QOpenGLWidget : public QObject
 {
@@ -33,6 +36,9 @@ private slots:
     void clearAndGrab();
     void clearAndResizeAndGrab();
     void createNonTopLevel();
+#if QT_CONFIG(egl)
+    void deviceLoss();
+#endif
     void painter();
     void reparentToAlreadyCreated();
     void reparentToNotYetCreated();
@@ -189,6 +195,45 @@ void tst_QOpenGLWidget::createNonTopLevel()
     QVERIFY(QOpenGLContext::currentContext() == glw->context() && glw->context());
 }
 
+#if QT_CONFIG(egl)
+void tst_QOpenGLWidget::deviceLoss()
+{
+    QScopedPointer<QOpenGLWidget> w(new ClearWidget(0, 640, 480));
+
+    w->resize(640, 480);
+    w->show();
+
+    auto rhi = w->backingStore()->handle()->rhi();
+    QNativeInterface::QEGLContext *rhiContext = nullptr;
+    if (rhi->backend() == QRhi::OpenGLES2) {
+        auto rhiHandles = static_cast<const QRhiGles2NativeHandles *>(rhi->nativeHandles());
+        rhiContext = rhiHandles->context->nativeInterface<QNativeInterface::QEGLContext>();
+    }
+    if (!rhiContext)
+        QSKIP("deviceLoss needs EGL");
+
+    QVERIFY(QTest::qWaitForWindowExposed(w.data()));
+
+    QImage image = w->grabFramebuffer();
+    QVERIFY(!image.isNull());
+    QCOMPARE(image.width(), w->width());
+    QCOMPARE(image.height(), w->height());
+    QVERIFY(image.pixel(30, 40) == qRgb(255, 0, 0));
+
+    rhiContext->invalidateContext();
+
+    w->resize(600, 600);
+    QSignalSpy frameSwappedSpy(w.get(), &QOpenGLWidget::resized);
+    QTRY_VERIFY(frameSwappedSpy.size() > 0);
+
+    image = w->grabFramebuffer();
+    QVERIFY(!image.isNull());
+    QCOMPARE(image.width(), w->width());
+    QCOMPARE(image.height(), w->height());
+    QVERIFY(image.pixel(30, 40) == qRgb(255, 0, 0));
+}
+#endif
+
 class PainterWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
 public:
@@ -281,6 +326,10 @@ void tst_QOpenGLWidget::reparentToNotYetCreated()
 
 void tst_QOpenGLWidget::reparentHidden()
 {
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        QSKIP("Fails on Android 12 (QTBUG-111235)");
+#endif
     // Tests QTBUG-60896
     QWidget topLevel1;
 
@@ -423,6 +472,7 @@ void tst_QOpenGLWidget::asViewport()
         // repainted when going from Inactive to Active. So wait for the window to be
         // active before we continue, so the activation doesn't happen at a random
         // time below. And call processEvents to have the paint events delivered right away.
+        widget.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&widget));
         qApp->processEvents();
     }
@@ -453,8 +503,6 @@ void tst_QOpenGLWidget::requestUpdate()
 #ifdef Q_OS_ANDROID
     QSKIP("Crashes on Android, figure out why (QTBUG-102043)");
 #endif
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
 
     PaintCountWidget w;
     w.resize(640, 480);
@@ -525,6 +573,21 @@ void tst_QOpenGLWidget::showHide()
     QVERIFY(image.pixel(30, 40) == qRgb(0, 0, 255));
 }
 
+QtMessageHandler oldHandler = nullptr;
+
+void nativeWindowMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    if (oldHandler)
+        oldHandler(type, context, msg);
+
+    if (type == QtWarningMsg
+        && (msg.contains("QOpenGLContext::makeCurrent() called with non-opengl surface")
+            || msg.contains("Failed to make context current")))
+    {
+        QFAIL("Unexpected warning got printed");
+    }
+}
+
 void tst_QOpenGLWidget::nativeWindow()
 {
 #ifdef Q_OS_ANDROID
@@ -535,6 +598,10 @@ void tst_QOpenGLWidget::nativeWindow()
     // functional since there is no guarantee that the content is composed and
     // presented correctly as we can only do verification with
     // grabFramebuffer() here which only exercises a part of the pipeline.
+
+    // Install a message handler that looks for some typical warnings from
+    // QRhi/QOpenGLConext that occur when the RHI-related logic in widgets goes wrong.
+    oldHandler = qInstallMessageHandler(nativeWindowMessageHandler);
 
     {
         QScopedPointer<ClearWidget> w(new ClearWidget(nullptr, 800, 600));
@@ -551,7 +618,33 @@ void tst_QOpenGLWidget::nativeWindow()
         QVERIFY(w->internalWinId());
     }
 
-    // Now as a native child
+    // QTBUG-113557: a plain _raster_ QWidget that is a _native_ child in a toplevel
+    // combined with a RHI-based (non-native) widget (QOpenGLWidget in this case)
+    // in the same toplevel.
+    {
+        QWidget topLevel;
+        topLevel.resize(800, 600);
+
+        ClearWidget *child = new ClearWidget(&topLevel, 800, 600);
+        child->setClearColor(1, 0, 0);
+        child->resize(400, 400);
+        child->move(23, 34);
+
+        QWidget *raster = new QWidget(&topLevel);
+        raster->setGeometry(23, 240, 120, 120);
+        raster->setStyleSheet("QWidget { background-color: yellow; }");
+
+        raster->winId();
+
+        topLevel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+
+        // Do not bother checking the output, i.e. if the yellow raster native child
+        // shows up as it should, but rather rely on the message handler catching the
+        // qWarnings if they occur.
+    }
+
+    // Now with the QOpenGLWidget being a native child
     {
         QWidget topLevel;
         topLevel.resize(800, 600);
@@ -617,7 +710,7 @@ void tst_QOpenGLWidget::nativeWindow()
         ClearWidget *child = new ClearWidget(nullptr, 800, 600);
         // set the parent separately, this is important, see next test case
         child->setParent(container);
-        child->setClearColor(0, 1, 0);
+        child->setClearColor(0, 0, 1);
         child->resize(400, 400);
         child->move(23, 34);
 
@@ -631,7 +724,7 @@ void tst_QOpenGLWidget::nativeWindow()
         QImage image = child->grabFramebuffer();
         QCOMPARE(image.width(), child->width());
         QCOMPARE(image.height(), child->height());
-        QVERIFY(image.pixel(30, 40) == qRgb(0, 255, 0));
+        QVERIFY(image.pixel(30, 40) == qRgb(0, 0, 255));
     }
 
     // Again as a child of a native child, but this time specifying the parent
@@ -643,7 +736,7 @@ void tst_QOpenGLWidget::nativeWindow()
         container->winId();
         // parent it right away
         ClearWidget *child = new ClearWidget(container, 800, 600);
-        child->setClearColor(0, 1, 0);
+        child->setClearColor(0, 0, 1);
         child->resize(400, 400);
         child->move(23, 34);
         topLevel.show();
@@ -654,7 +747,12 @@ void tst_QOpenGLWidget::nativeWindow()
         QImage image = child->grabFramebuffer();
         QCOMPARE(image.width(), child->width());
         QCOMPARE(image.height(), child->height());
-        QVERIFY(image.pixel(30, 40) == qRgb(0, 255, 0));
+        QVERIFY(image.pixel(30, 40) == qRgb(0, 0, 255));
+    }
+
+    if (oldHandler) {
+        qInstallMessageHandler(oldHandler);
+        oldHandler = nullptr;
     }
 }
 
@@ -694,50 +792,59 @@ static QPixmap grabWidgetWithoutRepaint(const QWidget *widget, QRect clipArea)
 
 bool verifyColor(const QWidget *widget, const QRect &clipArea, const QColor &color, int callerLine)
 {
-    for (int t = 0; t < 6; t++) {
-        const QPixmap pixmap = grabWidgetWithoutRepaint(widget, clipArea);
-        if (!QTest::qCompare(pixmap.size(),
-                             clipArea.size(),
-                             "pixmap.size()",
-                             "rect.size()",
-                             __FILE__,
-                             callerLine))
-            return false;
+    // Create a comparison target image
+    QPixmap expectedPixmap(grabWidgetWithoutRepaint(widget, clipArea)); /* ensure equal formats */
+    expectedPixmap.detach();
+    expectedPixmap.fill(color);
+    const QImage expectedImage = expectedPixmap.toImage();
 
+    // test image size
+    QPixmap pixmap;
+    auto testSize = [&](){
+        pixmap = grabWidgetWithoutRepaint(widget, clipArea);
+        return pixmap.size() == clipArea.size();
+    };
 
-        const QImage image = pixmap.toImage();
-        QPixmap expectedPixmap(pixmap); /* ensure equal formats */
-        expectedPixmap.detach();
-        expectedPixmap.fill(color);
-
+    // test the first pixel's color
+    uint firstPixel;
+    auto testPixel = [&](){
+        const QImage image = grabWidgetWithoutRepaint(widget, clipArea).toImage();
         uint alphaCorrection = image.format() == QImage::Format_RGB32 ? 0xff000000 : 0;
-        uint firstPixel = image.pixel(0,0) | alphaCorrection;
+        firstPixel = image.pixel(0,0) | alphaCorrection;
+        return firstPixel == QColor(color).rgb();
+    };
 
-        // Retry a couple of times. Some window managers have transparency animation, or are
-        // just slow to render.
-        if (t < 5) {
-            if (firstPixel == QColor(color).rgb()
-                && image == expectedPixmap.toImage())
-                return true;
-            else
-                QTest::qWait(200);
-        } else {
-            if (!QTest::qVerify(firstPixel == QColor(color).rgb(),
-                               "firstPixel == QColor(color).rgb()",
-                                qPrintable(msgRgbMismatch(firstPixel, QColor(color).rgb())),
-                                __FILE__, callerLine)) {
-                return false;
-            }
-            if (!QTest::qVerify(image == expectedPixmap.toImage(),
-                                "image == expectedPixmap.toImage()",
-                                "grabbed pixmap differs from expected pixmap",
-                                __FILE__, callerLine)) {
-                return false;
-            }
-        }
+    // test the rendered image
+    QImage image;
+    auto testImage = [&](){
+        image = grabWidgetWithoutRepaint(widget, clipArea).toImage();
+        return image == expectedImage;
+    };
+
+    // Perform checks and make test case fail if unsuccessful
+    if (!QTest::qWaitFor(testSize))
+        return QTest::qCompare(pixmap.size(),
+                         clipArea.size(),
+                         "pixmap.size()",
+                         "rect.size()",
+                         __FILE__,
+                         callerLine);
+
+    if (!QTest::qWaitFor(testPixel)) {
+        return QTest::qVerify(firstPixel == QColor(color).rgb(),
+                           "firstPixel == QColor(color).rgb()",
+                            qPrintable(msgRgbMismatch(firstPixel, QColor(color).rgb())),
+                            __FILE__, callerLine);
     }
 
-    return false;
+    if (!QTest::qWaitFor(testImage)) {
+        return QTest::qVerify(image == expectedImage,
+                            "image == expectedPixmap.toImage()",
+                            "grabbed pixmap differs from expected pixmap",
+                            __FILE__, callerLine);
+    }
+
+    return true;
 }
 
 void tst_QOpenGLWidget::stackWidgetOpaqueChildIsVisible()
@@ -770,6 +877,7 @@ void tst_QOpenGLWidget::stackWidgetOpaqueChildIsVisible()
     stack.resize(dimensionSize, dimensionSize);
     stack.show();
     QVERIFY(QTest::qWaitForWindowExposed(&stack));
+    stack.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&stack));
 
     // Switch to the QOpenGLWidget.

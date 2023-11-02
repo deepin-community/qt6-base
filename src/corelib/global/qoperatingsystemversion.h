@@ -105,7 +105,7 @@ class Q_CORE_EXPORT QOperatingSystemVersion : public QOperatingSystemVersionBase
 {
 public:
     // ### Qt7: Remove. Keep synchronized with QOperatingSystemVersionBase::OSType until then!
-#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
     enum OSType {
         Unknown = 0,
         Windows,
@@ -122,7 +122,7 @@ public:
     // without breaking our BC promises. They must be fully inline but we cannot make that change
     // until Qt7
     // @note: New entries should be added after the if-def-ery until Qt 7!!
-#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
     static const QOperatingSystemVersion Windows7;
     static const QOperatingSystemVersion Windows8;
     static const QOperatingSystemVersion Windows8_1;
@@ -165,12 +165,8 @@ public:
     static constexpr QOperatingSystemVersionBase MacOSHighSierra { QOperatingSystemVersionBase::MacOS, 10, 13 };
     static constexpr QOperatingSystemVersionBase MacOSMojave { QOperatingSystemVersionBase::MacOS, 10, 14 };
     static constexpr QOperatingSystemVersionBase MacOSCatalina { QOperatingSystemVersionBase::MacOS, 10, 15 };
-#if !defined(Q_OS_DARWIN) || QT_MACOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__MAC_11_0)
     static constexpr QOperatingSystemVersionBase MacOSBigSur = { QOperatingSystemVersionBase::MacOS, 11, 0 };
     static constexpr QOperatingSystemVersionBase MacOSMonterey = { QOperatingSystemVersionBase::MacOS, 12, 0 };
-#else // ### Qt 7: Verify the assumption
-#   error Either you are using an outdated SDK or my assumption that Qt7 would require at least 11.0 was wrong
-#endif
 
     static constexpr QOperatingSystemVersionBase AndroidJellyBean { QOperatingSystemVersionBase::Android, 4, 1 };
     static constexpr QOperatingSystemVersionBase AndroidJellyBean_MR1 { QOperatingSystemVersionBase::Android, 4, 2 };
@@ -200,7 +196,12 @@ public:
     static constexpr QOperatingSystemVersionBase Windows11_21H2 = Windows11;
     static constexpr QOperatingSystemVersionBase Windows11_22H2 { QOperatingSystemVersionBase::Windows, 10, 0, 22621 };
 
+    static constexpr QOperatingSystemVersionBase Android12 { QOperatingSystemVersionBase::Android, 12, 0 };
+    static constexpr QOperatingSystemVersionBase Android12L { QOperatingSystemVersionBase::Android, 12, 0 };
+    static constexpr QOperatingSystemVersionBase Android13 { QOperatingSystemVersionBase::Android, 13, 0 };
+
     static constexpr QOperatingSystemVersionBase MacOSVentura { QOperatingSystemVersionBase::MacOS, 13, 0 };
+    static constexpr QOperatingSystemVersionBase MacOSSonoma { QOperatingSystemVersionBase::MacOS, 14, 0 };
 
     constexpr QOperatingSystemVersion(const QOperatingSystemVersionBase &osversion)
         : QOperatingSystemVersionBase(osversion) {}

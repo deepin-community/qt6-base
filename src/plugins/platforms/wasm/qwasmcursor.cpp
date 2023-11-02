@@ -3,7 +3,7 @@
 
 #include "qwasmcursor.h"
 #include "qwasmscreen.h"
-#include "qwasmstring.h"
+#include "qwasmwindow.h"
 
 #include <QtCore/qdebug.h>
 #include <QtGui/qwindow.h>
@@ -14,125 +14,71 @@
 QT_BEGIN_NAMESPACE
 using namespace emscripten;
 
-void QWasmCursor::changeCursor(QCursor *windowCursor, QWindow *window)
-{
-    if (!window)
-        return;
-    QScreen *screen = window->screen();
-    if (!screen)
-        return;
-
-    if (windowCursor) {
-
-        // Bitmap and custom cursors are not implemented (will fall back to "auto")
-        if (windowCursor->shape() == Qt::BitmapCursor || windowCursor->shape() >= Qt::CustomCursor)
-            qWarning() << "QWasmCursor: bitmap and custom cursors are not supported";
-
-
-        htmlCursorName = cursorShapeToHtml(windowCursor->shape());
-    }
-    if (htmlCursorName.isEmpty())
-        htmlCursorName = "default";
-
-    setWasmCursor(screen, htmlCursorName);
-}
-
-QByteArray QWasmCursor::cursorShapeToHtml(Qt::CursorShape shape)
+namespace {
+QByteArray cursorShapeToCss(Qt::CursorShape shape)
 {
     QByteArray cursorName;
 
     switch (shape) {
     case Qt::ArrowCursor:
-        cursorName = "default";
-        break;
+        return "default";
     case Qt::UpArrowCursor:
-        cursorName = "n-resize";
-        break;
+        return "n-resize";
     case Qt::CrossCursor:
-        cursorName = "crosshair";
-        break;
+        return "crosshair";
     case Qt::WaitCursor:
-        cursorName = "wait";
-        break;
+        return "wait";
     case Qt::IBeamCursor:
-        cursorName = "text";
-        break;
+        return "text";
     case Qt::SizeVerCursor:
-        cursorName = "ns-resize";
-        break;
+        return "ns-resize";
     case Qt::SizeHorCursor:
-        cursorName = "ew-resize";
-        break;
+        return "ew-resize";
     case Qt::SizeBDiagCursor:
-        cursorName = "nesw-resize";
-        break;
+        return "nesw-resize";
     case Qt::SizeFDiagCursor:
-        cursorName = "nwse-resize";
-        break;
+        return "nwse-resize";
     case Qt::SizeAllCursor:
-        cursorName = "move";
-        break;
+        return "move";
     case Qt::BlankCursor:
-        cursorName = "none";
-        break;
+        return "none";
     case Qt::SplitVCursor:
-        cursorName = "row-resize";
-        break;
+        return "row-resize";
     case Qt::SplitHCursor:
-        cursorName = "col-resize";
-        break;
+        return "col-resize";
     case Qt::PointingHandCursor:
-        cursorName = "pointer";
-        break;
+        return "pointer";
     case Qt::ForbiddenCursor:
-        cursorName = "not-allowed";
-        break;
+        return "not-allowed";
     case Qt::WhatsThisCursor:
-        cursorName = "help";
-        break;
+        return "help";
     case Qt::BusyCursor:
-        cursorName = "progress";
-        break;
+        return "progress";
     case Qt::OpenHandCursor:
-        cursorName = "grab";
-        break;
+        return "grab";
     case Qt::ClosedHandCursor:
-        cursorName = "grabbing";
-        break;
+        return "grabbing";
     case Qt::DragCopyCursor:
-        cursorName = "copy";
-        break;
+        return "copy";
     case Qt::DragMoveCursor:
-        cursorName = "default";
-        break;
+        return "default";
     case Qt::DragLinkCursor:
-        cursorName = "alias";
-        break;
+        return "alias";
     default:
-        break;
+        static_assert(Qt::BitmapCursor == 24 && Qt::CustomCursor == 25,
+                      "New cursor type added, handle it");
+        qWarning() << "QWasmCursor: " << shape << " unsupported";
+        return "default";
     }
-
-    return cursorName;
 }
+} // namespace
 
-void QWasmCursor::setWasmCursor(QScreen *screen, const QByteArray &name)
+void QWasmCursor::changeCursor(QCursor *windowCursor, QWindow *window)
 {
-    // Set cursor on the canvas
-    val canvas = QWasmScreen::get(screen)->canvas();
-    val canvasStyle = canvas["style"];
-    canvasStyle.set("cursor", val(name.constData()));
-}
-
-void QWasmCursor::setOverrideWasmCursor(const QCursor &windowCursor, QScreen *screen)
-{
-    QWasmCursor *wCursor = static_cast<QWasmCursor *>(QWasmScreen::get(screen)->cursor());
-    wCursor->setWasmCursor(screen, wCursor->cursorShapeToHtml(windowCursor.shape()));
-}
-
-void QWasmCursor::clearOverrideWasmCursor(QScreen *screen)
-{
-    QWasmCursor *wCursor = static_cast<QWasmCursor *>(QWasmScreen::get(screen)->cursor());
-    wCursor->setWasmCursor(screen, wCursor->htmlCursorName);
+    if (!window)
+        return;
+    if (QWasmWindow *wasmWindow = static_cast<QWasmWindow *>(window->handle()))
+        wasmWindow->setWindowCursor(windowCursor ? cursorShapeToCss(windowCursor->shape()) : "default");
 }
 
 QT_END_NAMESPACE

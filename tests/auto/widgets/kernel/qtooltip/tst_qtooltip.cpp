@@ -11,6 +11,8 @@
 #include <qwhatsthis.h>
 #include <qscreen.h>
 
+#include <QtWidgets/private/qapplication_p.h>
+
 class tst_QToolTip : public QObject
 {
     Q_OBJECT
@@ -95,7 +97,7 @@ void tst_QToolTip::keyEvent()
     widget.setWindowTitle(QLatin1String(QTest::currentTestFunction())
                           + QLatin1Char(' ') + QLatin1String(QTest::currentDataTag()));
     widget.show();
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     widget.showDelayedToolTip(100);
@@ -115,7 +117,8 @@ void tst_QToolTip::keyEvent()
 
 static QWidget *findWhatsThat()
 {
-    foreach (QWidget *widget, QApplication::topLevelWidgets()) {
+    const auto widgets = QApplication::topLevelWidgets();
+    for (QWidget *widget : widgets) {
         if (widget->inherits("QWhatsThat"))
             return widget;
     }
@@ -189,7 +192,7 @@ void tst_QToolTip::qtbug64550_stylesheet()
     Widget widget;
     widget.setStyleSheet(QStringLiteral("* { font-size: 48pt; }\n"));
     widget.show();
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     widget.showDelayedToolTip(100);

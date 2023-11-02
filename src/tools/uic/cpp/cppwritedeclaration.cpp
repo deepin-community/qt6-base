@@ -65,8 +65,8 @@ void WriteDeclaration::acceptUI(DomUI *node)
     // is a User using Qt-in-namespace having his own classes not in a namespace.
     // In this case the generated Ui helper classes will also end up in
     // the Qt namespace (which is harmless, but not "pretty")
-    const bool needsMacro = namespaceList.size() == 0
-        || namespaceList[0] == "qdesigner_internal"_L1;
+    const bool needsMacro = m_option.qtNamespace &&
+            (namespaceList.size() == 0 || namespaceList[0] == "qdesigner_internal"_L1);
 
     if (needsMacro)
         m_output << "QT_BEGIN_NAMESPACE\n\n";
@@ -120,7 +120,7 @@ void WriteDeclaration::acceptUI(DomUI *node)
 
 void WriteDeclaration::acceptWidget(DomWidget *node)
 {
-    QString className = "QWidget"_L1;
+    QString className = u"QWidget"_s;
     if (node->hasAttributeClass())
         className = node->attributeClass();
 
@@ -137,7 +137,7 @@ void WriteDeclaration::acceptSpacer(DomSpacer *node)
 
 void WriteDeclaration::acceptLayout(DomLayout *node)
 {
-    QString className = "QLayout"_L1;
+    QString className = u"QLayout"_s;
     if (node->hasAttributeClass())
         className = node->attributeClass();
 

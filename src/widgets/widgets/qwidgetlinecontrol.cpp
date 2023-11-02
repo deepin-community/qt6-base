@@ -85,8 +85,7 @@ void QWidgetLineControl::updateDisplayText(bool forceUpdate)
     for (int i = 0; i < (int)str.size(); ++i) {
         if ((uc[i].unicode() < 0x20 && uc[i].unicode() != 0x09)
             || uc[i] == QChar::LineSeparator
-            || uc[i] == QChar::ParagraphSeparator
-            || uc[i] == QChar::ObjectReplacementCharacter)
+            || uc[i] == QChar::ParagraphSeparator)
             uc[i] = QChar(0x0020);
     }
 
@@ -719,7 +718,7 @@ bool QWidgetLineControl::finishChange(int validateFromState, bool update, bool e
         emit selectionChanged();
     }
     if (m_cursor == m_lastCursorPos)
-        updateMicroFocus();
+        emit updateMicroFocus();
     emitCursorPositionChanged();
     return true;
 }
@@ -1396,7 +1395,7 @@ void QWidgetLineControl::emitCursorPositionChanged()
     if (m_cursor != m_lastCursorPos) {
         const int oldLast = m_lastCursorPos;
         m_lastCursorPos = m_cursor;
-        cursorPositionChanged(oldLast, m_cursor);
+        emit cursorPositionChanged(oldLast, m_cursor);
 #if QT_CONFIG(accessibility)
         // otherwise we send a selection update which includes the cursor
         if (!hasSelectedText()) {

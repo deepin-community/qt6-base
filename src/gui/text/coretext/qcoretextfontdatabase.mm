@@ -13,6 +13,7 @@
 #endif
 
 #include <QtCore/qelapsedtimer.h>
+#include <QtCore/private/qcore_mac_p.h>
 
 #include "qcoretextfontdatabase_p.h"
 #include "qfontengine_coretext_p.h"
@@ -904,7 +905,7 @@ void QCoreTextFontDatabase::populateThemeFonts()
 
             auto addFontVariants = [&](CTFontDescriptorRef descriptor) {
                 QCFType<CFArrayRef> matchingDescriptors = CTFontDescriptorCreateMatchingFontDescriptors(descriptor, nullptr);
-                const int matchingDescriptorsCount = CFArrayGetCount(matchingDescriptors);
+                const int matchingDescriptorsCount = matchingDescriptors ? CFArrayGetCount(matchingDescriptors) : 0;
                 qCDebug(lcQpaFonts) << "Enumerating font variants based on" << id(descriptor)
                     << "resulted in" << matchingDescriptorsCount << "matching descriptors"
                     << matchingDescriptors.as<NSArray*>();

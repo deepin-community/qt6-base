@@ -60,6 +60,23 @@ QT_BEGIN_NAMESPACE
   given OpenGL version and profile, or enabling depth and stencil
   buffers.
 
+  \note It is up to the application to ensure depth and stencil buffers are
+  requested from the underlying windowing system interface. Without requesting
+  a non-zero depth buffer size there is no guarantee that a depth buffer will
+  be available, and as a result depth testing related OpenGL operations may fail
+  to function as expected.
+
+  Commonly used depth and stencil buffer size requests are 24 and 8,
+  respectively. For example, a QOpenGLWindow subclass could do this in its
+  constructor:
+
+  \code
+      QSurfaceFormat format;
+      format.setDepthBufferSize(24);
+      format.setStencilBufferSize(8);
+      setFormat(format);
+  \endcode
+
   Unlike QWindow, QOpenGLWindow allows opening a painter on itself and perform
   QPainter-based drawing.
 
@@ -376,7 +393,7 @@ bool QOpenGLWindow::isValid() const
 /*!
   Prepares for rendering OpenGL content for this window by making the
   corresponding context current and binding the framebuffer object, if there is
-  one, in that context context.
+  one, in that context.
 
   It is not necessary to call this function in most cases, because it is called
   automatically before invoking paintGL(). It is provided nonetheless to support

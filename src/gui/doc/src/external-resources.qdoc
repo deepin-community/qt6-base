@@ -8,7 +8,7 @@
 */
 
 /*!
-    \externalpage http://www.linux-foundation.org/en/Accessibility/IAccessible2
+    \externalpage https://accessibility.linuxfoundation.org/a11yspecs/ia2/docs/html/index.html
     \title IAccessible2 Specification
 */
 
@@ -45,4 +45,14 @@
 /*!
     \externalpage https://www.lunarg.com/vulkan-sdk/
     \title LunarG Vulkan SDK
+*/
+
+/*!
+    \externalpage https://developer.android.com/reference/androidx/core/content/FileProvider
+    \title Android: FileProvider
+*/
+
+/*!
+    \externalpage https://developer.android.com/training/secure-file-sharing/setup-sharing.html
+    \title Android: Setting up file sharing
 */

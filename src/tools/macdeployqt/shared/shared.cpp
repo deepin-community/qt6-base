@@ -874,7 +874,8 @@ void deployRPaths(const QString &bundlePath, const QList<QString> &rpaths, const
             continue;
         }
         if (rpaths.contains(resolveDyldPrefix(rpath, binaryPath, binaryPath))) {
-            args << "-delete_rpath" << rpath;
+            if (!args.contains(rpath))
+                args << "-delete_rpath" << rpath;
         }
     }
     if (!args.length()) {
@@ -936,12 +937,15 @@ bool DeploymentInfo::containsModule(const QString &module, const QString &libInF
     if (deployedFrameworks.contains("Qt"_L1 + module + libInFix + ".framework"_L1))
         return true;
     // Check for dylib
-    const QRegularExpression dylibRegExp("libQt[0-9]+"_L1 + module + libInFix + ".[0-9]+.dylib"_L1);
+    const QRegularExpression dylibRegExp("libQt[0-9]+"_L1
+        + module + libInFix
+        + (isDebug ? "_debug" : "")
+        + ".[0-9]+.dylib"_L1);
     return deployedFrameworks.filter(dylibRegExp).size() > 0;
 }
 
 /*
-    Deploys the the listed frameworks listed into an app bundle.
+    Deploys the listed frameworks into an app bundle.
     The frameworks are searched for dependencies, which are also deployed.
     (deploying Qt3Support will also deploy QtNetwork and QtSql for example.)
     Returns a DeploymentInfo structure containing the Qt path used and a

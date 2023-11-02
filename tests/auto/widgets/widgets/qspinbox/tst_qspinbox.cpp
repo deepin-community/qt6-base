@@ -29,6 +29,8 @@
 #include <QProxyStyle>
 #include <QScreen>
 
+#include <QtWidgets/private/qapplication_p.h>
+
 #if QT_CONFIG(shortcut)
 #  include <QKeySequence>
 #endif
@@ -925,7 +927,7 @@ void tst_QSpinBox::editingFinished()
     layout->addWidget(box2);
 
     testFocusWidget.show();
-    QApplication::setActiveWindow(&testFocusWidget);
+    QApplicationPrivate::setActiveWindow(&testFocusWidget);
     QVERIFY(QTest::qWaitForWindowActive(&testFocusWidget));
     box->activateWindow();
     box->setFocus();
@@ -977,7 +979,7 @@ void tst_QSpinBox::editingFinished()
     testFocusWidget.show();
     QVERIFY(QTest::qWaitForWindowActive(&testFocusWidget));
     box->setKeyboardTracking(false);
-    qApp->setActiveWindow(&testFocusWidget);
+    QApplicationPrivate::setActiveWindow(&testFocusWidget);
     testFocusWidget.activateWindow();
     box->setFocus();
     QTRY_VERIFY(box->hasFocus());
@@ -1104,7 +1106,7 @@ void tst_QSpinBox::specialValue()
     spin.setValue(50);
     topWidget.show();
     //make sure we have the focus (even if editingFinished fails)
-    qApp->setActiveWindow(&topWidget);
+    QApplicationPrivate::setActiveWindow(&topWidget);
     topWidget.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&topWidget));
     spin.setFocus();
@@ -1150,33 +1152,32 @@ public:
 
 void tst_QSpinBox::sizeHint()
 {
-    QWidget *widget = new QWidget;
-    QHBoxLayout *layout = new QHBoxLayout(widget);
+    QWidget widget;
+    QHBoxLayout *layout = new QHBoxLayout(&widget);
+
     sizeHint_SpinBox *spinBox = new sizeHint_SpinBox;
     layout->addWidget(spinBox);
-    widget->show();
-    QVERIFY(QTest::qWaitForWindowExposed(widget));
+    // Make sure all layout requests posted by the QHBoxLayout constructor and addWidget
+    // are processed before the widget is shown
+    QCoreApplication::sendPostedEvents(&widget, QEvent::LayoutRequest);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
 
     // Prefix
     spinBox->sizeHintRequests = 0;
     spinBox->setPrefix(QLatin1String("abcdefghij"));
-    qApp->processEvents();
     QTRY_VERIFY(spinBox->sizeHintRequests > 0);
 
     // Suffix
     spinBox->sizeHintRequests = 0;
     spinBox->setSuffix(QLatin1String("abcdefghij"));
-    qApp->processEvents();
     QTRY_VERIFY(spinBox->sizeHintRequests > 0);
 
     // Range
     spinBox->sizeHintRequests = 0;
     spinBox->setRange(0, 1234567890);
     spinBox->setValue(spinBox->maximum());
-    qApp->processEvents();
     QTRY_VERIFY(spinBox->sizeHintRequests > 0);
-
-    delete widget;
 }
 
 void tst_QSpinBox::taskQTBUG_5008_textFromValueAndValidate()
@@ -1209,7 +1210,7 @@ void tst_QSpinBox::taskQTBUG_5008_textFromValueAndValidate()
     spinbox.show();
     spinbox.activateWindow();
     spinbox.setFocus();
-    QApplication::setActiveWindow(&spinbox);
+    QApplicationPrivate::setActiveWindow(&spinbox);
     QVERIFY(QTest::qWaitForWindowActive(&spinbox));
     QVERIFY(spinbox.hasFocus());
     QTRY_COMPARE(static_cast<QWidget *>(&spinbox), QApplication::activeWindow());
@@ -1829,10 +1830,6 @@ void tst_QSpinBox::stepModifierPressAndHold()
     spin.setStyle(stepModifierStyle.data());
 
     QSignalSpy spy(&spin, &SpinBox::valueChanged);
-    // TODO: remove debug output when QTBUG-69492 is fixed
-    connect(&spin, &SpinBox::valueChanged, [=]() {
-        qDebug() << QTime::currentTime() << "valueChanged emitted";
-    });
 
     spin.show();
     QVERIFY(QTest::qWaitForWindowActive(&spin));

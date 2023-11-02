@@ -21,7 +21,7 @@
 
 #ifdef Q_OS_WIN
 #  include <QtGui/private/qguiapplication_p.h>
-#  include <QtGui/private/qwindowsmime_p.h>
+#  include <QtGui/qwindowsmimeconverter.h>
 #  include <QtGui/qpa/qplatformintegration.h>
 #endif
 
@@ -41,6 +41,7 @@ private slots:
     void testSignals();
     void setMimeData();
     void clearBeforeSetText();
+    void getTextFromHTMLMimeType();
 #  ifdef Q_OS_WIN
     void testWindowsMimeRegisterType();
     void testWindowsMime_data();
@@ -61,7 +62,7 @@ void tst_QClipboard::initTestCase()
 #if QT_CONFIG(clipboard)
 void tst_QClipboard::init()
 {
-#if QT_CONFIG(process)
+#if QT_CONFIG(process) && !defined(Q_OS_ANDROID)
     const QString testdataDir = QFileInfo(QFINDTESTDATA("copier")).absolutePath();
     QVERIFY2(QDir::setCurrent(testdataDir), qPrintable("Could not chdir to " + testdataDir));
 #endif
@@ -424,12 +425,30 @@ void tst_QClipboard::clearBeforeSetText()
     QCOMPARE(QGuiApplication::clipboard()->text(), text);
 }
 
+void tst_QClipboard::getTextFromHTMLMimeType()
+{
+    QClipboard * clipboard = QGuiApplication::clipboard();
+    QMimeData * mimeData = new QMimeData();
+    const QString testString("TEST");
+    const QString htmlString(QLatin1String("<html><body>") + testString + QLatin1String("</body></html>"));
+
+    mimeData->setText(testString);
+    mimeData->setHtml(htmlString);
+    clipboard->setMimeData(mimeData);
+
+    QCOMPARE(clipboard->text(), testString);
+    QVERIFY(clipboard->mimeData()->hasText());
+    QVERIFY(clipboard->mimeData()->hasHtml());
+    QCOMPARE(clipboard->mimeData()->text(), testString);
+    QCOMPARE(clipboard->mimeData()->html(), htmlString);
+}
+
 #  ifdef Q_OS_WIN
 
-using QWindowsMime = QNativeInterface::Private::QWindowsMime;
+using QWindowsMimeConverter = QWindowsMimeConverter;
 using QWindowsApplication = QNativeInterface::Private::QWindowsApplication;
 
-class TestMime : public QWindowsMime
+class TestMime : public QWindowsMimeConverter
 {
 public:
     bool canConvertFromMime(const FORMATETC &, const QMimeData *) const override

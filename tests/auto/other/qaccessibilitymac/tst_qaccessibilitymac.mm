@@ -62,6 +62,7 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
 @interface TestAXObject : NSObject
 {
     AXUIElementRef reference;
+    bool axError;
 }
     @property (readonly) NSString *role;
     @property (readonly) NSString *title;
@@ -77,11 +78,13 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
 
     if ((self = [super init])) {
         reference = ref;
+        axError = false;
     }
     return self;
 }
 
 - (AXUIElementRef) ref { return reference; }
+- (bool)errorOccurred { return axError; }
 - (void) print {
     NSLog(@"Accessible Object role: '%@', title: '%@', description: '%@', value: '%@', rect: '%@'", self.role, self.title, self.description, self.value, NSStringFromRect(NSRectFromCGRect(self.rect)));
     NSLog(@"    Children: %ld", [[self childList] count]);
@@ -107,6 +110,28 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
                 0, 100, /*min, max*/
                 (CFArrayRef *) &list);
     return list;
+}
+
+- (NSArray *)tableRows
+{
+        NSArray *arr;
+        AXUIElementCopyAttributeValues(
+                    reference,
+                    kAXRowsAttribute,
+                    0, 100, /*min, max*/
+                    (CFArrayRef *) &arr);
+        return arr;
+}
+
+- (NSArray *)tableColumns
+{
+        NSArray *arr;
+        AXUIElementCopyAttributeValues(
+                    reference,
+                    kAXColumnsAttribute,
+                    0, 100, /*min, max*/
+                    (CFArrayRef *) &arr);
+        return arr;
 }
 
 - (AXUIElementRef) findDirectChildByRole: (CFStringRef) role
@@ -203,8 +228,8 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
     CFTypeRef value = NULL;
     AXError err;
 
-    if (kAXErrorSuccess != (err = AXUIElementCopyAttributeValue(reference, attribute, &value)))
-    {
+    if (kAXErrorSuccess != (err = AXUIElementCopyAttributeValue(reference, attribute, &value))) {
+        axError = true;
         qDebug() << "AXUIElementCopyAttributeValue(" << QString::fromCFString(attribute) << ") returned error = " << AXErrorTag(err);
     }
     return value;
@@ -250,8 +275,8 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
     CFTypeRef value = NULL;
     AXError err;
 
-    if (kAXErrorSuccess != (err = AXUIElementCopyParameterizedAttributeValue(reference, attribute, parameter, &value)))
-    {
+    if (kAXErrorSuccess != (err = AXUIElementCopyParameterizedAttributeValue(reference, attribute, parameter, &value))) {
+        axError = true;
         CFStringRef description = CFCopyDescription(parameter);
         qDebug() << "AXUIElementCopyParameterizedAttributeValue(" << QString::fromCFString(attribute) << ", parameter=" << QString::fromCFString(description) << ") returned error = " << AXErrorTag(err);
         CFRelease(description);
@@ -289,8 +314,8 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
     AXError err;
     CFArrayRef actions;
 
-    if (kAXErrorSuccess != (err = AXUIElementCopyActionNames(reference, &actions)))
-    {
+    if (kAXErrorSuccess != (err = AXUIElementCopyActionNames(reference, &actions))) {
+        axError = true;
         qDebug() << "AXUIElementCopyActionNames(...) returned error = " << AXErrorTag(err);
     }
 
@@ -301,8 +326,8 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
 {
     AXError err;
 
-    if (kAXErrorSuccess != (err = AXUIElementPerformAction(reference, action)))
-    {
+    if (kAXErrorSuccess != (err = AXUIElementPerformAction(reference, action))) {
+        axError = true;
         qDebug() << "AXUIElementPerformAction("  << QString::fromCFString(action) << ") returned error = " << AXErrorTag(err);
     }
 }
@@ -384,6 +409,8 @@ private Q_SLOTS:
     void hierarchyTest();
     void notificationsTest();
     void checkBoxTest();
+    void tableViewTest();
+    void treeViewTest();
 
 private:
     AccessibleTestWindow *m_window;
@@ -393,7 +420,7 @@ private:
 void tst_QAccessibilityMac::init()
 {
     m_window = new AccessibleTestWindow();
-    m_window->setWindowTitle("Test window");
+    m_window->setWindowTitle(QString("Test window - %1").arg(QTest::currentTestFunction()));
     m_window->show();
     m_window->resize(400, 400);
 
@@ -458,7 +485,7 @@ void tst_QAccessibilityMac::lineEditTest()
     // height of window includes title bar
     QVERIFY([window rect].size.height >= 400);
 
-    QVERIFY([window.title isEqualToString:@"Test window"]);
+    QVERIFY([window.title isEqualToString:@"Test window - lineEditTest"]);
 
     // children of window:
     AXUIElementRef lineEditElement = [window findDirectChildByRole: kAXTextFieldRole];
@@ -639,6 +666,142 @@ void tst_QAccessibilityMac::checkBoxTest()
 
     ckBox->setCheckState(Qt::PartiallyChecked);
     QVERIFY([cb valueNumber] == 2);
+}
+
+void tst_QAccessibilityMac::tableViewTest()
+{
+    QTableWidget *tw = new QTableWidget(3, 2, m_window);
+    struct Person
+    {
+        const char *name;
+        const char *address;
+    };
+    const Person contents[] = { { "Socrates", "Greece" },
+                                { "Confucius", "China" },
+                                { "Kant", "Preussia" }
+                              };
+    for (int i = 0; i < int(sizeof(contents) / sizeof(Person)); ++i) {
+        Person p = contents[i];
+        QTableWidgetItem *name = new QTableWidgetItem(QString::fromLatin1(p.name));
+        tw->setItem(i, 0, name);
+        QTableWidgetItem *address = new QTableWidgetItem(QString::fromLatin1(p.address));
+        tw->setItem(i, 1, address);
+    }
+    m_window->addWidget(tw);
+    QVERIFY(QTest::qWaitForWindowExposed(m_window));
+    QCoreApplication::processEvents();
+
+    TestAXObject *appObject = [TestAXObject getApplicationAXObject];
+    QVERIFY(appObject);
+
+    NSArray *windowList = [appObject windowList];
+    // one window
+    QVERIFY([windowList count] == 1);
+    AXUIElementRef windowRef = (AXUIElementRef)[windowList objectAtIndex:0];
+    QVERIFY(windowRef != nil);
+    TestAXObject *window = [[TestAXObject alloc] initWithAXUIElementRef:windowRef];
+
+    // children of window:
+    AXUIElementRef tableView = [window findDirectChildByRole:kAXTableRole];
+    QVERIFY(tableView != nil);
+
+    TestAXObject *tv = [[TestAXObject alloc] initWithAXUIElementRef:tableView];
+
+    // here start actual tableview tests
+    // Should have 2 columns
+    const unsigned int columnCount = 2;
+    NSArray *columnArray = [tv tableColumns];
+    QCOMPARE([columnArray count], columnCount);
+
+    // should have 3 rows
+    const unsigned int rowCount = 3;
+    NSArray *rowArray = [tv tableRows];
+    QCOMPARE([rowArray count], rowCount);
+
+    // The individual cells are children of the rows
+    TestAXObject *row = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)rowArray[0]];
+    TestAXObject *cell = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)[row childList][0]];
+    QVERIFY([cell.title isEqualToString:@"Socrates"]);
+    row = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)rowArray[2]];
+    cell = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)[row childList][1]];
+    QVERIFY([cell.title isEqualToString:@"Preussia"]);
+
+    // both rows and columns are direct children of the table
+    NSArray *childList = [tv childList];
+    QCOMPARE([childList count], columnCount + rowCount);
+    for (id child in childList) {
+        TestAXObject *childObject = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)child];
+        QVERIFY([childObject.role isEqualToString:NSAccessibilityRowRole] ||
+               [childObject.role isEqualToString:NSAccessibilityColumnRole]);
+    }
+}
+
+void tst_QAccessibilityMac::treeViewTest()
+{
+    QTreeWidget *tw = new QTreeWidget;
+    tw->setColumnCount(2);
+    QTreeWidgetItem *root = new QTreeWidgetItem(tw, {"/", "0"});
+    root->setExpanded(false);
+    QTreeWidgetItem *users = new QTreeWidgetItem(root,{ "Users", "1"});
+    (void)new QTreeWidgetItem(root, {"Applications", "2"});
+    QTreeWidgetItem *lastChild = new QTreeWidgetItem(root, {"Libraries", "3"});
+
+    m_window->addWidget(tw);
+    QVERIFY(QTest::qWaitForWindowExposed(m_window));
+    QCoreApplication::processEvents();
+
+    TestAXObject *appObject = [TestAXObject getApplicationAXObject];
+    QVERIFY(appObject);
+
+    NSArray *windowList = [appObject windowList];
+    // one window
+    QVERIFY([windowList count] == 1);
+    AXUIElementRef windowRef = (AXUIElementRef)[windowList objectAtIndex:0];
+    QVERIFY(windowRef != nil);
+    TestAXObject *window = [[TestAXObject alloc] initWithAXUIElementRef:windowRef];
+
+    // children of window
+    AXUIElementRef treeView = [window findDirectChildByRole:kAXOutlineRole];
+    QVERIFY(treeView != nil);
+
+    TestAXObject *tv = [[TestAXObject alloc] initWithAXUIElementRef:treeView];
+
+    // here start actual treeview tests. NSAccessibilityOutline is a specialization
+    // of NSAccessibilityTable, and we represent trees as tables.
+    // Should have 2 columns
+    const unsigned int columnCount = 2;
+    NSArray *columnArray = [tv tableColumns];
+    QCOMPARE([columnArray count], columnCount);
+
+    // should have 1 row for now - as long as the root item is not expanded
+    NSArray *rowArray = [tv tableRows];
+    QCOMPARE(int([rowArray count]), 1);
+
+    root->setExpanded(true);
+    rowArray = [tv tableRows];
+    QCOMPARE(int([rowArray count]), root->childCount() + 1);
+
+    // this should not trigger any assert
+    tw->setCurrentItem(lastChild);
+
+    bool errorOccurred = false;
+
+    const auto cellText = [rowArray, &errorOccurred](int rowIndex, int columnIndex) -> QString {
+        TestAXObject *row = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)rowArray[rowIndex]];
+        Q_ASSERT(row);
+        TestAXObject *cell = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)[row childList][columnIndex]];
+        Q_ASSERT(cell);
+        const QString result = QString::fromNSString(cell.title);
+        errorOccurred = cell.errorOccurred;
+        return result;
+    };
+
+    QString text = cellText(0, 0);
+    if (errorOccurred)
+        QSKIP("Cocoa Accessibility API error, aborting");
+    QCOMPARE(text, root->text(0));
+    QCOMPARE(cellText(1, 0), users->text(0));
+    QCOMPARE(cellText(1, 1), users->text(1));
 }
 
 QTEST_MAIN(tst_QAccessibilityMac)

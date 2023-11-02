@@ -65,6 +65,7 @@ class QUnifiedToolbarSurface;
 
 // implemented in qshortcut.cpp
 bool qWidgetShortcutContextMatcher(QObject *object, Qt::ShortcutContext context);
+void qSendWindowChangeToTextureChildrenRecursively(QWidget *widget, QEvent::Type eventType);
 
 class QUpdateLaterEvent : public QEvent
 {
@@ -209,6 +210,9 @@ public:
 
     static QWidgetPrivate *get(QWidget *w) { return w->d_func(); }
     static const QWidgetPrivate *get(const QWidget *w) { return w->d_func(); }
+
+    static void checkRestoredGeometry(const QRect &availableGeometry, QRect *restoredGeometry,
+                                      int frameHeight);
 
     QWExtra *extraData() const;
     QTLWExtra *topData() const;
@@ -575,11 +579,17 @@ public:
     inline QRect mapFromWS(const QRect &r) const
     { return r.translated(data.wrect.topLeft()); }
 
-    virtual QObject *focusObject() { return nullptr; }
+    virtual QObject *focusObject();
 
     virtual QPlatformBackingStoreRhiConfig rhiConfig() const { return {}; }
 
-    virtual QRhiTexture *texture() const { return nullptr; }
+    // Note that textureRight may be null, as it's only used in stereoscopic rendering
+    struct TextureData {
+        QRhiTexture *textureLeft = nullptr;
+        QRhiTexture *textureRight = nullptr;
+    };
+
+    virtual TextureData texture() const { return {}; }
     virtual QPlatformTextureList::Flags textureListFlags() {
         Q_Q(QWidget);
         return q->testAttribute(Qt::WA_AlwaysStackOnTop)
@@ -614,6 +624,11 @@ public:
     virtual void resizeViewportFramebuffer() { }
     // Called after each paint event.
     virtual void resolveSamples() { }
+
+    // These two are used in QGraphicsView for supporting stereoscopic rendering with a
+    // QOpenGLWidget viewport.
+    virtual bool isStereoEnabled() { return false; } // Called in QGraphicsView::setupViewport
+    virtual bool toggleStereoTargetBuffer() { return false; } // Called in QGraphicsView::paintEvent
 
     static void setWidgetParentHelper(QObject *widgetAsObject, QObject *newParent);
 

@@ -38,6 +38,8 @@
 #include <private/qstylesheetstyle_p.h>
 #include <private/qhighdpiscaling_p.h>
 #include <QtTest/private/qtesthelpers_p.h>
+#include <qpa/qplatformtheme.h>
+#include <QtWidgets/private/qapplication_p.h>
 
 using namespace QTestPrivate;
 
@@ -92,6 +94,7 @@ private slots:
     void proxyStyle();
     void dialogButtonBox();
     void emptyStyleSheet();
+    void toolTip_data();
     void toolTip();
     void embeddedFonts();
     void opaquePaintEvent_data();
@@ -104,6 +107,7 @@ private slots:
     void QTBUG36933_brokenPseudoClassLookup();
     void styleSheetChangeBeforePolish();
     void placeholderColor();
+    void accent();
     void enumPropertySelector_data();
     void enumPropertySelector();
     //at the end because it mess with the style.
@@ -118,6 +122,8 @@ private slots:
 
     void iconSizes_data();
     void iconSizes();
+    void inheritWidgetPalette_data();
+    void inheritWidgetPalette();
 
 private:
     static QColor COLOR(const QWidget &w)
@@ -974,7 +980,7 @@ void tst_QStyleSheetStyle::focusColors()
     centerOnScreen(&frame);
     frame.show();
 
-    QApplication::setActiveWindow(&frame);
+    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
     for (QWidget *widget : frame.widgets()) {
@@ -1020,7 +1026,7 @@ void tst_QStyleSheetStyle::hoverColors()
     QCursor::setPos(frame.geometry().topLeft() - QPoint(100, 0));
     frame.show();
 
-    QApplication::setActiveWindow(&frame);
+    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
     QWindow *frameWindow = frame.windowHandle();
@@ -1653,19 +1659,32 @@ private:
     const QString m_oldStyleName;
 };
 
+void tst_QStyleSheetStyle::toolTip_data()
+{
+    QTest::addColumn<QString>("style");
+
+    QTest::newRow("fusion") << QString("Fusion");
+#ifdef Q_OS_WINDOWS
+    QTest::newRow("windowsvista") << QString("WindowsVista");
+#endif
+}
+
 void tst_QStyleSheetStyle::toolTip()
 {
+    QFETCH(QString, style);
+
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This fails. Figure out why.");
 
-    qApp->setStyleSheet(QString());
     QWidget w;
     w.resize(m_testSize);
     w.setWindowTitle(QTest::currentTestFunction());
+
     // Use "Fusion" to prevent the Vista style from clobbering the tooltip palette in polish().
-    QStyle *fusionStyle = QStyleFactory::create(QLatin1String("Fusion"));
-    QVERIFY(fusionStyle);
-    ApplicationStyleSetter as(fusionStyle);
+    QStyle *appStyle = QStyleFactory::create(style);
+    QVERIFY(appStyle);
+    ApplicationStyleSetter as(appStyle);
+
     QHBoxLayout layout(&w);
     w.setLayout(&layout);
 
@@ -1693,23 +1712,41 @@ void tst_QStyleSheetStyle::toolTip()
     wid4->setToolTip("this is wid4");
     wid4->setObjectName("wid4");
 
+    QWidget *wid5 = new QPushButton("wid5", &w);
+    layout.addWidget(wid5);
+    wid5->setStyleSheet("QToolTip { background: #ff0; color: #f00 }");
+    wid5->setToolTip("this is wid5");
+    wid5->setObjectName("wid5");
+
     centerOnScreen(&w);
     w.show();
-    QApplication::setActiveWindow(&w);
+    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
-    const QColor normalToolTip = QToolTip::palette().color(QPalette::Inactive, QPalette::ToolTipBase);
+    QColor normalToolTipBgColor = QToolTip::palette().color(QPalette::Inactive, QPalette::ToolTipBase);
+
+#ifdef Q_OS_MACOS
+    // macOS uses tool tip text color set in label palette
+    const QPalette *labelPalette = QGuiApplicationPrivate::platformTheme()->palette(QPlatformTheme::LabelPalette);
+    QColor normalToolTipFgColor = labelPalette->color(QPalette::Inactive, QPalette::ToolTipText);
+#else
+    QColor normalToolTipFgColor = QToolTip::palette().color(QPalette::Inactive, QPalette::ToolTipText);
+#endif
+
     // Tooltip on the widget without stylesheet, then to other widget,
     // including one without stylesheet (the tooltip will be reused,
     // but its color must change)
-    const QWidgetList widgets{wid4, wid1, wid2, wid3, wid4};
-    const QList<QColor> colors { normalToolTip, QColor("#ae2"), QColor("#f81"), QColor("#0b8"),
-                                 normalToolTip };
+    const QWidgetList widgets{wid4, wid1, wid2, wid3, wid4, wid5};
+    const QList<QColor> bgcolors { normalToolTipBgColor, QColor("#ae2"), QColor("#f81"),
+                                QColor("#0b8"), normalToolTipBgColor, QColor("#ff0")};
+    const QList<QColor> fgcolors { normalToolTipFgColor, normalToolTipFgColor, normalToolTipFgColor,
+                                normalToolTipFgColor, normalToolTipFgColor, QColor("#f00")};
 
     QWidgetList topLevels;
     for (int i = 0; i < widgets.size() ; ++i) {
         QWidget *wid = widgets.at(i);
-        QColor col = colors.at(i);
+        QColor bgColor = bgcolors.at(i);
+        QColor fgColor = fgcolors.at(i);
 
         QToolTip::showText( QPoint(0,0) , "This is " + wid->objectName(), wid);
 
@@ -1721,9 +1758,20 @@ void tst_QStyleSheetStyle::toolTip()
                 break;
             }
         }
+
         QVERIFY(tooltip);
         QTRY_VERIFY(tooltip->isVisible()); // Wait until Roll-Effect is finished (Windows Vista)
-        QCOMPARE(tooltip->palette().color(tooltip->backgroundRole()), col);
+
+#ifdef Q_OS_WINDOWS
+        // If tooltip palette contains empty resolve mask, validate with inherited palette
+        if (!tooltip->palette().resolveMask()) {
+            bgColor = w.palette().color(tooltip->backgroundRole());
+            fgColor = w.palette().color(tooltip->foregroundRole());
+        }
+#endif
+
+        QCOMPARE(tooltip->palette().color(tooltip->backgroundRole()), bgColor);
+        QCOMPARE(tooltip->palette().color(tooltip->foregroundRole()), fgColor);
     }
 
     QToolTip::showText( QPoint(0,0) , "This is " + wid3->objectName(), wid3);
@@ -1841,7 +1889,7 @@ void tst_QStyleSheetStyle::complexWidgetFocus()
 
     centerOnScreen(&frame);
     frame.show();
-    QApplication::setActiveWindow(&frame);
+    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
     for (QWidget *widget : widgets) {
         widget->setFocus();
@@ -1930,7 +1978,7 @@ void tst_QStyleSheetStyle::task232085_spinBoxLineEditBg()
 
     centerOnScreen(&frame);
     frame.show();
-    QApplication::setActiveWindow(&frame);
+    QApplicationPrivate::setActiveWindow(&frame);
     spinbox->setFocus();
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
@@ -2066,7 +2114,7 @@ void tst_QStyleSheetStyle::QTBUG36933_brokenPseudoClassLookup()
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
 
     widget.activateWindow();
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     QHeaderView *verticalHeader = widget.verticalHeader();
@@ -2352,6 +2400,19 @@ void tst_QStyleSheetStyle::placeholderColor()
     phColor = le2.palette().placeholderText().color();
     QCOMPARE(phColor.rgb(), red.rgb());
     QVERIFY(phColor.alpha() < red.alpha());
+
+    const char *phSpec = "#aabbccdd";
+    le1.setStyleSheet(QString("QLineEdit { placeholder-text-color: %1; }").arg(phSpec));
+    QCOMPARE(le1.palette().placeholderText().color(), QColor(phSpec));
+}
+
+void tst_QStyleSheetStyle::accent()
+{
+    QLineEdit lineEdit;
+    const QColor universe(42, 42, 42);
+    lineEdit.setStyleSheet(QString("QLineEdit { accent-color: %1; }").arg(universe.name()));
+    lineEdit.ensurePolished();
+    QCOMPARE(lineEdit.palette().accent().color(), universe);
 }
 
 void tst_QStyleSheetStyle::enumPropertySelector_data()
@@ -2446,6 +2507,31 @@ void tst_QStyleSheetStyle::iconSizes()
     button.setFont(font);
     button.setStyleSheet(styleSheet);
     QCOMPARE(button.iconSize(), iconSize);
+}
+
+void tst_QStyleSheetStyle::inheritWidgetPalette_data()
+{
+    QTest::addColumn<const QString>("styleSheet");
+    QTest::addColumn<const QColor>("phColorPalette");
+
+    QTest::addRow("blueAndGreen") << "QLineEdit {color: rgb(0,0,255);}" << QColor(Qt::green);
+    QTest::addRow("emptyStyleSheet") << QString() << QColor(Qt::green);
+
+}
+
+void tst_QStyleSheetStyle::inheritWidgetPalette()
+{
+    QFETCH(const QString, styleSheet);
+    QFETCH(const QColor, phColorPalette);
+
+    QLineEdit edit;
+    QPalette palette = edit.palette();
+    palette.setBrush(QPalette::PlaceholderText, phColorPalette);
+    edit.setPalette(palette);
+    edit.setStyleSheet(styleSheet);
+    const QColor phColor = edit.palette().placeholderText().color();
+
+    QCOMPARE(phColor, phColorPalette);
 }
 
 QTEST_MAIN(tst_QStyleSheetStyle)

@@ -18,9 +18,13 @@
 #include <qpa/qplatformnativeinterface.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformaccessibility.h>
+#ifdef Q_OS_WIN
+#include <QtCore/private/qfunctions_win_p.h>
+#endif
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qhighdpiscaling_p.h>
 
+#include <QtWidgets/private/qapplication_p.h>
 #include <QtWidgets/private/qdialog_p.h>
 
 #if defined(Q_OS_WIN) && defined(interface)
@@ -36,6 +40,7 @@
 #include <QtTest/private/qtesthelpers_p.h>
 
 using namespace QTestPrivate;
+using namespace Qt::StringLiterals;
 
 static inline bool verifyChild(QWidget *child, QAccessibleInterface *interface,
                                int index, const QRect &domain)
@@ -210,6 +215,7 @@ private slots:
     void listTest();
     void treeTest();
     void tableTest();
+    void rootIndexView();
 
     void uniqueIdTest();
     void calendarWidgetTest();
@@ -218,6 +224,7 @@ private slots:
     void accessibleName();
 #if QT_CONFIG(shortcut)
     void labelTest();
+    void relationTest();
     void accelerators();
 #endif
     void bridgeTest();
@@ -915,7 +922,7 @@ void tst_QAccessibility::applicationTest()
 
     QWidget widget;
     widget.show();
-    qApp->setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     QAccessibleInterface *widgetIface = QAccessible::queryAccessibleInterface(&widget);
@@ -942,7 +949,7 @@ void tst_QAccessibility::mainWindowTest()
     auto mw = mwHolder.get();
     mw->resize(300, 200);
     mw->show(); // triggers layout
-    qApp->setActiveWindow(mw);
+    QApplicationPrivate::setActiveWindow(mw);
 
     QLatin1String name = QLatin1String("I am the main window");
     mw->setWindowTitle(name);
@@ -1113,7 +1120,10 @@ void tst_QAccessibility::buttonTest()
     interface = QAccessible::queryAccessibleInterface(&toggleButton);
     actionInterface = interface->actionInterface();
     QCOMPARE(interface->role(), QAccessible::CheckBox);
-    QCOMPARE(actionInterface->actionNames(), QStringList() << QAccessibleActionInterface::toggleAction() << QAccessibleActionInterface::setFocusAction());
+    QCOMPARE(actionInterface->actionNames(),
+             QStringList() << QAccessibleActionInterface::toggleAction()
+                           << QAccessibleActionInterface::pressAction()
+                           << QAccessibleActionInterface::setFocusAction());
     QCOMPARE(actionInterface->localizedActionDescription(QAccessibleActionInterface::toggleAction()), QString("Toggles the state"));
     QVERIFY(!toggleButton.isChecked());
     QVERIFY(!interface->state().checked);
@@ -1149,12 +1159,18 @@ void tst_QAccessibility::buttonTest()
     interface = QAccessible::queryAccessibleInterface(&checkBox);
     actionInterface = interface->actionInterface();
     QCOMPARE(interface->role(), QAccessible::CheckBox);
-    QCOMPARE(actionInterface->actionNames(), QStringList() << QAccessibleActionInterface::toggleAction() << QAccessibleActionInterface::setFocusAction());
+    QCOMPARE(actionInterface->actionNames(),
+             QStringList() << QAccessibleActionInterface::toggleAction()
+                           << QAccessibleActionInterface::pressAction()
+                           << QAccessibleActionInterface::setFocusAction());
     QVERIFY(!interface->state().checked);
     actionInterface->doAction(QAccessibleActionInterface::toggleAction());
 
     QTest::qWait(500);
-    QCOMPARE(actionInterface->actionNames(), QStringList() << QAccessibleActionInterface::toggleAction() << QAccessibleActionInterface::setFocusAction());
+    QCOMPARE(actionInterface->actionNames(),
+             QStringList() << QAccessibleActionInterface::toggleAction()
+                           << QAccessibleActionInterface::pressAction()
+                           << QAccessibleActionInterface::setFocusAction());
     QVERIFY(interface->state().checked);
     QVERIFY(checkBox.isChecked());
     QAccessible::State st;
@@ -1959,7 +1975,7 @@ void tst_QAccessibility::mdiSubWindowTest()
     {
     QMdiArea mdiArea;
     mdiArea.show();
-    qApp->setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     QVERIFY(QTest::qWaitForWindowActive(&mdiArea));
 
 
@@ -2027,7 +2043,7 @@ void tst_QAccessibility::mdiSubWindowTest()
     testWindow->setEnabled(false);
     QVERIFY(interface->state().disabled);
     testWindow->setEnabled(true);
-    qApp->setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     mdiArea.setActiveSubWindow(testWindow);
     testWindow->setFocus();
     QVERIFY(testWindow->isAncestorOf(qApp->focusWidget()));
@@ -2864,6 +2880,12 @@ void tst_QAccessibility::listTest()
     QCOMPARE(iface->indexOfChild(child3), 2);
     QCOMPARE(child3->text(QAccessible::Name), QString("Brisbane"));
     }
+
+    // Check that application is accessible parent, since it's a top-level widget
+    QAccessibleInterface *parentIface = iface->parent();
+    QVERIFY(parentIface);
+    QVERIFY(parentIface->role() == QAccessible::Application);
+
     QTestAccessibility::clearEvents();
 
     // Check for events
@@ -3386,6 +3408,51 @@ void tst_QAccessibility::tableTest()
     QTestAccessibility::clearEvents();
 }
 
+void tst_QAccessibility::rootIndexView()
+{
+    QStandardItemModel model;
+    for (int i = 0; i < 2; ++i) {
+        QStandardItem *item = new QStandardItem(u"root %1"_s.arg(i));
+        for (int j = 0; j < 5 * (i + 1); ++j) {
+            switch (i) {
+            case 0:
+                item->appendRow(new QStandardItem(u"child0/%1"_s.arg(j)));
+                break;
+            case 1:
+                item->appendRow({new QStandardItem(u"column0 1/%1"_s.arg(j)),
+                                 new QStandardItem(u"column1 1/%1"_s.arg(j))
+                                });
+                break;
+            }
+        }
+        model.appendRow(item);
+    }
+
+    QListView view;
+    view.setModel(&model);
+    QTestAccessibility::clearEvents();
+
+    QAccessibleInterface *accView = QAccessible::queryAccessibleInterface(&view);
+    QVERIFY(accView);
+    QAccessibleTableInterface *accTable = accView->tableInterface();
+    QVERIFY(accTable);
+    QCOMPARE(accTable->rowCount(), 2);
+    QCOMPARE(accTable->columnCount(), 1);
+
+    view.setRootIndex(model.index(0, 0));
+    QAccessibleTableModelChangeEvent resetEvent(&view, QAccessibleTableModelChangeEvent::ModelReset);
+    QVERIFY(QTestAccessibility::containsEvent(&resetEvent));
+
+    QCOMPARE(accTable->rowCount(), 5);
+    QCOMPARE(accTable->columnCount(), 1);
+
+    view.setRootIndex(model.index(1, 0));
+    QCOMPARE(accTable->rowCount(), 10);
+    QCOMPARE(accTable->columnCount(), 2);
+
+    QTestAccessibility::clearEvents();
+}
+
 void tst_QAccessibility::uniqueIdTest()
 {
     // Test that an ID isn't reassigned to another interface right away when an accessible interface
@@ -3684,6 +3751,69 @@ void tst_QAccessibility::comboBoxTest()
     QTestAccessibility::clearEvents();
 }
 
+void tst_QAccessibility::relationTest()
+{
+    auto windowHolder = std::make_unique<QWidget>();
+    auto window = windowHolder.get();
+    QString text = "Hello World";
+    QLabel *label = new QLabel(text, window);
+    setFrameless(label);
+    QSpinBox *spinBox = new QSpinBox(window);
+    label->setBuddy(spinBox);
+    QProgressBar *pb = new QProgressBar(window);
+    pb->setRange(0, 99);
+    connect(spinBox, SIGNAL(valueChanged(int)), pb, SLOT(setValue(int)));
+
+    window->resize(320, 200);
+    window->show();
+
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+#if defined(Q_OS_UNIX)
+    QCoreApplication::processEvents();
+#endif
+    QTest::qWait(100);
+
+    QAccessibleInterface *acc_label = QAccessible::queryAccessibleInterface(label);
+    QVERIFY(acc_label);
+    QAccessibleInterface *acc_spinBox = QAccessible::queryAccessibleInterface(spinBox);
+    QVERIFY(acc_spinBox);
+    QAccessibleInterface *acc_pb = QAccessible::queryAccessibleInterface(pb);
+    QVERIFY(acc_pb);
+
+    typedef QPair<QAccessibleInterface*, QAccessible::Relation> RelationPair;
+    {
+        const QList<RelationPair> rels = acc_label->relations(QAccessible::Labelled);
+        QCOMPARE(rels.size(), 1);
+        const RelationPair relPair = rels.first();
+
+        // spinBox is Labelled by acc_label
+        QCOMPARE(relPair.first->object(), spinBox);
+        QCOMPARE(relPair.second, QAccessible::Labelled);
+    }
+
+    {
+        // Test multiple relations (spinBox have two)
+        const QList<RelationPair> rels = acc_spinBox->relations();
+        QCOMPARE(rels.size(), 2);
+        int visitCount = 0;
+        for (const auto &relPair : rels) {
+            if (relPair.second & QAccessible::Label) {
+                // label is the Label of spinBox
+                QCOMPARE(relPair.first->object(), label);
+                ++visitCount;
+            } else if (relPair.second & QAccessible::Controlled) {
+                // progressbar is Controlled by the spinBox
+                QCOMPARE(relPair.first->object(), pb);
+                ++visitCount;
+            }
+        }
+        QCOMPARE(visitCount, rels.size());
+    }
+
+    windowHolder.reset();
+    QTestAccessibility::clearEvents();
+}
+
 #if QT_CONFIG(shortcut)
 
 void tst_QAccessibility::labelTest()
@@ -3706,6 +3836,8 @@ void tst_QAccessibility::labelTest()
 
     QAccessibleInterface *acc_label = QAccessible::queryAccessibleInterface(label);
     QVERIFY(acc_label);
+    QAccessibleInterface *acc_lineEdit = QAccessible::queryAccessibleInterface(buddy);
+    QVERIFY(acc_lineEdit);
 
     QCOMPARE(acc_label->text(QAccessible::Name), text);
     QCOMPARE(acc_label->state().editable, false);
@@ -3715,13 +3847,23 @@ void tst_QAccessibility::labelTest()
     QCOMPARE(acc_label->state().focusable, false);
     QCOMPARE(acc_label->state().readOnly, true);
 
-    QList<QPair<QAccessibleInterface *, QAccessible::Relation>> rels = acc_label->relations();
-    QCOMPARE(rels.size(), 1);
-    QAccessibleInterface *iface = rels.first().first;
-    QAccessible::Relation rel = rels.first().second;
 
-    QCOMPARE(rel, QAccessible::Labelled);
-    QCOMPARE(iface->role(), QAccessible::EditableText);
+    typedef QPair<QAccessibleInterface*, QAccessible::Relation> RelationPair;
+    {
+        const QList<RelationPair> rels = acc_label->relations(QAccessible::Labelled);
+        QCOMPARE(rels.size(), 1);
+        const RelationPair relPair = rels.first();
+        QCOMPARE(relPair.first->object(), buddy);
+        QCOMPARE(relPair.second, QAccessible::Labelled);
+    }
+
+    {
+        const QList<RelationPair> rels = acc_lineEdit->relations(QAccessible::Label);
+        QCOMPARE(rels.size(), 1);
+        const RelationPair relPair = rels.first();
+        QCOMPARE(relPair.first->object(), label);
+        QCOMPARE(relPair.second, QAccessible::Label);
+    }
 
     windowHolder.reset();
     QTestAccessibility::clearEvents();
@@ -3865,14 +4007,14 @@ void tst_QAccessibility::bridgeTest()
     POINT pt{nativePos.x(), nativePos.y()};
 
     // Initialize COM stuff.
-    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    QVERIFY(SUCCEEDED(hr));
+    QComHelper comHelper;
+    QVERIFY(comHelper.isValid());
 
     // Get UI Automation interface.
     const GUID CLSID_CUIAutomation_test{0xff48dba4, 0x60ef, 0x4201,
                                         {0xaa,0x87, 0x54,0x10,0x3e,0xef,0x59,0x4e}};
     IUIAutomation *automation = nullptr;
-    hr = CoCreateInstance(CLSID_CUIAutomation_test, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
+    HRESULT hr = CoCreateInstance(CLSID_CUIAutomation_test, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
     QVERIFY(SUCCEEDED(hr));
 
     // Get button element from UI Automation using point.
@@ -3975,7 +4117,6 @@ void tst_QAccessibility::bridgeTest()
     controlWalker->Release();
     windowElement->Release();
     automation->Release();
-    CoUninitialize();
 
     QTestAccessibility::clearEvents();
 #endif
@@ -4068,6 +4209,9 @@ private:
 
 void tst_QAccessibility::focusChild()
 {
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+        QSKIP("Platform does not support window activation");
+
     {
         QMainWindow mainWindow;
         QtTestAccessibleWidget *widget1 = new QtTestAccessibleWidget(0, "Widget1");

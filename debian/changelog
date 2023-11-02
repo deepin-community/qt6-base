@@ -1,8 +1,69 @@
-qt6-base (6.4.2+dfsg-17deepin) unstable; urgency=medium
+qt6-base (6.6.0+dfsg-5~r0) UNRELEASED; urgency=medium
 
-  * Update d/libqt6network6.symbols.
+  * Add skip_plugin_and_qml_plugin_inclusion.patch. This patch sets
+    QT_SKIP_AUTO_PLUGIN_INCLUSION and QT_SKIP_AUTO_QML_PLUGIN_INCLUSION to ON
+    by default, thus avoiding unnecesary build dependencies on plugins.
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Mon, 07 Aug 2023 11:15:52 +0800
+ -- Debian Qt/KDE Maintainers <debian-qt-kde@lists.debian.org>  Wed, 01 Nov 2023 18:16:57 -0300
+
+qt6-base (6.6.0+dfsg-4) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Do not include targets for plugins and QML plugins in cmake-files.
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 01 Nov 2023 00:03:22 +0100
+
+qt6-base (6.6.0+dfsg-3) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Update list of installed files.
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 28 Oct 2023 18:08:38 +0200
+
+qt6-base (6.6.0+dfsg-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Rename the virtual ABI package to qt6-base-private-abi.
+  * Update symbols from buildlogs.
+  * Move prf-files into qmake6-package (Closes: #1053824).
+
+ -- Patrick Franz <deltaone@debian.org>  Thu, 12 Oct 2023 18:18:14 +0200
+
+qt6-base (6.6.0+dfsg-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.6.0).
+  * Update ABI to 6.6.0.
+  * Remove references to htmlinfo examples.
+  * Remove patches that have been applied upstream.
+  * Readjust patches for 6.6.0.
+  * Update list of installed files.
+  * Update symbols from buildlogs.
+  * Install source code for examples (Closes: #1051494).
+  * Update lintian-overrides.
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 11 Oct 2023 21:00:14 +0200
+
+ qt6-base (6.4.2+dfsg-19) unstable; urgency=medium
+
+   [ Patrick Franz ]
+   * Backport upstream patch to fix build with libxkbcommon 1.6.0
+     (Closes: #1054674).
+
+  -- Patrick Franz <deltaone@debian.org>  Sat, 28 Oct 2023 11:26:45 +0200
+
+qt6-base (6.4.2+dfsg-18) unstable; urgency=medium
+
+  [ Helmut Grohne ]
+  * Fix FTCBFS: Do build sqlbrowser. (Closes: #1042709)
+  * Move from deprecated QT_BUILD_TOOLS_WHEN_CROSSCOMPILING to
+    QT_FORCE_BUILD_TOOLS.
+
+  [ John Paul Adrian Glaubitz ]
+  * Add Add-SH-detection.patch in order to restore SH detection
+   (Closes: #1043225).
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 08 Aug 2023 08:40:37 +0200
 
 qt6-base (6.4.2+dfsg-17) unstable; urgency=medium
 

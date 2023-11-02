@@ -1,10 +1,11 @@
-# Generated from xcb_egl.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## QXcbEglIntegrationPlugin Plugin:
 #####################################################################
 
-qt_find_package(EGL) # special case
+qt_find_package(EGL)
 
 qt_internal_add_plugin(QXcbEglIntegrationPlugin
     OUTPUT_NAME qxcb-egl-integration
@@ -26,5 +27,6 @@ qt_internal_add_plugin(QXcbEglIntegrationPlugin
         Qt::Gui
         Qt::GuiPrivate
         Qt::XcbQpaPrivate
-        EGL::EGL # special case
+        EGL::EGL
+    NO_UNITY_BUILD # X11 define clashes
 )

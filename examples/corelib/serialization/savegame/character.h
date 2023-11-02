@@ -8,15 +8,15 @@
 #include <QObject>
 #include <QString>
 
+QT_FORWARD_DECLARE_CLASS(QTextStream)
+
 //! [0]
 class Character
 {
-    Q_GADGET;
+    Q_GADGET
 
 public:
-    enum ClassType {
-        Warrior, Mage, Archer
-    };
+    enum ClassType { Warrior, Mage, Archer };
     Q_ENUM(ClassType)
 
     Character();
@@ -31,14 +31,15 @@ public:
     ClassType classType() const;
     void setClassType(ClassType classType);
 
-    void read(const QJsonObject &json);
-    void write(QJsonObject &json) const;
+    static Character fromJson(const QJsonObject &json);
+    QJsonObject toJson() const;
 
-    void print(int indentation = 0) const;
+    void print(QTextStream &s, int indentation = 0) const;
+
 private:
     QString mName;
-    int mLevel;
-    ClassType mClassType;
+    int mLevel = 0;
+    ClassType mClassType = Warrior;
 };
 //! [0]
 

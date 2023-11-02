@@ -62,6 +62,7 @@ void tst_QSortFilterProxyModel::cleanup()
     m_proxy->sort(-1, Qt::AscendingOrder);
     m_model->clear();
     m_model->insertColumns(0, 1);
+    QCoreApplication::processEvents();  // cleanup possibly queued events
 }
 
 /*
@@ -1100,7 +1101,6 @@ void tst_QSortFilterProxyModel::filterColumns_data()
                              << "bravo"
                              << "lima")
                          << true;
-
     QTest::newRow("some") << "lie"
                           << (QStringList()
                               << "charlie"
@@ -1126,6 +1126,7 @@ void tst_QSortFilterProxyModel::filterColumns()
     // prepare model
     m_model->setColumnCount(initial.size());
     m_model->setRowCount(1);
+    QCoreApplication::processEvents();  // QAbstractProxyModel queues the headerDataChanged() signal
     QCOMPARE(m_model->columnCount(QModelIndex()), initial.size());
     QCOMPARE(m_model->rowCount(QModelIndex()), 1);
     // set data
@@ -1257,7 +1258,6 @@ void tst_QSortFilterProxyModel::filterHierarchy()
 
 void tst_QSortFilterProxyModel::buildHierarchy(const QStringList &l, QAbstractItemModel *m)
 {
-    int ind = 0;
     int row = 0;
     QStack<int> row_stack;
     QModelIndex parent;
@@ -1265,14 +1265,12 @@ void tst_QSortFilterProxyModel::buildHierarchy(const QStringList &l, QAbstractIt
     for (int i = 0; i < l.size(); ++i) {
         QString token = l.at(i);
         if (token == QLatin1String("<")) { // start table
-            ++ind;
             parent_stack.push(parent);
             row_stack.push(row);
             parent = m->index(row - 1, 0, parent);
             row = 0;
             QVERIFY(m->insertColumns(0, 1, parent)); // add column
         } else if (token == QLatin1String(">")) { // end table
-            --ind;
             parent = parent_stack.pop();
             row = row_stack.pop();
         } else { // append row
@@ -1288,21 +1286,18 @@ void tst_QSortFilterProxyModel::buildHierarchy(const QStringList &l, QAbstractIt
 void tst_QSortFilterProxyModel::checkHierarchy(const QStringList &l, const QAbstractItemModel *m)
 {
     int row = 0;
-    int indent = 0;
     QStack<int> row_stack;
     QModelIndex parent;
     QStack<QModelIndex> parent_stack;
     for (int i = 0; i < l.size(); ++i) {
         QString token = l.at(i);
         if (token == QLatin1String("<")) { // start table
-            ++indent;
             parent_stack.push(parent);
             row_stack.push(row);
             parent = m->index(row - 1, 0, parent);
             QVERIFY(parent.isValid());
             row = 0;
         } else if (token == QLatin1String(">")) { // end table
-            --indent;
             parent = parent_stack.pop();
             row = row_stack.pop();
         } else { // compare row
@@ -2811,7 +2806,7 @@ void tst_QSortFilterProxyModel::sortColumnTracking2()
 
 void tst_QSortFilterProxyModel::sortStable()
 {
-    QStandardItemModel* model = new QStandardItemModel(5, 2);
+    QStandardItemModel model(5, 2);
     for (int r = 0; r < 5; r++) {
         const QString prefix = QLatin1String("Row:") + QString::number(r) + QLatin1String(", Column:");
         for (int c = 0; c < 2; c++)  {
@@ -2820,24 +2815,24 @@ void tst_QSortFilterProxyModel::sortStable()
                 QStandardItem* child = new QStandardItem(QLatin1String("Item ") + QString::number(i));
                 item->appendRow( child );
             }
-            model->setItem(r, c, item);
+            model.setItem(r, c, item);
         }
     }
-    model->setHorizontalHeaderItem( 0, new QStandardItem( "Name" ));
-    model->setHorizontalHeaderItem( 1, new QStandardItem( "Value" ));
+    model.setHorizontalHeaderItem( 0, new QStandardItem( "Name" ));
+    model.setHorizontalHeaderItem( 1, new QStandardItem( "Value" ));
 
-    QSortFilterProxyModel *filterModel = new QSortFilterProxyModel(model);
-    filterModel->setSourceModel(model);
+    QSortFilterProxyModel *filterModel = new QSortFilterProxyModel(&model);
+    filterModel->setSourceModel(&model);
 
-    QTreeView *view = new QTreeView;
-    view->setModel(filterModel);
+    QTreeView view;
+    view.setModel(filterModel);
     QModelIndex firstRoot = filterModel->index(0,0);
-    view->expand(firstRoot);
-    view->setSortingEnabled(true);
+    view.expand(firstRoot);
+    view.setSortingEnabled(true);
 
-    view->model()->sort(1, Qt::DescendingOrder);
+    view.model()->sort(1, Qt::DescendingOrder);
     QVariant lastItemData =filterModel->index(2,0, firstRoot).data();
-    view->model()->sort(1, Qt::DescendingOrder);
+    view.model()->sort(1, Qt::DescendingOrder);
     QCOMPARE(lastItemData, filterModel->index(2,0, firstRoot).data());
 }
 
@@ -3240,36 +3235,36 @@ void tst_QSortFilterProxyModel::removeRowsRecursive()
 
 void tst_QSortFilterProxyModel::doubleProxySelectionSetSourceModel()
 {
-    QStandardItemModel *model1 = new QStandardItemModel;
-    QStandardItem *parentItem = model1->invisibleRootItem();
+    QStandardItemModel model1;
+    QStandardItem *parentItem = model1.invisibleRootItem();
     for (int i = 0; i < 4; ++i) {
         QStandardItem *item = new QStandardItem(QLatin1String("model1 item ") + QString::number(i));
         parentItem->appendRow(item);
         parentItem = item;
     }
 
-    QStandardItemModel *model2 = new QStandardItemModel;
-    QStandardItem *parentItem2 = model2->invisibleRootItem();
+    QStandardItemModel model2;
+    QStandardItem *parentItem2 = model2.invisibleRootItem();
     for (int i = 0; i < 4; ++i) {
         QStandardItem *item = new QStandardItem(QLatin1String("model2 item ") + QString::number(i));
         parentItem2->appendRow(item);
         parentItem2 = item;
     }
 
-    QSortFilterProxyModel *toggleProxy = new QSortFilterProxyModel;
-    toggleProxy->setSourceModel(model1);
+    QSortFilterProxyModel toggleProxy;
+    toggleProxy.setSourceModel(&model1);
 
-    QSortFilterProxyModel *proxyModel = new QSortFilterProxyModel;
-    proxyModel->setSourceModel(toggleProxy);
+    QSortFilterProxyModel proxyModel;
+    proxyModel.setSourceModel(&toggleProxy);
 
-    QModelIndex mi = proxyModel->index(0, 0, proxyModel->index(0, 0, proxyModel->index(0, 0)));
-    QItemSelectionModel ism(proxyModel);
+    QModelIndex mi = proxyModel.index(0, 0, proxyModel.index(0, 0, proxyModel.index(0, 0)));
+    QItemSelectionModel ism(&proxyModel);
     ism.select(mi, QItemSelectionModel::Select);
     QModelIndexList mil = ism.selectedIndexes();
     QCOMPARE(mil.size(), 1);
     QCOMPARE(mil.first(), mi);
 
-    toggleProxy->setSourceModel(model2);
+    toggleProxy.setSourceModel(&model2);
     // No crash, it's good news!
     QVERIFY(ism.selection().isEmpty());
 }

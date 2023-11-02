@@ -967,9 +967,12 @@ void QWidgetTextControl::selectAll()
 {
     Q_D(QWidgetTextControl);
     const int selectionLength = qAbs(d->cursor.position() - d->cursor.anchor());
+    const int oldCursorPos = d->cursor.position();
     d->cursor.select(QTextCursor::Document);
     d->selectionChanged(selectionLength != qAbs(d->cursor.position() - d->cursor.anchor()));
     d->cursorIsFocusIndicator = false;
+    if (d->cursor.position() != oldCursorPos)
+        emit cursorPositionChanged();
     emit updateRequest();
 }
 
@@ -1818,25 +1821,36 @@ void QWidgetTextControlPrivate::mouseReleaseEvent(QEvent *e, Qt::MouseButton but
     }
 
     if (interactionFlags & Qt::LinksAccessibleByMouse) {
-        if (!(button & Qt::LeftButton))
+
+        // Ignore event unless left button has been pressed
+        if (!(button & Qt::LeftButton)) {
+            e->ignore();
             return;
+        }
 
         const QString anchor = q->anchorAt(pos);
 
-        if (anchor.isEmpty())
+        // Ignore event without selection anchor
+        if (anchor.isEmpty()) {
+            e->ignore();
             return;
+        }
 
         if (!cursor.hasSelection()
             || (anchor == anchorOnMousePress && hadSelectionOnMousePress)) {
 
             const int anchorPos = q->hitTest(pos, Qt::ExactHit);
-            if (anchorPos != -1) {
-                cursor.setPosition(anchorPos);
 
-                QString anchor = anchorOnMousePress;
-                anchorOnMousePress = QString();
-                activateLinkUnderCursor(anchor);
+            // Ignore event without valid anchor position
+            if (anchorPos < 0) {
+                e->ignore();
+                return;
             }
+
+            cursor.setPosition(anchorPos);
+            QString anchor = anchorOnMousePress;
+            anchorOnMousePress = QString();
+            activateLinkUnderCursor(anchor);
         }
     }
 }
@@ -2020,6 +2034,11 @@ void QWidgetTextControlPrivate::inputMethodEvent(QInputMethodEvent *e)
     bool isGettingInput = !e->commitString().isEmpty()
             || e->preeditString() != cursor.block().layout()->preeditAreaText()
             || e->replacementLength() > 0;
+
+    if (!isGettingInput && e->attributes().isEmpty()) {
+        e->ignore();
+        return;
+    }
 
     int oldCursorPos = cursor.position();
 
@@ -2285,7 +2304,7 @@ void QWidgetTextControlPrivate::editFocusEvent(QEvent *e)
 #endif
 
 #ifndef QT_NO_CONTEXTMENU
-static inline void setActionIcon(QAction *action, const QString &name)
+void setActionIcon(QAction *action, const QString &name)
 {
     const QIcon icon = QIcon::fromTheme(name);
     if (!icon.isNull())
@@ -2699,7 +2718,8 @@ void QWidgetTextControl::insertFromMimeData(const QMimeData *source)
     bool hasData = false;
     QTextDocumentFragment fragment;
 #if QT_CONFIG(textmarkdownreader)
-    if (source->formats().first() == "text/markdown"_L1) {
+    const auto formats = source->formats();
+    if (formats.size() && formats.first() == "text/markdown"_L1) {
         auto s = QString::fromUtf8(source->data("text/markdown"_L1));
         fragment = QTextDocumentFragment::fromMarkdown(s);
         hasData = true;

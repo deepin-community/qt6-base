@@ -3,7 +3,8 @@
 
 /*!
     \example pingpong
-    \title D-Bus Ping Pong Example
+    \title D-Bus Ping Pong
+    \examplecategory {Connectivity}
     \ingroup examples-dbus
     \brief Demonstrates a simple message system using D-Bus.
 

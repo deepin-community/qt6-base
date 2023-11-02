@@ -19,7 +19,7 @@
 #include <QtGui/qwindow.h>
 #include <QtGui/qsurfaceformat.h>
 #include <QtGui/qoffscreensurface.h>
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 #include <qpa/qplatformbackingstore.h>
 
 QT_BEGIN_NAMESPACE
@@ -44,7 +44,6 @@ public:
     static bool checkForceRhi(QPlatformBackingStoreRhiConfig *outConfig, QSurface::SurfaceType *outType);
 
     static QRhi::Implementation apiToRhiBackend(QPlatformBackingStoreRhiConfig::Api api);
-    static const char *apiName(QPlatformBackingStoreRhiConfig::Api api);
 
     QRhi *rhi() const { return m_rhi; }
 

@@ -115,7 +115,7 @@ bool QFSFileEnginePrivate::nativeOpenImpl(QIODevice::OpenMode openMode, mode_t m
 
         // Seek to the end when in Append mode.
         if (flags & QFile::Append) {
-            int ret;
+            QT_OFF_T ret;
             do {
                 ret = QT_LSEEK(fd, 0, SEEK_END);
             } while (ret == -1 && errno == EINTR);
@@ -447,6 +447,12 @@ QString QFSFileEngine::fileName(FileName file) const
     case AbsoluteLinkTarget:
         if (d->isSymlink()) {
             QFileSystemEntry entry = QFileSystemEngine::getLinkTarget(d->fileEntry, d->metaData);
+            return entry.filePath();
+        }
+        return QString();
+    case RawLinkPath:
+        if (d->isSymlink()) {
+            QFileSystemEntry entry = QFileSystemEngine::getRawLinkPath(d->fileEntry, d->metaData);
             return entry.filePath();
         }
         return QString();

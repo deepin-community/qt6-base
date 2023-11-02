@@ -4,8 +4,6 @@
 
 #include <qglobal.h>
 
-// To prevent windows system header files from re-defining min/max
-#define NOMINMAX 1
 #if defined(_WIN32)
 #include <winsock2.h>
 #else
@@ -283,7 +281,7 @@ tst_QTcpSocket::tst_QTcpSocket()
     tmpSocket = 0;
 
     //This code relates to the socketsConstructedBeforeEventLoop test case
-    earlyConstructedSockets = new SocketPair;
+    earlyConstructedSockets = new SocketPair(this);
     QVERIFY(earlyConstructedSockets->create());
     earlyBytesWrittenCount = 0;
     earlyReadyReadCount = 0;
@@ -332,7 +330,8 @@ void tst_QTcpSocket::initTestCase()
      //QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::firewallServerName(), 1357));
      QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::socksProxyServerName(), 1080));
      QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::ftpServerName(), 21));
-     QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::ftpProxyServerName(), 2121));
+    // FTP currently not supported:
+    // QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::ftpProxyServerName(), 2121));
 #else
     if (!QtNetworkSettings::verifyTestNetworkSettings())
         QSKIP("No network test server available");
@@ -488,8 +487,8 @@ void tst_QTcpSocket::bind_data()
     bool testIpv6 = false;
 
     // iterate all interfaces, add all addresses on them as test data
-    QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
-    foreach (const QNetworkInterface &netinterface, interfaces) {
+    const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &netinterface : interfaces) {
         if (!netinterface.isValid())
             continue;
 
@@ -563,7 +562,7 @@ void tst_QTcpSocket::bind()
 
     std::unique_ptr<QTcpSocket> socket(newSocket());
     quint16 boundPort;
-    qintptr fd;
+    qintptr fd = 0;
 
     if (successExpected) {
         bool randomPort = port == -1;
@@ -2912,6 +2911,7 @@ void tst_QTcpSocket::proxyFactory_data()
         << proxyList << proxyList.at(1)
         << false << int(QAbstractSocket::UnknownSocketError);
 
+#if 0 // FTP not currently supported
     proxyList.clear();
     proxyList << QNetworkProxy(QNetworkProxy::FtpCachingProxy, QtNetworkSettings::ftpProxyServerName(), 2121)
               << QNetworkProxy(QNetworkProxy::HttpCachingProxy, QtNetworkSettings::httpProxyServerName(), 3129)
@@ -2919,6 +2919,7 @@ void tst_QTcpSocket::proxyFactory_data()
     QTest::newRow("ftp+cachinghttp+socks5")
         << proxyList << proxyList.at(2)
         << false << int(QAbstractSocket::UnknownSocketError);
+#endif
 
     // tests that fail to connect
     proxyList.clear();
@@ -2927,6 +2928,7 @@ void tst_QTcpSocket::proxyFactory_data()
         << proxyList << QNetworkProxy()
         << true << int(QAbstractSocket::UnsupportedSocketOperationError);
 
+#if 0 // FTP not currently supported
     proxyList.clear();
     proxyList << QNetworkProxy(QNetworkProxy::FtpCachingProxy, QtNetworkSettings::ftpProxyServerName(), 2121);
     QTest::newRow("ftp")
@@ -2939,6 +2941,7 @@ void tst_QTcpSocket::proxyFactory_data()
     QTest::newRow("ftp+cachinghttp")
         << proxyList << QNetworkProxy()
         << true << int(QAbstractSocket::UnsupportedSocketOperationError);
+#endif
 }
 
 void tst_QTcpSocket::proxyFactory()

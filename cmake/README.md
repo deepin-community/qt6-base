@@ -48,7 +48,9 @@ You may use brew to install dependencies needed to build QtBase.
     `/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"`
   * Build Qt dependencies:  ``brew install pcre2 harfbuzz freetype``
   * Install cmake:  ``brew install cmake``
-  * When running cmake in qtbase, pass ``-DCMAKE_PREFIX_PATH=/usr/local``
+  * When running cmake in qtbase, pass ``-DFEATURE_pkg_config=ON`` together with
+    ``-DCMAKE_PREFIX_PATH=/usr/local``, or ``-DCMAKE_PREFIX_PATH=/opt/homebrew`` if you have a Mac
+    with Apple Silicon.
 
 # Building
 
@@ -310,4 +312,17 @@ Example:
 $ cd some/empty/directory
 $ ~/Qt/6.0.0/bin/qt-cmake-standalone-test ~/source/of/qtbase/test/auto/corelib/io/qprocess
 $ cmake --build .
+```
+
+## qt-cmake-create
+
+Generates a simple CMakeLists.txt based on source files in specified project directory.
+
+Example:
+
+```
+$ cd some/source/directory/
+$ qt-cmake-create
+$ qt-cmake -S . -B /build/directory
+$ cmake --build /build/directory
 ```

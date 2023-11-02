@@ -129,7 +129,7 @@ QWidgetWindow::QWidgetWindow(QWidget *widget)
     }
 
     connect(widget, &QObject::objectNameChanged, this, &QWidgetWindow::updateObjectName);
-    connect(this, SIGNAL(screenChanged(QScreen*)), this, SLOT(handleScreenChange()));
+    connect(this, &QWidgetWindow::screenChanged, this, &QWidgetWindow::handleScreenChange);
 }
 
 QWidgetWindow::~QWidgetWindow()
@@ -328,6 +328,10 @@ bool QWidgetWindow::event(QEvent *event)
         // syncs the backing store while here we also must mark as dirty.
         m_widget->repaint();
         return true;
+
+    case QEvent::DevicePixelRatioChange:
+        handleDevicePixelRatioChange();
+        break;
 
     default:
         break;
@@ -629,6 +633,8 @@ void QWidgetWindow::handleMouseEvent(QMouseEvent *event)
         && m_widget->rect().contains(event->position().toPoint())) {
         QContextMenuEvent e(QContextMenuEvent::Mouse, mapped, event->globalPosition().toPoint(), event->modifiers());
         QGuiApplication::forwardEvent(receiver, &e, event);
+        if (e.isAccepted())
+            event->accept();
     }
 #endif
 }
@@ -693,22 +699,32 @@ void QWidgetWindow::updateMargins()
     m_widget->data->fstrut_dirty = false;
 }
 
-static void sendScreenChangeRecursively(QWidget *widget)
+static void sendChangeRecursively(QWidget *widget, QEvent::Type type)
 {
-    QEvent e(QEvent::ScreenChangeInternal);
+    QEvent e(type);
     QCoreApplication::sendEvent(widget, &e);
     QWidgetPrivate *d = QWidgetPrivate::get(widget);
     for (int i = 0; i < d->children.size(); ++i) {
         QWidget *w = qobject_cast<QWidget *>(d->children.at(i));
         if (w)
-            sendScreenChangeRecursively(w);
+            sendChangeRecursively(w, type);
     }
 }
 
 void QWidgetWindow::handleScreenChange()
 {
     // Send an event recursively to the widget and its children.
-    sendScreenChangeRecursively(m_widget);
+    sendChangeRecursively(m_widget, QEvent::ScreenChangeInternal);
+
+    // Invalidate the backing store buffer and repaint immediately.
+    if (screen())
+        repaintWindow();
+}
+
+void QWidgetWindow::handleDevicePixelRatioChange()
+{
+    // Send an event recursively to the widget and its children.
+    sendChangeRecursively(m_widget, QEvent::DevicePixelRatioChange);
 
     // Invalidate the backing store buffer and repaint immediately.
     if (screen())
@@ -1051,11 +1067,10 @@ void QWidgetWindow::handleTabletEvent(QTabletEvent *event)
 
     if (!widget) {
         widget = m_widget->childAt(event->position().toPoint());
-        if (event->type() == QEvent::TabletPress) {
-            if (!widget)
-                widget = m_widget;
+        if (!widget)
+            widget = m_widget;
+        if (event->type() == QEvent::TabletPress)
             qt_tablet_target = widget;
-        }
     }
 
     if (widget) {

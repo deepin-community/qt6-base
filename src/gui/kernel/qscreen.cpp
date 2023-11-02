@@ -37,100 +37,42 @@ QT_BEGIN_NAMESPACE
     \inmodule QtGui
 */
 
-QScreen::QScreen(QPlatformScreen *screen)
+QScreen::QScreen(QPlatformScreen *platformScreen)
     : QObject(*new QScreenPrivate(), nullptr)
 {
     Q_D(QScreen);
-    d->setPlatformScreen(screen);
-}
 
-void QScreenPrivate::updateGeometriesWithSignals()
-{
-    const QRect oldGeometry = geometry;
-    const QRect oldAvailableGeometry = availableGeometry;
-    updateHighDpi();
-    emitGeometryChangeSignals(oldGeometry != geometry, oldAvailableGeometry != availableGeometry);
-}
+    d->platformScreen = platformScreen;
+    platformScreen->d_func()->screen = this;
 
-void QScreenPrivate::emitGeometryChangeSignals(bool geometryChanged, bool availableGeometryChanged)
-{
-    Q_Q(QScreen);
-    if (geometryChanged)
-        emit q->geometryChanged(geometry);
-
-    if (availableGeometryChanged)
-        emit q->availableGeometryChanged(availableGeometry);
-
-    if (geometryChanged || availableGeometryChanged) {
-        const auto siblings = q->virtualSiblings();
-        for (QScreen* sibling : siblings)
-            emit sibling->virtualGeometryChanged(sibling->virtualGeometry());
-    }
-
-    if (geometryChanged)
-        emit q->physicalDotsPerInchChanged(q->physicalDotsPerInch());
-}
-
-void QScreenPrivate::setPlatformScreen(QPlatformScreen *screen)
-{
-    Q_Q(QScreen);
-    platformScreen = screen;
-    platformScreen->d_func()->screen = q;
-    orientation = platformScreen->orientation();
-
-    logicalDpi = QPlatformScreen::overrideDpi(platformScreen->logicalDpi());
-
-    refreshRate = platformScreen->refreshRate();
+    d->orientation = platformScreen->orientation();
+    d->logicalDpi = QPlatformScreen::overrideDpi(platformScreen->logicalDpi());
+    d->refreshRate = platformScreen->refreshRate();
     // safeguard ourselves against buggy platform behavior...
-    if (refreshRate < 1.0)
-        refreshRate = 60.0;
+    if (d->refreshRate < 1.0)
+        d->refreshRate = 60.0;
 
-    updateHighDpi();
-    updatePrimaryOrientation(); // derived from the geometry
+    d->updateGeometry();
+    d->updatePrimaryOrientation(); // derived from the geometry
 }
 
+void QScreenPrivate::updateGeometry()
+{
+    qreal scaleFactor = QHighDpiScaling::factor(platformScreen);
+    QRect nativeGeometry = platformScreen->geometry();
+    geometry = QRect(nativeGeometry.topLeft(), QHighDpi::fromNative(nativeGeometry.size(), scaleFactor));
+    availableGeometry = QHighDpi::fromNative(platformScreen->availableGeometry(), scaleFactor, geometry.topLeft());
+}
 
 /*!
     Destroys the screen.
+
+    \internal
  */
 QScreen::~QScreen()
 {
-    // Remove screen
-    const bool wasPrimary = QGuiApplication::primaryScreen() == this;
-    QGuiApplicationPrivate::screen_list.removeOne(this);
-    QGuiApplicationPrivate::resetCachedDevicePixelRatio();
-
-    if (!qGuiApp)
-        return;
-
-    QScreen *newPrimaryScreen = QGuiApplication::primaryScreen();
-    if (wasPrimary && newPrimaryScreen)
-        emit qGuiApp->primaryScreenChanged(newPrimaryScreen);
-
-    // Allow clients to manage windows that are affected by the screen going
-    // away, before we fall back to moving them to the primary screen.
-    emit qApp->screenRemoved(this);
-
-    if (QGuiApplication::closingDown())
-        return;
-
-    bool movingFromVirtualSibling = newPrimaryScreen
-        && newPrimaryScreen->handle()->virtualSiblings().contains(handle());
-
-    // Move any leftover windows to the primary screen
-    const auto allWindows = QGuiApplication::allWindows();
-    for (QWindow *window : allWindows) {
-        if (!window->isTopLevel() || window->screen() != this)
-            continue;
-
-        const bool wasVisible = window->isVisible();
-        window->setScreen(newPrimaryScreen);
-
-        // Re-show window if moved from a virtual sibling screen. Otherwise
-        // leave it up to the application developer to show the window.
-        if (movingFromVirtualSibling)
-            window->setVisible(wasVisible);
-    }
+    Q_ASSERT_X(!QGuiApplicationPrivate::screen_list.contains(this), "QScreen",
+        "QScreens should be removed via QWindowSystemInterface::handleScreenRemoved()");
 }
 
 /*!
@@ -150,6 +92,10 @@ QPlatformScreen *QScreen::handle() const
 
   For example, on X11 these correspond to the XRandr screen names,
   typically "VGA1", "HDMI1", etc.
+
+  \note The user presentable string is not guaranteed to match the
+  result of any native APIs, and should not be used to uniquely identify
+  a screen.
 */
 QString QScreen::name() const
 {
@@ -414,8 +360,11 @@ QList<QScreen *> QScreen::virtualSiblings() const
     const QList<QPlatformScreen *> platformScreens = d->platformScreen->virtualSiblings();
     QList<QScreen *> screens;
     screens.reserve(platformScreens.size());
-    for (QPlatformScreen *platformScreen : platformScreens)
-        screens << platformScreen->screen();
+    for (QPlatformScreen *platformScreen : platformScreens) {
+        // Only consider platform screens that have been added
+        if (auto *knownScreen = platformScreen->screen())
+            screens << knownScreen;
+    }
     return screens;
 }
 
@@ -775,17 +724,22 @@ void *QScreen::resolveInterface(const char *name, int revision) const
     QT_NATIVE_INTERFACE_RETURN_IF(QWebOSScreen, platformScreen);
 #endif
 
+#if defined(Q_OS_WIN32)
+    QT_NATIVE_INTERFACE_RETURN_IF(QWindowsScreen, platformScreen);
+#endif
+
+#if defined(Q_OS_ANDROID)
+    QT_NATIVE_INTERFACE_RETURN_IF(QAndroidScreen, platformScreen);
+#endif
+
+#if defined(Q_OS_UNIX)
+    QT_NATIVE_INTERFACE_RETURN_IF(QWaylandScreen, platformScreen);
+#endif
+
     return nullptr;
 }
 
 #ifndef QT_NO_DEBUG_STREAM
-
-static inline void formatRect(QDebug &debug, const QRect r)
-{
-    debug << r.width() << 'x' << r.height()
-        << Qt::forcesign << r.x() << r.y() << Qt::noforcesign;
-}
-
 Q_GUI_EXPORT QDebug operator<<(QDebug debug, const QScreen *screen)
 {
     const QDebugStateSaver saver(debug);
@@ -796,10 +750,8 @@ Q_GUI_EXPORT QDebug operator<<(QDebug debug, const QScreen *screen)
         if (debug.verbosity() > 2) {
             if (screen == QGuiApplication::primaryScreen())
                 debug << ", primary";
-            debug << ", geometry=";
-            formatRect(debug, screen->geometry());
-            debug << ", available=";
-            formatRect(debug, screen->availableGeometry());
+            debug << ", geometry=" << screen->geometry();
+            debug << ", available=" << screen->availableGeometry();
             debug << ", logical DPI=" << screen->logicalDotsPerInchX()
                 << ',' << screen->logicalDotsPerInchY()
                 << ", physical DPI=" << screen->physicalDotsPerInchX()
@@ -814,6 +766,60 @@ Q_GUI_EXPORT QDebug operator<<(QDebug debug, const QScreen *screen)
     return debug;
 }
 #endif // !QT_NO_DEBUG_STREAM
+
+QScreenPrivate::UpdateEmitter::UpdateEmitter(QScreen *screen)
+{
+    initialState.platformScreen = screen->handle();
+
+    // Use public APIs to read out current state, rather
+    // than accessing the QScreenPrivate members, so that
+    // we detect any changes to the high-DPI scale factors
+    // that may be applied in the getters.
+
+    initialState.logicalDpi = QDpi{
+        screen->logicalDotsPerInchX(),
+        screen->logicalDotsPerInchY()
+    };
+    initialState.geometry = screen->geometry();
+    initialState.availableGeometry = screen->availableGeometry();
+    initialState.primaryOrientation = screen->primaryOrientation();
+}
+
+QScreenPrivate::UpdateEmitter::~UpdateEmitter()
+{
+    QScreen *screen = initialState.platformScreen->screen();
+
+    const auto logicalDotsPerInch = QDpi{
+        screen->logicalDotsPerInchX(),
+        screen->logicalDotsPerInchY()
+    };
+    if (logicalDotsPerInch != initialState.logicalDpi)
+        emit screen->logicalDotsPerInchChanged(screen->logicalDotsPerInch());
+
+    const auto geometry = screen->geometry();
+    const auto geometryChanged = geometry != initialState.geometry;
+    if (geometryChanged)
+        emit screen->geometryChanged(geometry);
+
+    const auto availableGeometry = screen->availableGeometry();
+    const auto availableGeometryChanged = availableGeometry != initialState.availableGeometry;
+    if (availableGeometryChanged)
+        emit screen->availableGeometryChanged(availableGeometry);
+
+    if (geometryChanged || availableGeometryChanged) {
+        const auto siblings = screen->virtualSiblings();
+        for (QScreen* sibling : siblings)
+            emit sibling->virtualGeometryChanged(sibling->virtualGeometry());
+    }
+
+    if (geometryChanged) {
+        emit screen->physicalDotsPerInchChanged(screen->physicalDotsPerInch());
+
+        const auto primaryOrientation = screen->primaryOrientation();
+        if (primaryOrientation != initialState.primaryOrientation)
+            emit screen->primaryOrientationChanged(primaryOrientation);
+    }
+}
 
 QT_END_NAMESPACE
 

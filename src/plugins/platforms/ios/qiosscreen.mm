@@ -15,6 +15,7 @@
 
 #include <QtGui/qpointingdevice.h>
 #include <QtGui/private/qwindow_p.h>
+#include <QtGui/private/qguiapplication_p.h>
 #include <private/qcoregraphics_p.h>
 #include <qpa/qwindowsysteminterface.h>
 
@@ -72,14 +73,17 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 
 + (void)screenConnected:(NSNotification*)notification
 {
-    Q_ASSERT_X(QIOSIntegration::instance(), Q_FUNC_INFO,
-        "Screen connected before QIOSIntegration creation");
+    if (!QIOSIntegration::instance())
+        return; // Will be added when QIOSIntegration is created
 
     QWindowSystemInterface::handleScreenAdded(new QIOSScreen([notification object]));
 }
 
 + (void)screenDisconnected:(NSNotification*)notification
 {
+    if (!QIOSIntegration::instance())
+        return;
+
     QIOSScreen *screen = qtPlatformScreenFor([notification object]);
     Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen disconnected that we didn't know about");
 
@@ -88,6 +92,9 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 
 + (void)screenModeChanged:(NSNotification*)notification
 {
+    if (!QIOSIntegration::instance())
+        return;
+
     QIOSScreen *screen = qtPlatformScreenFor([notification object]);
     Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen changed that we didn't know about");
 
@@ -177,8 +184,16 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 {
     [super traitCollectionDidChange:previousTraitCollection];
 
+    Qt::ColorScheme colorScheme = self.traitCollection.userInterfaceStyle
+                              == UIUserInterfaceStyleDark
+                              ? Qt::ColorScheme::Dark
+                              : Qt::ColorScheme::Light;
+
     if (self.screen == UIScreen.mainScreen) {
-        if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle) {
+        // Check if the current userInterfaceStyle reports a different appearance than
+        // the platformTheme's appearance. We might have set that one based on the UIScreen
+        if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle
+            || QGuiApplicationPrivate::platformTheme()->colorScheme() != colorScheme) {
             QIOSTheme::initializeSystemPalette();
             QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
         }

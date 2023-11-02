@@ -1,4 +1,5 @@
-# Generated from printsupport.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 #####################################################################
 ## PrintSupport Module:
@@ -37,10 +38,13 @@ qt_internal_add_module(PrintSupport
         Qt::GuiPrivate
         Qt::WidgetsPrivate
     GENERATE_CPP_EXPORTS
+    QPA_HEADER_FILTERS
+        "(^|/)qplatform.+\\.h$"
 )
 
-#### Keys ignored in scope 1:.:.:printsupport.pro:<TRUE>:
-# QMAKE_LIBS = "$$QMAKE_LIBS_PRINTSUPPORT"
+if(WIN32) # Static plugin link errors
+    set_target_properties(PrintSupport PROPERTIES UNITY_BUILD OFF)
+endif()
 
 ## Scopes:
 #####################################################################
@@ -55,7 +59,7 @@ qt_internal_extend_target(PrintSupport CONDITION MACOS
         ${FWApplicationServices}
         Cups::Cups
     NO_PCH_SOURCES
-        "platform/macos/qcocoaprintersupport.mm"
+        platform/macos/qcocoaprintersupport.mm
 )
 
 qt_internal_extend_target(PrintSupport CONDITION WIN32
@@ -70,7 +74,7 @@ qt_internal_extend_target(PrintSupport CONDITION WIN32
         comdlg32
         winspool
     NO_PCH_SOURCES
-        "platform/windows/qwindowsprintersupport.cpp"
+        platform/windows/qwindowsprintersupport.cpp
 )
 
 qt_internal_extend_target(PrintSupport CONDITION QT_FEATURE_printpreviewwidget
@@ -180,6 +184,8 @@ qt_internal_extend_target(PrintSupport CONDITION QT_FEATURE_printdialog AND UNIX
         dialogs/qprintpropertieswidget.ui
         dialogs/qprintsettingsoutput.ui
         dialogs/qprintwidget.ui
+    NO_UNITY_BUILD_SOURCES
+        dialogs/qprintdialog_unix.cpp   # Clashes with CUPS headers
     INCLUDE_DIRECTORIES
         ${QtBase_SOURCE_DIR}/src/plugins/printsupport/cups
     ENABLE_AUTOGEN_TOOLS

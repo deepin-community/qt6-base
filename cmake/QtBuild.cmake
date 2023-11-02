@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 include(CMakePackageConfigHelpers)
 include(QtSeparateDebugInfo)
 
@@ -57,9 +60,11 @@ endif()
 # to each destination, and sets the computed install target destination arguments in OUT_VAR.
 # Defaults used for each of the destination types, and can be configured per destination type.
 function(qt_get_install_target_default_args)
-    qt_parse_all_arguments(arg "qt_get_install_target_default_args"
-                               "" "OUT_VAR;CMAKE_CONFIG;RUNTIME;LIBRARY;ARCHIVE;INCLUDES;BUNDLE"
-                                  "ALL_CMAKE_CONFIGS" ${ARGN})
+    cmake_parse_arguments(PARSE_ARGV 0 arg
+       ""
+       "OUT_VAR;CMAKE_CONFIG;RUNTIME;LIBRARY;ARCHIVE;INCLUDES;BUNDLE"
+       "ALL_CMAKE_CONFIGS")
+    _qt_internal_validate_all_args_are_parsed(arg)
 
     if(NOT arg_CMAKE_CONFIG)
         message(FATAL_ERROR "No value given for CMAKE_CONFIG.")
@@ -137,7 +142,7 @@ qt_configure_process_path(INSTALL_SYSCONFDIR
 qt_configure_process_path(INSTALL_EXAMPLESDIR "examples" "Examples [PREFIX/examples]")
 qt_configure_process_path(INSTALL_TESTSDIR "tests" "Tests [PREFIX/tests]")
 qt_configure_process_path(INSTALL_DESCRIPTIONSDIR
-                         "${INSTALL_DATADIR}/modules"
+                         "${INSTALL_ARCHDATADIR}/modules"
                           "Module description files directory")
 
 if(NOT "${CMAKE_STAGING_PREFIX}" STREQUAL "")
@@ -225,6 +230,11 @@ if(NOT QT_MKSPECS_DIR)
     set(QT_MKSPECS_DIR "${QT_MKSPECS_DIR}" CACHE INTERNAL "")
 endif()
 
+# macOS versions 10.14 and less don't have the implementation of std::filesystem API.
+if(CMAKE_HOST_APPLE AND CMAKE_HOST_SYSTEM_VERSION VERSION_LESS "19.0.0")
+    message(FATAL_ERROR "macOS versions less than 10.15 are not supported for building Qt.")
+endif()
+
 # the default RPATH to be used when installing, but only if it's not a system directory
 list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/${INSTALL_LIBDIR}" isSystemDir)
 if("${isSystemDir}" STREQUAL "-1")
@@ -271,24 +281,24 @@ qt_setup_tool_path_command()
 # Platform define path, etc.
 if(WIN32)
     set(QT_DEFAULT_PLATFORM_DEFINITIONS WIN32 _ENABLE_EXTENDED_ALIGNED_STORAGE)
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if(QT_64BIT)
         list(APPEND QT_DEFAULT_PLATFORM_DEFINITIONS WIN64 _WIN64)
     endif()
-    if(MSVC)
-        if (CLANG)
+
+    if(CLANG)
+        if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC" OR MSVC)
             set(QT_DEFAULT_MKSPEC win32-clang-msvc)
-        elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+        elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU" OR MINGW)
+            set(QT_DEFAULT_MKSPEC win32-clang-g++)
+        endif()
+    elseif(MSVC)
+        if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
             set(QT_DEFAULT_MKSPEC win32-arm64-msvc)
         else()
             set(QT_DEFAULT_MKSPEC win32-msvc)
         endif()
-    elseif(CLANG AND MINGW)
-        set(QT_DEFAULT_MKSPEC win32-clang-g++)
     elseif(MINGW)
         set(QT_DEFAULT_MKSPEC win32-g++)
-    endif()
-
-    if (MINGW)
         list(APPEND QT_DEFAULT_PLATFORM_DEFINITIONS MINGW_HAS_SECURE_API=1)
     endif()
 elseif(LINUX)
@@ -308,7 +318,11 @@ elseif(IOS)
 elseif(APPLE)
     set(QT_DEFAULT_MKSPEC macx-clang)
 elseif(WASM)
-    set(QT_DEFAULT_MKSPEC wasm-emscripten)
+    if(WASM64)
+        set(QT_DEFAULT_MKSPEC wasm-emscripten-64)
+    else()
+        set(QT_DEFAULT_MKSPEC wasm-emscripten)
+    endif()
 elseif(QNX)
     # Certain POSIX defines are not set if we don't compile with -std=gnuXX
     set(QT_ENABLE_CXX_EXTENSIONS ON)
@@ -362,15 +376,23 @@ else()
     set(QT_QMAKE_HOST_MKSPEC "${QT_QMAKE_TARGET_MKSPEC}")
 endif()
 
-if(NOT EXISTS "${QT_MKSPECS_DIR}/${QT_QMAKE_TARGET_MKSPEC}")
+if(NOT QT_QMAKE_TARGET_MKSPEC OR NOT EXISTS "${QT_MKSPECS_DIR}/${QT_QMAKE_TARGET_MKSPEC}")
+    if(NOT QT_QMAKE_TARGET_MKSPEC)
+        set(reason "Platform is not detected. Please make sure your build environment is configured"
+            " properly or specify it manually using QT_QMAKE_TARGET_MKSPEC variable and one of the"
+            " known platforms.")
+    else()
+        set(reason "Unknown platform ${QT_QMAKE_TARGET_MKSPEC}")
+    endif()
+
     file(GLOB known_platforms
         LIST_DIRECTORIES true
         RELATIVE "${QT_MKSPECS_DIR}"
         "${QT_MKSPECS_DIR}/*"
     )
     list(JOIN known_platforms "\n    " known_platforms)
-    message(FATAL_ERROR "Unknown platform ${QT_QMAKE_TARGET_MKSPEC}\n\
-Known platforms:\n    ${known_platforms}")
+    message(FATAL_ERROR "${reason}\n"
+        "Known platforms:\n    ${known_platforms}")
 endif()
 
 if(NOT DEFINED QT_DEFAULT_PLATFORM_DEFINITIONS)
@@ -412,7 +434,7 @@ set(QT_TOP_LEVEL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 # Prevent warnings about object files without any symbols. This is a common
 # thing in Qt as we tend to build files unconditionally, and then use ifdefs
 # to compile out parts that are not relevant.
-if(CMAKE_HOST_APPLE AND APPLE)
+if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang")
     foreach(lang ASM C CXX)
         # We have to tell 'ar' to not run ranlib by itself, by passing the 'S' option
         set(CMAKE_${lang}_ARCHIVE_CREATE "<CMAKE_AR> qcS <TARGET> <LINK_FLAGS> <OBJECTS>")
@@ -430,6 +452,7 @@ set(__default_private_args
     SOURCES
     LIBRARIES
     INCLUDE_DIRECTORIES
+    SYSTEM_INCLUDE_DIRECTORIES
     DEFINES
     DBUS_ADAPTOR_BASENAME
     DBUS_ADAPTOR_FLAGS
@@ -444,6 +467,8 @@ set(__default_private_args
     DISABLE_AUTOGEN_TOOLS
     ENABLE_AUTOGEN_TOOLS
     PLUGIN_TYPES
+    NO_PCH_SOURCES
+    NO_UNITY_BUILD_SOURCES
 )
 set(__default_public_args
     PUBLIC_LIBRARIES
@@ -472,6 +497,7 @@ set(__qt_internal_add_executable_optional_args
     DELAY_RC
     DELAY_TARGET_INFO
     QT_APP
+    NO_UNITY_BUILD
 )
 set(__qt_internal_add_executable_single_args
     CORE_LIBRARY
@@ -505,6 +531,7 @@ include(QtModuleHelpers)
 include(QtNoLinkTargetHelpers)
 include(QtPluginHelpers)
 include(QtPrecompiledHeadersHelpers)
+include(QtUnityBuildHelpers)
 include(QtPkgConfigHelpers)
 include(QtPriHelpers)
 include(QtPrlHelpers)
@@ -549,48 +576,6 @@ endif()
 
 _qt_internal_determine_if_host_info_package_needed(__qt_build_requires_host_info_package)
 _qt_internal_find_host_info_package("${__qt_build_requires_host_info_package}")
-
-# TODO: This block provides support for old variables. It should be removed once
-#       we remove all references to these variables in other Qt module repos.
-#       Prefer to use the provided commands to retrieve the relevant things instead.
-#       We won't have the queried command when we get here for qtbase (it is
-#       provided by the Core module), but we will for all other repos (which
-#       is all we need).
-if(COMMAND _qt_internal_get_add_plugin_keywords)
-    _qt_internal_get_add_plugin_keywords(
-        __qt_public_add_plugin_option_args
-        __qt_public_add_plugin_single_args
-        __qt_public_add_plugin_multi_args
-    )
-    qt_internal_get_internal_add_plugin_keywords(
-        __qt_internal_add_plugin_option_args
-        __qt_internal_add_plugin_single_args
-        __qt_internal_add_plugin_multi_args
-    )
-    set(__qt_add_plugin_optional_args
-        ${__qt_public_add_plugin_option_args}
-        ${__qt_internal_add_plugin_option_args}
-    )
-    set(__qt_add_plugin_single_args
-        ${__qt_public_add_plugin_single_args}
-        ${__qt_internal_add_plugin_single_args}
-    )
-    set(__qt_add_plugin_multi_args
-        ${__qt_public_add_plugin_multi_args}
-        ${__qt_internal_add_plugin_multi_args}
-    )
-    unset(__qt_public_add_plugin_option_args)
-    unset(__qt_public_add_plugin_single_args)
-    unset(__qt_public_add_plugin_multi_args)
-    unset(__qt_internal_add_plugin_option_args)
-    unset(__qt_internal_add_plugin_single_args)
-    unset(__qt_internal_add_plugin_multi_args)
-endif()
-
-# Create tool script wrapper if necessary.
-# TODO: Remove once all direct usages of QT_TOOL_COMMAND_WRAPPER_PATH are replaced with function
-# calls.
-_qt_internal_generate_tool_command_wrapper()
 
 # This sets up the poor man's scope finalizer mechanism.
 # For newer CMake versions, we use cmake_language(DEFER CALL) instead.

@@ -12,9 +12,9 @@
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
-#include "qwasmeventtranslator.h"
-
 QT_BEGIN_NAMESPACE
+
+struct KeyEvent;
 
 class QWasmClipboard : public QObject, public QPlatformClipboard
 {
@@ -34,18 +34,16 @@ public:
     bool supportsMode(QClipboard::Mode mode) const override;
     bool ownsMode(QClipboard::Mode mode) const override;
 
-    static void qWasmClipboardPaste(QMimeData *mData);
-    ProcessKeyboardResult processKeyboard(const QWasmEventTranslator::TranslatedEvent &event,
-                                          const QFlags<Qt::KeyboardModifier> &modifiers);
+    ProcessKeyboardResult processKeyboard(const KeyEvent &event);
+    static void installEventHandlers(const emscripten::val &target);
+    bool hasClipboardApi();
+
+private:
     void initClipboardPermissions();
-    void installEventHandlers(const emscripten::val &canvas);
-    bool hasClipboardApi;
-    bool hasPermissionsApi;
     void writeToClipboardApi();
-    void writeToClipboard(const QMimeData *data);
-    bool isPaste;
-    bool m_isListener;
-    bool isSafari;
+    void writeToClipboard();
+
+    bool m_hasClipboardApi = false;
 };
 
 QT_END_NAMESPACE

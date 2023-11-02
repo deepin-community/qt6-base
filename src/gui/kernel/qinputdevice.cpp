@@ -235,6 +235,13 @@ Q_CONSTINIT static QBasicMutex devicesMutex;
 /*!
     Returns a list of all registered input devices (keyboards and pointing devices).
 
+    \note The list of devices is not always complete on all platforms. So far,
+    the most-complete information is available on the \l {Qt for Linux/X11}{X11}
+    platform, at startup and in response to hot-plugging. Most other platforms
+    are only able to provide generic devices of various types, only after receiving
+    events from them; and most platforms do not tell Qt when a device is plugged in,
+    or when it is unplugged at runtime.
+
     \note The returned list cannot be used to add new devices. To add a simulated
     touch screen for an autotest, QTest::createTouchDevice() can be used.
     Platform plugins should call QWindowSystemInterface::registerInputDevice()
@@ -360,19 +367,24 @@ bool QInputDevice::operator==(const QInputDevice &other) const
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug debug, const QInputDevice *device)
 {
-    const QInputDevicePrivate *d = QInputDevicePrivate::get(device);
-    if (d->pointingDeviceType)
-        return operator<<(debug, static_cast<const QPointingDevice *>(device));
     QDebugStateSaver saver(debug);
     debug.nospace();
     debug.noquote();
+
     debug << "QInputDevice(";
-    if (device) {
-        debug << '"' << device->name() << "\", type=" << device->type()
-              << Qt::hex << ", ID=" << device->systemId() << ", seat='" << device->seatName() << "'";
-    } else {
-        debug << '0';
+    if (!device) {
+        debug << "0)";
+        return debug;
     }
+
+    const QInputDevicePrivate *d = QInputDevicePrivate::get(device);
+
+    if (d->pointingDeviceType)
+        return operator<<(debug, static_cast<const QPointingDevice *>(device));
+
+    debug << "QInputDevice(";
+    debug << '"' << device->name() << "\", type=" << device->type()
+          << ", ID=" << device->systemId() << ", seat='" << device->seatName() << "'";
     debug << ')';
     return debug;
 }

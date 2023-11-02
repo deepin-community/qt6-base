@@ -4,9 +4,10 @@
 """Script to generate C++ code from CLDR data in QLocaleXML form
 
 See ``cldr2qlocalexml.py`` for how to generate the QLocaleXML data itself.
-Pass the output file from that as first parameter to this script; pass
-the ISO 639-3 data file as second parameter; pass the root of the qtbase
-check-out as third parameter.
+Pass the output file from that as first parameter to this script; pass the ISO
+639-3 data file as second parameter. You can optionally pass the root of the
+qtbase check-out as third parameter; it defaults to the root of the qtbase
+check-out containing this script.
 
 The ISO 639-3 data file can be downloaded from the SIL website:
 
@@ -19,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from qlocalexml import QLocaleXmlReader
-from localetools import unicode2hex, wrap_list, Error, Transcriber, SourceFileEditor
+from localetools import unicode2hex, wrap_list, Error, Transcriber, SourceFileEditor, qtbase_root
 from iso639_3 import LanguageCodeData
 
 class LocaleKeySorter:
@@ -378,18 +379,8 @@ class LocaleDataWriter (LocaleSourceEditor):
 
         def q(val: Optional[str], size: int) -> str:
             """Quote the value and adjust the result for tabular view."""
-            chars = []
-            if val is not None:
-                for c in val:
-                    chars.append(f"'{c}'")
-                s = ', '.join(chars)
-                s = f'{{{s}}}'
-            else:
-                s = ''
-            if size == 0:
-                return f'{{{s}}}'
-            else:
-                return f'{{{s}}},'.ljust(size * 5 + 4)
+            s = '' if val is None else ', '.join(f"'{c}'" for c in val)
+            return f'{{{s}}}' if size == 0 else f'{{{s}}},'.ljust(size * 5 + 2)
 
         for key, value in languages.items():
             code = value[1]
@@ -521,8 +512,8 @@ class LocaleHeaderWriter (SourceFileEditor):
 
 
 def main(out, err):
-    # map { CLDR name: Qt file name }
     calendars_map = {
+        # CLDR name: Qt file name fragment
         'gregorian': 'roman',
         'persian': 'jalali',
         'islamic': 'hijri',
@@ -537,7 +528,8 @@ def main(out, err):
                         metavar='input-file.xml')
     parser.add_argument('iso_path', help='path to the ISO 639-3 data file',
                         metavar='iso-639-3.tab')
-    parser.add_argument('qtbase_path', help='path to the root of the qtbase source tree')
+    parser.add_argument('qtbase_path', help='path to the root of the qtbase source tree',
+                        nargs='?', default=qtbase_root)
     parser.add_argument('--calendars', help='select calendars to emit data for',
                         nargs='+', metavar='CALENDAR',
                         choices=all_calendars, default=all_calendars)

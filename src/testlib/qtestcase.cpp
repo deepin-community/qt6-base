@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/qtestcase.h>
+#include <QtTest/private/qtestcase_p.h>
 #include <QtTest/qtestassert.h>
 
 #include <QtCore/qbytearray.h>
@@ -33,6 +34,9 @@
 #include <QtTest/private/qtestresult_p.h>
 #include <QtTest/private/qsignaldumper_p.h>
 #include <QtTest/private/qbenchmark_p.h>
+#if QT_CONFIG(batch_test_support)
+#include <QtTest/private/qtestregistry_p.h>
+#endif  // QT_CONFIG(batch_test_support)
 #include <QtTest/private/cycle_p.h>
 #include <QtTest/private/qtestblacklist_p.h>
 #if defined(HAVE_XCTEST)
@@ -596,16 +600,25 @@ Q_TESTLIB_EXPORT bool printAvailableFunctions = false;
 Q_TESTLIB_EXPORT QStringList testFunctions;
 Q_TESTLIB_EXPORT QStringList testTags;
 
-static void qPrintTestSlots(FILE *stream, const char *filter = nullptr)
+static bool qPrintTestSlots(FILE *stream, const char *filter = nullptr, const char *preamble = "")
 {
+    const auto matches = [filter](const QByteArray &s) {
+        return !filter || QLatin1StringView(s).contains(QLatin1StringView(filter),
+                                                        Qt::CaseInsensitive);
+    };
+    bool matched = false;
     for (int i = 0; i < QTest::currentTestObject->metaObject()->methodCount(); ++i) {
         QMetaMethod sl = QTest::currentTestObject->metaObject()->method(i);
         if (isValidSlot(sl)) {
             const QByteArray signature = sl.methodSignature();
-            if (!filter || QLatin1StringView(signature).contains(QLatin1StringView(filter), Qt::CaseInsensitive))
-                fprintf(stream, "%s\n", signature.constData());
+            if (matches(signature)) {
+                fprintf(stream, "%s%s\n", preamble, signature.constData());
+                preamble = "";
+                matched = true;
+            }
         }
     }
+    return matched;
 }
 
 static void qPrintDataTags(FILE *stream)
@@ -694,7 +707,7 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, const char *const argv[], bool 
     QTest::testFunctions.clear();
     QTest::testTags.clear();
 
-#if defined(Q_OS_MAC) && defined(HAVE_XCTEST)
+#if defined(Q_OS_DARWIN) && defined(HAVE_XCTEST)
     if (QXcodeTestLogger::canLogTestProgress())
         logFormat = QTestLog::XCTest;
 #endif
@@ -1037,10 +1050,10 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, const char *const argv[], bool 
 
 #if defined(QT_USE_APPLE_UNIFIED_LOGGING)
     // Any explicitly requested loggers will be added by now, so we can check if they use stdout
-    const bool safeToAddAppleLogger = !AppleUnifiedLogger::willMirrorToStderr() || !QTestLog::loggerUsingStdout();
+    const bool safeToAddAppleLogger = !AppleUnifiedLogger::preventsStderrLogging() || !QTestLog::loggerUsingStdout();
     if (safeToAddAppleLogger && QAppleTestLogger::debugLoggingEnabled()) {
         QTestLog::addLogger(QTestLog::Apple, nullptr);
-        if (AppleUnifiedLogger::willMirrorToStderr() && !logFilename)
+        if (AppleUnifiedLogger::preventsStderrLogging() && !logFilename)
             addFallbackLogger = false; // Prevent plain test logger fallback below
     }
 #endif
@@ -1054,17 +1067,20 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, char *argv[], bool qml) {
     qtest_qParseArgs(argc, const_cast<const char *const *>(argv), qml);
 }
 
-QBenchmarkResult qMedian(const QList<QBenchmarkResult> &container)
+static QList<QBenchmarkResult> qMedian(const QList<QList<QBenchmarkResult>> &container)
 {
     const int count = container.size();
     if (count == 0)
-        return QBenchmarkResult();
+        return {};
 
     if (count == 1)
         return container.front();
 
-    QList<QBenchmarkResult> containerCopy = container;
-    std::sort(containerCopy.begin(), containerCopy.end());
+    QList<QList<QBenchmarkResult>> containerCopy = container;
+    std::sort(containerCopy.begin(), containerCopy.end(),
+              [](const QList<QBenchmarkResult> &a, const QList<QBenchmarkResult> &b) {
+        return a.first() < b.first();
+    });
 
     const int middle = count / 2;
 
@@ -1084,15 +1100,6 @@ struct QTestDataSetter
     }
 };
 
-namespace {
-
-qreal addResult(qreal current, const QBenchmarkResult& r)
-{
-    return current + r.value;
-}
-
-}
-
 void TestMethods::invokeTestOnData(int index) const
 {
     /* Benchmarking: for each median iteration*/
@@ -1100,10 +1107,12 @@ void TestMethods::invokeTestOnData(int index) const
     bool isBenchmark = false;
     int i = (QBenchmarkGlobalData::current->measurer->needsWarmupIteration()) ? -1 : 0;
 
-    QList<QBenchmarkResult> results;
+    QList<QList<QBenchmarkResult>> resultsList;
     bool minimumTotalReached = false;
     do {
         QBenchmarkTestMethodData::current->beginDataRun();
+        if (i < 0)
+            QBenchmarkTestMethodData::current->iterationCount = 1;
 
         /* Benchmarking: for each accumulation iteration*/
         bool invokeOk;
@@ -1115,8 +1124,9 @@ void TestMethods::invokeTestOnData(int index) const
             const bool initQuit =
                 QTestResult::skipCurrentTest() || QTestResult::currentTestFailed();
             if (!initQuit) {
-                QBenchmarkTestMethodData::current->result = QBenchmarkResult();
+                QBenchmarkTestMethodData::current->results.clear();
                 QBenchmarkTestMethodData::current->resultAccepted = false;
+                QBenchmarkTestMethodData::current->valid = false;
 
                 QBenchmarkGlobalData::current->context.tag = QLatin1StringView(
                     QTestResult::currentDataTag() ? QTestResult::currentDataTag() : "");
@@ -1158,26 +1168,29 @@ void TestMethods::invokeTestOnData(int index) const
         QBenchmarkTestMethodData::current->endDataRun();
         if (!QTestResult::skipCurrentTest() && !QTestResult::currentTestFailed()) {
             if (i > -1)  // iteration -1 is the warmup iteration.
-                results.append(QBenchmarkTestMethodData::current->result);
+                resultsList.append(QBenchmarkTestMethodData::current->results);
 
-            if (isBenchmark && QBenchmarkGlobalData::current->verboseOutput) {
-                if (i == -1) {
-                    QTestLog::info(qPrintable(
-                        QString::fromLatin1("warmup stage result      : %1")
-                            .arg(QBenchmarkTestMethodData::current->result.value)), nullptr, 0);
-                } else {
-                    QTestLog::info(qPrintable(
-                        QString::fromLatin1("accumulation stage result: %1")
-                            .arg(QBenchmarkTestMethodData::current->result.value)), nullptr, 0);
-                }
+            if (isBenchmark && QBenchmarkGlobalData::current->verboseOutput &&
+                    !QBenchmarkTestMethodData::current->results.isEmpty()) {
+                // we only print the first result
+                const QBenchmarkResult &first = QBenchmarkTestMethodData::current->results.constFirst();
+                QString pattern = i < 0 ? "warmup stage result      : %1"_L1
+                                        : "accumulation stage result: %1"_L1;
+                QTestLog::info(qPrintable(pattern.arg(first.measurement.value)), nullptr, 0);
             }
         }
 
-        // Verify if the minimum total measurement is reached, if it was specified:
+        // Verify if the minimum total measurement (for the first measurement)
+        // was reached, if it was specified:
         if (QBenchmarkGlobalData::current->minimumTotal == -1) {
             minimumTotalReached = true;
         } else {
-            const qreal total = std::accumulate(results.begin(), results.end(), 0.0, addResult);
+            auto addResult = [](qreal current, const QList<QBenchmarkResult> &r) {
+                if (!r.isEmpty())
+                    current += r.first().measurement.value;
+                return current;
+            };
+            const qreal total = std::accumulate(resultsList.begin(), resultsList.end(), 0.0, addResult);
             minimumTotalReached = (total >= QBenchmarkGlobalData::current->minimumTotal);
         }
     } while (isBenchmark
@@ -1190,7 +1203,7 @@ void TestMethods::invokeTestOnData(int index) const
         QTestResult::finishedCurrentTestDataCleanup();
         // Only report benchmark figures if the test passed
         if (testPassed && QBenchmarkTestMethodData::current->resultsAccepted())
-            QTestLog::addBenchmarkResult(qMedian(results));
+            QTestLog::addBenchmarkResults(qMedian(resultsList));
     }
 }
 
@@ -1198,17 +1211,30 @@ void TestMethods::invokeTestOnData(int index) const
 
 class WatchDog : public QThread
 {
-    enum Expectation {
+    enum Expectation : std::size_t {
+        // bits 0..1: state
         ThreadStart,
         TestFunctionStart,
         TestFunctionEnd,
         ThreadEnd,
+
+        // bits 2..: generation
     };
+    static constexpr auto ExpectationMask = Expectation{ThreadStart | TestFunctionStart | TestFunctionEnd | ThreadEnd};
+    static_assert(size_t(ExpectationMask) == 0x3);
+    static constexpr size_t GenerationShift = 2;
+
+    static constexpr Expectation state(Expectation e) noexcept
+    { return Expectation{e & ExpectationMask}; }
+    static constexpr size_t generation(Expectation e) noexcept
+    { return e >> GenerationShift; }
+    static constexpr Expectation combine(Expectation e, size_t gen) noexcept
+    { return Expectation{e | (gen << GenerationShift)}; }
 
     bool waitFor(std::unique_lock<QtPrivate::mutex> &m, Expectation e)
     {
         auto expectationChanged = [this, e] { return expecting.load(std::memory_order_relaxed) != e; };
-        switch (e) {
+        switch (state(e)) {
         case TestFunctionEnd:
             return waitCondition.wait_for(m, defaultTimeout(), expectationChanged);
         case ThreadStart:
@@ -1217,8 +1243,20 @@ class WatchDog : public QThread
             waitCondition.wait(m, expectationChanged);
             return true;
         }
-        Q_UNREACHABLE();
-        return false;
+        Q_UNREACHABLE_RETURN(false);
+    }
+
+    void setExpectation(Expectation e)
+    {
+        Q_ASSERT(generation(e) == 0); // no embedded generation allowed
+        const auto locker = qt_scoped_lock(mutex);
+        auto cur = expecting.load(std::memory_order_relaxed);
+        auto gen = generation(cur);
+        if (e == TestFunctionStart)
+            ++gen;
+        e = combine(e, gen);
+        expecting.store(e, std::memory_order_relaxed);
+        waitCondition.notify_all();
     }
 
 public:
@@ -1233,26 +1271,18 @@ public:
 
     ~WatchDog()
     {
-        {
-            const auto locker = qt_scoped_lock(mutex);
-            expecting.store(ThreadEnd, std::memory_order_relaxed);
-            waitCondition.notify_all();
-        }
+        setExpectation(ThreadEnd);
         wait();
     }
 
     void beginTest()
     {
-        const auto locker = qt_scoped_lock(mutex);
-        expecting.store(TestFunctionEnd, std::memory_order_relaxed);
-        waitCondition.notify_all();
+        setExpectation(TestFunctionEnd);
     }
 
     void testFinished()
     {
-        const auto locker = qt_scoped_lock(mutex);
-        expecting.store(TestFunctionStart, std::memory_order_relaxed);
-        waitCondition.notify_all();
+        setExpectation(TestFunctionStart);
     }
 
     void run() override
@@ -1262,7 +1292,7 @@ public:
         waitCondition.notify_all();
         while (true) {
             Expectation e = expecting.load(std::memory_order_acquire);
-            switch (e) {
+            switch (state(e)) {
             case ThreadEnd:
                 return;
             case ThreadStart:
@@ -1874,38 +1904,37 @@ private:
         const int msecsFunctionTime = qRound(QTestLog::msecsFunctionTime());
         const int msecsTotalTime = qRound(QTestLog::msecsTotalTime());
         const void *exceptionAddress = exInfo->ExceptionRecord->ExceptionAddress;
-        printf("A crash occurred in %s.\n", appName);
+        fprintf(stderr, "A crash occurred in %s.\n", appName);
         if (const char *name = QTest::currentTestFunction())
-            printf("While testing %s\n", name);
-        printf("Function time: %dms Total time: %dms\n\n"
-               "Exception address: 0x%p\n"
-               "Exception code   : 0x%lx\n",
-               msecsFunctionTime, msecsTotalTime, exceptionAddress,
-               exInfo->ExceptionRecord->ExceptionCode);
+            fprintf(stderr, "While testing %s\n", name);
+        fprintf(stderr, "Function time: %dms Total time: %dms\n\n"
+                        "Exception address: 0x%p\n"
+                        "Exception code   : 0x%lx\n",
+                msecsFunctionTime, msecsTotalTime, exceptionAddress,
+                exInfo->ExceptionRecord->ExceptionCode);
 
         DebugSymbolResolver resolver(GetCurrentProcess());
         if (resolver.isValid()) {
             DebugSymbolResolver::Symbol exceptionSymbol = resolver.resolveSymbol(DWORD64(exceptionAddress));
             if (exceptionSymbol.name) {
-                printf("Nearby symbol    : %s\n", exceptionSymbol.name);
+                fprintf(stderr, "Nearby symbol    : %s\n", exceptionSymbol.name);
                 delete [] exceptionSymbol.name;
             }
             void *stack[maxStackFrames];
-            fputs("\nStack:\n", stdout);
+            fputs("\nStack:\n", stderr);
             const unsigned frameCount = CaptureStackBackTrace(0, DWORD(maxStackFrames), stack, NULL);
             for (unsigned f = 0; f < frameCount; ++f)     {
                 DebugSymbolResolver::Symbol symbol = resolver.resolveSymbol(DWORD64(stack[f]));
                 if (symbol.name) {
-                    printf("#%3u: %s() - 0x%p\n", f + 1, symbol.name, (const void *)symbol.address);
+                    fprintf(stderr, "#%3u: %s() - 0x%p\n", f + 1, symbol.name, (const void *)symbol.address);
                     delete [] symbol.name;
                 } else {
-                    printf("#%3u: Unable to obtain symbol\n", f + 1);
+                    fprintf(stderr, "#%3u: Unable to obtain symbol\n", f + 1);
                 }
             }
         }
 
-        fputc('\n', stdout);
-        fflush(stdout);
+        fputc('\n', stderr);
 
         return EXCEPTION_EXECUTE_HANDLER;
     }
@@ -2314,9 +2343,9 @@ int QTest::qRun()
             if (m.isValid() && isValidSlot(m)) {
                 commandLineMethods.push_back(m);
             } else {
-                fprintf(stderr, "Unknown test function: '%s'. Possible matches:\n",
-                        tfB.constData());
-                qPrintTestSlots(stderr, tfB.constData());
+                fprintf(stderr, "Unknown test function: '%s'.", tfB.constData());
+                if (!qPrintTestSlots(stderr, tfB.constData(), " Possible matches:\n"))
+                    fputc('\n', stderr);
                 QTestResult::setCurrentTestFunction(tfB.constData());
                 QTestResult::addFailure(qPrintable("Function not found: %1"_L1.arg(tf)));
                 QTestResult::finishedCurrentTestFunction();
@@ -2382,6 +2411,34 @@ void QTest::qCleanup()
     IOPMAssertionRelease(macPowerSavingDisabled);
 #endif
 }
+
+#if QT_CONFIG(batch_test_support) || defined(Q_QDOC)
+/*!
+    Registers the test \a name, with entry function \a entryFunction, in a
+    central test case registry for the current binary.
+
+    The \a name will be listed when running the batch test binary with no
+    parameters. Running the test binary with the argv[1] of \a name will result
+    in \a entryFunction being called.
+
+    \since 6.5
+*/
+void QTest::qRegisterTestCase(const QString &name, TestEntryFunction entryFunction)
+{
+    QTest::TestRegistry::instance()->registerTest(name, entryFunction);
+}
+
+QList<QString> QTest::qGetTestCaseNames()
+{
+    return QTest::TestRegistry::instance()->getAllTestNames();
+}
+
+QTest::TestEntryFunction QTest::qGetTestCaseEntryFunction(const QString& name)
+{
+    return QTest::TestRegistry::instance()->getTestEntryFunction(name);
+}
+
+#endif  // QT_CONFIG(batch_test_support)
 
 /*!
   \overload
@@ -2849,9 +2906,13 @@ void QTest::addColumnInternal(int id, const char *name)
 }
 
 /*!
-    Appends a new row to the current test data. \a dataTag is the name of
-    the testdata that will appear in the test output. Returns a QTestData reference
-    that can be used to stream in data.
+    Appends a new row to the current test data.
+
+    The test output will identify the test run with this test data using the
+    name \a dataTag.
+
+    Returns a QTestData reference that can be used to stream in data, one value
+    for each column in the table.
 
     Example:
     \snippet code/src_qtestlib_qtestcase.cpp 20
@@ -2862,14 +2923,15 @@ void QTest::addColumnInternal(int id, const char *name)
     See \l {Chapter 2: Data Driven Testing}{Data Driven Testing} for
     a more extensive example.
 
-    \sa addColumn(), QFETCH()
+    \sa addRow(), addColumn(), QFETCH()
 */
 QTestData &QTest::newRow(const char *dataTag)
 {
     QTEST_ASSERT_X(dataTag, "QTest::newRow()", "Data tag cannot be null");
     QTestTable *tbl = QTestTable::currentTestTable();
     QTEST_ASSERT_X(tbl, "QTest::newRow()", "Cannot add testdata outside of a _data slot.");
-    QTEST_ASSERT_X(tbl->elementCount(), "QTest::newRow()", "Must add columns before attempting to add rows.");
+    QTEST_ASSERT_X(tbl->elementCount(), "QTest::newRow()",
+                   "Must add columns before attempting to add rows.");
 
     return *tbl->newData(dataTag);
 }
@@ -2877,13 +2939,17 @@ QTestData &QTest::newRow(const char *dataTag)
 /*!
     \since 5.9
 
-    Appends a new row to the current test data. The function's arguments are passed
-    to qsnprintf() for formatting according to \a format. See the qvsnprintf()
-    documentation for caveats and limitations.
+    Appends a new row to the current test data.
 
-    The formatted string will appear as the name of this test data in the test output.
+    The function's arguments are passed to qsnprintf() for formatting according
+    to \a format. See the qvsnprintf() documentation for caveats and
+    limitations.
 
-    Returns a QTestData reference that can be used to stream in data.
+    The test output will identify the test run with this test data using the
+    name that results from this formatting.
+
+    Returns a QTestData reference that can be used to stream in data, one value
+    for each column in the table.
 
     Example:
     \snippet code/src_qtestlib_qtestcase.cpp addRow
@@ -2894,14 +2960,15 @@ QTestData &QTest::newRow(const char *dataTag)
     See \l {Chapter 2: Data Driven Testing}{Data Driven Testing} for
     a more extensive example.
 
-    \sa addColumn(), QFETCH()
+    \sa newRow(), addColumn(), QFETCH()
 */
 QTestData &QTest::addRow(const char *format, ...)
 {
     QTEST_ASSERT_X(format, "QTest::addRow()", "Format string cannot be null");
     QTestTable *tbl = QTestTable::currentTestTable();
     QTEST_ASSERT_X(tbl, "QTest::addRow()", "Cannot add testdata outside of a _data slot.");
-    QTEST_ASSERT_X(tbl->elementCount(), "QTest::addRow()", "Must add columns before attempting to add rows.");
+    QTEST_ASSERT_X(tbl->elementCount(), "QTest::addRow()",
+                   "Must add columns before attempting to add rows.");
 
     char buf[1024];
 
@@ -2962,7 +3029,7 @@ const char *QTest::currentTestFunction()
 
 /*!
     Returns the name of the current test data. If the test doesn't
-    have any assigned testdata, the function returns 0.
+    have any assigned testdata, the function returns \nullptr.
 */
 const char *QTest::currentDataTag()
 {
@@ -2970,11 +3037,31 @@ const char *QTest::currentDataTag()
 }
 
 /*!
-    Returns \c true if the current test function failed, otherwise false.
+    Returns \c true if the current test function has failed, otherwise false.
+
+    \sa QTest::currentTestResolved()
 */
 bool QTest::currentTestFailed()
 {
     return QTestResult::currentTestFailed();
+}
+
+/*!
+    \since 6.5
+    Returns \c true if the current test function has failed or skipped.
+
+    This applies if the test has failed or exercised a skip. When it is true,
+    the test function should return early. In particular, the \c{QTRY_*} macros
+    and the test event loop terminate their loops early if executed during the
+    test function (but not its cleanup()). After a test has called a helper
+    function that uses this module's macros, it can use this function to test
+    whether to return early.
+
+    \sa QTest::currentTestFailed()
+*/
+bool QTest::currentTestResolved()
+{
+    return QTestResult::currentTestFailed() || QTestResult::skipCurrentTest();
 }
 
 /*!
@@ -2983,7 +3070,7 @@ bool QTest::currentTestFailed()
     Returns \c true during the run of the test-function and its set-up.
 
     Used by the \c{QTRY_*} macros and \l QTestEventLoop to check whether to
-    return when QTest::currentTestFailed() is true.
+    return when QTest::currentTestResolved() is true.
 */
 bool QTest::runningTest()
 {

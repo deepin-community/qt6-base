@@ -10,6 +10,7 @@
 #include <QtCore/qpair.h>
 #include <QtCore/qscopedpointer.h>
 #include <qpa/qplatformscreen.h>
+#include <qpa/qplatformscreen_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -30,14 +31,19 @@ struct QWindowsScreenData
     QImage::Format format = QImage::Format_ARGB32_Premultiplied;
     unsigned flags = VirtualDesktop;
     QString name;
+    QString manufacturer;
+    QString model;
+    QString serialNumber;
     Qt::ScreenOrientation orientation = Qt::LandscapeOrientation;
     qreal refreshRateHz = 60;
     HMONITOR hMonitor = nullptr;
-    QString deviceName = {};
+    QString deviceName;
+    QString devicePath;
     std::optional<int> deviceIndex = std::nullopt;
 };
 
 class QWindowsScreen : public QPlatformScreen
+                     , public QNativeInterface::Private::QWindowsScreen
 {
 public:
 #ifndef QT_NO_CURSOR
@@ -56,6 +62,9 @@ public:
     qreal devicePixelRatio() const override { return 1.0; }
     qreal refreshRate() const override { return m_data.refreshRateHz; }
     QString name() const override;
+    QString manufacturer() const override { return m_data.manufacturer; }
+    QString model() const override { return m_data.model; }
+    QString serialNumber() const override { return m_data.serialNumber; }
     Qt::ScreenOrientation orientation() const override { return m_data.orientation; }
     QList<QPlatformScreen *> virtualSiblings() const override;
     QWindow *topLevelAt(const QPoint &point) const override;
@@ -69,7 +78,7 @@ public:
 
     inline void handleChanges(const QWindowsScreenData &newData);
 
-    HMONITOR handle() const;
+    HMONITOR handle() const override;
 
 #ifndef QT_NO_CURSOR
     QPlatformCursor *cursor() const override { return m_cursor.data(); }

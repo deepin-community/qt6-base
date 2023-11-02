@@ -143,7 +143,7 @@ QFileInfo QFileSystemModel::fileInfo(const QModelIndex &index) const
     \fn void QFileSystemModel::fileRenamed(const QString &path, const QString &oldName, const QString &newName)
 
     This signal is emitted whenever a file with the \a oldName is successfully
-    renamed to \a newName.  The file is located in in the directory \a path.
+    renamed to \a newName.  The file is located in the directory \a path.
 */
 
 /*!
@@ -240,7 +240,7 @@ QModelIndex QFileSystemModel::index(int row, int column, const QModelIndex &pare
 */
 QModelIndex QFileSystemModel::sibling(int row, int column, const QModelIndex &idx) const
 {
-    if (row == idx.row() && column < QFileSystemModelPrivate::NumColumns) {
+    if (row == idx.row() && column < columnCount(idx.parent())) {
         // cheap sibling operation: just adjust the column:
         return createIndex(row, column, idx.internalPointer());
     } else {
@@ -529,14 +529,38 @@ QString QFileSystemModel::type(const QModelIndex &index) const
 }
 
 /*!
-    Returns the date and time when \a index was last modified.
+    Returns the date and time (in local time) when \a index was last modified.
+
+    This is an overloaded function, equivalent to calling:
+    \code
+    lastModified(index, QTimeZone::LocalTime);
+    \endcode
+
+    If \a index is invalid, a default constructed QDateTime is returned.
  */
 QDateTime QFileSystemModel::lastModified(const QModelIndex &index) const
+{
+    return lastModified(index, QTimeZone::LocalTime);
+}
+
+/*!
+    \since 6.6
+    Returns the date and time, in the time zone \a tz, when
+    \a index was last modified.
+
+    Typical arguments for \a tz are \c QTimeZone::UTC or \c QTimeZone::LocalTime.
+    UTC does not require any conversion from the time returned by the native file
+    system API, therefore getting the time in UTC is potentially faster. LocalTime
+    is typically chosen if the time is shown to the user.
+
+    If \a index is invalid, a default constructed QDateTime is returned.
+ */
+QDateTime QFileSystemModel::lastModified(const QModelIndex &index, const QTimeZone &tz) const
 {
     Q_D(const QFileSystemModel);
     if (!index.isValid())
         return QDateTime();
-    return d->node(index)->lastModified();
+    return d->node(index)->lastModified(tz);
 }
 
 /*!
@@ -686,15 +710,15 @@ QVariant QFileSystemModel::data(const QModelIndex &index, int role) const
 
     switch (role) {
     case Qt::EditRole:
-        if (index.column() == 0)
+        if (index.column() == QFileSystemModelPrivate::NameColumn)
             return d->name(index);
         Q_FALLTHROUGH();
     case Qt::DisplayRole:
         switch (index.column()) {
-        case 0: return d->displayName(index);
-        case 1: return d->size(index);
-        case 2: return d->type(index);
-        case 3: return d->time(index);
+        case QFileSystemModelPrivate::NameColumn: return d->displayName(index);
+        case QFileSystemModelPrivate::SizeColumn: return d->size(index);
+        case QFileSystemModelPrivate::TypeColumn: return d->type(index);
+        case QFileSystemModelPrivate::TimeColumn: return d->time(index);
         default:
             qWarning("data: invalid display value column %d", index.column());
             break;
@@ -705,7 +729,7 @@ QVariant QFileSystemModel::data(const QModelIndex &index, int role) const
     case FileNameRole:
         return d->name(index);
     case Qt::DecorationRole:
-        if (index.column() == 0) {
+        if (index.column() == QFileSystemModelPrivate::NameColumn) {
             QIcon icon = d->icon(index);
 #if QT_CONFIG(filesystemwatcher)
             if (icon.isNull()) {
@@ -719,7 +743,7 @@ QVariant QFileSystemModel::data(const QModelIndex &index, int role) const
         }
         break;
     case Qt::TextAlignmentRole:
-        if (index.column() == 1)
+        if (index.column() == QFileSystemModelPrivate::SizeColumn)
             return QVariant(Qt::AlignTrailing | Qt::AlignVCenter);
         break;
     case FilePermissions:
@@ -765,7 +789,7 @@ QString QFileSystemModelPrivate::time(const QModelIndex &index) const
     if (!index.isValid())
         return QString();
 #if QT_CONFIG(datestring)
-    return QLocale::system().toString(node(index)->lastModified(), QLocale::ShortFormat);
+    return QLocale::system().toString(node(index)->lastModified(QTimeZone::LocalTime), QLocale::ShortFormat);
 #else
     Q_UNUSED(index);
     return QString();
@@ -913,23 +937,27 @@ QVariant QFileSystemModel::headerData(int section, Qt::Orientation orientation, 
 
     QString returnValue;
     switch (section) {
-    case 0: returnValue = tr("Name");
-            break;
-    case 1: returnValue = tr("Size");
-            break;
-    case 2: returnValue =
+    case QFileSystemModelPrivate::NameColumn:
+        returnValue = tr("Name");
+        break;
+    case QFileSystemModelPrivate::SizeColumn:
+        returnValue = tr("Size");
+        break;
+    case QFileSystemModelPrivate::TypeColumn:
+        returnValue =
 #ifdef Q_OS_MAC
-                   tr("Kind", "Match OS X Finder");
+                    tr("Kind", "Match OS X Finder");
 #else
-                   tr("Type", "All other platforms");
+                    tr("Type", "All other platforms");
 #endif
-           break;
+        break;
     // Windows   - Type
     // OS X      - Kind
     // Konqueror - File Type
     // Nautilus  - Type
-    case 3: returnValue = tr("Date Modified");
-            break;
+    case QFileSystemModelPrivate::TimeColumn:
+        returnValue = tr("Date Modified");
+        break;
     default: return QVariant();
     }
     return returnValue;
@@ -993,7 +1021,7 @@ public:
                     const QFileSystemModelPrivate::QFileSystemNode *r) const
     {
         switch (sortColumn) {
-        case 0: {
+        case QFileSystemModelPrivate::NameColumn: {
 #ifndef Q_OS_MAC
             // place directories before files
             bool left = l->isDir();
@@ -1003,7 +1031,7 @@ public:
 #endif
             return naturalCompare.compare(l->fileName, r->fileName) < 0;
                 }
-        case 1:
+        case QFileSystemModelPrivate::SizeColumn:
         {
             // Directories go first
             bool left = l->isDir();
@@ -1017,7 +1045,7 @@ public:
 
             return sizeDifference < 0;
         }
-        case 2:
+        case QFileSystemModelPrivate::TypeColumn:
         {
             int compare = naturalCompare.compare(l->type(), r->type());
             if (compare == 0)
@@ -1025,12 +1053,14 @@ public:
 
             return compare < 0;
         }
-        case 3:
+        case QFileSystemModelPrivate::TimeColumn:
         {
-            if (l->lastModified() == r->lastModified())
+            const QDateTime left = l->lastModified(QTimeZone::UTC);
+            const QDateTime right = r->lastModified(QTimeZone::UTC);
+            if (left == right)
                 return naturalCompare.compare(l->fileName, r->fileName) < 0;
 
-            return l->lastModified() < r->lastModified();
+            return left < right;
         }
         }
         Q_ASSERT(false);
@@ -1076,11 +1106,10 @@ void QFileSystemModelPrivate::sortChildren(int column, const QModelIndex &parent
     indexNode->visibleChildren.clear();
     //No more dirty item we reset our internal dirty index
     indexNode->dirtyChildrenIndex = -1;
-    const int numValues = values.size();
-    indexNode->visibleChildren.reserve(numValues);
-    for (int i = 0; i < numValues; ++i) {
-        indexNode->visibleChildren.append(values.at(i)->fileName);
-        values.at(i)->isVisible = true;
+    indexNode->visibleChildren.reserve(values.size());
+    for (QFileSystemNode *node : std::as_const(values)) {
+        indexNode->visibleChildren.append(node->fileName);
+        node->isVisible = true;
     }
 
     if (!disableRecursiveSort) {
@@ -1106,10 +1135,8 @@ void QFileSystemModel::sort(int column, Qt::SortOrder order)
     emit layoutAboutToBeChanged();
     QModelIndexList oldList = persistentIndexList();
     QList<QPair<QFileSystemModelPrivate::QFileSystemNode *, int>> oldNodes;
-    const int nodeCount = oldList.size();
-    oldNodes.reserve(nodeCount);
-    for (int i = 0; i < nodeCount; ++i) {
-        const QModelIndex &oldNode = oldList.at(i);
+    oldNodes.reserve(oldList.size());
+    for (const QModelIndex &oldNode : oldList) {
         QPair<QFileSystemModelPrivate::QFileSystemNode*, int> pair(d->node(oldNode), oldNode.column());
         oldNodes.append(pair);
     }
@@ -1123,12 +1150,10 @@ void QFileSystemModel::sort(int column, Qt::SortOrder order)
     d->sortOrder = order;
 
     QModelIndexList newList;
-    const int numOldNodes = oldNodes.size();
-    newList.reserve(numOldNodes);
-    for (int i = 0; i < numOldNodes; ++i) {
-        const QPair<QFileSystemModelPrivate::QFileSystemNode*, int> &oldNode = oldNodes.at(i);
-        newList.append(d->index(oldNode.first, oldNode.second));
-    }
+    newList.reserve(oldNodes.size());
+    for (const auto &[node, col]: std::as_const(oldNodes))
+        newList.append(d->index(node, col));
+
     changePersistentIndexList(oldList, newList);
     emit layoutChanged();
 }
@@ -1155,7 +1180,7 @@ QMimeData *QFileSystemModel::mimeData(const QModelIndexList &indexes) const
     QList<QUrl> urls;
     QList<QModelIndex>::const_iterator it = indexes.begin();
     for (; it != indexes.end(); ++it)
-        if ((*it).column() == 0)
+        if ((*it).column() == QFileSystemModelPrivate::NameColumn)
             urls << QUrl::fromLocalFile(filePath(*it));
     QMimeData *data = new QMimeData();
     data->setUrls(urls);
@@ -1965,9 +1990,16 @@ void QFileSystemModelPrivate::_q_fileSystemChanged(const QString &path,
             && visibleMin < parentNode->visibleChildren.size()
             && parentNode->visibleChildren.at(visibleMin) == min
             && visibleMax >= 0) {
-            QModelIndex bottom = q->index(translateVisibleLocation(parentNode, visibleMin), 0, parentIndex);
-            QModelIndex top = q->index(translateVisibleLocation(parentNode, visibleMax), 3, parentIndex);
-            emit q->dataChanged(bottom, top);
+            // don't use NumColumns here, a subclass might override columnCount
+            const int lastColumn = q->columnCount(parentIndex) - 1;
+            const QModelIndex top = q->index(translateVisibleLocation(parentNode, visibleMin),
+                                             QFileSystemModelPrivate::NameColumn, parentIndex);
+            const QModelIndex bottom = q->index(translateVisibleLocation(parentNode, visibleMax),
+                                                lastColumn, parentIndex);
+            // We document that emitting dataChanged with indexes that don't have the
+            // same parent is undefined behavior.
+            Q_ASSERT(bottom.parent() == top.parent());
+            emit q->dataChanged(top, bottom);
         }
 
         /*min = QString();
@@ -2053,8 +2085,8 @@ void QFileSystemModelPrivate::init()
 #if QT_CONFIG(filesystemwatcher)
     q->connect(&fileInfoGatherer, SIGNAL(newListOfFiles(QString,QStringList)),
                q, SLOT(_q_directoryChanged(QString,QStringList)));
-    q->connect(&fileInfoGatherer, SIGNAL(updates(QString, QList<QPair<QString, QFileInfo>>)), q,
-               SLOT(_q_fileSystemChanged(QString, QList<QPair<QString, QFileInfo>>)));
+    q->connect(&fileInfoGatherer, SIGNAL(updates(QString,QList<std::pair<QString,QFileInfo>>)), q,
+               SLOT(_q_fileSystemChanged(QString,QList<std::pair<QString,QFileInfo>>)));
     q->connect(&fileInfoGatherer, SIGNAL(nameResolved(QString,QString)),
             q, SLOT(_q_resolvedName(QString,QString)));
     q->connect(&fileInfoGatherer, SIGNAL(directoryLoaded(QString)),

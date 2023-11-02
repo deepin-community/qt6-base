@@ -30,16 +30,22 @@
 #include "qvarlengtharray.h"
 #include "private/qlocking_p.h"
 
+#if !defined(QT_BOOTSTRAPPED)
+#include <thread>
+#endif
+
 #if !defined(QT_APPLE_NO_PRIVATE_APIS)
 extern "C" {
 typedef uint32_t csr_config_t;
 extern int csr_get_active_config(csr_config_t *) __attribute__((weak_import));
 
+#ifdef QT_BUILD_INTERNAL
 int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t attrs, int disclaim)
 __attribute__((availability(macos,introduced=10.14),weak_import));
 pid_t responsibility_get_pid_responsible_for_pid(pid_t) __attribute__((weak_import));
 char *** _NSGetArgv();
 extern char **environ;
+#endif
 }
 #endif
 
@@ -80,17 +86,35 @@ QCFString::operator CFStringRef() const
 
 #if defined(QT_USE_APPLE_UNIFIED_LOGGING)
 
-bool AppleUnifiedLogger::willMirrorToStderr()
+bool AppleUnifiedLogger::preventsStderrLogging()
 {
-    // When running under Xcode or LLDB, one or more of these variables will
-    // be set, which triggers libsystem_trace.dyld to log messages to stderr
-    // as well, via_os_log_impl_mirror_to_stderr. Un-setting these variables
-    // is not an option, as that would silence normal NSLog or os_log calls,
-    // so instead we skip our own stderr output. See rdar://36919139.
+    // os_log will mirror to stderr if OS_ACTIVITY_DT_MODE is set,
+    // regardless of its value. OS_ACTIVITY_MODE then controls whether
+    // to include info and/or debug messages in this mirroring.
+    // For some reason, when launched under lldb (via Xcode or not),
+    // all levels are included.
+
+    // CFLog will normally log to both stderr, and via os_log.
+    // Setting CFLOG_FORCE_DISABLE_STDERR disables the stderr
+    // logging. Setting CFLOG_FORCE_STDERR will both duplicate
+    // CFLog's output to stderr, and trigger OS_ACTIVITY_DT_MODE,
+    // resulting in os_log calls also being mirrored to stderr.
+    // Setting ACTIVITY_LOG_STDERR has the same effect.
+
+    // NSLog is plumbed to CFLog, and will respond to the same
+    // environment variables as CFLog.
+
+    // We want to disable Qt's default stderr log handler when
+    // os_log has already mirrored to stderr.
     static bool willMirror = qEnvironmentVariableIsSet("OS_ACTIVITY_DT_MODE")
-                                 || qEnvironmentVariableIsSet("ACTIVITY_LOG_STDERR")
-                                 || qEnvironmentVariableIsSet("CFLOG_FORCE_STDERR");
-    return willMirror;
+                          || qEnvironmentVariableIsSet("ACTIVITY_LOG_STDERR")
+                          || qEnvironmentVariableIsSet("CFLOG_FORCE_STDERR");
+
+    // As well as when we suspect that Xcode is going to present os_log
+    // as structured log messages.
+    static bool disableStderr = qEnvironmentVariableIsSet("CFLOG_FORCE_DISABLE_STDERR");
+
+    return willMirror || disableStderr;
 }
 
 QT_MAC_WEAK_IMPORT(_os_log_default);
@@ -131,7 +155,7 @@ bool AppleUnifiedLogger::messageHandler(QtMsgType msgType, const QMessageLogCont
     // system from redacting our log message.
     os_log_with_type(log, logType, "%{public}s", qPrintable(message));
 
-    return willMirrorToStderr();
+    return preventsStderrLogging();
 }
 
 os_log_type_t AppleUnifiedLogger::logTypeForMessageType(QtMsgType msgType)
@@ -208,56 +232,42 @@ QT_FOR_EACH_MUTABLE_CORE_GRAPHICS_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TY
 
 QT_END_NAMESPACE
 QT_USE_NAMESPACE
+
+#ifdef QT_DEBUG
 @interface QT_MANGLE_NAMESPACE(QMacAutoReleasePoolTracker) : NSObject
 @end
 
-@implementation QT_MANGLE_NAMESPACE(QMacAutoReleasePoolTracker) {
-    NSAutoreleasePool **m_pool;
-}
-
-- (instancetype)initWithPool:(NSAutoreleasePool **)pool
-{
-    if ((self = [self init]))
-        m_pool = pool;
-    return self;
-}
-
-- (void)dealloc
-{
-    if (*m_pool) {
-        // The pool is still valid, which means we're not being drained from
-        // the corresponding QMacAutoReleasePool (see below).
-
-        // QMacAutoReleasePool has only a single member, the NSAutoreleasePool*
-        // so the address of that member is also the QMacAutoReleasePool itself.
-        QMacAutoReleasePool *pool = reinterpret_cast<QMacAutoReleasePool *>(m_pool);
-        qWarning() << "Premature drain of" << pool << "This can happen if you've allocated"
-            << "the pool on the heap, or as a member of a heap-allocated object. This is not a"
-            << "supported use of QMacAutoReleasePool, and might result in crashes when objects"
-            << "in the pool are deallocated and then used later on under the assumption they"
-            << "will be valid until" << pool << "has been drained.";
-
-        // Reset the pool so that it's not drained again later on
-        *m_pool = nullptr;
-    }
-
-    [super dealloc];
-}
+@implementation QT_MANGLE_NAMESPACE(QMacAutoReleasePoolTracker)
 @end
 QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAutoReleasePoolTracker);
+#endif // QT_DEBUG
+
+// Use the direct runtime interface to manage autorelease pools, as it
+// has less overhead then allocating NSAutoreleasePools, and allows for
+// a future where we use ARC (where NSAutoreleasePool is not allowed).
+// https://clang.llvm.org/docs/AutomaticReferenceCounting.html#runtime-support
+
+extern "C" {
+void *objc_autoreleasePoolPush(void);
+void objc_autoreleasePoolPop(void *pool);
+}
 
 QT_BEGIN_NAMESPACE
 
 QMacAutoReleasePool::QMacAutoReleasePool()
-    : pool([[NSAutoreleasePool alloc] init])
+    : pool(objc_autoreleasePoolPush())
 {
+#ifdef QT_DEBUG
+    static const bool debugAutoReleasePools = qEnvironmentVariableIsSet("QT_DARWIN_DEBUG_AUTORELEASEPOOLS");
+    if (!debugAutoReleasePools)
+        return;
+
     Class trackerClass = [QMacAutoReleasePoolTracker class];
 
-#ifdef QT_DEBUG
     void *poolFrame = nullptr;
-    void *frame;
-    if (backtrace_from_fp(__builtin_frame_address(0), &frame, 1))
-        poolFrame = frame;
+    void *frames[2];
+    if (backtrace_from_fp(__builtin_frame_address(0), frames, 2))
+        poolFrame = frames[1];
 
     if (poolFrame) {
         Dl_info info;
@@ -283,30 +293,14 @@ QMacAutoReleasePool::QMacAutoReleasePool()
                 free((char*)symbolName);
         }
     }
-#endif
 
-    [[[trackerClass alloc] initWithPool:
-        reinterpret_cast<NSAutoreleasePool **>(&pool)] autorelease];
+    [[trackerClass new] autorelease];
+#endif // QT_DEBUG
 }
 
 QMacAutoReleasePool::~QMacAutoReleasePool()
 {
-    if (!pool) {
-        qWarning() << "Prematurely drained pool" << this << "finally drained. Any objects belonging"
-            << "to this pool have already been released, and have potentially been invalid since the"
-            << "premature drain earlier on.";
-        return;
-    }
-
-    // Save and reset pool before draining, so that the pool tracker can know
-    // that it's being drained by its owning pool.
-    NSAutoreleasePool *savedPool = static_cast<NSAutoreleasePool*>(pool);
-    pool = nullptr;
-
-    // Drain behaves the same as release, with the advantage that
-    // if we're ever used in a garbage-collected environment, the
-    // drain acts as a hint to the garbage collector to collect.
-    [savedPool drain];
+    objc_autoreleasePoolPop(pool);
 }
 
 #ifndef QT_NO_DEBUG_STREAM
@@ -384,6 +378,7 @@ std::optional<uint32_t> qt_mac_sipConfiguration()
         return; \
     }
 
+#ifdef QT_BUILD_INTERNAL
 void qt_mac_ensureResponsible()
 {
 #if !defined(QT_APPLE_NO_PRIVATE_APIS)
@@ -421,6 +416,7 @@ void qt_mac_ensureResponsible()
     posix_spawnattr_destroy(&attr);
 #endif
 }
+#endif // QT_BUILD_INTERNAL
 
 #endif
 
@@ -452,34 +448,62 @@ AppleApplication *qt_apple_sharedApplication()
 }
 #endif
 
+#if !defined(QT_BOOTSTRAPPED)
+
+#if defined(Q_OS_MACOS)
+namespace {
+struct SandboxChecker
+{
+    SandboxChecker() : m_thread([this]{
+            m_isSandboxed = []{
+                QCFType<SecStaticCodeRef> staticCode = nullptr;
+                NSURL *executableUrl = NSBundle.mainBundle.executableURL;
+                if (SecStaticCodeCreateWithPath((__bridge CFURLRef)executableUrl,
+                    kSecCSDefaultFlags, &staticCode) != errSecSuccess)
+                    return false;
+
+                QCFType<SecRequirementRef> sandboxRequirement;
+                if (SecRequirementCreateWithString(CFSTR("entitlement[\"com.apple.security.app-sandbox\"] exists"),
+                    kSecCSDefaultFlags, &sandboxRequirement) != errSecSuccess)
+                    return false;
+
+                if (SecStaticCodeCheckValidityWithErrors(staticCode,
+                    kSecCSBasicValidateOnly, sandboxRequirement, nullptr) != errSecSuccess)
+                    return false;
+
+                return true;
+            }();
+        })
+    {}
+    ~SandboxChecker() {
+        std::scoped_lock lock(m_mutex);
+        if (m_thread.joinable())
+            m_thread.detach();
+    }
+    bool isSandboxed() const {
+        std::scoped_lock lock(m_mutex);
+        if (m_thread.joinable())
+            m_thread.join();
+        return m_isSandboxed;
+    }
+private:
+    bool m_isSandboxed;
+    mutable std::thread m_thread;
+    mutable std::mutex m_mutex;
+};
+} // namespace
+static SandboxChecker sandboxChecker;
+#endif // Q_OS_MACOS
+
 bool qt_apple_isSandboxed()
 {
 #if defined(Q_OS_MACOS)
-    static bool isSandboxed = []() {
-        QCFType<SecStaticCodeRef> staticCode = nullptr;
-        NSURL *executableUrl = NSBundle.mainBundle.executableURL;
-        if (SecStaticCodeCreateWithPath((__bridge CFURLRef)executableUrl,
-            kSecCSDefaultFlags, &staticCode) != errSecSuccess)
-            return false;
-
-        QCFType<SecRequirementRef> sandboxRequirement;
-        if (SecRequirementCreateWithString(CFSTR("entitlement[\"com.apple.security.app-sandbox\"] exists"),
-            kSecCSDefaultFlags, &sandboxRequirement) != errSecSuccess)
-            return false;
-
-        if (SecStaticCodeCheckValidityWithErrors(staticCode,
-            kSecCSBasicValidateOnly, sandboxRequirement, nullptr) != errSecSuccess)
-            return false;
-
-        return true;
-    }();
-    return isSandboxed;
+    return sandboxChecker.isSandboxed();
 #else
     return true; // All other Apple platforms
 #endif
 }
 
-#if !defined(QT_BOOTSTRAPPED)
 QT_END_NAMESPACE
 @implementation NSObject (QtSandboxHelpers)
 - (id)qt_valueForPrivateKey:(NSString *)key
@@ -491,7 +515,7 @@ QT_END_NAMESPACE
 }
 @end
 QT_BEGIN_NAMESPACE
-#endif
+#endif // !QT_BOOTSTRAPPED
 
 #ifdef Q_OS_MACOS
 /*
@@ -549,10 +573,18 @@ void qt_apple_check_os_version()
     const char *os = "macOS";
     const int version = __MAC_OS_X_VERSION_MIN_REQUIRED;
 #endif
-    const NSOperatingSystemVersion required = (NSOperatingSystemVersion){
-        version / 10000, version / 100 % 100, version % 100};
-    const NSOperatingSystemVersion current = NSProcessInfo.processInfo.operatingSystemVersion;
-    if (![NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:required]) {
+
+    const auto required = QVersionNumber(version / 10000, version / 100 % 100, version % 100);
+    const auto current = QOperatingSystemVersion::current().version();
+
+#if defined(Q_OS_MACOS)
+    // Check for compatibility version, in which case we can't do a
+    // comparison to the deployment target, which might be e.g. 11.0
+    if (current.majorVersion() == 10 && current.minorVersion() >= 16)
+        return;
+#endif
+
+    if (current < required) {
         NSDictionary *plist = NSBundle.mainBundle.infoDictionary;
         NSString *applicationName = plist[@"CFBundleDisplayName"];
         if (!applicationName)
@@ -563,8 +595,8 @@ void qt_apple_check_os_version()
         fprintf(stderr, "Sorry, \"%s\" cannot be run on this version of %s. "
             "Qt requires %s %ld.%ld.%ld or later, you have %s %ld.%ld.%ld.\n",
             applicationName.UTF8String, os,
-            os, long(required.majorVersion), long(required.minorVersion), long(required.patchVersion),
-            os, long(current.majorVersion), long(current.minorVersion), long(current.patchVersion));
+            os, long(required.majorVersion()), long(required.minorVersion()), long(required.microVersion()),
+            os, long(current.majorVersion()), long(current.minorVersion()), long(current.microVersion()));
 
         exit(1);
     }

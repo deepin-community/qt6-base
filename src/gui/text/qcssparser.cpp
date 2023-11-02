@@ -47,6 +47,7 @@ static const QCssKnownValue properties[NumProperties - 1] = {
     { "-qt-style-features", QtStyleFeatures },
     { "-qt-table-type", QtTableType },
     { "-qt-user-state", QtUserState },
+    { "accent-color", QtAccent },
     { "alternate-background-color", QtAlternateBackground },
     { "background", Background },
     { "background-attachment", BackgroundAttachment },
@@ -128,6 +129,7 @@ static const QCssKnownValue properties[NumProperties - 1] = {
     { "padding-top", PaddingTop },
     { "page-break-after", PageBreakAfter },
     { "page-break-before", PageBreakBefore },
+    { "placeholder-text-color", QtPlaceHolderTextColor },
     { "position", Position },
     { "right", Right },
     { "selection-background-color", QtSelectionBackground },
@@ -1340,16 +1342,23 @@ bool ValueExtractor::extractFont(QFont *font, int *fontSizeAdjustment)
     return hit;
 }
 
-bool ValueExtractor::extractPalette(QBrush *fg, QBrush *sfg, QBrush *sbg, QBrush *abg)
+bool ValueExtractor::extractPalette(QBrush *foreground,
+                                    QBrush *selectedForeground,
+                                    QBrush *selectedBackground,
+                                    QBrush *alternateBackground,
+                                    QBrush *placeHolderTextForeground,
+                                    QBrush *accent)
 {
     bool hit = false;
     for (int i = 0; i < declarations.size(); ++i) {
         const Declaration &decl = declarations.at(i);
         switch (decl.d->propertyId) {
-        case Color: *fg = decl.brushValue(pal); break;
-        case QtSelectionForeground: *sfg = decl.brushValue(pal); break;
-        case QtSelectionBackground: *sbg = decl.brushValue(pal); break;
-        case QtAlternateBackground: *abg = decl.brushValue(pal); break;
+        case Color: *foreground = decl.brushValue(pal); break;
+        case QtSelectionForeground: *selectedForeground = decl.brushValue(pal); break;
+        case QtSelectionBackground: *selectedBackground = decl.brushValue(pal); break;
+        case QtAlternateBackground: *alternateBackground = decl.brushValue(pal); break;
+        case QtPlaceHolderTextColor: *placeHolderTextForeground = decl.brushValue(pal); break;
+        case QtAccent: *accent = decl.brushValue(pal); break;
         default: continue;
         }
         hit = true;
@@ -1437,7 +1446,8 @@ QColor Declaration::colorValue(const QPalette &pal) const
             return pal.color((QPalette::ColorRole)(d->parsed.toInt()));
         case qMetaTypeId<QList<QVariant>>():
             if (d->parsed.toList().size() == 1) {
-                const auto &value = d->parsed.toList().at(0);
+                auto parsedList = d->parsed.toList();
+                const auto &value = parsedList.at(0);
                 return qvariant_cast<QColor>(value);
             }
             break;

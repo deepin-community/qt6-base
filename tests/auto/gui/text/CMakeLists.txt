@@ -1,4 +1,5 @@
-# Generated from text.pro.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
 add_subdirectory(qabstracttextdocumentlayout)
 add_subdirectory(qfont)
@@ -13,9 +14,10 @@ add_subdirectory(qtextcursor)
 add_subdirectory(qtextdocumentfragment)
 add_subdirectory(qtextdocumentlayout)
 add_subdirectory(qtextformat)
+add_subdirectory(qtextimagehandler)
 add_subdirectory(qtextlist)
 add_subdirectory(qtextobject)
-# add_subdirectory(qtextscriptengine) # disable until system_harfbuzz feature is available # special case
+# add_subdirectory(qtextscriptengine) # disable until system_harfbuzz feature is available
 add_subdirectory(qtexttable)
 add_subdirectory(qinputcontrol)
 if(QT_FEATURE_private_tests AND TARGET Qt::Xml)
@@ -24,7 +26,6 @@ endif()
 if(QT_FEATURE_private_tests)
     add_subdirectory(qfontcache)
     add_subdirectory(qtextlayout)
-    add_subdirectory(qzip)
     add_subdirectory(qtextodfwriter)
 endif()
 if(TARGET Qt::Xml)

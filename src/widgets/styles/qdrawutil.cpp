@@ -230,8 +230,8 @@ void qDrawShadeRect(QPainter *p, int x, int y, int w, int h,
         p->scale(inverseScale, inverseScale);
         x = qRound(devicePixelRatio * x);
         y = qRound(devicePixelRatio * y);
-        w = qRound(devicePixelRatio * w);
-        h = qRound(devicePixelRatio * h);
+        w = devicePixelRatio * w;
+        h = devicePixelRatio * h;
         lineWidth = qRound(devicePixelRatio * lineWidth);
         midLineWidth = qRound(devicePixelRatio * midLineWidth);
         p->translate(0.5, 0.5);
@@ -346,8 +346,8 @@ void qDrawShadePanel(QPainter *p, int x, int y, int w, int h,
         p->scale(inverseScale, inverseScale);
         x = qRound(devicePixelRatio * x);
         y = qRound(devicePixelRatio * y);
-        w = qRound(devicePixelRatio * w);
-        h = qRound(devicePixelRatio * h);
+        w = devicePixelRatio * w;
+        h = devicePixelRatio * h;
         lineWidth = qRound(devicePixelRatio * lineWidth);
         p->translate(0.5, 0.5);
         isTranslated = true;
@@ -443,8 +443,8 @@ static void qDrawWinShades(QPainter *p,
         p->scale(inverseScale, inverseScale);
         x = qRound(devicePixelRatio * x);
         y = qRound(devicePixelRatio * y);
-        w = qRound(devicePixelRatio * w);
-        h = qRound(devicePixelRatio * h);
+        w = devicePixelRatio * w;
+        h = devicePixelRatio * h;
         p->translate(0.5, 0.5);
         isTranslated = true;
     }
@@ -590,8 +590,8 @@ void qDrawPlainRect(QPainter *p, int x, int y, int w, int h, const QColor &c,
         p->scale(inverseScale, inverseScale);
         x = qRound(devicePixelRatio * x);
         y = qRound(devicePixelRatio * y);
-        w = qRound(devicePixelRatio * w);
-        h = qRound(devicePixelRatio * h);
+        w = devicePixelRatio * w;
+        h = devicePixelRatio * h;
         lineWidth = qRound(devicePixelRatio * lineWidth);
         p->translate(0.5, 0.5);
     }
@@ -878,7 +878,7 @@ typedef QVarLengthArray<QPainter::PixmapFragment, 16> QPixmapFragmentsArray;
 void qDrawBorderPixmap(QPainter *painter, const QRect &targetRect, const QMargins &targetMargins,
                        const QPixmap &pixmap, const QRect &sourceRect,const QMargins &sourceMargins,
                        const QTileRules &rules
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
                        , QDrawBorderPixmap::DrawingHints hints
 #endif
                        )

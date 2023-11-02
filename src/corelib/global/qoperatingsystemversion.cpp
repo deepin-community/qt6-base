@@ -15,6 +15,7 @@
 #include <qdebug.h>
 
 #ifdef Q_OS_ANDROID
+#include <QtCore/private/qjnihelpers_p.h>
 #include <QJniObject>
 #endif
 
@@ -179,11 +180,13 @@ QOperatingSystemVersionBase QOperatingSystemVersionBase::current_impl()
         { 9, 0 }, // API level 28
         { 10, 0 }, // API level 29
         { 11, 0 }, // API level 30
+        { 12, 0 }, // API level 31
+        { 12, 0 }, // API level 32
+        { 13, 0 }, // API level 33
     };
 
     // This will give us at least the first 2 version components
-    const size_t versionIdx = size_t(QJniObject::getStaticField<jint>(
-        "android/os/Build$VERSION", "SDK_INT")) - 1;
+    const size_t versionIdx = QtAndroidPrivate::androidSdkVersion() - 1;
     if (versionIdx < sizeof(versions) / sizeof(versions[0])) {
         version.m_major = versions[versionIdx].major;
         version.m_minor = versions[versionIdx].minor;
@@ -356,6 +359,8 @@ bool QOperatingSystemVersionBase::isAnyOfType(std::initializer_list<OSType> type
     return std::find(types.begin(), types.end(), type) != types.end();
 }
 
+#ifndef QT_BOOTSTRAPPED
+
 /*!
     \variable QOperatingSystemVersion::Windows7
     \brief a version corresponding to Windows 7 (version 6.1).
@@ -394,6 +399,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            Version 1809 (version 10.0.17763).
     \since 6.3
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows10_1809;
 
 /*!
     \variable QOperatingSystemVersion::Windows10_1903
@@ -401,6 +407,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            Version 1903 (version 10.0.18362).
     \since 6.3
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows10_1903;
 
 /*!
     \variable QOperatingSystemVersion::Windows10_1909
@@ -408,6 +415,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            Version 1909 (version 10.0.18363).
     \since 6.3
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows10_1909;
 
 /*!
     \variable QOperatingSystemVersion::Windows10_2004
@@ -415,6 +423,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            Version 2004 (version 10.0.19041).
     \since 6.3
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows10_2004;
 
 /*!
     \variable QOperatingSystemVersion::Windows10_20H2
@@ -422,6 +431,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            Version 20H2 (version 10.0.19042).
     \since 6.3
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows10_20H2;
 
 /*!
     \variable QOperatingSystemVersion::Windows10_21H1
@@ -429,6 +439,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            Version 21H1 (version 10.0.19043).
     \since 6.3
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows10_21H1;
 
 /*!
     \variable QOperatingSystemVersion::Windows10_21H2
@@ -436,6 +447,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            Version 21H2 (version 10.0.19044).
     \since 6.3
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows10_21H2;
 
 /*!
     \variable QOperatingSystemVersion::Windows10_22H2
@@ -443,6 +455,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            Version 22H2 (version 10.0.19045).
     \since 6.5
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows10_22H2;
 
 /*!
     \variable QOperatingSystemVersion::Windows11
@@ -450,18 +463,21 @@ const QOperatingSystemVersion QOperatingSystemVersion::Windows10 =
            (version 10.0.22000).
     \since 6.3
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows11;
 
 /*!
     \variable QOperatingSystemVersion::Windows11_21H2
     \brief a version corresponding to Windows 11 Version 21H2 (version 10.0.22000).
     \since 6.4
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows11_21H2;
 
 /*!
     \variable QOperatingSystemVersion::Windows11_22H2
     \brief a version corresponding to Windows 11 Version 22H2 (version 10.0.22621).
     \since 6.4
  */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Windows11_22H2;
 
 /*!
     \variable QOperatingSystemVersion::OSXMavericks
@@ -521,24 +537,11 @@ const QOperatingSystemVersion QOperatingSystemVersion::MacOSCatalina =
 
 /*!
     \variable QOperatingSystemVersion::MacOSBigSur
-    \brief a version corresponding to macOS Big Sur
-
-    The actual version number depends on whether the application was built
-    using the Xcode 12 SDK. If it was, the version number corresponds
-    to macOS 11.0. If not it will correspond to macOS 10.16.
-
-    By comparing QOperatingSystemVersion::current() to this constant
-    you will always end up comparing to the right version number.
+    \brief a version corresponding to macOS Big Sur (version 11).
     \since 6.0
  */
-const QOperatingSystemVersion QOperatingSystemVersion::MacOSBigSur = [] {
-#if defined(Q_OS_DARWIN)
-    if (QMacVersion::buildSDK(QMacVersion::ApplicationBinary) >= QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 10, 16))
-        return QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 11, 0);
-    else
-#endif
-        return QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 10, 16);
-}();
+const QOperatingSystemVersion QOperatingSystemVersion::MacOSBigSur =
+    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 11, 0);
 
 /*!
     \variable QOperatingSystemVersion::MacOSMonterey
@@ -553,6 +556,14 @@ const QOperatingSystemVersion QOperatingSystemVersion::MacOSMonterey =
     \brief a version corresponding to macOS Ventura (version 13).
     \since 6.4
 */
+const QOperatingSystemVersionBase QOperatingSystemVersion::MacOSVentura;
+
+/*!
+    \variable QOperatingSystemVersion::MacOSSonoma
+    \brief a version corresponding to macOS Sonoma (version 14).
+    \since 6.5
+*/
+const QOperatingSystemVersionBase QOperatingSystemVersion::MacOSSonoma;
 
 /*!
     \variable QOperatingSystemVersion::AndroidJellyBean
@@ -669,6 +680,29 @@ const QOperatingSystemVersion QOperatingSystemVersion::Android10 =
  */
 const QOperatingSystemVersion QOperatingSystemVersion::Android11 =
     QOperatingSystemVersion(QOperatingSystemVersion::Android, 11, 0);
+
+/*!
+    \variable QOperatingSystemVersion::Android12
+    \brief a version corresponding to Android 12 (version 12.0, API level 31).
+    \since 6.5
+ */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Android12;
+
+/*!
+    \variable QOperatingSystemVersion::Android12L
+    \brief a version corresponding to Android 12L (version 12.0, API level 32).
+    \since 6.5
+ */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Android12L;
+
+/*!
+    \variable QOperatingSystemVersion::Android13
+    \brief a version corresponding to Android 13 (version 13.0, API level 33).
+    \since 6.5
+ */
+const QOperatingSystemVersionBase QOperatingSystemVersion::Android13;
+
+#endif // !QT_BOOTSTRAPPED
 
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug debug, const QOperatingSystemVersion &ov)
