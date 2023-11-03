@@ -6,9 +6,13 @@ Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1042018
 Reviewed-by: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
 Last-Update: 2023-07-28
 
---- ./src/3rdparty/forkfd/forkfd_linux.c.save	2023-07-27 12:04:02.940466337 +0000
-+++ ./src/3rdparty/forkfd/forkfd_linux.c	2023-07-27 12:06:53.522077424 +0000
-@@ -168,7 +168,12 @@
+---
+ src/3rdparty/forkfd/forkfd_linux.c |    5 +++++
+ 1 file changed, 5 insertions(+)
+
+--- a/src/3rdparty/forkfd/forkfd_linux.c
++++ b/src/3rdparty/forkfd/forkfd_linux.c
+@@ -169,7 +169,12 @@ int system_vforkfd(int flags, pid_t *ppi
      }
      *system = 1;
  

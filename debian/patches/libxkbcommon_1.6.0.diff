@@ -13,11 +13,13 @@ Change-Id: I55861868f2bb29c553d68365fa9b9b6ed01c9aea
 Reviewed-by: Tor Arne Vestbø <tor.arne.vestbo@qt.io>
 ---
 
-diff --git a/src/gui/platform/unix/qxkbcommon.cpp b/src/gui/platform/unix/qxkbcommon.cpp
-index 26d87c5..7b61179 100644
+---
+ src/gui/platform/unix/qxkbcommon.cpp |    4 ++++
+ 1 file changed, 4 insertions(+)
+
 --- a/src/gui/platform/unix/qxkbcommon.cpp
 +++ b/src/gui/platform/unix/qxkbcommon.cpp
-@@ -237,10 +237,14 @@
+@@ -239,10 +239,14 @@ static constexpr const auto KeyTbl = qMa
          Xkb2Qt<XKB_KEY_dead_small_schwa,        Qt::Key_Dead_Small_Schwa>,
          Xkb2Qt<XKB_KEY_dead_capital_schwa,      Qt::Key_Dead_Capital_Schwa>,
          Xkb2Qt<XKB_KEY_dead_greek,              Qt::Key_Dead_Greek>,

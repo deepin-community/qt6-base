@@ -14,7 +14,7 @@ https://reproducible-builds.org/docs/build-path/
 
 --- a/cmake/QtBuildInternalsExtra.cmake.in
 +++ b/cmake/QtBuildInternalsExtra.cmake.in
-@@ -75,9 +75,6 @@ endif()
+@@ -74,9 +74,6 @@ endif()
  set(QT_WILL_INSTALL @QT_WILL_INSTALL@ CACHE BOOL
      "Boolean indicating if doing a Qt prefix build (vs non-prefix build)." FORCE)
  

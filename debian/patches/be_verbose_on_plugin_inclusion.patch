@@ -1,0 +1,82 @@
+From c8e2cdda704dbe2c381091fe687653cdf2b191ca Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Lisandro=20Dami=C3=A1n=20Nicanor=20P=C3=A9rez=20Meyer?=
+ <perezmeyer@gmail.com>
+Date: Wed, 1 Nov 2023 21:41:59 -0300
+Subject: [PATCH] Be verbose on plugin inclusion, easy patch point for distros
+
+TL;DR: This creates two changes:
+
+1. Makes the plugin inclusion status more visible for builders for both Qt
+   itself and applications.
+2. Allows a simple patch-point for distros to change the default
+   (perhaps not ideal, but good enough).
+3. Does not changes the current behavior.
+
+As discussed both in the mailing list and privately with
+Alexandru Croitor and Joerg Bornemann this makes a lot os sense for Qt
+on static builds and when trying to find where the plugins are so they
+can be easily packaged up in order to distribute a build with all the
+dependencies on it.
+
+But at the same time it makes no sense for distributions building the
+libraries in dynamic mode as it forces unnecesary build time
+dependencies for for both Qt and applications like QML modules or even
+PostgreSQL! [0].
+
+[0] <https://sources.debian.org/src/martchus-qtutilities/6.10.0-1/cmake/modules/QtConfig.cmake/?hl=35#L35>
+
+Other approaches have been considered like not shipping specific CMake
+files, but this depends on the packager finding the right ones at the
+right time, and does not allows end users to change the behavior if they
+happen to need it.
+
+Change-Id: Id32fbc0cf0f289edd4426fb703cf1195288aacb4
+Gerrit: https://codereview.qt-project.org/c/qt/qtbase/+/515440
+---
+ cmake/QtPlugins.cmake.in         | 9 +++++++++
+ cmake/QtPostProcessHelpers.cmake | 9 +++++++++
+ 2 files changed, 18 insertions(+)
+
+diff --git a/cmake/QtPlugins.cmake.in b/cmake/QtPlugins.cmake.in
+index 405d5f37b9..c951eaae42 100644
+--- a/cmake/QtPlugins.cmake.in
++++ b/cmake/QtPlugins.cmake.in
+@@ -1,6 +1,15 @@
+ include_guard(DIRECTORY)
+ @QT_MODULE_PLUGIN_INCLUDES@
+ 
++# Distributions should probably change this default.
++if(NOT DEFINED QT_SKIP_AUTO_PLUGIN_INCLUSION)
++    set(QT_SKIP_AUTO_PLUGIN_INCLUSION OFF)
++endif()
++
++if(QT_REPO_MODULE_VERSION)
++    message(STATUS "Skip auto plugin inclusion is set to ${QT_SKIP_AUTO_PLUGIN_INCLUSION}")
++endif()
++
+ if(NOT QT_NO_CREATE_TARGETS AND NOT QT_SKIP_AUTO_PLUGIN_INCLUSION)
+     __qt_internal_include_plugin_packages(@QT_MODULE@)
+ endif()
+diff --git a/cmake/QtPostProcessHelpers.cmake b/cmake/QtPostProcessHelpers.cmake
+index 83bcabe49b..82a88565a6 100644
+--- a/cmake/QtPostProcessHelpers.cmake
++++ b/cmake/QtPostProcessHelpers.cmake
+@@ -446,6 +446,15 @@ function(qt_internal_create_plugins_auto_inclusion_files)
+ # TODO: Find a better way to deal with this, perhaps by using find_package() instead of include
+ # for the Qml PluginConfig.cmake files.
+ 
++# Distributions should probably change this default.
++if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
++    set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION OFF)
++endif()
++
++if(QT_REPO_MODULE_VERSION)
++    message(STATUS \"Skip auto QML plugin inclusion is set to \${QT_SKIP_AUTO_QML_PLUGIN_INCLUSION}\")
++endif()
++
+ file(GLOB __qt_qml_plugins_config_file_list \"\${CMAKE_CURRENT_LIST_DIR}/QmlPlugins/${INSTALL_CMAKE_NAMESPACE}*Config.cmake\")
+ if (__qt_qml_plugins_config_file_list AND NOT QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
+     # First round of inclusions ensure all qml plugin targets are brought into scope.
+-- 
+2.42.0
+

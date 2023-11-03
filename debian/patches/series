@@ -4,13 +4,16 @@ libxkbcommon_1.6.0.diff
 # Needs to be fixed upstream.
 Add-SH-detection.patch
 
+# Pushed to gerrit
+be_verbose_on_plugin_inclusion.patch
+
 # Debian specific
 remove_privacy_breaches.diff
 build_path_embedded_qtbuildinternalsextra_cmake.patch
 cross.patch
 remove_rpath_from_examples.patch
 forkfd_grow_stack_upwards_on_hppa.patch
-skip_plugin_and_qml_plugin_inclusion.patch
+enable_skip_plugins.patch
 
 # Don't use yield on CPUs that might not support it
 armel-noyield.patch
