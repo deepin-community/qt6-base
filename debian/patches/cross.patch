@@ -1,11 +1,12 @@
 ---
  cmake/QtBuildInternals/QtBuildInternalsConfig.cmake |    2 --
+ examples/sql/CMakeLists.txt                         |    2 +-
  src/tools/configure.cmake                           |    2 +-
- 2 files changed, 1 insertion(+), 3 deletions(-)
+ 3 files changed, 2 insertions(+), 4 deletions(-)
 
 --- a/cmake/QtBuildInternals/QtBuildInternalsConfig.cmake
 +++ b/cmake/QtBuildInternals/QtBuildInternalsConfig.cmake
-@@ -151,8 +151,6 @@ function(qt_build_internals_disable_pkg_
+@@ -170,8 +170,6 @@ function(qt_build_internals_disable_pkg_
      set(FEATURE_pkg_config "${pkg_config_enabled}" CACHE STRING "Using pkg-config")
      if(NOT pkg_config_enabled)
          qt_build_internals_disable_pkg_config()
@@ -22,12 +23,12 @@
      PURPOSE "The Android deployment tool automates the process of creating Android packages."
 -    CONDITION NOT CMAKE_CROSSCOMPILING AND QT_FEATURE_regularexpression AND QT_FEATURE_settings)
 +    CONDITION (QT_FORCE_BUILD_TOOLS OR NOT CMAKE_CROSSCOMPILING) AND QT_FEATURE_regularexpression)
-
+ 
  qt_feature("macdeployqt" PRIVATE
      SECTION "Deployment"
 --- a/examples/sql/CMakeLists.txt
 +++ b/examples/sql/CMakeLists.txt
-@@ -12,6 +12,6 @@ if(TARGET Qt::Xml)
+@@ -15,6 +15,6 @@ if(TARGET Qt6::Xml)
      qt_internal_add_example(masterdetail)
  endif()
  

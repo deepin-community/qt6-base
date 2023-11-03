@@ -1,10 +1,24 @@
-qt6-base (6.6.0+dfsg-5~r0) UNRELEASED; urgency=medium
+qt6-base (6.6.0+dfsg-6) unstable; urgency=medium
 
-  * Add skip_plugin_and_qml_plugin_inclusion.patch. This patch sets
-    QT_SKIP_AUTO_PLUGIN_INCLUSION and QT_SKIP_AUTO_QML_PLUGIN_INCLUSION to ON
-    by default, thus avoiding unnecesary build dependencies on plugins.
+  [ Tianyu Chen ]
+  * Update missing dependency on libxcb-cursor-dev.
+  * Update list of installed files.
+  * Update symbols.
 
- -- Debian Qt/KDE Maintainers <debian-qt-kde@lists.debian.org>  Wed, 01 Nov 2023 18:16:57 -0300
+ -- Debian Qt/KDE Maintainers <debian-qt-kde at lists.debian.org>  Fri, 03 Nov 2023 14:25:13 +0800
+
+qt6-base (6.6.0+dfsg-5) experimental; urgency=medium
+
+  * Team upload.
+  * Add two patches:
+    - be_verbose_on_plugin_inclusion.patch currently on upstream's Gerrit.
+    - enable_skip_plugins.patch
+    These set QT_SKIP_AUTO_PLUGIN_INCLUSION and
+    QT_SKIP_AUTO_QML_PLUGIN_INCLUSION to ON by default, thus avoiding
+    unnecessary build dependencies on plugins.
+  * Refresh patches.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Thu, 02 Nov 2023 22:33:30 -0300
 
 qt6-base (6.6.0+dfsg-4) experimental; urgency=medium
 

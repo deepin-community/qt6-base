@@ -7,11 +7,13 @@ Author: John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>
 Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1043225
 Reviewed-by: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
 
-Index: qt6-base-6.4.2+dfsg/src/corelib/global/qprocessordetection.h
-===================================================================
---- qt6-base-6.4.2+dfsg.orig/src/corelib/global/qprocessordetection.h
-+++ qt6-base-6.4.2+dfsg/src/corelib/global/qprocessordetection.h
-@@ -294,12 +294,12 @@
+---
+ src/corelib/global/qprocessordetection.h |   12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+--- a/src/corelib/global/qprocessordetection.h
++++ b/src/corelib/global/qprocessordetection.h
+@@ -311,12 +311,12 @@
  
      SuperH is bi-endian, use endianness auto-detection implemented below.
  */
