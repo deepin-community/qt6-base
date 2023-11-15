@@ -1,11 +1,15 @@
-qt6-base (6.6.0+dfsg-6) unstable; urgency=medium
+qt6-base (6.6.0+dfsg-6) experimental; urgency=medium
 
   [ Tianyu Chen ]
   * Update missing dependency on libxcb-cursor-dev.
   * Update list of installed files.
   * Update symbols.
 
- -- Debian Qt/KDE Maintainers <debian-qt-kde at lists.debian.org>  Fri, 03 Nov 2023 14:25:13 +0800
+  [ Patrick Franz ]
+  * Remove flags to skip the inclusion of plugins as this is done via a
+    patch now.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 03 Nov 2023 22:38:52 +0100
 
 qt6-base (6.6.0+dfsg-5) experimental; urgency=medium
 
@@ -58,7 +62,7 @@ qt6-base (6.6.0+dfsg-1) experimental; urgency=medium
 
  -- Patrick Franz <deltaone@debian.org>  Wed, 11 Oct 2023 21:00:14 +0200
 
- qt6-base (6.4.2+dfsg-19) unstable; urgency=medium
+qt6-base (6.4.2+dfsg-19) unstable; urgency=medium
 
    [ Patrick Franz ]
    * Backport upstream patch to fix build with libxkbcommon 1.6.0
