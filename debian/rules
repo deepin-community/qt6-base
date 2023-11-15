@@ -52,8 +52,6 @@ override_dh_auto_configure:
 		-DINSTALL_PUBLICBINDIR=bin \
 		-DQT_BUILD_EXAMPLES=ON \
 		-DQT_INSTALL_EXAMPLES_SOURCES=ON \
-		-DQT_SKIP_AUTO_PLUGIN_INCLUSION=ON \
-		-DQT_SKIP_AUTO_QML_PLUGIN_INCLUSION=ON \
 		-DFEATURE_mimetype_database=OFF \
 		-DFEATURE_dbus_linked=ON \
 		-DFEATURE_accessibility=ON \
