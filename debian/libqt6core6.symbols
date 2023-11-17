@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.6.0 amd64 armel armhf hppa i386 loong64 powerpc
+# SymbolsHelper-Confirmed: 6.6.0 amd64 arm64
 libQt6Core.so.6 libqt6core6 #MINVER#
 | libqt6core6 #MINVER#, qt6-base-private-abi (= 6.6.0)
 * Build-Depends-Package: qt6-base-dev
@@ -4930,7 +4930,7 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZNK4QDir9entryListERK5QListI7QStringE6QFlagsINS_6FilterEES5_INS_8SortFlagEE@Qt_6 6.1.2
  _ZNK4QDireqERKS_@Qt_6 6.1.2
  _ZNK4QDirixEi@Qt_6 6.1.2
- (arch=amd64 loong64)_ZNK4QDirixEx@Qt_6 6.6.0
+ (arch=amd64 arm64 loong64)_ZNK4QDirixEx@Qt_6 6.6.0
  _ZNK4QUrl10isDetachedEv@Qt_6 6.1.2
  _ZNK4QUrl10isParentOfERKS_@Qt_6 6.1.2
  _ZNK4QUrl10isRelativeEv@Qt_6 6.1.2
