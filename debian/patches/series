@@ -1,6 +1,3 @@
-# fixed in 6.6.1
-libxkbcommon_1.6.0.diff
-
 # Needs to be fixed upstream.
 Add-SH-detection.patch
 

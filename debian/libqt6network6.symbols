@@ -1,6 +1,6 @@
-# SymbolsHelper-Confirmed: 6.6.0 amd64 armel armhf hppa i386 powerpc
+# SymbolsHelper-Confirmed: 6.6.1 amd64
 libQt6Network.so.6 libqt6network6 #MINVER#
-| libqt6network6 #MINVER#, qt6-base-private-abi (= 6.6.0)
+| libqt6network6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
@@ -537,6 +537,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN16QNetworkDatagram17setInterfaceIndexEj@Qt_6 6.1.2
  _ZN16QNetworkDatagram24makeReply_helper_inplaceERK10QByteArray@Qt_6 6.1.2
  _ZN16QNetworkDatagram5clearEv@Qt_6 6.1.2
+ _ZN16QNetworkDatagram7destroyEP23QNetworkDatagramPrivate@Qt_6 6.6.1
  _ZN16QNetworkDatagram7setDataERK10QByteArray@Qt_6 6.1.2
  _ZN16QNetworkDatagram9setSenderERK12QHostAddresst@Qt_6 6.1.2
  _ZN16QNetworkDatagramC1ERK10QByteArrayRK12QHostAddresst@Qt_6 6.1.2

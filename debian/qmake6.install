@@ -35,10 +35,6 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/macx.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/msvc-based-version.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/msvc-desktop.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/msvc-version.conf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/nacl/g++-nacl32.conf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/nacl/g++-nacl64.conf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/nacl/nacl-base.conf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/nacl/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/posix/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/qcc-base-qnx-aarch64le.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/qcc-base-qnx-armle-v7.conf
@@ -184,7 +180,6 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/default_pre.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/designer_defines.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/device_config.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/egl.prf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/entrypoint.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/exceptions.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/exceptions_off.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/exclusive_builds.prf
@@ -403,10 +398,6 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/linux-host-g++/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/linux-host-g++/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/linux-scratchbox2-g++/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/linux-scratchbox2-g++/qplatformdefs.h
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/nacl-g++/qmake.conf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/nacl-g++/qplatformdefs.h
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/nacl64-g++/qmake.conf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/nacl64-g++/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/qnx-X11-g++/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/qnx-X11-g++/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/vxworks-ppc-dcc/qmake.conf

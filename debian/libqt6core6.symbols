@@ -1,6 +1,6 @@
-# SymbolsHelper-Confirmed: 6.6.0 amd64 armel armhf hppa i386 loong64 powerpc
+# SymbolsHelper-Confirmed: 6.6.1 amd64 arm64 armel armhf hppa i386 powerpc ppc64 ppc64el riscv64 s390x sh4 sparc64
 libQt6Core.so.6 libqt6core6 #MINVER#
-| libqt6core6 #MINVER#, qt6-base-private-abi (= 6.6.0)
+| libqt6core6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
  Qt_6.0@Qt_6.0 6.1.2
  Qt_6.1@Qt_6.1 6.1.2
@@ -843,6 +843,7 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN14QReadWriteLock15tryLockForWriteE14QDeadlineTimer@Qt_6 6.6.0
  _ZN14QReadWriteLock15tryLockForWriteEi@Qt_6 6.1.2
  _ZN14QReadWriteLock15tryLockForWriteEv@Qt_6 6.1.2
+ _ZN14QReadWriteLock16destroyRecursiveEP21QReadWriteLockPrivate@Qt_6 6.6.1
  _ZN14QReadWriteLock6unlockEv@Qt_6 6.1.2
  _ZN14QReadWriteLockC1ENS_13RecursionModeE@Qt_6 6.1.2
  _ZN14QReadWriteLockC2ENS_13RecursionModeE@Qt_6 6.1.2
@@ -1798,6 +1799,7 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN20QFutureInterfaceBase15reportExceptionERK10QException@Qt_6 6.1.2
  _ZN20QFutureInterfaceBase15resultStoreBaseEv@Qt_6 6.1.2
  _ZN20QFutureInterfaceBase15setContinuationESt8functionIFvRKS_EE@Qt_6 6.1.2
+ _ZN20QFutureInterfaceBase15setContinuationESt8functionIFvRKS_EEP27QFutureInterfaceBasePrivate@Qt_6 6.6.1
  _ZN20QFutureInterfaceBase15toggleSuspendedEv@Qt_6 6.1.2
  _ZN20QFutureInterfaceBase15waitForFinishedEv@Qt_6 6.1.2
  _ZN20QFutureInterfaceBase16setProgressRangeEii@Qt_6 6.1.2
@@ -1958,7 +1960,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN23QOperatingSystemVersion11MacOSBigSurE@Qt_6 6.1.2
  _ZN23QOperatingSystemVersion11MacOSMojaveE@Qt_6 6.1.2
  _ZN23QOperatingSystemVersion11MacOSSierraE@Qt_6 6.1.2
- _ZN23QOperatingSystemVersion11MacOSSonomaE@Qt_6 6.6.0
  _ZN23QOperatingSystemVersion11OSXYosemiteE@Qt_6 6.1.2
  _ZN23QOperatingSystemVersion12MacOSVenturaE@Qt_6 6.6.0
  _ZN23QOperatingSystemVersion12OSXElCapitanE@Qt_6 6.1.2
@@ -4930,7 +4931,7 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZNK4QDir9entryListERK5QListI7QStringE6QFlagsINS_6FilterEES5_INS_8SortFlagEE@Qt_6 6.1.2
  _ZNK4QDireqERKS_@Qt_6 6.1.2
  _ZNK4QDirixEi@Qt_6 6.1.2
- (arch=amd64 loong64)_ZNK4QDirixEx@Qt_6 6.6.0
+ (arch=!armel !armhf !hppa !i386 !powerpc !sh4)_ZNK4QDirixEx@Qt_6 6.6.1
  _ZNK4QUrl10isDetachedEv@Qt_6 6.1.2
  _ZNK4QUrl10isParentOfERKS_@Qt_6 6.1.2
  _ZNK4QUrl10isRelativeEv@Qt_6 6.1.2

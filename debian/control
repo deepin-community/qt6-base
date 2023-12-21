@@ -87,7 +87,7 @@ Package: libqt6core6
 Architecture: any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends},
-Provides: qt6-base-private-abi (= 6.6.0),
+Provides: qt6-base-private-abi (= 6.6.1),
 Depends: shared-mime-info, ${misc:Depends}, ${shlibs:Depends},
 Recommends: qt6-translations-l10n,
 Description: Qt 6 core module
@@ -354,6 +354,7 @@ Depends: libgl-dev,
          libqt6dbus6 (= ${binary:Version}),
          libqt6gui6 (= ${binary:Version}),
          libqt6network6 (= ${binary:Version}),
+         libqt6opengl6 (= ${binary:Version}),
          libqt6openglwidgets6 (= ${binary:Version}),
          libqt6printsupport6 (= ${binary:Version}),
          libqt6sql6 (= ${binary:Version}),

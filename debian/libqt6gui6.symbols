@@ -1,6 +1,6 @@
-# SymbolsHelper-Confirmed: 6.6.0 amd64
+# SymbolsHelper-Confirmed: 6.6.1 amd64
 libQt6Gui.so.6 libqt6gui6 #MINVER#
-| libqt6gui6 #MINVER#, qt6-base-private-abi (= 6.6.0)
+| libqt6gui6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
@@ -1102,6 +1102,7 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _ZN13QPointerEventD2Ev@Qt_6 6.1.2
  _ZN13QRasterWindow11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
  _ZN13QRasterWindow11qt_metacastEPKc@Qt_6 6.1.2
+ _ZN13QRasterWindow11resizeEventEP12QResizeEvent@Qt_6 6.6.1
  _ZN13QRasterWindow16staticMetaObjectE@Qt_6 6.1.2
  _ZN13QRasterWindowC1EP7QWindow@Qt_6 6.1.2
  _ZN13QRasterWindowC2EP7QWindow@Qt_6 6.1.2

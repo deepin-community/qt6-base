@@ -13,12 +13,13 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QRandomGenerator>
-#include <QTemporaryDir>
-#include <QTemporaryFile>
 #include <QOperatingSystemVersion>
+#include <QRandomGenerator>
 #include <QStorageInfo>
 #include <QScopeGuard>
+#include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QTemporaryFile>
 
 #include <private/qabstractfileengine_p.h>
 #include <private/qfsfileengine_p.h>
@@ -281,6 +282,10 @@ private slots:
 
     void moveToTrash_data();
     void moveToTrash();
+    void moveToTrashDuplicateName();
+    void moveToTrashOpenFile_data();
+    void moveToTrashOpenFile();
+    void moveToTrashXdgSafety();
 
     void stdfilesystem();
 
@@ -426,6 +431,8 @@ void tst_QFile::cleanup()
 
 tst_QFile::tst_QFile() : m_oldDir(QDir::currentPath())
 {
+    QStandardPaths::setTestModeEnabled(true);
+    QDir().mkpath(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
 }
 
 static QByteArray msgOpenFailed(QIODevice::OpenMode om, const QFile &file)
@@ -1450,8 +1457,9 @@ void tst_QFile::setPermissions_data()
 
 void tst_QFile::setPermissions()
 {
-#ifdef Q_OS_QNX
-    QSKIP("This test doesn't pass on QNX and no one has cared to investigate.");
+#ifdef Q_OS_UNIX
+    if (::getuid() == 0)
+        QSKIP("Running this test as root doesn't make sense");
 #endif
     QFETCH(bool, opened);
 
@@ -3840,13 +3848,13 @@ void tst_QFile::moveToTrash_data()
 
     // success cases
     {
-        QTemporaryFile temp;
+        QTemporaryFile temp(QDir::tempPath() + "/tst_qfile-moveToTrash-XXXXXX");
         if (!temp.open())
             QSKIP("Failed to create temporary file!");
         QTest::newRow("temporary file") << temp.fileName() << true << true;
     }
     {
-        QTemporaryDir tempDir;
+        QTemporaryDir tempDir(QDir::tempPath() + "/tst_qfile-moveToTrash-XXXXXX");
         if (!tempDir.isValid())
             QSKIP("Failed to create temporary directory!");
         tempDir.setAutoRemove(false);
@@ -3855,11 +3863,11 @@ void tst_QFile::moveToTrash_data()
             << true << true;
     }
     {
-        QTemporaryDir homeDir(QDir::homePath() + QLatin1String("/XXXXXX"));
+        QTemporaryDir homeDir(QDir::homePath() + QLatin1String("/tst_qfile.moveToTrash-XXXXXX"));
         if (!homeDir.isValid())
             QSKIP("Failed to create temporary directory in $HOME!");
         QTemporaryFile homeFile(homeDir.path()
-                              + QLatin1String("/tst_qfile-XXXXXX"));
+                              + QLatin1String("/tst_qfile-moveToTrash-XXXXX"));
         if (!homeFile.open())
             QSKIP("Failed to create temporary file in $HOME");
         homeDir.setAutoRemove(false);
@@ -3871,7 +3879,7 @@ void tst_QFile::moveToTrash_data()
             << homeDir.path() + QLatin1Char('/')
             << true << true;
     }
-    QTest::newRow("relative") << QStringLiteral("tst_qfile_moveToTrash.tmp") << true << true;
+    QTest::newRow("relative") << QStringLiteral("tst_qfile-moveToTrash.tmp") << true << true;
 
     // failure cases
     QTest::newRow("root") << QDir::rootPath() << false << false;
@@ -3913,6 +3921,7 @@ void tst_QFile::moveToTrash()
     };
 
     ensureFile(source, create);
+    if (!QFileInfo::exists(source) && create) return;
 
     /* This test makes assumptions about the file system layout
        which might be wrong - moveToTrash may fail if the file lives
@@ -3960,6 +3969,7 @@ void tst_QFile::moveToTrash()
     // static version
     {
         ensureFile(source, create);
+        if (!QFileInfo::exists(source) && create) return;
         QString pathInTrash;
         const bool success = QFile::moveToTrash(source, &pathInTrash);
         QCOMPARE(success, result);
@@ -3976,6 +3986,194 @@ void tst_QFile::moveToTrash()
             }
         }
     }
+}
+
+void tst_QFile::moveToTrashDuplicateName()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+    QSKIP("This platform doesn't implement a trash bin");
+#endif
+    QString origFileName = []() {
+        QTemporaryFile temp(QDir::homePath() + "/tst_qfile.moveToTrashOpenFile.XXXXXX");
+        temp.setAutoRemove(false);
+        if (!temp.open())
+            qWarning("Failed to create temporary file: %ls", qUtf16Printable(temp.errorString()));
+        return temp.fileName();
+    }();
+
+    QFile f1(origFileName);
+    QFile f2(origFileName);
+    [&] {
+        QByteArrayView message1 = "Hello, World\n";
+        QVERIFY2(f1.open(QIODevice::ReadWrite | QIODevice::Unbuffered), qPrintable(f1.errorString()));
+        f1.write(message1.data(), message1.size());
+        QVERIFY2(f1.moveToTrash(), qPrintable(f1.errorString()));
+
+        QByteArrayView message2 = "Good morning, Vietnam!\n";
+        QVERIFY2(f2.open(QIODevice::ReadWrite | QIODevice::Unbuffered | QIODevice::NewOnly),
+                 qPrintable(f2.errorString()));
+        f2.write(message2.data(), message2.size());
+        QVERIFY2(f2.moveToTrash(), qPrintable(f2.errorString()));
+
+        QCOMPARE_NE(f1.fileName(), f2.fileName());
+    }();
+    f1.remove();
+    if (!f2.fileName().isEmpty())
+        f2.remove();
+    QFile::remove(origFileName);
+}
+
+void tst_QFile::moveToTrashOpenFile_data()
+{
+    QTest::addColumn<bool>("useStatic");
+    QTest::addColumn<bool>("success");
+
+    // QFile::moveToTrash() non-static member closes the file before trashing,
+    // so this must always succeed.
+    QTest::newRow("member") << false << true;
+
+    // QFile::moveToTrash() static member cannot close the file because it
+    // operates on another QFile, so this operation will fail on OSes that do
+    // not permit deleting open files.
+    QTest::newRow("static") << true
+#ifdef Q_OS_WIN
+                            << false;
+#else
+                            << true;
+#endif
+}
+
+void tst_QFile::moveToTrashOpenFile()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+    QSKIP("This platform doesn't implement a trash bin");
+#endif
+    QFETCH(bool, useStatic);
+    QFETCH(bool, success);
+    const QByteArrayView contents = "Hello, World\n";
+
+    QString newFileName, origFileName;
+    auto cleanup = qScopeGuard([&] {
+        if (!origFileName.isEmpty())
+            QFile::remove(origFileName);
+        if (!newFileName.isEmpty() && newFileName != origFileName)
+            QFile::remove(newFileName);
+    });
+
+    origFileName = []() {
+        QTemporaryFile temp(QDir::homePath() + "/tst_qfile.moveToTrashOpenFile.XXXXXX");
+        temp.setAutoRemove(false);
+        if (!temp.open())
+            qWarning("Failed to create temporary file: %ls", qUtf16Printable(temp.errorString()));
+        return temp.fileName();
+    }();
+
+    QFile f;
+    f.setFileName(origFileName);
+    QVERIFY2(f.open(QIODevice::ReadWrite | QIODevice::Unbuffered), qPrintable(f.errorString()));
+    f.write(contents.data(), contents.size());
+
+    QString errorString;
+    auto doMoveToTrash = [&](QFile *f) {
+        if (!f->moveToTrash())
+            errorString = f->errorString();
+        newFileName = f->fileName();
+    };
+    if (useStatic) {
+        // it's the same as the static QFile::moveToTrash(), but gives us
+        // the error string
+        QFile other(origFileName);
+        doMoveToTrash(&other);
+    } else {
+        doMoveToTrash(&f);
+    }
+    QCOMPARE_NE(f.fileName(), QString());
+
+    if (success) {
+        QCOMPARE(errorString, QString());
+        QCOMPARE_NE(newFileName, origFileName);         // must have changed!
+        QVERIFY(!QFile::exists(origFileName));
+        QVERIFY(QFile::exists(newFileName));
+        QCOMPARE(QFileInfo(newFileName).size(), contents.size());
+    } else {
+        QCOMPARE_NE(errorString, QString());
+        QCOMPARE(newFileName, origFileName);            // mustn't have changed!
+        QVERIFY(QFile::exists(origFileName));
+        QCOMPARE(QFileInfo(origFileName).size(), contents.size());
+    }
+}
+
+void tst_QFile::moveToTrashXdgSafety()
+{
+#if defined(Q_OS_WIN) || defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+    QSKIP("This test is specific to XDG Unix systems");
+#else
+    QDir(m_temporaryDir.path()).mkdir("emptydir");
+
+    // See if we can find a writable volume to conduct our tests on
+    QString volumeRoot;
+    QStorageInfo homeVolume(QDir::homePath());
+    auto isVolumeSuitable = [this](const QString &rootPath) {
+        return QFile::link(m_temporaryDir.path() + "/emptydir", rootPath + "/.Trash");
+    };
+    for (const QStorageInfo &volume : QStorageInfo::mountedVolumes()) {
+        if (volume.isRoot())
+            continue;
+        if (volume == homeVolume)
+            continue;
+
+        if (isVolumeSuitable(volume.rootPath())) {
+            volumeRoot = volume.rootPath();
+            break;
+        }
+    }
+
+#  ifdef Q_OS_LINUX
+    // fallback to /dev/shm, which is usually a tmpfs but is ignored by
+    // QStorageInfo as a virtual filesystem
+    if (volumeRoot.isEmpty() && isVolumeSuitable("/dev/shm"))
+        volumeRoot = "/dev/shm";
+#  endif
+
+    if (volumeRoot.isEmpty())
+        QSKIP("Could not find any suitable volume to run this test with");
+
+    QDir genericTrashDir = volumeRoot + "/.Trash";
+    auto cleanup = qScopeGuard([&] {
+        if (QFileInfo(genericTrashDir.path()).isDir())
+            genericTrashDir.removeRecursively();
+        else
+            QFile::remove(genericTrashDir.path());
+    });
+
+    QString testFileName = volumeRoot + "/tst_qfile.moveToTrashSafety." + QString::number(getpid());
+    auto tryTrashing = [&] {
+        static int counter = 0;
+        QFile f(testFileName + u'.' + QString::number(counter++));
+        if (!f.open(QIODevice::ReadWrite | QIODevice::Truncate)) {
+            qWarning("Failed to create temporary file: %ls", qUtf16Printable(f.errorString()));
+            return false;
+        }
+        bool ok = f.moveToTrash();
+        f.remove();
+        f.close();
+        return ok;
+    };
+
+    QTest::ignoreMessage(QtCriticalMsg,
+                         "Warning: '" + QFile::encodeName(genericTrashDir.absolutePath())
+                         + "' is a symlink to '" + QFile::encodeName(m_temporaryDir.path())
+                         + "/emptydir'");
+    QVERIFY(tryTrashing());
+    QVERIFY(genericTrashDir.entryList(QDir::NoDotAndDotDot).isEmpty());
+
+    QFile::remove(genericTrashDir.path());
+    genericTrashDir.mkpath(".");
+    QTest::ignoreMessage(QtCriticalMsg, "Warning: '" + QFile::encodeName(genericTrashDir.absolutePath())
+                         + "' doesn't have sticky bit set!");
+    QVERIFY(tryTrashing());
+    QVERIFY(genericTrashDir.entryList(QDir::NoDotAndDotDot).isEmpty());
+#endif
 }
 
 void tst_QFile::stdfilesystem()
