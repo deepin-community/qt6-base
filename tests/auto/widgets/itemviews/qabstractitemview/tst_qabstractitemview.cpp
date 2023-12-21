@@ -147,6 +147,8 @@ private slots:
     void inputMethodOpensEditor();
     void selectionAutoScrolling_data();
     void selectionAutoScrolling();
+    void testSpinBoxAsEditor_data();
+    void testSpinBoxAsEditor();
 
 private:
     static QAbstractItemView *viewFromString(const QByteArray &viewType, QWidget *parent = nullptr)
@@ -2644,11 +2646,12 @@ void tst_QAbstractItemView::dragSelectAfterNewPress()
 
 void tst_QAbstractItemView::dragWithSecondClick_data()
 {
-    QTest::addColumn<QString>("viewClass");
+    QTest::addColumn<QByteArray>("viewClass");
     QTest::addColumn<bool>("doubleClick");
-    for (QString viewClass : {"QListView", "QTreeView"}) {
-        QTest::addRow("DoubleClick") << viewClass << true;
-        QTest::addRow("Two Single Clicks") << viewClass << false;
+    const QList<QByteArray> widgets { "QListView", "QTreeView" };
+    for (const QByteArray &widget : widgets) {
+        QTest::newRow(widget + ": DoubleClick") << widget << true;
+        QTest::newRow(widget + ": Two Single Clicks") << widget << false;
     }
 }
 
@@ -2677,7 +2680,7 @@ protected:
 
 void tst_QAbstractItemView::dragWithSecondClick()
 {
-    QFETCH(QString, viewClass);
+    QFETCH(QByteArray, viewClass);
     QFETCH(bool, doubleClick);
 
     QStandardItemModel model;
@@ -2998,7 +3001,7 @@ void tst_QAbstractItemView::mouseSelection_data()
                  SelectionEvent(SelectionEvent::Release, Qt::ControlModifier, 8)}
         << QList{2, 3, 4, 5, 6, 7, 8};
     // Extended: Ctrl+Press-dragging in a selection should not deselect #QTBUG-59888
-    QTest::addRow("Extended:Ctrl-Drag selection") << QAbstractItemView::ExtendedSelection << true
+    QTest::addRow("Extended:Ctrl-Drag selection,no deselect") << QAbstractItemView::ExtendedSelection << true
         << QAbstractItemView::NoEditTriggers
         << QList{SelectionEvent(SelectionEvent::Click, 2),
                  SelectionEvent(SelectionEvent::Click, Qt::ShiftModifier, 5),
@@ -3402,6 +3405,62 @@ void tst_QAbstractItemView::selectionAutoScrolling()
     QVERIFY(listview.selectionModel()->selectedIndexes().size() > 0);
 
     QTest::mouseRelease(listview.viewport(), Qt::LeftButton, Qt::NoModifier, dragPoint);
+}
+class SpinBoxDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const override
+    {
+        QSpinBox *spinboxEditor = new QSpinBox(parent);
+        return spinboxEditor;
+    }
+
+    void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
+    {
+        if (QSpinBox *spin = qobject_cast<QSpinBox *>(editor)) {
+            model->setData(index, spin->value());
+        }
+    }
+};
+
+void tst_QAbstractItemView::testSpinBoxAsEditor_data()
+{
+    QTest::addColumn<bool>("keyboardTracking");
+    QTest::newRow("true") << true;
+    QTest::newRow("false")<< false;
+}
+
+void tst_QAbstractItemView::testSpinBoxAsEditor()
+{
+    QFETCH(bool, keyboardTracking);
+
+    QStandardItemModel model(2, 2);
+    SpinBoxDelegate delegate;
+
+    QTableView view;
+    view.setModel(&model);
+    view.setItemDelegate(&delegate);
+
+    view.setCurrentIndex(model.index(0, 1));
+    view.openPersistentEditor(model.index(0, 1));
+    const QList<QSpinBox *> list = view.viewport()->findChildren<QSpinBox *>();
+    QCOMPARE(list.size(), 1);
+    QSpinBox *sb = list.first();
+    QVERIFY(sb);
+
+    sb->setKeyboardTracking(keyboardTracking);
+
+    centerOnScreen(&view);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QTRY_COMPARE(QApplication::focusWidget(), sb);
+
+    QTest::keyClick(sb, Qt::Key_1, Qt::NoModifier);
+    QPoint clickpos = view.visualRect(model.index(0, 0)).center();
+    QTest::mouseDClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, clickpos);
+
+    QCOMPARE(model.data(model.index(0, 1)).toInt(), 1);
 }
 
 QTEST_MAIN(tst_QAbstractItemView)

@@ -56,6 +56,8 @@ private slots:
     void removeWhileAttached();
     void emptyMemory();
     void readOnly();
+    void attachBeforeCreate_data();
+    void attachBeforeCreate();
 
     // basics all together
     void simpleProducerConsumer_data();
@@ -77,6 +79,9 @@ private slots:
     // unique keys
     void uniqueKey_data();
     void uniqueKey();
+
+    // legacy
+    void createWithSameKey();
 
 protected:
     void remove(const QNativeIpcKey &key);
@@ -543,6 +548,36 @@ void tst_QSharedMemory::readOnly()
 #endif
 }
 
+void tst_QSharedMemory::attachBeforeCreate_data()
+{
+    QTest::addColumn<bool>("legacy");
+
+    QTest::addRow("legacy") << true;
+    QTest::addRow("non-legacy") << false;
+}
+
+void tst_QSharedMemory::attachBeforeCreate()
+{
+    QFETCH_GLOBAL(const QNativeIpcKey::Type, keyType);
+    QFETCH(const bool, legacy);
+    const QString keyStr(u"test"_s);
+    QNativeIpcKey key;
+    if (legacy) {
+        key = QSharedMemory::legacyNativeKey(keyStr, keyType);
+        // same as rememberKey(), but with legacy
+        if (!keys.contains(key)) {
+            keys.append(key);
+            remove(key);
+        }
+    } else {
+        key = rememberKey(keyStr);
+    }
+    const qsizetype sz = 100;
+    QSharedMemory mem(key);
+    QVERIFY(!mem.attach());
+    QVERIFY(mem.create(sz));
+}
+
 /*!
     Keep making shared memory until the kernel stops us.
  */
@@ -898,6 +933,29 @@ void tst_QSharedMemory::uniqueKey()
     QCOMPARE(keyEqual, setEqual);
     QCOMPARE(nativeEqual, setEqual);
 }
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+void tst_QSharedMemory::createWithSameKey()
+{
+    const QString key = u"legacy_key"_s;
+    const qsizetype sz = 100;
+    QSharedMemory mem1(key);
+    QVERIFY(mem1.create(sz));
+
+    {
+        QSharedMemory mem2(key);
+        QVERIFY(!mem2.create(sz));
+        QVERIFY(mem2.attach());
+    }
+    // and the second create() should fail as well, QTBUG-111855
+    {
+        QSharedMemory mem2(key);
+        QVERIFY(!mem2.create(sz));
+        QVERIFY(mem2.attach());
+    }
+}
+QT_WARNING_POP
 
 QTEST_MAIN(tst_QSharedMemory)
 #include "tst_qsharedmemory.moc"

@@ -2534,6 +2534,7 @@ usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/QtExceptionHandling
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/QtLogging
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/QtMalloc
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/QtMinMax
+usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/QOperatingSystemVersionUnexported
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/QtPreprocessorSupport
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/QtProcessorDetection
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/QtResource

@@ -73,6 +73,7 @@ private slots:
 
     // test closing and deleting consistency
     void closeAndDelete();
+    void closeUnclosable();
 
     // test save and restore consistency
     void saveAndRestore();
@@ -1071,9 +1072,10 @@ void tst_QDockWidget::setWindowTitle()
     QMainWindow window;
     QDockWidget dock1(&window);
     QDockWidget dock2(&window);
-    const QString dock1Title = QStringLiteral("&Window");
-    const QString dock2Title = QStringLiteral("&Modifiable Window [*]");
+    constexpr QLatin1StringView dock1Title("&Window");
+    constexpr QLatin1StringView dock2Title("&Modifiable Window [*]");
 
+    // Set title on docked dock widgets, before main window is shown
     dock1.setWindowTitle(dock1Title);
     dock2.setWindowTitle(dock2Title);
     window.addDockWidget(Qt::RightDockWidgetArea, &dock1);
@@ -1084,6 +1086,7 @@ void tst_QDockWidget::setWindowTitle()
     QCOMPARE(dock1.windowTitle(), dock1Title);
     QCOMPARE(dock2.windowTitle(), dock2Title);
 
+    // Check if title remains unchanged when docking / undocking
     dock1.setFloating(true);
     dock1.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dock1));
@@ -1093,12 +1096,16 @@ void tst_QDockWidget::setWindowTitle()
     dock1.setFloating(true);
     dock1.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dock1));
-    const QString changed = QStringLiteral("Changed ");
+
+    // Change a floating dock widget's title and check remains unchanged when docking
+    constexpr QLatin1StringView changed("Changed ");
     dock1.setWindowTitle(QString(changed + dock1Title));
     QCOMPARE(dock1.windowTitle(), QString(changed + dock1Title));
     dock1.setFloating(false);
+    QVERIFY(QTest::qWaitFor([&dock1](){ return !dock1.windowHandle(); }));
     QCOMPARE(dock1.windowTitle(), QString(changed + dock1Title));
 
+    // Test consistency after toggling modified and floating
     dock2.setWindowModified(true);
     QCOMPARE(dock2.windowTitle(), dock2Title);
     dock2.setFloating(true);
@@ -1113,6 +1120,12 @@ void tst_QDockWidget::setWindowTitle()
     dock2.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dock2));
     QCOMPARE(dock2.windowTitle(), dock2Title);
+
+    // Test title change of a closed dock widget
+    static constexpr QLatin1StringView closedDock2("Closed D2");
+    dock2.close();
+    dock2.setWindowTitle(closedDock2);
+    QCOMPARE(dock2.windowTitle(), closedDock2);
 }
 
 // helpers for dockPermissions, hideAndShow, closeAndDelete
@@ -1391,12 +1404,6 @@ void tst_QDockWidget::floatingTabs()
     QTRY_VERIFY(d1->isFloating());
     QTRY_VERIFY(!d2->isFloating());
 
-    // Change titles
-    static constexpr QLatin1StringView newD1("New D1");
-    static constexpr QLatin1StringView newD2("New D2");
-    d1->setWindowTitle(newD1);
-    d2->setWindowTitle(newD2);
-
     // Plug back into dock areas
     qCDebug(lcTestDockWidget) << "*** test plugging back to dock areas ***";
     qCDebug(lcTestDockWidget) << "Move d1 to left dock";
@@ -1415,10 +1422,6 @@ void tst_QDockWidget::floatingTabs()
     // check if QDockWidgetGroupWindow has been removed from mainWindowLayout and properly deleted
     QTRY_VERIFY(!mainWindow->findChild<QDockWidgetGroupWindow*>());
     QTRY_VERIFY(ftabs.isNull());
-
-    // check window titles
-    QCOMPARE(d1->windowTitle(), newD1);
-    QCOMPARE(d2->windowTitle(), newD2);
 
     // Check if paths are consistent
     qCDebug(lcTestDockWidget) << "Checking path consistency" << layout->layoutState.indexOf(d1) << layout->layoutState.indexOf(d2);
@@ -1526,6 +1529,7 @@ void tst_QDockWidget::closeAndDelete()
         QSKIP("Test skipped on Wayland.");
 #ifdef QT_BUILD_INTERNAL
     // Create a mainwindow with a central widget and two dock widgets
+    QObject localContext;
     QPointer<QDockWidget> d1;
     QPointer<QDockWidget> d2;
     QPointer<QWidget> cent;
@@ -1552,7 +1556,7 @@ void tst_QDockWidget::closeAndDelete()
 
     // Close everything with a single shot. Expected behavior: Event loop stops
     bool eventLoopStopped = true;
-    QTimer::singleShot(0, this, [mainWindow, d1, d2] {
+    QTimer::singleShot(0, &localContext, [mainWindow, d1, d2] {
         mainWindow->close();
         QTRY_VERIFY(!mainWindow->isVisible());
         QTRY_VERIFY(d1->isVisible());
@@ -1564,7 +1568,7 @@ void tst_QDockWidget::closeAndDelete()
     });
 
     // Fallback timer to report event loop still running
-    QTimer::singleShot(100, this, [&eventLoopStopped] {
+    QTimer::singleShot(100, &localContext, [&eventLoopStopped] {
         qCDebug(lcTestDockWidget) << "Last dock widget hasn't shout down event loop!";
         eventLoopStopped = false;
         QApplication::quit();
@@ -1583,6 +1587,24 @@ void tst_QDockWidget::closeAndDelete()
 #else
     QSKIP("test requires -developer-build option");
 #endif // QT_BUILD_INTERNAL
+}
+
+void tst_QDockWidget::closeUnclosable()
+{
+    QDockWidget *dockWidget = new QDockWidget("dock");
+    dockWidget->setWidget(new QScrollArea);
+    dockWidget->setFeatures(QDockWidget::DockWidgetFloatable);
+
+    QMainWindow mw;
+    mw.addDockWidget(Qt::TopDockWidgetArea, dockWidget);
+    mw.show();
+
+    QVERIFY(QTest::qWaitForWindowExposed(&mw));
+    dockWidget->setFloating(true);
+
+    QCOMPARE(dockWidget->close(), false);
+    mw.close();
+    QCOMPARE(dockWidget->close(), true);
 }
 
 // Test dock area permissions
