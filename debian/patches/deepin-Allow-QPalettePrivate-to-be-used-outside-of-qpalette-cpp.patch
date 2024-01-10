@@ -1,0 +1,79 @@
+From 303d991136a1c3616a7f04499d76fffb2a3b7f7c Mon Sep 17 00:00:00 2001
+From: Mitch Curtis <mitch.curtis@qt.io>
+Date: Tue, 10 Oct 2023 13:36:19 +0800
+Subject: [PATCH] Allow QPalettePrivate to be used outside of qpalette.cpp
+
+We need access to bitPosition in order to check if a role was set.
+
+This fixes the following build error:
+
+[...] qwindowstheme.cpp(1150): error C2220: the following warning is treated as an error
+[...] qwindowstheme.cpp(1150): warning C4506: no definition for inline function 'QPalette::ResolveMask QPalettePrivate::bitPosition(QPalette::ColorGroup,QPalette::ColorRole)'
+
+Amends 417878904b39b444632df18f7dd37bcb073c0467.
+
+Task-number: QTBUG-116826
+Change-Id: I815c7e961198ab93b6ed6132badc2ec693522472
+Reviewed-by: Marc Mutz <marc.mutz@qt.io>
+Reviewed-by: Oliver Eftevaag <oliver.eftevaag@qt.io>
+---
+ src/gui/kernel/qpalette.cpp | 16 ----------------
+ src/gui/kernel/qpalette_p.h | 17 +++++++++++++++--
+ 2 files changed, 15 insertions(+), 18 deletions(-)
+
+diff --git a/src/gui/kernel/qpalette.cpp b/src/gui/kernel/qpalette.cpp
+index c1cd7948b66..256ea52f012 100644
+--- a/src/gui/kernel/qpalette.cpp
++++ b/src/gui/kernel/qpalette.cpp
+@@ -11,22 +11,6 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
+-constexpr QPalette::ResolveMask QPalettePrivate::colorRoleOffset(QPalette::ColorGroup colorGroup)
+-{
+-    // Exclude NoRole; that bit is used for Accent
+-    return (qToUnderlying(QPalette::NColorRoles) - 1) * qToUnderlying(colorGroup);
+-}
+-
+-constexpr QPalette::ResolveMask QPalettePrivate::bitPosition(QPalette::ColorGroup colorGroup,
+-                                                             QPalette::ColorRole colorRole)
+-{
+-    // Map Accent into NoRole for resolving purposes
+-    if (colorRole == QPalette::Accent)
+-        colorRole = QPalette::NoRole;
+-
+-    return colorRole + colorRoleOffset(colorGroup);
+-}
+-
+ static_assert(QPalettePrivate::bitPosition(QPalette::ColorGroup(QPalette::NColorGroups - 1),
+                               QPalette::ColorRole(QPalette::NColorRoles - 1))
+                   < sizeof(QPalette::ResolveMask) * CHAR_BIT,
+diff --git a/src/gui/kernel/qpalette_p.h b/src/gui/kernel/qpalette_p.h
+index 6b24abf9a40..ce7c30d66d1 100644
+--- a/src/gui/kernel/qpalette_p.h
++++ b/src/gui/kernel/qpalette_p.h
+@@ -48,9 +48,22 @@ class Q_GUI_EXPORT QPalettePrivate
+         : QPalettePrivate(QExplicitlySharedDataPointer<Data>(new Data))
+     { }
+ 
+-    static constexpr QPalette::ResolveMask colorRoleOffset(QPalette::ColorGroup colorGroup);
++    static constexpr QPalette::ResolveMask colorRoleOffset(QPalette::ColorGroup colorGroup)
++    {
++        // Exclude NoRole; that bit is used for Accent
++        return (qToUnderlying(QPalette::NColorRoles) - 1) * qToUnderlying(colorGroup);
++    }
++
+     static constexpr QPalette::ResolveMask bitPosition(QPalette::ColorGroup colorGroup,
+-                                                       QPalette::ColorRole colorRole);
++                                                       QPalette::ColorRole colorRole)
++    {
++        // Map Accent into NoRole for resolving purposes
++        if (colorRole == QPalette::Accent)
++            colorRole = QPalette::NoRole;
++
++        return colorRole + colorRoleOffset(colorGroup);
++    }
++
+     QAtomicInt ref;
+     QPalette::ResolveMask resolveMask = {0};
+     static inline int qt_palette_count = 0;

@@ -14,3 +14,5 @@ enable_skip_plugins.patch
 
 # Don't use yield on CPUs that might not support it
 armel-noyield.patch
+
+deepin-Allow-QPalettePrivate-to-be-used-outside-of-qpalette-cpp.patch
