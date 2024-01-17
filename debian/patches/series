@@ -16,3 +16,6 @@ enable_skip_plugins.patch
 armel-noyield.patch
 
 deepin-Allow-QPalettePrivate-to-be-used-outside-of-qpalette-cpp.patch
+
+# https://codereview.qt-project.org/c/qt/qtbase/+/530805
+Make-sure-hicolor-searched-before-dashfallbacks.patch
