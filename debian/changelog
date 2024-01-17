@@ -1,3 +1,9 @@
+qt6-base (6.6.1+dfsg-5deepin2) unstable; urgency=medium
+
+  * Add Make-sure-hicolor-searched-before-dashfallbacks.patch.
+
+ -- Mike Chen <chenke@deepin.org>  Wed, 17 Jan 2024 10:17:49 +0800
+
 qt6-base (6.6.1+dfsg-5deepin1) unstable; urgency=medium
 
   * Add Allow-QPalettePrivate-to-be-used-outside-of-qpalette-cpp.patch.
