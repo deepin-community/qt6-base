@@ -1,0 +1,193 @@
+From 8596998cb025a8338c9403f5ef9db5a23f5cc682 Mon Sep 17 00:00:00 2001
+From: JiDe Zhang <zhangjide@uniontech.com>
+Date: Mon, 18 Dec 2023 14:57:28 +0800
+Subject: [PATCH] Add QT_IM_MODULES env to allows specify multi IM key
+
+Like as QT_QPA_PLATFORM, supports specifying multiple keys, and can
+perform fallback operations to prioritize the use of a certain plug-in.
+This is useful when using Wayland and XWayland applications at the same
+time. For an example, we can set "QT_IM_MODULES=wayland;fcitx", and the
+wayland application will use the wayland input context plugin, the
+xwayland application will use fcitx, which can't be done without adding
+a new environment variable, if we specify "QT_IM_MODULE=wayland", the
+XWayland applications may not be able to use the input method.
+
+Fixes: QTBUG-120202
+Change-Id: Iac408af241963147747a2fe685f1e27bf9d9ee64
+Reviewed-by: Liang Qi <liang.qi@qt.io>
+Reviewed-by: Tor Arne Vestbø <tor.arne.vestbo@qt.io>
+Reviewed-by: David Edmundson <davidedmundson@kde.org>
+---
+
+diff --git a/src/gui/kernel/qplatforminputcontextfactory.cpp b/src/gui/kernel/qplatforminputcontextfactory.cpp
+index 7074de56..933d990f 100644
+--- a/src/gui/kernel/qplatforminputcontextfactory.cpp
++++ b/src/gui/kernel/qplatforminputcontextfactory.cpp
+@@ -28,10 +28,33 @@
+ #endif
+ }
+ 
+-QString QPlatformInputContextFactory::requested()
++QStringList QPlatformInputContextFactory::requested()
+ {
+-    QByteArray env = qgetenv("QT_IM_MODULE");
+-    return env.isNull() ? QString() : QString::fromLocal8Bit(env);
++    QStringList imList;
++    QByteArray env = qgetenv("QT_IM_MODULES");
++
++    if (!env.isEmpty())
++        imList = QString::fromLocal8Bit(env).split(QChar::fromLatin1(';'), Qt::SkipEmptyParts);
++
++    if (!imList.isEmpty())
++        return imList;
++
++    env = qgetenv("QT_IM_MODULE");
++    if (!env.isEmpty())
++        imList = {QString::fromLocal8Bit(env)};
++
++    return imList;
++}
++
++QPlatformInputContext *QPlatformInputContextFactory::create(const QStringList& keys)
++{
++    for (const QString &key : keys) {
++        auto plugin = create(key);
++        if (plugin)
++            return plugin;
++    }
++
++    return nullptr;
+ }
+ 
+ QPlatformInputContext *QPlatformInputContextFactory::create(const QString& key)
+diff --git a/src/gui/kernel/qplatforminputcontextfactory_p.h b/src/gui/kernel/qplatforminputcontextfactory_p.h
+index 4968a51..5f5881c 100644
+--- a/src/gui/kernel/qplatforminputcontextfactory_p.h
++++ b/src/gui/kernel/qplatforminputcontextfactory_p.h
+@@ -27,7 +27,8 @@
+ {
+ public:
+     static QStringList keys();
+-    static QString requested();
++    static QStringList requested();
++    static QPlatformInputContext *create(const QStringList &keys);
+     static QPlatformInputContext *create(const QString &key);
+     static QPlatformInputContext *create();
+ };
+diff --git a/src/plugins/platforms/android/qandroidplatformintegration.cpp b/src/plugins/platforms/android/qandroidplatformintegration.cpp
+index d6d4ded..038fe51 100644
+--- a/src/plugins/platforms/android/qandroidplatformintegration.cpp
++++ b/src/plugins/platforms/android/qandroidplatformintegration.cpp
+@@ -304,11 +304,11 @@
+ 
+ void QAndroidPlatformIntegration::initialize()
+ {
+-    const QString icStr = QPlatformInputContextFactory::requested();
+-    if (icStr.isNull())
++    const auto icStrs = QPlatformInputContextFactory::requested();
++    if (icStrs.isEmpty())
+         m_inputContext.reset(new QAndroidInputContext);
+     else
+-        m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
++        m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
+ }
+ 
+ bool QAndroidPlatformIntegration::hasCapability(Capability cap) const
+diff --git a/src/plugins/platforms/cocoa/qcocoaintegration.mm b/src/plugins/platforms/cocoa/qcocoaintegration.mm
+index ed2ab67..fce6761 100644
+--- a/src/plugins/platforms/cocoa/qcocoaintegration.mm
++++ b/src/plugins/platforms/cocoa/qcocoaintegration.mm
+@@ -125,9 +125,9 @@
+ #endif
+         mFontDb.reset(new QCoreTextFontDatabaseEngineFactory<QCoreTextFontEngine>);
+ 
+-    QString icStr = QPlatformInputContextFactory::requested();
+-    icStr.isNull() ? mInputContext.reset(new QCocoaInputContext)
+-                   : mInputContext.reset(QPlatformInputContextFactory::create(icStr));
++    auto icStrs = QPlatformInputContextFactory::requested();
++    icStrs.isEmpty() ? mInputContext.reset(new QCocoaInputContext)
++                     : mInputContext.reset(QPlatformInputContextFactory::create(icStrs));
+ 
+     initResources();
+     QMacAutoReleasePool pool;
+diff --git a/src/plugins/platforms/wasm/qwasmintegration.cpp b/src/plugins/platforms/wasm/qwasmintegration.cpp
+index d2e7c87..01367bd 100644
+--- a/src/plugins/platforms/wasm/qwasmintegration.cpp
++++ b/src/plugins/platforms/wasm/qwasmintegration.cpp
+@@ -222,12 +222,12 @@
+ 
+ void QWasmIntegration::initialize()
+ {
+-    if (qgetenv("QT_IM_MODULE").isEmpty() && touchPoints < 1)
++    auto icStrs = QPlatformInputContextFactory::requested();
++    if (icStrs.isEmpty() && touchPoints < 1)
+         return;
+ 
+-    QString icStr = QPlatformInputContextFactory::requested();
+-    if (!icStr.isNull())
+-        m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
++    if (!icStrs.isEmpty())
++        m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
+     else
+         m_inputContext.reset(new QWasmInputContext());
+ }
+diff --git a/src/plugins/platforms/windows/qwindowsintegration.cpp b/src/plugins/platforms/windows/qwindowsintegration.cpp
+index 01d364b..6415c9a 100644
+--- a/src/plugins/platforms/windows/qwindowsintegration.cpp
++++ b/src/plugins/platforms/windows/qwindowsintegration.cpp
+@@ -256,9 +256,9 @@
+ 
+ void QWindowsIntegration::initialize()
+ {
+-    QString icStr = QPlatformInputContextFactory::requested();
+-    icStr.isNull() ? d->m_inputContext.reset(new QWindowsInputContext)
+-                   : d->m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
++    auto icStrs = QPlatformInputContextFactory::requested();
++    icStrs.isEmpty() ? d->m_inputContext.reset(new QWindowsInputContext)
++                     : d->m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
+ }
+ 
+ bool QWindowsIntegration::hasCapability(QPlatformIntegration::Capability cap) const
+diff --git a/src/plugins/platforms/windows/uiautomation/qwindowsuiamainprovider.cpp b/src/plugins/platforms/windows/uiautomation/qwindowsuiamainprovider.cpp
+index 05b886d..e171f4d 100644
+--- a/src/plugins/platforms/windows/uiautomation/qwindowsuiamainprovider.cpp
++++ b/src/plugins/platforms/windows/uiautomation/qwindowsuiamainprovider.cpp
+@@ -27,6 +27,7 @@
+ #include <QtGui/qaccessible.h>
+ #include <QtGui/qguiapplication.h>
+ #include <QtGui/qwindow.h>
++#include <qpa/qplatforminputcontextfactory_p.h>
+ 
+ #if !defined(Q_CC_BOR) && !defined (Q_CC_GNU)
+ #include <comdef.h>
+@@ -434,7 +435,7 @@
+ 
+             // The native OSK should be disabled if the Qt OSK is in use,
+             // or if disabled via application attribute.
+-            static bool imModuleEmpty = qEnvironmentVariableIsEmpty("QT_IM_MODULE");
++            static bool imModuleEmpty = QPlatformInputContextFactory::requested().isEmpty();
+             bool nativeVKDisabled = QCoreApplication::testAttribute(Qt::AA_DisableNativeVirtualKeyboard);
+ 
+             // If we want to disable the native OSK auto-showing
+diff --git a/src/plugins/platforms/xcb/qxcbintegration.cpp b/src/plugins/platforms/xcb/qxcbintegration.cpp
+index e76a34f..4dafae3 100644
+--- a/src/plugins/platforms/xcb/qxcbintegration.cpp
++++ b/src/plugins/platforms/xcb/qxcbintegration.cpp
+@@ -344,11 +344,12 @@
+     const auto defaultInputContext = "compose"_L1;
+     // Perform everything that may potentially need the event dispatcher (timers, socket
+     // notifiers) here instead of the constructor.
+-    QString icStr = QPlatformInputContextFactory::requested();
+-    if (icStr.isNull())
+-        icStr = defaultInputContext;
+-    m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
+-    if (!m_inputContext && icStr != defaultInputContext && icStr != "none"_L1)
++    auto icStrs = QPlatformInputContextFactory::requested();
++    if (icStrs.isEmpty())
++        icStrs = { defaultInputContext };
++    m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
++    if (!m_inputContext && !icStrs.contains(defaultInputContext)
++        && icStrs != QStringList{"none"_L1})
+         m_inputContext.reset(QPlatformInputContextFactory::create(defaultInputContext));
+ 
+     connection()->keyboard()->initialize();
