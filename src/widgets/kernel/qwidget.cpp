@@ -1660,10 +1660,9 @@ void QWidgetPrivate::deleteExtra()
         if (QStyleSheetStyle *proxy = qt_styleSheet(extra->style))
             proxy->deref();
 #endif
-        if (extra->topextra) {
+        if (extra->topextra)
             deleteTLSysExtra();
-            // extra->topextra->backingStore destroyed in QWidgetPrivate::deleteTLSysExtra()
-        }
+
         // extra->xic destroyed in QWidget::destroy()
         extra.reset();
     }
@@ -1673,34 +1672,11 @@ void QWidgetPrivate::deleteSysExtra()
 {
 }
 
-static void deleteBackingStore(QWidgetPrivate *d)
-{
-    QTLWExtra *topData = d->topData();
-
-    delete topData->backingStore;
-    topData->backingStore = nullptr;
-}
-
 void QWidgetPrivate::deleteTLSysExtra()
 {
     if (extra && extra->topextra) {
-        //the qplatformbackingstore may hold a reference to the window, so the backingstore
-        //needs to be deleted first.
-
-        extra->topextra->repaintManager.reset(nullptr);
-        deleteBackingStore(this);
-        extra->topextra->widgetTextures.clear();
-
-        //the toplevel might have a context with a "qglcontext associated with it. We need to
-        //delete the qglcontext before we delete the qplatformopenglcontext.
-        //One unfortunate thing about this is that we potentially create a glContext just to
-        //delete it straight afterwards.
-        if (extra->topextra->window) {
-            extra->topextra->window->destroy();
-        }
         delete extra->topextra->window;
         extra->topextra->window = nullptr;
-
     }
 }
 
@@ -7609,7 +7585,7 @@ bool QWidget::restoreGeometry(const QByteArray &geometry)
     }
 
     const int frameHeight = QApplication::style()
-                          ? QApplication::style()->pixelMetric(QStyle::PM_TitleBarHeight)
+                          ? QApplication::style()->pixelMetric(QStyle::PM_TitleBarHeight, nullptr, this)
                           : 20;
 
     if (!restoredNormalGeometry.isValid())
@@ -12255,7 +12231,7 @@ void QWidget::setBackingStore(QBackingStore *store)
         return;
 
     QBackingStore *oldStore = topData->backingStore;
-    deleteBackingStore(d);
+    delete topData->backingStore;
     topData->backingStore = store;
 
     QWidgetRepaintManager *repaintManager = d->maybeRepaintManager();
@@ -13178,6 +13154,24 @@ void QWidgetPrivate::setNetWmWindowTypes(bool skipIfMissing)
 #else
     Q_UNUSED(skipIfMissing);
 #endif
+}
+
+/*!
+   \internal
+   \return \c true, if a child with \param policy exists and isn't a child of \param excludeChildrenOf.
+   Return false otherwise.
+ */
+bool QWidgetPrivate::hasChildWithFocusPolicy(Qt::FocusPolicy policy, const QWidget *excludeChildrenOf) const
+{
+    Q_Q(const QWidget);
+    const QWidgetList &children = q->findChildren<QWidget *>(Qt::FindChildrenRecursively);
+    for (const auto *child : children) {
+        if (child->focusPolicy() == policy && child->isEnabled()
+            && (!excludeChildrenOf || !excludeChildrenOf->isAncestorOf(child))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 #ifndef QT_NO_DEBUG_STREAM

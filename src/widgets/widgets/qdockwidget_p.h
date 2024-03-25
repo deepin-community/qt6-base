@@ -56,9 +56,14 @@ public:
         Widget
     };
 
+    enum class EndDragMode {
+        LocationChange,
+        Abort
+    };
+
     void init();
-    void _q_toggleView(bool); // private slot
-    void _q_toggleTopLevel(); // private slot
+    void toggleView(bool);
+    void toggleTopLevel();
 
     void updateButtons();
     static Qt::DockWidgetArea toDockWidgetArea(QInternal::DockPosition pos);
@@ -92,7 +97,7 @@ public:
     void nonClientAreaMouseEvent(QMouseEvent *event);
     void initDrag(const QPoint &pos, bool nca);
     void startDrag(DragScope scope);
-    void endDrag(bool abort = false);
+    void endDrag(EndDragMode mode);
     void moveEvent(QMoveEvent *event);
     void recalculatePressPos(QResizeEvent *event);
 
@@ -101,6 +106,7 @@ public:
     void setResizerActive(bool active);
 
     bool isAnimating() const;
+    bool isTabbed() const;
 
 private:
     QWidgetResizeHandler *resizer = nullptr;

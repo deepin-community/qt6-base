@@ -510,6 +510,10 @@ static QString resolveExecutable(const QString &program)
     return program;
 }
 
+extern "C" {
+__attribute__((weak)) pid_t __interceptor_vfork();
+}
+
 static int useForkFlags(const QProcessPrivate::UnixExtras *unixExtras)
 {
 #if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
@@ -531,6 +535,12 @@ static int useForkFlags(const QProcessPrivate::UnixExtras *unixExtras)
     // why: without the tools to investigate why it happens, we didn't bother.
     return FFD_USE_FORK;
 #endif
+
+    // Dynamically detect whether libasan or libtsan are loaded into the
+    // process' memory. We need this because the user's code may be compiled
+    // with ASan or TSan, but not Qt.
+    if (__interceptor_vfork != nullptr)
+        return FFD_USE_FORK;
 
     if (!unixExtras || !unixExtras->childProcessModifier)
         return 0;           // no modifier was supplied
@@ -1104,9 +1114,10 @@ void QProcessPrivate::waitForDeadChild()
     Q_ASSERT(forkfd != -1);
 
     // read the process information from our fd
-    forkfd_info info;
+    forkfd_info info = {}; // Silence -Wmaybe-uninitialized; Thiago says forkfd_wait cannot fail here
+                           // (QTBUG-119081)
     int ret;
-    EINTR_LOOP(ret, forkfd_wait(forkfd, &info, nullptr));
+    QT_EINTR_LOOP(ret, forkfd_wait(forkfd, &info, nullptr));
 
     exitCode = info.status;
     exitStatus = info.code == CLD_EXITED ? QProcess::NormalExit : QProcess::CrashExit;
@@ -1114,7 +1125,7 @@ void QProcessPrivate::waitForDeadChild()
     delete stateNotifier;
     stateNotifier = nullptr;
 
-    EINTR_LOOP(ret, forkfd_close(forkfd));
+    QT_EINTR_LOOP(ret, forkfd_close(forkfd));
     forkfd = -1; // Child is dead, don't try to kill it anymore
 
 #if defined QPROCESS_DEBUG

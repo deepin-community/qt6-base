@@ -962,8 +962,8 @@
     this macro.
 
     Unlike QBENCHMARK, the contents of the contained code block is only run
-    once. The elapsed time will be reported as "0" if it's to short to
-    be measured by the selected backend. (Use)
+    once. The elapsed time will be reported as "0" if it's too short to
+    be measured by the selected backend.
 
     \sa {Qt Test Overview#Creating a Benchmark}{Creating a Benchmark},
     {Chapter 5: Writing a Benchmark}{Writing a Benchmark}
@@ -1364,13 +1364,6 @@
 */
 
 /*!
-    \fn template <typename T1, typename T2> char *QTest::toString(const QPair<T1, T2> &pair)
-    \overload
-    \since 5.11
-    Returns a textual representation of the \a pair.
-*/
-
-/*!
     \fn template <typename T1, typename T2> char *QTest::toString(const std::pair<T1, T2> &pair)
     \overload
     \since 5.11
@@ -1620,12 +1613,6 @@
     \overload
     \since 6.5
     Returns a textual representation of the key sequence \a ks.
-*/
-
-/*!
-    \fn template <typename Tuple, int... I> char *QTest::toString(const Tuple &tuple, QtPrivate::IndexesList<I...> )
-    \internal
-    \since 5.12
 */
 
 /*!

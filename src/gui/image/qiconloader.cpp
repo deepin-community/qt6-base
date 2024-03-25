@@ -392,6 +392,17 @@ QIconTheme::QIconTheme(const QString &themeName)
                     dirInfo.maxSize = indexReader.value(directoryKey + "/MaxSize"_L1, size).toInt();
 
                     dirInfo.scale = indexReader.value(directoryKey + "/Scale"_L1, 1).toInt();
+
+                    const QString context = indexReader.value(directoryKey + "/Context"_L1).toString();
+                    dirInfo.context = [context]() {
+                        if (context == "Applications"_L1)
+                            return QIconDirInfo::Applications;
+                        else if (context == "MimeTypes"_L1)
+                            return QIconDirInfo::MimeTypes;
+                        else
+                            return QIconDirInfo::UnknownContext;
+                    }();
+
                     m_keyList.append(dirInfo);
                 }
             }
@@ -430,7 +441,8 @@ QDebug operator<<(QDebug debug, const std::unique_ptr<QIconLoaderEngineEntry> &e
 
 QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
                                            const QString &iconName,
-                                           QStringList &visited) const
+                                           QStringList &visited,
+                                           DashRule rule) const
 {
     qCDebug(lcIconLoader) << "Finding icon" << iconName << "in theme" << themeName
                           << "skipping" << visited;
@@ -453,9 +465,10 @@ QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
     const QStringList contentDirs = theme.contentDirs();
 
     QStringView iconNameFallback(iconName);
+    bool searchingGenericFallback = m_iconName.length() > iconName.length();
 
     // Iterate through all icon's fallbacks in current theme
-    while (info.entries.empty()) {
+    if (info.entries.empty()) {
         const QString svgIconName = iconNameFallback + ".svg"_L1;
         const QString pngIconName = iconNameFallback + ".png"_L1;
 
@@ -487,6 +500,11 @@ QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
             QString contentDir = contentDirs.at(i) + u'/';
             for (int j = 0; j < subDirs.size() ; ++j) {
                 const QIconDirInfo &dirInfo = subDirs.at(j);
+                if (searchingGenericFallback &&
+                        (dirInfo.context == QIconDirInfo::Applications ||
+                         dirInfo.context == QIconDirInfo::MimeTypes))
+                    continue;
+
                 const QString subDir = contentDir + dirInfo.path + u'/';
                 const QString pngPath = subDir + pngIconName;
                 if (QFile::exists(pngPath)) {
@@ -510,15 +528,7 @@ QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
 
         if (!info.entries.empty()) {
             info.iconName = iconNameFallback.toString();
-            break;
         }
-
-        // If it's possible - find next fallback for the icon
-        const int indexOfDash = iconNameFallback.lastIndexOf(u'-');
-        if (indexOfDash == -1)
-            break;
-
-        iconNameFallback.truncate(indexOfDash);
     }
 
     if (info.entries.empty()) {
@@ -533,10 +543,22 @@ QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
             const QString parentTheme = parents.at(i).trimmed();
 
             if (!visited.contains(parentTheme)) // guard against recursion
-                info = findIconHelper(parentTheme, iconName, visited);
+                info = findIconHelper(parentTheme, iconName, visited, QIconLoader::NoFallBack);
 
             if (!info.entries.empty()) // success
                 break;
+        }
+    }
+
+    if (rule == QIconLoader::FallBack && info.entries.empty()) {
+        // If it's possible - find next fallback for the icon
+        const int indexOfDash = iconNameFallback.lastIndexOf(u'-');
+        if (indexOfDash != -1) {
+            qCDebug(lcIconLoader) << "Did not find matching icons in all themes;"
+                                  << "trying dash fallback";
+            iconNameFallback.truncate(indexOfDash);
+            QStringList _visited;
+            info = findIconHelper(themeName, iconNameFallback.toString(), _visited, QIconLoader::FallBack);
         }
     }
 
@@ -587,13 +609,14 @@ QThemeIconInfo QIconLoader::loadIcon(const QString &name) const
 {
     qCDebug(lcIconLoader) << "Loading icon" << name;
 
+    m_iconName = name;
     QThemeIconInfo iconInfo;
     QStringList visitedThemes;
     if (!themeName().isEmpty())
-        iconInfo = findIconHelper(themeName(), name, visitedThemes);
+        iconInfo = findIconHelper(themeName(), name, visitedThemes, QIconLoader::FallBack);
 
     if (iconInfo.entries.empty() && !fallbackThemeName().isEmpty())
-        iconInfo = findIconHelper(fallbackThemeName(), name, visitedThemes);
+        iconInfo = findIconHelper(fallbackThemeName(), name, visitedThemes, QIconLoader::FallBack);
 
     if (iconInfo.entries.empty())
         iconInfo = lookupFallbackIcon(name);
@@ -845,7 +868,7 @@ QSize QIconLoaderEngine::actualSize(const QSize &size, QIcon::Mode mode,
         } else if (dir.type == QIconDirInfo::Fallback) {
             return QIcon(entry->filename).actualSize(size, mode, state);
         } else {
-            int result = qMin<int>(dir.size, qMin(size.width(), size.height()));
+            int result = qMin<int>(dir.size * dir.scale, qMin(size.width(), size.height()));
             return QSize(result, result);
         }
     }

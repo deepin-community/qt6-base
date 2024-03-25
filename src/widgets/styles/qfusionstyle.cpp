@@ -424,10 +424,10 @@ void QFusionStyle::drawPrimitive(PrimitiveElement elem,
     QRect rect = option->rect;
     int state = option->state;
 
-    QColor outline = d->outline(option->palette);
-    QColor highlightedOutline = d->highlightedOutline(option->palette);
+    const QColor outline = d->outline(option->palette);
+    const QColor highlightedOutline = d->highlightedOutline(option->palette);
 
-    QColor tabFrameColor = d->tabFrameColor(option->palette);
+    const QColor tabFrameColor = d->tabFrameColor(option->palette);
 
     switch (elem) {
 
@@ -442,7 +442,7 @@ void QFusionStyle::drawPrimitive(PrimitiveElement elem,
             // Shrinking the topMargin if Not checkable AND title is empty
             topMargin = groupBoxTopMargin;
         } else {
-            topMargin = qMax(pixelMetric(PM_ExclusiveIndicatorHeight), option->fontMetrics.height()) + groupBoxTopMargin;
+            topMargin = qMax(pixelMetric(PM_ExclusiveIndicatorHeight, option, widget), option->fontMetrics.height()) + groupBoxTopMargin;
         }
         QRect frame = option->rect.adjusted(0, topMargin, 0, 0);
         qDrawBorderPixmap(painter, frame, QMargins(6, 6, 6, 6), pixmap);
@@ -1224,7 +1224,7 @@ void QFusionStyle::drawControl(ControlElement element, const QStyleOption *optio
                                                             Qt::ElideRight, titleRect.width());
                 proxy()->drawItemText(painter,
                                       titleRect,
-                                      Qt::AlignLeft | Qt::AlignVCenter, dwOpt->palette,
+                                      Qt::AlignLeft | Qt::AlignVCenter | Qt::TextHideMnemonic, dwOpt->palette,
                                       dwOpt->state & State_Enabled, titleText,
                                       QPalette::WindowText);
             }
@@ -1919,7 +1919,23 @@ void QFusionStyle::drawComplexControl(ComplexControl control, const QStyleOption
                 frame.lineWidth = groupBox->lineWidth;
                 frame.midLineWidth = groupBox->midLineWidth;
                 frame.rect = proxy()->subControlRect(CC_GroupBox, option, SC_GroupBoxFrame, widget);
+                painter->save();
+                QRegion region(groupBox->rect);
+                if (!groupBox->text.isEmpty()) {
+                    bool ltr = groupBox->direction == Qt::LeftToRight;
+                    QRect finalRect;
+                    if (groupBox->subControls & QStyle::SC_GroupBoxCheckBox) {
+                        finalRect = checkBoxRect.united(textRect);
+                        finalRect.adjust(ltr ? -4 : -2, 0, ltr ? 2 : 4, 0);
+                    } else {
+                        finalRect = textRect;
+                        finalRect.adjust(-2, 0, 2, 0);
+                    }
+                    region -= finalRect.adjusted(0, 0, 0, 3 - textRect.height() / 2);
+                }
+                painter->setClipRegion(region);
                 proxy()->drawPrimitive(PE_FrameGroupBox, &frame, painter, widget);
+                painter->restore();
             }
 
             // Draw title
@@ -2830,13 +2846,13 @@ void QFusionStyle::drawComplexControl(ComplexControl control, const QStyleOption
                     }
                     QColor highlight = d->highlight(option->palette);
                     QColor highlightedoutline = highlight.darker(140);
-                    if (qGray(outline.rgb()) > qGray(highlightedoutline.rgb()))
-                        outline = highlightedoutline;
-
+                    QColor grooveOutline = outline;
+                    if (qGray(grooveOutline.rgb()) > qGray(highlightedoutline.rgb()))
+                        grooveOutline = highlightedoutline;
 
                     groovePainter.setRenderHint(QPainter::Antialiasing, true);
                     groovePainter.translate(0.5, 0.5);
-                    groovePainter.setPen(QPen(outline));
+                    groovePainter.setPen(QPen(grooveOutline));
                     gradient.setColorAt(0, activeHighlight);
                     gradient.setColorAt(1, activeHighlight.lighter(130));
                     groovePainter.setBrush(gradient);
@@ -3123,7 +3139,7 @@ QSize QFusionStyle::sizeFromContents(ContentsType type, const QStyleOption *opti
         break;
     case CT_GroupBox:
         if (option) {
-            int topMargin = qMax(pixelMetric(PM_ExclusiveIndicatorHeight), option->fontMetrics.height()) + groupBoxTopMargin;
+            int topMargin = qMax(pixelMetric(PM_ExclusiveIndicatorHeight, option, widget), option->fontMetrics.height()) + groupBoxTopMargin;
             newSize += QSize(10, topMargin); // Add some space below the groupbox
         }
         break;
@@ -3305,23 +3321,28 @@ QRect QFusionStyle::subControlRect(ComplexControl control, const QStyleOptionCom
             int tickSize = proxy()->pixelMetric(PM_SliderTickmarkOffset, option, widget);
             switch (subControl) {
             case SC_SliderHandle: {
+                const bool bothTicks = (slider->tickPosition & QSlider::TicksBothSides) == QSlider::TicksBothSides;
                 if (slider->orientation == Qt::Horizontal) {
-                    rect.setHeight(proxy()->pixelMetric(PM_SliderThickness, option));
-                    rect.setWidth(proxy()->pixelMetric(PM_SliderLength, option));
+                    rect.setHeight(proxy()->pixelMetric(PM_SliderThickness, option, widget));
+                    rect.setWidth(proxy()->pixelMetric(PM_SliderLength, option, widget));
                     int centerY = slider->rect.center().y() - rect.height() / 2;
-                    if (slider->tickPosition & QSlider::TicksAbove)
-                        centerY += tickSize;
-                    if (slider->tickPosition & QSlider::TicksBelow)
-                        centerY -= tickSize;
+                    if (!bothTicks) {
+                        if (slider->tickPosition & QSlider::TicksAbove)
+                            centerY += tickSize;
+                        if (slider->tickPosition & QSlider::TicksBelow)
+                            centerY -= tickSize - 1;
+                    }
                     rect.moveTop(centerY);
                 } else {
-                    rect.setWidth(proxy()->pixelMetric(PM_SliderThickness, option));
-                    rect.setHeight(proxy()->pixelMetric(PM_SliderLength, option));
+                    rect.setWidth(proxy()->pixelMetric(PM_SliderThickness, option, widget));
+                    rect.setHeight(proxy()->pixelMetric(PM_SliderLength, option, widget));
                     int centerX = slider->rect.center().x() - rect.width() / 2;
-                    if (slider->tickPosition & QSlider::TicksAbove)
-                        centerX += tickSize;
-                    if (slider->tickPosition & QSlider::TicksBelow)
-                        centerX -= tickSize;
+                    if (!bothTicks) {
+                        if (slider->tickPosition & QSlider::TicksAbove)
+                            centerX += tickSize;
+                        if (slider->tickPosition & QSlider::TicksBelow)
+                            centerX -= tickSize - 1;
+                    }
                     rect.moveLeft(centerX);
                 }
             }
@@ -3329,18 +3350,23 @@ QRect QFusionStyle::subControlRect(ComplexControl control, const QStyleOptionCom
             case SC_SliderGroove: {
                 QPoint grooveCenter = slider->rect.center();
                 const int grooveThickness = QStyleHelper::dpiScaled(7, option);
+                const bool bothTicks = (slider->tickPosition & QSlider::TicksBothSides) == QSlider::TicksBothSides;
                 if (slider->orientation == Qt::Horizontal) {
                     rect.setHeight(grooveThickness);
-                    if (slider->tickPosition & QSlider::TicksAbove)
-                        grooveCenter.ry() += tickSize;
-                    if (slider->tickPosition & QSlider::TicksBelow)
-                        grooveCenter.ry() -= tickSize;
+                    if (!bothTicks) {
+                        if (slider->tickPosition & QSlider::TicksAbove)
+                            grooveCenter.ry() += tickSize;
+                        if (slider->tickPosition & QSlider::TicksBelow)
+                            grooveCenter.ry() -= tickSize - 1;
+                    }
                 } else {
                     rect.setWidth(grooveThickness);
-                    if (slider->tickPosition & QSlider::TicksAbove)
-                        grooveCenter.rx() += tickSize;
-                    if (slider->tickPosition & QSlider::TicksBelow)
-                        grooveCenter.rx() -= tickSize;
+                    if (!bothTicks) {
+                        if (slider->tickPosition & QSlider::TicksAbove)
+                            grooveCenter.rx() += tickSize;
+                        if (slider->tickPosition & QSlider::TicksBelow)
+                            grooveCenter.rx() -= tickSize - 1;
+                    }
                 }
                 rect.moveCenter(grooveCenter);
                 break;
@@ -3392,17 +3418,21 @@ QRect QFusionStyle::subControlRect(ComplexControl control, const QStyleOptionCom
 #endif // QT_CONFIG(spinbox)
     case CC_GroupBox:
         if (const QStyleOptionGroupBox *groupBox = qstyleoption_cast<const QStyleOptionGroupBox *>(option)) {
+            const int groupBoxTextAlignment = groupBox->textAlignment;
+            const int fontMetricsHeight = groupBox->text.isEmpty() ? 0 : groupBox->fontMetrics.height();
+
             rect = option->rect;
             if (subControl == SC_GroupBoxFrame)
-                return rect.adjusted(0, 0, 0, 0);
+                if ((groupBoxTextAlignment & Qt::AlignVertical_Mask) == Qt::AlignVCenter)
+                    return rect.adjusted(0, -(fontMetricsHeight + 4) / 2, 0, 0);
+                else
+                    return rect;
             else if (subControl == SC_GroupBoxContents) {
                 QRect frameRect = option->rect.adjusted(0, 0, 0, -groupBoxBottomMargin);
                 int margin = 3;
                 int leftMarginExtension = 0;
                 const int exclusiveIndicatorHeight = option->subControls.testFlag(SC_GroupBoxCheckBox) ?
-                                                        pixelMetric(PM_ExclusiveIndicatorHeight) : 0;
-                const int fontMetricsHeight = groupBox->text.isEmpty() ? 0 :
-                                                groupBox->fontMetrics.height();
+                                                        pixelMetric(PM_ExclusiveIndicatorHeight, option, widget) : 0;
                 const int topMargin = qMax(exclusiveIndicatorHeight, fontMetricsHeight) +
                                         groupBoxTopMargin;
                 return frameRect.adjusted(leftMarginExtension + margin, margin + topMargin, -margin, -margin - groupBoxBottomMargin);
@@ -3418,7 +3448,7 @@ QRect QFusionStyle::subControlRect(ComplexControl control, const QStyleOptionCom
             rect = QRect();
 
             if (option->rect.width() > width) {
-                switch (groupBox->textAlignment & Qt::AlignHorizontal_Mask) {
+                switch (groupBoxTextAlignment & Qt::AlignHorizontal_Mask) {
                 case Qt::AlignHCenter:
                     rect.moveLeft((option->rect.width() - width) / 2);
                     break;

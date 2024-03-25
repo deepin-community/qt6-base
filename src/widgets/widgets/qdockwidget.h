@@ -64,11 +64,6 @@ public:
     inline bool isAreaAllowed(Qt::DockWidgetArea area) const
     { return (allowedAreas() & area) == area; }
 
-#ifndef QT_NO_DEBUG_STREAM
-    friend Q_WIDGETS_EXPORT QDebug operator<<(QDebug dbg, const QDockWidget &dockWidget);
-    friend Q_WIDGETS_EXPORT QDebug operator<<(QDebug dbg, const QDockWidget *dockWidget);
-#endif
-
 #ifndef QT_NO_ACTION
     QAction *toggleViewAction() const;
 #endif
@@ -90,8 +85,6 @@ protected:
 private:
     Q_DECLARE_PRIVATE(QDockWidget)
     Q_DISABLE_COPY(QDockWidget)
-    Q_PRIVATE_SLOT(d_func(), void _q_toggleView(bool))
-    Q_PRIVATE_SLOT(d_func(), void _q_toggleTopLevel())
     friend class QDockAreaLayout;
     friend class QDockWidgetItem;
     friend class QMainWindowLayout;

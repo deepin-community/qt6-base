@@ -228,7 +228,8 @@ static QString msgFileDoesNotExist(const QString & file)
 
 enum CommandLineParseFlag {
     CommandLineParseError = 0x1,
-    CommandLineParseHelpRequested = 0x2
+    CommandLineParseHelpRequested = 0x2,
+    CommandLineVersionRequested = 0x4
 };
 
 static QCommandLineOption createQMakeOption()
@@ -329,7 +330,7 @@ static inline int parseArguments(const QStringList &arguments, QCommandLineParse
         "installation (e.g. <QT_DIR\\bin>) to the PATH variable and then run:\n  windeployqt <path-to-app-binary>\n\n"
         "If your application uses Qt Quick, run:\n  windeployqt --qmldir <path-to-app-qml-files> <path-to-app-binary>"_s);
     const QCommandLineOption helpOption = parser->addHelpOption();
-    parser->addVersionOption();
+    const QCommandLineOption versionOption = parser->addVersionOption();
 
     QCommandLineOption dirOption(QStringLiteral("dir"),
                                  QStringLiteral("Use directory instead of binary directory."),
@@ -515,6 +516,8 @@ static inline int parseArguments(const QStringList &arguments, QCommandLineParse
     const bool success = parser->parse(arguments);
     if (parser->isSet(helpOption))
         return CommandLineParseHelpRequested;
+    if (parser->isSet(versionOption))
+        return CommandLineVersionRequested;
     if (!success) {
         *errorMessage = parser->errorText();
         return CommandLineParseError;
@@ -944,6 +947,14 @@ static QString deployPlugin(const QString &plugin, const QDir &subDir, const boo
         return {};
     }
 
+    // By default, only deploy qwindows.dll
+    if (subDirName == u"platforms"
+        && !(pluginSelections.includedPlugins.contains(pluginName)
+             || (pluginSelections.enabledPluginTypes.contains(subDirName)))
+        && !pluginName.startsWith(u"qwindows")) {
+        return {};
+    }
+
     const QString pluginPath = subDir.absoluteFilePath(plugin);
 
     // If dueToModule is false, check if the user included the plugin or the entire type. In the
@@ -990,7 +1001,7 @@ static QString deployPlugin(const QString &plugin, const QDir &subDir, const boo
         *usedQtModules |= missingModules;
         if (optVerboseLevel) {
             std::wcout << "Adding " << formatQtModules(missingModules).constData()
-                << " for " << plugin << '\n';
+                << " for " << plugin << " from plugin type: " << subDirName << '\n';
         }
     }
     return pluginPath;
@@ -1033,26 +1044,18 @@ QStringList findQtPlugins(ModuleBitset *usedQtModules, const ModuleBitset &disab
                 ? MatchDebugOrRelease // QTBUG-44331: Debug detection does not work for webengine, deploy all.
                 : debugMatchModeIn;
             QDir subDir(subDirFi.absoluteFilePath());
+            std::wcout << "Adding in plugin type " << subDirFi.baseName() << " for module: " << qtModuleEntries.moduleById(module).name << '\n';
 
-            // Filter for platform or any.
-            QString filter;
             const bool isPlatformPlugin = subDirName == "platforms"_L1;
-            if (isPlatformPlugin) {
-                filter = QStringLiteral("qwindows");
-                if (!infix.isEmpty())
-                    filter += infix;
-            } else {
-                filter = u"*"_s;
-            }
             const QStringList plugins =
-                    findSharedLibraries(subDir, platform, debugMatchMode, filter);
+                    findSharedLibraries(subDir, platform, debugMatchMode, QString());
             for (const QString &plugin : plugins) {
                 const QString pluginPath =
                         deployPlugin(plugin, subDir, dueToModule, debugMatchMode, usedQtModules,
                                      disabledQtModules, pluginSelections, libraryLocation, infix,
                                      platform, deployInsightTrackerPlugin);
                 if (!pluginPath.isEmpty()) {
-                    if (isPlatformPlugin)
+                    if (isPlatformPlugin && plugin.startsWith(u"qwindows"))
                         *platformPlugin = subDir.absoluteFilePath(plugin);
                     result.append(pluginPath);
                 }
@@ -1761,15 +1764,15 @@ int main(int argc, char **argv)
     const QMap<QString, QString> qtpathsVariables =
             queryQtPaths(options.qtpathsBinary, &errorMessage);
     const QString xSpec = qtpathsVariables.value(QStringLiteral("QMAKE_XSPEC"));
-    options.platform = platformFromMkSpec(xSpec);
-    if (options.platform == UnknownPlatform) {
-        std::wcerr << "Unsupported platform " << xSpec << '\n';
-        return 1;
-    }
-
     if (qtpathsVariables.isEmpty() || xSpec.isEmpty()
         || !qtpathsVariables.contains(QStringLiteral("QT_INSTALL_BINS"))) {
         std::wcerr << "Unable to query qtpaths: " << errorMessage << '\n';
+        return 1;
+    }
+
+    options.platform = platformFromMkSpec(xSpec);
+    if (options.platform == UnknownPlatform) {
+        std::wcerr << "Unsupported platform " << xSpec << '\n';
         return 1;
     }
 
@@ -1797,6 +1800,10 @@ int main(int argc, char **argv)
         const int result = parseArguments(QCoreApplication::arguments(), &parser, &options, &errorMessage);
         if (result & CommandLineParseError)
             std::wcerr << errorMessage << "\n\n";
+        if (result & CommandLineVersionRequested) {
+            std::fputs(QT_VERSION_STR "\n", stdout);
+            return 0;
+        }
         if (result & CommandLineParseHelpRequested)
             std::fputs(qPrintable(helpText(parser, pluginInfo)), stdout);
         if (result & CommandLineParseError)

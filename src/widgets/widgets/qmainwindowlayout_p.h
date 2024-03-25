@@ -29,11 +29,17 @@
 #include "QtCore/qset.h"
 #include "private/qlayoutengine_p.h"
 #include "private/qwidgetanimator_p.h"
+#if QT_CONFIG(dockwidget)
 #include "private/qdockwidget_p.h"
 
-#if QT_CONFIG(dockwidget)
 #include "qdockarealayout_p.h"
 #include "qdockwidget.h"
+#else
+struct QDockWidgetPrivate {
+    enum class DragScope {
+        Group
+    };
+};
 #endif
 #if QT_CONFIG(toolbar)
 #include "qtoolbararealayout_p.h"
@@ -325,6 +331,9 @@ public:
     void updateCurrentGapRect();
     void restore();
     void apply();
+    void childEvent(QChildEvent *event) override;
+    void reparent(QDockWidget *dockWidget);
+    void destroyIfSingleItemLeft();
     QList<QDockWidget *> dockWidgets() const { return findChildren<QDockWidget *>(); }
 
     QRect currentGapRect;
@@ -335,6 +344,7 @@ signals:
 
 protected:
     bool event(QEvent *) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
     void paintEvent(QPaintEvent*) override;
 
 private:
@@ -565,6 +575,7 @@ public:
 #if QT_CONFIG(dockwidget)
     QPointer<QDockWidgetGroupWindow> currentHoveredFloat; // set when dragging over a floating dock widget
     void setCurrentHoveredFloat(QDockWidgetGroupWindow *w);
+    bool isDockWidgetTabbed(const QDockWidget *dockWidget) const;
 #endif
     bool isInApplyState = false;
 
@@ -573,6 +584,7 @@ public:
     QLayoutItem *unplug(QWidget *widget, QDockWidgetPrivate::DragScope scope);
     void revert(QLayoutItem *widgetItem);
     void applyState(QMainWindowLayoutState &newState, bool animate = true);
+    void applyRestoredState();
     void restore(bool keepSavedState = false);
     void animationFinished(QWidget *widget);
 

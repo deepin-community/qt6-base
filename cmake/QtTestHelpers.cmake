@@ -580,6 +580,11 @@ function(qt_internal_add_test name)
     endif()
 
     if (ANDROID)
+        # Pass 95% of the timeout to allow the test runner time to do any cleanup
+        # before being killed.
+        set(percentage "95")
+        qt_internal_get_android_test_timeout("${arg_TIMEOUT}" "${percentage}" android_timeout)
+
         if(arg_BUNDLE_ANDROID_OPENSSL_LIBS)
             if(NOT OPENSSL_ROOT_DIR)
                 message(WARNING "The argument BUNDLE_ANDROID_OPENSSL_LIBS is set "
@@ -595,7 +600,8 @@ function(qt_internal_add_test name)
                 endif()
             endif()
         endif()
-        qt_internal_android_test_arguments("${name}" test_executable extra_test_args)
+        qt_internal_android_test_arguments(
+            "${name}" "${android_timeout}" test_executable extra_test_args)
         set(test_working_dir "${CMAKE_CURRENT_BINARY_DIR}")
     elseif(QNX)
         set(test_working_dir "")
@@ -687,6 +693,14 @@ function(qt_internal_add_test name)
         set_tests_properties("${testname}" PROPERTIES RUN_SERIAL "${arg_RUN_SERIAL}" LABELS "${label}")
         if(arg_TIMEOUT)
             set_tests_properties(${testname} PROPERTIES TIMEOUT ${arg_TIMEOUT})
+        endif()
+
+        if(ANDROID AND NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+            # Set timeout signal and some time for androidtestrunner to do cleanup
+            set_tests_properties(${testname} PROPERTIES
+                TIMEOUT_SIGNAL_NAME "SIGINT"
+                TIMEOUT_SIGNAL_GRACE_PERIOD 10.0
+            )
         endif()
 
         # Add a ${target}/check makefile target, to more easily test one test.
@@ -786,6 +800,35 @@ function(qt_internal_add_test name)
     endif()
 
     qt_internal_add_test_finalizers("${name}")
+endfunction()
+
+# Given an optional test timeout value (specified via qt_internal_add_test's TIMEOUT option)
+# returns a percentage of the final timeout to be passed to the androidtestrunner executable.
+#
+# When the optional timeout is empty, default to cmake's defaults for getting the timeout.
+function(qt_internal_get_android_test_timeout input_timeout percentage output_timeout_var)
+    set(actual_timeout "${input_timeout}")
+    if(NOT actual_timeout)
+        # we have coin ci timeout set use that to avoid having the emulator killed
+        # so we can at least get some logs from the android test runner.
+        set(coin_timeout $ENV{COIN_COMMAND_OUTPUT_TIMEOUT})
+        if(coin_timeout)
+            set(actual_timeout "${coin_timeout}")
+        elseif(DART_TESTING_TIMEOUT)
+            # Related: https://gitlab.kitware.com/cmake/cmake/-/issues/20450
+            set(actual_timeout "${DART_TESTING_TIMEOUT}")
+        elseif(CTEST_TEST_TIMEOUT)
+            set(actual_timeout "${CTEST_TEST_TIMEOUT}")
+        else()
+            # Default DART_TESTING_TIMEOUT is 25 minutes, specified in seconds
+            # https://github.com/Kitware/CMake/blob/master/Modules/CTest.cmake#L167C16-L167C16
+            set(actual_timeout "1500")
+        endif()
+    endif()
+
+    math(EXPR calculated_timeout "${actual_timeout} * ${percentage} / 100")
+
+    set(${output_timeout_var} "${calculated_timeout}" PARENT_SCOPE)
 endfunction()
 
 # This function adds test with specified NAME and wraps given test COMMAND with standalone cmake

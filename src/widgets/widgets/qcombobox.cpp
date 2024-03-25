@@ -1060,7 +1060,9 @@ QComboBoxPrivateContainer* QComboBoxPrivate::viewContainer()
 
     Q_Q(QComboBox);
     container = new QComboBoxPrivateContainer(new QComboBoxListView(q), q);
+    disconnectModel();
     container->itemView()->setModel(model);
+    connectModel();
     container->itemView()->setTextElideMode(Qt::ElideMiddle);
     updateDelegate(true);
     updateLayoutDirection();
@@ -1124,6 +1126,17 @@ void QComboBoxPrivate::rowsInserted(const QModelIndex &parent, int start, int en
     // set current index if combo was previously empty and there is no placeholderText
     if (start == 0 && (end - start + 1) == q->count() && !currentIndex.isValid() &&
         placeholderText.isEmpty()) {
+#if QT_CONFIG(accessibility)
+        // This might have been called by the model emitting rowInserted(), at which
+        // point the view won't have updated the accessibility bridge yet about its new
+        // dimensions. Do it now so that the change of the selection matches the row
+        // indexes of the accessibility bridge's representation.
+        if (container && container->itemView()) {
+            QAccessibleTableModelChangeEvent event(container->itemView(),
+                                                   QAccessibleTableModelChangeEvent::ModelReset);
+            QAccessible::updateAccessibility(&event);
+        }
+#endif
         q->setCurrentIndex(0);
         // need to emit changed if model updated index "silently"
     } else if (currentIndex.row() != indexBeforeChange) {
@@ -2040,7 +2053,6 @@ void QComboBox::setModel(QAbstractItemModel *model)
     }
 
     d->model = model;
-    d->connectModel();
 
     if (d->container) {
         d->container->itemView()->setModel(model);
@@ -2048,6 +2060,8 @@ void QComboBox::setModel(QAbstractItemModel *model)
                                 &QItemSelectionModel::currentChanged,
                                 d, &QComboBoxPrivate::emitHighlighted, Qt::UniqueConnection);
     }
+
+    d->connectModel();
 
     setRootModelIndex(QModelIndex());
 
@@ -2472,8 +2486,11 @@ void QComboBox::setView(QAbstractItemView *itemView)
         return;
     }
 
-    if (itemView->model() != d->model)
+    if (itemView->model() != d->model) {
+        d->disconnectModel();
         itemView->setModel(d->model);
+        d->connectModel();
+    }
     d->viewContainer()->setItemView(itemView);
 }
 
@@ -2627,6 +2644,7 @@ void QComboBox::showPopup()
     QPoint above = mapToGlobal(listRect.topLeft());
     int aboveHeight = above.y() - screen.y();
     bool boundToScreen = !window()->testAttribute(Qt::WA_DontShowOnScreen);
+    const auto listView = qobject_cast<QListView *>(d->viewContainer()->itemView());
 
     {
         int listHeight = 0;
@@ -2641,6 +2659,8 @@ void QComboBox::showPopup()
         while (!toCheck.isEmpty()) {
             QModelIndex parent = toCheck.pop();
             for (int i = 0, end = d->model->rowCount(parent); i < end; ++i) {
+                if (listView && listView->isRowHidden(i))
+                    continue;
                 QModelIndex idx = d->model->index(i, d->modelColumn, parent);
                 if (!idx.isValid())
                     continue;
@@ -3294,8 +3314,9 @@ void QComboBox::keyPressEvent(QKeyEvent *e)
 #endif
 
         if (!d->lineEdit) {
-            if (!e->text().isEmpty())
-                d->keyboardSearchString(e->text());
+            const auto text = e->text();
+            if (!text.isEmpty() && text.at(0).isPrint())
+                d->keyboardSearchString(text);
             else
                 e->ignore();
         }

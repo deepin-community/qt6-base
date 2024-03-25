@@ -890,13 +890,13 @@ QMetaCallEvent* QMetaCallEvent::create_impl(QtPrivate::SlotObjUniquePtr slotObj,
 
     \section1 Dynamic Properties
 
-    From Qt 4.2, dynamic properties can be added to and removed from QObject
+    Dynamic properties can be added to and removed from QObject
     instances at run-time. Dynamic properties do not need to be declared at
     compile-time, yet they provide the same advantages as static properties
     and are manipulated using the same API - using property() to read them
     and setProperty() to write them.
 
-    From Qt 4.3, dynamic properties are supported by
+    Dynamic properties are supported by
     \l{Qt Designer's Widget Editing Mode#The Property Editor}{Qt Designer},
     and both standard Qt widgets and user-created forms can be given dynamic
     properties.
@@ -1982,14 +1982,15 @@ void QObject::killTimer(int id)
 
     Returns the child of this object that can be cast into type T and
     that is called \a name, or \nullptr if there is no such object.
-    Omitting the \a name argument causes all object names to be matched.
+    A null \a name argument causes all objects to be matched. An empty,
+    non-null \a name matches only objects whose \l objectName is empty.
     The search is performed recursively, unless \a options specifies the
     option FindDirectChildrenOnly.
 
-    If there is more than one child matching the search, the most
-    direct ancestor is returned. If there are several direct
-    ancestors, it is undefined which one will be returned. In that
-    case, findChildren() should be used.
+    If there is more than one child matching the search, the most-direct
+    ancestor is returned. If there are several most-direct ancestors, the
+    first child in children() will be returned. In that case, it's better
+    to use findChildren() to get the complete list of all children.
 
     This example returns a child \c{QPushButton} of \c{parentWidget}
     named \c{"button1"}, even if the button isn't a direct child of
@@ -2287,6 +2288,9 @@ void QObjectPrivate::setParent_helper(QObject *o)
     If multiple event filters are installed on a single object, the
     filter that was installed last is activated first.
 
+    If \a filterObj has already been installed for this object,
+    this function moves it so it acts as if it was installed last.
+
     Here's a \c KeyPressEater class that eats the key presses of its
     monitored objects:
 
@@ -2379,7 +2383,7 @@ void QObject::removeEventFilter(QObject *obj)
     QCoreApplication::exec()), the object will be deleted once the
     event loop is started. If deleteLater() is called after the main event loop
     has stopped, the object will not be deleted.
-    Since Qt 4.8, if deleteLater() is called on an object that lives in a
+    If deleteLater() is called on an object that lives in a
     thread with no running event loop, the object will be destroyed when the
     thread finishes.
 
@@ -2389,6 +2393,21 @@ void QObject::removeEventFilter(QObject *obj)
     was called. This does not apply to objects deleted while a previous, nested
     event loop was still running: the Qt event loop will delete those objects
     as soon as the new nested event loop starts.
+
+    In situations where Qt is not driving the event dispatcher via e.g.
+    QCoreApplication::exec() or QEventLoop::exec(), deferred deletes
+    will not be processed automatically. To ensure deferred deletion in
+    this scenario, the following workaround can be used:
+
+    \code
+    const auto *eventDispatcher = QThread::currentThread()->eventDispatcher();
+    QObject::connect(eventDispatcher, &QAbstractEventDispatcher::aboutToBlock,
+        QThread::currentThread(), []{
+            if (QThread::currentThread()->loopLevel() == 0)
+                QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        }
+    );
+    \endcode
 
     \note It is safe to call this function more than once; when the
     first deferred deletion event is delivered, any pending events for the
@@ -2420,8 +2439,7 @@ void QObject::deleteLater()
 
     If the same \a sourceText is used in different roles within the
     same context, an additional identifying string may be passed in
-    \a disambiguation (\nullptr by default). In Qt 4.4 and earlier, this was
-    the preferred way to pass comments to translators.
+    \a disambiguation (\nullptr by default).
 
     Example:
 
@@ -4615,6 +4633,13 @@ QDebug operator<<(QDebug dbg, const QObject *o)
     Q_GADGET or Q_GADGET_EXPORT instead of Q_OBJECT to enable the meta object system's support
     for enums in a class that is not a QObject subclass.
 
+//! [qobject-macros-private-access-specifier]
+    \note This macro expansion ends with a \c private: access specifier, which makes member
+    declarations immediately after the macro private, too. If you want add public (or protected)
+    members immediately after the macro, you need to use a \c public: (or \c protected:)
+    access specifier.
+//! [qobject-macros-private-access-specifier]
+
     \sa {Meta-Object System}, {Signals and Slots}, {Qt's Property System}
 */
 
@@ -4633,6 +4658,8 @@ QDebug operator<<(QDebug dbg, const QObject *o)
     Q_GADGET makes a class member, \c{staticMetaObject}, available.
     \c{staticMetaObject} is of type QMetaObject and provides access to the
     enums declared with Q_ENUM.
+
+    \include qobject.cpp qobject-macros-private-access-specifier
 
     \sa Q_GADGET_EXPORT
 */
@@ -4658,6 +4685,8 @@ QDebug operator<<(QDebug dbg, const QObject *o)
         Q_PROPERTY(int y MEMBER y)
         ~~~
     \endcode
+
+    \include qobject.cpp qobject-macros-private-access-specifier
 
     \sa Q_GADGET, {Creating Shared Libraries}
 */

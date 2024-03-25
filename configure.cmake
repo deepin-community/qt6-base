@@ -18,6 +18,10 @@ if(TARGET ZLIB::ZLIB)
     set_property(TARGET ZLIB::ZLIB PROPERTY IMPORTED_GLOBAL TRUE)
 endif()
 
+# Look for Threads in the same scope as OpenSSL package, because OpenSSL sometimes depends on
+# Threads (for static OpenSSL builds) and we want to promote the target to global in the same
+# directory scope.
+qt_find_package(Threads PROVIDED_TARGETS Threads::Threads)
 qt_find_package(WrapOpenSSLHeaders PROVIDED_TARGETS WrapOpenSSLHeaders::WrapOpenSSLHeaders MODULE_NAME core)
 # openssl_headers
 # OPENSSL_VERSION_MAJOR is not defined for OpenSSL 1.1.1
@@ -970,16 +974,24 @@ qt_feature_config("gui" QMAKE_PUBLIC_QT_CONFIG
     NEGATE)
 qt_feature("network" PRIVATE
     LABEL "Qt Network"
+    SECTION "Module"
+    PURPOSE "Provides the Qt Network module."
 )
 qt_feature("printsupport" PRIVATE
     LABEL "Qt PrintSupport"
     CONDITION QT_FEATURE_widgets
+    SECTION "Module"
+    PURPOSE "Provides the Qt PrintSupport module."
 )
 qt_feature("sql" PRIVATE
     LABEL "Qt Sql"
+    SECTION "Module"
+    PURPOSE "Provides the Sql module."
 )
 qt_feature("testlib" PRIVATE
     LABEL "Qt Testlib"
+    SECTION "Module"
+    PURPOSE "Provides the Qt Testlib module."
 )
 qt_feature("widgets" PRIVATE
     LABEL "Qt Widgets"
@@ -991,6 +1003,8 @@ qt_feature_config("widgets" QMAKE_PUBLIC_QT_CONFIG
     NEGATE)
 qt_feature("xml" PRIVATE
     LABEL "Qt Xml"
+    SECTION "Module"
+    PURPOSE "Provides the Qt Xml module."
 )
 qt_feature("libudev" PRIVATE
     LABEL "udev"

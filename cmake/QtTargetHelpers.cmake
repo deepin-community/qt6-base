@@ -269,6 +269,215 @@ function(qt_internal_extend_target target)
     endif()
 endfunction()
 
+# Given CMAKE_CONFIG and ALL_CMAKE_CONFIGS, determines if a directory suffix needs to be appended
+# to each destination, and sets the computed install target destination arguments in OUT_VAR.
+# Defaults used for each of the destination types, and can be configured per destination type.
+function(qt_get_install_target_default_args)
+    cmake_parse_arguments(PARSE_ARGV 0 arg
+       ""
+       "OUT_VAR;CMAKE_CONFIG;RUNTIME;LIBRARY;ARCHIVE;INCLUDES;BUNDLE"
+       "ALL_CMAKE_CONFIGS")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_CMAKE_CONFIG)
+        message(FATAL_ERROR "No value given for CMAKE_CONFIG.")
+    endif()
+    if(NOT arg_ALL_CMAKE_CONFIGS)
+        message(FATAL_ERROR "No value given for ALL_CMAKE_CONFIGS.")
+    endif()
+    list(LENGTH arg_ALL_CMAKE_CONFIGS all_configs_count)
+    list(GET arg_ALL_CMAKE_CONFIGS 0 first_config)
+
+    set(suffix "")
+    if(all_configs_count GREATER 1 AND NOT arg_CMAKE_CONFIG STREQUAL first_config)
+        set(suffix "/${arg_CMAKE_CONFIG}")
+    endif()
+
+    set(runtime "${INSTALL_BINDIR}")
+    if(arg_RUNTIME)
+        set(runtime "${arg_RUNTIME}")
+    endif()
+
+    set(library "${INSTALL_LIBDIR}")
+    if(arg_LIBRARY)
+        set(library "${arg_LIBRARY}")
+    endif()
+
+    set(archive "${INSTALL_LIBDIR}")
+    if(arg_ARCHIVE)
+        set(archive "${arg_ARCHIVE}")
+    endif()
+
+    set(includes "${INSTALL_INCLUDEDIR}")
+    if(arg_INCLUDES)
+        set(includes "${arg_INCLUDES}")
+    endif()
+
+    set(bundle "${INSTALL_BINDIR}")
+    if(arg_BUNDLE)
+        set(bundle "${arg_BUNDLE}")
+    endif()
+
+    set(args
+        RUNTIME DESTINATION  "${runtime}${suffix}"
+        LIBRARY DESTINATION  "${library}${suffix}"
+        ARCHIVE DESTINATION  "${archive}${suffix}" COMPONENT Devel
+        BUNDLE DESTINATION   "${bundle}${suffix}"
+        INCLUDES DESTINATION "${includes}${suffix}")
+    set(${arg_OUT_VAR} "${args}" PARENT_SCOPE)
+endfunction()
+
+macro(qt_internal_setup_default_target_function_options)
+    set(__default_private_args
+        SOURCES
+        LIBRARIES
+        INCLUDE_DIRECTORIES
+        SYSTEM_INCLUDE_DIRECTORIES
+        DEFINES
+        DBUS_ADAPTOR_BASENAME
+        DBUS_ADAPTOR_FLAGS
+        DBUS_ADAPTOR_SOURCES
+        DBUS_INTERFACE_BASENAME
+        DBUS_INTERFACE_FLAGS
+        DBUS_INTERFACE_SOURCES
+        FEATURE_DEPENDENCIES
+        COMPILE_OPTIONS
+        LINK_OPTIONS
+        MOC_OPTIONS
+        DISABLE_AUTOGEN_TOOLS
+        ENABLE_AUTOGEN_TOOLS
+        PLUGIN_TYPES
+        NO_PCH_SOURCES
+        NO_UNITY_BUILD_SOURCES
+    )
+    set(__default_public_args
+        PUBLIC_LIBRARIES
+        PUBLIC_INCLUDE_DIRECTORIES
+        PUBLIC_DEFINES
+        PUBLIC_COMPILE_OPTIONS
+        PUBLIC_LINK_OPTIONS
+    )
+    set(__default_private_module_args
+        PRIVATE_MODULE_INTERFACE
+    )
+    set(__default_target_info_args
+        TARGET_VERSION
+        TARGET_PRODUCT
+        TARGET_DESCRIPTION
+        TARGET_COMPANY
+        TARGET_COPYRIGHT
+    )
+
+    # Collection of arguments so they can be shared across qt_internal_add_executable
+    # and qt_internal_add_test_helper.
+    set(__qt_internal_add_executable_optional_args
+        GUI
+        NO_INSTALL
+        EXCEPTIONS
+        DELAY_RC
+        DELAY_TARGET_INFO
+        QT_APP
+        NO_UNITY_BUILD
+    )
+    set(__qt_internal_add_executable_single_args
+        CORE_LIBRARY
+        OUTPUT_DIRECTORY
+        INSTALL_DIRECTORY
+        VERSION
+        ${__default_target_info_args}
+    )
+    set(__qt_internal_add_executable_multi_args
+        ${__default_private_args}
+        ${__default_public_args}
+    )
+endmacro()
+
+# Append a config-specific postfix to library names to ensure distinct names
+# in a multi-config build.
+# e.g. lib/libQt6DBus_relwithdebinfo.6.3.0.dylib
+# Don't apply the postfix to the first encountered release-like config, so we have at least one
+# config without a postifx.
+# If postfixes are set by user warn about potential issues.
+function(qt_internal_setup_cmake_config_postfix)
+    # Collect configuration that require postfix in Qt library names.
+    if(QT_GENERATOR_IS_MULTI_CONFIG)
+        set(postfix_configurations ${CMAKE_CONFIGURATION_TYPES})
+    else()
+        set(postfix_configurations ${CMAKE_BUILD_TYPE})
+
+        # Set the default postfix to empty by default for single-config builds.
+        string(TOLOWER "${CMAKE_BUILD_TYPE}" build_type_lower)
+        set(default_cmake_${build_type_lower}_postfix "")
+    endif()
+
+    # Override the generic debug postfixes above with custom debug postfixes (even in a single
+    # config build) to follow the conventions we had since Qt 5.
+    # e.g. lib/libQt6DBus_debug.6.3.0.dylib
+    if(WIN32)
+        if(MINGW)
+            # On MinGW we don't have "d" suffix for debug libraries like on Linux,
+            # unless we're building debug and release libraries in one go.
+            if(QT_GENERATOR_IS_MULTI_CONFIG)
+                set(default_cmake_debug_postfix "d")
+            endif()
+        else()
+            set(default_cmake_debug_postfix "d")
+        endif()
+    elseif(APPLE)
+        set(default_cmake_debug_postfix "_debug")
+    endif()
+
+    set(custom_postfix_vars "")
+    set(release_configs Release RelWithDebInfo MinSizeRel)
+    set(found_first_release_config FALSE)
+    foreach(config_type IN LISTS postfix_configurations)
+        string(TOLOWER "${config_type}" config_type_lower)
+        string(TOUPPER "${config_type}" config_type_upper)
+        set(postfix_var CMAKE_${config_type_upper}_POSTFIX)
+
+        # Skip assigning postfix for the first release-like config.
+        if(NOT found_first_release_config
+                AND config_type IN_LIST release_configs)
+            set(found_first_release_config TRUE)
+            if(NOT "${${postfix_var}}" STREQUAL "")
+                list(APPEND custom_postfix_vars ${postfix_var})
+            endif()
+            continue()
+        endif()
+
+        # Check if the default postfix is set, use '_<config_type_lower>' otherwise.
+        set(default_postfix_var
+            default_cmake_${config_type_lower}_postfix)
+        if(NOT DEFINED ${default_postfix_var})
+            set(${default_postfix_var}
+                "_${config_type_lower}")
+        endif()
+
+        # If postfix is set by user avoid changing it, but save postfix variable that has
+        # a non-default value for further warning.
+        if("${${postfix_var}}" STREQUAL "")
+            set(${postfix_var} "${${default_postfix_var}}" PARENT_SCOPE)
+        elseif(NOT "${${postfix_var}}" STREQUAL "${${default_postfix_var}}")
+            list(APPEND custom_postfix_vars ${postfix_var})
+        endif()
+
+        # Adjust framework postfixes accordingly
+        if(APPLE)
+            set(CMAKE_FRAMEWORK_MULTI_CONFIG_POSTFIX_${config_type_upper}
+                "${${postfix_var}}"  PARENT_SCOPE)
+        endif()
+    endforeach()
+    if(custom_postfix_vars)
+        list(REMOVE_DUPLICATES custom_postfix_vars)
+        list(JOIN custom_postfix_vars ", " postfix_vars_string)
+
+        message(WARNING "You are using custom library postfixes: '${postfix_vars_string}' which are"
+            " considered experimental and are not officially supported by Qt."
+            " Expect unforeseen issues and user projects built with qmake to be broken."
+        )
+    endif()
+endfunction()
+
 function(qt_is_imported_target target out_var)
     if(NOT TARGET "${target}")
         set(target "${QT_CMAKE_EXPORT_NAMESPACE}::${target}")
@@ -599,9 +808,8 @@ endif()
         endif()
 
         # INTERFACE libraries don't have IMPORTED_LOCATION-like properties.
-        # OBJECT libraries have properties like IMPORTED_OBJECTS instead.
         # Skip the rest of the processing for those.
-        if(target_type STREQUAL "INTERFACE_LIBRARY" OR target_type STREQUAL "OBJECT_LIBRARY")
+        if(target_type STREQUAL "INTERFACE_LIBRARY")
             continue()
         endif()
 
@@ -659,6 +867,9 @@ endif()\n")
 
         set(write_implib FALSE)
         set(write_soname FALSE)
+        set(write_objects FALSE)
+        set(write_location TRUE)
+
         if(target_type STREQUAL "SHARED_LIBRARY")
             if(WIN32)
                 set(write_implib TRUE)
@@ -667,23 +878,40 @@ endif()\n")
             else()
                 set(write_soname TRUE)
             endif()
+        elseif(target_type STREQUAL "OBJECT_LIBRARY")
+            set(write_objects TRUE)
+            set(write_location FALSE)
         endif()
 
         if(NOT "${uc_release_cfg}" STREQUAL "")
-            string(APPEND content "get_target_property(_qt_imported_location ${full_target} IMPORTED_LOCATION_${uc_release_cfg})\n")
+            if(write_location)
+                string(APPEND content "get_target_property(_qt_imported_location ${full_target} IMPORTED_LOCATION_${uc_release_cfg})\n")
+            endif()
             if(write_implib)
                 string(APPEND content "get_target_property(_qt_imported_implib ${full_target} IMPORTED_IMPLIB_${uc_release_cfg})\n")
             endif()
             if(write_soname)
                 string(APPEND content "get_target_property(_qt_imported_soname ${full_target} IMPORTED_SONAME_${uc_release_cfg})\n")
             endif()
+            if(write_objects)
+                string(APPEND content "get_target_property(_qt_imported_objects ${full_target} IMPORTED_OBJECTS_${uc_release_cfg})\n")
+                # We generate CLR props as well, because that's what CMake generates for object
+                # libraries with CMake 3.27. They are usually empty strings though, aka "".
+                string(APPEND content "get_target_property(_qt_imported_clr ${full_target} IMPORTED_COMMON_LANGUAGE_RUNTIME_${uc_release_cfg})\n")
+            endif()
         endif()
-        string(APPEND content "get_target_property(_qt_imported_location_default ${full_target} IMPORTED_LOCATION_$\{QT_DEFAULT_IMPORT_CONFIGURATION})\n")
+        if(write_location)
+            string(APPEND content "get_target_property(_qt_imported_location_default ${full_target} IMPORTED_LOCATION_$\{QT_DEFAULT_IMPORT_CONFIGURATION})\n")
+        endif()
         if(write_implib)
             string(APPEND content "get_target_property(_qt_imported_implib_default ${full_target} IMPORTED_IMPLIB_$\{QT_DEFAULT_IMPORT_CONFIGURATION})\n")
         endif()
         if(write_soname)
             string(APPEND content "get_target_property(_qt_imported_soname_default ${full_target} IMPORTED_SONAME_$\{QT_DEFAULT_IMPORT_CONFIGURATION})\n")
+        endif()
+        if(write_objects)
+            string(APPEND content "get_target_property(_qt_imported_objects_default ${full_target} IMPORTED_OBJECTS_$\{QT_DEFAULT_IMPORT_CONFIGURATION})\n")
+            string(APPEND content "get_target_property(_qt_imported_clr_default ${full_target} IMPORTED_COMMON_LANGUAGE_RUNTIME_$\{QT_DEFAULT_IMPORT_CONFIGURATION})\n")
         endif()
         foreach(config ${configurations_to_export} "")
             string(TOUPPER "${config}" ucconfig)
@@ -699,10 +927,12 @@ endif()\n")
 set_property(TARGET ${full_target} APPEND PROPERTY IMPORTED_CONFIGURATIONS ${ucconfig})
 ")
             endif()
-            string(APPEND content "
+            if(write_location)
+                string(APPEND content "
 if(_qt_imported_location${var_suffix})
     set_property(TARGET ${full_target} PROPERTY IMPORTED_LOCATION${property_suffix} \"$\{_qt_imported_location${var_suffix}}\")
 endif()")
+            endif()
             if(write_implib)
                 string(APPEND content "
 if(_qt_imported_implib${var_suffix})
@@ -715,6 +945,16 @@ if(_qt_imported_soname${var_suffix})
     set_property(TARGET ${full_target} PROPERTY IMPORTED_SONAME${property_suffix} \"$\{_qt_imported_soname${var_suffix}}\")
 endif()")
             endif()
+            if(write_objects)
+                string(APPEND content "
+if(_qt_imported_objects${var_suffix})
+    set_property(TARGET ${full_target} PROPERTY IMPORTED_OBJECTS${property_suffix} \"$\{_qt_imported_objects${var_suffix}}\")
+endif()")
+            string(APPEND content "
+if(_qt_imported_clr${var_suffix})
+    set_property(TARGET ${full_target} PROPERTY IMPORTED_COMMON_LANGUAGE_RUNTIME${property_suffix} \"$\{_qt_imported_clr${var_suffix}}\")
+endif()")
+            endif()
             string(APPEND content "\n")
         endforeach()
     endforeach()
@@ -725,6 +965,10 @@ unset(_qt_imported_location)
 unset(_qt_imported_location_default)
 unset(_qt_imported_soname)
 unset(_qt_imported_soname_default)
+unset(_qt_imported_objects)
+unset(_qt_imported_objects_default)
+unset(_qt_imported_clr)
+unset(_qt_imported_clr_default)
 unset(_qt_imported_configs)")
     endif()
 

@@ -68,9 +68,9 @@ QWasmWindow::QWasmWindow(QWindow *w, QWasmDeadKeySupport *deadKeySupport,
 
     QWasmClipboard::installEventHandlers(m_canvas);
 
-    // set inputmode to none to stop mobile keyboard opening
+    // set inputMode to none to stop mobile keyboard opening
     // when user clicks anywhere on the canvas.
-    m_canvas.set("inputmode", std::string("none"));
+    m_canvas.set("inputMode", std::string("none"));
 
     // Hide the canvas from screen readers.
     m_canvas.call<void>("setAttribute", std::string("aria-hidden"), std::string("true"));
@@ -123,9 +123,22 @@ QWasmWindow::QWasmWindow(QWindow *w, QWasmDeadKeySupport *deadKeySupport,
             event.call<void>("preventDefault");
     });
 
+   emscripten::val keyFocusWindow;
+    if (QWasmIntegration::get()->inputContext()) {
+        QWasmInputContext *wasmContext =
+            static_cast<QWasmInputContext *>(QWasmIntegration::get()->inputContext());
+        // if there is an touchscreen input context,
+        // use that window for key input
+        keyFocusWindow = wasmContext->m_inputElement;
+    } else {
+        keyFocusWindow = m_qtWindow;
+    }
+
     m_keyDownCallback =
-            std::make_unique<qstdweb::EventCallback>(m_qtWindow, "keydown", keyCallback);
-    m_keyUpCallback = std::make_unique<qstdweb::EventCallback>(m_qtWindow, "keyup", keyCallback);
+            std::make_unique<qstdweb::EventCallback>(keyFocusWindow, "keydown", keyCallback);
+    m_keyUpCallback = std::make_unique<qstdweb::EventCallback>(keyFocusWindow, "keyup", keyCallback);
+
+    setParent(parent());
 }
 
 QWasmWindow::~QWasmWindow()
@@ -346,6 +359,8 @@ void QWasmWindow::raise()
 {
     m_compositor->raise(this);
     invalidate();
+    if (QWasmIntegration::get()->inputContext())
+        m_canvas.call<void>("focus");
 }
 
 void QWasmWindow::lower()
@@ -361,12 +376,8 @@ WId QWasmWindow::winId() const
 
 void QWasmWindow::propagateSizeHints()
 {
-    QRect rect = windowGeometry();
-    if (rect.size().width() < windowMinimumSize().width()
-        && rect.size().height() < windowMinimumSize().height()) {
-        rect.setSize(windowMinimumSize());
-        setGeometry(rect);
-    }
+    // setGeometry() will take care of minimum and maximum size constraints
+    setGeometry(windowGeometry());
     m_nonClientArea->propagateSizeHints();
 }
 
@@ -492,7 +503,7 @@ bool QWasmWindow::processKey(const KeyEvent &event)
 
 bool QWasmWindow::processPointer(const PointerEvent &event)
 {
-    if (event.pointerType != PointerType::Mouse)
+    if (event.pointerType != PointerType::Mouse && event.pointerType != PointerType::Pen)
         return false;
 
     switch (event.type) {

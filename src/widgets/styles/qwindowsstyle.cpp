@@ -390,7 +390,7 @@ int QWindowsStyle::pixelMetric(PixelMetric pm, const QStyleOption *opt, const QW
 
     switch (pm) {
     case PM_MaximumDragDistance:
-        ret = QCommonStyle::pixelMetric(PM_MaximumDragDistance);
+        ret = QCommonStyle::pixelMetric(PM_MaximumDragDistance, opt, widget);
         if (ret == -1)
             ret = 60;
         break;
@@ -1787,7 +1787,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                                     titleRect.height(), titleRect.width());
                 }
                 proxy()->drawItemText(p, titleRect,
-                            Qt::AlignLeft | Qt::AlignVCenter, palette,
+                            Qt::AlignLeft | Qt::AlignVCenter | Qt::TextHideMnemonic, palette,
                             dwOpt->state & State_Enabled, dwOpt->title,
                             floating ? (active ? QPalette::BrightText : QPalette::Window) : QPalette::WindowText);
                 p->setFont(oldFont);
