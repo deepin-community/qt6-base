@@ -2656,3 +2656,11 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/macx-watchos-clang/qmake.c
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/macx-watchos-clang/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/wasm-emscripten-64/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/wasm-emscripten-64/qplatformdefs.h
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtAutoDetectHelpers.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtBuildHelpers.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtBuildOptionsHelpers.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtBuildPathsHelpers.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtBuildRepoExamplesHelpers.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtBuildRepoHelpers.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtMkspecHelpers.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtPublicExternalProjectHelpers.cmake

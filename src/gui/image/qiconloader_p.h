@@ -38,6 +38,7 @@ class QIconLoader;
 struct QIconDirInfo
 {
     enum Type { Fixed, Scalable, Threshold, Fallback };
+    enum Context { UnknownContext, Applications, MimeTypes };
     QIconDirInfo(const QString &_path = QString()) :
             path(_path),
             size(0),
@@ -45,7 +46,8 @@ struct QIconDirInfo
             minSize(0),
             threshold(0),
             scale(1),
-            type(Threshold) {}
+            type(Threshold),
+            context(UnknownContext) {}
     QString path;
     short size;
     short maxSize;
@@ -53,6 +55,7 @@ struct QIconDirInfo
     short threshold;
     short scale;
     Type type;
+    Context context;
 };
 Q_DECLARE_TYPEINFO(QIconDirInfo, Q_RELOCATABLE_TYPE);
 
@@ -184,9 +187,11 @@ public:
     QIconEngine *iconEngine(const QString &iconName) const;
 
 private:
+    enum DashRule { FallBack, NoFallBack };
     QThemeIconInfo findIconHelper(const QString &themeName,
                                   const QString &iconName,
-                                  QStringList &visited) const;
+                                  QStringList &visited,
+                                  DashRule rule) const;
     QThemeIconInfo lookupFallbackIcon(const QString &iconName) const;
 
     uint m_themeKey;
@@ -199,6 +204,7 @@ private:
     mutable QStringList m_iconDirs;
     mutable QHash <QString, QIconTheme> themeList;
     mutable QStringList m_fallbackDirs;
+    mutable QString m_iconName;
 };
 
 QT_END_NAMESPACE

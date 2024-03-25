@@ -1,7 +1,6 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-include(QtFeatureCommon)
 include(CheckCXXCompilerFlag)
 
 function(qt_feature_module_begin)
@@ -910,6 +909,18 @@ function(qt_internal_detect_dirty_features)
         endif()
     endif()
 endfunction()
+
+macro(qt_internal_compute_features_from_possible_inputs)
+    # Pre-calculate the developer_build feature if it's set by the user via the I
+    # NPUT_developer_build variable when using the configure script. When not using configure, don't
+    # take the INPUT variable into account, so that users can toggle the feature directly in the
+    # cache or via IDE.
+    qt_internal_compute_feature_value_from_possible_input(developer_build)
+
+    # Pre-calculate the no_prefix feature if it's set by configure via INPUT_no_prefix.
+    # This needs to be done before qtbase/configure.cmake is processed.
+    qt_internal_compute_feature_value_from_possible_input(no_prefix)
+endmacro()
 
 function(qt_config_compile_test name)
     if(DEFINED "TEST_${name}")

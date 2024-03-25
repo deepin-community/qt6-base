@@ -42,46 +42,46 @@ override_dh_auto_configure:
 		-DINSTALL_ARCHDATADIR=lib/$(DEB_HOST_MULTIARCH)/qt6 \
 		-DINSTALL_EXAMPLESDIR=lib/$(DEB_HOST_MULTIARCH)/qt6/examples \
 		-DINSTALL_DATADIR=share/qt6 \
-		-DINSTALL_HOSTDATADIR=lib/$(DEB_HOST_MULTIARCH)/qt6 \
 		-DINSTALL_DOCDIR=share/qt6/doc \
 		-DINSTALL_SYSCONFDIR=/etc/xdg \
 		-DINSTALL_INCLUDEDIR=include/$(DEB_HOST_MULTIARCH)/qt6 \
-		-DINSTALL_PLUGINDIR=lib/$(DEB_HOST_MULTIARCH)/qt6/plugins \
-		-DINSTALL_TRANSLATIONDIR=share/qt6/translations \
+		-DINSTALL_TRANSLATIONSDIR=share/qt6/translations \
 		-DINSTALL_MKSPECSDIR=lib/$(DEB_HOST_MULTIARCH)/qt6/mkspecs \
 		-DINSTALL_PUBLICBINDIR=bin \
 		-DQT_BUILD_EXAMPLES=ON \
 		-DQT_INSTALL_EXAMPLES_SOURCES=ON \
-		-DFEATURE_mimetype_database=OFF \
-		-DFEATURE_dbus_linked=ON \
 		-DFEATURE_accessibility=ON \
-		-DFEATURE_doubleconversion=ON \
-		-DFEATURE_glib=ON \
-		-DFEATURE_icu=ON \
-		-DFEATURE_pcre2=ON \
-		-DFEATURE_system_pcre2=ON \
-		-DFEATURE_zlib=ON \
-		-DFEATURE_ssl=ON \
-		-DFEATURE_libproxy=ON \
-		-DFEATURE_system_proxies=ON \
 		-DFEATURE_cups=ON \
+		-DFEATURE_dbus_linked=ON \
+		-DFEATURE_directfb=OFF \
+		-DFEATURE_doubleconversion=ON \
 		-DFEATURE_fontconfig=ON \
 		-DFEATURE_freetype=ON \
+		-DFEATURE_glib=ON \
+		-DFEATURE_gtk3=ON \
 		-DFEATURE_harfbuzz=ON \
-		-DFEATURE_gtk=ON \
-		-DFEATURE_directfb=OFF \
-		-DFEATURE_sql_odbc=ON \
+		-DFEATURE_icu=ON \
+		-DFEATURE_jpeg=ON \
+		-DFEATURE_libproxy=ON \
+		-DFEATURE_mimetype_database=OFF \
+		-DFEATURE_pcre2=ON \
+		-DFEATURE_png=ON \
+		-DFEATURE_reduce_relocations=OFF \
+		-DFEATURE_relocatable=OFF \
+		-DFEATURE_rpath=OFF \
 		-DFEATURE_sql_mysql=ON \
+		-DFEATURE_sql_odbc=ON \
 		-DFEATURE_sql_psql=ON \
 		-DFEATURE_sql_sqlite=ON \
-		-DFEATURE_system_sqlite=ON \
-		-DFEATURE_jpeg=ON \
+		-DFEATURE_ssl=ON \
 		-DFEATURE_system_jpeg=ON \
-		-DFEATURE_png=ON \
-		-DFEATURE_system_png=ON \
 		-DFEATURE_system_libb2=ON \
-		-DFEATURE_rpath=OFF \
-		-DFEATURE_relocatable=OFF \
+		-DFEATURE_system_pcre2=ON \
+		-DFEATURE_system_png=ON \
+		-DFEATURE_system_proxies=ON \
+		-DFEATURE_system_sqlite=ON \
+		-DFEATURE_system_xcb_xinput=ON \
+		-DFEATURE_system_zlib=ON \
 		$(extra_cmake_args)
 
 
@@ -119,3 +119,6 @@ override_dh_makeshlibs:
 
 execute_after_dh_shlibdeps-arch:
 	echo libssl:Depends=$(sslpkgname) >> debian/libqt6network6.substvars
+
+# Do not run tests when building the documentation
+override_dh_auto_test-indep:

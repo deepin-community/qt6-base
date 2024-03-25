@@ -1,20 +1,45 @@
-qt6-base (6.6.1+dfsg-5deepin3) unstable; urgency=medium
+qt6-base (6.6.2+dfsg-4) experimental; urgency=medium
 
-  * feat: Add QT_IM_MODULES env to allows specify multi IM key
+  [ Patrick Franz ]
+  * Add B-Ds for XCB.
+  * Do not reduce the amount of relocations (Closes: #1059249).
+  * Clean up cmake-arguments.
 
- -- dengbo <dengbo@deepin.org>  Wed, 06 Mar 2024 13:55:09 +0800
+ -- Patrick Franz <deltaone@debian.org>  Tue, 27 Feb 2024 19:43:30 +0100
 
-qt6-base (6.6.1+dfsg-5deepin2) unstable; urgency=medium
+qt6-base (6.6.2+dfsg-3) experimental; urgency=medium
 
-  * Add Make-sure-hicolor-searched-before-dashfallbacks.patch.
+  [ Patrick Franz ]
+  * Do not run tests when building the documentation (Closes: #1064199).
 
- -- Mike Chen <chenke@deepin.org>  Wed, 17 Jan 2024 10:17:49 +0800
+ -- Patrick Franz <deltaone@debian.org>  Sun, 18 Feb 2024 13:27:27 +0100
 
-qt6-base (6.6.1+dfsg-5deepin1) unstable; urgency=medium
+qt6-base (6.6.2+dfsg-2) experimental; urgency=medium
 
-  * Add Allow-QPalettePrivate-to-be-used-outside-of-qpalette-cpp.patch.
+  [ Patrick Franz ]
+  * Update symbols from buildlogs.
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Wed, 10 Jan 2024 16:48:46 +0800
+ -- Patrick Franz <deltaone@debian.org>  Sun, 18 Feb 2024 10:32:20 +0100
+
+qt6-base (6.6.2+dfsg-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.6.2).
+  * Update ABI to 6.6.2.
+  * Refresh patches and remove patches that have been applied upstream.
+  * Update list of installed files.
+  * Update symbols from buildlogs.
+  * Build-depend on pkgconf instead of pkg-config as the latter has been
+    superseded by the former.
+
+ -- Patrick Franz <deltaone@debian.org>  Thu, 15 Feb 2024 19:44:16 +0100
+
+qt6-base (6.6.1+dfsg-6) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Rebuild with fix for the latest CVE included.
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 14 Jan 2024 17:55:50 +0100
 
 qt6-base (6.6.1+dfsg-5) experimental; urgency=medium
 
@@ -120,6 +145,20 @@ qt6-base (6.6.0+dfsg-1) experimental; urgency=medium
   * Update lintian-overrides.
 
  -- Patrick Franz <deltaone@debian.org>  Wed, 11 Oct 2023 21:00:14 +0200
+
+qt6-base (6.4.2+dfsg-21) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Add patch to fix CVE-2023-51714.
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 13 Jan 2024 14:53:25 +0100
+
+qt6-base (6.4.2+dfsg-20) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Add patch to fix CVE-2023-37369.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 22 Dec 2023 16:11:45 +0100
 
 qt6-base (6.4.2+dfsg-19) unstable; urgency=medium
 

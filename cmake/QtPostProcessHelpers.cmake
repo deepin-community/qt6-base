@@ -713,17 +713,6 @@ endif()\n")
 
         string(APPEND QT_EXTRA_BUILD_INTERNALS_VARS "${install_prefix_content}")
 
-        # The top-level check needs to happen inside QtBuildInternals, because it's possible
-        # to configure a top-level build with a few repos and then configure another repo
-        # using qt-configure-module in a separate build dir, where QT_SUPERBUILD will not
-        # be set anymore.
-        string(APPEND QT_EXTRA_BUILD_INTERNALS_VARS
-            "
-if(DEFINED QT_REPO_MODULE_VERSION AND NOT DEFINED QT_REPO_DEPENDENCIES AND NOT QT_SUPERBUILD)
-    qt_internal_read_repo_dependencies(QT_REPO_DEPENDENCIES \"$\{PROJECT_SOURCE_DIR}\")
-endif()
-")
-
         if(DEFINED OpenGL_GL_PREFERENCE)
             string(APPEND QT_EXTRA_BUILD_INTERNALS_VARS
                 "
@@ -848,8 +837,15 @@ function(qt_internal_generate_user_facing_tools_info)
         if(NOT filename)
             set(filename ${target})
         endif()
+        set(linkname ${filename})
+        if(APPLE)
+            get_target_property(is_macos_bundle ${target} MACOSX_BUNDLE )
+            if(is_macos_bundle)
+                set(filename "${filename}.app/Contents/MacOS/${filename}")
+            endif()
+        endif()
         qt_path_join(tool_target_path "${CMAKE_INSTALL_PREFIX}" "${INSTALL_BINDIR}" "${filename}")
-        qt_path_join(tool_link_path "${INSTALL_PUBLICBINDIR}" "${filename}${PROJECT_VERSION_MAJOR}")
+        qt_path_join(tool_link_path "${INSTALL_PUBLICBINDIR}" "${linkname}${PROJECT_VERSION_MAJOR}")
         list(APPEND lines "${tool_target_path} ${tool_link_path}")
     endforeach()
     string(REPLACE ";" "\n" content "${lines}")

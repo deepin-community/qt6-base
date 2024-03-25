@@ -1,6 +1,6 @@
-# SymbolsHelper-Confirmed: 6.6.1 amd64
+# SymbolsHelper-Confirmed: 6.6.2 amd64
 libQt6Widgets.so.6 libqt6widgets6 #MINVER#
-| libqt6widgets6 #MINVER#, qt6-base-private-abi (= 6.6.1)
+| libqt6widgets6 #MINVER#, qt6-base-private-abi (= 6.6.2)
 * Build-Depends-Package: qt6-base-dev
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
@@ -6841,14 +6841,12 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _Zls6QDebug6QFlagsIN13QGraphicsItem16GraphicsItemFlagEE@Qt_6 6.1.2
  _Zls6QDebugN13QGraphicsItem16GraphicsItemFlagE@Qt_6 6.1.2
  _Zls6QDebugN13QGraphicsItem18GraphicsItemChangeE@Qt_6 6.1.2
- _Zls6QDebugPK11QDockWidget@Qt_6 6.6.1
  _Zls6QDebugPK13QGestureEvent@Qt_6 6.1.2
  _Zls6QDebugPK13QGraphicsItem@Qt_6 6.1.2
  _Zls6QDebugPK15QGraphicsObject@Qt_6 6.1.2
  _Zls6QDebugPK19QGraphicsSceneEvent@Qt_6 6.1.2
  _Zls6QDebugPK7QWidget@Qt_6 6.1.2
  _Zls6QDebugPK8QGesture@Qt_6 6.1.2
- _Zls6QDebugRK11QDockWidget@Qt_6 6.6.1
  _Zls6QDebugRK11QSizePolicy@Qt_6 6.1.2
  _Zls6QDebugRK12QStyleOption@Qt_6 6.1.2
  _Zls6QDebugRKN12QStyleOption10OptionTypeE@Qt_6 6.1.2

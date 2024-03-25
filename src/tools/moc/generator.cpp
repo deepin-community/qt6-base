@@ -67,7 +67,7 @@ QT_FOR_EACH_STATIC_TYPE(RETURN_METATYPENAME_STRING)
        requireCompleteTypes(requireCompleteTypes)
  {
      if (cdef->superclassList.size())
-         purestSuperClass = cdef->superclassList.constFirst().first;
+         purestSuperClass = cdef->superclassList.constFirst().classname;
 }
 
 static inline qsizetype lengthOfEscapeSequence(const QByteArray &s, qsizetype i)
@@ -276,7 +276,7 @@ void Generator::generateCode()
 
     fprintf(out, "\n#ifdef QT_MOC_HAS_STRINGDATA\n"
                  "struct qt_meta_stringdata_%s_t {};\n"
-                 "static constexpr auto qt_meta_stringdata_%s = QtMocHelpers::stringData(",
+                 "constexpr auto qt_meta_stringdata_%s = QtMocHelpers::stringData(",
             qualifiedClassNameIdentifier.constData(), qualifiedClassNameIdentifier.constData());
     {
         char comma = 0;
@@ -643,10 +643,9 @@ void Generator::generateCode()
         auto it = cdef->superclassList.cbegin() + 1;
         const auto end = cdef->superclassList.cend();
         for (; it != end; ++it) {
-            const auto &[className, access] = *it;
-            if (access == FunctionDef::Private)
+            if (it->access == FunctionDef::Private)
                 continue;
-            const char *cname = className.constData();
+            const char *cname = it->classname.constData();
             fprintf(out, "    if (!strcmp(_clname, \"%s\"))\n        return static_cast< %s*>(this);\n",
                     cname, cname);
         }

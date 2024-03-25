@@ -32,10 +32,26 @@ QT_BEGIN_NAMESPACE
 
 // like std::dynamic_extent
 namespace q20 {
-    inline constexpr std::size_t dynamic_extent = -1;
+    inline constexpr auto dynamic_extent = std::size_t(-1);
 } // namespace q20
 
 template <typename T, std::size_t E = q20::dynamic_extent> class QSpan;
+
+QT_BEGIN_INCLUDE_NAMESPACE
+#ifdef __cpp_lib_span
+#ifdef __cpp_lib_concepts
+namespace std::ranges {
+// Officially, these are defined in <ranges>, but that is a heavy-hitter header.
+// OTOH, <span> must specialize these variable templates, too, so we assume that
+// <span> includes some meaningful subset of <ranges> and just go ahead and use them:
+template <typename T, std::size_t E>
+constexpr inline bool enable_borrowed_range<QT_PREPEND_NAMESPACE(QSpan)<T, E>> = true;
+template <typename T, std::size_t E>
+constexpr inline bool enable_view<QT_PREPEND_NAMESPACE(QSpan)<T, E>> = true;
+} // namespace std::ranges
+#endif // __cpp_lib_concepts
+#endif // __cpp_lib_span
+QT_END_INCLUDE_NAMESPACE
 
 namespace QSpanPrivate {
 
@@ -49,6 +65,15 @@ template <typename T, std::size_t E>
 struct is_qspan_helper<QSpanBase<T, E>> : std::true_type {};
 template <typename T>
 using is_qspan = is_qspan_helper<q20::remove_cvref_t<T>>;
+
+template <typename T>
+struct is_std_span_helper : std::false_type {};
+#ifdef __cpp_lib_span
+template <typename T, std::size_t E>
+struct is_std_span_helper<std::span<T, E>> : std::true_type {};
+#endif // __cpp_lib_span
+template <typename T>
+using is_std_span = is_std_span_helper<q20::remove_cvref_t<T>>;
 
 template <typename T>
 struct is_std_array_helper : std::false_type {};
@@ -107,6 +132,7 @@ protected:
     using is_compatible_range = std::conjunction<
             // ### this needs more work, esp. extension to C++20 contiguous iterators
             std::negation<is_qspan<Range>>,
+            std::negation<is_std_span<Range>>,
             std::negation<is_std_array<Range>>,
             std::negation<std::is_array<q20::remove_cvref_t<Range>>>,
             is_compatible_range_helper<Range>
@@ -197,6 +223,17 @@ public:
         : QSpanBase(other.data(), other.size())
     {}
 
+#ifdef __cpp_lib_span
+    template <typename S, if_qualification_conversion<S> = true>
+    Q_IMPLICIT constexpr QSpanBase(std::span<S, E> other) noexcept
+        : QSpanBase(other.data(), other.size())
+    {}
+
+    template <typename S, if_qualification_conversion<S> = true>
+    Q_IMPLICIT constexpr QSpanBase(std::span<S> other)
+        : QSpanBase(other.data(), other.size())
+    {}
+#endif // __cpp_lib_span
 }; // class QSpanBase (fixed extent)
 
 template <typename T>
@@ -247,12 +284,22 @@ public:
     Q_IMPLICIT constexpr QSpanBase(QSpan<S, N> other) noexcept
         : QSpanBase(other.data(), other.size())
     {}
+
+#if __cpp_lib_span
+    template <typename S, size_t N, if_qualification_conversion<S> = true>
+    Q_IMPLICIT constexpr QSpanBase(std::span<S, N> other) noexcept
+        : QSpanBase(other.data(), other.size())
+    {}
+#endif // __cpp_lib_span
 }; // class QSpanBase (dynamic extent)
 
 } // namespace QSpanPrivate
 
 template <typename T, std::size_t E>
-class QSpan : private QSpanPrivate::QSpanBase<T, E>
+class QSpan
+#ifndef Q_QDOC
+    : private QSpanPrivate::QSpanBase<T, E>
+#endif
 {
     using Base = QSpanPrivate::QSpanBase<T, E>;
     Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos = 0,
@@ -280,7 +327,7 @@ public:
     using const_iterator = const_pointer;      // implementation-defined choice
     using reverse_iterator = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-    static constexpr size_type extent = E;
+    static constexpr std::size_t extent = E;
 
     // [span.cons], constructors, copy, and assignment
     using Base::Base;
@@ -298,14 +345,14 @@ public:
     [[nodiscard]] constexpr pointer data() const noexcept { return this->m_data; }
 
     // [span.iterators]
-    [[nodiscard]] constexpr auto begin() const noexcept { return data(); }
-    [[nodiscard]] constexpr auto end() const noexcept { return data() + size(); }
-    [[nodiscard]] constexpr auto cbegin() const noexcept { return const_iterator{begin()}; }
-    [[nodiscard]] constexpr auto cend() const noexcept { return const_iterator{end()}; }
-    [[nodiscard]] constexpr auto rbegin() const noexcept { return reverse_iterator{end()}; }
-    [[nodiscard]] constexpr auto rend() const noexcept { return reverse_iterator{begin()}; }
-    [[nodiscard]] constexpr auto crbegin() const noexcept { return const_reverse_iterator{end()}; }
-    [[nodiscard]] constexpr auto crend() const noexcept { return const_reverse_iterator{begin()}; }
+    [[nodiscard]] constexpr iterator begin() const noexcept { return data(); }
+    [[nodiscard]] constexpr iterator end() const noexcept { return data() + size(); }
+    [[nodiscard]] constexpr const_iterator cbegin() const noexcept { return begin(); }
+    [[nodiscard]] constexpr const_iterator cend() const noexcept { return end(); }
+    [[nodiscard]] constexpr reverse_iterator rbegin() const noexcept { return reverse_iterator{end()}; }
+    [[nodiscard]] constexpr reverse_iterator rend() const noexcept { return reverse_iterator{begin()}; }
+    [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept { return rbegin(); }
+    [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept { return rend(); }
 
     // [span.sub]
     template <std::size_t Count>

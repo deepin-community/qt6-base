@@ -1797,7 +1797,7 @@ void QListViewPrivate::prepareItemsLayout()
     if (q->style()->styleHint(QStyle::SH_ScrollView_FrameOnlyAroundContents)) {
         QStyleOption option;
         option.initFrom(q);
-        frameAroundContents = q->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, &option) * 2;
+        frameAroundContents = q->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, &option, q) * 2;
     }
 
     // maximumViewportSize() already takes scrollbar into account if policy is
@@ -3408,7 +3408,7 @@ void QListView::currentChanged(const QModelIndex &current, const QModelIndex &pr
     QAbstractItemView::currentChanged(current, previous);
 #if QT_CONFIG(accessibility)
     if (QAccessible::isActive()) {
-        if (current.isValid()) {
+        if (current.isValid() && hasFocus()) {
             int entry = visualIndex(current);
             QAccessibleEvent event(this, QAccessible::Focus);
             event.setChild(entry);

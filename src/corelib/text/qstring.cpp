@@ -134,7 +134,7 @@ static inline bool foldAndCompare(const T a, const T b)
 */
 static inline qsizetype qFindChar(QStringView str, QChar ch, qsizetype from, Qt::CaseSensitivity cs) noexcept
 {
-    if (-from > str.size())
+    if (from < -str.size()) // from < 0 && abs(from) > str.size(), avoiding overflow
         return -1;
     if (from < 0)
         from = qMax(from + str.size(), qsizetype(0));
@@ -471,7 +471,7 @@ static bool simdTestMask(const char *&ptr, const char *end, quint32 maskval)
     if constexpr (UseSse4_1) {
 #  ifndef Q_OS_QNX              // compiler fails in the code below
         __m128i mask;
-        auto updatePtrSimd = [&](__m128i data) {
+        auto updatePtrSimd = [&](__m128i data) -> bool {
             __m128i masked = _mm_and_si128(mask, data);
             __m128i comparison = _mm_cmpeq_epi16(masked, _mm_setzero_si128());
             uint result = _mm_movemask_epi8(comparison);
@@ -2050,16 +2050,15 @@ void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *whe
     \snippet qstring/stringbuilder.cpp 0
 
     There is nothing wrong with either of these string constructions,
-    but there are a few hidden inefficiencies. Beginning with Qt 4.6,
-    you can eliminate them.
+    but there are a few hidden inefficiencies:
 
     First, multiple uses of the \c{'+'} operator usually means
     multiple memory allocations. When concatenating \e{n} substrings,
     where \e{n > 2}, there can be as many as \e{n - 1} calls to the
     memory allocator.
 
-    In 4.6, an internal template class \c{QStringBuilder} has been
-    added along with a few helper functions. This class is marked
+    These allocations can be optimized by an internal class
+    \c{QStringBuilder}. This class is marked
     internal and does not appear in the documentation, because you
     aren't meant to instantiate it in your code. Its use will be
     automatic, as described below. The class is found in
@@ -6422,9 +6421,9 @@ QString& QString::fill(QChar ch, qsizetype size)
     \fn int QString::compare(const QString &s1, const QString &s2, Qt::CaseSensitivity cs)
     \since 4.2
 
-    Compares \a s1 with \a s2 and returns an integer less than, equal
-    to, or greater than zero if \a s1 is less than, equal to, or
-    greater than \a s2.
+    Compares the string \a s1 with the string \a s2 and returns a negative integer
+    if \a s1 is less than \a s2, a positive integer if it is greater than \a s2,
+    and zero if they are equal.
 
     \include qstring.qdocinc {search-comparison-case-sensitivity} {comparison}
 
@@ -6486,10 +6485,9 @@ QString& QString::fill(QChar ch, qsizetype size)
     \overload compare()
     \since 4.2
 
-    Lexically compares this string with the \a other string and
-    returns an integer less than, equal to, or greater than zero if
-    this string is less than, equal to, or greater than the other
-    string.
+    Lexically compares this string with the string \a other and returns
+    a negative integer if this string is less than \a other, a positive
+    integer if it is greater than \a other, and zero if they are equal.
 
     Same as compare(*this, \a other, \a cs).
 */
@@ -8386,7 +8384,8 @@ static QString replaceArgEscapes(QStringView s, const ArgEscapeData &d, qsizetyp
                 rc = std::fill_n(rc, pad_chars, fillChar);
             }
 
-            memcpy(rc, use.data(), use.size() * sizeof(QChar));
+            if (use.size())
+                memcpy(rc, use.data(), use.size() * sizeof(QChar));
             rc += use.size();
 
             if (field_width < 0) { // right padded

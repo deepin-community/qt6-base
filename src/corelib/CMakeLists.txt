@@ -1,7 +1,6 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-qt_find_package(Threads PROVIDED_TARGETS Threads::Threads)
 qt_find_package(WrapPCRE2 PROVIDED_TARGETS WrapPCRE2::WrapPCRE2)
 qt_find_package(WrapZLIB PROVIDED_TARGETS WrapZLIB::WrapZLIB)
 
@@ -308,6 +307,7 @@ qt_internal_add_module(Core
         tools/qstack.h
         tools/qtaggedpointer.h
         tools/qtools_p.h
+        tools/quniquehandle_p.h
         tools/qvarlengtharray.h
         tools/qvector.h
         tools/qversionnumber.cpp tools/qversionnumber.h
@@ -591,8 +591,6 @@ qt_internal_extend_target(Core CONDITION APPLE
         # This makes sure that the tst_qmakelib passes. For some reason,
         # QtCore ends up returning a corrupted error message in
         # write_file(): fail
-        kernel/qelapsedtimer_mac.cpp # Temporary exclusion, until this,
-                                     # https://codereview.qt-project.org/c/qt/qtbase/+/462132, is merged
 )
 
 qt_internal_extend_target(Core CONDITION MACOS
@@ -955,8 +953,6 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_process AND UNIX
     SOURCES
         ../3rdparty/forkfd/forkfd.h
         io/forkfd_qt.cpp
-    NO_UNITY_BUILD_SOURCES
-        io/forkfd_qt.cpp    # EINTR_LOOP macro clashes
     INCLUDE_DIRECTORIES
         ../3rdparty/forkfd
 )
@@ -1421,7 +1417,7 @@ qt_internal_extend_target(Core
     # Function called by inline methods taking a pointer to a private class as a parameter
     EXTRA_LINKER_SCRIPT_EXPORTS
         # QFutureInterfaceBase::setContinuation(std::function<void (QFutureInterfaceBase const&)>, QFutureInterfaceBasePrivate*)
-        "_ZN20QFutureInterfaceBase15setContinuationE*P27QFutureInterfaceBasePrivate"
+        "_ZN*20QFutureInterfaceBase15setContinuationE*27QFutureInterfaceBasePrivate*"
         # QReadWriteLock::destroyRecursive(QReadWriteLockPrivate*)
-        "_ZN14QReadWriteLock16destroyRecursiveEP21QReadWriteLockPrivate"
+        "_ZN*14QReadWriteLock16destroyRecursiveEP*21QReadWriteLockPrivate*"
 )
