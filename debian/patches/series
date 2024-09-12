@@ -22,3 +22,4 @@ Make-sure-hicolor-searched-before-dashfallbacks.patch
 
 # https://codereview.qt-project.org/c/qt/qtbase/+/526124
 add_QT_IM_MODULES_env_to_allows_multi_IM_key.patch
+QT_FORCE_OPENGL_TYPE.patch
