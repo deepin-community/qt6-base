@@ -1,3 +1,9 @@
+qt6-base (6.6.1+dfsg-5deepin5) unstable; urgency=medium
+
+ * feat: Add QT_FORCE_OPENGL_TYPE
+
+ -- Lu YaNing <luyaning@uniontech.org>  Wed, 18 Sep 2024 14:05:16 +0800
+
 qt6-base (6.6.1+dfsg-5deepin4) unstable; urgency=medium
 
   * fix: Ensure that libzstd targets are promoted to global i

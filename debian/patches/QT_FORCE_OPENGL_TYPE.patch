@@ -1,0 +1,35 @@
+Author: Lu YaNing <luyaning@uniontech.com>
+Date:   Thur, 11 Sep 2024 13:50:02 +0800
+Subject: Add QT_FORCE_OPENGL_TYPE
+
+
+Index: qt6-base/src/gui/kernel/qguiapplication.cpp
+===================================================================
+--- qt6-base.orig/src/gui/kernel/qguiapplication.cpp
++++ qt6-base/src/gui/kernel/qguiapplication.cpp
+@@ -46,6 +46,7 @@
+ #include <QtGui/private/qstylehints_p.h>
+ #include <QtGui/qinputmethod.h>
+ #include <QtGui/qpixmapcache.h>
++#include <QtGui/QSurfaceFormat>
+ #include <qpa/qplatforminputcontext.h>
+ #include <qpa/qplatforminputcontext_p.h>
+ 
+@@ -1435,6 +1436,17 @@ void QGuiApplicationPrivate::createPlatf
+     // Load the platform integration
+     QString platformPluginPath = QString::fromLocal8Bit(qgetenv("QT_QPA_PLATFORM_PLUGIN_PATH"));
+ 
++    QString renderType = QString::fromLocal8Bit(qgetenv("QT_FORCE_OPENGL_TYPE"));
++    if (!renderType.isEmpty()) {
++        QSurfaceFormat format = QSurfaceFormat::defaultFormat();
++
++        if (renderType == "OpenGL"_L1)
++            format.setRenderableType(QSurfaceFormat::OpenGL);
++        else if (renderType == "OpenGLES"_L1)
++            format.setRenderableType(QSurfaceFormat::OpenGLES);
++
++        QSurfaceFormat::setDefaultFormat(format);
++    }
+ 
+     QByteArray platformName;
+ #ifdef QT_QPA_DEFAULT_PLATFORM_NAME
