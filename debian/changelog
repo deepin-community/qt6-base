@@ -1,3 +1,9 @@
+qt6-base (6.6.1+dfsg-5deepin4) unstable; urgency=medium
+
+  * fix: Ensure that libzstd targets are promoted to global i
+
+ -- hudeng <hudeng@deepin.org>  Mon, 16 Sep 2024 00:06:35 +0800
+
 qt6-base (6.6.1+dfsg-5deepin3) unstable; urgency=medium
 
   * feat: Add QT_IM_MODULES env to allows specify multi IM key
