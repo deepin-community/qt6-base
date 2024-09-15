@@ -22,3 +22,6 @@ Make-sure-hicolor-searched-before-dashfallbacks.patch
 
 # https://codereview.qt-project.org/c/qt/qtbase/+/526124
 add_QT_IM_MODULES_env_to_allows_multi_IM_key.patch
+upstream_Ensure-that-libzstd-targets-are-promoted-to-global-i.patch
+upstream_Prefer-using-the-non-suffixed-libzstd-over-static-on.patch
+CMake-Fix-Threads-Threads-global-target-promotion-is.patch

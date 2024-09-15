@@ -1,0 +1,39 @@
+From 7d9d1220f367d9275dfaa7ce12e89b0a9f4c1978 Mon Sep 17 00:00:00 2001
+From: Alexey Edelev <alexey.edelev@qt.io>
+Date: Mon, 27 May 2024 11:09:05 +0200
+Subject: [PATCH] Prefer using the non-suffixed libzstd over static one
+
+Recent zstd versions provide the libstd target but not only libzstd_shared
+or libzstd_static. Attempt to use it as the WrapZSTD::WrapZSTD counterpart
+if the target exists.
+
+Task-number: QTBUG-119469
+Change-Id: I47916bfa6f10883d099184a497800277c8026b14
+Reviewed-by: Alexandru Croitor <alexandru.croitor@qt.io>
+---
+ cmake/FindWrapZSTD.cmake | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+Index: qt6-base/cmake/FindWrapZSTD.cmake
+===================================================================
+--- qt6-base.orig/cmake/FindWrapZSTD.cmake
++++ qt6-base/cmake/FindWrapZSTD.cmake
+@@ -25,14 +25,17 @@ find_package(zstd CONFIG QUIET)
+ 
+ include(FindPackageHandleStandardArgs)
+ 
+-if(TARGET zstd::libzstd_static OR TARGET zstd::libzstd_shared)
++if(TARGET zstd::libzstd_static OR TARGET zstd::libzstd_shared OR TARGET zstd::libzstd)
+     find_package_handle_standard_args(WrapZSTD
+                                       REQUIRED_VARS zstd_VERSION VERSION_VAR zstd_VERSION)
+     if(TARGET zstd::libzstd_shared)
+         set(zstdtargetsuffix "_shared")
++    elseif(TARGET zstd::libzstd)
++        set(zstdtargetsuffix "")
+     else()
+         set(zstdtargetsuffix "_static")
+     endif()
++
+     if(NOT TARGET WrapZSTD::WrapZSTD)
+         add_library(WrapZSTD::WrapZSTD INTERFACE IMPORTED)
+         set_target_properties(WrapZSTD::WrapZSTD PROPERTIES
