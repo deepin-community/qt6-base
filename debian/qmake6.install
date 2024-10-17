@@ -359,7 +359,6 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/Info.plist.app
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/Info.plist.dSYM.in
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/Info.plist.lib
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/LaunchScreen.storyboard
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/features/default_post.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-xcode/QtTest.plist
