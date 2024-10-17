@@ -1,15 +1,16 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QAtomicInt>
 #include <QThread>
 #include <QSemaphore>
-#include <private/qatomicscopedvaluerollback_p.h>
+#include <QAtomicScopedValueRollback>
 #include <qlist.h>
 
+#include <cstdio>
 
-#if __cplusplus >= 202002L && (!defined(_GLIBCXX_RELEASE) || _GLIBCXX_RELEASE >= 11)
+#ifdef QT_COMPILER_HAS_LWG3346
 #  if __has_include(<concepts>)
 #    include <concepts>
 #    if defined(__cpp_lib_concepts) && __cpp_lib_concepts >= 202002L
@@ -322,6 +323,7 @@ private slots:
     void resizeToZero() const;
     void resizeToTheSameSize_data();
     void resizeToTheSameSize() const;
+    void resizeForOverwrite() const;
     void iterators() const;
     void constIterators() const;
     void reverseIterators() const;
@@ -561,25 +563,22 @@ void tst_QList::constructors_reserveAndInitialize() const
 {
     // default-initialise items
 
-    QList<int> myInt(5, 42);
+    const QList<int> myInt(5, 42);
     QVERIFY(myInt.capacity() == 5);
-    foreach (int meaningoflife, myInt) {
+    for (int meaningoflife : myInt)
         QCOMPARE(meaningoflife, 42);
-    }
 
-    QList<QString> myString(5, QString::fromLatin1("c++"));
+    const QList<QString> myString(5, QString::fromLatin1("c++"));
     QVERIFY(myString.capacity() == 5);
     // make sure all items are initialised ok
-    foreach (QString meaningoflife, myString) {
+    for (const QString &meaningoflife : myString)
         QCOMPARE(meaningoflife, QString::fromLatin1("c++"));
-    }
 
-    QList<Custom> myCustom(5, Custom('n'));
+    const QList<Custom> myCustom(5, Custom('n'));
     QVERIFY(myCustom.capacity() == 5);
     // make sure all items are initialised ok
-    foreach (Custom meaningoflife, myCustom) {
+    for (Custom meaningoflife : myCustom)
         QCOMPARE(meaningoflife.i, 'n');
-    }
 }
 
 template<typename T>
@@ -987,7 +986,7 @@ namespace QTest {
 char *toString(const ConstructionCounted &cc)
 {
     char *str = new char[5];
-    qsnprintf(str, 4, "%d", cc.i);
+    std::snprintf(str, 4, "%d", cc.i);
     return str;
 }
 }
@@ -2532,6 +2531,51 @@ void tst_QList::resizeToTheSameSize() const
     y = x;
     y.resize(x.size());
     QCOMPARE(y.size(), x.size());
+}
+
+void tst_QList::resizeForOverwrite() const
+{
+    constexpr int BUILD_COUNT = 42;
+    {
+        // Smoke test
+        QList<int> l(BUILD_COUNT, Qt::Uninitialized);
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+    }
+
+    {
+        const int beforeCounter = Movable::counter.loadRelaxed();
+        QList<Movable> l(BUILD_COUNT, Qt::Uninitialized);
+        const int after1Counter = Movable::counter.loadRelaxed();
+        QCOMPARE(after1Counter, beforeCounter + BUILD_COUNT);
+
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+        const int after2Counter = Movable::counter.loadRelaxed();
+        QCOMPARE(after2Counter, after1Counter + BUILD_COUNT);
+    }
+
+    struct QtInitializationSupport {
+        bool wasInitialized;
+        QtInitializationSupport() : wasInitialized(true) {}
+        explicit QtInitializationSupport(Qt::Initialization) : wasInitialized(false) {}
+    };
+
+    {
+        QList<QtInitializationSupport> l(BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(elem.wasInitialized);
+        l.resize(l.size() + BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(elem.wasInitialized);
+    }
+
+    {
+        QList<QtInitializationSupport> l(BUILD_COUNT, Qt::Uninitialized);
+        for (const auto &elem : l)
+            QVERIFY(!elem.wasInitialized);
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(!elem.wasInitialized);
+    }
 }
 
 void tst_QList::iterators() const

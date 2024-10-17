@@ -126,8 +126,6 @@ QAndroidBinder QAndroidParcelPrivate::readBinder() const
     \l {https://developer.android.com/reference/android/os/Parcel.html}{Android Parcel}
     methods.
 
-    \include qtcore.qdoc qtcoreprivate-usage
-
     \since 6.2
 */
 
@@ -244,8 +242,6 @@ QJniObject QAndroidParcel::handle() const
     The QAndroidBinder is a convenience class that wraps the most important
     \l {https://developer.android.com/reference/android/os/Binder.html}{Android Binder}
     methods.
-
-    \include qtcore.qdoc qtcoreprivate-usage
 
     \since 6.2
 */
@@ -387,8 +383,6 @@ QJniObject QAndroidBinder::handle() const
 
     It is useful when you perform a QtAndroidPrivate::bindService operation.
 
-    \include qtcore.qdoc qtcoreprivate-usage
-
     \since 6.2
 */
 
@@ -514,7 +508,6 @@ public:
   Create a subclass of this class to be notified of the results when using the
   \c QtAndroidPrivate::startActivity() and \c QtAndroidPrivate::startIntentSender() APIs.
 
-  \include qtcore.qdoc qtcoreprivate-usage
  */
 
 /*!
@@ -611,8 +604,6 @@ public:
     The QAndroidService is a convenience class that wraps the most important
     \l {https://developer.android.com/reference/android/app/Service.html}{Android Service}
     methods.
-
-    \include qtcore.qdoc qtcoreprivate-usage
 
     \since 6.2
 */
@@ -722,8 +713,6 @@ bool QtAndroidPrivate::registerExtrasNatives(QJniEnvironment &env)
     The QAndroidIntent is a convenience class that wraps the most important
     \l {https://developer.android.com/reference/android/content/Intent.html}{Android Intent}
     methods.
-
-    \include qtcore.qdoc qtcoreprivate-usage
 
     \since 6.2
 */
@@ -850,8 +839,6 @@ QJniObject QAndroidIntent::handle() const
     \brief The QtAndroidPrivate namespace provides miscellaneous functions
            to aid Android development.
     \inheaderfile QtCore/private/qandroidextras_p.h
-
-    \include qtcore.qdoc qtcoreprivate-usage
 */
 
 /*!
@@ -897,8 +884,9 @@ QJniObject QAndroidIntent::handle() const
   Starts the activity given by \a intent and provides the result asynchronously through the
   \a resultReceiver if this is non-null.
 
-  If \a resultReceiver is null, then the \c startActivity() method in the \c androidActivity()
-  will be called. Otherwise \c startActivityForResult() will be called.
+  If \a resultReceiver is null, then the \c startActivity() method of
+  QNativeInterface::QAndroidApplication::context() will be called. Otherwise
+  \c startActivityForResult() will be called.
 
   The \a receiverRequestCode is a request code unique to the \a resultReceiver, and will be
   returned along with the result, making it possible to use the same receiver for more than
@@ -930,8 +918,9 @@ void QtAndroidPrivate::startActivity(const QJniObject &intent,
   Starts the activity given by \a intent and provides the result asynchronously through the
   \a resultReceiver if this is non-null.
 
-  If \a resultReceiver is null, then the \c startActivity() method in the \c androidActivity()
-  will be called. Otherwise \c startActivityForResult() will be called.
+  If \a resultReceiver is null, then the \c startActivity() method of
+  QNativeInterface::QAndroidApplication::context() will be called. Otherwise
+  \c startActivityForResult() will be called.
 
   The \a receiverRequestCode is a request code unique to the \a resultReceiver, and will be
   returned along with the result, making it possible to use the same receiver for more than
@@ -967,8 +956,9 @@ void QtAndroidPrivate::startActivity(const QJniObject &intent,
   Starts the activity given by \a intentSender and provides the result asynchronously through the
   \a resultReceiver if this is non-null.
 
-  If \a resultReceiver is null, then the \c startIntentSender() method in the \c androidActivity()
-  will be called. Otherwise \c startIntentSenderForResult() will be called.
+  If \a resultReceiver is null, then the \c startIntentSender() method of
+  QNativeInterface::QAndroidApplication::context() will be called. Otherwise
+  \c startIntentSenderForResult() will be called.
 
   The \a receiverRequestCode is a request code unique to the \a resultReceiver, and will be
   returned along with the result, making it possible to use the same receiver for more than
@@ -1224,3 +1214,5 @@ bool QtAndroidPrivate::registerPermissionNatives(QJniEnvironment &env)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qandroidextras_p.cpp"

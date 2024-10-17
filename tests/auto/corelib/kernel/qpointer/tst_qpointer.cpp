@@ -1,7 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
+#include <QtTest/private/qcomparisontesthelper_p.h>
 #include <QRunnable>
 #include <QThreadPool>
 
@@ -23,6 +24,7 @@ private slots:
     void conversion();
     void destructor();
     void assignment_operators();
+    void compareCompiles();
     void equality_operators();
     void swap();
     void isNull();
@@ -39,15 +41,22 @@ private slots:
 // check that nullptr QPointer construction is Q_CONSTINIT:
 [[maybe_unused]] Q_CONSTINIT static QPointer<QFile> s_file1;
 [[maybe_unused]] Q_CONSTINIT static QPointer<QFile> s_file2 = {};
+[[maybe_unused]] Q_CONSTINIT static QPointer<QFile> s_file3 = nullptr;
+[[maybe_unused]] Q_CONSTINIT static QPointer<QFile> s_file4 = 0; // legacy nullptr
 
 void tst_QPointer::constructors()
 {
+    struct Derived : QObject {};
+    Derived derived;
+
     QPointer<QObject> p1;
     QPointer<QObject> p2(this);
     QPointer<QObject> p3(p2);
+    QPointer<QObject> p4 = &derived;
     QCOMPARE(p1, QPointer<QObject>(0));
     QCOMPARE(p2, QPointer<QObject>(this));
     QCOMPARE(p3, QPointer<QObject>(this));
+    QCOMPARE(p4, &derived);
 }
 
 void tst_QPointer::ctad()
@@ -196,12 +205,21 @@ void tst_QPointer::assignment_operators()
     delete object;
 }
 
+void tst_QPointer::compareCompiles()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QPointer<QObject>>();
+    QTestPrivate::testEqualityOperatorsCompile<QPointer<QObject>, QObject*>();
+    QTestPrivate::testEqualityOperatorsCompile<QPointer<QObject>, QWidget*>();
+    QTestPrivate::testEqualityOperatorsCompile<QPointer<QObject>, QPointer<QWidget>>();
+    QTestPrivate::testEqualityOperatorsCompile<QPointer<QObject>, std::nullptr_t>();
+}
+
 void tst_QPointer::equality_operators()
 {
     QPointer<QObject> p1;
     QPointer<QObject> p2;
 
-    QVERIFY(p1 == p2);
+    QT_TEST_EQUALITY_OPS(p1, p2, true);
 
     QObject *object = nullptr;
 #ifndef QT_NO_WIDGETS
@@ -209,16 +227,15 @@ void tst_QPointer::equality_operators()
 #endif
 
     p1 = object;
-    QVERIFY(p1 == p2);
-    QVERIFY(p1 == object);
+    QT_TEST_EQUALITY_OPS(p1, p2, true);
+    QT_TEST_EQUALITY_OPS(p1, object, true);
     p2 = object;
-    QVERIFY(p2 == p1);
-    QVERIFY(p2 == object);
-
+    QT_TEST_EQUALITY_OPS(p2, p1, true);
+    QT_TEST_EQUALITY_OPS(p2, object, true);
     p1 = this;
-    QVERIFY(p1 != p2);
+    QT_TEST_EQUALITY_OPS(p1, p2, false);
     p2 = p1;
-    QVERIFY(p1 == p2);
+    QT_TEST_EQUALITY_OPS(p1, p2, true);
 
     // compare to zero
     p1 = nullptr;
@@ -226,19 +243,13 @@ void tst_QPointer::equality_operators()
     QVERIFY(0 == p1);
     QVERIFY(p2 != 0);
     QVERIFY(0 != p2);
-    QVERIFY(p1 == nullptr);
-    QVERIFY(nullptr == p1);
-    QVERIFY(p2 != nullptr);
-    QVERIFY(nullptr != p2);
-    QVERIFY(p1 == object);
-    QVERIFY(object == p1);
-    QVERIFY(p2 != object);
-    QVERIFY(object != p2);
+    QT_TEST_EQUALITY_OPS(p1, nullptr, true);
+    QT_TEST_EQUALITY_OPS(p2, nullptr, false);
+    QT_TEST_EQUALITY_OPS(p1, object, true);
+    QT_TEST_EQUALITY_OPS(p2, object, false);
 #ifndef QT_NO_WIDGETS
-    QVERIFY(p1 == widget);
-    QVERIFY(widget == p1);
-    QVERIFY(p2 != widget);
-    QVERIFY(widget != p2);
+    QT_TEST_EQUALITY_OPS(p1, widget, true);
+    QT_TEST_EQUALITY_OPS(p2, widget, false);
 #endif
 }
 

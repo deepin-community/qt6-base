@@ -25,12 +25,6 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-static QString qdlerror()
-{
-    const char *err = dlerror();
-    return err ? u'(' + QString::fromLocal8Bit(err) + u')' : QString();
-}
-
 QStringList QLibraryPrivate::suffixes_sys(const QString &fullVersion)
 {
     QStringList suffixes;
@@ -180,8 +174,10 @@ bool QLibraryPrivate::load_sys()
             // add ".avx2" to each suffix in the list
             transform(suffixes, [](QString *s) { s->append(".avx2"_L1); });
         } else {
-            // prepend "haswell/" to each prefix in the list
-            transform(prefixes, [](QString *s) { s->prepend("haswell/"_L1); });
+#  ifdef __GLIBC__
+            // prepend "glibc-hwcaps/x86-64-v3/" to each prefix in the list
+            transform(prefixes, [](QString *s) { s->prepend("glibc-hwcaps/x86-64-v3/"_L1); });
+#  endif
         }
     }
 #endif
@@ -191,8 +187,6 @@ bool QLibraryPrivate::load_sys()
     Handle hnd = nullptr;
     for (int prefix = 0; retry && !hnd && prefix < prefixes.size(); prefix++) {
         for (int suffix = 0; retry && !hnd && suffix < suffixes.size(); suffix++) {
-            if (!prefixes.at(prefix).isEmpty() && name.startsWith(prefixes.at(prefix)))
-                continue;
             if (path.isEmpty() && prefixes.at(prefix).contains(u'/'))
                 continue;
             if (!suffixes.at(suffix).isEmpty() && name.endsWith(suffixes.at(suffix)))
@@ -212,14 +206,6 @@ bool QLibraryPrivate::load_sys()
             if (!hnd) {
                 auto attemptFromBundle = attempt;
                 hnd = dlopen(QFile::encodeName(attemptFromBundle.replace(u'/', u'_')), dlFlags);
-            }
-            if (hnd) {
-                using JniOnLoadPtr = jint (*)(JavaVM *vm, void *reserved);
-                JniOnLoadPtr jniOnLoad = reinterpret_cast<JniOnLoadPtr>(dlsym(hnd, "JNI_OnLoad"));
-                if (jniOnLoad && jniOnLoad(QJniEnvironment::javaVM(), nullptr) == JNI_ERR) {
-                    dlclose(hnd);
-                    hnd = nullptr;
-                }
             }
 #endif
 
@@ -250,7 +236,8 @@ bool QLibraryPrivate::load_sys()
 
     locker.relock();
     if (!hnd) {
-        errorString = QLibrary::tr("Cannot load library %1: %2").arg(fileName, qdlerror());
+        errorString = QLibrary::tr("Cannot load library %1: %2")
+                .arg(fileName, QString::fromLocal8Bit(dlerror()));
     }
     if (hnd) {
         qualifiedFileName = attempt;
@@ -262,35 +249,26 @@ bool QLibraryPrivate::load_sys()
 
 bool QLibraryPrivate::unload_sys()
 {
-    if (dlclose(pHnd.loadAcquire())) {
-#if defined (Q_OS_QNX)                // Workaround until fixed in QNX; fixes crash in
-        char *error = dlerror();      // QtDeclarative auto test "qqmlenginecleanup" for instance
+    bool doTryUnload = true;
+#ifndef RTLD_NODELETE
+    if (loadHints() & QLibrary::PreventUnloadHint)
+        doTryUnload = false;
+#endif
+    if (doTryUnload && dlclose(pHnd.loadAcquire())) {
+        const char *error = dlerror();
+#if defined (Q_OS_QNX)
+        // Workaround until fixed in QNX; fixes crash in
+        // QtDeclarative auto test "qqmlenginecleanup" for instance
         if (!qstrcmp(error, "Shared objects still referenced")) // On QNX that's only "informative"
             return true;
-        errorString = QLibrary::tr("Cannot unload library %1: %2").arg(fileName,
-                                                                       QLatin1StringView(error));
-#else
-        errorString = QLibrary::tr("Cannot unload library %1: %2").arg(fileName, qdlerror());
 #endif
+        errorString = QLibrary::tr("Cannot unload library %1: %2")
+                .arg(fileName, QString::fromLocal8Bit(error));
         return false;
     }
     errorString.clear();
     return true;
 }
-
-#if defined(Q_OS_LINUX)
-Q_CORE_EXPORT QFunctionPointer qt_linux_find_symbol_sys(const char *symbol)
-{
-    return QFunctionPointer(dlsym(RTLD_DEFAULT, symbol));
-}
-#endif
-
-#ifdef Q_OS_DARWIN
-Q_CORE_EXPORT QFunctionPointer qt_mac_resolve_sys(void *handle, const char *symbol)
-{
-    return QFunctionPointer(dlsym(handle, symbol));
-}
-#endif
 
 QFunctionPointer QLibraryPrivate::resolve_sys(const char *symbol)
 {

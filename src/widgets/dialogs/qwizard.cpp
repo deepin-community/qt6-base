@@ -863,7 +863,7 @@ QWizardLayoutInfo QWizardPrivate::layoutInfoForCurrentPage()
 
     QStyleOption option;
     option.initFrom(q);
-    const int layoutHorizontalSpacing = style->pixelMetric(QStyle::PM_LayoutHorizontalSpacing, &option);
+    const int layoutHorizontalSpacing = style->pixelMetric(QStyle::PM_LayoutHorizontalSpacing, &option, q);
     info.topLevelMarginLeft = style->pixelMetric(QStyle::PM_LayoutLeftMargin, nullptr, q);
     info.topLevelMarginRight = style->pixelMetric(QStyle::PM_LayoutRightMargin, nullptr, q);
     info.topLevelMarginTop = style->pixelMetric(QStyle::PM_LayoutTopMargin, nullptr, q);
@@ -875,7 +875,7 @@ QWizardLayoutInfo QWizardPrivate::layoutInfoForCurrentPage()
     info.hspacing = (layoutHorizontalSpacing == -1)
         ? style->layoutSpacing(QSizePolicy::DefaultType, QSizePolicy::DefaultType, Qt::Horizontal)
         : layoutHorizontalSpacing;
-    info.vspacing = style->pixelMetric(QStyle::PM_LayoutVerticalSpacing, &option);
+    info.vspacing = style->pixelMetric(QStyle::PM_LayoutVerticalSpacing, &option, q);
     info.buttonSpacing = (layoutHorizontalSpacing == -1)
         ? style->layoutSpacing(QSizePolicy::PushButton, QSizePolicy::PushButton, Qt::Horizontal)
         : layoutHorizontalSpacing;
@@ -1738,7 +1738,6 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
 
 /*!
     \class QWizard
-    \since 4.3
     \brief The QWizard class provides a framework for wizards.
 
     \inmodule QtWidgets
@@ -1753,10 +1752,6 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     QWizardPage (a QWidget subclass). To create your own wizards, you
     can use these classes directly, or you can subclass them for more
     control.
-
-    Topics:
-
-    \tableofcontents
 
     \section1 A Trivial Example
 
@@ -2219,7 +2214,6 @@ void QWizard::setPage(int theid, QWizardPage *page)
 
     \note Removing a page may influence the value of the startId property.
 
-    \since 4.5
     \sa addPage(), setPage(), pageRemoved(), startId()
 */
 void QWizard::removePage(int id)
@@ -2334,7 +2328,6 @@ QList<int> QWizard::visitedIds() const
 
 /*!
     Returns the list of page IDs.
-   \since 4.5
 */
 QList<int> QWizard::pageIds() const
 {
@@ -2861,8 +2854,6 @@ void QWizard::setDefaultProperty(const char *className, const char *property,
 }
 
 /*!
-    \since 4.7
-
     Sets the given \a widget to be shown on the left side of the wizard.
     For styles which use the WatermarkPixmap (ClassicStyle and ModernStyle)
     the side widget is displayed on top of the watermark, for other styles
@@ -2896,8 +2887,6 @@ void QWizard::setSideWidget(QWidget *widget)
 }
 
 /*!
-    \since 4.7
-
     Returns the widget on the left side of the wizard or \nullptr.
 
     By default, no side widget is present.
@@ -2961,8 +2950,6 @@ QSize QWizard::sizeHint() const
 /*!
     \fn void QWizard::pageAdded(int id)
 
-    \since 4.7
-
     This signal is emitted whenever a page is added to the
     wizard. The page's \a id is passed as parameter.
 
@@ -2971,8 +2958,6 @@ QSize QWizard::sizeHint() const
 
 /*!
     \fn void QWizard::pageRemoved(int id)
-
-    \since 4.7
 
     This signal is emitted whenever a page is removed from the
     wizard. The page's \a id is passed as parameter.
@@ -3336,7 +3321,6 @@ int QWizard::nextId() const
 
 /*!
     \class QWizardPage
-    \since 4.3
     \brief The QWizardPage class is the base class for wizard pages.
 
     \inmodule QtWidgets

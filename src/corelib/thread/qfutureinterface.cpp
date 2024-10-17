@@ -9,13 +9,8 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qthread.h>
 #include <QtCore/qvarlengtharray.h>
-#include <QtCore/private/qsimd_p.h> // for qYieldCpu()
 #include <private/qthreadpool_p.h>
 #include <private/qobject_p.h>
-
-#ifdef interface
-#  undef interface
-#endif
 
 // GCC 12 gets confused about QFutureInterfaceBase::state, for some non-obvious
 // reason
@@ -45,72 +40,18 @@ const auto suspendingOrSuspended =
 
 } // unnamed namespace
 
-class QBasicFutureWatcher : public QObject, QFutureCallOutInterface
+class QObjectContinuationWrapper : public QObject
 {
     Q_OBJECT
 public:
-    explicit QBasicFutureWatcher(QObject *parent = nullptr);
-    ~QBasicFutureWatcher() override;
+    explicit QObjectContinuationWrapper(QObject *parent = nullptr)
+        : QObject(parent)
+    {
+    }
 
-    void setFuture(QFutureInterfaceBase &fi);
-
-    bool event(QEvent *event) override;
-
-Q_SIGNALS:
-    void finished();
-
-private:
-    QFutureInterfaceBase future;
-
-    void postCallOutEvent(const QFutureCallOutEvent &event) override;
-    void callOutInterfaceDisconnected() override;
+signals:
+    void run();
 };
-
-void QBasicFutureWatcher::postCallOutEvent(const QFutureCallOutEvent &event)
-{
-    if (thread() == QThread::currentThread()) {
-        // If we are in the same thread, don't queue up anything.
-        std::unique_ptr<QFutureCallOutEvent> clonedEvent(event.clone());
-        QCoreApplication::sendEvent(this, clonedEvent.get());
-    } else {
-        QCoreApplication::postEvent(this, event.clone());
-    }
-}
-
-void QBasicFutureWatcher::callOutInterfaceDisconnected()
-{
-    QCoreApplication::removePostedEvents(this, QEvent::FutureCallOut);
-}
-
-/*
- * QBasicFutureWatcher is a more lightweight version of QFutureWatcher for internal use
- */
-QBasicFutureWatcher::QBasicFutureWatcher(QObject *parent)
-    : QObject(parent)
-{
-}
-
-QBasicFutureWatcher::~QBasicFutureWatcher()
-{
-    future.d->disconnectOutputInterface(this);
-}
-
-void QBasicFutureWatcher::setFuture(QFutureInterfaceBase &fi)
-{
-    future = fi;
-    future.d->connectOutputInterface(this);
-}
-
-bool QBasicFutureWatcher::event(QEvent *event)
-{
-    if (event->type() == QEvent::FutureCallOut) {
-        QFutureCallOutEvent *callOutEvent = static_cast<QFutureCallOutEvent *>(event);
-        if (callOutEvent->callOutType == QFutureCallOutEvent::Finished)
-            emit finished();
-        return true;
-    }
-    return QObject::event(event);
-}
 
 void QtPrivate::watchContinuationImpl(const QObject *context, QSlotObjectBase *slotObj,
                                       QFutureInterfaceBase &fi)
@@ -120,22 +61,46 @@ void QtPrivate::watchContinuationImpl(const QObject *context, QSlotObjectBase *s
 
     auto slot = SlotObjUniquePtr(slotObj);
 
-    auto *watcher = new QBasicFutureWatcher;
+    auto *watcher = new QObjectContinuationWrapper;
     watcher->moveToThread(context->thread());
+
+    // We need to protect acccess to the watcher. The context object (and in turn, the watcher)
+    // could be destroyed while the continuation that emits the signal is running. We have to
+    // prevent that.
+    // The mutex has to be recursive, because the continuation itself could delete the context
+    // object (and thus the watcher), which will try to lock the mutex from the same thread twice.
+    auto watcherMutex = std::make_shared<QRecursiveMutex>();
+    const auto destroyWatcher = [watcherMutex, watcher]() mutable {
+        QMutexLocker lock(watcherMutex.get());
+        delete watcher;
+    };
+
     // ### we're missing a convenient way to `QObject::connect()` to a `QSlotObjectBase`...
-    QObject::connect(watcher, &QBasicFutureWatcher::finished,
+    QObject::connect(watcher, &QObjectContinuationWrapper::run,
                      // for the following, cf. QMetaObject::invokeMethodImpl():
                      // we know `slot` is a lambda returning `void`, so we can just
                      // `call()` with `obj` and `args[0]` set to `nullptr`:
-                     watcher, [slot = std::move(slot)] {
+                     context, [slot = std::move(slot)] {
                          void *args[] = { nullptr }; // for `void` return value
                          slot->call(nullptr, args);
                      });
-    QObject::connect(watcher, &QBasicFutureWatcher::finished,
-                     watcher, &QObject::deleteLater);
-    QObject::connect(context, &QObject::destroyed,
-                     watcher, &QObject::deleteLater);
-    watcher->setFuture(fi);
+    QObject::connect(watcher, &QObjectContinuationWrapper::run, watcher, destroyWatcher);
+
+    // We need to connect to destroyWatcher here, instead of delete or deleteLater().
+    // If the continuation is called from a separate thread, emit watcher->run() can't detect that
+    // the watcher has been deleted in the separate thread, causing a race condition and potential
+    // heap-use-after-free issue inside QObject::doActivate. destroyWatcher forces the deletion of
+    // the watcher to occur after emit watcher->run() completes and prevents the race condition.
+    QObject::connect(context, &QObject::destroyed, watcher, destroyWatcher);
+
+    fi.setContinuation([watcherMutex, watcher = QPointer(watcher)]
+                       (const QFutureInterfaceBase &parentData)
+    {
+        Q_UNUSED(parentData);
+        QMutexLocker lock(watcherMutex.get());
+        if (watcher)
+            emit watcher->run();
+    });
 }
 
 QFutureCallOutInterface::~QFutureCallOutInterface()
@@ -833,37 +798,34 @@ void QFutureInterfaceBasePrivate::sendCallOuts(const QFutureCallOutEvent &callOu
         return;
 
     for (int i = 0; i < outputConnections.size(); ++i) {
-        QFutureCallOutInterface *interface = outputConnections.at(i);
-        interface->postCallOutEvent(callOutEvent1);
-        interface->postCallOutEvent(callOutEvent2);
+        QFutureCallOutInterface *iface = outputConnections.at(i);
+        iface->postCallOutEvent(callOutEvent1);
+        iface->postCallOutEvent(callOutEvent2);
     }
 }
 
 // This function connects an output interface (for example a QFutureWatcher)
 // to this future. While holding the lock we check the state and ready results
-// and add the appropriate callouts to the queue. In order to avoid deadlocks,
-// the actual callouts are made at the end while not holding the lock.
-void QFutureInterfaceBasePrivate::connectOutputInterface(QFutureCallOutInterface *interface)
+// and add the appropriate callouts to the queue.
+void QFutureInterfaceBasePrivate::connectOutputInterface(QFutureCallOutInterface *iface)
 {
     QMutexLocker locker(&m_mutex);
 
-    QVarLengthArray<std::unique_ptr<QFutureCallOutEvent>, 3> events;
-
     const auto currentState = state.loadRelaxed();
     if (currentState & QFutureInterfaceBase::Started) {
-        events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::Started));
+        iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::Started));
         if (m_progress) {
-            events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::ProgressRange,
+            iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::ProgressRange,
                                                         m_progress->minimum,
                                                         m_progress->maximum));
-            events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::Progress,
+            iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::Progress,
                                                         m_progressValue,
                                                         m_progress->text));
         } else {
-            events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::ProgressRange,
+            iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::ProgressRange,
                                                         0,
                                                         0));
-            events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::Progress,
+            iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::Progress,
                                                         m_progressValue,
                                                         QString()));
         }
@@ -874,7 +836,7 @@ void QFutureInterfaceBasePrivate::connectOutputInterface(QFutureCallOutInterface
         while (it != data.m_results.end()) {
             const int begin = it.resultIndex();
             const int end = begin + it.batchSize();
-            events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::ResultsReady,
+            iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::ResultsReady,
                                                         begin,
                                                         end));
             it.batchedAdvance();
@@ -882,32 +844,28 @@ void QFutureInterfaceBasePrivate::connectOutputInterface(QFutureCallOutInterface
     }
 
     if (currentState & QFutureInterfaceBase::Suspended)
-        events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::Suspended));
+        iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::Suspended));
     else if (currentState & QFutureInterfaceBase::Suspending)
-        events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::Suspending));
+        iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::Suspending));
 
     if (currentState & QFutureInterfaceBase::Canceled)
-        events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::Canceled));
+        iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::Canceled));
 
     if (currentState & QFutureInterfaceBase::Finished)
-        events.emplace_back(new QFutureCallOutEvent(QFutureCallOutEvent::Finished));
+        iface->postCallOutEvent(QFutureCallOutEvent(QFutureCallOutEvent::Finished));
 
-    outputConnections.append(interface);
-
-    locker.unlock();
-    for (auto &&event : events)
-        interface->postCallOutEvent(*event);
+    outputConnections.append(iface);
 }
 
-void QFutureInterfaceBasePrivate::disconnectOutputInterface(QFutureCallOutInterface *interface)
+void QFutureInterfaceBasePrivate::disconnectOutputInterface(QFutureCallOutInterface *iface)
 {
     QMutexLocker lock(&m_mutex);
-    const qsizetype index = outputConnections.indexOf(interface);
+    const qsizetype index = outputConnections.indexOf(iface);
     if (index == -1)
         return;
     outputConnections.removeAt(index);
 
-    interface->callOutInterfaceDisconnected();
+    iface->callOutInterfaceDisconnected();
 }
 
 void QFutureInterfaceBasePrivate::setState(QFutureInterfaceBase::State newState)

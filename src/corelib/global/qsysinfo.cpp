@@ -91,32 +91,30 @@ using namespace Qt::StringLiterals;
 static const char *osVer_helper(QOperatingSystemVersion version = QOperatingSystemVersion::current())
 {
 #ifdef Q_OS_MACOS
-    if (version.majorVersion() == 13)
-        return "Ventura";
-    if (version.majorVersion() == 12)
-        return "Monterey";
-    // Compare against predefined constant to handle 10.16/11.0
-    if (QOperatingSystemVersion::MacOSBigSur.version().isPrefixOf(version.version()))
-        return "Big Sur";
-    if (version.majorVersion() == 10) {
+    switch (version.majorVersion()) {
+    case 10: {
         switch (version.minorVersion()) {
-        case 9:
-            return "Mavericks";
-        case 10:
-            return "Yosemite";
-        case 11:
-            return "El Capitan";
-        case 12:
-            return "Sierra";
-        case 13:
-            return "High Sierra";
-        case 14:
-            return "Mojave";
-        case 15:
-            return "Catalina";
+        case 9: return "Mavericks";
+        case 10: return "Yosemite";
+        case 11: return "El Capitan";
+        case 12: return "Sierra";
+        case 13: return "High Sierra";
+        case 14: return "Mojave";
+        case 15: return "Catalina";
+        case 16: return "Big Sur";
+        default:
+            Q_UNREACHABLE();
         }
     }
-    // unknown, future version
+    case 11: return "Big Sur";
+    case 12: return "Monterey";
+    case 13: return "Ventura";
+    case 14: return "Sonoma";
+    case 15: return "Sequoia";
+    default:
+        // Unknown, future version
+        break;
+    }
 #else
     Q_UNUSED(version);
 #endif
@@ -224,7 +222,7 @@ struct QUnixOSVersion
     QString prettyName;             // $PRETTY_NAME                 $DISTRIB_DESCRIPTION
 };
 
-static QString unquote(const char *begin, const char *end)
+static QString unquote(QByteArrayView str)
 {
     // man os-release says:
     // Variable assignment values must be enclosed in double
@@ -235,10 +233,11 @@ static QString unquote(const char *begin, const char *end)
     // All strings should be in UTF-8 format, and non-printable
     // characters should not be used. It is not supported to
     // concatenate multiple individually quoted strings.
-    if (*begin == '"')
-        return QString::fromUtf8(begin + 1, end - begin - 2);
-    return QString::fromUtf8(begin, end - begin);
+    if (str.size() >= 2 && str.front() == '"' && str.back() == '"')
+        str = str.sliced(1).chopped(1);
+    return QString::fromUtf8(str);
 }
+
 static QByteArray getEtcFileContent(const char *filename)
 {
     // we're avoiding QFile here
@@ -279,19 +278,19 @@ static bool readEtcFile(QUnixOSVersion &v, const char *filename,
 
         if (line.startsWith(idKey)) {
             ptr += idKey.size();
-            v.productType = unquote(ptr, eol);
+            v.productType = unquote({ptr, eol});
             continue;
         }
 
         if (line.startsWith(prettyNameKey)) {
             ptr += prettyNameKey.size();
-            v.prettyName = unquote(ptr, eol);
+            v.prettyName = unquote({ptr, eol});
             continue;
         }
 
         if (line.startsWith(versionKey)) {
             ptr += versionKey.size();
-            v.productVersion = unquote(ptr, eol);
+            v.productVersion = unquote({ptr, eol});
             continue;
         }
     }
@@ -708,7 +707,8 @@ QString QSysInfo::kernelType()
     Returns the release version of the operating system kernel. On Windows, it
     returns the version of the NT kernel. On Unix systems, including
     Android and \macos, it returns the same as the \c{uname -r}
-    command would return.
+    command would return. On VxWorks, it returns the numeric part of the string
+    reported by kernelVersion().
 
     If the version could not be determined, this function may return an empty
     string.
@@ -723,8 +723,17 @@ QString QSysInfo::kernelVersion()
                              osver.majorVersion(), osver.minorVersion(), osver.microVersion());
 #else
     struct utsname u;
-    if (uname(&u) == 0)
+    if (uname(&u) == 0) {
+#   ifdef Q_OS_VXWORKS
+        // The string follows the pattern "Core Kernel version: w.x.y.z"
+        auto versionStr = QByteArrayView(u.kernelversion);
+        if (auto lastSpace = versionStr.lastIndexOf(' '); lastSpace != -1) {
+            return QString::fromLatin1(versionStr.sliced(lastSpace + 1));
+        }
+#   else
         return QString::fromLatin1(u.release);
+#   endif
+    }
     return QString();
 #endif
 }
@@ -761,6 +770,8 @@ QString QSysInfo::kernelVersion()
 
     \b{Windows note}: this function return "windows"
 
+    \b{VxWorks note}: this function return "vxworks"
+
     For other Unix-type systems, this function usually returns "unknown".
 
     \sa QFileSelector, kernelType(), kernelVersion(), productVersion(), prettyProductName()
@@ -783,12 +794,16 @@ QString QSysInfo::productType()
     return QStringLiteral("tvos");
 #elif defined(Q_OS_WATCHOS)
     return QStringLiteral("watchos");
+#elif defined(Q_OS_VISIONOS)
+    return QStringLiteral("visionos");
 #elif defined(Q_OS_MACOS)
     return QStringLiteral("macos");
 #elif defined(Q_OS_DARWIN)
     return QStringLiteral("darwin");
 #elif defined(Q_OS_WASM)
     return QStringLiteral("wasm");
+#elif defined(Q_OS_VXWORKS)
+    return QStringLiteral("vxworks");
 
 #elif defined(USE_ETC_OS_RELEASE) // Q_OS_UNIX
     QUnixOSVersion unixOsVersion;
@@ -805,7 +820,7 @@ QString QSysInfo::productType()
     Returns the product version of the operating system in string form. If the
     version could not be determined, this function returns "unknown".
 
-    It will return the Android, iOS, \macos, Windows full-product
+    It will return the Android, iOS, \macos, VxWorks, Windows full-product
     versions on those systems.
 
     Typical returned values are (note: list not exhaustive):
@@ -818,6 +833,7 @@ QString QSysInfo::productType()
         \li "8.6" (watchOS 8.6)
         \li "11" (Windows 11)
         \li "Server 2022" (Windows Server 2022)
+        \li "24.03" (VxWorks 7 - 24.03)
     \endlist
 
     On Linux systems, it will try to determine the distribution version and will
@@ -844,6 +860,12 @@ QString QSysInfo::productVersion()
         const QLatin1Char spaceChar(' ');
         return QString::fromLatin1(version).remove(spaceChar).toLower() + winSp_helper().remove(spaceChar).toLower();
     }
+    // fall through
+
+#elif defined(Q_OS_VXWORKS)
+    utsname u;
+    if (uname(&u) == 0)
+        return QString::fromLatin1(u.releaseversion);
     // fall through
 
 #elif defined(USE_ETC_OS_RELEASE) // Q_OS_UNIX
@@ -991,8 +1013,7 @@ QByteArray QSysInfo::machineUniqueId()
 {
 #if defined(Q_OS_DARWIN) && __has_include(<IOKit/IOKitLib.h>)
     char uuid[UuidStringLen + 1];
-    static const mach_port_t defaultPort = 0; // Effectively kIOMasterPortDefault/kIOMainPortDefault
-    io_service_t service = IOServiceGetMatchingService(defaultPort, IOServiceMatching("IOPlatformExpertDevice"));
+    io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"));
     QCFString stringRef = (CFStringRef)IORegistryEntryCreateCFProperty(service, CFSTR(kIOPlatformUUIDKey), kCFAllocatorDefault, 0);
     CFStringGetCString(stringRef, uuid, sizeof(uuid), kCFStringEncodingMacRoman);
     return QByteArray(uuid);

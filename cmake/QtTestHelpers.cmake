@@ -31,10 +31,12 @@ function(qt_internal_add_benchmark target)
     )
 
     if(NOT arg_OUTPUT_DIRECTORY)
-        set(arg_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+        if(CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+            set(arg_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+        else()
+            set(arg_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+        endif()
     endif()
-
-    qt_internal_library_deprecation_level(deprecation_define)
 
     qt_internal_add_executable(${target}
         NO_INSTALL # we don't install benchmarks
@@ -247,7 +249,6 @@ function(qt_internal_add_test_to_batch batch_name name)
 
     # Lazy-init the test batch
     if(NOT TARGET ${target})
-        qt_internal_library_deprecation_level(deprecation_define)
         qt_internal_add_executable(${target}
             ${exceptions_text}
             ${gui_text}
@@ -315,6 +316,34 @@ function(qt_internal_add_test_to_batch batch_name name)
     list(PREPEND batched_test_list ${name})
     set_property(GLOBAL PROPERTY _qt_batched_test_list_property ${batched_test_list})
 
+    # Test batching produces single executable which can result in one source file being added
+    # multiple times (with different definitions) to one translation unit. This is not supported by
+    # CMake so instead we try to detect such situation and rename file every time it's added
+    # to the build more than once. This avoids filenames collisions in one translation unit.
+    get_property(batched_test_sources_list GLOBAL PROPERTY _qt_batched_test_sources_list_property)
+    if(NOT batched_test_sources_list)
+        set_property(GLOBAL PROPERTY _qt_batched_test_sources_list_property "")
+        set(batched_test_sources_list "")
+    endif()
+    foreach(source ${arg_SOURCES})
+        set(source_path ${source})
+        if(${source} IN_LIST batched_test_sources_list)
+            set(new_filename ${name}.cpp)
+            configure_file(${source} ${new_filename})
+            set(source_path ${CMAKE_CURRENT_BINARY_DIR}/${new_filename})
+            set(skip_automoc ON)
+            list(APPEND arg_SOURCES ${source_path})
+        else()
+            set(skip_automoc OFF)
+            list(APPEND batched_test_sources_list ${source})
+        endif()
+        set_source_files_properties(${source_path}
+            TARGET_DIRECTORY ${target} PROPERTIES
+                SKIP_AUTOMOC ${skip_automoc}
+                COMPILE_DEFINITIONS "BATCHED_TEST_NAME=\"${name}\";${arg_DEFINES}")
+    endforeach()
+    set_property(GLOBAL PROPERTY _qt_batched_test_sources_list_property ${batched_test_sources_list})
+
     # Merge the current test with the rest of the batch
     qt_internal_extend_target(${target}
         INCLUDE_DIRECTORIES ${arg_INCLUDE_DIRECTORIES}
@@ -330,15 +359,6 @@ function(qt_internal_add_test_to_batch batch_name name)
         NO_UNITY_BUILD # Tests should not be built using UNITY_BUILD
         )
 
-    foreach(source ${arg_SOURCES})
-        # We define the test name which is later used to launch this test using
-        # commandline parameters. Target directory is that of the target test_batch,
-        # otherwise the batch won't honor our choices of compile definitions.
-        set_source_files_properties(${source}
-                                    TARGET_DIRECTORY ${target}
-                                    PROPERTIES COMPILE_DEFINITIONS
-                                        "BATCHED_TEST_NAME=\"${name}\";${arg_DEFINES}" )
-    endforeach()
     set(${batch_name} ${target} PARENT_SCOPE)
 
     # Add a dummy target so that new tests don't have problems with a nonexistent
@@ -458,8 +478,12 @@ function(qt_internal_add_test name)
         endif()
     endif()
 
-    if (NOT arg_OUTPUT_DIRECTORY)
-        set(arg_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+    if(NOT arg_OUTPUT_DIRECTORY)
+        if(CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+            set(arg_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+        else()
+            set(arg_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+        endif()
     endif()
 
     set(private_includes
@@ -486,7 +510,6 @@ function(qt_internal_add_test name)
         list(APPEND private_includes ${arg_INCLUDE_DIRECTORIES})
 
         qt_internal_prepare_test_target_flags(version_arg exceptions_text gui_text ${ARGN})
-        qt_internal_library_deprecation_level(deprecation_define)
 
         qt_internal_add_executable("${name}"
             ${exceptions_text}
@@ -539,12 +562,14 @@ function(qt_internal_add_test name)
             LIBRARIES ${QT_CMAKE_EXPORT_NAMESPACE}::QuickTest
         )
 
-        qt_internal_extend_target("${name}" CONDITION arg_QMLTEST AND NOT ANDROID
+        qt_internal_extend_target("${name}"
+            CONDITION arg_QMLTEST AND NOT ANDROID AND NOT QT_FORCE_BUILTIN_TESTDATA
             DEFINES
                 QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         )
 
-        qt_internal_extend_target("${name}" CONDITION arg_QMLTEST AND ANDROID
+        qt_internal_extend_target("${name}"
+            CONDITION arg_QMLTEST AND (ANDROID OR QT_FORCE_BUILTIN_TESTDATA)
             DEFINES
                 QUICK_TEST_SOURCE_DIR=":/"
         )
@@ -555,6 +580,11 @@ function(qt_internal_add_test name)
         )
         set_target_properties(${name} PROPERTIES _qt_is_test_executable TRUE)
         set_target_properties(${name} PROPERTIES _qt_is_manual_test ${arg_MANUAL})
+
+        set(blacklist_file "${CMAKE_CURRENT_SOURCE_DIR}/BLACKLIST")
+        if(EXISTS ${blacklist_file})
+            _qt_internal_expose_source_file_to_ide("${name}" ${blacklist_file})
+        endif()
     endif()
 
     foreach(path IN LISTS arg_QML_IMPORTPATH)
@@ -580,22 +610,43 @@ function(qt_internal_add_test name)
     endif()
 
     if (ANDROID)
+        # Pass 95% of the timeout to allow the test runner time to do any cleanup
+        # before being killed.
+        set(percentage "95")
+        qt_internal_get_android_test_timeout("${arg_TIMEOUT}" "${percentage}" android_timeout)
+
         if(arg_BUNDLE_ANDROID_OPENSSL_LIBS)
-            if(NOT OPENSSL_ROOT_DIR)
-                message(WARNING "The argument BUNDLE_ANDROID_OPENSSL_LIBS is set "
-                "but OPENSSL_ROOT_DIR parameter is not set.")
-            else()
-                if(EXISTS "${OPENSSL_ROOT_DIR}/${CMAKE_ANDROID_ARCH_ABI}/libcrypto_3.so")
-                    set_property(TARGET ${name} APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
-                        "${OPENSSL_ROOT_DIR}/${CMAKE_ANDROID_ARCH_ABI}/libcrypto_3.so"
-                        "${OPENSSL_ROOT_DIR}/${CMAKE_ANDROID_ARCH_ABI}/libssl_3.so")
-                else()
-                    message(STATUS "Test should bundle OpenSSL libraries but they are not found."
-                                    " This is fine if OpenSSL was built statically.")
+            if(EXISTS "${OPENSSL_ROOT_DIR}/${CMAKE_ANDROID_ARCH_ABI}/libcrypto_3.so")
+                message(STATUS "Looking for OpenSSL in ${OPENSSL_ROOT_DIR}")
+                set_property(TARGET ${name} APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
+                    "${OPENSSL_ROOT_DIR}/${CMAKE_ANDROID_ARCH_ABI}/libcrypto_3.so"
+                    "${OPENSSL_ROOT_DIR}/${CMAKE_ANDROID_ARCH_ABI}/libssl_3.so")
+            elseif(QT_USE_VCPKG AND DEFINED ENV{VCPKG_ROOT})
+                message(STATUS "Looking for OpenSSL in $ENV{VCPKG_ROOT}")
+                if (CMAKE_ANDROID_ARCH_ABI MATCHES "arm64-v8a")
+                    set(coin_vcpkg_target_triplet "arm64-android-dynamic")
+                elseif(CMAKE_ANDROID_ARCH_ABI MATCHES "armeabi-v7a")
+                    set(coin_vcpkg_target_triplet "arm-neon-android-dynamic")
+                elseif(CMAKE_ANDROID_ARCH_ABI MATCHES "x86_64")
+                    set(coin_vcpkg_target_triplet "x64-android-dynamic")
+                elseif(CMAKE_ANDROID_ARCH_ABI MATCHES "x86")
+                    set(coin_vcpkg_target_triplet "x86-android-dynamic")
                 endif()
+                if(EXISTS "$ENV{VCPKG_ROOT}/installed/${coin_vcpkg_target_triplet}/lib/libcrypto.so")
+                    message(STATUS "Found OpenSSL in $ENV{VCPKG_ROOT}/installed/${coin_vcpkg_target_triplet}/lib")
+                    set_property(TARGET ${name} APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
+                        "$ENV{VCPKG_ROOT}/installed/${coin_vcpkg_target_triplet}/lib/libcrypto.so"
+                        "$ENV{VCPKG_ROOT}/installed/${coin_vcpkg_target_triplet}/lib/libssl.so")
+                endif()
+            else()
+                message(STATUS "The argument BUNDLE_ANDROID_OPENSSL_LIBS is set "
+                               "but OPENSSL_ROOT_DIR parameter is not set. "
+                               "Test should bundle OpenSSL libraries but they are not found. "
+                               "This is fine if OpenSSL was built statically.")
             endif()
         endif()
-        qt_internal_android_test_arguments("${name}" test_executable extra_test_args)
+        qt_internal_android_test_arguments(
+            "${name}" "${android_timeout}" test_executable extra_test_args)
         set(test_working_dir "${CMAKE_CURRENT_BINARY_DIR}")
     elseif(QNX)
         set(test_working_dir "")
@@ -628,7 +679,11 @@ function(qt_internal_add_test name)
 
         # This tells cmake to run the tests with this script, since wasm files can't be
         # executed directly
-        set_property(TARGET "${name}" PROPERTY CROSSCOMPILING_EMULATOR "emrun")
+        if (CMAKE_HOST_WIN32)
+            set_property(TARGET "${name}" PROPERTY CROSSCOMPILING_EMULATOR "emrun.bat")
+        else()
+            set_property(TARGET "${name}" PROPERTY CROSSCOMPILING_EMULATOR "emrun")
+        endif()
     else()
         if(arg_QMLTEST AND NOT arg_SOURCES)
             set(test_working_dir "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -689,6 +744,14 @@ function(qt_internal_add_test name)
             set_tests_properties(${testname} PROPERTIES TIMEOUT ${arg_TIMEOUT})
         endif()
 
+        if(ANDROID AND NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+            # Set timeout signal and some time for androidtestrunner to do cleanup
+            set_tests_properties(${testname} PROPERTIES
+                TIMEOUT_SIGNAL_NAME "SIGINT"
+                TIMEOUT_SIGNAL_GRACE_PERIOD 10.0
+            )
+        endif()
+
         # Add a ${target}/check makefile target, to more easily test one test.
 
         set(test_config_options "")
@@ -709,7 +772,7 @@ function(qt_internal_add_test name)
         endif()
     endif()
 
-    if(ANDROID OR IOS OR WASM OR INTEGRITY OR arg_BUILTIN_TESTDATA)
+    if(ANDROID OR IOS OR WASM OR INTEGRITY OR arg_BUILTIN_TESTDATA OR QT_FORCE_BUILTIN_TESTDATA)
         set(builtin_testdata TRUE)
     endif()
 
@@ -763,15 +826,27 @@ function(qt_internal_add_test name)
             endif()
         endif()
     else()
-        # Install test data
-        file(RELATIVE_PATH relative_path_to_test_project
-            "${QT_TOP_LEVEL_SOURCE_DIR}"
-            "${CMAKE_CURRENT_SOURCE_DIR}")
-        qt_path_join(testdata_install_dir ${QT_INSTALL_DIR}
-                     "${relative_path_to_test_project}")
-        if (testdata_install_dir)
+        # Install test data, when tests are built in-tree or as standalone tests, but not as a
+        # single standalone test, which is checked by the existence of the QT_TOP_LEVEL_SOURCE_DIR
+        # variable.
+        # TODO: Shouldn't we also handle the single standalone test case?
+        # TODO: Does installing even makes sense, given where QFINDTESTDATA looks for installed
+        # test data, and where we end up installing it? See QTBUG-117098.
+        if(QT_TOP_LEVEL_SOURCE_DIR)
             foreach(testdata IN LISTS arg_TESTDATA)
                 set(testdata "${CMAKE_CURRENT_SOURCE_DIR}/${testdata}")
+
+                # Get the relative source dir for each test data entry, because it might contain a
+                # subdirectory.
+                file(RELATIVE_PATH relative_path_to_test_project
+                    "${QT_TOP_LEVEL_SOURCE_DIR}"
+                    "${testdata}")
+                get_filename_component(relative_path_to_test_project
+                    "${relative_path_to_test_project}" DIRECTORY)
+
+                qt_path_join(testdata_install_dir ${QT_INSTALL_DIR}
+                             "${relative_path_to_test_project}")
+
                 if (IS_DIRECTORY "${testdata}")
                     qt_install(
                         DIRECTORY "${testdata}"
@@ -786,6 +861,35 @@ function(qt_internal_add_test name)
     endif()
 
     qt_internal_add_test_finalizers("${name}")
+endfunction()
+
+# Given an optional test timeout value (specified via qt_internal_add_test's TIMEOUT option)
+# returns a percentage of the final timeout to be passed to the androidtestrunner executable.
+#
+# When the optional timeout is empty, default to cmake's defaults for getting the timeout.
+function(qt_internal_get_android_test_timeout input_timeout percentage output_timeout_var)
+    set(actual_timeout "${input_timeout}")
+    if(NOT actual_timeout)
+        # we have coin ci timeout set use that to avoid having the emulator killed
+        # so we can at least get some logs from the android test runner.
+        set(coin_timeout $ENV{COIN_COMMAND_OUTPUT_TIMEOUT})
+        if(coin_timeout)
+            set(actual_timeout "${coin_timeout}")
+        elseif(DART_TESTING_TIMEOUT)
+            # Related: https://gitlab.kitware.com/cmake/cmake/-/issues/20450
+            set(actual_timeout "${DART_TESTING_TIMEOUT}")
+        elseif(CTEST_TEST_TIMEOUT)
+            set(actual_timeout "${CTEST_TEST_TIMEOUT}")
+        else()
+            # Default DART_TESTING_TIMEOUT is 25 minutes, specified in seconds
+            # https://github.com/Kitware/CMake/blob/master/Modules/CTest.cmake#L167C16-L167C16
+            set(actual_timeout "1500")
+        endif()
+    endif()
+
+    math(EXPR calculated_timeout "${actual_timeout} * ${percentage} / 100")
+
+    set(${output_timeout_var} "${calculated_timeout}" PARENT_SCOPE)
 endfunction()
 
 # This function adds test with specified NAME and wraps given test COMMAND with standalone cmake

@@ -50,6 +50,8 @@
 #endif
 #include <array>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
@@ -109,7 +111,7 @@ QStyleOptionMenuItem QComboMenuDelegate::getStyleOption(const QStyleOptionViewIt
     else
         menuOption.menuItemType = QStyleOptionMenuItem::Normal;
 
-    QVariant variant = index.model()->data(index, Qt::DecorationRole);
+    const QVariant variant = index.data(Qt::DecorationRole);
     switch (variant.userType()) {
     case QMetaType::QIcon:
         menuOption.icon = qvariant_cast<QIcon>(variant);
@@ -127,7 +129,7 @@ QStyleOptionMenuItem QComboMenuDelegate::getStyleOption(const QStyleOptionViewIt
         menuOption.palette.setBrush(QPalette::All, QPalette::Window,
                                     qvariant_cast<QBrush>(index.data(Qt::BackgroundRole)));
     }
-    menuOption.text = index.model()->data(index, Qt::DisplayRole).toString().replace(u'&', "&&"_L1);
+    menuOption.text = index.data(Qt::DisplayRole).toString().replace(u'&', "&&"_L1);
     menuOption.reservedShortcutWidth = 0;
     menuOption.maxIconWidth =  option.decorationSize.width() + 4;
     menuOption.menuRect = option.rect;
@@ -1060,7 +1062,9 @@ QComboBoxPrivateContainer* QComboBoxPrivate::viewContainer()
 
     Q_Q(QComboBox);
     container = new QComboBoxPrivateContainer(new QComboBoxListView(q), q);
+    disconnectModel();
     container->itemView()->setModel(model);
+    connectModel();
     container->itemView()->setTextElideMode(Qt::ElideMiddle);
     updateDelegate(true);
     updateLayoutDirection();
@@ -1124,6 +1128,17 @@ void QComboBoxPrivate::rowsInserted(const QModelIndex &parent, int start, int en
     // set current index if combo was previously empty and there is no placeholderText
     if (start == 0 && (end - start + 1) == q->count() && !currentIndex.isValid() &&
         placeholderText.isEmpty()) {
+#if QT_CONFIG(accessibility)
+        // This might have been called by the model emitting rowInserted(), at which
+        // point the view won't have updated the accessibility bridge yet about its new
+        // dimensions. Do it now so that the change of the selection matches the row
+        // indexes of the accessibility bridge's representation.
+        if (container && container->itemView()) {
+            QAccessibleTableModelChangeEvent event(container->itemView(),
+                                                   QAccessibleTableModelChangeEvent::ModelReset);
+            QAccessible::updateAccessibility(&event);
+        }
+#endif
         q->setCurrentIndex(0);
         // need to emit changed if model updated index "silently"
     } else if (currentIndex.row() != indexBeforeChange) {
@@ -1254,7 +1269,7 @@ void QComboBoxPrivate::updateLineEditGeometry()
     q->initStyleOption(&opt);
     QRect editRect = q->style()->subControlRect(QStyle::CC_ComboBox, &opt,
                                                 QStyle::SC_ComboBoxEditField, q);
-    if (!q->itemIcon(q->currentIndex()).isNull()) {
+    if (currentIndex.isValid() && !q->itemIcon(q->currentIndex()).isNull()) {
         QRect comboRect(editRect);
         editRect.setWidth(editRect.width() - q->iconSize().width() - 4);
         editRect = QStyle::alignedRect(q->layoutDirection(), Qt::AlignRight,
@@ -1440,6 +1455,9 @@ QComboBox::~QComboBox()
     } QT_CATCH(...) {
         ; // objects can't throw in destructor
     }
+
+    // Dispose of container before QComboBox goes away
+    delete d->container;
 }
 
 /*!
@@ -2040,7 +2058,6 @@ void QComboBox::setModel(QAbstractItemModel *model)
     }
 
     d->model = model;
-    d->connectModel();
 
     if (d->container) {
         d->container->itemView()->setModel(model);
@@ -2048,6 +2065,8 @@ void QComboBox::setModel(QAbstractItemModel *model)
                                 &QItemSelectionModel::currentChanged,
                                 d, &QComboBoxPrivate::emitHighlighted, Qt::UniqueConnection);
     }
+
+    d->connectModel();
 
     setRootModelIndex(QModelIndex());
 
@@ -2472,8 +2491,11 @@ void QComboBox::setView(QAbstractItemView *itemView)
         return;
     }
 
-    if (itemView->model() != d->model)
+    if (itemView->model() != d->model) {
+        d->disconnectModel();
         itemView->setModel(d->model);
+        d->connectModel();
+    }
     d->viewContainer()->setItemView(itemView);
 }
 
@@ -2553,7 +2575,7 @@ bool QComboBoxPrivate::showNativePopup()
             currentItem = item;
 
         IndexSetter setter = { i, q };
-        QObject::connect(item, &QPlatformMenuItem::activated, setter);
+        QObject::connect(item, &QPlatformMenuItem::activated, q, setter);
 
         m_platformMenu->insertMenuItem(item, 0);
         m_platformMenu->syncMenuItem(item);
@@ -2627,6 +2649,7 @@ void QComboBox::showPopup()
     QPoint above = mapToGlobal(listRect.topLeft());
     int aboveHeight = above.y() - screen.y();
     bool boundToScreen = !window()->testAttribute(Qt::WA_DontShowOnScreen);
+    const auto listView = qobject_cast<QListView *>(d->viewContainer()->itemView());
 
     {
         int listHeight = 0;
@@ -2641,6 +2664,8 @@ void QComboBox::showPopup()
         while (!toCheck.isEmpty()) {
             QModelIndex parent = toCheck.pop();
             for (int i = 0, end = d->model->rowCount(parent); i < end; ++i) {
+                if (listView && listView->isRowHidden(i))
+                    continue;
                 QModelIndex idx = d->model->index(i, d->modelColumn, parent);
                 if (!idx.isValid())
                     continue;
@@ -2981,6 +3006,7 @@ void QComboBox::changeEvent(QEvent *e)
         if (d->container)
             d->container->updateStyleSettings();
         d->updateDelegate();
+
 #ifdef Q_OS_MAC
     case QEvent::MacSizeChange:
 #endif
@@ -3294,8 +3320,9 @@ void QComboBox::keyPressEvent(QKeyEvent *e)
 #endif
 
         if (!d->lineEdit) {
-            if (!e->text().isEmpty())
-                d->keyboardSearchString(e->text());
+            const auto text = e->text();
+            if (!text.isEmpty() && text.at(0).isPrint())
+                d->keyboardSearchString(text);
             else
                 e->ignore();
         }

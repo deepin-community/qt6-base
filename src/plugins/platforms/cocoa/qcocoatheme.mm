@@ -5,7 +5,6 @@
 
 #include "qcocoatheme.h"
 
-#include <QtCore/QOperatingSystemVersion>
 #include <QtCore/QVariant>
 
 #include "qcocoasystemtrayicon.h"
@@ -22,6 +21,7 @@
 #include <QtGui/qpainter.h>
 #include <QtGui/qtextformat.h>
 #include <QtGui/private/qcoretextfontdatabase_p.h>
+#include <QtGui/private/qappleiconengine_p.h>
 #include <QtGui/private/qfontengine_coretext_p.h>
 #include <QtGui/private/qabstractfileiconengine_p.h>
 #include <qpa/qplatformdialoghelper.h>
@@ -213,12 +213,10 @@ const char *QCocoaTheme::name = "cocoa";
 QCocoaTheme::QCocoaTheme()
     : m_systemPalette(nullptr)
 {
-    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSMojave) {
-        m_appearanceObserver = QMacKeyValueObserver(NSApp, @"effectiveAppearance", [this] {
-            NSAppearance.currentAppearance = NSApp.effectiveAppearance;
-            handleSystemThemeChange();
-        });
-    }
+    m_appearanceObserver = QMacKeyValueObserver(NSApp, @"effectiveAppearance", [this] {
+        NSAppearance.currentAppearance = NSApp.effectiveAppearance;
+        handleSystemThemeChange();
+    });
 
     m_systemColorObserver = QMacNotificationObserver(nil,
         NSSystemColorsDidChangeNotification, [this] {
@@ -409,19 +407,8 @@ public:
                                   QPlatformTheme::IconOptions opts) :
         QAbstractFileIconEngine(info, opts) {}
 
-    static QList<QSize> availableIconSizes()
-    {
-        const qreal devicePixelRatio = qGuiApp->devicePixelRatio();
-        const int sizes[] = {
-            qRound(16 * devicePixelRatio), qRound(32 * devicePixelRatio),
-            qRound(64 * devicePixelRatio), qRound(128 * devicePixelRatio),
-            qRound(256 * devicePixelRatio)
-        };
-        return QAbstractFileIconEngine::toSizeList(sizes, sizes + sizeof(sizes) / sizeof(sizes[0]));
-    }
-
     QList<QSize> availableSizes(QIcon::Mode = QIcon::Normal, QIcon::State = QIcon::Off) override
-    { return QCocoaFileIconEngine::availableIconSizes(); }
+    { return QAppleIconEngine::availableIconSizes(); }
 
 protected:
     QPixmap filePixmap(const QSize &size, QIcon::Mode, QIcon::State) override
@@ -440,6 +427,11 @@ QIcon QCocoaTheme::fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptio
     return QIcon(new QCocoaFileIconEngine(fileInfo, iconOptions));
 }
 
+QIconEngine *QCocoaTheme::createIconEngine(const QString &iconName) const
+{
+    return new QAppleIconEngine(iconName);
+}
+
 QVariant QCocoaTheme::themeHint(ThemeHint hint) const
 {
     switch (hint) {
@@ -453,7 +445,7 @@ QVariant QCocoaTheme::themeHint(ThemeHint hint) const
         return QVariant([[NSApplication sharedApplication] isFullKeyboardAccessEnabled] ?
                     int(Qt::TabFocusAllControls) : int(Qt::TabFocusTextControls | Qt::TabFocusListControls));
     case IconPixmapSizes:
-        return QVariant::fromValue(QCocoaFileIconEngine::availableIconSizes());
+        return QVariant::fromValue(QAppleIconEngine::availableIconSizes());
     case QPlatformTheme::PasswordMaskCharacter:
         return QVariant(QChar(0x2022));
     case QPlatformTheme::UiEffects:
@@ -461,7 +453,7 @@ QVariant QCocoaTheme::themeHint(ThemeHint hint) const
     case QPlatformTheme::SpellCheckUnderlineStyle:
         return QVariant(int(QTextCharFormat::DotLine));
     case QPlatformTheme::UseFullScreenForPopupMenu:
-        return QVariant(bool([[NSApplication sharedApplication] presentationOptions] & NSApplicationPresentationFullScreen));
+            return false;
     case QPlatformTheme::InteractiveResizeAcrossScreens:
         return !NSScreen.screensHaveSeparateSpaces;
     case QPlatformTheme::ShowDirectoriesFirst:
@@ -472,6 +464,8 @@ QVariant QCocoaTheme::themeHint(ThemeHint hint) const
         return NSEvent.keyRepeatDelay * 1000;
     case QPlatformTheme::KeyboardAutoRepeatRate:
         return 1.0 / NSEvent.keyRepeatInterval;
+    case QPlatformTheme::ShowIconsInMenus:
+        return false;
     default:
         break;
     }
@@ -481,6 +475,23 @@ QVariant QCocoaTheme::themeHint(ThemeHint hint) const
 Qt::ColorScheme QCocoaTheme::colorScheme() const
 {
     return m_colorScheme;
+}
+
+void QCocoaTheme::requestColorScheme(Qt::ColorScheme scheme)
+{
+    NSAppearance *appearance = nil;
+    switch (scheme) {
+    case Qt::ColorScheme::Dark:
+        appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        break;
+    case Qt::ColorScheme::Light:
+        appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        break;
+    case Qt::ColorScheme::Unknown:
+        break;
+    }
+    if (appearance != NSApp.effectiveAppearance)
+        NSApplication.sharedApplication.appearance = appearance;
 }
 
 /*
@@ -510,12 +521,16 @@ QKeySequence QCocoaTheme::standardButtonShortcut(int button) const
 
 QPlatformMenuItem *QCocoaTheme::createPlatformMenuItem() const
 {
-    return new QCocoaMenuItem();
+    auto *menuItem = new QCocoaMenuItem();
+    qCDebug(lcQpaMenus) << "Created" << menuItem;
+    return menuItem;
 }
 
 QPlatformMenu *QCocoaTheme::createPlatformMenu() const
 {
-    return new QCocoaMenu();
+    auto *menu = new QCocoaMenu();
+    qCDebug(lcQpaMenus) << "Created" << menu;
+    return menu;
 }
 
 QPlatformMenuBar *QCocoaTheme::createPlatformMenuBar() const
@@ -528,7 +543,9 @@ QPlatformMenuBar *QCocoaTheme::createPlatformMenuBar() const
                 SLOT(onAppFocusWindowChanged(QWindow*)));
     }
 
-    return new QCocoaMenuBar();
+    auto *menuBar = new QCocoaMenuBar();
+    qCDebug(lcQpaMenus) << "Created" << menuBar;
+    return menuBar;
 }
 
 #ifndef QT_NO_SHORTCUT

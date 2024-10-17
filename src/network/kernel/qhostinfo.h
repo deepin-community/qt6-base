@@ -17,6 +17,7 @@ class QHostInfoPrivate;
 
 class Q_NETWORK_EXPORT QHostInfo
 {
+    Q_GADGET
 public:
     enum HostInfoError {
         NoError,
@@ -48,7 +49,10 @@ public:
     void setLookupId(int id);
     int lookupId() const;
 
+#if QT_NETWORK_REMOVED_SINCE(6, 7)
     static int lookupHost(const QString &name, QObject *receiver, const char *member);
+#endif
+    static int lookupHost(const QString &name, const QObject *receiver, const char *member);
     static void abortHostLookup(int lookupId);
 
     static QHostInfo fromName(const QString &name);
@@ -73,12 +77,14 @@ public:
     }
 #endif // Q_QDOC
 
+#ifndef QT_NO_CONTEXTLESS_CONNECT
     // lookupHost to a callable (without context)
     template <typename Functor>
     static inline int lookupHost(const QString &name, Functor &&slot)
     {
         return lookupHost(name, nullptr, std::forward<Functor>(slot));
     }
+#endif // QT_NO_CONTEXTLESS_CONNECT
 
 private:
     QHostInfoPrivate *d_ptr;

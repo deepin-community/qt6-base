@@ -43,6 +43,7 @@ Q_DECLARE_LOGGING_CATEGORY(lcQpaClipboard)
 Q_DECLARE_LOGGING_CATEGORY(lcInputDevices)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaDialogs)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaMenus)
+Q_DECLARE_LOGGING_CATEGORY(lcQpaServices)
 
 class QPixmap;
 class QString;
@@ -77,6 +78,9 @@ Qt::MouseButtons currentlyPressedMouseButtons();
 // text - since menu text is sometimes decorated with these for Windows
 // accelerators.
 QString qt_mac_removeAmpersandEscapes(QString s);
+
+// Similar to __NXKitString for localized AppKit strings
+NSString *qt_mac_AppKitString(NSString *table, NSString *key);
 
 enum {
     QtCocoaEventSubTypeWakeup       = SHRT_MAX,

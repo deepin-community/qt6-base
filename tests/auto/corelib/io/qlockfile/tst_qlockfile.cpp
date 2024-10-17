@@ -1,7 +1,8 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2013 David Faure <faure+bluesystems@kde.org>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
 #include <QTest>
 #include <QtConcurrentRun>
@@ -519,7 +520,7 @@ void tst_QLockFile::corruptedLockFile()
 
 void tst_QLockFile::corruptedLockFileInTheFuture()
 {
-#if !defined(Q_OS_UNIX)
+#if !defined(Q_OS_UNIX) || defined(Q_OS_VXWORKS)
     QSKIP("This test needs utimensat");
 #else
     // This test is the same as the previous one, but the corruption was so there is a corrupted

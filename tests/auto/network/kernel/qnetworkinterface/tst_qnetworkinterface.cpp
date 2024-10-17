@@ -1,7 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtEndian>
@@ -100,7 +99,8 @@ void tst_QNetworkInterface::dump()
         qDebug() << "    MTU:       " << i.maximumTransmissionUnit();
 
         int count = 0;
-        foreach (const QNetworkAddressEntry &e, i.addressEntries()) {
+        const auto entries = i.addressEntries();
+        for (const QNetworkAddressEntry &e : entries) {
             QDebug s = qDebug();
             s.nospace() <<    "    address "
                         << qSetFieldWidth(2) << count++ << qSetFieldWidth(0);
@@ -126,11 +126,11 @@ void tst_QNetworkInterface::dump()
 
 void tst_QNetworkInterface::consistencyCheck()
 {
-    QList<QNetworkInterface> ifaces = QNetworkInterface::allInterfaces();
+    const QList<QNetworkInterface> ifaces = QNetworkInterface::allInterfaces();
     QSet<QString> interfaceNames;
     QList<int> interfaceIndexes;
 
-    foreach (const QNetworkInterface &iface, ifaces) {
+    for (const QNetworkInterface &iface : ifaces) {
         QVERIFY(iface.isValid());
         QVERIFY2(!interfaceNames.contains(iface.name()),
                  "duplicate name = " + iface.name().toLocal8Bit());
@@ -197,6 +197,14 @@ void tst_QNetworkInterface::localAddress_data()
             } else if (!ipv6 || entry.prefixLength() != 64) {
                 continue;
             } else {
+#ifdef Q_OS_ANDROID
+                // Android seem to not allow IPv6 connection from interfaces other than wlan,
+                // if it's connected, and wlan is connected by default on Android emulators,
+                // so prefer selecting wlan in this test.
+                const QString scopeId = addr.scopeId();
+                if (!scopeId.isEmpty() && !scopeId.startsWith("wlan"))
+                    continue;
+#endif
                 // add a random node in this IPv6 network
                 quint64 randomid = qFromBigEndian(Q_UINT64_C(0x8f41f072e5733caa));
                 QIPv6Address ip6 = addr.toIPv6Address();
@@ -251,10 +259,10 @@ void tst_QNetworkInterface::interfaceFromXXX_data()
 {
     QTest::addColumn<QNetworkInterface>("iface");
 
-    QList<QNetworkInterface> allInterfaces = QNetworkInterface::allInterfaces();
+    const QList<QNetworkInterface> allInterfaces = QNetworkInterface::allInterfaces();
     if (allInterfaces.size() == 0)
         QSKIP("No interfaces to test!");
-    foreach (QNetworkInterface iface, allInterfaces)
+    for (const QNetworkInterface &iface : allInterfaces)
         QTest::newRow(iface.name().toLocal8Bit()) << iface;
 }
 
@@ -268,7 +276,8 @@ void tst_QNetworkInterface::interfaceFromXXX()
         QCOMPARE(QNetworkInterface::interfaceNameFromIndex(idx), iface.name());
         QCOMPARE(QNetworkInterface::interfaceIndexFromName(iface.name()), idx);
     }
-    foreach (QNetworkAddressEntry entry, iface.addressEntries()) {
+    const auto entries = iface.addressEntries();
+    for (const QNetworkAddressEntry &entry : entries) {
         QVERIFY(!entry.ip().isNull());
 
         if (!entry.netmask().isNull()) {

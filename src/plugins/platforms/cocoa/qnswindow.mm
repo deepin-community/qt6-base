@@ -12,7 +12,6 @@
 #include "qcocoaintegration.h"
 
 #include <qpa/qwindowsysteminterface.h>
-#include <qoperatingsystemversion.h>
 
 Q_LOGGING_CATEGORY(lcQpaEvents, "qt.qpa.events");
 
@@ -107,9 +106,10 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
             continue;
 
         if ([window conformsToProtocol:@protocol(QNSWindowProtocol)]) {
-            QCocoaWindow *cocoaWindow = static_cast<QCocoaNSWindow *>(window).platformWindow;
-            window.level = notification.name == NSApplicationWillResignActiveNotification ?
-                NSNormalWindowLevel : cocoaWindow->windowLevel(cocoaWindow->window()->flags());
+            if (QCocoaWindow *cocoaWindow = static_cast<QCocoaNSWindow *>(window).platformWindow) {
+                window.level = notification.name == NSApplicationWillResignActiveNotification ?
+                    NSNormalWindowLevel : cocoaWindow->windowLevel(cocoaWindow->window()->flags());
+            }
         }
 
         // The documentation says that "when a window enters a new level, it’s ordered
@@ -225,6 +225,16 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
     m_platformWindow->setWindowFilePath(window->filePath()); // Also sets window icon
     m_platformWindow->setWindowState(window->windowState());
     m_platformWindow->setOpacity(window->opacity());
+
+    // At the time of creation the QNSWindow is given a geometry based
+    // on the client geometry of the QWindow. But at that point we don't
+    // know anything about the size of the NSWindow frame, which means
+    // that the logic in QCocoaWindow::setGeometry for adjusting the
+    // client geometry based on the QWindow's positionPolicy is a noop.
+    // Now that we have a NSWindow to read the frame from we re-apply
+    // the QWindow geometry, which will move the NSWindow if needed.
+    m_platformWindow->setGeometry(window->geometry());
+
     m_platformWindow->setVisible(window->isVisible());
 }
 
@@ -350,7 +360,7 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
     // not Qt). However, an active popup is expected to grab any mouse event within the
     // application, so we need to handle those explicitly and trust Qt's isWindowBlocked
     // implementation to eat events that shouldn't be delivered anyway.
-    if (isMouseEvent(theEvent) && QGuiApplicationPrivate::instance()->popupActive()
+    if (isMouseEvent(theEvent) && QGuiApplicationPrivate::instance()->activePopupWindow()
         && QGuiApplicationPrivate::instance()->isWindowBlocked(m_platformWindow->window(), nullptr)) {
         qCDebug(lcQpaWindow) << "Mouse event over modally blocked window" << m_platformWindow->window()
                              << "while popup is open - redirecting";

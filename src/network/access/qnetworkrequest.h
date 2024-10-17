@@ -5,10 +5,13 @@
 #define QNETWORKREQUEST_H
 
 #include <QtNetwork/qtnetworkglobal.h>
+#include <QtNetwork/qhttpheaders.h>
 #include <QtCore/QSharedDataPointer>
 #include <QtCore/QString>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
+
+#include <QtCore/q26numeric.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -19,6 +22,7 @@ class QHttp1Configuration;
 class QNetworkRequestPrivate;
 class Q_NETWORK_EXPORT QNetworkRequest
 {
+    Q_GADGET
 public:
     enum KnownHeaders {
         ContentTypeHeader,
@@ -33,8 +37,11 @@ public:
         IfModifiedSinceHeader,
         ETagHeader,
         IfMatchHeader,
-        IfNoneMatchHeader
+        IfNoneMatchHeader,
+        NumKnownHeaders
     };
+    Q_ENUM(KnownHeaders)
+
     enum Attribute {
         HttpStatusCodeAttribute,
         HttpReasonPhraseAttribute,
@@ -65,6 +72,7 @@ public:
         ConnectionCacheExpiryTimeoutSecondsAttribute,
         Http2CleartextAllowedAttribute,
         UseCredentialsAttribute,
+        FullLocalServerNameAttribute,
 
         User = 1000,
         UserMax = 32767
@@ -97,6 +105,9 @@ public:
         DefaultTransferTimeoutConstant = 30000
     };
 
+    static constexpr auto DefaultTransferTimeout =
+            std::chrono::milliseconds(DefaultTransferTimeoutConstant);
+
     QNetworkRequest();
     explicit QNetworkRequest(const QUrl &url);
     QNetworkRequest(const QNetworkRequest &other);
@@ -113,14 +124,24 @@ public:
     QUrl url() const;
     void setUrl(const QUrl &url);
 
+    QHttpHeaders headers() const;
+    void setHeaders(const QHttpHeaders &newHeaders);
+    void setHeaders(QHttpHeaders &&newHeaders);
+
     // "cooked" headers
     QVariant header(KnownHeaders header) const;
     void setHeader(KnownHeaders header, const QVariant &value);
 
     // raw headers:
+#if QT_NETWORK_REMOVED_SINCE(6, 7)
     bool hasRawHeader(const QByteArray &headerName) const;
+#endif
+    bool hasRawHeader(QAnyStringView headerName) const;
     QList<QByteArray> rawHeaderList() const;
+#if QT_NETWORK_REMOVED_SINCE(6, 7)
     QByteArray rawHeader(const QByteArray &headerName) const;
+#endif
+    QByteArray rawHeader(QAnyStringView headerName) const;
     void setRawHeader(const QByteArray &headerName, const QByteArray &value);
 
     // attributes
@@ -156,8 +177,13 @@ public:
 #endif // QT_CONFIG(http)
 
 #if QT_CONFIG(http) || defined (Q_OS_WASM)
+    QT_NETWORK_INLINE_SINCE(6, 8)
     int transferTimeout() const;
-    void setTransferTimeout(int timeout = DefaultTransferTimeoutConstant);
+    QT_NETWORK_INLINE_SINCE(6, 8)
+    void setTransferTimeout(int timeout);
+
+    std::chrono::milliseconds transferTimeoutAsDuration() const;
+    void setTransferTimeout(std::chrono::milliseconds duration = DefaultTransferTimeout);
 #endif // QT_CONFIG(http) || defined (Q_OS_WASM)
 private:
     QSharedDataPointer<QNetworkRequestPrivate> d;
@@ -165,6 +191,20 @@ private:
 };
 
 Q_DECLARE_SHARED(QNetworkRequest)
+
+#if QT_NETWORK_INLINE_IMPL_SINCE(6, 8)
+#if QT_CONFIG(http) || defined (Q_OS_WASM)
+int QNetworkRequest::transferTimeout() const
+{
+    return q26::saturate_cast<int>(transferTimeoutAsDuration().count());
+}
+
+void QNetworkRequest::setTransferTimeout(int timeout)
+{
+    setTransferTimeout(std::chrono::milliseconds(timeout));
+}
+#endif // QT_CONFIG(http) || defined (Q_OS_WASM)
+#endif // INLINE_SINCE 6.8
 
 QT_END_NAMESPACE
 

@@ -103,7 +103,7 @@ struct QVkTexture : public QRhiTexture
 
     bool prepareCreate(QSize *adjustedSize = nullptr);
     bool finishCreate();
-    VkImageView imageViewForLevel(int level);
+    VkImageView perLevelImageViewForLoadStore(int level);
 
     VkImage image = VK_NULL_HANDLE;
     VkImageView imageView = VK_NULL_HANDLE;
@@ -124,6 +124,8 @@ struct QVkTexture : public QRhiTexture
     VkFormat vkformat;
     uint mipLevelCount = 0;
     VkSampleCountFlagBits samples;
+    VkFormat viewFormat;
+    VkFormat viewFormatForSampling;
     int lastActiveFrameSlot = -1;
     uint generation = 0;
     friend class QRhiVulkan;
@@ -162,7 +164,10 @@ struct QVkRenderPassDescriptor : public QRhiRenderPassDescriptor
     QVarLengthArray<VkAttachmentReference, 8> resolveRefs;
     QVarLengthArray<VkSubpassDependency, 2> subpassDeps;
     bool hasDepthStencil = false;
+    bool hasDepthStencilResolve = false;
+    uint32_t multiViewCount = 0;
     VkAttachmentReference dsRef;
+    VkAttachmentReference dsResolveRef;
     QVector<quint32> serializedFormatData;
     QRhiVulkanRenderPassNativeHandles nativeHandlesStruct;
     int lastActiveFrameSlot = -1;
@@ -178,6 +183,8 @@ struct QVkRenderTargetData
     int colorAttCount = 0;
     int dsAttCount = 0;
     int resolveAttCount = 0;
+    int dsResolveAttCount = 0;
+    int multiViewCount = 0;
     QRhiRenderTargetAttachmentTracker::ResIdList currentResIdList;
     static const int MAX_COLOR_ATTACHMENTS = 8;
 };
@@ -210,7 +217,9 @@ struct QVkTextureRenderTarget : public QRhiTextureRenderTarget
 
     QVkRenderTargetData d;
     VkImageView rtv[QVkRenderTargetData::MAX_COLOR_ATTACHMENTS];
+    VkImageView dsv = VK_NULL_HANDLE;
     VkImageView resrtv[QVkRenderTargetData::MAX_COLOR_ATTACHMENTS];
+    VkImageView resdsv = VK_NULL_HANDLE;
     int lastActiveFrameSlot = -1;
     friend class QRhiVulkan;
 };
@@ -570,6 +579,7 @@ struct QVkSwapChain : public QRhiSwapChain
 
     QRhiCommandBuffer *currentFrameCommandBuffer() override;
     QRhiRenderTarget *currentFrameRenderTarget() override;
+    QRhiRenderTarget *currentFrameRenderTarget(StereoTargetBuffer targetBuffer) override;
 
     QSize surfacePixelSize() override;
     bool isFormatSupported(Format f) override;
@@ -584,6 +594,7 @@ struct QVkSwapChain : public QRhiSwapChain
     QWindow *window = nullptr;
     QSize pixelSize;
     bool supportsReadback = false;
+    bool stereo = false;
     VkSwapchainKHR sc = VK_NULL_HANDLE;
     int bufferCount = 0;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
@@ -595,6 +606,7 @@ struct QVkSwapChain : public QRhiSwapChain
     QVarLengthArray<VkPresentModeKHR, 8> supportedPresentationModes;
     VkDeviceMemory msaaImageMem = VK_NULL_HANDLE;
     QVkSwapChainRenderTarget rtWrapper;
+    QVkSwapChainRenderTarget rtWrapperRight;
     QVkCommandBuffer cbWrapper;
 
     struct ImageResources {
@@ -755,18 +767,20 @@ public:
     void releaseSwapChainResources(QRhiSwapChain *swapChain);
 
     VkFormat optimalDepthStencilFormat();
-    VkSampleCountFlagBits effectiveSampleCount(int sampleCount);
+    VkSampleCountFlagBits effectiveSampleCountBits(int sampleCount);
     bool createDefaultRenderPass(QVkRenderPassDescriptor *rpD,
                                  bool hasDepthStencil,
                                  VkSampleCountFlagBits samples,
                                  VkFormat colorFormat);
     bool createOffscreenRenderPass(QVkRenderPassDescriptor *rpD,
-                                   const QRhiColorAttachment *firstColorAttachment,
-                                   const QRhiColorAttachment *lastColorAttachment,
+                                   const QRhiColorAttachment *colorAttachmentsBegin,
+                                   const QRhiColorAttachment *colorAttachmentsEnd,
                                    bool preserveColor,
                                    bool preserveDs,
+                                   bool storeDs,
                                    QRhiRenderBuffer *depthStencilBuffer,
-                                   QRhiTexture *depthTexture);
+                                   QRhiTexture *depthTexture,
+                                   QRhiTexture *depthResolveTexture);
     bool ensurePipelineCache(const void *initialData = nullptr, size_t initialDataSize = 0);
     VkShaderModule createShader(const QByteArray &spirv);
 
@@ -835,8 +849,11 @@ public:
     QVulkanDeviceFunctions *df = nullptr;
     QRhi::Flags rhiFlags;
     VkPhysicalDeviceFeatures physDevFeatures;
+#ifdef VK_VERSION_1_1
+    VkPhysicalDeviceMultiviewFeatures multiviewFeaturesIfApi11;
+#endif
 #ifdef VK_VERSION_1_2
-    VkPhysicalDeviceVulkan11Features physDevFeatures11;
+    VkPhysicalDeviceVulkan11Features physDevFeatures11IfApi12OrNewer;
     VkPhysicalDeviceVulkan12Features physDevFeatures12;
 #endif
 #ifdef VK_VERSION_1_3
@@ -864,6 +881,10 @@ public:
     PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
     PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
 
+#ifdef VK_KHR_create_renderpass2
+    PFN_vkCreateRenderPass2KHR vkCreateRenderPass2KHR = nullptr;
+#endif
+
     struct {
         bool compute = false;
         bool wideLines = false;
@@ -873,6 +894,9 @@ public:
         bool tessellation = false;
         bool geometryShader = false;
         bool nonFillPolygonMode = false;
+        bool multiView = false;
+        bool renderPass2KHR = false;
+        bool depthStencilResolveKHR = false;
         QVersionNumber apiVersion;
     } caps;
 
@@ -987,6 +1011,8 @@ public:
                 VkFramebuffer fb;
                 VkImageView rtv[QVkRenderTargetData::MAX_COLOR_ATTACHMENTS];
                 VkImageView resrtv[QVkRenderTargetData::MAX_COLOR_ATTACHMENTS];
+                VkImageView dsv;
+                VkImageView resdsv;
             } textureRenderTarget;
             struct {
                 VkRenderPass rp;

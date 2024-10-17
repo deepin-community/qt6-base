@@ -1638,6 +1638,7 @@ void QWidgetLineControl::processKeyEvent(QKeyEvent* event)
                     setText(m_completer->currentCompletion());
                     inlineCompletionAccepted = true;
                 }
+                break;
             default:
                 break; // normal key processing
             }
@@ -1809,13 +1810,18 @@ void QWidgetLineControl::processKeyEvent(QKeyEvent* event)
     }
     else if (event == QKeySequence::DeleteEndOfWord) {
         if (!isReadOnly()) {
-            cursorWordForward(true);
-            del();
+            if (!hasSelectedText())
+                cursorWordForward(true);
+
+            if (hasSelectedText())
+                del();
         }
     }
     else if (event == QKeySequence::DeleteStartOfWord) {
         if (!isReadOnly()) {
-            cursorWordBackward(true);
+            if (!hasSelectedText())
+                cursorWordBackward(true);
+
             if (hasSelectedText())
                 del();
         }

@@ -20,9 +20,9 @@ class Q_SQL_EXPORT QSqlRecord
 {
 public:
     QSqlRecord();
-    QSqlRecord(const QSqlRecord& other);
+    QSqlRecord(const QSqlRecord &other);
     QSqlRecord(QSqlRecord &&other) noexcept = default;
-    QSqlRecord& operator=(const QSqlRecord& other);
+    QSqlRecord& operator=(const QSqlRecord &other);
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QSqlRecord)
     ~QSqlRecord();
 
@@ -32,33 +32,60 @@ public:
     inline bool operator!=(const QSqlRecord &other) const { return !operator==(other); }
 
     QVariant value(int i) const;
-    QVariant value(const QString& name) const;
-    void setValue(int i, const QVariant& val);
-    void setValue(const QString& name, const QVariant& val);
+#if QT_SQL_REMOVED_SINCE(6, 8)
+    QVariant value(const QString &name) const;
+#endif
+    QVariant value(QAnyStringView name) const;
+    void setValue(int i, const QVariant &val);
+#if QT_SQL_REMOVED_SINCE(6, 8)
+    void setValue(const QString &name, const QVariant &val);
+#endif
+    void setValue(QAnyStringView name, const QVariant &val);
 
     void setNull(int i);
-    void setNull(const QString& name);
+#if QT_SQL_REMOVED_SINCE(6, 8)
+    void setNull(const QString &name);
+#endif
+    void setNull(QAnyStringView name);
     bool isNull(int i) const;
-    bool isNull(const QString& name) const;
+#if QT_SQL_REMOVED_SINCE(6, 8)
+    bool isNull(const QString &name) const;
+#endif
+    bool isNull(QAnyStringView name) const;
 
+#if QT_SQL_REMOVED_SINCE(6, 8)
     int indexOf(const QString &name) const;
+#endif
+    int indexOf(QAnyStringView name) const;
     QString fieldName(int i) const;
 
     QSqlField field(int i) const;
+#if QT_SQL_REMOVED_SINCE(6, 8)
     QSqlField field(const QString &name) const;
+#endif
+    QSqlField field(QAnyStringView name) const;
 
     bool isGenerated(int i) const;
-    bool isGenerated(const QString& name) const;
-    void setGenerated(const QString& name, bool generated);
+#if QT_SQL_REMOVED_SINCE(6, 8)
+    bool isGenerated(const QString &name) const;
+#endif
+    bool isGenerated(QAnyStringView name) const;
+#if QT_SQL_REMOVED_SINCE(6, 8)
+    void setGenerated(const QString &name, bool generated);
+#endif
+    void setGenerated(QAnyStringView name, bool generated);
     void setGenerated(int i, bool generated);
 
-    void append(const QSqlField& field);
-    void replace(int pos, const QSqlField& field);
-    void insert(int pos, const QSqlField& field);
+    void append(const QSqlField &field);
+    void replace(int pos, const QSqlField &field);
+    void insert(int pos, const QSqlField &field);
     void remove(int pos);
 
     bool isEmpty() const;
-    bool contains(const QString& name) const;
+#if QT_SQL_REMOVED_SINCE(6, 8)
+    bool contains(const QString &name) const;
+#endif
+    bool contains(QAnyStringView name) const;
     void clear();
     void clearValues();
     int count() const;

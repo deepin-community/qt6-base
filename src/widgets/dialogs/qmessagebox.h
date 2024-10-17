@@ -6,6 +6,7 @@
 
 #include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qdialog.h>
+#include <QtWidgets/qdialogbuttonbox.h>
 
 QT_REQUIRE_CONFIG(messagebox);
 
@@ -64,6 +65,7 @@ public:
 
         NRoles
     };
+    Q_ENUM(ButtonRole)
 
     enum StandardButton {
         // keep this in sync with QDialogButtonBox::StandardButton and QPlatformDialogHelper::StandardButton
@@ -98,6 +100,8 @@ public:
         FlagMask           = 0x00000300,        // obsolete
         ButtonMask         = ~FlagMask          // obsolete
     };
+    Q_ENUM(StandardButton)
+
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     typedef StandardButton Button;
 #endif
@@ -303,9 +307,6 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private:
-    Q_PRIVATE_SLOT(d_func(), void _q_buttonClicked(QAbstractButton *))
-    Q_PRIVATE_SLOT(d_func(), void _q_helperClicked(QPlatformDialogHelper::StandardButton, QPlatformDialogHelper::ButtonRole))
-
     Q_DISABLE_COPY(QMessageBox)
     Q_DECLARE_PRIVATE(QMessageBox)
 };

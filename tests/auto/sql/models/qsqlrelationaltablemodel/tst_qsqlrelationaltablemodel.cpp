@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -45,6 +45,7 @@ private slots:
     void selectAfterUpdate();
     void relationOnFirstColumn();
     void setRelation();
+    void setMultipleRelations();
 
 private:
     void fixupTableNamesForDb(const QSqlDatabase &db);
@@ -455,6 +456,29 @@ void tst_QSqlRelationalTableModel::insertRecord()
     model.setSort(0, Qt::AscendingOrder);
     QVERIFY_SQL(model, select());
 
+    constexpr auto fkTitleKey = 4711;
+    constexpr auto fkTitleVal = "new title";
+    {
+        auto relModel = model.relationModel(2);
+        // make sure populateDictionary() is called
+        relModel->select();
+
+        QSqlRecord rec;
+        QSqlField f1("id", QMetaType(QMetaType::Int));
+        QSqlField f2("title", QMetaType(QMetaType::QString));
+
+        f1.setValue(fkTitleKey);
+        f2.setValue(fkTitleVal);
+
+        f1.setGenerated(true);
+        f2.setGenerated(true);
+
+        rec.append(f1);
+        rec.append(f2);
+
+        QVERIFY(relModel->insertRecord(-1, rec));
+    }
+
     QSqlRecord rec;
     QSqlField f1("id", QMetaType(QMetaType::Int));
     QSqlField f2("name", QMetaType(QMetaType::QString));
@@ -463,7 +487,7 @@ void tst_QSqlRelationalTableModel::insertRecord()
 
     f1.setValue(7);
     f2.setValue("test");
-    f3.setValue(1);
+    f3.setValue(fkTitleKey);
     f4.setValue(2);
 
     f1.setGenerated(true);
@@ -480,7 +504,7 @@ void tst_QSqlRelationalTableModel::insertRecord()
 
     QCOMPARE(model.data(model.index(4, 0)).toInt(), 7);
     QCOMPARE(model.data(model.index(4, 1)).toString(), QString("test"));
-    QCOMPARE(model.data(model.index(4, 2)).toString(), QString("herr"));
+    QCOMPARE(model.data(model.index(4, 2)).toString(), QString(fkTitleVal));
 
     // In LeftJoin mode, two additional rows are fetched
     model.setJoinMode(QSqlRelationalTableModel::LeftJoin);
@@ -488,7 +512,7 @@ void tst_QSqlRelationalTableModel::insertRecord()
 
     QCOMPARE(model.data(model.index(6, 0)).toInt(), 7);
     QCOMPARE(model.data(model.index(6, 1)).toString(), QString("test"));
-    QCOMPARE(model.data(model.index(6, 2)).toString(), QString("herr"));
+    QCOMPARE(model.data(model.index(6, 2)).toString(), QString(fkTitleVal));
 }
 
 void tst_QSqlRelationalTableModel::setRecord()
@@ -1538,6 +1562,25 @@ void tst_QSqlRelationalTableModel::setRelation()
     model.setRelation(2, QSqlRelation());
     QVERIFY_SQL(model, select());
     QCOMPARE(model.data(model.index(0, 2)), QVariant(1));
+}
+
+void tst_QSqlRelationalTableModel::setMultipleRelations()
+{
+    QFETCH_GLOBAL(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    CHECK_DATABASE(db);
+    recreateTestTables(db);
+
+    QSqlRelationalTableModel model(0, db);
+    model.setTable(reltest1);
+    QVERIFY_SQL(model, select());
+    model.setRelation(2, QSqlRelation(reltest2, "id", "title"));
+    model.data(model.index(0, 2));  // initialize model for QSqlRelation above
+    // id must be big enough that the internal QList needs to be reallocated
+    model.setRelation(100, QSqlRelation(reltest2, "id", "title"));
+    QSqlTableModel *relationModel = model.relationModel(2);
+    QVERIFY(relationModel);
+    QVERIFY(relationModel->select());
 }
 
 QTEST_MAIN(tst_QSqlRelationalTableModel)

@@ -33,6 +33,7 @@ Q_DECLARE_LOGGING_CATEGORY(lcQpaScreen)
 class QWindow;
 class QPlatformScreen;
 class QPlatformWindow;
+class QPlatformKeyMapper;
 class QWindowsMenuBar;
 class QWindowsScreenManager;
 class QWindowsTabletSupport;
@@ -43,7 +44,6 @@ struct QWindowsContextPrivate;
 class QPoint;
 class QKeyEvent;
 class QPointingDevice;
-
 class QWindowsContext
 {
     Q_DISABLE_COPY_MOVE(QWindowsContext)
@@ -53,8 +53,7 @@ public:
     enum SystemInfoFlags
     {
         SI_RTL_Extensions = 0x1,
-        SI_SupportsTouch = 0x2,
-        SI_SupportsPointer = 0x4,
+        SI_SupportsTouch = 0x2
     };
 
     // Verbose flag set by environment variable QT_QPA_VERBOSE
@@ -67,7 +66,6 @@ public:
     bool initTouch(unsigned integrationOptions); // For calls from QWindowsIntegration::QWindowsIntegration() only.
     void registerTouchWindows();
     bool initTablet();
-    bool initPointer(unsigned integrationOptions);
     bool disposeTablet();
 
     bool initPowerNotificationHandler();
@@ -120,15 +118,13 @@ public:
     static QtWindows::DpiAwareness processDpiAwareness();
     static QtWindows::DpiAwareness windowDpiAwareness(HWND hwnd);
 
-    static bool isDarkMode();
-
     void setDetectAltGrModifier(bool a);
 
     // Returns a combination of SystemInfoFlags
     unsigned systemInfo() const;
 
     bool useRTLExtensions() const;
-    QList<int> possibleKeys(const QKeyEvent *e) const;
+    QPlatformKeyMapper *keyMapper() const;
 
     HandleBaseWindowHash &windows();
 

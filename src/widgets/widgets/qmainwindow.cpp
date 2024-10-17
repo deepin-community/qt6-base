@@ -49,7 +49,7 @@ public:
             , useUnifiedToolBar(false)
 #endif
     { }
-    QMainWindowLayout *layout;
+    QPointer<QMainWindowLayout> layout;
     QSize iconSize;
     bool explicitIconSize;
     Qt::ToolButtonStyle toolButtonStyle;
@@ -60,7 +60,7 @@ public:
 
     static inline QMainWindowLayout *mainWindowLayout(const QMainWindow *mainWindow)
     {
-        return mainWindow ? mainWindow->d_func()->layout : static_cast<QMainWindowLayout *>(nullptr);
+        return mainWindow ? mainWindow->d_func()->layout.data() : static_cast<QMainWindowLayout *>(nullptr);
     }
 };
 
@@ -165,8 +165,6 @@ void QMainWindowPrivate::init()
            window.
     \ingroup mainwindow-classes
     \inmodule QtWidgets
-
-    \tableofcontents
 
     \section1 Qt Main Window Framework
 
@@ -1123,21 +1121,8 @@ void QMainWindow::tabifyDockWidget(QDockWidget *first, QDockWidget *second)
 
 QList<QDockWidget*> QMainWindow::tabifiedDockWidgets(QDockWidget *dockwidget) const
 {
-    QList<QDockWidget*> ret;
-    const QDockAreaLayoutInfo *info = d_func()->layout->layoutState.dockAreaLayout.info(dockwidget);
-    if (info && info->tabbed && info->tabBar) {
-        for(int i = 0; i < info->item_list.size(); ++i) {
-            const QDockAreaLayoutItem &item = info->item_list.at(i);
-            if (item.widgetItem) {
-                if (QDockWidget *dock = qobject_cast<QDockWidget*>(item.widgetItem->widget())) {
-                    if (dock != dockwidget) {
-                        ret += dock;
-                    }
-                }
-            }
-        }
-    }
-    return ret;
+    Q_D(const QMainWindow);
+    return d->layout ? d->layout->tabifiedDockWidgets(dockwidget) : QList<QDockWidget *>();
 }
 #endif // QT_CONFIG(tabbar)
 
@@ -1309,10 +1294,16 @@ bool QMainWindow::event(QEvent *event)
             if (!d->layout->draggingWidget)
                 break;
             auto dragMoveEvent = static_cast<QDragMoveEvent *>(event);
-            d->layout->hover(d->layout->draggingWidget, dragMoveEvent->position().toPoint());
+            d->layout->hover(d->layout->draggingWidget,
+                             mapToGlobal(dragMoveEvent->position()).toPoint());
             event->accept();
             return true;
         }
+        case QEvent::DragLeave:
+            if (!d->layout->draggingWidget)
+                break;
+            d->layout->hover(d->layout->draggingWidget, pos() - QPoint(-1, -1));
+            return true;
 #endif
         default:
             break;

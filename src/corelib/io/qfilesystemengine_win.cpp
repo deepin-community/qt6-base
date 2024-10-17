@@ -37,6 +37,8 @@
 #define SECURITY_WIN32
 #include <security.h>
 
+#include <cstdio>
+
 #include <QtCore/private/qfunctions_win_p.h>
 
 #ifndef SPI_GETPLATFORMTYPE
@@ -390,12 +392,6 @@ static QBasicAtomicInt qt_ntfs_permission_lookup_v2 = Q_BASIC_ATOMIC_INITIALIZER
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
 
-/*!
-    \internal
-
-    Returns true if the check was previously enabled.
-*/
-
 bool qEnableNtfsPermissionChecks() noexcept
 {
     return qt_ntfs_permission_lookup_v2.fetchAndAddRelaxed(1)
@@ -403,24 +399,12 @@ QT_IF_DEPRECATED_SINCE(6, 6, /*nothing*/, + qt_ntfs_permission_lookup)
         != 0;
 }
 
-/*!
-    \internal
-
-    Returns true if the check is disabled, i.e. there are no more users.
-*/
-
 bool qDisableNtfsPermissionChecks() noexcept
 {
     return qt_ntfs_permission_lookup_v2.fetchAndSubRelaxed(1)
 QT_IF_DEPRECATED_SINCE(6, 6, /*nothing*/, + qt_ntfs_permission_lookup)
         == 1;
 }
-
-/*!
-    \internal
-
-    Returns true if the check is enabled.
-*/
 
 bool qAreNtfsPermissionChecksEnabled() noexcept
 {
@@ -1028,10 +1012,10 @@ static inline QByteArray fileId(HANDLE handle)
     BY_HANDLE_FILE_INFORMATION info;
     if (GetFileInformationByHandle(handle, &info)) {
         char buffer[sizeof "01234567:0123456701234567"];
-        qsnprintf(buffer, sizeof(buffer), "%lx:%08lx%08lx",
-                  info.dwVolumeSerialNumber,
-                  info.nFileIndexHigh,
-                  info.nFileIndexLow);
+        std::snprintf(buffer, sizeof(buffer), "%lx:%08lx%08lx",
+                      info.dwVolumeSerialNumber,
+                      info.nFileIndexHigh,
+                      info.nFileIndexLow);
         return buffer;
     }
     return QByteArray();
@@ -1087,7 +1071,7 @@ QByteArray QFileSystemEngine::id(HANDLE fHandle)
 
 //static
 bool QFileSystemEngine::setFileTime(HANDLE fHandle, const QDateTime &newDate,
-                                    QAbstractFileEngine::FileTime time, QSystemError &error)
+                                    QFile::FileTime time, QSystemError &error)
 {
     FILETIME fTime;
     FILETIME *pLastWrite = nullptr;
@@ -1095,15 +1079,15 @@ bool QFileSystemEngine::setFileTime(HANDLE fHandle, const QDateTime &newDate,
     FILETIME *pCreationTime = nullptr;
 
     switch (time) {
-    case QAbstractFileEngine::ModificationTime:
+    case QFile::FileModificationTime:
         pLastWrite = &fTime;
         break;
 
-    case QAbstractFileEngine::AccessTime:
+    case QFile::FileAccessTime:
         pLastAccess = &fTime;
         break;
 
-    case QAbstractFileEngine::BirthTime:
+    case QFile::FileBirthTime:
         pCreationTime = &fTime;
         break;
 

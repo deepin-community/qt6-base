@@ -19,6 +19,8 @@
 
 #include <QtCore/qoperatingsystemversion.h>
 
+#include <optional>
+
 #ifdef Q_OS_MACOS
 #include <mach/port.h>
 struct mach_header;
@@ -48,7 +50,6 @@ kern_return_t IOObjectRelease(io_object_t object);
 #endif
 
 #include "qstring.h"
-#include "qscopedpointer.h"
 #include "qpair.h"
 
 #if defined( __OBJC__) && defined(QT_NAMESPACE)
@@ -129,7 +130,7 @@ public:
     Q_NODISCARD_CTOR QMacRootLevelAutoReleasePool();
     ~QMacRootLevelAutoReleasePool();
 private:
-    QScopedPointer<QMacAutoReleasePool> pool;
+    std::optional<QMacAutoReleasePool> pool = std::nullopt;
 };
 #endif
 
@@ -204,7 +205,7 @@ Q_CORE_EXPORT bool qt_apple_isSandboxed();
 
 #if defined(__OBJC__)
 QT_END_NAMESPACE
-@interface NSObject (QtSandboxHelpers)
+@interface NSObject (QtExtras)
 - (id)qt_valueForPrivateKey:(NSString *)key;
 @end
 QT_BEGIN_NAMESPACE
@@ -236,8 +237,11 @@ QT_BEGIN_NAMESPACE
 class Q_CORE_EXPORT AppleUnifiedLogger
 {
 public:
-    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context, const QString &message,
-        const QString &subsystem = QString());
+    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context,
+                               const QString &message)
+    { return messageHandler(msgType, context, message, QString()); }
+    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context,
+                               const QString &message, const QString &subsystem);
     static bool preventsStderrLogging();
 private:
     static os_log_type_t logTypeForMessageType(QtMsgType msgType);
@@ -332,8 +336,11 @@ public:
     template<typename Functor>
     QMacNotificationObserver(NSObject *object, NSNotificationName name, Functor callback) {
         observer = [[NSNotificationCenter defaultCenter] addObserverForName:name
-            object:object queue:nil usingBlock:^(NSNotification *) {
-                callback();
+            object:object queue:nil usingBlock:^(NSNotification *notification) {
+                if constexpr (std::is_invocable_v<Functor, NSNotification *>)
+                    callback(notification);
+                else
+                    callback();
             }
         ];
     }
@@ -433,7 +440,7 @@ public:
 
 private:
     QMacVersion() = default;
-    using VersionTuple = QPair<QOperatingSystemVersion, QOperatingSystemVersion>;
+    using VersionTuple = std::pair<QOperatingSystemVersion, QOperatingSystemVersion>;
     static VersionTuple versionsForImage(const mach_header *machHeader);
     static VersionTuple applicationVersion();
     static VersionTuple libraryVersion();

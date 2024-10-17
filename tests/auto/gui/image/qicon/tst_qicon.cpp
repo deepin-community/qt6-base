@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QImageReader>
@@ -41,11 +41,15 @@ private slots:
     void streamAvailableSizes();
     void fromTheme();
     void fromThemeCache();
+    void fromThemeConstant();
 
 #ifndef QT_NO_WIDGETS
     void task184901_badCache();
 #endif
     void task223279_inconsistentAddFile();
+
+    void themeFromPlugin_data();
+    void themeFromPlugin();
 
 private:
     bool haveImageFormat(QByteArray const&);
@@ -191,7 +195,7 @@ void tst_QIcon::isNull() {
     // test string constructor with empty string
     QIcon iconEmptyString = QIcon(QString());
     QVERIFY(iconEmptyString.isNull());
-    QVERIFY(!iconEmptyString.actualSize(QSize(32, 32)).isValid());;
+    QVERIFY(!iconEmptyString.actualSize(QSize(32, 32)).isValid());
 
     // test string constructor with non-existing file
     QIcon iconNoFile = QIcon("imagedoesnotexist");
@@ -722,10 +726,16 @@ void tst_QIcon::fromTheme()
         QCOMPARE(i.availableSizes(), abIcon.availableSizes());
     }
 
-    // Check that setting a fallback theme invalidates earlier lookups
-    QVERIFY(QIcon::fromTheme("edit-cut").isNull());
-    QIcon::setFallbackThemeName("fallbacktheme");
-    QVERIFY(!QIcon::fromTheme("edit-cut").isNull());
+    // Setting or changing the fallback theme should invalidate earlier lookups.
+    // We can only test this if the system doesn't provide an icon, because once
+    // we got a valid icon, it will be cached, and even if we proxy to a different
+    // engine when a fallback theme is set, the cacheKey of the icon will be the
+    // same.
+    const QIcon editCut = QIcon::fromTheme("edit-cut");
+    if (editCut.isNull()) {
+        QIcon::setFallbackThemeName("fallbacktheme");
+        QVERIFY(!QIcon::fromTheme("edit-cut").isNull());
+    }
 
     // Make sure setting the theme name clears the state
     QIcon::setThemeName("");
@@ -842,6 +852,11 @@ void tst_QIcon::fromThemeCache()
     QVERIFY(QIcon::fromTheme("notexist-fallback").isNull());
 }
 
+void tst_QIcon::fromThemeConstant()
+{
+    const QIcon icon = QIcon::fromTheme(QIcon::ThemeIcon::EditCut);
+}
+
 void tst_QIcon::task223279_inconsistentAddFile()
 {
     QIcon icon1;
@@ -860,6 +875,32 @@ void tst_QIcon::task223279_inconsistentAddFile()
     QCOMPARE(pm1.size(), pm2.size());
 }
 
+Q_IMPORT_PLUGIN(TestIconPlugin)
+
+void tst_QIcon::themeFromPlugin_data()
+{
+    QTest::addColumn<QString>("themeName");
+
+    QTest::addRow("plugintheme") << "plugintheme";
+    QTest::addRow("specialtheme") << "specialTheme"; // deliberately not matching case
+}
+
+void tst_QIcon::themeFromPlugin()
+{
+    QFETCH(const QString, themeName);
+    auto restoreTheme = qScopeGuard([oldTheme = QIcon::themeName()]{
+        QIcon::setThemeName(oldTheme);
+    });
+
+    QIcon icon = QIcon::fromTheme("icon1");
+    QVERIFY(icon.isNull());
+
+    QIcon::setThemeName(themeName);
+
+    icon = QIcon::fromTheme("icon1");
+    QVERIFY(!icon.isNull());
+    QCOMPARE(icon.name(), themeName + "/icon1");
+}
 
 QTEST_MAIN(tst_QIcon)
 #include "tst_qicon.moc"

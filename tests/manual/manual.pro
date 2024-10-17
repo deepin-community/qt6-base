@@ -2,6 +2,7 @@ TEMPLATE=subdirs
 QT_FOR_CONFIG += network-private gui-private
 
 SUBDIRS = \
+assets \
 filetest \
 embeddedintoforeignwindow \
 foreignwindows \
@@ -10,6 +11,7 @@ gestures \
 highdpi \
 inputmethodhints \
 keypadnavigation \
+keyevents \
 lance \
 network_remote_stresstest \
 network_stresstest \

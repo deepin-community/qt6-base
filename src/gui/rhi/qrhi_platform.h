@@ -23,7 +23,7 @@
 #include <QtGui/qvulkaninstance.h>
 #endif
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS) || defined(Q_QDOC)
+#if QT_CONFIG(metal) || defined(Q_QDOC)
 Q_FORWARD_DECLARE_OBJC_CLASS(MTLDevice);
 Q_FORWARD_DECLARE_OBJC_CLASS(MTLCommandQueue);
 Q_FORWARD_DECLARE_OBJC_CLASS(MTLCommandBuffer);
@@ -145,12 +145,12 @@ struct Q_GUI_EXPORT QRhiD3D12NativeHandles : public QRhiNativeHandles
 
 struct Q_GUI_EXPORT QRhiD3D12CommandBufferNativeHandles : public QRhiNativeHandles
 {
-    void *commandList = nullptr; // ID3D12GraphicsCommandList
+    void *commandList = nullptr; // ID3D12GraphicsCommandList1
 };
 
 #endif // WIN/QDOC
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS) || defined(Q_QDOC)
+#if QT_CONFIG(metal) || defined(Q_QDOC)
 
 struct Q_GUI_EXPORT QRhiMetalInitParams : public QRhiInitParams
 {

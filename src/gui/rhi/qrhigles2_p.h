@@ -27,6 +27,7 @@
 QT_BEGIN_NAMESPACE
 
 class QOpenGLExtensions;
+class QRhiGles2;
 
 struct QGles2Buffer : public QRhiBuffer
 {
@@ -37,6 +38,7 @@ struct QGles2Buffer : public QRhiBuffer
     QRhiBuffer::NativeBuffer nativeBuffer() override;
     char *beginFullDynamicBufferUpdateForCurrentFrame() override;
     void endFullDynamicBufferUpdateForCurrentFrame() override;
+    void fullDynamicBufferUpdateForCurrentFrame(const void *data) override;
 
     quint32 nonZeroSize = 0;
     GLuint buffer = 0;
@@ -214,6 +216,7 @@ struct QGles2TextureRenderTarget : public QRhiTextureRenderTarget
 
     QGles2RenderTargetData d;
     GLuint framebuffer = 0;
+    GLuint nonMsaaThrowawayDepthTexture = 0;
     friend class QRhiGles2;
 };
 
@@ -336,13 +339,20 @@ struct QGles2CommandBuffer : public QRhiCommandBuffer
             BindComputePipeline,
             Dispatch,
             BarriersForPass,
-            Barrier
+            Barrier,
+            InvalidateFramebuffer
         };
         Cmd cmd;
 
         // QRhi*/QGles2* references should be kept at minimum (so no
         // QRhiTexture/Buffer/etc. pointers).
         union Args {
+            struct {
+                GLuint timestampQuery;
+            } beginFrame;
+            struct {
+                GLuint timestampQuery;
+            } endFrame;
             struct {
                 float x, y, w, h;
                 float d0, d1;
@@ -498,6 +508,7 @@ struct QGles2CommandBuffer : public QRhiCommandBuffer
                 GLuint dstTexture;
                 int dstLevel;
                 int dstLayer;
+                bool isDepthStencil;
             } blitFromRenderbuffer;
             struct {
                 GLenum srcTarget;
@@ -510,6 +521,7 @@ struct QGles2CommandBuffer : public QRhiCommandBuffer
                 GLuint dstTexture;
                 int dstLevel;
                 int dstLayer;
+                bool isDepthStencil;
             } blitFromTexture;
             struct {
                 GLenum target;
@@ -529,6 +541,10 @@ struct QGles2CommandBuffer : public QRhiCommandBuffer
             struct {
                 GLbitfield barriers;
             } barrier;
+            struct {
+                int attCount;
+                GLenum att[3];
+            } invalidateFramebuffer;
         } args;
     };
 
@@ -544,6 +560,7 @@ struct QGles2CommandBuffer : public QRhiCommandBuffer
 
     PassType recordingPass;
     bool passNeedsResourceTracking;
+    double lastGpuTime = 0;
     QRhiRenderTarget *currentTarget;
     QRhiGraphicsPipeline *currentGraphicsPipeline;
     QRhiComputePipeline *currentComputePipeline;
@@ -639,6 +656,7 @@ struct QGles2CommandBuffer : public QRhiCommandBuffer
     void resetState() {
         recordingPass = NoPass;
         passNeedsResourceTracking = true;
+        // do not zero lastGpuTime
         currentTarget = nullptr;
         resetCommands();
         resetCachedState();
@@ -700,6 +718,18 @@ inline bool operator!=(const QGles2CommandBuffer::GraphicsPassState::Blend &a,
     return !(a == b);
 }
 
+struct QGles2SwapChainTimestamps
+{
+    static const int TIMESTAMP_PAIRS = 2;
+
+    bool active[TIMESTAMP_PAIRS] = {};
+    GLuint query[TIMESTAMP_PAIRS * 2] = {};
+
+    void prepare(QRhiGles2 *rhiD);
+    void destroy(QRhiGles2 *rhiD);
+    bool tryQueryTimestamps(int pairIndex, QRhiGles2 *rhiD, double *elapsedSec);
+};
+
 struct QGles2SwapChain : public QRhiSwapChain
 {
     QGles2SwapChain(QRhiImplementation *rhi);
@@ -725,6 +755,8 @@ struct QGles2SwapChain : public QRhiSwapChain
     QGles2SwapChainRenderTarget rtRight;
     QGles2CommandBuffer cb;
     int frameCount = 0;
+    QGles2SwapChainTimestamps timestamps;
+    int currentTimestampPairIndex = 0;
 };
 
 class QRhiGles2 : public QRhiImplementation
@@ -867,17 +899,17 @@ public:
     QGles2RenderTargetData *enqueueBindFramebuffer(QRhiRenderTarget *rt, QGles2CommandBuffer *cbD,
                                                    bool *wantsColorClear = nullptr, bool *wantsDsClear = nullptr);
     void enqueueBarriersForPass(QGles2CommandBuffer *cbD);
-    int effectiveSampleCount(int sampleCount) const;
     QByteArray shaderSource(const QRhiShaderStage &shaderStage, QShaderVersion *shaderVersion);
     bool compileShader(GLuint program, const QRhiShaderStage &shaderStage, QShaderVersion *shaderVersion);
     bool linkProgram(GLuint program);
+    using ActiveUniformLocationTracker = QDuplicateTracker<int, 32>;
     void registerUniformIfActive(const QShaderDescription::BlockVariable &var,
                                  const QByteArray &namePrefix, int binding, int baseOffset,
                                  GLuint program,
-                                 QDuplicateTracker<int, 256> *activeUniformLocations,
+                                 ActiveUniformLocationTracker *activeUniformLocations,
                                  QGles2UniformDescriptionVector *dst);
     void gatherUniforms(GLuint program, const QShaderDescription::UniformBlock &ub,
-                        QDuplicateTracker<int, 256> *activeUniformLocations, QGles2UniformDescriptionVector *dst);
+                        ActiveUniformLocationTracker *activeUniformLocations, QGles2UniformDescriptionVector *dst);
     void gatherSamplers(GLuint program, const QShaderDescription::InOutVariable &v,
                         QGles2SamplerDescriptionVector *dst);
     void gatherGeneratedSamplers(GLuint program,
@@ -922,7 +954,13 @@ public:
                                                        GLsizei, const GLvoid *) = nullptr;
     void(QOPENGLF_APIENTRYP glFramebufferTexture1D)(GLenum, GLenum, GLenum, GLuint,
                                                     GLint) = nullptr;
-
+    void(QOPENGLF_APIENTRYP glFramebufferTextureMultiviewOVR)(GLenum, GLenum, GLuint, GLint,
+                                                              GLint, GLsizei) = nullptr;
+    void (QOPENGLF_APIENTRYP glQueryCounter)(GLuint, GLenum) = nullptr;
+    void (QOPENGLF_APIENTRYP glGetQueryObjectui64v)(GLuint, GLenum, quint64 *) = nullptr;
+    void (QOPENGLF_APIENTRYP glObjectLabel)(GLenum, GLuint, GLsizei, const GLchar *) = nullptr;
+    void (QOPENGLF_APIENTRYP glFramebufferTexture2DMultisampleEXT)(GLenum, GLenum, GLenum, GLuint, GLint, GLsizei) = nullptr;
+    void (QOPENGLF_APIENTRYP glFramebufferTextureMultisampleMultiviewOVR)(GLenum, GLenum, GLuint, GLint, GLsizei, GLint, GLsizei) = nullptr;
     uint vao = 0;
     struct Caps {
         Caps()
@@ -954,7 +992,7 @@ public:
               depthTexture(false),
               packedDepthStencil(false),
               needsDepthStencilCombinedAttach(false),
-              srgbCapableDefaultFramebuffer(false),
+              srgbWriteControl(false),
               coreProfile(false),
               uniformBuffers(false),
               elementIndexUint(false),
@@ -975,7 +1013,13 @@ public:
               geometryShader(false),
               texture1D(false),
               hasDrawBuffersFunc(false),
-              halfAttributes(false)
+              halfAttributes(false),
+              multiView(false),
+              timestamps(false),
+              objectLabel(false),
+              glesMultisampleRenderToTexture(false),
+              glesMultiviewMultisampleRenderToTexture(false),
+              unpackRowLength(false)
         { }
         int ctxMajor;
         int ctxMinor;
@@ -1007,7 +1051,7 @@ public:
         uint depthTexture : 1;
         uint packedDepthStencil : 1;
         uint needsDepthStencilCombinedAttach : 1;
-        uint srgbCapableDefaultFramebuffer : 1;
+        uint srgbWriteControl : 1;
         uint coreProfile : 1;
         uint uniformBuffers : 1;
         uint elementIndexUint : 1;
@@ -1029,6 +1073,12 @@ public:
         uint texture1D : 1;
         uint hasDrawBuffersFunc : 1;
         uint halfAttributes : 1;
+        uint multiView : 1;
+        uint timestamps : 1;
+        uint objectLabel : 1;
+        uint glesMultisampleRenderToTexture : 1;
+        uint glesMultiviewMultisampleRenderToTexture : 1;
+        uint unpackRowLength : 1;
     } caps;
     QGles2SwapChain *currentSwapChain = nullptr;
     QSet<GLint> supportedCompressedFormats;
@@ -1062,6 +1112,7 @@ public:
             } renderbuffer;
             struct {
                 GLuint framebuffer;
+                GLuint nonMsaaThrowawayDepthTexture;
             } textureRenderTarget;
         };
     };
@@ -1071,6 +1122,7 @@ public:
         OffscreenFrame(QRhiImplementation *rhi) : cbWrapper(rhi) { }
         bool active = false;
         QGles2CommandBuffer cbWrapper;
+        GLuint tsQueries[2] = {};
     } ofr;
 
     QHash<QRhiShaderStage, uint> m_shaderCache;
@@ -1080,6 +1132,25 @@ public:
         QByteArray data;
     };
     QHash<QByteArray, PipelineCacheData> m_pipelineCache;
+
+    struct Scratch {
+        union data32_t {
+            float f;
+            qint32 i;
+        };
+        QVarLengthArray<data32_t, 128> packedArray;
+        struct SeparateTexture {
+            QGles2Texture *texture;
+            int binding;
+            int elem;
+        };
+        QVarLengthArray<SeparateTexture, 8> separateTextureBindings;
+        struct SeparateSampler {
+            QGles2Sampler *sampler;
+            int binding;
+        };
+        QVarLengthArray<SeparateSampler, 4> separateSamplerBindings;
+    } m_scratch;
 };
 
 Q_DECLARE_TYPEINFO(QRhiGles2::DeferredReleaseEntry, Q_RELOCATABLE_TYPE);

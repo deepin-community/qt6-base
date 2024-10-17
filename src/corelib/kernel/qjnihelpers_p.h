@@ -19,12 +19,8 @@
 #include <functional>
 #include <QtCore/private/qglobal_p.h>
 #include <QtCore/qcoreapplication_platform.h>
-#include <QtCore/QJniEnvironment>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_JNI_TYPE(Activity, "Landroid/app/Activity;")
-Q_DECLARE_JNI_TYPE(Service, "Landroid/app/Service;")
 
 namespace QtAndroidPrivate
 {
@@ -50,6 +46,13 @@ namespace QtAndroidPrivate
         virtual void handleResume();
     };
 
+    class Q_CORE_EXPORT OnBindListener
+    {
+    public:
+        virtual ~OnBindListener() {}
+        virtual jobject onBind(jobject intent) = 0;
+    };
+
     class Q_CORE_EXPORT GenericMotionEventListener
     {
     public:
@@ -62,13 +65,6 @@ namespace QtAndroidPrivate
     public:
         virtual ~KeyEventListener();
         virtual bool handleKeyEvent(jobject event) = 0;
-    };
-
-    class Q_CORE_EXPORT OnBindListener
-    {
-    public:
-        virtual ~OnBindListener() {}
-        virtual jobject onBind(jobject intent) = 0;
     };
 
     Q_CORE_EXPORT QtJniTypes::Activity activity();
@@ -92,16 +88,16 @@ namespace QtAndroidPrivate
     Q_CORE_EXPORT void registerNewIntentListener(NewIntentListener *listener);
     Q_CORE_EXPORT void unregisterNewIntentListener(NewIntentListener *listener);
 
-    Q_CORE_EXPORT void handlePause();
-    Q_CORE_EXPORT void handleResume();
-    Q_CORE_EXPORT void registerResumePauseListener(ResumePauseListener *listener);
-    Q_CORE_EXPORT void unregisterResumePauseListener(ResumePauseListener *listener);
-
     Q_CORE_EXPORT void registerGenericMotionEventListener(GenericMotionEventListener *listener);
     Q_CORE_EXPORT void unregisterGenericMotionEventListener(GenericMotionEventListener *listener);
 
     Q_CORE_EXPORT void registerKeyEventListener(KeyEventListener *listener);
     Q_CORE_EXPORT void unregisterKeyEventListener(KeyEventListener *listener);
+
+    Q_CORE_EXPORT void handlePause();
+    Q_CORE_EXPORT void handleResume();
+    Q_CORE_EXPORT void registerResumePauseListener(ResumePauseListener *listener);
+    Q_CORE_EXPORT void unregisterResumePauseListener(ResumePauseListener *listener);
 
     Q_CORE_EXPORT void waitForServiceSetup();
     Q_CORE_EXPORT int acuqireServiceSetup(int flags);

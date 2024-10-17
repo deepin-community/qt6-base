@@ -148,7 +148,8 @@ QT_USE_NAMESPACE
 
 - (void)applicationWillFinishLaunching:(NSNotification *)notification
 {
-    Q_UNUSED(notification);
+    if ([reflectionDelegate respondsToSelector:_cmd])
+        [reflectionDelegate applicationWillFinishLaunching:notification];
 
     /*
         From the Cocoa documentation: "A good place to install event handlers
@@ -185,13 +186,14 @@ QT_USE_NAMESPACE
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification
 {
-    Q_UNUSED(aNotification);
+    if ([reflectionDelegate respondsToSelector:_cmd])
+        [reflectionDelegate applicationDidFinishLaunching:aNotification];
+
     inLaunch = false;
 
     if (qEnvironmentVariableIsEmpty("QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM")) {
-        auto frontmostApplication = NSWorkspace.sharedWorkspace.frontmostApplication;
         auto currentApplication = NSRunningApplication.currentApplication;
-        if (frontmostApplication != currentApplication) {
+        if (!currentApplication.active) {
             // Move the application to front to avoid launching behind the terminal.
             // Ignoring other apps is necessary (we must ignore the terminal), but makes
             // Qt apps play slightly less nice with other apps when launching from Finder
@@ -199,18 +201,26 @@ QT_USE_NAMESPACE
             // being non-active here because another application stole activation in the
             // time it took us to launch from Finder, and being non-active because we were
             // launched from Terminal or something that doesn't activate us at all.
+            auto frontmostApplication = NSWorkspace.sharedWorkspace.frontmostApplication;
             qCDebug(lcQpaApplication) << "Launched with" << frontmostApplication
                 << "as frontmost application. Activating" << currentApplication << "instead.";
             [NSApplication.sharedApplication activateIgnoringOtherApps:YES];
         }
 
-        // Qt windows are typically shown in main(), at which point the application
-        // is not active yet. When the application is activated, either externally
-        // or via the override above, it will only bring the main and key windows
-        // forward, which differs from the behavior if these windows had been shown
-        // once the application was already active. To work around this, we explicitly
-        // activate the current application again, bringing all windows to the front.
-        [currentApplication activateWithOptions:NSApplicationActivateAllWindows];
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSSonoma) {
+            // Qt windows are typically shown in main(), at which point the application
+            // is not active yet. When the application is activated, either externally
+            // or via the override above, it will only bring the main and key windows
+            // forward, which differs from the behavior if these windows had been shown
+            // once the application was already active. To work around this, we explicitly
+            // activate the current application again, bringing all windows to the front.
+            // We only do this on Sonoma and up, as earlier macOS versions have a bug where
+            // the app will deactivate as part of activating, even if it's active app,
+            // which in turn results in losing key window status for the key window.
+            // FIXME: Consider bringing our windows to the front via orderFront instead,
+            // or deferring the orderFront during setVisible until the app is active.
+            [currentApplication activateWithOptions:NSApplicationActivateAllWindows];
+        }
     }
 
     QCocoaMenuBar::insertWindowMenu();
@@ -331,16 +341,50 @@ QT_USE_NAMESPACE
         [self doesNotRecognizeSelector:invocationSelector];
 }
 
+- (BOOL)application:(NSApplication *)application continueUserActivity:(NSUserActivity *)userActivity
+          restorationHandler:(void(^)(NSArray<id<NSUserActivityRestoring>> *restorableObjects))restorationHandler
+{
+    // Check if eg. user has installed an app delegate capable of handling this
+    if ([reflectionDelegate respondsToSelector:_cmd]
+        && [reflectionDelegate application:application continueUserActivity:userActivity
+                         restorationHandler:restorationHandler] == YES) {
+        return YES;
+    }
+
+    if (!QGuiApplication::instance())
+        return NO;
+
+    if ([userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb]) {
+        QCocoaIntegration *cocoaIntegration = QCocoaIntegration::instance();
+        Q_ASSERT(cocoaIntegration);
+        return cocoaIntegration->services()->handleUrl(QUrl::fromNSURL(userActivity.webpageURL));
+    }
+
+    return NO;
+}
+
 - (void)getUrl:(NSAppleEventDescriptor *)event withReplyEvent:(NSAppleEventDescriptor *)replyEvent
 {
     Q_UNUSED(replyEvent);
+
     NSString *urlString = [[event paramDescriptorForKeyword:keyDirectObject] stringValue];
+    const QString qurlString = QString::fromNSString(urlString);
+
+    if (event.eventClass == kInternetEventClass && event.eventID == kAEGetURL) {
+        // 'GURL' (Get URL) event this application should handle
+        if (!QGuiApplication::instance())
+            return;
+        QCocoaIntegration *cocoaIntegration = QCocoaIntegration::instance();
+        Q_ASSERT(cocoaIntegration);
+        cocoaIntegration->services()->handleUrl(QUrl(qurlString));
+        return;
+    }
+
     // The string we get from the requesting application might not necessarily meet
     // QUrl's requirement for a IDN-compliant host. So if we can't parse into a QUrl,
     // then we pass the string on to the application as the name of a file (and
     // QFileOpenEvent::file is not guaranteed to be the path to a local, open'able
     // file anyway).
-    const QString qurlString = QString::fromNSString(urlString);
     if (const QUrl url(qurlString); url.isValid())
         QWindowSystemInterface::handleFileOpenEvent(url);
     else
@@ -405,7 +449,6 @@ QT_USE_NAMESPACE
     if (!platformItem || platformItem->menu())
         return;
 
-    QScopedScopeLevelCounter scopeLevelCounter(QGuiApplicationPrivate::instance()->threadData.loadRelaxed());
     QGuiApplicationPrivate::modifier_buttons = QAppleKeyMapper::fromCocoaModifiers([NSEvent modifierFlags]);
 
     static QMetaMethod activatedSignal = QMetaMethod::fromSignal(&QCocoaMenuItem::activated);

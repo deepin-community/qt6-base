@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QDebug>
 #include <QFile>
@@ -583,6 +583,10 @@ void tst_QSharedMemory::attachBeforeCreate()
  */
 void tst_QSharedMemory::useTooMuchMemory()
 {
+    if (QSysInfo::kernelType() == QLatin1String("linux")
+        && QSysInfo::currentCpuArchitecture() == QLatin1String("arm64"))
+        QSKIP("This test is unstable: QTBUG-119321");
+
 #ifdef Q_OS_LINUX
     bool success = true;
     int count = 0;
