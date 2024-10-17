@@ -7,13 +7,13 @@ usr/lib/qt6/bin/qt-cmake
 usr/lib/qt6/bin/qt-cmake-create
 usr/lib/qt6/bin/qt-configure-module
 usr/lib/qt6/bin/qtpaths6
-usr/lib/qt6/libexec/android_emulator_launcher.sh
 usr/lib/qt6/libexec/cmake_automoc_parser
 usr/lib/qt6/libexec/moc
 usr/lib/qt6/libexec/qlalr
 usr/lib/qt6/libexec/qt-cmake-private
 usr/lib/qt6/libexec/qt-cmake-private-install.cmake
 usr/lib/qt6/libexec/qt-cmake-standalone-test
+usr/lib/qt6/libexec/qt-internal-configure-examples
 usr/lib/qt6/libexec/qt-internal-configure-tests
 usr/lib/qt6/libexec/qt-testrunner.py
 usr/lib/qt6/libexec/qvkgen
