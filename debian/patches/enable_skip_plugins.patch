@@ -17,7 +17,7 @@ Forwarded: not-needed
 
 --- a/cmake/QtPlugins.cmake.in
 +++ b/cmake/QtPlugins.cmake.in
-@@ -3,7 +3,7 @@ include_guard(DIRECTORY)
+@@ -6,7 +6,7 @@ include_guard(DIRECTORY)
  
  # Distributions should probably change this default.
  if(NOT DEFINED QT_SKIP_AUTO_PLUGIN_INCLUSION)
@@ -28,7 +28,7 @@ Forwarded: not-needed
  if(QT_REPO_MODULE_VERSION)
 --- a/cmake/QtPostProcessHelpers.cmake
 +++ b/cmake/QtPostProcessHelpers.cmake
-@@ -448,7 +448,7 @@ function(qt_internal_create_plugins_auto
+@@ -507,7 +507,7 @@ function(qt_internal_create_plugins_auto
  
  # Distributions should probably change this default.
  if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
