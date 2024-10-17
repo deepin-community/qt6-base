@@ -37,19 +37,12 @@ Gerrit: https://codereview.qt-project.org/c/qt/qtbase/+/515440
  cmake/QtPostProcessHelpers.cmake | 9 +++++++++
  2 files changed, 18 insertions(+)
 
-diff --git a/cmake/QtPlugins.cmake.in b/cmake/QtPlugins.cmake.in
-index 405d5f37b9..c951eaae42 100644
 --- a/cmake/QtPlugins.cmake.in
 +++ b/cmake/QtPlugins.cmake.in
-@@ -1,6 +1,15 @@
- include_guard(DIRECTORY)
- @QT_MODULE_PLUGIN_INCLUDES@
+@@ -9,6 +9,10 @@ if(NOT DEFINED QT_SKIP_AUTO_PLUGIN_INCLU
+     set(QT_SKIP_AUTO_PLUGIN_INCLUSION OFF)
+ endif()
  
-+# Distributions should probably change this default.
-+if(NOT DEFINED QT_SKIP_AUTO_PLUGIN_INCLUSION)
-+    set(QT_SKIP_AUTO_PLUGIN_INCLUSION OFF)
-+endif()
-+
 +if(QT_REPO_MODULE_VERSION)
 +    message(STATUS "Skip auto plugin inclusion is set to ${QT_SKIP_AUTO_PLUGIN_INCLUSION}")
 +endif()
@@ -57,26 +50,16 @@ index 405d5f37b9..c951eaae42 100644
  if(NOT QT_NO_CREATE_TARGETS AND NOT QT_SKIP_AUTO_PLUGIN_INCLUSION)
      __qt_internal_include_plugin_packages(@QT_MODULE@)
  endif()
-diff --git a/cmake/QtPostProcessHelpers.cmake b/cmake/QtPostProcessHelpers.cmake
-index 83bcabe49b..82a88565a6 100644
 --- a/cmake/QtPostProcessHelpers.cmake
 +++ b/cmake/QtPostProcessHelpers.cmake
-@@ -446,6 +446,15 @@ function(qt_internal_create_plugins_auto_inclusion_files)
- # TODO: Find a better way to deal with this, perhaps by using find_package() instead of include
- # for the Qml PluginConfig.cmake files.
+@@ -510,6 +510,10 @@ if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_I
+     set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION OFF)
+ endif()
  
-+# Distributions should probably change this default.
-+if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
-+    set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION OFF)
-+endif()
-+
 +if(QT_REPO_MODULE_VERSION)
 +    message(STATUS \"Skip auto QML plugin inclusion is set to \${QT_SKIP_AUTO_QML_PLUGIN_INCLUSION}\")
 +endif()
 +
- file(GLOB __qt_qml_plugins_config_file_list \"\${CMAKE_CURRENT_LIST_DIR}/QmlPlugins/${INSTALL_CMAKE_NAMESPACE}*Config.cmake\")
- if (__qt_qml_plugins_config_file_list AND NOT QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
-     # First round of inclusions ensure all qml plugin targets are brought into scope.
--- 
-2.42.0
-
+ set(__qt_qml_plugins_config_file_list \"\")
+ set(__qt_qml_plugins_glob_prefixes \"\${CMAKE_CURRENT_LIST_DIR}\")
+ 
