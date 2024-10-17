@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtCore/QCoreApplication>
@@ -51,8 +51,8 @@ class tst_QDebug: public QObject
 {
     Q_OBJECT
 public:
-    enum EnumType { EnumValue1 = 1, EnumValue2 = 2 };
-    enum FlagType { EnumFlag1 = 1, EnumFlag2 = 2 };
+    enum EnumType { EnumValue1 = 1, EnumValue2 = INT_MIN };
+    enum FlagType { EnumFlag1 = 1, EnumFlag2 = INT_MIN };
     Q_ENUM(EnumType)
     Q_DECLARE_FLAGS(Flags, FlagType)
     Q_FLAG(Flags)
@@ -89,6 +89,7 @@ private slots:
     void qDebugQFlags() const;
     void qDebugStdChrono_data() const;
     void qDebugStdChrono() const;
+    void qDebugStdOptional() const;
     void textStreamModifiers() const;
     void resetFormat() const;
     void defaultMessagehandler() const;
@@ -318,11 +319,17 @@ void tst_QDebug::debugNoQuotes() const
     MessageHandlerSetter mhs(myMessageHandler);
     {
         QDebug d = qDebug();
+        QVERIFY(d.quoteStrings());
         d << QStringLiteral("Hello");
+        QVERIFY(d.quoteStrings());
         d.noquote();
+        QVERIFY(!d.quoteStrings());
         d << QStringLiteral("Hello");
+        QVERIFY(!d.quoteStrings());
         d.quote();
+        QVERIFY(d.quoteStrings());
         d << QStringLiteral("Hello");
+        QVERIFY(d.quoteStrings());
     }
     QCOMPARE(s_msg, QString::fromLatin1("\"Hello\" Hello \"Hello\""));
 
@@ -331,7 +338,7 @@ void tst_QDebug::debugNoQuotes() const
         d << QChar('H');
         d << QLatin1String("Hello");
         d << QByteArray("Hello");
-        d.noquote();
+        d.setQuoteStrings(false);
         d << QChar('H');
         d << QLatin1String("Hello");
         d << QByteArray("Hello");
@@ -1075,7 +1082,8 @@ void tst_QDebug::qDebugQByteArrayView() const
 
 enum TestEnum {
     Flag1 = 0x1,
-    Flag2 = 0x10
+    Flag2 = 0x10,
+    SignFlag = INT_MIN,
 };
 
 Q_DECLARE_FLAGS(TestFlags, TestEnum)
@@ -1084,7 +1092,7 @@ void tst_QDebug::qDebugQFlags() const
 {
     QString file, function;
     int line = 0;
-    QFlags<TestEnum> flags(Flag1 | Flag2);
+    QFlags<TestEnum> flags(Flag1 | Flag2 | SignFlag);
 
     MessageHandlerSetter mhs(myMessageHandler);
     { qDebug() << flags; }
@@ -1092,7 +1100,7 @@ void tst_QDebug::qDebugQFlags() const
     file = __FILE__; line = __LINE__ - 2; function = Q_FUNC_INFO;
 #endif
     QCOMPARE(s_msgType, QtDebugMsg);
-    QCOMPARE(s_msg, QString::fromLatin1("QFlags(0x1|0x10)"));
+    QCOMPARE(s_msg, QString::fromLatin1("QFlags(0x1|0x10|0x80000000)"));
     QCOMPARE(QString::fromLatin1(s_file), file);
     QCOMPARE(s_line, line);
     QCOMPARE(QString::fromLatin1(s_function), function);
@@ -1209,6 +1217,28 @@ void tst_QDebug::qDebugStdChrono() const
     QCOMPARE(fn(), expected);
 }
 
+void tst_QDebug::qDebugStdOptional() const
+{
+    QString file, function;
+    int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+    {
+        std::optional<QByteArray> notSet = std::nullopt;
+        std::optional<QByteArray> set("foo");
+        auto no = std::nullopt;
+        QDebug d = qDebug();
+        d << notSet << set << no;
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 4; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, QString::fromLatin1("nullopt std::optional(\"foo\") nullopt"));
+    QCOMPARE(QString::fromLatin1(s_file), file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(QString::fromLatin1(s_function), function);
+}
+
 void tst_QDebug::textStreamModifiers() const
 {
     QString file, function;
@@ -1313,6 +1343,19 @@ void tst_QDebug::toString() const
         QDebug stream(&expectedString);
         stream.nospace() << &qobject;
         QCOMPARE(QDebug::toString(&qobject), expectedString);
+    }
+
+    // Overloaded operator&
+    {
+        struct TypeWithAddressOf
+        {
+            int* operator&() const { return nullptr; }
+            operator QByteArray() const { return "test"; }
+        };
+
+        TypeWithAddressOf object;
+        QString expectedString {"\"test\""};
+        QCOMPARE(QDebug::toString(object), expectedString);
     }
 }
 

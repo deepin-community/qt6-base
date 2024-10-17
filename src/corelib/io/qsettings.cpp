@@ -129,12 +129,12 @@ bool QConfFile::isWritable() const
 {
     QFileInfo fileInfo(name);
 
-#ifndef QT_NO_TEMPORARYFILE
+#if QT_CONFIG(temporaryfile)
     if (fileInfo.exists()) {
 #endif
         QFile file(name);
         return file.open(QFile::ReadWrite);
-#ifndef QT_NO_TEMPORARYFILE
+#if QT_CONFIG(temporaryfile)
     } else {
         // Create the directories to the file.
         QDir dir(fileInfo.absolutePath());
@@ -878,7 +878,13 @@ QStringList QSettingsPrivate::splitArgs(const QString &s, qsizetype idx)
 
 void QConfFileSettingsPrivate::initFormat()
 {
+#if defined(Q_OS_WASM)
+    extension = (format == QSettings::NativeFormat || format == QSettings::WebIndexedDBFormat)
+            ? ".conf"_L1
+            : ".ini"_L1;
+#else
     extension = (format == QSettings::NativeFormat) ? ".conf"_L1 : ".ini"_L1;
+#endif
     readFunc = nullptr;
     writeFunc = nullptr;
 #if defined(Q_OS_DARWIN)
@@ -887,7 +893,11 @@ void QConfFileSettingsPrivate::initFormat()
     caseSensitivity = IniCaseSensitivity;
 #endif
 
+#if defined Q_OS_WASM
+    if (format > QSettings::IniFormat && format != QSettings::WebIndexedDBFormat) {
+#else
     if (format > QSettings::IniFormat) {
+#endif
         const auto locker = qt_scoped_lock(settingsGlobalMutex);
         const CustomFormatVector *customFormatVector = customFormatVectorFunc();
 
@@ -905,7 +915,11 @@ void QConfFileSettingsPrivate::initFormat()
 void QConfFileSettingsPrivate::initAccess()
 {
     if (!confFiles.isEmpty()) {
+#if defined Q_OS_WASM
+        if (format > QSettings::IniFormat && format != QSettings::WebIndexedDBFormat) {
+#else
         if (format > QSettings::IniFormat) {
+#endif
             if (!readFunc)
                 setStatus(QSettings::AccessError);
         }
@@ -1110,9 +1124,7 @@ QConfFileSettingsPrivate::QConfFileSettingsPrivate(QSettings::Format format,
         confFiles.append(QConfFile::fromName(systemPath.path + orgFile, false));
     }
 
-#ifndef Q_OS_WASM // wasm needs to delay access until after file sync
     initAccess();
-#endif
 }
 
 QConfFileSettingsPrivate::QConfFileSettingsPrivate(const QString &fileName,
@@ -1309,7 +1321,11 @@ QString QConfFileSettingsPrivate::fileName() const
 
 bool QConfFileSettingsPrivate::isWritable() const
 {
+#if defined(Q_OS_WASM)
+    if (format > QSettings::IniFormat && format != QSettings::WebIndexedDBFormat && !writeFunc)
+#else
     if (format > QSettings::IniFormat && !writeFunc)
+#endif
         return false;
 
     if (confFiles.isEmpty())
@@ -1388,6 +1404,13 @@ void QConfFileSettingsPrivate::syncConfFile(QConfFile *confFile)
         */
         if (file.isReadable() && file.size() != 0) {
             bool ok = false;
+
+#ifdef Q_OS_WASM
+            if (format == QSettings::WebIndexedDBFormat) {
+                QByteArray data = file.readAll();
+                ok = readIniFile(data, &confFile->unparsedIniSections);
+            } else
+#endif
 #ifdef Q_OS_DARWIN
             if (format == QSettings::NativeFormat) {
                 QByteArray data = file.readAll();
@@ -1444,6 +1467,11 @@ void QConfFileSettingsPrivate::syncConfFile(QConfFile *confFile)
             return;
         }
 
+#ifdef Q_OS_WASM
+        if (format == QSettings::WebIndexedDBFormat) {
+            ok = writeIniFile(sf, mergedKeys);
+        } else
+#endif
 #ifdef Q_OS_DARWIN
         if (format == QSettings::NativeFormat) {
             ok = writePlistFile(sf, mergedKeys);
@@ -1490,6 +1518,8 @@ void QConfFileSettingsPrivate::syncConfFile(QConfFile *confFile)
     }
 }
 
+namespace SettingsImpl {
+
 enum { Space = 0x1, Special = 0x2 };
 
 static const char charTraits[256] =
@@ -1516,10 +1546,15 @@ static const char charTraits[256] =
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
+} // namespace SettingsImpl
+
+using SettingsImpl::charTraits;
+
 bool QConfFileSettingsPrivate::readIniLine(QByteArrayView data, qsizetype &dataPos,
                                            qsizetype &lineStart, qsizetype &lineLen,
                                            qsizetype &equalsPos)
 {
+    using namespace SettingsImpl;
     qsizetype dataLen = data.size();
     bool inQuotes = false;
 
@@ -1898,8 +1933,6 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     If all you need is a non-persistent memory-based structure,
     consider using QMap<QString, QVariant> instead.
 
-    \tableofcontents section1
-
     \section1 Basic Usage
 
     When creating a QSettings object, you must pass the name of your
@@ -2092,10 +2125,6 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     strings used to encode them, so values written as numbers shall be read back
     as QString. The numeric value can be recovered using \l QString::toInt(), \l
     QString::toDouble() and related functions.
-
-    The \l{tools/settingseditor}{Settings Editor} example lets you
-    experiment with different settings location and with fallbacks
-    turned on or off.
 
     \section1 Restoring the State of a GUI Application
 
@@ -2337,7 +2366,7 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
 
     \endlist
 
-    \sa QVariant, QSessionManager, {Settings Editor Example}
+    \sa QVariant, QSessionManager
 */
 
 /*! \enum QSettings::Status
@@ -2375,6 +2404,16 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
                             lose the distinction between numeric data and the
                             strings used to encode them, so values written as
                             numbers shall be read back as QString.
+    \value WebLocalStorageFormat
+                            WASM only: Store the settings in window.localStorage for the current
+                            origin. If cookies are not allowed, this falls back to the INI format.
+                            This provides up to 5MiB storage per origin, but access to it is
+                            synchronous and JSPI is not required.
+    \value WebIndexedDBFormat
+                            WASM only: Store the settings in an Indexed DB for the current
+                            origin. If cookies are not allowed, this falls back to the INI format.
+                            This requires JSPI, but provides more storage than
+                            WebLocalStorageFormat.
 
     \value InvalidFormat    Special value returned by registerFormat().
     \omitvalue CustomFormat1

@@ -240,9 +240,9 @@ void QWindowSystemInterface::handleEnterLeaveEvent(QWindow *enter, QWindow *leav
     handleEnterEvent(enter, local, global);
 }
 
-QT_DEFINE_QPA_EVENT_HANDLER(void, handleWindowActivated, QWindow *window, Qt::FocusReason r)
+QT_DEFINE_QPA_EVENT_HANDLER(void, handleFocusWindowChanged, QWindow *window, Qt::FocusReason r)
 {
-    handleWindowSystemEvent<QWindowSystemInterfacePrivate::ActivatedWindowEvent, Delivery>(window, r);
+    handleWindowSystemEvent<QWindowSystemInterfacePrivate::FocusWindowEvent, Delivery>(window, r);
 }
 
 QT_DEFINE_QPA_EVENT_HANDLER(void, handleWindowStateChanged, QWindow *window, Qt::WindowStates newState, int oldState)
@@ -814,6 +814,11 @@ void QWindowSystemInterface::handleScreenGeometryChange(QScreen *screen, const Q
 
 void QWindowSystemInterface::handleScreenLogicalDotsPerInchChange(QScreen *screen, qreal dpiX, qreal dpiY)
 {
+    // Keep QHighDpiScaling::m_active in sync with platform screen state, in
+    // order to make scaling calls made during DPI change use the new state.
+    // FIXME: Remove when QHighDpiScaling::m_active has been removed.
+    QHighDpiScaling::updateHighDpiScaling();
+
     const QDpi effectiveDpi = QPlatformScreen::overrideDpi(QDpi{dpiX, dpiY});
     handleWindowSystemEvent<QWindowSystemInterfacePrivate::ScreenLogicalDotsPerInchEvent>(screen,
                     effectiveDpi.first, effectiveDpi.second);
@@ -1203,6 +1208,13 @@ Q_GUI_EXPORT bool qt_sendShortcutOverrideEvent(QObject *o, ulong timestamp, int 
     Q_UNUSED(count);
     return false;
 #endif
+}
+
+Q_GUI_EXPORT void qt_handleWheelEvent(QWindow *window, const QPointF &local, const QPointF &global,
+                                      QPoint pixelDelta, QPoint angleDelta, Qt::KeyboardModifiers mods,
+                                      Qt::ScrollPhase phase)
+{
+    QWindowSystemInterface::handleWheelEvent(window, local, global, pixelDelta, angleDelta, mods, phase);
 }
 
 namespace QTest

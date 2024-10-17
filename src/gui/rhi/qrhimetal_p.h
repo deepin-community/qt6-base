@@ -454,7 +454,6 @@ public:
                                        const QRhiCommandBuffer::DynamicOffset *dynamicOffsets,
                                        bool offsetOnlyChange,
                                        const QShader::NativeResourceBindingMap *nativeResourceBindingMaps[SUPPORTED_STAGES]);
-    int effectiveSampleCount(int sampleCount) const;
     struct TessDrawArgs {
         QMetalCommandBuffer *cbD;
         enum {
@@ -482,6 +481,7 @@ public:
         };
     };
     void tessellatedDraw(const TessDrawArgs &args);
+    void adjustForMultiViewDraw(quint32 *instanceCount, QRhiCommandBuffer *cb);
 
     QRhi::Flags rhiFlags;
     bool importedDevice = false;
@@ -499,6 +499,7 @@ public:
         QVector<int> supportedSampleCounts;
         bool isAppleGPU = false;
         int maxThreadGroupSize = 512;
+        bool multiView = false;
     } caps;
 
     QRhiMetalData *d = nullptr;

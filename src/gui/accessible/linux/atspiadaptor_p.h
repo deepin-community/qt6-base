@@ -16,7 +16,7 @@
 // We mean it.
 //
 
-#include <atspi/atspi-constants.h>
+#include <atspi/atspi.h>
 
 #include <QtGui/private/qtguiglobal_p.h>
 #include <QtDBus/qdbusvirtualobject.h>
@@ -38,7 +38,7 @@ class AtSpiAdaptor :public QDBusVirtualObject
     Q_OBJECT
 
 public:
-    explicit AtSpiAdaptor(DBusConnection *connection, QObject *parent = nullptr);
+    explicit AtSpiAdaptor(QAtSpiDBusConnection *connection, QObject *parent = nullptr);
     ~AtSpiAdaptor();
 
     void registerApplication();
@@ -85,8 +85,11 @@ private:
 
     void notifyStateChange(QAccessibleInterface *interface, const QString& state, int value);
 
+    void sendAnnouncement(QAccessibleAnnouncementEvent *event);
+
     // accessible helper functions
     AtspiRole getRole(QAccessibleInterface *interface) const;
+    QSpiAttributeSet getAttributes(QAccessibleInterface *) const;
     QSpiRelationArray relationSet(QAccessibleInterface *interface, const QDBusConnection &connection) const;
     QStringList accessibleInterfaces(QAccessibleInterface *interface) const;
 
@@ -111,7 +114,7 @@ private:
 
     // private vars
     QSpiObjectReference accessibilityRegistry;
-    DBusConnection *m_dbus;
+    QAtSpiDBusConnection *m_dbus;
     QSpiApplicationAdaptor *m_applicationAdaptor;
 
     /// Assigned from the accessibility registry.
@@ -130,6 +133,7 @@ private:
     // all of object
     uint sendObject : 1;
     uint sendObject_active_descendant_changed : 1;
+    uint sendObject_announcement : 1;
     uint sendObject_attributes_changed : 1;
     uint sendObject_bounds_changed : 1;
     uint sendObject_children_changed : 1;

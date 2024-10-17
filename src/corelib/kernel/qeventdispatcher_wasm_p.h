@@ -20,6 +20,7 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qwaitcondition.h>
 
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <tuple>
@@ -31,7 +32,7 @@ QT_BEGIN_NAMESPACE
 Q_DECLARE_LOGGING_CATEGORY(lcEventDispatcher);
 Q_DECLARE_LOGGING_CATEGORY(lcEventDispatcherTimers)
 
-class Q_CORE_EXPORT QEventDispatcherWasm : public QAbstractEventDispatcher
+class Q_CORE_EXPORT QEventDispatcherWasm : public QAbstractEventDispatcherV2
 {
     Q_OBJECT
 public:
@@ -43,17 +44,25 @@ public:
     void registerSocketNotifier(QSocketNotifier *notifier) override;
     void unregisterSocketNotifier(QSocketNotifier *notifier) override;
 
-    void registerTimer(int timerId, qint64 interval, Qt::TimerType timerType, QObject *object)  override;
-    bool unregisterTimer(int timerId) override;
-    bool unregisterTimers(QObject *object) override;
-    QList<QAbstractEventDispatcher::TimerInfo> registeredTimers(QObject *object) const override;
-    int remainingTime(int timerId) override;
+    void registerTimer(Qt::TimerId timerId, Duration interval, Qt::TimerType timerType,
+                       QObject *object) override final;
+    bool unregisterTimer(Qt::TimerId timerId) override final;
+    bool unregisterTimers(QObject *object) override final;
+    QList<TimerInfoV2> timersForObject(QObject *object) const override final;
+    Duration remainingTime(Qt::TimerId timerId) const override final;
 
     void interrupt() override;
     void wakeUp() override;
 
+    static void runOnMainThread(std::function<void(void)> fn);
     static void socketSelect(int timeout, int socket, bool waitForRead, bool waitForWrite,
                             bool *selectForRead, bool *selectForWrite, bool *socketDisconnect);
+
+    static void registerStartupTask();
+    static void completeStarupTask();
+    static void callOnLoadedIfRequired();
+    virtual void onLoaded();
+
 protected:
     virtual bool processPostedEvents();
 
@@ -88,7 +97,6 @@ private:
 
     static void run(std::function<void(void)> fn);
     static void runAsync(std::function<void(void)> fn);
-    static void runOnMainThread(std::function<void(void)> fn);
     static void runOnMainThreadAsync(std::function<void(void)> fn);
 
     static QEventDispatcherWasm *g_mainThreadEventDispatcher;
@@ -99,7 +107,7 @@ private:
 
     QTimerInfoList *m_timerInfo = new QTimerInfoList();
     long m_timerId = 0;
-    uint64_t m_timerTargetTime = 0;
+    std::chrono::milliseconds m_timerTargetTime{};
 
 #if QT_CONFIG(thread)
     std::mutex m_mutex;

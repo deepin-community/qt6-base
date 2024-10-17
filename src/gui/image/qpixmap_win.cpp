@@ -164,7 +164,7 @@ static QImage copyImageData(const BITMAPINFOHEADER &header, const RGBQUAD *color
         Q_ASSERT(DWORD(image.sizeInBytes()) == header.biSizeImage);
         memcpy(image.bits(), data, header.biSizeImage);
         if (format == QImage::Format_RGB888)
-            image = image.rgbSwapped();
+            image = std::move(image).rgbSwapped();
         break;
     default:
         Q_UNREACHABLE();
@@ -305,6 +305,7 @@ HBITMAP qt_imageToWinHBITMAP(const QImage &imageIn, int hbitmapFormat)
         return nullptr;
     }
     if (!pixels) {
+        DeleteObject(bitmap);
         qErrnoWarning("%s, did not allocate pixel data", __FUNCTION__);
         return nullptr;
     }

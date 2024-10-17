@@ -6,6 +6,7 @@
 #define QMETAOBJECT_H
 
 #include <QtCore/qobjectdefs.h>
+#include <QtCore/qcompare.h>
 #include <QtCore/qvariant.h>
 
 QT_BEGIN_NAMESPACE
@@ -135,13 +136,13 @@ public:
     }
 #endif
 
-    template <typename... Args>
+    template <typename ReturnArg, typename... Args>
 #ifdef Q_QDOC
     bool
 #else
     QtPrivate::Invoke::IfNotOldStyleArgs<bool, Args...>
 #endif
-    invoke(QObject *obj, Qt::ConnectionType c, QMetaMethodReturnArgument r,
+    invoke(QObject *obj, Qt::ConnectionType c, QTemplatedMetaMethodReturnArgument<ReturnArg> r,
            Args &&... arguments) const
     {
         auto h = QtPrivate::invokeMethodHelper(r, std::forward<Args>(arguments)...);
@@ -157,16 +158,16 @@ public:
 #endif
     invoke(QObject *obj, Qt::ConnectionType c, Args &&... arguments) const
     {
-        return invoke(obj, c, QMetaMethodReturnArgument{}, std::forward<Args>(arguments)...);
+        return invoke(obj, c, QTemplatedMetaMethodReturnArgument<void>{}, std::forward<Args>(arguments)...);
     }
 
-    template <typename... Args>
+    template <typename ReturnArg, typename... Args>
 #ifdef Q_QDOC
     bool
 #else
     QtPrivate::Invoke::IfNotOldStyleArgs<bool, Args...>
 #endif
-    invoke(QObject *obj, QMetaMethodReturnArgument r, Args &&... arguments) const
+    invoke(QObject *obj, QTemplatedMetaMethodReturnArgument<ReturnArg> r, Args &&... arguments) const
     {
         return invoke(obj, Qt::AutoConnection, r, std::forward<Args>(arguments)...);
     }
@@ -182,13 +183,13 @@ public:
         return invoke(obj, Qt::AutoConnection, std::forward<Args>(arguments)...);
     }
 
-    template <typename... Args>
+    template <typename ReturnArg, typename... Args>
 #ifdef Q_QDOC
     bool
 #else
     QtPrivate::Invoke::IfNotOldStyleArgs<bool, Args...>
 #endif
-    invokeOnGadget(void *gadget, QMetaMethodReturnArgument r, Args &&... arguments) const
+    invokeOnGadget(void *gadget, QTemplatedMetaMethodReturnArgument<ReturnArg> r, Args &&... arguments) const
     {
         auto h = QtPrivate::invokeMethodHelper(r, std::forward<Args>(arguments)...);
         return invokeImpl(*this, gadget, Qt::ConnectionType(-1), h.parameterCount(),
@@ -203,7 +204,7 @@ public:
 #endif
     invokeOnGadget(void *gadget, Args &&... arguments) const
     {
-        return invokeOnGadget(gadget, QMetaMethodReturnArgument{}, std::forward<Args>(arguments)...);
+        return invokeOnGadget(gadget, QTemplatedMetaMethodReturnArgument<void>{}, std::forward<Args>(arguments)...);
     }
 
     inline bool isValid() const { return mobj != nullptr; }
@@ -251,10 +252,11 @@ protected:
     friend struct QMetaObject;
     friend struct QMetaObjectPrivate;
     friend class QObject;
-    friend bool operator==(const QMetaMethod &m1, const QMetaMethod &m2) noexcept
-    { return m1.data == m2.data; }
-    friend bool operator!=(const QMetaMethod &m1, const QMetaMethod &m2) noexcept
-    { return !(m1 == m2); }
+
+private:
+    friend bool comparesEqual(const QMetaMethod &lhs, const QMetaMethod &rhs) noexcept
+    { return lhs.data == rhs.data; }
+    Q_DECLARE_EQUALITY_COMPARABLE(QMetaMethod)
 };
 Q_DECLARE_TYPEINFO(QMetaMethod, Q_RELOCATABLE_TYPE);
 

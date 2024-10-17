@@ -107,15 +107,15 @@ bool QBackingStoreRhiSupport::create()
     }
 #endif
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     if (!rhi && m_config.api() == QPlatformBackingStoreRhiConfig::Metal) {
         QRhiMetalInitParams params;
         // For parity with Qt Quick, fall back to OpenGL when there is no Metal (f.ex. in macOS virtual machines).
         if (QRhi::probe(QRhi::Metal, &params)) {
             rhi = QRhi::create(QRhi::Metal, &params, flags);
         } else {
-            qCDebug(lcQpaBackingStore, "Metal does not seem to be supported. Falling back to OpenGL.");
-            rhi = QRhi::create(QRhi::OpenGLES2, &params, flags);
+            qCDebug(lcQpaBackingStore, "Metal does not seem to be supported");
+            return false;
         }
     }
 #endif
@@ -196,13 +196,14 @@ QRhiSwapChain *QBackingStoreRhiSupport::swapChainForWindow(QWindow *window)
 
 bool QBackingStoreRhiSupportWindowWatcher::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::PlatformSurface
-            && static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed)
+    if (event->type() == QEvent::WindowAboutToChangeInternal
+        || (event->type() == QEvent::PlatformSurface
+            && static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed))
     {
         QWindow *window = qobject_cast<QWindow *>(obj);
         auto it = m_rhiSupport->m_swapchains.find(window);
         if (it != m_rhiSupport->m_swapchains.end()) {
-            qCDebug(lcQpaBackingStore) << "SurfaceAboutToBeDestroyed received for tracked window" << window << "cleaning up swapchain";
+            qCDebug(lcQpaBackingStore) << event << "received for" << window << "- cleaning up swapchain";
             auto data = *it;
             m_rhiSupport->m_swapchains.erase(it);
             data.reset(); // deletes 'this'
@@ -264,14 +265,17 @@ bool QBackingStoreRhiSupport::checkForceRhi(QPlatformBackingStoreRhiConfig *outC
         checked = true;
 
         const bool alwaysRhi = qEnvironmentVariableIntValue("QT_WIDGETS_RHI");
-        if (alwaysRhi)
+        const bool highdpiDownscale = qEnvironmentVariableIntValue("QT_WIDGETS_HIGHDPI_DOWNSCALE");
+        if (highdpiDownscale)
+            qCDebug(lcQpaBackingStore) << "Enabling QT_WIDGETS_RHI due to QT_WIDGETS_HIGHDPI_DOWNSCALE";
+        if (alwaysRhi || highdpiDownscale)
             config.setEnabled(true);
 
         // if enabled, choose an api
         if (config.isEnabled()) {
 #if defined(Q_OS_WIN)
             config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
-#elif defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#elif QT_CONFIG(metal)
             config.setApi(QPlatformBackingStoreRhiConfig::Metal);
 #elif QT_CONFIG(opengl)
             config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
@@ -291,7 +295,7 @@ bool QBackingStoreRhiSupport::checkForceRhi(QPlatformBackingStoreRhiConfig *outC
                 if (backend == QStringLiteral("d3d12"))
                     config.setApi(QPlatformBackingStoreRhiConfig::D3D12);
 #endif
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
                 if (backend == QStringLiteral("metal"))
                     config.setApi(QPlatformBackingStoreRhiConfig::Metal);
 #endif

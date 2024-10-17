@@ -18,19 +18,30 @@
 
 #include "qlocale.h"
 
-#include <QtCore/private/qglobal_p.h>
 #include <QtCore/qcalendar.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qnumeric.h>
+#include <QtCore/private/qnumeric_p.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qvarlengtharray.h>
+#ifdef Q_OS_WASM
+#include <private/qstdweb_p.h>
+#endif
 
 #include <limits>
 #include <cmath>
 #include <string_view>
 
 QT_BEGIN_NAMESPACE
+
+template <typename T> struct QSimpleParsedNumber
+{
+    T result;
+    // When used < 0, -used is how much was used, but it was an error.
+    qsizetype used;
+    bool ok() const { return used > 0; }
+};
 
 template <typename MaskType, uchar Lowest> struct QCharacterSetMatch
 {
@@ -94,7 +105,9 @@ struct QLocaleData;
 // Subclassed by Android platform plugin:
 class Q_CORE_EXPORT QSystemLocale
 {
+    Q_DISABLE_COPY_MOVE(QSystemLocale)
     QSystemLocale *next = nullptr; // Maintains a stack.
+
 public:
     QSystemLocale();
     virtual ~QSystemLocale();
@@ -157,7 +170,7 @@ public:
         StandaloneDayNameShort, // QString, in: int
         StandaloneDayNameNarrow // QString, in: int
     };
-    virtual QVariant query(QueryType type, QVariant in = QVariant()) const;
+    virtual QVariant query(QueryType type, QVariant &&in = QVariant()) const;
 
     virtual QLocale fallbackLocale() const;
     inline qsizetype fallbackLocaleIndex() const;
@@ -176,34 +189,34 @@ namespace QIcu {
 struct QLocaleId
 {
     [[nodiscard]] Q_AUTOTEST_EXPORT static QLocaleId fromName(QStringView name);
-    [[nodiscard]] inline bool operator==(QLocaleId other) const
+    [[nodiscard]] inline bool operator==(QLocaleId other) const noexcept
     { return language_id == other.language_id && script_id == other.script_id && territory_id == other.territory_id; }
-    [[nodiscard]] inline bool operator!=(QLocaleId other) const
+    [[nodiscard]] inline bool operator!=(QLocaleId other) const noexcept
     { return !operator==(other); }
-    [[nodiscard]] inline bool isValid() const
+    [[nodiscard]] inline bool isValid() const noexcept
     {
         return language_id <= QLocale::LastLanguage && script_id <= QLocale::LastScript
                 && territory_id <= QLocale::LastTerritory;
     }
-    [[nodiscard]] inline bool matchesAll() const
+    [[nodiscard]] inline bool matchesAll() const noexcept
     {
         return !language_id && !script_id && !territory_id;
     }
     // Use as: filter.accept...(candidate)
-    [[nodiscard]] inline bool acceptLanguage(quint16 lang) const
+    [[nodiscard]] inline bool acceptLanguage(quint16 lang) const noexcept
     {
         // Always reject AnyLanguage (only used for last entry in locale_data array).
         // So, when searching for AnyLanguage, accept everything *but* AnyLanguage.
         return language_id ? lang == language_id : lang;
     }
-    [[nodiscard]] inline bool acceptScriptTerritory(QLocaleId other) const
+    [[nodiscard]] inline bool acceptScriptTerritory(QLocaleId other) const noexcept
     {
         return (!territory_id || other.territory_id == territory_id)
                 && (!script_id || other.script_id == script_id);
     }
 
-    [[nodiscard]] QLocaleId withLikelySubtagsAdded() const;
-    [[nodiscard]] QLocaleId withLikelySubtagsRemoved() const;
+    [[nodiscard]] QLocaleId withLikelySubtagsAdded() const noexcept;
+    [[nodiscard]] QLocaleId withLikelySubtagsRemoved() const noexcept;
 
     [[nodiscard]] QByteArray name(char separator = '-') const;
 
@@ -214,13 +227,25 @@ Q_DECLARE_TYPEINFO(QLocaleId, Q_PRIMITIVE_TYPE);
 
 using CharBuff = QVarLengthArray<char, 256>;
 
+struct ParsingResult
+{
+    enum State { // A duplicate of QValidator::State
+        Invalid,
+        Intermediate,
+        Acceptable
+    };
+
+    State state = Invalid;
+    CharBuff buff;
+};
+
 struct QLocaleData
 {
 public:
     // Having an index for each locale enables us to have diverse sources of
     // data, e.g. calendar locales, as well as the main CLDR-derived data.
-    [[nodiscard]] static qsizetype findLocaleIndex(QLocaleId localeId);
-    [[nodiscard]] static const QLocaleData *c();
+    [[nodiscard]] static qsizetype findLocaleIndex(QLocaleId localeId) noexcept;
+    [[nodiscard]] static const QLocaleData *c() noexcept;
 
     enum DoubleForm {
         DFExponent = 0,
@@ -280,36 +305,28 @@ public:
                                               unsigned flags = NoFlags) const;
 
     // this function is meant to be called with the result of stringToDouble or bytearrayToDouble
+    // so *ok must have been properly set (if not null)
     [[nodiscard]] static float convertDoubleToFloat(double d, bool *ok)
     {
-        if (qIsInf(d))
-            return float(d);
-        if (std::fabs(d) > (std::numeric_limits<float>::max)()) {
-            if (ok)
-                *ok = false;
-            const float huge = std::numeric_limits<float>::infinity();
-            return d < 0 ? -huge : huge;
-        }
-        if (d != 0 && float(d) == 0) {
-            // Values that underflow double already failed. Match them:
-            if (ok)
-                *ok = false;
-            return 0;
-        }
-        return float(d);
+        float result;
+        bool b = convertDoubleTo<float>(d, &result);
+        if (ok && *ok)
+            *ok = b;
+        return result;
     }
 
     [[nodiscard]] double stringToDouble(QStringView str, bool *ok,
                                         QLocale::NumberOptions options) const;
-    [[nodiscard]] qint64 stringToLongLong(QStringView str, int base, bool *ok,
-                                          QLocale::NumberOptions options) const;
-    [[nodiscard]] quint64 stringToUnsLongLong(QStringView str, int base, bool *ok,
-                                              QLocale::NumberOptions options) const;
+    [[nodiscard]] QSimpleParsedNumber<qint64>
+    stringToLongLong(QStringView str, int base, QLocale::NumberOptions options) const;
+    [[nodiscard]] QSimpleParsedNumber<quint64>
+    stringToUnsLongLong(QStringView str, int base, QLocale::NumberOptions options) const;
 
     // this function is used in QIntValidator (QtGui)
-    [[nodiscard]] Q_CORE_EXPORT static qint64 bytearrayToLongLong(QByteArrayView num, int base,
-                                                                  bool *ok);
-    [[nodiscard]] static quint64 bytearrayToUnsLongLong(QByteArrayView num, int base, bool *ok);
+    [[nodiscard]] Q_CORE_EXPORT
+    static QSimpleParsedNumber<qint64> bytearrayToLongLong(QByteArrayView num, int base);
+    [[nodiscard]] static QSimpleParsedNumber<quint64>
+    bytearrayToUnsLongLong(QByteArrayView num, int base);
 
     [[nodiscard]] bool numberToCLocale(QStringView s, QLocale::NumberOptions number_options,
                                        NumberMode mode, CharBuff *result) const;
@@ -361,9 +378,9 @@ public:
     [[nodiscard]] inline NumericData numericData(NumberMode mode) const;
 
     // this function is used in QIntValidator (QtGui)
-    [[nodiscard]] Q_CORE_EXPORT bool validateChars(
-            QStringView str, NumberMode numMode, QByteArray *buff, int decDigits = -1,
-            QLocale::NumberOptions number_options = QLocale::DefaultNumberOptions) const;
+    [[nodiscard]] Q_CORE_EXPORT ParsingResult
+    validateChars(QStringView str, NumberMode numMode, int decDigits = -1,
+                  QLocale::NumberOptions number_options = QLocale::DefaultNumberOptions) const;
 
     // Access to assorted data members:
     [[nodiscard]] QLocaleId id() const
@@ -511,7 +528,7 @@ public:
     // System locale has an m_data all its own; all others have m_data = locale_data + m_index
     const QLocaleData *const m_data;
     QBasicAtomicInt ref;
-    const qsizetype m_index;
+    qsizetype m_index; // System locale needs this updated when m_data->id() changes.
     QLocale::NumberOptions m_numberOptions;
 
     static QBasicAtomicInt s_generation;

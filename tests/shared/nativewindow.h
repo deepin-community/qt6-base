@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef NATIVEWINDOW_H
 #define NATIVEWINDOW_H
@@ -11,35 +11,49 @@
 #  include <UIKit/UIKit.h>
 #  define VIEW_BASE UIView
 #elif defined(Q_OS_WIN)
-#  include <winuser.h>
+#  include <QtCore/qt_windows.h>
 #elif QT_CONFIG(xcb)
 #  include <xcb/xcb.h>
+#elif defined(ANDROID)
+#  include <QtCore/qjniobject.h>
+#  include <QtCore/qjnitypes.h>
+#  include <QtCore/qnativeinterface.h>
+Q_DECLARE_JNI_CLASS(View, "android/view/View")
+Q_DECLARE_JNI_CLASS(ViewParent, "android/view/ViewParent")
 #endif
 
 class NativeWindow
 {
     Q_DISABLE_COPY(NativeWindow)
 public:
+#if defined(Q_OS_MACOS)
+    using Handle = NSView*;
+#elif defined(QT_PLATFORM_UIKIT)
+    using Handle = UIView*;
+#elif defined(Q_OS_WIN)
+    using Handle = HWND;
+#elif QT_CONFIG(xcb)
+    using Handle = xcb_window_t;
+#elif defined(ANDROID)
+    using Handle = QtJniTypes::View;
+#endif
+
     NativeWindow();
     ~NativeWindow();
 
     operator WId() const;
     WId parentWinId() const;
+    bool isParentOf(WId childWinId);
+    void setParent(WId parent);
 
     void setGeometry(const QRect &rect);
     QRect geometry() const;
 
 private:
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
-    VIEW_BASE *m_handle = nullptr;
-#elif defined(Q_OS_WIN)
-    HWND m_handle = nullptr;
-#elif QT_CONFIG(xcb)
-    xcb_window_t m_handle = 0;
-#endif
+    Handle m_handle = {};
 };
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if defined(Q_OS_MACOS) || defined(QT_PLATFORM_UIKIT)
 
 @interface View : VIEW_BASE
 @end
@@ -92,6 +106,20 @@ WId NativeWindow::parentWinId() const
     return WId(m_handle.superview);
 }
 
+bool NativeWindow::isParentOf(WId childWinId)
+{
+    auto *subview = reinterpret_cast<Handle>(childWinId);
+    return subview.superview == m_handle;
+}
+
+void NativeWindow::setParent(WId parent)
+{
+    if (auto *superview = reinterpret_cast<Handle>(parent))
+        [superview addSubview:m_handle];
+    else
+        [m_handle removeFromSuperview];
+}
+
 #elif defined(Q_OS_WIN)
 
 NativeWindow::NativeWindow()
@@ -139,6 +167,16 @@ NativeWindow::operator WId() const
 WId NativeWindow::parentWinId() const
 {
     return WId(GetAncestor(m_handle, GA_PARENT));
+}
+
+bool NativeWindow::isParentOf(WId childWinId)
+{
+    return GetAncestor(Handle(childWinId), GA_PARENT) == m_handle;
+}
+
+void NativeWindow::setParent(WId parent)
+{
+    SetParent(m_handle, Handle(parent));
 }
 
 #elif QT_CONFIG(xcb)
@@ -200,7 +238,65 @@ WId NativeWindow::parentWinId() const
     xcb_query_tree_reply_t *tree = xcb_query_tree_reply(
         connection, xcb_query_tree(connection, m_handle), nullptr);
     const auto cleanup = qScopeGuard([&]{ free(tree); });
-    return tree->parent;
+    return tree ? tree->parent : 0;
+}
+
+bool NativeWindow::isParentOf(WId childWinId)
+{
+    xcb_query_tree_reply_t *tree = xcb_query_tree_reply(
+        connection, xcb_query_tree(connection, Handle(childWinId)), nullptr);
+    const auto cleanup = qScopeGuard([&]{ free(tree); });
+    return tree->parent == m_handle;
+}
+
+void NativeWindow::setParent(WId parent)
+{
+    xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
+
+    xcb_reparent_window(connection, m_handle,
+        parent ? Handle(parent) : screen->root, 0, 0);
+}
+
+#elif defined (ANDROID)
+NativeWindow::NativeWindow()
+{
+    m_handle = QJniObject::construct<QtJniTypes::View, QtJniTypes::Context>(
+                                                QNativeInterface::QAndroidApplication::context());
+    m_handle.callMethod<void>("setBackgroundColor", 0xffffaaff);
+}
+
+NativeWindow::~NativeWindow()
+{
+}
+
+NativeWindow::operator WId() const
+{
+    return reinterpret_cast<WId>(m_handle.object());
+}
+
+void NativeWindow::setGeometry(const QRect &rect)
+{
+    // No-op, the view geometry is handled by the QWindow constructed from it
+}
+
+QRect NativeWindow::geometry() const
+{
+    int x = m_handle.callMethod<jint>("getX");
+    int y = m_handle.callMethod<jint>("getY");
+    int w = m_handle.callMethod<jint>("getWidth");
+    int h = m_handle.callMethod<jint>("getHeight");
+    return QRect(x, y, w, h);
+}
+
+WId NativeWindow::parentWinId() const
+{
+    // TODO note, the returned object is a ViewParent, not necessarily
+    // a View - what is this used for?
+    using namespace QtJniTypes;
+    ViewParent parentView = m_handle.callMethod<ViewParent>("getParent");
+    if (parentView.isValid())
+        return reinterpret_cast<WId>(parentView.object());
+    return 0L;
 }
 
 #endif

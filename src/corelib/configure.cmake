@@ -26,6 +26,9 @@ qt_find_package(WrapSystemDoubleConversion
                 PROVIDED_TARGETS WrapSystemDoubleConversion::WrapSystemDoubleConversion
                 MODULE_NAME core QMAKE_LIB doubleconversion)
 qt_find_package(GLIB2 PROVIDED_TARGETS GLIB2::GLIB2 MODULE_NAME core QMAKE_LIB glib)
+qt_find_package_extend_sbom(TARGETS GLIB2::GLIB2
+    LICENSE_EXPRESSION "LGPL-2.1-or-later"
+)
 qt_find_package(ICU 50.1 COMPONENTS i18n uc data PROVIDED_TARGETS ICU::i18n ICU::uc ICU::data
     MODULE_NAME core QMAKE_LIB icu)
 
@@ -35,6 +38,9 @@ endif()
 qt_find_package(Libsystemd PROVIDED_TARGETS PkgConfig::Libsystemd MODULE_NAME core QMAKE_LIB journald)
 qt_find_package(WrapAtomic PROVIDED_TARGETS WrapAtomic::WrapAtomic MODULE_NAME core QMAKE_LIB libatomic)
 qt_find_package(Libb2 PROVIDED_TARGETS Libb2::Libb2 MODULE_NAME core QMAKE_LIB libb2)
+qt_find_package_extend_sbom(TARGETS Libb2::Libb2
+    LICENSE_EXPRESSION "CC0-1.0"
+)
 qt_find_package(WrapRt PROVIDED_TARGETS WrapRt::WrapRt MODULE_NAME core QMAKE_LIB librt)
 qt_find_package(WrapSystemPCRE2 10.20 PROVIDED_TARGETS WrapSystemPCRE2::WrapSystemPCRE2 MODULE_NAME core QMAKE_LIB pcre2)
 set_package_properties(WrapPCRE2 PROPERTIES TYPE REQUIRED)
@@ -137,42 +143,6 @@ int pipes[2];
 }
 ")
 
-# cxx11_future
-if (UNIX AND NOT ANDROID AND NOT QNX AND NOT INTEGRITY)
-    set(cxx11_future_TEST_LIBRARIES pthread)
-endif()
-qt_config_compile_test(cxx11_future
-    LABEL "C++11 <future>"
-    LIBRARIES
-     "${cxx11_future_TEST_LIBRARIES}"
-    CODE
-"#include <future>
-
-int main(void)
-{
-    /* BEGIN TEST: */
-std::future<int> f = std::async([]() { return 42; });
-(void)f.get();
-    /* END TEST: */
-    return 0;
-}
-")
-
-# cxx11_random
-qt_config_compile_test(cxx11_random
-    LABEL "C++11 <random>"
-    CODE
-"#include <random>
-
-int main(void)
-{
-    /* BEGIN TEST: */
-std::mt19937 mt(0);
-    /* END TEST: */
-    return 0;
-}
-")
-
 # cxx17_filesystem
 qt_config_compile_test(cxx17_filesystem
     LABEL "C++17 <filesystem>"
@@ -207,24 +177,6 @@ int main(void)
     return 0;
 }"
 )
-
-# eventfd
-qt_config_compile_test(eventfd
-    LABEL "eventfd"
-    CODE
-"#include <sys/eventfd.h>
-
-int main(void)
-{
-    /* BEGIN TEST: */
-eventfd_t value;
-int fd = eventfd(0, EFD_CLOEXEC);
-eventfd_read(fd, &value);
-eventfd_write(fd, value);
-    /* END TEST: */
-    return 0;
-}
-")
 
 # futimens
 qt_config_compile_test(futimens
@@ -270,21 +222,6 @@ int main(void)
     /* BEGIN TEST: */
 char buf[32];
 (void) getentropy(buf, sizeof(buf));
-    /* END TEST: */
-    return 0;
-}
-")
-
-# glibc
-qt_config_compile_test(glibc
-    LABEL "GNU libc"
-    CODE
-"#include <stdlib.h>
-
-int main(void)
-{
-    /* BEGIN TEST: */
-return __GLIBC__;
     /* END TEST: */
     return 0;
 }
@@ -393,6 +330,37 @@ linkat(AT_FDCWD, \"foo\", AT_FDCWD, \"bar\", AT_SYMLINK_FOLLOW);
 }
 ")
 
+# memmem
+qt_config_compile_test(memmem
+    LABEL "memmem()"
+    CODE
+#define _APPLE_SAUCE 1  /* Apple doesn't require anything */
+"#define _BSD_SOURCE 1   /* For FreeBSD */
+#define _GNU_SOURCE 1   /* For glibc, Bionic */
+#include <string.h>
+
+int main(void)
+{
+    const void *r = memmem(\"abc\", 3, \"bc\", 2);
+    (void)r;
+    return 0;
+}")
+
+# memrchr
+qt_config_compile_test(memrchr
+    LABEL "memrchr()"
+    CODE
+"#define _BSD_SOURCE 1   /* For FreeBSD */
+#define _GNU_SOURCE 1   /* For glibc, Bionic */
+#include <string.h>
+
+int main(void)
+{
+    const void *r = memrchr(\"abc\", 'a', 3);
+    (void)r;
+    return 0;
+}")
+
 # ppoll
 qt_config_compile_test(ppoll
     LABEL "ppoll()"
@@ -465,44 +433,6 @@ renameat2(AT_FDCWD, argv[1], AT_FDCWD, argv[2], RENAME_NOREPLACE | RENAME_WHITEO
 }
 ")
 
-# statx
-qt_config_compile_test(statx
-    LABEL "statx() in libc"
-    CODE
-"#define _ATFILE_SOURCE 1
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
-
-int main(void)
-{
-    /* BEGIN TEST: */
-struct statx statxbuf;
-unsigned int mask = STATX_BASIC_STATS;
-return statx(AT_FDCWD, \"\", AT_STATX_SYNC_AS_STAT, mask, &statxbuf);
-    /* END TEST: */
-    return 0;
-}
-")
-
-# syslog
-qt_config_compile_test(syslog
-    LABEL "syslog"
-    CODE
-"#include <syslog.h>
-
-int main(void)
-{
-    /* BEGIN TEST: */
-openlog(\"qt\", 0, LOG_USER);
-syslog(LOG_INFO, \"configure\");
-closelog();
-    /* END TEST: */
-    return 0;
-}
-")
-
 # cpp_winrt
 qt_config_compile_test(cpp_winrt
     LABEL "cpp/winrt"
@@ -518,39 +448,52 @@ int main(void)
 }
 ")
 
-# xlocalescanprint
-qt_config_compile_test(xlocalescanprint
-    LABEL "xlocale.h (or equivalents)"
+# <stacktrace>
+qt_config_compile_test(cxx23_stacktrace
+    LABEL "C++23 <stacktrace> support"
     CODE
-"#define QT_BEGIN_NAMESPACE
-#define QT_END_NAMESPACE
-
-#ifdef _MSVC_VER
-#define Q_CC_MSVC _MSVC_VER
+"#include <stacktrace>
+#if !defined(__cpp_lib_stacktrace)
+#error
 #endif
-
-#define QT_NO_DOUBLECONVERSION
-
-#include QDSP_P_H
 
 int main(void)
 {
     /* BEGIN TEST: */
-#ifdef _MSVC_VER
-_locale_t invalidLocale = NULL;
-#else
-locale_t invalidLocale = NULL;
-#endif
-double a = 3.4;
-qDoubleSnprintf(argv[0], 1, invalidLocale, \"invalid format\", a);
-qDoubleSscanf(argv[0], invalidLocale, \"invalid format\", &a, &argc);
+const auto backtrace = std::stacktrace::current();
     /* END TEST: */
-    return 0;
 }
-"# FIXME: qmake: DEFINES += QDSP_P_H=$$shell_quote(\"@PWD@/text/qdoublescanprint_p.h\")
+"
+    CXX_STANDARD 23
 )
 
+# <future>
+qt_config_compile_test(cxx_std_async_noncopyable
+    LABEL "std::async() NonCopyable"
+    CODE
+"// Calling std::async with lambda which takes non-copyable argument causes compilation error on
+// some platforms (VxWorks 24.03 and older with C++17-compatibility for example)
+#include <future>
 
+class NonCopyable {
+public:
+    NonCopyable(const NonCopyable&) = delete;
+    NonCopyable(NonCopyable&&) = default;
+
+    NonCopyable(int value)
+        :value (value)
+    {}
+
+    int value;
+};
+
+int main(int argc, char** argv) {
+    return std::async(
+        std::launch::deferred,
+        [](NonCopyable value) { return value.value; },
+        NonCopyable(argc - 1)).get();
+}
+")
 
 #### Features
 
@@ -580,7 +523,7 @@ qt_feature("system-doubleconversion" PRIVATE
 )
 qt_feature("cxx11_future" PUBLIC
     LABEL "C++11 <future>"
-    CONDITION TEST_cxx11_future
+    CONDITION TEST_cxx_std_async_noncopyable
 )
 qt_feature("cxx17_filesystem" PUBLIC
     LABEL "C++17 <filesystem>"
@@ -590,11 +533,6 @@ qt_feature("dladdr" PRIVATE
     LABEL "dladdr"
     CONDITION QT_FEATURE_dlopen AND TEST_dladdr
 )
-qt_feature("eventfd" PUBLIC
-    LABEL "eventfd"
-    CONDITION NOT WASM AND TEST_eventfd
-)
-qt_feature_definition("eventfd" "QT_NO_EVENTFD" NEGATE VALUE "1")
 qt_feature("futimens" PRIVATE
     LABEL "futimens()"
     CONDITION NOT WIN32 AND TEST_futimens
@@ -613,11 +551,6 @@ qt_feature("glib" PUBLIC PRIVATE
     CONDITION GLIB2_FOUND
 )
 qt_feature_definition("glib" "QT_NO_GLIB" NEGATE VALUE "1")
-qt_feature("glibc" PRIVATE
-    LABEL "GNU libc"
-    AUTODETECT ( LINUX OR HURD )
-    CONDITION TEST_glibc
-)
 qt_feature("icu" PRIVATE
     LABEL "ICU"
     AUTODETECT NOT WIN32
@@ -657,6 +590,14 @@ qt_feature("linkat" PRIVATE
 qt_feature("std-atomic64" PUBLIC
     LABEL "64 bit atomic operations"
     CONDITION WrapAtomic_FOUND
+)
+qt_feature("memmem" PRIVATE
+    LABEL "C library function memmem()"
+    CONDITION TEST_memmem
+)
+qt_feature("memrchr" PRIVATE
+    LABEL "C library function memrchr()"
+    CONDITION TEST_memrchr
 )
 qt_feature("mimetype" PUBLIC
     SECTION "Utilities"
@@ -703,7 +644,7 @@ qt_feature("poll_select" PRIVATE
 qt_feature_definition("poll_select" "QT_NO_NATIVE_POLL")
 qt_feature("posix_sem" PRIVATE
     LABEL "POSIX semaphores"
-    CONDITION TEST_posix_sem
+    CONDITION TEST_posix_sem AND QT_FEATURE_systemsemaphore
 )
 qt_feature("posix_shm" PRIVATE
     LABEL "POSIX shared memory"
@@ -722,18 +663,13 @@ qt_feature("slog2" PRIVATE
     LABEL "slog2"
     CONDITION Slog2_FOUND
 )
-qt_feature("statx" PRIVATE
-    LABEL "statx() in libc"
-    CONDITION ( LINUX OR HURD ) AND TEST_statx
-)
 qt_feature("syslog" PRIVATE
     LABEL "syslog"
     AUTODETECT OFF
-    CONDITION TEST_syslog
 )
 qt_feature("sysv_sem" PRIVATE
     LABEL "System V / XSI semaphores"
-    CONDITION TEST_sysv_sem
+    CONDITION TEST_sysv_sem AND QT_FEATURE_systemsemaphore
 )
 qt_feature("sysv_shm" PRIVATE
     LABEL "System V / XSI shared memory"
@@ -755,6 +691,10 @@ qt_feature_definition("regularexpression" "QT_NO_REGULAREXPRESSION" NEGATE VALUE
 qt_feature("backtrace" PRIVATE
     LABEL "backtrace"
     CONDITION UNIX AND QT_FEATURE_regularexpression AND WrapBacktrace_FOUND
+)
+qt_feature("cxx23_stacktrace" PRIVATE
+    LABEL "C++23 <stacktrace>"
+    CONDITION TEST_cxx23_stacktrace AND QT_FEATURE_cxx2b
 )
 qt_feature("sharedmemory" PUBLIC
     SECTION "Kernel"
@@ -959,7 +899,14 @@ qt_feature("timezone" PUBLIC
     SECTION "Utilities"
     LABEL "QTimeZone"
     PURPOSE "Provides support for time-zone handling."
-    CONDITION NOT WASM
+    CONDITION NOT WASM AND NOT VXWORKS
+)
+qt_feature("timezone_locale" PRIVATE
+    SECTION "Utilities"
+    LABEL "QTimeZone"
+    PURPOSE "Provides support for localized time-zone display names."
+    CONDITION
+        QT_FEATURE_timezone AND ( ( UNIX AND NOT APPLE AND NOT ANDROID ) OR QT_FEATURE_icu )
 )
 qt_feature("datetimeparser" PRIVATE
     SECTION "Utilities"
@@ -1026,6 +973,7 @@ qt_feature("openssl-hash" PRIVATE
 
 qt_configure_add_summary_section(NAME "Qt Core")
 qt_configure_add_summary_entry(ARGS "backtrace")
+qt_configure_add_summary_entry(ARGS "cxx23_stacktrace")
 qt_configure_add_summary_entry(ARGS "doubleconversion")
 qt_configure_add_summary_entry(ARGS "system-doubleconversion")
 qt_configure_add_summary_entry(ARGS "forkfd_pidfd" CONDITION LINUX)
@@ -1057,16 +1005,6 @@ qt_configure_add_report_entry(
     TYPE NOTE
     MESSAGE "journald, syslog or slog2 integration is enabled.  If your users intend to develop applications against this build, ensure that the IDEs they use either set QT_FORCE_STDERR_LOGGING to 1 or are able to read the logged output from journald, syslog or slog2."
     CONDITION QT_FEATURE_journald OR QT_FEATURE_syslog OR ( QNX AND QT_FEATURE_slog2 )
-)
-qt_configure_add_report_entry(
-    TYPE ERROR
-    MESSAGE "C++11 <random> is required and is missing or failed to compile."
-    CONDITION NOT TEST_cxx11_random
-)
-qt_configure_add_report_entry(
-    TYPE ERROR
-    MESSAGE "Your C library does not provide sscanf_l or snprintf_l.  You need to use libdouble-conversion for double/string conversion."
-    CONDITION INPUT_doubleconversion STREQUAL 'no' AND NOT TEST_xlocalescanprint
 )
 qt_configure_add_report_entry(
     TYPE ERROR

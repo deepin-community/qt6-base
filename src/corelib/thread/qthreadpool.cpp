@@ -6,6 +6,8 @@
 #include "qdeadlinetimer.h"
 #include "qcoreapplication.h"
 
+#include <QtCore/qpointer.h>
+
 #include <algorithm>
 #include <memory>
 
@@ -87,7 +89,7 @@ void QThreadPoolThread::run()
             if (manager->queue.isEmpty())
                 break;
 
-            QueuePage *page = manager->queue.first();
+            QueuePage *page = manager->queue.constFirst();
             r = page->pop();
 
             if (page->isFinished()) {
@@ -210,7 +212,7 @@ void QThreadPoolPrivate::tryToStartMoreThreads()
 {
     // try to push tasks on the queue to any available threads
     while (!queue.isEmpty()) {
-        QueuePage *page = queue.first();
+        QueuePage *page = queue.constFirst();
         if (!tryStart(page->first()))
             break;
 
@@ -256,7 +258,7 @@ void QThreadPoolPrivate::startThread(QRunnable *runnable)
 /*!
     \internal
 
-    Helper function only to be called from waitForDone(int)
+    Helper function only to be called from waitForDone()
 
     Deletes all current threads.
 */
@@ -283,22 +285,17 @@ void QThreadPoolPrivate::reset()
 /*!
     \internal
 
-    Helper function only to be called from waitForDone(int)
+    Helper function only to be called from the public waitForDone()
 */
 bool QThreadPoolPrivate::waitForDone(const QDeadlineTimer &timer)
 {
+    QMutexLocker locker(&mutex);
     while (!(queue.isEmpty() && activeThreads == 0) && !timer.hasExpired())
         noActiveThreads.wait(&mutex, timer);
 
-    return queue.isEmpty() && activeThreads == 0;
-}
-
-bool QThreadPoolPrivate::waitForDone(int msecs)
-{
-    QMutexLocker locker(&mutex);
-    QDeadlineTimer timer(msecs);
-    if (!waitForDone(timer))
+    if (!queue.isEmpty() || activeThreads)
         return false;
+
     reset();
     // New jobs might have started during reset, but return anyway
     // as the active thread and task count did reach 0 once, and
@@ -484,8 +481,13 @@ QThreadPool *QThreadPoolPrivate::qtGuiInstance()
     Q_CONSTINIT static QBasicMutex theMutex;
 
     const QMutexLocker locker(&theMutex);
-    if (guiInstance.isNull() && !QCoreApplication::closingDown())
+    if (guiInstance.isNull() && !QCoreApplication::closingDown()) {
         guiInstance = new QThreadPool();
+        // Limit max thread to avoid too many parallel threads.
+        // We are not optimized for much more than 4 or 8 threads.
+        if (guiInstance && guiInstance->maxThreadCount() > 4)
+            guiInstance->setMaxThreadCount(qBound(4, guiInstance->maxThreadCount() / 2, 8));
+    }
     return guiInstance;
 }
 
@@ -596,18 +598,17 @@ bool QThreadPool::tryStart(QRunnable *runnable)
 
 int QThreadPool::expiryTimeout() const
 {
+    using namespace std::chrono;
     Q_D(const QThreadPool);
     QMutexLocker locker(&d->mutex);
-    return d->expiryTimeout;
+    return duration_cast<milliseconds>(d->expiryTimeout).count();
 }
 
 void QThreadPool::setExpiryTimeout(int expiryTimeout)
 {
     Q_D(QThreadPool);
     QMutexLocker locker(&d->mutex);
-    if (d->expiryTimeout == expiryTimeout)
-        return;
-    d->expiryTimeout = expiryTimeout;
+    d->expiryTimeout = std::chrono::milliseconds(expiryTimeout);
 }
 
 /*! \property QThreadPool::maxThreadCount
@@ -806,15 +807,24 @@ void QThreadPool::startOnReservedThread(QRunnable *runnable)
 */
 
 /*!
+    \fn bool QThreadPool::waitForDone(int msecs)
     Waits up to \a msecs milliseconds for all threads to exit and removes all
     threads from the thread pool. Returns \c true if all threads were removed;
-    otherwise it returns \c false. If \a msecs is -1 (the default), the timeout
-    is ignored (waits for the last thread to exit).
+    otherwise it returns \c false. If \a msecs is -1, this function waits for
+    the last thread to exit.
 */
-bool QThreadPool::waitForDone(int msecs)
+
+/*!
+    \since 6.8
+
+    Waits until \a deadline expires for all threads to exit and removes all
+    threads from the thread pool. Returns \c true if all threads were removed;
+    otherwise it returns \c false.
+*/
+bool QThreadPool::waitForDone(QDeadlineTimer deadline)
 {
     Q_D(QThreadPool);
-    return d->waitForDone(msecs);
+    return d->waitForDone(deadline);
 }
 
 /*!

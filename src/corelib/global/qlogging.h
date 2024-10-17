@@ -28,22 +28,27 @@ class QNoDebug;
 
 enum QtMsgType {
     QtDebugMsg,
+    QT7_ONLY(QtInfoMsg,)
     QtWarningMsg,
     QtCriticalMsg,
     QtFatalMsg,
-    QtInfoMsg,
-    QtSystemMsg = QtCriticalMsg
+    QT6_ONLY(QtInfoMsg,)
+#if QT_DEPRECATED_SINCE(6, 7)
+    QtSystemMsg Q_DECL_ENUMERATOR_DEPRECATED_X("Use QtCriticalMsg instead.") = QtCriticalMsg
+#endif
 };
 
+class QInternalMessageLogContext;
 class QMessageLogContext
 {
     Q_DISABLE_COPY(QMessageLogContext)
 public:
+    static constexpr int CurrentVersion = 2;
     constexpr QMessageLogContext() noexcept = default;
     constexpr QMessageLogContext(const char *fileName, int lineNumber, const char *functionName, const char *categoryName) noexcept
         : line(lineNumber), file(fileName), function(functionName), category(categoryName) {}
 
-    int version = 2;
+    int version = CurrentVersion;
     int line = 0;
     const char *file = nullptr;
     const char *function = nullptr;
@@ -52,8 +57,8 @@ public:
 private:
     QMessageLogContext &copyContextFrom(const QMessageLogContext &logContext) noexcept;
 
+    friend class QInternalMessageLogContext;
     friend class QMessageLogger;
-    friend class QDebug;
 };
 
 class QLoggingCategory;

@@ -275,9 +275,9 @@ void QTabBar::initStyleOption(QStyleOptionTab *option, int tabIndex) const
     returns the visual geometry of a single tab.
 
     \table 100%
-    \row \li \inlineimage fusion-tabbar.png Screenshot of a Fusion style tab bar
+    \row \li \inlineimage {fusion-tabbar.png} {Screenshot of a Fusion style tab bar}
          \li A tab bar shown in the \l{Qt Widget Gallery}{Fusion widget style}.
-    \row \li \inlineimage fusion-tabbar-truncated.png Screenshot of a truncated Fusion tab bar
+    \row \li \inlineimage {fusion-tabbar-truncated.png} {Screenshot of a truncated Fusion tab bar}
          \li A truncated tab bar shown in the Fusion widget style.
     \endtable
 
@@ -366,12 +366,14 @@ void QTabBarPrivate::init()
     leftB = new QToolButton(q);
     leftB->setObjectName(u"ScrollLeftButton"_s);
     leftB->setAutoRepeat(true);
-    QObject::connect(leftB, SIGNAL(clicked()), q, SLOT(_q_scrollTabs()));
+    QObjectPrivate::connect(leftB, &QToolButton::clicked,
+                            this, &QTabBarPrivate::scrollTabs);
     leftB->hide();
     rightB = new QToolButton(q);
     rightB->setObjectName(u"ScrollRightButton"_s);
     rightB->setAutoRepeat(true);
-    QObject::connect(rightB, SIGNAL(clicked()), q, SLOT(_q_scrollTabs()));
+    QObjectPrivate::connect(rightB, &QToolButton::clicked,
+                            this, &QTabBarPrivate::scrollTabs);
     rightB->hide();
 #ifdef QT_KEYPAD_NAVIGATION
     if (QApplicationPrivate::keypadNavigationEnabled()) {
@@ -680,7 +682,10 @@ void QTabBarPrivate::makeVisible(int index)
     const int scrolledTabBarStart = qMax(1, scrollRect.left() + scrollOffset);
     const int scrolledTabBarEnd = qMin(lastTabEnd - 1, scrollRect.right() + scrollOffset);
 
-    if (tabStart < scrolledTabBarStart) {
+     if (available >= lastTabEnd) {
+        // the entire tabbar fits, reset scroll
+        scrollOffset = 0;
+    } else if (tabStart < scrolledTabBarStart) {
         // Tab is outside on the left, so scroll left.
         scrollOffset = tabStart - scrollRect.left();
     } else if (tabEnd > scrolledTabBarEnd) {
@@ -689,9 +694,6 @@ void QTabBarPrivate::makeVisible(int index)
     } else if (scrollOffset + entireScrollRect.width() > lastTabEnd + 1) {
         // fill any free space on the right without overshooting
         scrollOffset = qMax(0, lastTabEnd - entireScrollRect.width() + 1);
-    } else if (available >= lastTabEnd) {
-        // the entire tabbar fits, reset scroll
-        scrollOffset = 0;
     }
 
     leftB->setEnabled(scrollOffset > -scrollRect.left());
@@ -765,7 +767,7 @@ void QTabBarPrivate::autoHideTabs()
         q->setVisible(q->count() > 1);
 }
 
-void QTabBarPrivate::_q_closeTab()
+void QTabBarPrivate::closeTab()
 {
     Q_Q(QTabBar);
     QObject *object = q->sender();
@@ -788,7 +790,7 @@ void QTabBarPrivate::_q_closeTab()
         emit q->tabCloseRequested(tabToClose);
 }
 
-void QTabBarPrivate::_q_scrollTabs()
+void QTabBarPrivate::scrollTabs()
 {
     Q_Q(QTabBar);
     const QObject *sender = q->sender();
@@ -978,7 +980,8 @@ int QTabBar::insertTab(int index, const QIcon& icon, const QString &text)
         initStyleOption(&opt, index);
         ButtonPosition closeSide = (ButtonPosition)style()->styleHint(QStyle::SH_TabBar_CloseButtonPosition, nullptr, this);
         QAbstractButton *closeButton = new CloseButton(this);
-        connect(closeButton, SIGNAL(clicked()), this, SLOT(_q_closeTab()));
+        QObjectPrivate::connect(closeButton, &CloseButton::clicked,
+                                d, &QTabBarPrivate::closeTab);
         setTabButton(index, closeSide, closeButton);
     }
 
@@ -2582,7 +2585,8 @@ void QTabBar::setTabsClosable(bool closable)
                 continue;
             newButtons = true;
             QAbstractButton *closeButton = new CloseButton(this);
-            connect(closeButton, SIGNAL(clicked()), this, SLOT(_q_closeTab()));
+            QObjectPrivate::connect(closeButton, &CloseButton::clicked,
+                                    d, &QTabBarPrivate::closeTab);
             setTabButton(i, closeSide, closeButton);
         }
         if (newButtons)

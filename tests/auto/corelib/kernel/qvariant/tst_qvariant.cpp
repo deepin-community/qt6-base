@@ -1,9 +1,11 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qvariant.h>
+
+#include <QtCore/qttypetraits.h>
 
 // don't assume <type_traits>
 template <typename T, typename U>
@@ -76,6 +78,7 @@ CHECK_GET(MyVariant, const &&);
 #include <QUrl>
 #include <QUuid>
 
+#include <private/qcomparisontesthelper_p.h>
 #include <private/qlocale_p.h>
 #include <private/qmetatype_p.h>
 #include "tst_qvariant_common.h"
@@ -290,6 +293,7 @@ private slots:
     void variantHash();
 
     void convertToQUint8() const;
+    void compareCompiles() const;
     void compareNumerics_data() const;
     void compareNumerics() const;
     void comparePointers() const;
@@ -305,6 +309,7 @@ private slots:
     void loadBrokenUserType();
 
     void invalidDate() const;
+    void compareCustomTypes_data() const;
     void compareCustomTypes() const;
     void timeToDateTime() const;
     void copyingUserTypes() const;
@@ -442,10 +447,20 @@ void tst_QVariant::constructor()
     QVERIFY(var3.isNull());
     QVERIFY(var3.isValid());
 
+    QVariant var3a = QVariant::fromMetaType(QMetaType::fromType<QString>());
+    QCOMPARE(var3a.typeName(), "QString");
+    QVERIFY(var3a.isNull());
+    QVERIFY(var3a.isValid());
+
     QVariant var4 {QMetaType()};
     QCOMPARE(var4.typeId(), QMetaType::UnknownType);
     QVERIFY(var4.isNull());
     QVERIFY(!var4.isValid());
+
+    QVariant var4a = QVariant::fromMetaType(QMetaType());
+    QCOMPARE(var4a.typeId(), QMetaType::UnknownType);
+    QVERIFY(var4a.isNull());
+    QVERIFY(!var4a.isValid());
 
     QVariant var5(QLatin1String("hallo"));
     QCOMPARE(var5.typeId(), QMetaType::QString);
@@ -489,6 +504,14 @@ void tst_QVariant::constructor_invalid()
     }
     {
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression("^Trying to construct an instance of an invalid type"));
+        QVariant variant = QVariant::fromMetaType(QMetaType(typeId));
+        QVERIFY(!variant.isValid());
+        QVERIFY(variant.isNull());
+        QCOMPARE(variant.typeId(), int(QMetaType::UnknownType));
+        QCOMPARE(variant.userType(), int(QMetaType::UnknownType));
+    }
+    {
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("^Trying to construct an instance of an invalid type"));
         QVariant variant(QMetaType(typeId), /* copy */ nullptr);
         QVERIFY(!variant.isValid());
         QVERIFY(variant.isNull());
@@ -522,6 +545,9 @@ void tst_QVariant::isNull()
 
     var3 = QVariant(QMetaType::fromType<QString>());
     QVERIFY( var3.isNull() );
+
+    var3.setValue(QString());
+    QVERIFY( !var3.isNull() );
 
     QVariant var4( 0 );
     QVERIFY( !var4.isNull() );
@@ -1989,7 +2015,7 @@ void tst_QVariant::operator_eq_eq()
     QFETCH( QVariant, left );
     QFETCH( QVariant, right );
     QFETCH( bool, equal );
-    QCOMPARE( left == right, equal );
+    QT_TEST_EQUALITY_OPS(left, right, equal);
 }
 
 #if QT_DEPRECATED_SINCE(6, 0)
@@ -2962,6 +2988,11 @@ void tst_QVariant::convertToQUint8() const
     }
 }
 
+void tst_QVariant::compareCompiles() const
+{
+    QTestPrivate::testEqualityOperatorsCompile<QVariant>();
+}
+
 void tst_QVariant::compareNumerics_data() const
 {
     QTest::addColumn<QVariant>("v1");
@@ -2979,9 +3010,11 @@ void tst_QVariant::compareNumerics_data() const
                         QString::number(v.toULongLong()) :
                         QString::number(v.toLongLong());
         switch (v.typeId()) {
-        case QMetaType::Char:
         case QMetaType::Char16:
+            return QString::number(qvariant_cast<char16_t>(v));
         case QMetaType::Char32:
+            return QString::number(qvariant_cast<char32_t>(v));
+        case QMetaType::Char:
         case QMetaType::UChar:
             return QString::number(v.toUInt());
         case QMetaType::SChar:
@@ -3125,7 +3158,7 @@ QT_WARNING_POP
     addComparePair(LLONG_MIN, quint64(LLONG_MIN) + 1);
     addComparePair(LLONG_MIN + 1, quint64(LLONG_MIN) + 1);
     addComparePair(LLONG_MIN, LLONG_MAX - 1);
-    addComparePair(LLONG_MIN, LLONG_MAX);
+    // addComparePair(LLONG_MIN, LLONG_MAX); // already added by addSingleType()
 
     // floating point
     addComparePair(0.f, 0);
@@ -3133,7 +3166,6 @@ QT_WARNING_POP
     addComparePair(0.f, Q_INT64_C(0));
     addComparePair(0.f, Q_UINT64_C(0));
     addComparePair(0.f, 0.);
-    addComparePair(0.f, 1.);
     addComparePair(0.f, 1.);
     addComparePair(float(1 << 24), 1 << 24);
     addComparePair(float(1 << 24) - 1, (1 << 24) - 1);
@@ -3144,7 +3176,7 @@ QT_WARNING_POP
     addComparePair(qQNaN(), std::numeric_limits<float>::quiet_NaN());
     if (sizeof(qreal) == sizeof(double)) {
         addComparePair(std::numeric_limits<float>::min(), std::numeric_limits<double>::min());
-        addComparePair(std::numeric_limits<float>::min(), std::numeric_limits<double>::min());
+        addComparePair(std::numeric_limits<float>::min(), std::numeric_limits<double>::max());
         addComparePair(std::numeric_limits<float>::max(), std::numeric_limits<double>::min());
         addComparePair(std::numeric_limits<float>::max(), std::numeric_limits<double>::max());
         addComparePair(double(Q_INT64_C(1) << 53), Q_INT64_C(1) << 53);
@@ -3207,25 +3239,38 @@ void tst_QVariant::compareNumerics() const
     QFETCH(QPartialOrdering, result);
     QCOMPARE(QVariant::compare(v1, v2), result);
 
-    QEXPECT_FAIL("invalid-invalid", "needs fixing", Continue);
-    if (result == QPartialOrdering::Equivalent)
-        QCOMPARE_EQ(v1, v2);
-    else
-        QCOMPARE_NE(v1, v2);
+    QEXPECT_FAIL("invalid-invalid", "needs fixing", Abort);
+    QT_TEST_EQUALITY_OPS(v1, v2, is_eq(result));
 }
 
 void tst_QVariant::comparePointers() const
 {
-    class MyClass
+    class NonQObjectClass {};
+    const std::array<NonQObjectClass, 2> arr{ NonQObjectClass{}, NonQObjectClass{} };
+
+    const QVariant nonObjV1 = QVariant::fromValue<const void*>(&arr[0]);
+    const QVariant nonObjV2 = QVariant::fromValue<const void*>(&arr[1]);
+
+    Qt::partial_ordering expectedOrdering = Qt::partial_ordering::equivalent;
+    QCOMPARE(QVariant::compare(nonObjV1, nonObjV1), expectedOrdering);
+    QT_TEST_EQUALITY_OPS(nonObjV1, nonObjV1, is_eq(expectedOrdering));
+
+    expectedOrdering = Qt::partial_ordering::less;
+    QCOMPARE(QVariant::compare(nonObjV1, nonObjV2), expectedOrdering);
+    QT_TEST_EQUALITY_OPS(nonObjV1, nonObjV2, is_eq(expectedOrdering));
+
+    class QObjectClass : public QObject
     {
+    public:
+        QObjectClass(QObject *parent = nullptr) : QObject(parent) {}
     };
+    const QObjectClass c1;
+    const QObjectClass c2;
 
-    MyClass myClass;
-
-    QVariant v  = QVariant::fromValue<void *>(&myClass);
-    QVariant v2 = QVariant::fromValue<void *>(&myClass);
-
-    QCOMPARE(v, v2);
+    const QVariant objV1 = QVariant::fromValue(&c1);
+    const QVariant objV2 = QVariant::fromValue(&c2);
+    QT_TEST_EQUALITY_OPS(objV1, objV1, true);
+    QT_TEST_EQUALITY_OPS(objV1, objV2, false);
 }
 
 struct Data {};
@@ -3424,35 +3469,49 @@ Q_DECLARE_METATYPE(WontCompare);
 struct WillCompare
 {
     int x;
+
+    friend bool operator==(const WillCompare &a, const WillCompare &b)
+    { return a.x == b.x; }
+    friend bool operator<(const WillCompare &a, const WillCompare &b)
+    { return a.x < b.x; }
 };
-bool operator==(const WillCompare &a, const WillCompare &b) { return a.x == b.x; }
 Q_DECLARE_METATYPE(WillCompare);
+
+void tst_QVariant::compareCustomTypes_data() const
+{
+    QTest::addColumn<QVariant>("v1");
+    QTest::addColumn<QVariant>("v2");
+    QTest::addColumn<Qt::partial_ordering>("expectedOrdering");
+
+    QTest::newRow("same_uncomparable")
+            << QVariant::fromValue(WontCompare{0})
+            << QVariant::fromValue(WontCompare{0})
+            << Qt::partial_ordering::unordered;
+
+    QTest::newRow("same_comparable")
+            << QVariant::fromValue(WillCompare{0})
+            << QVariant::fromValue(WillCompare{0})
+            << Qt::partial_ordering::equivalent;
+
+    QTest::newRow("different_comparable")
+            << QVariant::fromValue(WillCompare{1})
+            << QVariant::fromValue(WillCompare{0})
+            << Qt::partial_ordering::greater;
+
+    QTest::newRow("qdatetime_vs_comparable")
+            << QVariant::fromValue(QDateTime::currentDateTimeUtc())
+            << QVariant::fromValue(WillCompare{0})
+            << Qt::partial_ordering::unordered;
+}
 
 void tst_QVariant::compareCustomTypes() const
 {
-    {
-        WontCompare f1{0};
-        const QVariant variant1(QVariant::fromValue(f1));
+    QFETCH(const QVariant, v1);
+    QFETCH(const QVariant, v2);
+    QFETCH(const Qt::partial_ordering, expectedOrdering);
 
-        WontCompare f2{1};
-        const QVariant variant2(QVariant::fromValue(f2));
-
-        /* No comparison operator exists. */
-        QVERIFY(variant1 != variant2);
-        QVERIFY(variant1 != variant1);
-        QVERIFY(variant2 != variant2);
-    }
-    {
-        WillCompare f1{0};
-        const QVariant variant1(QVariant::fromValue(f1));
-
-        WillCompare f2 {1};
-        const QVariant variant2(QVariant::fromValue(f2));
-
-        QVERIFY(variant1 != variant2);
-        QCOMPARE(variant1, variant1);
-        QCOMPARE(variant2, variant2);
-    }
+    QCOMPARE(QVariant::compare(v1, v2), expectedOrdering);
+    QT_TEST_EQUALITY_OPS(v1, v2, is_eq(expectedOrdering));
 }
 void tst_QVariant::timeToDateTime() const
 {
@@ -4373,7 +4432,8 @@ void tst_QVariant::dataStream_data(QDataStream::Version version)
     path = path.prepend(":/stream/").append("/");
     QDir dir(path);
     uint i = 0;
-    foreach (const QFileInfo &fileInfo, dir.entryInfoList(QStringList() << "*.bin")) {
+    const auto entries = dir.entryInfoList(QStringList{u"*.bin"_s});
+    for (const QFileInfo &fileInfo : entries) {
         QTest::newRow((path + fileInfo.fileName()).toLatin1()) << fileInfo.filePath();
         i += 1;
     }
@@ -5796,6 +5856,17 @@ void tst_QVariant::moveOperations()
         const MoveTester tester;
         QVariant::fromValue(std::move(tester));
         QVERIFY(!tester.wasMoved); // we don't want to move from const variables
+    }
+    {
+        QVariant var(std::in_place_type<MoveTester>);
+        const auto p = get_if<MoveTester>(&var);
+        QVERIFY(p);
+        auto &tester = *p;
+        QVERIFY(!tester.wasMoved);
+        [[maybe_unused]] auto copy = var.value<MoveTester>();
+        QVERIFY(!tester.wasMoved);
+        [[maybe_unused]] auto moved = std::move(var).value<MoveTester>();
+        QVERIFY(tester.wasMoved);
     }
 }
 

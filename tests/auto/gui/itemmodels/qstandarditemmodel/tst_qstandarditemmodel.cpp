@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -728,7 +728,7 @@ void tst_QStandardItemModel::data()
     const QMap<int, QVariant> itmData = m_model->itemData(m_model->index(0, 0));
     QCOMPARE(itmData.value(Qt::DisplayRole), QLatin1String("initialitem"));
     QCOMPARE(itmData.value(Qt::ToolTipRole), QLatin1String("tooltip"));
-    QVERIFY(!itmData.contains(Qt::UserRole - 1));
+    QVERIFY(!itmData.contains(Qt::UserRole - 1)); // Qt::UserRole - 1 is used to store flags
     QVERIFY(m_model->itemData(QModelIndex()).isEmpty());
 }
 
@@ -1847,9 +1847,9 @@ void tst_QStandardItemModel::takeChild()  // QTBUG-117900
       QStandardItem base2("base2");
       model2.setItem(0, 0, &base2);
       auto item = new QStandardItem("item1");
-      item->appendRow({new QStandardItem("child")});
-      base1.appendRow({item});
-      base2.appendRow({base1.takeChild(0, 0)});
+      item->appendRow(new QStandardItem("child"));
+      base1.appendRow(item);
+      base2.appendRow(base1.takeChild(0, 0));
       QCOMPARE(base1.child(0, 0), nullptr);
       QCOMPARE(base2.child(0, 0), item);
   }
@@ -1858,9 +1858,9 @@ void tst_QStandardItemModel::takeChild()  // QTBUG-117900
       QStandardItem base1("base1");
       QStandardItem base2("base2");
       auto item = new QStandardItem("item1");
-      item->appendRow({new QStandardItem("child")});
-      base1.appendRow({item});
-      base2.appendRow({base1.takeChild(0, 0)});
+      item->appendRow(new QStandardItem("child"));
+      base1.appendRow(item);
+      base2.appendRow(base1.takeChild(0, 0));
       QCOMPARE(base1.child(0, 0), nullptr);
       QCOMPARE(base2.child(0, 0), item);
   }

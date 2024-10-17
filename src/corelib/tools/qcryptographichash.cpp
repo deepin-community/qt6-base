@@ -270,9 +270,21 @@ static constexpr const char * methodToName(QCryptographicHash::Algorithm method)
     CASE(RealSha3_512, "SHA3-512");
     CASE(Blake2b_512, "BLAKE2B512");
     CASE(Blake2s_256, "BLAKE2S256");
+    // not supported by OpenSSL:
+    CASE(Keccak_224, nullptr);
+    CASE(Keccak_256, nullptr);
+    CASE(Keccak_384, nullptr);
+    CASE(Keccak_512, nullptr);
+    CASE(Blake2b_160, nullptr);
+    CASE(Blake2b_256, nullptr);
+    CASE(Blake2b_384, nullptr);
+    CASE(Blake2s_128, nullptr);
+    CASE(Blake2s_160, nullptr);
+    CASE(Blake2s_224, nullptr);
+    CASE(NumAlgorithms, nullptr);
 #undef CASE
-    default: return nullptr;
     }
+    return nullptr;
 }
 
 /*
@@ -374,7 +386,7 @@ public:
         SHA3Context sha3Context;
 
         enum class Sha3Variant { Sha3, Keccak };
-        void sha3Finish(HashResult &result, int bitCount, Sha3Variant sha3Variant);
+        static void sha3Finish(SHA3Context &ctx, HashResult &result, int bitCount, Sha3Variant sha3Variant);
         blake2b_state blake2bContext;
         blake2s_state blake2sContext;
 #endif
@@ -387,8 +399,8 @@ public:
 };
 
 #ifndef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
-void QCryptographicHashPrivate::State::sha3Finish(HashResult &result, int bitCount,
-                                                  Sha3Variant sha3Variant)
+void QCryptographicHashPrivate::State::sha3Finish(SHA3Context &ctx, HashResult &result,
+                                                  int bitCount, Sha3Variant sha3Variant)
 {
     /*
         FIPS 202 §6.1 defines SHA-3 in terms of calculating the Keccak function
@@ -414,17 +426,15 @@ void QCryptographicHashPrivate::State::sha3Finish(HashResult &result, int bitCou
 
     result.resizeForOverwrite(bitCount / 8);
 
-    SHA3Context copy = sha3Context;
-
     switch (sha3Variant) {
     case Sha3Variant::Sha3:
-        sha3Update(&copy, reinterpret_cast<const BitSequence *>(&sha3FinalSuffix), 2);
+        sha3Update(&ctx, reinterpret_cast<const BitSequence *>(&sha3FinalSuffix), 2);
         break;
     case Sha3Variant::Keccak:
         break;
     }
 
-    sha3Final(&copy, result.data());
+    sha3Final(&ctx, result.data());
 }
 #endif
 
@@ -1022,7 +1032,8 @@ void QCryptographicHashPrivate::State::finalizeUnchecked(QCryptographicHash::Alg
         method == QCryptographicHash::Keccak_256 ||
         method == QCryptographicHash::Keccak_384 ||
         method == QCryptographicHash::Keccak_512) {
-        sha3Finish(result, 8 * hashLengthInternal(method), Sha3Variant::Keccak);
+        SHA3Context copy = sha3Context;
+        sha3Finish(copy, result, 8 * hashLengthInternal(method), Sha3Variant::Keccak);
     } else if (method == QCryptographicHash::Blake2b_160 ||
                method == QCryptographicHash::Blake2b_256 ||
                method == QCryptographicHash::Blake2b_384) {
@@ -1111,14 +1122,16 @@ void QCryptographicHashPrivate::State::finalizeUnchecked(QCryptographicHash::Alg
     case QCryptographicHash::RealSha3_256:
     case QCryptographicHash::RealSha3_384:
     case QCryptographicHash::RealSha3_512: {
-        sha3Finish(result, 8 * hashLengthInternal(method), Sha3Variant::Sha3);
+        SHA3Context copy = sha3Context;
+        sha3Finish(copy, result, 8 * hashLengthInternal(method), Sha3Variant::Sha3);
         break;
     }
     case QCryptographicHash::Keccak_224:
     case QCryptographicHash::Keccak_256:
     case QCryptographicHash::Keccak_384:
     case QCryptographicHash::Keccak_512: {
-        sha3Finish(result, 8 * hashLengthInternal(method), Sha3Variant::Keccak);
+        SHA3Context copy = sha3Context;
+        sha3Finish(copy, result, 8 * hashLengthInternal(method), Sha3Variant::Keccak);
         break;
     }
     case QCryptographicHash::Blake2b_160:
@@ -1153,13 +1166,49 @@ void QCryptographicHashPrivate::State::finalizeUnchecked(QCryptographicHash::Alg
 
   \note In Qt versions prior to 6.3, this function took QByteArray,
   not QByteArrayView.
+
+  \sa hashInto()
 */
 QByteArray QCryptographicHash::hash(QByteArrayView data, Algorithm method)
 {
+    QByteArray ba(hashLengthInternal(method), Qt::Uninitialized);
+    [[maybe_unused]] const auto r = hashInto(ba, data, method);
+    Q_ASSERT(r.size() == ba.size());
+    return ba;
+}
+
+/*!
+    \since 6.8
+    \fn QCryptographicHash::hashInto(QSpan<char> buffer, QSpan<const QByteArrayView> data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<uchar> buffer, QSpan<const QByteArrayView> data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<std::byte> buffer, QSpan<const QByteArrayView> data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<char> buffer, QByteArrayView data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<uchar> buffer, QByteArrayView data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<std::byte> buffer, QByteArrayView data, Algorithm method);
+
+    Returns the hash of \a data using \a method, using \a buffer to store the result.
+
+    If \a data is a span, adds all the byte array views to the hash, in the order given.
+
+    The return value will be a sub-span of \a buffer, unless \a buffer is of
+    insufficient size, in which case a null QByteArrayView is returned.
+
+    \sa hash()
+*/
+QByteArrayView QCryptographicHash::hashInto(QSpan<std::byte> buffer,
+                                            QSpan<const QByteArrayView> data,
+                                            Algorithm method) noexcept
+{
     QCryptographicHashPrivate hash(method);
-    hash.addData(data);
+    for (QByteArrayView part : data)
+        hash.addData(part);
     hash.finalizeUnchecked(); // no mutex needed: no-one but us has access to 'hash'
-    return hash.resultView().toByteArray();
+    auto result = hash.resultView();
+    if (buffer.size() < result.size())
+        return {}; // buffer too small
+    // ### optimize: have the method directly write into `buffer`
+    memcpy(buffer.data(), result.data(), result.size());
+    return buffer.first(result.size());
 }
 
 /*!
@@ -1325,9 +1374,9 @@ using HashBlock = QSmallByteArray<maxHashBlockSize()>;
 static HashBlock xored(const HashBlock &block, quint8 val) noexcept
 {
     // some hints for the optimizer:
-    Q_ASSUME(block.size() >= minHashBlockSize());
-    Q_ASSUME(block.size() <= maxHashBlockSize());
-    Q_ASSUME(block.size() % gcdHashBlockSize() == 0);
+    Q_ASSERT(block.size() >= minHashBlockSize());
+    Q_ASSERT(block.size() <= maxHashBlockSize());
+    Q_ASSERT(block.size() % gcdHashBlockSize() == 0);
     HashBlock result;
     result.resizeForOverwrite(block.size());
     for (qsizetype i = 0; i < block.size(); ++i)
@@ -1338,7 +1387,7 @@ static HashBlock xored(const HashBlock &block, quint8 val) noexcept
 class QMessageAuthenticationCodePrivate
 {
 public:
-    QMessageAuthenticationCodePrivate(QCryptographicHash::Algorithm m)
+    explicit QMessageAuthenticationCodePrivate(QCryptographicHash::Algorithm m) noexcept
         : messageHash(m)
     {
     }
@@ -1417,21 +1466,32 @@ void QMessageAuthenticationCodePrivate::initMessageHash() noexcept
     \ingroup tools
     \reentrant
 
-    QMessageAuthenticationCode supports all cryptographic hashes which are supported by
-    QCryptographicHash.
+    Use the QMessageAuthenticationCode class to generate hash-based message
+    authentication codes (HMACs). The class supports all cryptographic
+    hash algorithms from \l QCryptographicHash (see also
+    \l{QCryptographicHash::Algorithm}).
 
-    To generate message authentication code, pass hash algorithm QCryptographicHash::Algorithm
-    to constructor, then set key and message by setKey() and addData() functions. Result
-    can be acquired by result() function.
+    To generate a message authentication code, pass a suitable hash
+    algorithm and secret key to the constructor. Then process the message
+    data by calling \l addData() one or more times. After the full
+    message has been processed, get the final authentication code
+    via the \l result() function:
+
     \snippet qmessageauthenticationcode/main.cpp 0
     \dots
     \snippet qmessageauthenticationcode/main.cpp 1
 
-    Alternatively, this effect can be achieved by providing message,
-    key and method to hash() method.
+    For simple cases like above, you can also use the static
+    \l hash() function:
+
     \snippet qmessageauthenticationcode/main.cpp 2
 
-    \sa QCryptographicHash
+
+    \note The cryptographic strength of the HMAC depends upon the
+    size of the secret key, and the security of the
+    underlying hash function.
+
+    \sa QCryptographicHash, QCryptographicHash::Algorithm
 */
 
 /*!
@@ -1496,7 +1556,7 @@ QMessageAuthenticationCode::~QMessageAuthenticationCode()
 */
 
 /*!
-    Resets message data. Calling this method doesn't affect the key.
+    Resets message data. Calling this function doesn't affect the key.
 */
 void QMessageAuthenticationCode::reset() noexcept
 {
@@ -1505,9 +1565,9 @@ void QMessageAuthenticationCode::reset() noexcept
 }
 
 /*!
-    Sets secret \a key. Calling this method automatically resets the object state.
+    Sets secret \a key. Calling this function automatically resets the object state.
 
-    For optimal performance, call this method only to \e change the active key,
+    For optimal performance, call this function only to \e change the active key,
     not to set an \e initial key, as in
 
     \code
@@ -1624,15 +1684,52 @@ void QMessageAuthenticationCodePrivate::finalizeUnchecked() noexcept
     the key \a key and the method \a method.
 
     \include qcryptographichash.cpp {qba-to-qbav-6.6}
+
+    \sa hashInto()
 */
 QByteArray QMessageAuthenticationCode::hash(QByteArrayView message, QByteArrayView key,
                                             QCryptographicHash::Algorithm method)
 {
+    QByteArray ba(hashLengthInternal(method), Qt::Uninitialized);
+    [[maybe_unused]] const auto r = hashInto(ba, message, key, method);
+    Q_ASSERT(r.size() == ba.size());
+    return ba;
+}
+
+/*!
+    \since 6.8
+    \fn QMessageAuthenticationCode::hashInto(QSpan<char> buffer, QSpan<const QByteArrayView> messageParts, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<uchar> buffer, QSpan<const QByteArrayView> messageParts, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<std::byte> buffer, QSpan<const QByteArrayView> messageParts, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<char> buffer, QByteArrayView message, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<uchar> buffer, QByteArrayView message, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<std::byte> buffer, QByteArrayView message, QByteArrayView key, QCryptographicHash::Algorithm method);
+
+    Returns the authentication code for the message (\a message or, for the
+    QSpan overloads, the concatenation of \a messageParts) using the key \a key
+    and the method \a method.
+
+    The return value will be a sub-span of \a buffer, unless \a buffer is of
+    insufficient size, in which case a null QByteArrayView is returned.
+
+    \sa hash()
+*/
+QByteArrayView QMessageAuthenticationCode::hashInto(QSpan<std::byte> buffer,
+                                                    QSpan<const QByteArrayView> messageParts,
+                                                    QByteArrayView key,
+                                                    QCryptographicHash::Algorithm method) noexcept
+{
     QMessageAuthenticationCodePrivate mac(method);
     mac.setKey(key);
-    mac.messageHash.addData(message);
+    for (QByteArrayView part : messageParts)
+        mac.messageHash.addData(part);
     mac.finalizeUnchecked();
-    return mac.messageHash.resultView().toByteArray();
+    auto result = mac.messageHash.resultView();
+    if (buffer.size() < result.size())
+        return {}; // buffer too small
+    // ### optimize: have the method directly write into `buffer`
+    memcpy(buffer.data(), result.data(), result.size());
+    return buffer.first(result.size());
 }
 
 QT_END_NAMESPACE

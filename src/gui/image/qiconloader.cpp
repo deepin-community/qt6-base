@@ -137,6 +137,10 @@ void QIconLoader::invalidateKey()
     // recreating the actual engine the next time the icon is used.
     // We don't need to clear the QIcon cache itself.
     m_themeKey++;
+
+    // invalidating the factory results in us looking once for
+    // a plugin that provides icon for the new themeName()
+    m_factory = std::nullopt;
 }
 
 QString QIconLoader::themeName() const
@@ -392,6 +396,17 @@ QIconTheme::QIconTheme(const QString &themeName)
                     dirInfo.maxSize = indexReader.value(directoryKey + "/MaxSize"_L1, size).toInt();
 
                     dirInfo.scale = indexReader.value(directoryKey + "/Scale"_L1, 1).toInt();
+
+                    const QString context = indexReader.value(directoryKey + "/Context"_L1).toString();
+                    dirInfo.context = [context]() {
+                        if (context == "Applications"_L1)
+                            return QIconDirInfo::Applications;
+                        else if (context == "MimeTypes"_L1)
+                            return QIconDirInfo::MimeTypes;
+                        else
+                            return QIconDirInfo::UnknownContext;
+                    }();
+
                     m_keyList.append(dirInfo);
                 }
             }
@@ -430,7 +445,8 @@ QDebug operator<<(QDebug debug, const std::unique_ptr<QIconLoaderEngineEntry> &e
 
 QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
                                            const QString &iconName,
-                                           QStringList &visited) const
+                                           QStringList &visited,
+                                           DashRule rule) const
 {
     qCDebug(lcIconLoader) << "Finding icon" << iconName << "in theme" << themeName
                           << "skipping" << visited;
@@ -453,9 +469,10 @@ QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
     const QStringList contentDirs = theme.contentDirs();
 
     QStringView iconNameFallback(iconName);
+    bool searchingGenericFallback = m_iconName.length() > iconName.length();
 
     // Iterate through all icon's fallbacks in current theme
-    while (info.entries.empty()) {
+    if (info.entries.empty()) {
         const QString svgIconName = iconNameFallback + ".svg"_L1;
         const QString pngIconName = iconNameFallback + ".png"_L1;
 
@@ -487,6 +504,11 @@ QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
             QString contentDir = contentDirs.at(i) + u'/';
             for (int j = 0; j < subDirs.size() ; ++j) {
                 const QIconDirInfo &dirInfo = subDirs.at(j);
+                if (searchingGenericFallback &&
+                        (dirInfo.context == QIconDirInfo::Applications ||
+                         dirInfo.context == QIconDirInfo::MimeTypes))
+                    continue;
+
                 const QString subDir = contentDir + dirInfo.path + u'/';
                 const QString pngPath = subDir + pngIconName;
                 if (QFile::exists(pngPath)) {
@@ -510,15 +532,7 @@ QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
 
         if (!info.entries.empty()) {
             info.iconName = iconNameFallback.toString();
-            break;
         }
-
-        // If it's possible - find next fallback for the icon
-        const int indexOfDash = iconNameFallback.lastIndexOf(u'-');
-        if (indexOfDash == -1)
-            break;
-
-        iconNameFallback.truncate(indexOfDash);
     }
 
     if (info.entries.empty()) {
@@ -533,10 +547,22 @@ QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
             const QString parentTheme = parents.at(i).trimmed();
 
             if (!visited.contains(parentTheme)) // guard against recursion
-                info = findIconHelper(parentTheme, iconName, visited);
+                info = findIconHelper(parentTheme, iconName, visited, QIconLoader::NoFallBack);
 
             if (!info.entries.empty()) // success
                 break;
+        }
+    }
+
+    if (rule == QIconLoader::FallBack && info.entries.empty()) {
+        // If it's possible - find next fallback for the icon
+        const int indexOfDash = iconNameFallback.lastIndexOf(u'-');
+        if (indexOfDash != -1) {
+            qCDebug(lcIconLoader) << "Did not find matching icons in all themes;"
+                                  << "trying dash fallback";
+            iconNameFallback.truncate(indexOfDash);
+            QStringList _visited;
+            info = findIconHelper(themeName, iconNameFallback.toString(), _visited, QIconLoader::FallBack);
         }
     }
 
@@ -587,13 +613,14 @@ QThemeIconInfo QIconLoader::loadIcon(const QString &name) const
 {
     qCDebug(lcIconLoader) << "Loading icon" << name;
 
+    m_iconName = name;
     QThemeIconInfo iconInfo;
     QStringList visitedThemes;
     if (!themeName().isEmpty())
-        iconInfo = findIconHelper(themeName(), name, visitedThemes);
+        iconInfo = findIconHelper(themeName(), name, visitedThemes, QIconLoader::FallBack);
 
     if (iconInfo.entries.empty() && !fallbackThemeName().isEmpty())
-        iconInfo = findIconHelper(fallbackThemeName(), name, visitedThemes);
+        iconInfo = findIconHelper(fallbackThemeName(), name, visitedThemes, QIconLoader::FallBack);
 
     if (iconInfo.entries.empty())
         iconInfo = lookupFallbackIcon(name);
@@ -626,13 +653,34 @@ QIconEngine *QIconLoader::iconEngine(const QString &iconName) const
 {
     qCDebug(lcIconLoader) << "Resolving icon engine for icon" << iconName;
 
-    auto *platformTheme = QGuiApplicationPrivate::platformTheme();
     std::unique_ptr<QIconEngine> iconEngine;
-    if (!hasUserTheme() && platformTheme)
-        iconEngine.reset(platformTheme->createIconEngine(iconName));
-    if (!iconEngine || iconEngine->isNull()) {
-        iconEngine.reset(new QIconLoaderEngine(iconName));
+
+    if (!m_factory) {
+        qCDebug(lcIconLoader) << "Finding a plugin for theme" << themeName();
+        // try to find a plugin that supports the current theme
+        const int factoryIndex = qt_iconEngineFactoryLoader()->indexOf(themeName());
+        if (factoryIndex >= 0)
+            m_factory = qobject_cast<QIconEnginePlugin *>(qt_iconEngineFactoryLoader()->instance(factoryIndex));
     }
+    if (m_factory && *m_factory)
+        iconEngine.reset(m_factory.value()->create(iconName));
+
+    if (hasUserTheme() && (!iconEngine || iconEngine->isNull()))
+        iconEngine.reset(new QIconLoaderEngine(iconName));
+    if (!iconEngine || iconEngine->isNull()) {
+        qCDebug(lcIconLoader) << "Icon is not available from theme or fallback theme.";
+        if (auto *platformTheme = QGuiApplicationPrivate::platformTheme()) {
+            qCDebug(lcIconLoader) << "Trying platform engine.";
+            std::unique_ptr<QIconEngine> themeEngine(platformTheme->createIconEngine(iconName));
+            if (themeEngine && !themeEngine->isNull()) {
+                iconEngine = std::move(themeEngine);
+                qCDebug(lcIconLoader) << "Icon provided by platform engine.";
+            }
+        }
+    }
+    // We need to maintain the invariant that the QIcon has a valid engine
+    if (!iconEngine)
+        iconEngine.reset(new QIconLoaderEngine(iconName));
 
     qCDebug(lcIconLoader) << "Resulting engine" << iconEngine.get();
     return iconEngine.release();
@@ -845,14 +893,14 @@ QSize QIconLoaderEngine::actualSize(const QSize &size, QIcon::Mode mode,
         } else if (dir.type == QIconDirInfo::Fallback) {
             return QIcon(entry->filename).actualSize(size, mode, state);
         } else {
-            int result = qMin<int>(dir.size, qMin(size.width(), size.height()));
+            int result = qMin<int>(dir.size * dir.scale, qMin(size.width(), size.height()));
             return QSize(result, result);
         }
     }
     return QSize(0, 0);
 }
 
-QPixmap PixmapEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
+QPixmap PixmapEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
 {
     Q_UNUSED(state);
 
@@ -861,18 +909,17 @@ QPixmap PixmapEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State st
     if (basePixmap.isNull())
         basePixmap.load(filename);
 
-    QSize actualSize = basePixmap.size();
     // If the size of the best match we have (basePixmap) is larger than the
     // requested size, we downscale it to match.
-    if (!actualSize.isNull() && (actualSize.width() > size.width() || actualSize.height() > size.height()))
-        actualSize.scale(size, Qt::KeepAspectRatio);
-
+    const auto actualSize = QPixmapIconEngine::adjustSize(size * scale, basePixmap.size());
+    const auto calculatedDpr = QIconPrivate::pixmapDevicePixelRatio(scale, size, actualSize);
     QString key = "$qt_theme_"_L1
-                  % HexString<qint64>(basePixmap.cacheKey())
-                  % HexString<int>(mode)
-                  % HexString<qint64>(QGuiApplication::palette().cacheKey())
-                  % HexString<int>(actualSize.width())
-                  % HexString<int>(actualSize.height());
+                  % HexString<quint64>(basePixmap.cacheKey())
+                  % HexString<quint8>(mode)
+                  % HexString<quint64>(QGuiApplication::palette().cacheKey())
+                  % HexString<uint>(actualSize.width())
+                  % HexString<uint>(actualSize.height())
+                  % HexString<quint16>(qRound(calculatedDpr * 1000));
 
     QPixmap cachedPixmap;
     if (QPixmapCache::find(key, &cachedPixmap)) {
@@ -884,32 +931,24 @@ QPixmap PixmapEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State st
             cachedPixmap = basePixmap;
         if (QGuiApplication *guiApp = qobject_cast<QGuiApplication *>(qApp))
             cachedPixmap = static_cast<QGuiApplicationPrivate*>(QObjectPrivate::get(guiApp))->applyQIconStyleHelper(mode, cachedPixmap);
+        cachedPixmap.setDevicePixelRatio(calculatedDpr);
         QPixmapCache::insert(key, cachedPixmap);
     }
     return cachedPixmap;
 }
 
-QPixmap ScalableEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
+QPixmap ScalableEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
 {
     if (svgIcon.isNull())
         svgIcon = QIcon(filename);
 
-    // Bypass QIcon API, as that will scale by device pixel ratio of the
-    // highest DPR screen since we're not passing on any QWindow.
-    if (QIconEngine *engine = svgIcon.data_ptr() ? svgIcon.data_ptr()->engine : nullptr)
-        return engine->pixmap(size, mode, state);
-
-    return QPixmap();
+    return svgIcon.pixmap(size, scale, mode, state);
 }
 
 QPixmap QIconLoaderEngine::pixmap(const QSize &size, QIcon::Mode mode,
                                  QIcon::State state)
 {
-    QIconLoaderEngineEntry *entry = entryForSize(m_info, size);
-    if (entry)
-        return entry->pixmap(size, mode, state);
-
-    return QPixmap();
+    return scaledPixmap(size, mode, state, 1.0);
 }
 
 QString QIconLoaderEngine::key() const
@@ -930,8 +969,8 @@ bool QIconLoaderEngine::isNull()
 QPixmap QIconLoaderEngine::scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
 {
     const int integerScale = qCeil(scale);
-    QIconLoaderEngineEntry *entry = entryForSize(m_info, size / integerScale, integerScale);
-    return entry ? entry->pixmap(size, mode, state) : QPixmap();
+    QIconLoaderEngineEntry *entry = entryForSize(m_info, size, integerScale);
+    return entry ? entry->pixmap(size, mode, state, scale) : QPixmap();
 }
 
 QList<QSize> QIconLoaderEngine::availableSizes(QIcon::Mode mode, QIcon::State state)

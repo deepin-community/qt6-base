@@ -30,6 +30,7 @@
 
 #include <vector>
 #include <memory>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -38,6 +39,7 @@ class QIconLoader;
 struct QIconDirInfo
 {
     enum Type { Fixed, Scalable, Threshold, Fallback };
+    enum Context { UnknownContext, Applications, MimeTypes };
     QIconDirInfo(const QString &_path = QString()) :
             path(_path),
             size(0),
@@ -45,7 +47,8 @@ struct QIconDirInfo
             minSize(0),
             threshold(0),
             scale(1),
-            type(Threshold) {}
+            type(Threshold),
+            context(UnknownContext) {}
     QString path;
     short size;
     short maxSize;
@@ -53,6 +56,7 @@ struct QIconDirInfo
     short threshold;
     short scale;
     Type type;
+    Context context;
 };
 Q_DECLARE_TYPEINFO(QIconDirInfo, Q_RELOCATABLE_TYPE);
 
@@ -62,20 +66,21 @@ public:
     virtual ~QIconLoaderEngineEntry() {}
     virtual QPixmap pixmap(const QSize &size,
                            QIcon::Mode mode,
-                           QIcon::State state) = 0;
+                           QIcon::State state,
+                           qreal scale) = 0;
     QString filename;
     QIconDirInfo dir;
 };
 
 struct ScalableEntry : public QIconLoaderEngineEntry
 {
-    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override;
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override;
     QIcon svgIcon;
 };
 
 struct PixmapEntry : public QIconLoaderEngineEntry
 {
-    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override;
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override;
     QPixmap basePixmap;
 };
 
@@ -158,6 +163,8 @@ public:
     QList<QSharedPointer<QIconCacheGtkReader>> m_gtkCaches;
 };
 
+class QIconEnginePlugin;
+
 class Q_GUI_EXPORT QIconLoader
 {
 public:
@@ -184,12 +191,15 @@ public:
     QIconEngine *iconEngine(const QString &iconName) const;
 
 private:
+    enum DashRule { FallBack, NoFallBack };
     QThemeIconInfo findIconHelper(const QString &themeName,
                                   const QString &iconName,
-                                  QStringList &visited) const;
+                                  QStringList &visited,
+                                  DashRule rule) const;
     QThemeIconInfo lookupFallbackIcon(const QString &iconName) const;
 
     uint m_themeKey;
+    mutable std::optional<QIconEnginePlugin *> m_factory;
     bool m_supportsSvg;
     bool m_initialized;
 
@@ -199,6 +209,7 @@ private:
     mutable QStringList m_iconDirs;
     mutable QHash <QString, QIconTheme> themeList;
     mutable QStringList m_fallbackDirs;
+    mutable QString m_iconName;
 };
 
 QT_END_NAMESPACE

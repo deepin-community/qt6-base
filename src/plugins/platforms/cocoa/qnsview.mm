@@ -5,6 +5,7 @@
 
 #include <AppKit/AppKit.h>
 #include <MetalKit/MetalKit.h>
+#include <UniformTypeIdentifiers/UTCoreTypes.h>
 
 #include "qnsview.h"
 #include "qcocoawindow.h"
@@ -20,7 +21,6 @@
 #include <QtCore/QDebug>
 #include <QtCore/QPointer>
 #include <QtCore/QSet>
-#include <QtCore/qsysinfo.h>
 #include <QtCore/private/qcore_mac_p.h>
 #include <QtGui/QAccessible>
 #include <QtGui/QImage>
@@ -35,6 +35,9 @@
 #endif
 #include "qcocoaintegration.h"
 #include <QtGui/private/qmacmimeregistry_p.h>
+#include <QtGui/private/qmetallayer_p.h>
+
+#include <QuartzCore/CATransaction.h>
 
 @interface QNSView (Drawing) <CALayerDelegate>
 - (void)initDrawing;
@@ -79,6 +82,9 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
 @property (readonly) QObject* focusObject;
 @end
 
+@interface QNSView (ServicesMenu) <NSServicesMenuRequestor>
+@end
+
 @interface QT_MANGLE_NAMESPACE(QNSViewMenuHelper) : NSObject
 - (instancetype)initWithView:(QNSView *)theView;
 @end
@@ -90,6 +96,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
 @property (assign) NSView* previousSuperview;
 @property (assign) NSWindow* previousWindow;
 @property (retain) QNSViewMenuHelper* menuHelper;
+@property (nonatomic, retain) NSColorSpace *colorSpace;
 @end
 
 @implementation QNSView {
@@ -118,6 +125,8 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
     QPointer<QObject> m_composingFocusObject;
     NSDraggingContext m_lastSeenContext;
 }
+
+@synthesize colorSpace = m_colorSpace;
 
 - (instancetype)initWithCocoaWindow:(QCocoaWindow *)platformWindow
 {
@@ -328,7 +337,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
         // QWindow activation from QCocoaWindow::windowDidBecomeKey instead. The only
         // exception is if the window can never become key, in which case we naturally
         // cannot wait for that to happen.
-        QWindowSystemInterface::handleWindowActivated<QWindowSystemInterface::SynchronousDelivery>(
+        QWindowSystemInterface::handleFocusWindowChanged<QWindowSystemInterface::SynchronousDelivery>(
             [self topLevelWindow], Qt::ActiveWindowFocusReason);
     }
 

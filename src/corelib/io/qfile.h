@@ -26,7 +26,7 @@ namespace std {
 
 QT_BEGIN_NAMESPACE
 
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
 
 #if QT_DEPRECATED_SINCE(6,6)
 QT_DEPRECATED_VERSION_X_6_6("Use QNtfsPermissionCheckGuard RAII class instead.")
@@ -282,10 +282,10 @@ public:
     }
 #endif // QT_CONFIG(cxx17_filesystem)
 
-    bool open(OpenMode flags) override;
-    bool open(OpenMode flags, Permissions permissions);
-    bool open(FILE *f, OpenMode ioFlags, FileHandleFlags handleFlags=DontCloseHandle);
-    bool open(int fd, OpenMode ioFlags, FileHandleFlags handleFlags=DontCloseHandle);
+    QFILE_MAYBE_NODISCARD bool open(OpenMode flags) override;
+    QFILE_MAYBE_NODISCARD bool open(OpenMode flags, Permissions permissions);
+    QFILE_MAYBE_NODISCARD bool open(FILE *f, OpenMode ioFlags, FileHandleFlags handleFlags=DontCloseHandle);
+    QFILE_MAYBE_NODISCARD bool open(int fd, OpenMode ioFlags, FileHandleFlags handleFlags=DontCloseHandle);
 
     qint64 size() const override;
 

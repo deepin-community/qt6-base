@@ -1,6 +1,12 @@
+qt6-base (6.8.0+dfsg-0deepin1) UNRELEASED; urgency=medium
+
+  * 
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Thu, 17 Oct 2024 14:31:15 +0800
+
 qt6-base (6.6.1+dfsg-5deepin5) unstable; urgency=medium
 
- * feat: Add QT_FORCE_OPENGL_TYPE
+  * feat: Add QT_FORCE_OPENGL_TYPE
 
  -- Lu YaNing <luyaning@uniontech.org>  Wed, 18 Sep 2024 14:05:16 +0800
 

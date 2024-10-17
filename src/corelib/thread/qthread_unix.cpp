@@ -20,7 +20,9 @@
 #  endif
 #endif
 
-#include <private/qeventdispatcher_unix_p.h>
+#if !defined(Q_OS_WASM)
+#  include <private/qeventdispatcher_unix_p.h>
+#endif
 
 #include "qthreadstorage.h"
 
@@ -41,11 +43,8 @@
 #  include <sys/sysctl.h>
 #endif
 #ifdef Q_OS_VXWORKS
-#  if (_WRS_VXWORKS_MAJOR > 6) || ((_WRS_VXWORKS_MAJOR == 6) && (_WRS_VXWORKS_MINOR >= 6))
-#    include <vxCpuLib.h>
-#    include <cpuset.h>
-#    define QT_VXWORKS_HAS_CPUSET
-#  endif
+#  include <vxCpuLib.h>
+#  include <cpuset.h>
 #endif
 
 #ifdef Q_OS_HPUX
@@ -189,8 +188,12 @@ QThreadData *QThreadData::current(bool createIfNecessary)
         data->deref();
         data->isAdopted = true;
         data->threadId.storeRelaxed(to_HANDLE(pthread_self()));
-        if (!QCoreApplicationPrivate::theMainThread.loadAcquire())
-            QCoreApplicationPrivate::theMainThread.storeRelease(data->thread.loadRelaxed());
+        if (!QCoreApplicationPrivate::theMainThreadId.loadAcquire()) {
+            auto *mainThread = data->thread.loadRelaxed();
+            mainThread->setObjectName("Qt mainThread");
+            QCoreApplicationPrivate::theMainThread.storeRelease(mainThread);
+            QCoreApplicationPrivate::theMainThreadId.storeRelaxed(data->threadId.loadRelaxed());
+        }
     }
     return data;
 }
@@ -278,8 +281,16 @@ void *QThreadPrivate::start(void *arg)
 #ifdef PTHREAD_CANCEL_DISABLE
     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, nullptr);
 #endif
-    pthread_cleanup_push(QThreadPrivate::finish, arg);
-
+#if !defined(Q_OS_QNX) && !defined(Q_OS_VXWORKS)
+    // On QNX, calling finish() from a thread_local destructor causes the C
+    // library to hang.
+    // On VxWorks, its pthread implementation fails on call to `pthead_setspecific` which is made
+    // by first QObject constructor during `finish()`. This causes call to QThread::current, since
+    // QObject doesn't have parent, and since the pthread is already removed, it tries to set
+    // QThreadData for current pthread key, which crashes.
+    static thread_local
+#endif
+            auto cleanup = qScopeGuard([=] { finish(arg); });
     terminate_on_exception([&] {
         QThread *thr = reinterpret_cast<QThread *>(arg);
         QThreadData *data = QThreadData::get2(thr);
@@ -324,11 +335,7 @@ void *QThreadPrivate::start(void *arg)
         thr->run();
     });
 
-    // This pop runs finish() below. It's outside the try/catch (and has its
-    // own try/catch) to prevent finish() to be run in case an exception is
-    // thrown.
-    pthread_cleanup_pop(1);
-
+    // The qScopeGuard above call runs finish() below.
     return nullptr;
 }
 
@@ -338,6 +345,13 @@ void QThreadPrivate::finish(void *arg)
         QThread *thr = reinterpret_cast<QThread *>(arg);
         QThreadPrivate *d = thr->d_func();
 
+        // Disable cancellation; we're already in the finishing touches of this
+        // thread, and we don't want cleanup to be disturbed by
+        // abi::__forced_unwind being thrown from all kinds of functions.
+#ifdef PTHREAD_CANCEL_DISABLE
+        pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, nullptr);
+#endif
+
         QMutexLocker locker(&d->mutex);
 
         d->isInFinish = true;
@@ -345,6 +359,7 @@ void QThreadPrivate::finish(void *arg)
         void *data = &d->data->tls;
         locker.unlock();
         emit thr->finished(QThread::QPrivateSignal());
+        qCDebug(lcDeleteLater) << "Sending deferred delete events as part of finishing thread" << thr;
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QThreadStorageData::finish((void **)data);
         locker.relock();
@@ -360,7 +375,7 @@ void QThreadPrivate::finish(void *arg)
 
         d->running = false;
         d->finished = true;
-        d->interruptionRequested = false;
+        d->interruptionRequested.store(false, std::memory_order_relaxed);
 
         d->isInFinish = false;
         d->data->threadId.storeRelaxed(nullptr);
@@ -457,8 +472,6 @@ int QThread::idealThreadCount() noexcept
     // as of aug 2008 Integrity only supports one single core CPU
     cores = 1;
 #elif defined(Q_OS_VXWORKS)
-    // VxWorks
-#  if defined(QT_VXWORKS_HAS_CPUSET)
     cpuset_t cpus = vxCpuEnabledGet();
     cores = 0;
 
@@ -469,10 +482,6 @@ int QThread::idealThreadCount() noexcept
             cores++;
         }
     }
-#  else
-    // as of aug 2008 VxWorks < 6.6 only supports one single core CPU
-    cores = 1;
-#  endif
 #elif defined(Q_OS_WASM)
     cores = QThreadPrivate::idealThreadCount;
 #else
@@ -502,7 +511,7 @@ static void qt_nanosleep(timespec amount)
     // nanosleep is POSIX.1-1993
 
     int r;
-    EINTR_LOOP(r, nanosleep(&amount, &amount));
+    QT_EINTR_LOOP(r, nanosleep(&amount, &amount));
 }
 
 void QThread::sleep(unsigned long secs)
@@ -637,7 +646,8 @@ void QThread::start(Priority priority)
     d->finished = false;
     d->returnCode = 0;
     d->exited = false;
-    d->interruptionRequested = false;
+    d->interruptionRequested.store(false, std::memory_order_relaxed);
+    d->terminated = false;
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -746,11 +756,28 @@ void QThread::terminate()
     Q_D(QThread);
     QMutexLocker locker(&d->mutex);
 
-    if (!d->data->threadId.loadRelaxed())
+    const auto id = d->data->threadId.loadRelaxed();
+    if (!id)
         return;
 
-    int code = pthread_cancel(from_HANDLE<pthread_t>(d->data->threadId.loadRelaxed()));
-    if (code) {
+    if (d->terminated) // don't try again, avoids killing the wrong thread on threadId reuse (ABA)
+        return;
+
+    d->terminated = true;
+
+    const bool selfCancelling = d->data == currentThreadData;
+    if (selfCancelling) {
+        // Posix doesn't seem to specify whether the stack of cancelled threads
+        // is unwound, and there's nothing preventing a QThread from
+        // terminate()ing itself, so drop the mutex before calling
+        // pthread_cancel():
+        locker.unlock();
+    }
+
+    if (int code = pthread_cancel(from_HANDLE<pthread_t>(id))) {
+        if (selfCancelling)
+            locker.relock();
+        d->terminated = false; // allow to try again
         qErrnoWarning(code, "QThread::start: Thread termination error");
     }
 #endif

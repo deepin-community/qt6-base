@@ -11,12 +11,40 @@ QT_BEGIN_NAMESPACE
 class QBitRef;
 class Q_CORE_EXPORT QBitArray
 {
+    Q_CORE_EXPORT friend QBitArray operator&(const QBitArray &a1, const QBitArray &a2);
+    friend QBitArray operator&(QBitArray &&a1, const QBitArray &a2)
+    { return a1 &= a2; }
+    friend QBitArray operator&(const QBitArray &a1, QBitArray &&a2)
+    { return a2 &= a1; }
+    friend QBitArray operator&(QBitArray &&a1, QBitArray &&a2)
+    { return a1 &= a2; }
+
+    Q_CORE_EXPORT friend QBitArray operator|(const QBitArray &a1, const QBitArray &a2);
+    friend QBitArray operator|(QBitArray &&a1, const QBitArray &a2)
+    { return a1 |= a2; }
+    friend QBitArray operator|(const QBitArray &a1, QBitArray &&a2)
+    { return a2 |= a1; }
+    friend QBitArray operator|(QBitArray &&a1, QBitArray &&a2)
+    { return a1 |= a2; }
+
+    Q_CORE_EXPORT friend QBitArray operator^(const QBitArray &a1, const QBitArray &a2);
+    friend QBitArray operator^(QBitArray &&a1, const QBitArray &a2)
+    { return a1 ^= a2; }
+    friend QBitArray operator^(const QBitArray &a1, QBitArray &&a2)
+    { return a2 ^= a1; }
+    friend QBitArray operator^(QBitArray &&a1, QBitArray &&a2)
+    { return a1 ^= a2; }
+
 #ifndef QT_NO_DATASTREAM
     friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QBitArray &);
     friend Q_CORE_EXPORT QDataStream &operator>>(QDataStream &, QBitArray &);
 #endif
     friend Q_CORE_EXPORT size_t qHash(const QBitArray &key, size_t seed) noexcept;
+    friend QBitArray operator~(QBitArray a)
+    { return std::move(a).inverted_inplace(); }
     QByteArray d;
+
+    QBitArray(QByteArrayData &&dd) : d(std::move(dd)) {}
 
     template <typename BitArray> static auto bitLocation(BitArray &ba, qsizetype i)
     {
@@ -30,18 +58,23 @@ class Q_CORE_EXPORT QBitArray
         return R{ ba.d[1 + byteIdx], uchar(1U << bitIdx) };
     }
 
+    QBitArray inverted_inplace() &&;
+
 public:
     inline QBitArray() noexcept {}
     explicit QBitArray(qsizetype size, bool val = false);
+    // Rule Of Zero applies
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     QBitArray(const QBitArray &other) noexcept : d(other.d) {}
     inline QBitArray &operator=(const QBitArray &other) noexcept { d = other.d; return *this; }
     inline QBitArray(QBitArray &&other) noexcept : d(std::move(other.d)) {}
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QBitArray)
+#endif // Qt 6
 
     void swap(QBitArray &other) noexcept { d.swap(other.d); }
 
-    inline qsizetype size() const { return (d.size() << 3) - *d.constData(); }
-    inline qsizetype count() const { return (d.size() << 3) - *d.constData(); }
+    qsizetype size() const { return qsizetype((size_t(d.size()) << 3) - *d.constData()); }
+    qsizetype count() const { return size(); }
     qsizetype count(bool on) const;
 
     inline bool isEmpty() const { return d.isEmpty(); }
@@ -69,19 +102,27 @@ public:
         return cl;
     }
 
-    bool at(qsizetype i) const;
-    QBitRef operator[](qsizetype i);
-    bool operator[](qsizetype i) const;
+    bool at(qsizetype i) const { return testBit(i); }
+    inline QBitRef operator[](qsizetype i);
+    bool operator[](qsizetype i) const { return testBit(i); }
 
+    QBitArray &operator&=(QBitArray &&);
+    QBitArray &operator|=(QBitArray &&);
+    QBitArray &operator^=(QBitArray &&);
     QBitArray &operator&=(const QBitArray &);
     QBitArray &operator|=(const QBitArray &);
     QBitArray &operator^=(const QBitArray &);
+#if QT_CORE_REMOVED_SINCE(6, 7)
     QBitArray operator~() const;
+#endif
 
-    inline bool operator==(const QBitArray &other) const { return d == other.d; }
-    inline bool operator!=(const QBitArray &other) const { return d != other.d; }
+#if QT_CORE_REMOVED_SINCE(6, 8)
+    inline bool operator==(const QBitArray &other) const { return comparesEqual(d, other.d); }
+    inline bool operator!=(const QBitArray &other) const { return !operator==(other); }
+#endif
 
-    inline bool fill(bool val, qsizetype size = -1);
+    bool fill(bool aval, qsizetype asize = -1)
+    { *this = QBitArray((asize < 0 ? this->size() : asize), aval); return true; }
     void fill(bool val, qsizetype first, qsizetype last);
 
     inline void truncate(qsizetype pos) { if (pos < size()) resize(pos); }
@@ -94,19 +135,17 @@ public:
 public:
     typedef QByteArray::DataPointer DataPtr;
     inline DataPtr &data_ptr() { return d.data_ptr(); }
+    inline const DataPtr &data_ptr() const { return d.data_ptr(); }
+
+private:
+    friend bool comparesEqual(const QBitArray &lhs, const QBitArray &rhs) noexcept
+    {
+        return lhs.d == rhs.d;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(QBitArray)
 };
 
-inline bool QBitArray::fill(bool aval, qsizetype asize)
-{ *this = QBitArray((asize < 0 ? this->size() : asize), aval); return true; }
-
-Q_CORE_EXPORT QBitArray operator&(const QBitArray &, const QBitArray &);
-Q_CORE_EXPORT QBitArray operator|(const QBitArray &, const QBitArray &);
-Q_CORE_EXPORT QBitArray operator^(const QBitArray &, const QBitArray &);
-
-inline bool QBitArray::operator[](qsizetype i) const { return testBit(i); }
-inline bool QBitArray::at(qsizetype i) const { return testBit(i); }
-
-class Q_CORE_EXPORT QBitRef
+class QT6_ONLY(Q_CORE_EXPORT) QBitRef
 {
 private:
     QBitArray &a;
@@ -121,7 +160,7 @@ public:
     QBitRef &operator=(bool val) { a.setBit(i, val); return *this; }
 };
 
-inline QBitRef QBitArray::operator[](qsizetype i)
+QBitRef QBitArray::operator[](qsizetype i)
 { Q_ASSERT(i >= 0); return QBitRef(*this, i); }
 
 #ifndef QT_NO_DATASTREAM

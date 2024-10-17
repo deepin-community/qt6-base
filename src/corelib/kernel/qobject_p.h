@@ -91,7 +91,7 @@ public:
 
         QList<QByteArray> propertyNames;
         QList<QVariant> propertyValues;
-        QList<int> runningTimers;
+        QList<Qt::TimerId> runningTimers;
         QList<QPointer<QObject>> eventFilters;
         Q_OBJECT_COMPAT_PROPERTY(QObjectPrivate::ExtraData, QString, objectName,
                                  &QObjectPrivate::ExtraData::setObjectNameForwarder,
@@ -140,11 +140,8 @@ public:
     void setParent_helper(QObject *);
     void moveToThread_helper();
     void setThreadData_helper(QThreadData *currentData, QThreadData *targetData, QBindingStatus *status);
-    void _q_reregisterTimers(void *pointer);
 
-    bool isSender(const QObject *receiver, const char *signal) const;
     QObjectList receiverList(const char *signal) const;
-    QObjectList senderList() const;
 
     inline void ensureConnectionData();
     inline void addConnection(int signal, Connection *c);
@@ -188,6 +185,10 @@ public:
                            void **slot);
 
     virtual std::string flagsForDumping() const;
+
+#ifndef QT_NO_DEBUG_STREAM
+    virtual void writeToDebugStream(QDebug &) const;
+#endif
 
     QtPrivate::QPropertyAdaptorSlotObject *
     getPropertyAdaptorSlotObject(const QMetaProperty &property);
@@ -460,8 +461,6 @@ private:
     bool &block;
     bool reset;
 };
-
-void Q_CORE_EXPORT qDeleteInEventHandler(QObject *o);
 
 struct QAbstractDynamicMetaObject;
 struct Q_CORE_EXPORT QDynamicMetaObjectData

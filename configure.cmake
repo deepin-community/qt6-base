@@ -18,6 +18,10 @@ if(TARGET ZLIB::ZLIB)
     set_property(TARGET ZLIB::ZLIB PROPERTY IMPORTED_GLOBAL TRUE)
 endif()
 
+# Look for Threads in the same scope as OpenSSL package, because OpenSSL sometimes depends on
+# Threads (for static OpenSSL builds) and we want to promote the target to global in the same
+# directory scope.
+qt_find_package(Threads PROVIDED_TARGETS Threads::Threads)
 qt_find_package(WrapOpenSSLHeaders PROVIDED_TARGETS WrapOpenSSLHeaders::WrapOpenSSLHeaders MODULE_NAME core)
 # openssl_headers
 # OPENSSL_VERSION_MAJOR is not defined for OpenSSL 1.1.1
@@ -109,7 +113,15 @@ SSL_free(SSL_new(0));
 }
 ")
 
-qt_find_package(WrapZSTD 1.3 PROVIDED_TARGETS WrapZSTD::WrapZSTD MODULE_NAME global QMAKE_LIB zstd)
+qt_find_package(WrapZSTD 1.3
+    PROVIDED_TARGETS
+        WrapZSTD::WrapZSTD
+        zstd::libzstd
+        zstd::libzstd_static
+        zstd::libzstd_shared
+    MODULE_NAME global
+    QMAKE_LIB zstd
+)
 qt_find_package(WrapDBus1 1.2 PROVIDED_TARGETS dbus-1 MODULE_NAME global QMAKE_LIB dbus)
 qt_find_package(Libudev PROVIDED_TARGETS PkgConfig::Libudev MODULE_NAME global QMAKE_LIB libudev)
 qt_find_package(LTTngUST PROVIDED_TARGETS LTTng::UST MODULE_NAME core QMAKE_LIB lttng-ust)
@@ -199,13 +211,43 @@ if(NOT QT_CONFIGURE_RUNNING)
     qt_evaluate_feature(use_gold_linker)
     qt_evaluate_feature(use_lld_linker)
     qt_evaluate_feature(use_mold_linker)
+
+    qt_run_linker_version_script_support()
 endif()
 
+qt_feature("version_tagging"
+    PUBLIC
+    AUTODETECT TRUE
+    CONDITION TEST_ld_version_script OR APPLE OR WIN32
+)
+qt_feature_definition("version_tagging" "QT_NO_VERSION_TAGGING" NEGATE)
 
 #### Tests
 
 # machineTuple
 qt_config_compile_test_machine_tuple("machine tuple")
+
+# glibc
+qt_config_compile_test(glibc
+    LABEL "Using Glibc"
+    CODE
+"#include <features.h>
+#ifndef __GLIBC__
+#error
+#endif
+int main() {}"
+)
+
+# glibc 2.34, for _FORTIFY_SOURCE == 3
+qt_config_compile_test(glibc_234
+    LABEL "Using Glibc >= 2.34"
+    CODE
+"#include <features.h>
+#if !defined(__GLIBC__) || !__GLIBC_PREREQ(2, 34)
+#error
+#endif
+int main() {}"
+)
 
 # cxx20
 qt_config_compile_test(cxx20
@@ -328,6 +370,36 @@ qt_config_compile_test_x86simd(avx512vbmi2 "AVX512VBMI2")
 # x86: vaes
 qt_config_compile_test_x86simd(vaes "VAES")
 
+# localtime_r
+qt_config_compile_test(localtime_r
+    LABEL "localtime_r()"
+    CODE
+"#include <time.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+(void) localtime_r(nullptr, nullptr);
+    /* END TEST: */
+    return 0;
+}
+")
+
+# localtime_s
+qt_config_compile_test(localtime_s
+    LABEL "localtime_s()"
+    CODE
+"#include <time.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+(void) localtime_s(nullptr, nullptr);
+    /* END TEST: */
+    return 0;
+}
+")
+
 # posix_fallocate
 qt_config_compile_test(posix_fallocate
     LABEL "POSIX fallocate()"
@@ -394,29 +466,46 @@ alloca(1);
 ")
 
 # stack_protector
-qt_config_compile_test(stack_protector
-    LABEL "stack protection"
-    COMPILE_OPTIONS -fstack-protector-strong
-    CODE
-"#ifdef __QNXNTO__
-#  include <sys/neutrino.h>
-#  if _NTO_VERSION < 700
-#    error stack-protector not used (by default) before QNX 7.0.0.
-#  endif
-#endif
+if(NOT WASM AND NOT VXWORKS)
+    # emcc doesn't support this, but the detection accidentally succeeds
+    # https://github.com/emscripten-core/emscripten/issues/17030
 
-int main(void)
-{
-    /* BEGIN TEST: */
-    /* END TEST: */
-    return 0;
-}
-")
+    # VXWORKS: We currently don't know the correct linker options. This is
+    # tracked at QTBUG-123715
+    qt_config_compiler_supports_flag_test(stack_protector
+        LABEL "stack protection"
+        FLAG "-fstack-protector-strong"
+    )
+endif()
+
+# stack_clash_protection
+if(NOT CLANG) # https://gitlab.kitware.com/cmake/cmake/-/issues/21998
+    qt_config_compiler_supports_flag_test(stack_clash_protection
+        LABEL "-fstack-clash-protection support"
+        FLAG "-fstack-clash-protection"
+    )
+endif()
+
+# trivial_auto_var_init_pattern
+if(NOT GCC OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "14.2.0")
+    # Causes broken codegen on GCC https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115527
+    qt_config_compiler_supports_flag_test(trivial_auto_var_init_pattern
+        LABEL "-ftrivial-auto-var-init=pattern support"
+        FLAG "-ftrivial-auto-var-init=pattern"
+    )
+endif()
 
 # intelcet
-qt_config_compile_test(intelcet
-    LABEL "Support for Intel Control-flow Enforcement Technology (CET)"
-    CODE
+if(MSVC)
+    qt_config_linker_supports_flag_test(intelcet
+        LABEL "Support for Intel Control-flow Enforcement Technology (CET)"
+        FLAG "-CETCOMPAT"
+    )
+else()
+    qt_config_compile_test(intelcet
+        LABEL "Support for Intel Control-flow Enforcement Technology (CET)"
+        COMPILE_OPTIONS -fcf-protection=full
+        CODE
 "int main(void)
 {
     /* BEGIN TEST: */
@@ -426,8 +515,35 @@ qt_config_compile_test(intelcet
     /* END TEST: */
     return 0;
 }
-")
+"
+    )
+endif()
 
+# -z relro -z now
+if(NOT WIN32)
+    qt_config_linker_supports_flag_test(relro_now_linker
+        LABEL "Support for -z relro and -z now"
+        FLAG "-z,relro,-z,now"
+    )
+endif()
+
+# Is libc++ the default Standard Library?
+qt_config_compile_test(using_stdlib_libcpp
+    LABEL "Compiler defaults to libc++"
+    CODE
+"
+#include <ciso646>
+
+int main(void)
+{
+/* BEGIN TEST: */
+#ifndef _LIBCPP_VERSION
+#   error
+#endif
+/* END TEST: */
+}
+"
+)
 
 
 #### Features
@@ -477,9 +593,9 @@ qt_feature("optimize_full"
 qt_feature_config("optimize_full" QMAKE_PRIVATE_CONFIG)
 qt_feature("msvc_obj_debug_info"
     LABEL "Embed debug info in object files (MSVC)"
-    CONDITION MSVC
     ENABLE QT_USE_CCACHE
     AUTODETECT OFF
+    EMIT_IF MSVC
 )
 qt_feature_config("msvc_obj_debug_info" QMAKE_PRIVATE_CONFIG)
 qt_feature("pkg-config" PUBLIC
@@ -538,7 +654,7 @@ if(APPLE)
 endif()
 qt_feature("simulator_and_device" PUBLIC
     LABEL "Build for both simulator and device"
-    CONDITION UIKIT AND NOT QT_UIKIT_SDK
+    CONDITION IOS AND NOT QT_APPLE_SDK
 )
 qt_feature_config("simulator_and_device" QMAKE_PUBLIC_QT_CONFIG)
 qt_feature("rpath" PUBLIC
@@ -547,19 +663,22 @@ qt_feature("rpath" PUBLIC
     CONDITION BUILD_SHARED_LIBS AND UNIX AND NOT WIN32 AND NOT ANDROID
 )
 qt_feature_config("rpath" QMAKE_PUBLIC_QT_CONFIG)
+qt_feature("elf_private_full_version" PRIVATE
+    LABEL "Use Qt's full version number in ELF version symbols"
+    AUTODETECT OFF
+    CONDITION BUILD_SHARED_LIBS AND UNIX AND NOT APPLE
+)
+qt_feature_config("elf_private_full_version" QMAKE_PRIVATE_QT_CONFIG)
 qt_feature("force_asserts" PUBLIC
     LABEL "Force assertions"
     AUTODETECT OFF
 )
-qt_feature("headersclean"
-    LABEL "Check for clean headers"
-    AUTODETECT OFF
-    CONDITION NOT WASM
-)
-qt_feature_config("headersclean" QMAKE_PRIVATE_CONFIG)
 qt_feature("framework" PUBLIC
     LABEL "Build Apple Frameworks"
-    CONDITION APPLE AND BUILD_SHARED_LIBS AND NOT CMAKE_BUILD_TYPE STREQUAL Debug
+    AUTODETECT ON
+    # If changing this, please align with logic in
+    # qt_internal_setup_cmake_config_postfix.
+    CONDITION APPLE
 )
 qt_feature_definition("framework" "QT_MAC_FRAMEWORK_BUILD")
 qt_feature_config("framework" QMAKE_PUBLIC_QT_CONFIG
@@ -574,11 +693,6 @@ qt_feature("largefile"
 )
 qt_feature_definition("largefile" "QT_LARGEFILE_SUPPORT" VALUE "64")
 qt_feature_config("largefile" QMAKE_PRIVATE_CONFIG)
-qt_feature("testcocoon"
-    LABEL "Testcocoon support"
-    AUTODETECT OFF
-)
-qt_feature_config("testcocoon" QMAKE_PUBLIC_CONFIG)
 qt_feature("sanitize_address"
     LABEL "Addresses"
     AUTODETECT OFF
@@ -622,7 +736,7 @@ qt_feature_config("plugin-manifests" QMAKE_PUBLIC_CONFIG
 qt_feature("c++20" PUBLIC
     LABEL "C++20"
     AUTODETECT OFF
-    CONDITION TEST_cxx20
+    CONDITION TEST_cxx20 AND NOT VXWORKS
 )
 qt_feature_config("c++20" QMAKE_PUBLIC_QT_CONFIG)
 qt_feature("c++2a" PUBLIC
@@ -633,13 +747,9 @@ qt_feature_config("c++2a" QMAKE_PUBLIC_QT_CONFIG)
 qt_feature("c++2b" PUBLIC
     LABEL "C++2b"
     AUTODETECT OFF
-)
-qt_feature_config("c++2b" QMAKE_PUBLIC_QT_CONFIG)
-qt_feature("c++2b" PUBLIC
-    LABEL "C++2b"
-    AUTODETECT FALSE
     CONDITION QT_FEATURE_cxx20 AND (CMAKE_VERSION VERSION_GREATER_EQUAL "3.20") AND TEST_cxx2b
 )
+qt_feature_config("c++2b" QMAKE_PUBLIC_QT_CONFIG)
 qt_feature("precompile_header"
     LABEL "Using precompiled headers"
     CONDITION BUILD_WITH_PCH AND TEST_precompile_header
@@ -877,6 +987,14 @@ qt_feature("wasm-exceptions" PUBLIC
 qt_feature_definition("wasm-exceptions" "QT_WASM_EXCEPTIONS" VALUE "1")
 qt_feature_config("wasm-exceptions" QMAKE_PRIVATE_CONFIG)
 
+qt_feature("localtime_r" PRIVATE
+    LABEL "localtime_r()"
+    CONDITION TEST_localtime_r
+)
+qt_feature("localtime_s" PRIVATE
+    LABEL "localtime_s()"
+    CONDITION TEST_localtime_s
+)
 qt_feature("posix_fallocate" PRIVATE
     LABEL "POSIX fallocate()"
     CONDITION TEST_posix_fallocate
@@ -893,10 +1011,6 @@ qt_feature("alloca" PRIVATE
     LABEL "alloca()"
     CONDITION QT_FEATURE_alloca_h OR QT_FEATURE_alloca_malloc_h OR TEST_alloca_stdlib_h
 )
-qt_feature("stack-protector-strong" PRIVATE
-    LABEL "stack protection"
-    CONDITION QNX AND TEST_stack_protector
-)
 qt_feature("system-zlib" PRIVATE
     LABEL "Using system zlib"
     CONDITION WrapSystemZLIB_FOUND
@@ -908,7 +1022,7 @@ qt_feature("zstd" PUBLIC
 qt_feature("stdlib-libcpp" PRIVATE
     LABEL "Using stdlib=libc++"
     AUTODETECT OFF
-    CONDITION LINUX AND NOT ANDROID
+    CONDITION MINGW OR (LINUX AND NOT ANDROID)
 )
 # Check whether CMake was built with zstd support.
 # See https://gitlab.kitware.com/cmake/cmake/-/issues/21552
@@ -947,7 +1061,7 @@ qt_feature("concurrent" PUBLIC
 qt_feature_definition("concurrent" "QT_NO_CONCURRENT" NEGATE VALUE "1")
 qt_feature("dbus" PUBLIC PRIVATE
     LABEL "Qt D-Bus"
-    AUTODETECT NOT UIKIT AND NOT ANDROID
+    AUTODETECT NOT UIKIT AND NOT ANDROID AND NOT VXWORKS
     CONDITION QT_FEATURE_thread AND NOT WASM
 )
 qt_feature_definition("dbus" "QT_NO_DBUS" NEGATE VALUE "1")
@@ -963,6 +1077,11 @@ qt_feature("qreal"
 )
 qt_feature_definition("qreal" "QT_COORD_TYPE" VALUE "${QT_COORD_TYPE}")
 qt_feature_definition("qreal" "QT_COORD_TYPE_STRING" VALUE "\"${QT_COORD_TYPE}\"")
+if(QT_COORD_TYPE STREQUAL "double")
+    qt_feature_definition("qreal" "QT_COORD_TYPE_IS_DOUBLE" VALUE "1")
+elseif(QT_COORD_TYPE STREQUAL "float")
+    qt_feature_definition("qreal" "QT_COORD_TYPE_IS_FLOAT" VALUE "1")
+endif()
 qt_feature("gui" PRIVATE
     LABEL "Qt Gui"
 )
@@ -970,16 +1089,24 @@ qt_feature_config("gui" QMAKE_PUBLIC_QT_CONFIG
     NEGATE)
 qt_feature("network" PRIVATE
     LABEL "Qt Network"
+    SECTION "Module"
+    PURPOSE "Provides the Qt Network module."
 )
 qt_feature("printsupport" PRIVATE
     LABEL "Qt PrintSupport"
     CONDITION QT_FEATURE_widgets
+    SECTION "Module"
+    PURPOSE "Provides the Qt PrintSupport module."
 )
 qt_feature("sql" PRIVATE
     LABEL "Qt Sql"
+    SECTION "Module"
+    PURPOSE "Provides the Sql module."
 )
 qt_feature("testlib" PRIVATE
     LABEL "Qt Testlib"
+    SECTION "Module"
+    PURPOSE "Provides the Qt Testlib module."
 )
 qt_feature("widgets" PRIVATE
     LABEL "Qt Widgets"
@@ -991,6 +1118,8 @@ qt_feature_config("widgets" QMAKE_PUBLIC_QT_CONFIG
     NEGATE)
 qt_feature("xml" PRIVATE
     LABEL "Qt Xml"
+    SECTION "Module"
+    PURPOSE "Provides the Qt Xml module."
 )
 qt_feature("libudev" PRIVATE
     LABEL "udev"
@@ -1050,10 +1179,83 @@ qt_feature("relocatable" PRIVATE
     AUTODETECT QT_FEATURE_shared
     CONDITION QT_FEATURE_dlopen OR WIN32 OR NOT QT_FEATURE_shared
 )
+# hardening features
 qt_feature("intelcet" PRIVATE
-    LABEL "Using Intel CET"
-    CONDITION ( INPUT_intelcet STREQUAL yes ) OR TEST_intelcet
+    LABEL "Using Intel Control-flow Enforcement Technology (CET)"
+    AUTODETECT ON
+    CONDITION TEST_intelcet
 )
+qt_feature_config("intelcet" QMAKE_PUBLIC_CONFIG)
+qt_feature("glibc_fortify_source" PRIVATE
+    LABEL "Using Glibc function fortification"
+    AUTODETECT ON
+    CONDITION TEST_glibc
+)
+qt_feature_config("glibc_fortify_source" QMAKE_PUBLIC_CONFIG)
+qt_feature("trivial_auto_var_init_pattern" PRIVATE
+    LABEL "Using -ftrivial-auto-var-init=pattern"
+    AUTODETECT ON
+    CONDITION TEST_trivial_auto_var_init_pattern
+)
+qt_feature_config("trivial_auto_var_init_pattern" QMAKE_PUBLIC_CONFIG)
+qt_feature("stack_protector" PRIVATE
+    LABEL "Using -fstack-protector-strong"
+    AUTODETECT ON
+    CONDITION TEST_stack_protector
+)
+qt_feature_config("stack_protector" QMAKE_PUBLIC_CONFIG)
+qt_feature("stack_clash_protection" PRIVATE
+    LABEL "Using -fstack-clash-protection"
+    AUTODETECT ON
+    CONDITION TEST_stack_clash_protection
+)
+qt_feature_config("stack_clash_protection" QMAKE_PUBLIC_CONFIG)
+qt_feature("libstdcpp_assertions" PRIVATE
+    LABEL "Using libstdc++ assertions"
+    AUTODETECT ON
+    CONDITION (GCC OR (CLANG AND NOT MSVC AND NOT QT_FEATURE_stdlib_libcpp AND NOT TEST_using_stdlib_libcpp))
+)
+qt_feature_config("libstdcpp_assertions" QMAKE_PUBLIC_CONFIG)
+qt_feature("libcpp_hardening" PRIVATE
+    LABEL "Using libc++ hardening"
+    AUTODETECT ON
+    CONDITION (QT_FEATURE_stdlib_libcpp OR TEST_using_stdlib_libcpp)
+)
+qt_feature_config("libcpp_hardening" QMAKE_PUBLIC_CONFIG)
+qt_feature("relro_now_linker" PRIVATE
+    LABEL "Using -z relro -z now when linking"
+    AUTODETECT ON
+    CONDITION TEST_relro_now_linker
+)
+qt_feature_config("relro_now_linker" QMAKE_PUBLIC_CONFIG)
+
+
+if("${INPUT_coverage}" STREQUAL "gcov")
+    qt_config_compile_test(gcov
+        LABEL "gcov compiler flags"
+        COMPILE_OPTIONS "--coverage"
+        CODE
+    "int main(void)
+    {
+        /* BEGIN TEST: */
+        /* END TEST: */
+        return 0;
+    }
+    ")
+endif()
+
+qt_feature("coverage-gcov"
+    LABEL "Gcov"
+    ENABLE INPUT_coverage STREQUAL "gcov"
+    CONDITION TEST_gcov AND
+        ( QT_FEATURE_debug OR QT_FEATURE_debug_and_release )
+)
+
+qt_feature("coverage"
+    LABEL "Coverage"
+    CONDITION QT_FEATURE_coverage_gcov
+)
+
 qt_configure_add_summary_build_type_and_config()
 qt_configure_add_summary_section(NAME "Build options")
 qt_configure_add_summary_build_mode(Mode)
@@ -1104,6 +1306,13 @@ qt_configure_add_summary_entry(ARGS "relocatable")
 qt_configure_add_summary_entry(ARGS "precompile_header")
 qt_configure_add_summary_entry(ARGS "ltcg")
 qt_configure_add_summary_entry(ARGS "intelcet")
+qt_configure_add_summary_entry(ARGS "glibc_fortify_source")
+qt_configure_add_summary_entry(ARGS "trivial_auto_var_init_pattern")
+qt_configure_add_summary_entry(ARGS "stack_protector")
+qt_configure_add_summary_entry(ARGS "stack_clash_protection")
+qt_configure_add_summary_entry(ARGS "libstdcpp_assertions")
+qt_configure_add_summary_entry(ARGS "libcpp_hardening")
+qt_configure_add_summary_entry(ARGS "relro_now_linker")
 qt_configure_add_summary_entry(
     ARGS "wasm-simd128"
     CONDITION ( TEST_architecture_arch STREQUAL wasm )
@@ -1197,11 +1406,6 @@ qt_configure_add_report_entry(
 )
 qt_configure_add_report_entry(
     TYPE ERROR
-    MESSAGE "debug-only framework builds are not supported. Configure with -no-framework if you want a pure debug build."
-    CONDITION QT_FEATURE_framework AND QT_FEATURE_debug AND NOT QT_FEATURE_debug_and_release
-)
-qt_configure_add_report_entry(
-    TYPE ERROR
     MESSAGE "Static builds don't support RPATH"
     CONDITION ( QT_FEATURE_rpath OR QT_EXTRA_RPATHS ) AND NOT QT_FEATURE_shared
 )
@@ -1232,16 +1436,17 @@ https://github.com/llvm/llvm-project/issues/53520
 ]=]
         )
     else()
+        string(CONCAT error_message
+            "x86 intrinsics support missing. Check your compiler settings.\n"
+            "If this is an error, report at https://bugreports.qt.io with your compiler ID and "
+            "version, and this output:\n"
+            "\n"
+            "${TEST_x86intrin_OUTPUT}"
+        )
         qt_configure_add_report_entry(
             TYPE ERROR
             CONDITION (NOT QT_FEATURE_x86intrin)
-            MESSAGE [========[
-x86 intrinsics support missing. Check your compiler settings. If this is an
-error, report at https://bugreports.qt.io with your compiler ID and version,
-and this output:
-
-${TEST_x86intrin_OUTPUT}
-]========]
+            MESSAGE "${error_message}"
         )
     endif()
 endif()
@@ -1260,6 +1465,11 @@ qt_configure_add_report_entry(
     MESSAGE "You should use the recommended Emscripten version ${QT_EMCC_RECOMMENDED_VERSION} with this Qt. You have ${EMCC_VERSION}."
     CONDITION WASM AND NOT ${EMCC_VERSION} MATCHES ${QT_EMCC_RECOMMENDED_VERSION}
 )
+qt_configure_add_report_entry(
+    TYPE ERROR
+    MESSAGE "Building Qt with C++20 is not supported with MSVC 2019."
+    CONDITION QT_FEATURE_cxx20 AND MSVC AND MSVC_VERSION LESS "1930"
+)
 if(WASM)
     qt_extra_definition("QT_EMCC_VERSION" "\"${EMCC_VERSION}\"" PUBLIC)
 endif()
@@ -1268,8 +1478,7 @@ qt_extra_definition("QT_VERSION_MAJOR" ${PROJECT_VERSION_MAJOR} PUBLIC)
 qt_extra_definition("QT_VERSION_MINOR" ${PROJECT_VERSION_MINOR} PUBLIC)
 qt_extra_definition("QT_VERSION_PATCH" ${PROJECT_VERSION_PATCH} PUBLIC)
 
-qt_extra_definition("QT_COPYRIGHT" \"${QT_COPYRIGHT}\" PRIVATE)
-qt_extra_definition("QT_COPYRIGHT_YEAR" \"${QT_COPYRIGHT_YEAR}\" PRIVATE)
+qt_extra_definition("QT_COPYRIGHT" \"${QT_COPYRIGHT}\" PUBLIC)
 
 qt_configure_add_report_entry(
     TYPE WARNING

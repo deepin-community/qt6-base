@@ -4,6 +4,7 @@
 #ifndef QPOINTER_H
 #define QPOINTER_H
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qsharedpointer.h>
 #include <QtCore/qtypeinfo.h>
 
@@ -28,7 +29,10 @@ class QPointer
     QWeakPointer<QObjectType> wp;
 public:
     Q_NODISCARD_CTOR
-    QPointer() = default;
+    QPointer() noexcept = default;
+    Q_NODISCARD_CTOR
+    constexpr QPointer(std::nullptr_t) noexcept : QPointer{} {}
+    Q_WEAK_OVERLOAD
     Q_NODISCARD_CTOR
     inline QPointer(T *p) : wp(p, true) { }
     // compiler-generated copy/move ctor/assignment operators are fine!
@@ -44,14 +48,14 @@ public:
         : wp(other.wp.internalData(), true) {}
 
     template <typename X, if_convertible<X> = true>
-    QPointer &operator=(const QPointer<X> &other)
+    QPointer &operator=(const QPointer<X> &other) noexcept
     {
         QPointer(other).swap(*this);
         return *this;
     }
 
     template <typename X, if_convertible<X> = true>
-    QPointer &operator=(QPointer<X> &&other)
+    QPointer &operator=(QPointer<X> &&other) noexcept
     {
         QPointer(std::move(other)).swap(*this);
         return *this;
@@ -67,44 +71,41 @@ public:
     inline QPointer<T> &operator=(T* p)
     { wp.assign(static_cast<QObjectType*>(p)); return *this; }
 
-    inline T* data() const
+    T* data() const noexcept
     { return static_cast<T*>(wp.internalData()); }
-    inline T* get() const
+    T* get() const noexcept
     { return data(); }
-    inline T* operator->() const
+    T* operator->() const noexcept
     { return data(); }
-    inline T& operator*() const
+    T& operator*() const noexcept
     { return *data(); }
-    inline operator T*() const
+    operator T*() const noexcept
     { return data(); }
 
-    inline bool isNull() const
+    bool isNull() const noexcept
     { return wp.isNull(); }
 
-    inline void clear()
+    void clear() noexcept
     { wp.clear(); }
 
-#define DECLARE_COMPARE_SET(T1, A1, T2, A2) \
-    friend bool operator==(T1, T2) \
-    { return A1 == A2; } \
-    friend bool operator!=(T1, T2) \
-    { return A1 != A2; }
+    friend void swap(QPointer &lhs, QPointer &rhs) noexcept
+    { lhs.swap(rhs); }
 
-#define DECLARE_TEMPLATE_COMPARE_SET(T1, A1, T2, A2) \
-    template <typename X> \
-    friend bool operator==(T1, T2) noexcept \
-    { return A1 == A2; } \
-    template <typename X> \
-    friend bool operator!=(T1, T2) noexcept \
-    { return A1 != A2; }
+private:
+    template <typename X>
+    friend bool comparesEqual(const QPointer &lhs, const QPointer<X> &rhs) noexcept
+    { return lhs.data() == rhs.data(); }
+    QT_DECLARE_EQUALITY_OPERATORS_HELPER(QPointer, QPointer<X>, /* non-constexpr */,
+                                         noexcept(true), template <typename X>)
 
-    DECLARE_TEMPLATE_COMPARE_SET(const QPointer &p1, p1.data(), const QPointer<X> &p2, p2.data())
-    DECLARE_TEMPLATE_COMPARE_SET(const QPointer &p1, p1.data(), X *ptr, ptr)
-    DECLARE_TEMPLATE_COMPARE_SET(X *ptr, ptr, const QPointer &p2, p2.data())
-    DECLARE_COMPARE_SET(const QPointer &p1, p1.data(), std::nullptr_t, nullptr)
-    DECLARE_COMPARE_SET(std::nullptr_t, nullptr, const QPointer &p2, p2.data())
-#undef DECLARE_COMPARE_SET
-#undef DECLARE_TEMPLATE_COMPARE_SET
+    template <typename X>
+    friend bool comparesEqual(const QPointer &lhs, X *rhs) noexcept
+    { return lhs.data() == rhs; }
+    Q_DECLARE_EQUALITY_COMPARABLE(QPointer, X*, template <typename X>)
+
+    friend bool comparesEqual(const QPointer &lhs, std::nullptr_t) noexcept
+    { return lhs.data() == nullptr; }
+    Q_DECLARE_EQUALITY_COMPARABLE(QPointer, std::nullptr_t)
 };
 template <class T> Q_DECLARE_TYPEINFO_BODY(QPointer<T>, Q_RELOCATABLE_TYPE);
 
@@ -115,10 +116,6 @@ qPointerFromVariant(const QVariant &variant)
     const auto wp = QtSharedPointer::weakPointerFromVariant_internal(variant);
     return QPointer<T>{qobject_cast<T*>(QtPrivate::EnableInternalData::internalData(wp))};
 }
-
-template <class T>
-inline void swap(QPointer<T> &p1, QPointer<T> &p2) noexcept
-{ p1.swap(p2); }
 
 QT_END_NAMESPACE
 

@@ -1,6 +1,7 @@
 // Copyright (C) 2012 Giuseppe D'Angelo <dangelog@gmail.com>
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Copyright (C) 2024 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QLibraryInfo>
@@ -148,6 +149,9 @@ void tst_rcc::rcc_data()
     QTest::newRow("size-1") << sizesPath << "size-1.qrc" << "size-1.expected";
     QTest::newRow("size-2-0-35-1") << sizesPath << "size-2-0-35-1.qrc" <<
                                       (sizeof(size_t) == 8 ? "size-2-0-35-1.expected" : "size-2-0-35-1.expected32");
+
+    QTest::newRow("legal") << m_dataPath + QLatin1StringView("/legal")
+                               << "legal.qrc" << "rcc_legal.cpp";
 }
 
 static QStringList readLinesFromFile(const QString &fileName,

@@ -35,6 +35,11 @@ const char *Style = R"css(
     background-color: lightgray;
 }
 
+.qt-window-contents {
+    overflow: hidden;
+    position: relative;
+}
+
 .qt-window.transparent-for-input {
     pointer-events: none;
 }
@@ -59,7 +64,7 @@ const char *Style = R"css(
 
 .qt-window.no-resize > .resize-outline { display: none; }
 
-.qt-window.has-border:not(.maximized):not(.no-resize) .resize-outline {
+.qt-window.has-border:not(.maximized):not(.no-resize) > .resize-outline {
     display: block;
 }
 
@@ -135,7 +140,7 @@ const char *Style = R"css(
     padding-bottom: 4px;
 }
 
-.qt-window.has-border .title-bar {
+.qt-window.has-border > .title-bar {
     display: flex;
 }
 
@@ -219,8 +224,8 @@ const char *Style = R"css(
     visibility: visible;
     clip: rect(1px, 1px, 1px, 1px);
     clip-path: inset(50%);
-    height: 1px;
-    width: 1px;
+    height: 100%;
+    width: 100%;
     margin: -1px;
     overflow: hidden;
     padding: 0;

@@ -250,7 +250,15 @@ public:
         Half4,
         Half3,
         Half2,
-        Half
+        Half,
+        UShort4,
+        UShort3,
+        UShort2,
+        UShort,
+        SShort4,
+        SShort3,
+        SShort2,
+        SShort,
     };
 
     QRhiVertexInputAttribute() = default;
@@ -592,6 +600,9 @@ public:
     int resolveLevel() const { return m_resolveLevel; }
     void setResolveLevel(int level) { m_resolveLevel = level; }
 
+    int multiViewCount() const { return m_multiViewCount; }
+    void setMultiViewCount(int count) { m_multiViewCount = count; }
+
 private:
     QRhiTexture *m_texture = nullptr;
     QRhiRenderBuffer *m_renderBuffer = nullptr;
@@ -600,6 +611,7 @@ private:
     QRhiTexture *m_resolveTexture = nullptr;
     int m_resolveLayer = 0;
     int m_resolveLevel = 0;
+    int m_multiViewCount = 0;
 };
 
 Q_DECLARE_TYPEINFO(QRhiColorAttachment, Q_RELOCATABLE_TYPE);
@@ -630,10 +642,14 @@ public:
     QRhiTexture *depthTexture() const { return m_depthTexture; }
     void setDepthTexture(QRhiTexture *texture) { m_depthTexture = texture; }
 
+    QRhiTexture *depthResolveTexture() const { return m_depthResolveTexture; }
+    void setDepthResolveTexture(QRhiTexture *tex) { m_depthResolveTexture = tex; }
+
 private:
     QVarLengthArray<QRhiColorAttachment, 8> m_colorAttachments;
     QRhiRenderBuffer *m_depthStencilBuffer = nullptr;
     QRhiTexture *m_depthTexture = nullptr;
+    QRhiTexture *m_depthResolveTexture = nullptr;
 };
 
 class Q_GUI_EXPORT QRhiTextureSubresourceUploadDescription
@@ -865,6 +881,7 @@ public:
 
     virtual char *beginFullDynamicBufferUpdateForCurrentFrame();
     virtual void endFullDynamicBufferUpdateForCurrentFrame();
+    virtual void fullDynamicBufferUpdateForCurrentFrame(const void *data);
 
 protected:
     QRhiBuffer(QRhiImplementation *rhi, Type type_, UsageFlags usage_, quint32 size_);
@@ -979,6 +996,15 @@ public:
     int sampleCount() const { return m_sampleCount; }
     void setSampleCount(int s) { m_sampleCount = s; }
 
+    struct ViewFormat {
+        QRhiTexture::Format format;
+        bool srgb;
+    };
+    ViewFormat readViewFormat() const { return m_readViewFormat; }
+    void setReadViewFormat(const ViewFormat &fmt) { m_readViewFormat = fmt; }
+    ViewFormat writeViewFormat() const { return m_writeViewFormat; }
+    void setWriteViewFormat(const ViewFormat &fmt) { m_writeViewFormat = fmt; }
+
     virtual bool create() = 0;
     virtual NativeTexture nativeTexture();
     virtual bool createFrom(NativeTexture src);
@@ -995,6 +1021,8 @@ protected:
     Flags m_flags;
     int m_arrayRangeStart = -1;
     int m_arrayRangeLength = -1;
+    ViewFormat m_readViewFormat = { UnknownFormat, false };
+    ViewFormat m_writeViewFormat = { UnknownFormat, false };
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QRhiTexture::Flags)
@@ -1158,7 +1186,8 @@ class Q_GUI_EXPORT QRhiTextureRenderTarget : public QRhiRenderTarget
 public:
     enum Flag {
         PreserveColorContents = 1 << 0,
-        PreserveDepthStencilContents = 1 << 1
+        PreserveDepthStencilContents = 1 << 1,
+        DoNotStoreDepthStencilContents = 1 << 2
     };
     Q_DECLARE_FLAGS(Flags, Flag)
 
@@ -1232,6 +1261,11 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QRhiShaderResourceBindings::UpdateFlags)
 #ifndef QT_NO_DEBUG_STREAM
 Q_GUI_EXPORT QDebug operator<<(QDebug, const QRhiShaderResourceBindings &);
 #endif
+
+// The proper name. Until it gets rolled out universally, have the better name
+// as a typedef. Eventually it should be reversed (the old name being a typedef
+// to the new one).
+using QRhiShaderResourceBindingSet = QRhiShaderResourceBindings;
 
 class Q_GUI_EXPORT QRhiGraphicsPipeline : public QRhiResource
 {
@@ -1437,6 +1471,9 @@ public:
     PolygonMode polygonMode() const {return m_polygonMode; }
     void setPolygonMode(PolygonMode mode) {m_polygonMode = mode; }
 
+    int multiViewCount() const { return m_multiViewCount; }
+    void setMultiViewCount(int count) { m_multiViewCount = count; }
+
     virtual bool create() = 0;
 
 protected:
@@ -1460,6 +1497,7 @@ protected:
     float m_slopeScaledDepthBias = 0.0f;
     int m_patchControlPointCount = 3;
     PolygonMode m_polygonMode = Fill;
+    int m_multiViewCount = 0;
     QVarLengthArray<QRhiShaderStage, 4> m_shaderStages;
     QRhiVertexInputLayout m_vertexInputLayout;
     QRhiShaderResourceBindings *m_shaderResourceBindings = nullptr;
@@ -1472,11 +1510,16 @@ Q_DECLARE_TYPEINFO(QRhiGraphicsPipeline::TargetBlend, Q_RELOCATABLE_TYPE);
 
 struct QRhiSwapChainHdrInfo
 {
-    bool isHardCodedDefaults;
     enum LimitsType {
         LuminanceInNits,
         ColorComponentValue
     };
+
+    enum LuminanceBehavior {
+        SceneReferred,
+        DisplayReferred
+    };
+
     LimitsType limitsType;
     union {
         struct {
@@ -1488,6 +1531,8 @@ struct QRhiSwapChainHdrInfo
             float maxPotentialColorComponentValue;
         } colorComponentValue;
     } limits;
+    LuminanceBehavior luminanceBehavior;
+    float sdrWhiteLevel;
 };
 
 Q_DECLARE_TYPEINFO(QRhiSwapChainHdrInfo, Q_RELOCATABLE_TYPE);
@@ -1517,7 +1562,8 @@ public:
     enum Format {
         SDR,
         HDRExtendedSrgbLinear,
-        HDR10
+        HDR10,
+        HDRExtendedDisplayP3Linear
     };
 
     enum StereoTargetBuffer {
@@ -1771,7 +1817,8 @@ public:
         EnableDebugMarkers = 1 << 0,
         PreferSoftwareRenderer = 1 << 1,
         EnablePipelineCacheDataSave = 1 << 2,
-        EnableTimestamps = 1 << 3
+        EnableTimestamps = 1 << 3,
+        SuppressSmokeTestWarnings = 1 << 4
     };
     Q_DECLARE_FLAGS(Flags, Flag)
 
@@ -1822,7 +1869,10 @@ public:
         OneDimensionalTextureMipmaps,
         HalfAttributes,
         RenderToOneDimensionalTexture,
-        ThreeDimensionalTextureMipmaps
+        ThreeDimensionalTextureMipmaps,
+        MultiView,
+        TextureViewFormat,
+        ResolveDepthStencil
     };
 
     enum BeginFrameFlag {
@@ -1867,6 +1917,8 @@ public:
 
     using CleanupCallback = std::function<void(QRhi *)>;
     void addCleanupCallback(const CleanupCallback &callback);
+    void addCleanupCallback(const void *key, const CleanupCallback &callback);
+    void removeCleanupCallback(const void *key);
     void runCleanup();
 
     QRhiGraphicsPipeline *newGraphicsPipeline();

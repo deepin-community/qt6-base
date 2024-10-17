@@ -11,6 +11,7 @@
 #include "qtexttable.h"
 #include "qtextlist.h"
 #include <qdebug.h>
+#include <qloggingcategory.h>
 #if QT_CONFIG(regularexpression)
 #include <qregularexpression.h>
 #endif
@@ -42,6 +43,8 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_LOGGING_CATEGORY(lcLayout);
+
 using namespace Qt::StringLiterals;
 
 Q_CORE_EXPORT Q_DECL_CONST_FUNCTION unsigned int qt_int_sqrt(unsigned int n);
@@ -50,7 +53,12 @@ namespace {
     QTextDocument::ResourceProvider qt_defaultResourceProvider;
 };
 
+QAbstractUndoItem::~QAbstractUndoItem()
+    = default;
+
 /*!
+    \fn bool Qt::mightBeRichText(QAnyStringView text)
+
     Returns \c true if the string \a text is likely to be rich text;
     otherwise returns \c false.
 
@@ -60,18 +68,21 @@ namespace {
     for common cases, there is no guarantee.
 
     This function is defined in the \c <QTextDocument> header file.
-*/
-bool Qt::mightBeRichText(const QString& text)
+
+    \note In Qt versions prior to 6.7, this function took QString only.
+ */
+template <typename T>
+static bool mightBeRichTextImpl(T text)
 {
     if (text.isEmpty())
         return false;
     qsizetype start = 0;
 
-    while (start < text.size() && text.at(start).isSpace())
+    while (start < text.size() && QChar(text.at(start)).isSpace())
         ++start;
 
     // skip a leading <?xml ... ?> as for example with xhtml
-    if (QStringView{text}.mid(start, 5).compare("<?xml"_L1) == 0) {
+    if (text.mid(start, 5).compare("<?xml"_L1) == 0) {
         while (start < text.size()) {
             if (text.at(start) == u'?'
                 && start + 2 < text.size()
@@ -82,41 +93,52 @@ bool Qt::mightBeRichText(const QString& text)
             ++start;
         }
 
-        while (start < text.size() && text.at(start).isSpace())
+        while (start < text.size() && QChar(text.at(start)).isSpace())
             ++start;
     }
 
-    if (QStringView{text}.mid(start, 5).compare("<!doc"_L1, Qt::CaseInsensitive) == 0)
+    if (text.mid(start, 5).compare("<!doc"_L1, Qt::CaseInsensitive) == 0)
         return true;
     qsizetype open = start;
     while (open < text.size() && text.at(open) != u'<'
             && text.at(open) != u'\n') {
-        if (text.at(open) == u'&' &&  QStringView{text}.mid(open + 1, 3) == "lt;"_L1)
+        if (text.at(open) == u'&' && text.mid(open + 1, 3) == "lt;"_L1)
             return true; // support desperate attempt of user to see <...>
         ++open;
     }
     if (open < text.size() && text.at(open) == u'<') {
         const qsizetype close = text.indexOf(u'>', open);
         if (close > -1) {
-            QString tag;
-            for (int i = open+1; i < close; ++i) {
-                if (text[i].isDigit() || text[i].isLetter())
-                    tag += text[i];
-                else if (!tag.isEmpty() && text[i].isSpace())
+            QVarLengthArray<char16_t> tag;
+            for (qsizetype i = open + 1; i < close; ++i) {
+                const auto current = QChar(text[i]);
+                if (current.isDigit() || current.isLetter())
+                    tag.append(current.toLower().unicode());
+                else if (!tag.isEmpty() && current.isSpace())
                     break;
-                else if (!tag.isEmpty() && text[i] == u'/' && i + 1 == close)
+                else if (!tag.isEmpty() && current == u'/' && i + 1 == close)
                     break;
-                else if (!text[i].isSpace() && (!tag.isEmpty() || text[i] != u'!'))
+                else if (!current.isSpace() && (!tag.isEmpty() || current != u'!'))
                     return false; // that's not a tag
             }
 #ifndef QT_NO_TEXTHTMLPARSER
-            return QTextHtmlParser::lookupElement(std::move(tag).toLower()) != -1;
+            return QTextHtmlParser::lookupElement(tag) != -1;
 #else
             return false;
 #endif // QT_NO_TEXTHTMLPARSER
         }
     }
     return false;
+}
+
+static bool mightBeRichTextImpl(QUtf8StringView text)
+{
+    return mightBeRichTextImpl(QLatin1StringView(QByteArrayView(text)));
+}
+
+bool Qt::mightBeRichText(QAnyStringView text)
+{
+    return text.visit([](auto text) { return mightBeRichTextImpl(text); });
 }
 
 /*!
@@ -235,7 +257,7 @@ QString Qt::convertFromPlainText(const QString &plain, Qt::WhiteSpaceMode mode)
         \li Text block group format changes.
     \endlist
 
-    \sa QTextCursor, QTextEdit, {Rich Text Processing}, {Text Object Example}
+    \sa QTextCursor, QTextEdit, {Rich Text Processing}
 */
 
 /*!
@@ -711,6 +733,8 @@ void QTextDocument::setTextWidth(qreal width)
 {
     Q_D(QTextDocument);
     QSizeF sz = d->pageSize;
+
+    qCDebug(lcLayout) << "page size" << sz << "-> width" << width;
     sz.setWidth(width);
     sz.setHeight(-1);
     setPageSize(sz);
@@ -1138,6 +1162,8 @@ QString QTextDocument::metaInformation(MetaInformation info) const
         return d->url;
     case CssMedia:
         return d->cssMedia;
+    case FrontMatter:
+        return d->frontMatter;
     }
     return QString();
 }
@@ -1160,6 +1186,9 @@ void QTextDocument::setMetaInformation(MetaInformation info, const QString &stri
         break;
     case CssMedia:
         d->cssMedia = string;
+        break;
+    case FrontMatter:
+        d->frontMatter = string;
         break;
     }
 }
@@ -1200,10 +1229,18 @@ QString QTextDocument::toPlainText() const
     Q_D(const QTextDocument);
     QString txt = d->plainText();
 
-    QChar *uc = txt.data();
-    QChar *e = uc + txt.size();
+    constexpr char16_t delims[] = { 0xfdd0, 0xfdd1,
+                                    QChar::ParagraphSeparator, QChar::LineSeparator, QChar::Nbsp };
 
-    for (; uc != e; ++uc) {
+    const size_t pos = std::u16string_view(txt).find_first_of(
+                              std::u16string_view(delims, std::size(delims)));
+    if (pos == std::u16string_view::npos)
+        return txt;
+
+    QChar *uc = txt.data();
+    QChar *const e = uc + txt.size();
+
+    for (uc += pos; uc != e; ++uc) {
         switch (uc->unicode()) {
         case 0xfdd0: // QTextBeginningOfFrame
         case 0xfdd1: // QTextEndOfFrame
@@ -1267,6 +1304,8 @@ void QTextDocument::setHtml(const QString &html)
     d->enableUndoRedo(false);
     d->beginEditBlock();
     d->clear();
+    // ctor calls parse() to build up QTextHtmlParser::nodes list
+    // then import() populates the QTextDocument from those
     QTextHtmlImporter(this, html, QTextHtmlImporter::ImportToDocument).import();
     d->endEditBlock();
     d->enableUndoRedo(previousState);
@@ -1298,6 +1337,10 @@ void QTextDocument::setHtml(const QString &html)
     \value CssMedia         This value is used to select the corresponding '@media'
                             rule, if any, from a specified CSS stylesheet when setHtml()
                             is called. This enum value has been introduced in Qt 6.3.
+    \value FrontMatter      This value is used to select header material, if any was
+                            extracted during parsing of the source file (currently
+                            only from Markdown format). This enum value has been
+                            introduced in Qt 6.8.
 
     \sa metaInformation(), setMetaInformation(), setHtml()
 */
@@ -1471,6 +1514,10 @@ static bool findInBlock(const QTextBlock &block, const QRegularExpression &expr,
 
     If the \a from position is 0 (the default) the search begins from the beginning
     of the document; otherwise it begins at the specified position.
+
+    \warning For historical reasons, the case sensitivity option set on
+    \a expr is ignored. Instead, the \a options are used to determine
+    if the search is case sensitive or not.
 */
 QTextCursor QTextDocument::find(const QRegularExpression &expr, int from, FindFlags options) const
 {
@@ -2366,11 +2413,14 @@ QString QTextHtmlExporter::toHtml(ExportMode mode)
 
     fragmentMarkers = (mode == ExportFragment);
 
-    html += QString::fromLatin1("<meta charset=\"utf-8\" />");
+    html += "<meta charset=\"utf-8\" />"_L1;
 
     QString title  = doc->metaInformation(QTextDocument::DocumentTitle);
-    if (!title.isEmpty())
-        html += QString::fromLatin1("<title>") + title + QString::fromLatin1("</title>");
+    if (!title.isEmpty()) {
+        html += "<title>"_L1;
+        html += title;
+        html += "</title>"_L1;
+    }
     html += "<style type=\"text/css\">\n"_L1;
     html += "p, li { white-space: pre-wrap; }\n"_L1;
     html += "hr { height: 1px; border-width: 0; }\n"_L1;
@@ -2518,7 +2568,9 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
             html += u';';
             attributesEmitted = true;
         }
-    } else if (format.hasProperty(QTextFormat::FontPixelSize)) {
+    } else if (format.hasProperty(QTextFormat::FontPixelSize)
+               && format.property(QTextFormat::FontPixelSize)
+                       != defaultCharFormat.property(QTextFormat::FontPixelSize)) {
         html += " font-size:"_L1;
         html += QString::number(format.intProperty(QTextFormat::FontPixelSize));
         html += "px;"_L1;
@@ -2597,6 +2649,53 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
             html += " -qt-fg-texture-cachekey:"_L1;
             html += QString::number(cacheKey);
             html += ";"_L1;
+        } else if (brush.style() == Qt::LinearGradientPattern
+                   || brush.style() == Qt::RadialGradientPattern
+                   || brush.style() == Qt::ConicalGradientPattern) {
+            const QGradient *gradient = brush.gradient();
+            if (gradient->type() == QGradient::LinearGradient) {
+                const QLinearGradient *linearGradient = static_cast<const QLinearGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qlineargradient("_L1;
+                html += "x1:"_L1 + QString::number(linearGradient->start().x()) + u',';
+                html += "y1:"_L1 + QString::number(linearGradient->start().y()) + u',';
+                html += "x2:"_L1 + QString::number(linearGradient->finalStop().x()) + u',';
+                html += "y2:"_L1 + QString::number(linearGradient->finalStop().y()) + u',';
+            } else if (gradient->type() == QGradient::RadialGradient) {
+                const QRadialGradient *radialGradient = static_cast<const QRadialGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qradialgradient("_L1;
+                html += "cx:"_L1 + QString::number(radialGradient->center().x()) + u',';
+                html += "cy:"_L1 + QString::number(radialGradient->center().y()) + u',';
+                html += "fx:"_L1 + QString::number(radialGradient->focalPoint().x()) + u',';
+                html += "fy:"_L1 + QString::number(radialGradient->focalPoint().y()) + u',';
+                html += "radius:"_L1 + QString::number(radialGradient->radius()) + u',';
+            } else {
+                const QConicalGradient *conicalGradient = static_cast<const QConicalGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qconicalgradient("_L1;
+                html += "cx:"_L1 + QString::number(conicalGradient->center().x()) + u',';
+                html += "cy:"_L1 + QString::number(conicalGradient->center().y()) + u',';
+                html += "angle:"_L1 + QString::number(conicalGradient->angle()) + u',';
+            }
+
+            const QStringList coordinateModes = { "logical"_L1, "stretchtodevice"_L1, "objectbounding"_L1, "object"_L1 };
+            html += "coordinatemode:"_L1;
+            html += coordinateModes.at(int(gradient->coordinateMode()));
+            html += u',';
+
+            const QStringList spreads = { "pad"_L1, "reflect"_L1, "repeat"_L1 };
+            html += "spread:"_L1;
+            html += spreads.at(int(gradient->spread()));
+
+            for (const QGradientStop &stop : gradient->stops()) {
+                html += ",stop:"_L1;
+                html += QString::number(stop.first);
+                html += u' ';
+                html += colorValue(stop.second);
+            }
+
+            html += ");"_L1;
         } else {
             html += " color:"_L1;
             html += colorValue(brush.color());
@@ -2649,6 +2748,63 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
         html += " word-spacing:"_L1;
         html += QString::number(format.fontWordSpacing());
         html += "px;"_L1;
+        attributesEmitted = true;
+    }
+
+    if (format.hasProperty(QTextFormat::TextOutline)) {
+        QPen outlinePen = format.textOutline();
+        html += " -qt-stroke-color:"_L1;
+        html += colorValue(outlinePen.color());
+        html += u';';
+
+        html += " -qt-stroke-width:"_L1;
+        html += QString::number(outlinePen.widthF());
+        html += "px;"_L1;
+
+        html += " -qt-stroke-linecap:"_L1;
+        if (outlinePen.capStyle() == Qt::SquareCap)
+            html += "squarecap;"_L1;
+        else if (outlinePen.capStyle() == Qt::FlatCap)
+            html += "flatcap;"_L1;
+        else if (outlinePen.capStyle() == Qt::RoundCap)
+            html += "roundcap;"_L1;
+
+        html += " -qt-stroke-linejoin:"_L1;
+        if (outlinePen.joinStyle() == Qt::MiterJoin)
+            html += "miterjoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::SvgMiterJoin)
+            html += "svgmiterjoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::BevelJoin)
+            html += "beveljoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::RoundJoin)
+            html += "roundjoin;"_L1;
+
+        if (outlinePen.joinStyle() == Qt::MiterJoin ||
+            outlinePen.joinStyle() == Qt::SvgMiterJoin) {
+            html += " -qt-stroke-miterlimit:"_L1;
+            html += QString::number(outlinePen.miterLimit());
+            html += u';';
+        }
+
+        if (outlinePen.style() == Qt::CustomDashLine && !outlinePen.dashPattern().empty()) {
+            html += " -qt-stroke-dasharray:"_L1;
+            QString dashArrayString;
+            QList<qreal> dashes = outlinePen.dashPattern();
+
+            for (int i = 0; i < dashes.length() - 1; i++) {
+                qreal dash = dashes[i];
+                dashArrayString += QString::number(dash) + u',';
+            }
+
+            dashArrayString += QString::number(dashes.last());
+            html += dashArrayString;
+            html += u';';
+
+            html += " -qt-stroke-dashoffset:"_L1;
+            html += QString::number(outlinePen.dashOffset());
+            html += u';';
+        }
+
         attributesEmitted = true;
     }
 
@@ -2836,6 +2992,17 @@ void QTextHtmlExporter::emitFragment(const QTextFragment &fragment)
 
             html += "<img"_L1;
 
+            QString maxWidthCss;
+
+            if (imgFmt.hasProperty(QTextFormat::ImageMaxWidth)) {
+                auto length = imgFmt.lengthProperty(QTextFormat::ImageMaxWidth);
+                maxWidthCss += "max-width:"_L1;
+                if (length.type() == QTextLength::PercentageLength)
+                    maxWidthCss += QString::number(length.rawValue()) + "%;"_L1;
+                else if (length.type() == QTextLength::FixedLength)
+                    maxWidthCss += QString::number(length.rawValue()) + "px;"_L1;
+            }
+
             if (imgFmt.hasProperty(QTextFormat::ImageName))
                 emitAttribute("src", imgFmt.name());
 
@@ -2852,9 +3019,11 @@ void QTextHtmlExporter::emitFragment(const QTextFragment &fragment)
                 emitAttribute("height", QString::number(imgFmt.height()));
 
             if (imgFmt.verticalAlignment() == QTextCharFormat::AlignMiddle)
-                html += " style=\"vertical-align: middle;\""_L1;
+                html += " style=\"vertical-align: middle;"_L1 + maxWidthCss + u'\"';
             else if (imgFmt.verticalAlignment() == QTextCharFormat::AlignTop)
-                html += " style=\"vertical-align: top;\""_L1;
+                html += " style=\"vertical-align: top;"_L1 + maxWidthCss + u'\"';
+            else if (!maxWidthCss.isEmpty())
+                html += " style=\""_L1 + maxWidthCss + u'\"';
 
             if (QTextFrame *imageFrame = qobject_cast<QTextFrame *>(doc->objectForFormat(imgFmt)))
                 emitFloatStyle(imageFrame->frameFormat().position());
@@ -3015,7 +3184,8 @@ void QTextHtmlExporter::emitBlock(const QTextBlock &block)
                 html += u'"';
             }
 
-            QString styleString = QString::fromLatin1("margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px;");
+            QString styleString;
+            styleString += "margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px;"_L1;
 
             if (format.hasProperty(QTextFormat::ListIndent)) {
                 styleString += " -qt-list-indent: "_L1;
@@ -3554,7 +3724,7 @@ QString QTextDocument::toMarkdown(QTextDocument::MarkdownFeatures features) cons
 #if QT_CONFIG(textmarkdownreader)
 void QTextDocument::setMarkdown(const QString &markdown, QTextDocument::MarkdownFeatures features)
 {
-    QTextMarkdownImporter(features).import(this, markdown);
+    QTextMarkdownImporter(this, features).import(markdown);
 }
 #endif
 

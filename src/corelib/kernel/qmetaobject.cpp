@@ -3,25 +3,22 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmetaobject.h"
-#include "qmetatype.h"
-#include "qobject.h"
 #include "qmetaobject_p.h"
+#include "qmetatype.h"
 #include "qmetatype_p.h"
+#include "qobject.h"
+#include "qobject_p.h"
 
 #include <qcoreapplication.h>
-#include <qcoreevent.h>
-#include <qdatastream.h>
-#include <qstringlist.h>
-#include <qthread.h>
 #include <qvariant.h>
-#include <qdebug.h>
+
+// qthread(_p).h uses QT_CONFIG(thread) internally and has a dummy
+// interface for the non-thread support case
+#include <qthread.h>
+#include "private/qthread_p.h"
 #if QT_CONFIG(thread)
 #include <qsemaphore.h>
 #endif
-
-#include "private/qobject_p.h"
-#include "private/qmetaobject_p.h"
-#include "private/qthread_p.h"
 
 // for normalizeTypeInternal
 #include "private/qmetaobject_moc_p.h"
@@ -130,7 +127,7 @@ static inline const char *rawStringData(const QMetaObject *mo, int index)
     return reinterpret_cast<const char *>(mo->d.stringdata) + offset;
 }
 
-static inline QLatin1StringView stringDataView(const QMetaObject *mo, int index)
+static inline QByteArrayView stringDataView(const QMetaObject *mo, int index)
 {
     Q_ASSERT(priv(mo->d.data)->revision >= 7);
     uint offset = mo->d.stringdata[2*index];
@@ -145,22 +142,12 @@ static inline QByteArray stringData(const QMetaObject *mo, int index)
     return QByteArray::fromRawData(view.data(), view.size());
 }
 
-static inline const char *rawTypeNameFromTypeInfo(const QMetaObject *mo, uint typeInfo)
+static inline QByteArrayView typeNameFromTypeInfo(const QMetaObject *mo, uint typeInfo)
 {
-    if (typeInfo & IsUnresolvedType) {
-        return rawStringData(mo, typeInfo & TypeNameIndexMask);
-    } else {
-        return QMetaType(typeInfo).name();
-    }
-}
-
-static inline QByteArray typeNameFromTypeInfo(const QMetaObject *mo, uint typeInfo)
-{
-    if (typeInfo & IsUnresolvedType) {
-        return stringData(mo, typeInfo & TypeNameIndexMask);
-    } else {
-        return QMetaType(typeInfo).name();
-    }
+    if (typeInfo & IsUnresolvedType)
+        return stringDataView(mo, typeInfo & TypeNameIndexMask);
+    else
+        return QByteArrayView(QMetaType(typeInfo).name());
 }
 
 static inline int typeFromTypeInfo(const QMetaObject *mo, uint typeInfo)
@@ -168,6 +155,19 @@ static inline int typeFromTypeInfo(const QMetaObject *mo, uint typeInfo)
     if (!(typeInfo & IsUnresolvedType))
         return typeInfo;
     return QMetaType::fromName(rawStringData(mo, typeInfo & TypeNameIndexMask)).id();
+}
+
+static auto parse_scope(QByteArrayView qualifiedKey) noexcept
+{
+    struct R {
+        std::optional<QByteArrayView> scope;
+        QByteArrayView key;
+    };
+    const auto scopePos = qualifiedKey.lastIndexOf("::"_L1);
+    if (scopePos < 0)
+        return R{std::nullopt, qualifiedKey};
+    else
+        return R{qualifiedKey.first(scopePos), qualifiedKey.sliced(scopePos + 2)};
 }
 
 namespace {
@@ -334,9 +334,9 @@ int QMetaObject::metacall(QObject *object, Call cl, int idx, void **argv)
         return object->qt_metacall(cl, idx, argv);
 }
 
-static inline const char *objectClassName(const QMetaObject *m)
+static inline QByteArrayView objectClassName(const QMetaObject *m)
 {
-    return rawStringData(m, priv(m->d.data)->className);
+    return stringDataView(m, priv(m->d.data)->className);
 }
 
 /*!
@@ -346,7 +346,7 @@ static inline const char *objectClassName(const QMetaObject *m)
 */
 const char *QMetaObject::className() const
 {
-    return objectClassName(this);
+    return objectClassName(this).constData();
 }
 
 /*!
@@ -401,7 +401,7 @@ const QObject *QMetaObject::cast(const QObject *obj) const
 */
 QString QMetaObject::tr(const char *s, const char *c, int n) const
 {
-    return QCoreApplication::translate(objectClassName(this), s, c, n);
+    return QCoreApplication::translate(className(), s, c, n);
 }
 #endif // QT_NO_TRANSLATION
 
@@ -833,7 +833,7 @@ int QMetaObjectPrivate::indexOfSignalRelative(const QMetaObject **baseObject,
             QMetaMethod conflictMethod = m->d.superdata->method(conflict);
             qWarning("QMetaObject::indexOfSignal: signal %s from %s redefined in %s",
                      conflictMethod.methodSignature().constData(),
-                     objectClassName(m->d.superdata), objectClassName(m));
+                     m->d.superdata->className(), m->className());
         }
      }
  #endif
@@ -1018,8 +1018,8 @@ bool QMetaObjectPrivate::checkConnectArgs(const QMetaMethodPrivate *signal,
         uint targetTypeInfo = method->parameterTypeInfo(i);
         if ((sourceTypeInfo & IsUnresolvedType)
             || (targetTypeInfo & IsUnresolvedType)) {
-            QByteArray sourceName = typeNameFromTypeInfo(smeta, sourceTypeInfo);
-            QByteArray targetName = typeNameFromTypeInfo(rmeta, targetTypeInfo);
+            QByteArrayView sourceName = typeNameFromTypeInfo(smeta, sourceTypeInfo);
+            QByteArrayView targetName = typeNameFromTypeInfo(rmeta, targetTypeInfo);
             if (sourceName != targetName)
                 return false;
         } else {
@@ -1032,10 +1032,10 @@ bool QMetaObjectPrivate::checkConnectArgs(const QMetaMethodPrivate *signal,
     return true;
 }
 
-static const QMetaObject *QMetaObject_findMetaObject(const QMetaObject *self, const char *name)
+static const QMetaObject *QMetaObject_findMetaObject(const QMetaObject *self, QByteArrayView name)
 {
     while (self) {
-        if (strcmp(objectClassName(self), name) == 0)
+        if (objectClassName(self) == name)
             return self;
         if (self->d.relatedMetaObjects) {
             Q_ASSERT(priv(self->d.data)->revision >= 2);
@@ -1061,27 +1061,28 @@ static const QMetaObject *QMetaObject_findMetaObject(const QMetaObject *self, co
 */
 int QMetaObject::indexOfEnumerator(const char *name) const
 {
-    const QMetaObject *m = this;
-    while (m) {
-        const QMetaObjectPrivate *d = priv(m->d.data);
-        for (int i = 0; i < d->enumeratorCount; ++i) {
-            const QMetaEnum e(m, i);
-            const char *prop = rawStringData(m, e.data.name());
-            if (strcmp(name, prop) == 0) {
-                i += m->enumeratorOffset();
-                return i;
-            }
-        }
-        m = m->d.superdata;
+    return QMetaObjectPrivate::indexOfEnumerator(this, name);
+}
+
+int QMetaObjectPrivate::indexOfEnumerator(const QMetaObject *m, QByteArrayView name)
+{
+    using W = QMetaObjectPrivate::Which;
+    for (auto which : { W::Name, W::Alias }) {
+        if (int index = indexOfEnumerator(m, name, which); index != -1)
+            return index;
     }
-    // Check alias names:
-    m = this;
+    return -1;
+}
+
+int QMetaObjectPrivate::indexOfEnumerator(const QMetaObject *m, QByteArrayView name, Which which)
+{
     while (m) {
         const QMetaObjectPrivate *d = priv(m->d.data);
         for (int i = 0; i < d->enumeratorCount; ++i) {
             const QMetaEnum e(m, i);
-            const char *prop = rawStringData(m, e.data.alias());
-            if (strcmp(name, prop) == 0) {
+            const quint32 id = which == Which::Name ? e.data.name() : e.data.alias();
+            QByteArrayView prop = stringDataView(m, id);
+            if (name == prop) {
                 i += m->enumeratorOffset();
                 return i;
             }
@@ -1391,7 +1392,7 @@ QByteArray QMetaObject::normalizedSignature(const char *method)
 }
 
 Q_DECL_COLD_FUNCTION static inline bool
-printMethodNotFoundWarning(const QMetaObject *meta, QLatin1StringView name, qsizetype paramCount,
+printMethodNotFoundWarning(const QMetaObject *meta, QByteArrayView name, qsizetype paramCount,
                            const char *const *names,
                            const QtPrivate::QMetaTypeInterface * const *metaTypes)
 {
@@ -1399,7 +1400,7 @@ printMethodNotFoundWarning(const QMetaObject *meta, QLatin1StringView name, qsiz
     QByteArray candidateMessage;
     for (int i = 0; i < meta->methodCount(); ++i) {
         const QMetaMethod method = meta->method(i);
-        if (method.name() == QByteArrayView(name))
+        if (method.name() == name)
             candidateMessage += "    " + method.methodSignature() + '\n';
     }
     if (!candidateMessage.isEmpty()) {
@@ -1426,8 +1427,8 @@ printMethodNotFoundWarning(const QMetaObject *meta, QLatin1StringView name, qsiz
 }
 
 /*!
-    \fn template <typename... Args> bool QMetaObject::invokeMethod(QObject *obj, const char *member, Qt::ConnectionType type, QMetaMethodReturnArgument ret, Args &&... args)
-    \fn template <typename... Args> bool QMetaObject::invokeMethod(QObject *obj, const char *member, QMetaMethodReturnArgument ret, Args &&... args)
+    \fn template <typename ReturnArg, typename... Args> bool QMetaObject::invokeMethod(QObject *obj, const char *member, Qt::ConnectionType type, QTemplatedMetaMethodReturnArgument<ReturnArg> ret, Args &&... args)
+    \fn template <typename ReturnArg, typename... Args> bool QMetaObject::invokeMethod(QObject *obj, const char *member, QTemplatedMetaMethodReturnArgument<ReturnArg> ret, Args &&... args)
     \fn template <typename... Args> bool QMetaObject::invokeMethod(QObject *obj, const char *member, Qt::ConnectionType type, Args &&... args)
     \fn template <typename... Args> bool QMetaObject::invokeMethod(QObject *obj, const char *member, Args &&... args)
     \since 6.5
@@ -1437,11 +1438,12 @@ printMethodNotFoundWarning(const QMetaObject *meta, QLatin1StringView name, qsiz
     obj. Returns \c true if the member could be invoked. Returns \c false
     if there is no such member or the parameters did not match.
 
-    For the overloads with a QMetaMethodReturnArgument parameter, the return
-    value of the \a member function call is placed in \a ret. For the overloads
-    without such a member, the return value of the called function (if any)
-    will be discarded. QMetaMethodReturnArgument is an internal type you should
-    not use directly. Instead, use the qReturnArg() function.
+    For the overloads with a QTemplatedMetaMethodReturnArgument parameter, the
+    return value of the \a member function call is placed in \a ret. For the
+    overloads without such a member, the return value of the called function
+    (if any) will be discarded. QTemplatedMetaMethodReturnArgument is an
+    internal type you should not use directly. Instead, use the qReturnArg()
+    function.
 
     The overloads with a Qt::ConnectionType \a type parameter allow explicitly
     selecting whether the invocation will be synchronous or not:
@@ -1584,7 +1586,7 @@ bool QMetaObject::invokeMethodImpl(QObject *obj, const char *member, Qt::Connect
     Q_ASSERT(typeNames);
 
     // find the method
-    QLatin1StringView name(member);
+    QByteArrayView name(member);
     if (name.isEmpty())
         return false;
 
@@ -1611,12 +1613,16 @@ bool QMetaObject::invokeMethodImpl(QObject *obj, const char *member, Qt::Connect
     return printMethodNotFoundWarning(obj->metaObject(), name, paramCount, typeNames, metaTypes);
 }
 
-bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *slotObj,
-                                   Qt::ConnectionType type, void *ret)
+bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *slotObj, Qt::ConnectionType type,
+                                qsizetype parameterCount, const void *const *params, const char *const *names,
+                                const QtPrivate::QMetaTypeInterface * const *metaTypes)
 {
+    // We don't need this now but maybe we want it later, or we may be able to
+    // share more code between the two invokeMethodImpl() overloads:
+    Q_UNUSED(names);
     auto slot = QtPrivate::SlotObjUniquePtr(slotObj);
 
-    if (! object)
+    if (! object) // ### only if the slot requires the object + not queued?
         return false;
 
     Qt::HANDLE currentThreadId = QThread::currentThreadId();
@@ -1628,8 +1634,7 @@ bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *
     if (type == Qt::AutoConnection)
         type = receiverInSameThread ? Qt::DirectConnection : Qt::QueuedConnection;
 
-    void *argv[] = { ret };
-
+    void **argv = const_cast<void **>(params);
     if (type == Qt::DirectConnection) {
         slot->call(object, argv);
     } else if (type == Qt::QueuedConnection) {
@@ -1638,8 +1643,16 @@ bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *
                      "queued connections");
             return false;
         }
+        auto event = std::make_unique<QMetaCallEvent>(std::move(slot), nullptr, -1, parameterCount);
+        void **args = event->args();
+        QMetaType *types = event->types();
 
-        QCoreApplication::postEvent(object, new QMetaCallEvent(std::move(slot), nullptr, -1, 1));
+        for (int i = 1; i < parameterCount; ++i) {
+            types[i] = QMetaType(metaTypes[i]);
+            args[i] = types[i].create(argv[i]);
+        }
+
+        QCoreApplication::postEvent(object, event.release());
     } else if (type == Qt::BlockingQueuedConnection) {
 #if QT_CONFIG(thread)
         if (receiverInSameThread)
@@ -1733,6 +1746,31 @@ bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *
 */
 
 /*!
+    \fn  template<typename Functor, typename FunctorReturnType, typename... Args> bool QMetaObject::invokeMethod(QObject *context, Functor &&function, Qt::ConnectionType type, QTemplatedMetaMethodReturnArgument<FunctorReturnType> ret, Args &&...arguments)
+    \fn  template<typename Functor, typename FunctorReturnType, typename... Args> bool QMetaObject::invokeMethod(QObject *context, Functor &&function, QTemplatedMetaMethodReturnArgument<FunctorReturnType> ret, Args &&...arguments)
+    \fn  template<typename Functor, typename... Args> bool QMetaObject::invokeMethod(QObject *context, Functor &&function, Qt::ConnectionType type, Args &&...arguments)
+    \fn  template<typename Functor, typename... Args> bool QMetaObject::invokeMethod(QObject *context, Functor &&function, Args &&...arguments)
+
+    \since 6.7
+    \threadsafe
+
+    Invokes the \a function with \a arguments in the event loop of \a context.
+    \a function can be a functor or a pointer to a member function. Returns
+    \c true if the function could be invoked. The return value of the
+    function call is placed in \a ret. The object used for the \a ret argument
+    should be obtained by passing your object to qReturnArg(). For example:
+
+    \badcode
+        MyClass *obj = ...;
+        int result = 0;
+        QMetaObject::invokeMethod(obj, &MyClass::myMethod, qReturnArg(result), parameter);
+    \endcode
+
+    If \a type is set, then the function is invoked using that connection type.
+    Otherwise, Qt::AutoConnection will be used.
+*/
+
+/*!
     \fn QMetaObject::Connection &QMetaObject::Connection::operator=(Connection &&other)
 
     Move-assigns \a other to this object, and returns a reference.
@@ -1760,6 +1798,7 @@ bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *
     function.
 
     \ingroup objectmodel
+    \compares equality
 
     A QMetaMethod has a methodType(), a methodSignature(), a list of
     parameterTypes() and parameterNames(), a return typeName(), a
@@ -1787,19 +1826,19 @@ bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *
     invoked), otherwise returns \c false.
 */
 
-/*! \fn bool QMetaMethod::operator==(const QMetaMethod &m1, const QMetaMethod &m2)
+/*! \fn bool QMetaMethod::operator==(const QMetaMethod &lhs, const QMetaMethod &rhs)
     \since 5.0
     \overload
 
-    Returns \c true if method \a m1 is equal to method \a m2,
+    Returns \c true if method \a lhs is equal to method \a rhs,
     otherwise returns \c false.
 */
 
-/*! \fn bool QMetaMethod::operator!=(const QMetaMethod &m1, const QMetaMethod &m2)
+/*! \fn bool QMetaMethod::operator!=(const QMetaMethod &lhs, const QMetaMethod &rhs)
     \since 5.0
     \overload
 
-    Returns \c true if method \a m1 is not equal to method \a m2,
+    Returns \c true if method \a lhs is not equal to method \a rhs,
     otherwise returns \c false.
 */
 
@@ -1985,7 +2024,7 @@ void QMetaMethodPrivate::getParameterTypes(int *types) const
 QByteArray QMetaMethodPrivate::parameterTypeName(int index) const
 {
     int paramsIndex = parametersDataIndex();
-    return typeNameFromTypeInfo(mobj, mobj->d.data[paramsIndex + index]);
+    return typeNameFromTypeInfo(mobj, mobj->d.data[paramsIndex + index]).toByteArray();
 }
 
 QList<QByteArray> QMetaMethodPrivate::parameterTypes() const
@@ -1995,8 +2034,10 @@ QList<QByteArray> QMetaMethodPrivate::parameterTypes() const
     QList<QByteArray> list;
     list.reserve(argc);
     int paramsIndex = parametersDataIndex();
-    for (int i = 0; i < argc; ++i)
-        list += typeNameFromTypeInfo(mobj, mobj->d.data[paramsIndex + i]);
+    for (int i = 0; i < argc; ++i) {
+        QByteArrayView name = typeNameFromTypeInfo(mobj, mobj->d.data[paramsIndex + i]);
+        list.emplace_back(name.toByteArray());
+    }
     return list;
 }
 
@@ -2234,10 +2275,9 @@ const char *QMetaMethod::typeName() const
     differently, and treat them according to the specific needs of your
     application.
 
-    \note Since Qt 5.0, \c moc expands preprocessor macros, so it is necessary
+    \note \c moc expands preprocessor macros, so it is necessary
     to surround the definition with \c #ifndef \c Q_MOC_RUN, as shown in the
-    example above. This was not required in Qt 4. The code as shown above works
-    with Qt 4 too.
+    example above.
 */
 const char *QMetaMethod::tag() const
 {
@@ -2351,7 +2391,7 @@ QMetaMethod::MethodType QMetaMethod::methodType() const
     \since 5.0
 
     Returns the meta-method that corresponds to the given \a signal, or an
-    invalid QMetaMethod if \a signal is not a signal of the class.
+    invalid QMetaMethod if \a signal is \c{nullptr} or not a signal of the class.
 
     Example:
 
@@ -2379,20 +2419,21 @@ QMetaMethod QMetaMethod::fromSignalImpl(const QMetaObject *metaObject, void **si
 }
 
 /*!
-    \fn template <typename... Args> bool QMetaMethod::invoke(QObject *obj, Qt::ConnectionType type, QMetaMethodReturnArgument ret, Args &&... arguments) const
+    \fn template <typename ReturnArg, typename... Args> bool QMetaMethod::invoke(QObject *obj, Qt::ConnectionType type, QTemplatedMetaMethodReturnArgument<ReturnArg> ret, Args &&... arguments) const
     \fn template <typename... Args> bool QMetaMethod::invoke(QObject *obj, Qt::ConnectionType type, Args &&... arguments) const
-    \fn template <typename... Args> bool QMetaMethod::invoke(QObject *obj, QMetaMethodReturnArgument ret, Args &&... arguments) const
+    \fn template <typename ReturnArg, typename... Args> bool QMetaMethod::invoke(QObject *obj, QTemplatedMetaMethodReturnArgument<ReturnArg> ret, Args &&... arguments) const
     \fn template <typename... Args> bool QMetaMethod::invoke(QObject *obj, Args &&... arguments) const
     \since 6.5
 
     Invokes this method on the object \a object. Returns \c true if the member could be invoked.
     Returns \c false if there is no such member or the parameters did not match.
 
-    For the overloads with a QMetaMethodReturnArgument parameter, the return
-    value of the \a member function call is placed in \a ret. For the overloads
-    without such a member, the return value of the called function (if any)
-    will be discarded. QMetaMethodReturnArgument is an internal type you should
-    not use directly. Instead, use the qReturnArg() function.
+    For the overloads with a QTemplatedMetaMethodReturnArgument parameter, the
+    return value of the \a member function call is placed in \a ret. For the
+    overloads without such a member, the return value of the called function
+    (if any) will be discarded. QTemplatedMetaMethodReturnArgument is an
+    internal type you should not use directly. Instead, use the qReturnArg()
+    function.
 
     The overloads with a Qt::ConnectionType \a type parameter allow explicitly
     selecting whether the invocation will be synchronous or not:
@@ -2595,7 +2636,7 @@ auto QMetaMethodInvoker::invokeImpl(QMetaMethod self, void *target,
     // 0 is the return type, 1 is the first formal parameter
     auto checkTypesAreCompatible = [=](int idx) {
         uint typeInfo = priv->parameterTypeInfo(idx - 1);
-        QLatin1StringView userTypeName(typeNames[idx] ? typeNames[idx] : metaTypes[idx]->name);
+        QByteArrayView userTypeName(typeNames[idx] ? typeNames[idx] : metaTypes[idx]->name);
 
         if ((typeInfo & IsUnresolvedType) == 0) {
             // this is a built-in type
@@ -2604,7 +2645,7 @@ auto QMetaMethodInvoker::invokeImpl(QMetaMethod self, void *target,
             return int(typeInfo) == metaTypes[idx]->typeId;
         }
 
-        QLatin1StringView methodTypeName = stringDataView(priv->mobj, typeInfo & TypeNameIndexMask);
+        QByteArrayView methodTypeName = stringDataView(priv->mobj, typeInfo & TypeNameIndexMask);
         if ((MetaTypesAreOptional && !metaTypes) || !metaTypes[idx]) {
             // compatibility call, compare strings
             if (methodTypeName == userTypeName)
@@ -2612,7 +2653,7 @@ auto QMetaMethodInvoker::invokeImpl(QMetaMethod self, void *target,
 
             // maybe the user type needs normalization
             QByteArray normalized = normalizeTypeInternal(userTypeName.begin(), userTypeName.end());
-            return methodTypeName == QLatin1StringView(normalized);
+            return methodTypeName == normalized;
         }
 
         QMetaType userType(metaTypes[idx]);
@@ -2819,7 +2860,7 @@ auto QMetaMethodInvoker::invokeImpl(QMetaMethod self, void *target,
 */
 
 /*!
-    \fn template <typename... Args> bool QMetaMethod::invokeOnGadget(void *gadget, QMetaMethodReturnArgument ret, Args &&... arguments) const
+    \fn template <typename ReturnArg, typename... Args> bool QMetaMethod::invokeOnGadget(void *gadget, QTemplatedMetaMethodReturnArgument<ReturnArg> ret, Args &&... arguments) const
     \fn template <typename... Args> bool QMetaMethod::invokeOnGadget(void *gadget, Args &&... arguments) const
     \since 6.5
 
@@ -2830,11 +2871,11 @@ auto QMetaMethodInvoker::invokeImpl(QMetaMethod self, void *target,
 
     The invocation is always synchronous.
 
-    For the overload with a QMetaMethodReturnArgument parameter, the return
-    value of the \a member function call is placed in \a ret. For the overload
-    without it, the return value of the called function (if any) will be
-    discarded. QMetaMethodReturnArgument is an internal type you should not use
-    directly. Instead, use the qReturnArg() function.
+    For the overload with a QTemplatedMetaMethodReturnArgument parameter, the
+    return value of the \a member function call is placed in \a ret. For the
+    overload without it, the return value of the called function (if any) will
+    be discarded. QTemplatedMetaMethodReturnArgument is an internal type you
+    should not use directly. Instead, use the qReturnArg() function.
 
     \warning this method will not test the validity of the arguments: \a gadget
     must be an instance of the class of the QMetaObject of which this QMetaMethod
@@ -3147,7 +3188,34 @@ bool QMetaEnum::isScoped() const
 */
 const char *QMetaEnum::scope() const
 {
-    return mobj ? objectClassName(mobj) : nullptr;
+    return mobj ? mobj->className() : nullptr;
+}
+
+static bool isScopeMatch(QByteArrayView scope, const QMetaEnum *e)
+{
+    const QByteArrayView className = e->enclosingMetaObject()->className();
+
+    // Typical use-cases:
+    // a) Unscoped: namespace N { class C { enum E { F }; }; };  key == "N::C::F"
+    // b) Scoped: namespace N { class C { enum class E { F }; }; }; key == "N::C::E::F"
+    if (scope == className)
+        return true;
+
+    // Not using name() because if isFlag() is true, we want the actual name
+    // of the enum, e.g. "MyFlag", not "MyFlags", e.g.
+    // enum MyFlag { F1, F2 }; Q_DECLARE_FLAGS(MyFlags, MyFlag);
+    QByteArrayView name = e->enumName();
+
+    // Match fully qualified enumerator in unscoped enums, key == "N::C::E::F"
+    // equivalent to use-case "a" above
+    const auto sz = className.size();
+    if (scope.size() == sz + qsizetype(qstrlen("::")) + name.size()
+        && scope.startsWith(className)
+        && scope.sliced(sz, 2) == "::"
+        && scope.sliced(sz + 2) == name)
+        return true;
+
+    return false;
 }
 
 /*!
@@ -3167,19 +3235,11 @@ int QMetaEnum::keyToValue(const char *key, bool *ok) const
         *ok = false;
     if (!mobj || !key)
         return -1;
-    uint scope = 0;
-    const char *qualified_key = key;
-    const char *s = key + qstrlen(key);
-    while (s > key && *s != ':')
-        --s;
-    if (s > key && *(s - 1) == ':') {
-        scope = s - key - 1;
-        key += scope + 2;
-    }
+
+    const auto [scope, enumKey] = parse_scope(QLatin1StringView(key));
     for (int i = 0; i < int(data.keyCount()); ++i) {
-        const QByteArray className = stringData(mobj, priv(mobj->d.data)->className);
-        if ((!scope || (className.size() == int(scope) && strncmp(qualified_key, className.constData(), scope) == 0))
-             && strcmp(key, rawStringData(mobj, mobj->d.data[data.data() + 2*i])) == 0) {
+        if ((!scope || isScopeMatch(*scope, this))
+            && enumKey == stringDataView(mobj, mobj->d.data[data.data() + 2 * i])) {
             if (ok != nullptr)
                 *ok = true;
             return mobj->d.data[data.data() + 2 * i + 1];
@@ -3206,17 +3266,49 @@ const char *QMetaEnum::valueToKey(int value) const
     return nullptr;
 }
 
-static auto parse_scope(QLatin1StringView qualifiedKey) noexcept
+static bool parseEnumFlags(QByteArrayView v, QVarLengthArray<QByteArrayView, 10> &list)
 {
-    struct R {
-        std::optional<QLatin1StringView> scope;
-        QLatin1StringView key;
-    };
-    const auto scopePos = qualifiedKey.lastIndexOf("::"_L1);
-    if (scopePos < 0)
-        return R{std::nullopt, qualifiedKey};
-    else
-        return R{qualifiedKey.first(scopePos), qualifiedKey.sliced(scopePos + 2)};
+    v = v.trimmed();
+    if (v.empty()) {
+        qWarning("QMetaEnum::keysToValue: empty keys string.");
+        return false;
+    }
+
+    qsizetype sep = v.indexOf('|', 0);
+    if (sep == 0) {
+        qWarning("QMetaEnum::keysToValue: malformed keys string, starts with '|', \"%s\"",
+                 v.constData());
+        return false;
+    }
+
+    if (sep == -1) { // One flag
+        list.push_back(v);
+        return true;
+    }
+
+    if (v.endsWith('|')) {
+        qWarning("QMetaEnum::keysToValue: malformed keys string, ends with '|', \"%s\"",
+                 v.constData());
+        return false;
+    }
+
+    const auto begin = v.begin();
+    const auto end = v.end();
+    auto b = begin;
+    for (; b != end && sep != -1; sep = v.indexOf('|', sep)) {
+        list.push_back({b, begin + sep});
+        ++sep; // Skip over '|'
+        b = begin + sep;
+        if (*b == '|') {
+            qWarning("QMetaEnum::keysToValue: malformed keys string, has two consecutive '|': "
+                     "\"%s\"", v.constData());
+            return false;
+        }
+    }
+
+    // The rest of the string
+    list.push_back({b, end});
+    return true;
 }
 
 /*!
@@ -3236,19 +3328,22 @@ int QMetaEnum::keysToValue(const char *keys, bool *ok) const
     if (!mobj || !keys)
         return -1;
 
-    auto lookup = [&] (QLatin1StringView key) -> std::optional<int> {
+    auto lookup = [&] (QByteArrayView key) -> std::optional<int> {
         for (int i = data.keyCount() - 1; i >= 0; --i) {
             if (key == stringDataView(mobj, mobj->d.data[data.data() + 2*i]))
                 return mobj->d.data[data.data() + 2*i + 1];
         }
         return std::nullopt;
     };
-    auto className = [&] { return stringDataView(mobj, priv(mobj->d.data)->className); };
 
     int value = 0;
-    for (const QLatin1StringView &untrimmed : qTokenize(QLatin1StringView{keys}, u'|')) {
+    QVarLengthArray<QByteArrayView, 10> list;
+    const bool r = parseEnumFlags(QByteArrayView{keys}, list);
+    if (!r)
+        return -1;
+    for (const auto &untrimmed : list) {
         const auto parsed = parse_scope(untrimmed.trimmed());
-        if (parsed.scope && *parsed.scope != className())
+        if (parsed.scope && !isScopeMatch(*parsed.scope, this))
             return -1; // wrong type name in qualified name
         if (auto thisValue = lookup(parsed.key))
             value |= *thisValue;
@@ -3293,7 +3388,7 @@ QByteArray QMetaEnum::valueToKeys(int value) const
     QByteArray keys;
     if (!mobj)
         return keys;
-    QVarLengthArray<QLatin1StringView, sizeof(int) * CHAR_BIT> parts;
+    QVarLengthArray<QByteArrayView, sizeof(int) * CHAR_BIT> parts;
     int v = value;
     // reverse iterate to ensure values like Qt::Dialog=0x2|Qt::Window are processed first.
     for (int i = data.keyCount() - 1; i >= 0; --i) {
@@ -3322,7 +3417,7 @@ int QMetaEnum::Data::index(const QMetaObject *mobj) const
 }
 
 /*!
-    \fn QMetaEnum QMetaEnum::fromType()
+    \fn template<typename T> QMetaEnum QMetaEnum::fromType()
     \since 5.5
 
     Returns the QMetaEnum corresponding to the type in the template parameter.
@@ -3408,7 +3503,7 @@ const char *QMetaProperty::typeName() const
     // TODO: can the metatype be invalid for dynamic metaobjects?
     if (const auto mt = metaType(); mt.isValid())
         return mt.name();
-    return rawTypeNameFromTypeInfo(mobj, data.type());
+    return typeNameFromTypeInfo(mobj, data.type()).constData();
 }
 
 /*! \fn QVariant::Type QMetaProperty::type() const
@@ -3561,38 +3656,31 @@ QMetaProperty::QMetaProperty(const QMetaObject *mobj, int index)
       data(getMetaPropertyData(mobj, index))
 {
     Q_ASSERT(index >= 0 && index < priv(mobj->d.data)->propertyCount);
-
-    if (!(data.flags() & EnumOrFlag))
+    // The code below here just resolves menum if the property is an enum type:
+    if (!(data.flags() & EnumOrFlag) || !metaType().flags().testFlag(QMetaType::IsEnumeration))
         return;
-    const char *type = rawTypeNameFromTypeInfo(mobj, data.type());
-    menum = mobj->enumerator(mobj->indexOfEnumerator(type));
+    QByteArrayView enum_name = typeNameFromTypeInfo(mobj, data.type());
+    menum = mobj->enumerator(QMetaObjectPrivate::indexOfEnumerator(mobj, enum_name));
     if (menum.isValid())
         return;
-    const char *enum_name = type;
-    const char *scope_name = objectClassName(mobj);
-    char *scope_buffer = nullptr;
 
-    const char *colon = strrchr(enum_name, ':');
-    // ':' will always appear in pairs
-    Q_ASSERT(colon <= enum_name || *(colon - 1) == ':');
-    if (colon > enum_name) {
-        int len = colon - enum_name - 1;
-        scope_buffer = (char *)malloc(len + 1);
-        memcpy(scope_buffer, enum_name, len);
-        scope_buffer[len] = '\0';
-        scope_name = scope_buffer;
-        enum_name = colon + 1;
+    QByteArrayView scope_name;
+    const auto parsed = parse_scope(enum_name);
+    if (parsed.scope) {
+        scope_name = *parsed.scope;
+        enum_name = parsed.key;
+    } else {
+        scope_name = objectClassName(mobj);
     }
 
     const QMetaObject *scope = nullptr;
-    if (qstrcmp(scope_name, "Qt") == 0)
+    if (scope_name == "Qt")
         scope = &Qt::staticMetaObject;
     else
-        scope = QMetaObject_findMetaObject(mobj, scope_name);
+        scope = QMetaObject_findMetaObject(mobj, QByteArrayView(scope_name));
+
     if (scope)
-        menum = scope->enumerator(scope->indexOfEnumerator(enum_name));
-    if (scope_buffer)
-        free(scope_buffer);
+        menum = scope->enumerator(QMetaObjectPrivate::indexOfEnumerator(scope, enum_name));
 }
 
 /*!
@@ -3884,20 +3972,23 @@ int QMetaProperty::notifySignalIndex() const
     if (!mobj || data.notifyIndex() == std::numeric_limits<uint>::max())
         return -1;
     uint methodIndex = data.notifyIndex();
-    if (methodIndex & IsUnresolvedSignal) {
-        methodIndex &= ~IsUnresolvedSignal;
-        const QByteArray signalName = stringData(mobj, methodIndex);
-        const QMetaObject *m = mobj;
-        const int idx = QMetaObjectPrivate::indexOfMethodRelative<MethodSignal>(&m, signalName, 0, nullptr);
-        if (idx >= 0) {
-            return idx + m->methodOffset();
-        } else {
-            qWarning("QMetaProperty::notifySignal: cannot find the NOTIFY signal %s in class %s for property '%s'",
-                     signalName.constData(), objectClassName(mobj), name());
-            return -1;
-        }
-    }
-    return methodIndex + mobj->methodOffset();
+    if (!(methodIndex & IsUnresolvedSignal))
+        return methodIndex + mobj->methodOffset();
+    methodIndex &= ~IsUnresolvedSignal;
+    const QByteArray signalName = stringData(mobj, methodIndex);
+    const QMetaObject *m = mobj;
+    // try 0-arg signal
+    int idx = QMetaObjectPrivate::indexOfMethodRelative<MethodSignal>(&m, signalName, 0, nullptr);
+    if (idx >= 0)
+        return idx + m->methodOffset();
+    // try 1-arg signal
+    QArgumentType argType(typeId());
+    idx = QMetaObjectPrivate::indexOfMethodRelative<MethodSignal>(&m, signalName, 1, &argType);
+    if (idx >= 0)
+        return idx + m->methodOffset();
+    qWarning("QMetaProperty::notifySignal: cannot find the NOTIFY signal %s in class %s for property '%s'",
+             signalName.constData(), mobj->className(), name());
+    return -1;
 }
 
 // This method has been around for a while, but the documentation was marked \internal until 5.1
@@ -4061,7 +4152,7 @@ bool QMetaProperty::isBindable() const
     This mechanism is free for you to use in your Qt applications.
 
     \note It's also used by the \l[ActiveQt]{Active Qt},
-    \l[QtDBus]{Qt D-Bus}, \l[QtQml]{Qt QML}, and \l{Qt Remote Objects}
+    \l[QtDBus]{Qt D-Bus}, \l[QtQml]{Qt Qml}, and \l{Qt Remote Objects}
     modules. Some keys might be set when using these modules.
 
     \sa QMetaObject

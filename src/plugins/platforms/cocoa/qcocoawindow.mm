@@ -24,6 +24,7 @@
 #include <qpa/qplatformscreen.h>
 #include <QtGui/private/qcoregraphics_p.h>
 #include <QtGui/private/qhighdpiscaling_p.h>
+#include <QtGui/private/qmetallayer_p.h>
 
 #include <QDebug>
 
@@ -150,7 +151,10 @@ QCocoaWindow::~QCocoaWindow()
     QMacAutoReleasePool pool;
     [m_nsWindow makeFirstResponder:nil];
     [m_nsWindow setContentView:nil];
-    if ([m_view superview])
+
+    // Remove from superview only if we have a Qt window parent,
+    // as we don't want to affect window container foreign windows.
+    if (QPlatformWindow::parent())
         [m_view removeFromSuperview];
 
     // Make sure to disconnect observer in all case if view is valid
@@ -280,6 +284,54 @@ void QCocoaWindow::setCocoaGeometry(const QRect &rect)
     }
 
     // will call QPlatformWindow::setGeometry(rect) during resize confirmation (see qnsview.mm)
+}
+
+QMargins QCocoaWindow::safeAreaMargins() const
+{
+    // The safe area of the view reflects the area not covered by navigation
+    // bars, tab bars, toolbars, and other ancestor views that might obscure
+    // the current view (by setting additionalSafeAreaInsets). If the window
+    // uses NSWindowStyleMaskFullSizeContentView this also includes the area
+    // of the view covered by the title bar.
+    QMarginsF viewSafeAreaMargins = {
+        m_view.safeAreaInsets.left,
+        m_view.safeAreaInsets.top,
+        m_view.safeAreaInsets.right,
+        m_view.safeAreaInsets.bottom
+    };
+
+    // The screen's safe area insets represent the distances from the screen's
+    // edges at which content isn't obscured. The view's safe area margins do
+    // not include the screen's insets automatically, so we need to manually
+    // merge them.
+    auto screenRect = m_view.window.screen.frame;
+    auto screenInsets = m_view.window.screen.safeAreaInsets;
+    auto screenRelativeViewBounds = QCocoaScreen::mapFromNative(
+        [m_view.window convertRectToScreen:
+            [m_view convertRect:m_view.bounds toView:nil]]
+    );
+
+    // The margins are relative to the screen the window is on.
+    // Note that we do not want represent the area outside of the
+    // screen as being outside of the safe area.
+    QMarginsF screenSafeAreaMargins = {
+        screenInsets.left ?
+            qMax(0.0f, screenInsets.left - screenRelativeViewBounds.left())
+            : 0.0f,
+        screenInsets.top ?
+            qMax(0.0f, screenInsets.top - screenRelativeViewBounds.top())
+            : 0.0f,
+        screenInsets.right ?
+            qMax(0.0f, screenInsets.right
+                - (screenRect.size.width - screenRelativeViewBounds.right()))
+            : 0.0f,
+        screenInsets.bottom ?
+            qMax(0.0f, screenInsets.bottom
+                - (screenRect.size.height - screenRelativeViewBounds.bottom()))
+            : 0.0f
+    };
+
+    return (screenSafeAreaMargins | viewSafeAreaMargins).toMargins();
 }
 
 bool QCocoaWindow::startSystemMove()
@@ -511,7 +563,7 @@ NSInteger QCocoaWindow::windowLevel(Qt::WindowFlags flags)
         auto *nsWindow = transientCocoaWindow->nativeWindow();
 
         // We only upgrade the window level for "special" windows, to work
-        // around Qt Designer parenting the designer windows to the widget
+        // around Qt Widgets Designer parenting the designer windows to the widget
         // palette window (QTBUG-31779). This should be fixed in designer.
         if (type != Qt::Window)
             windowLevel = qMax(windowLevel, nsWindow.level);
@@ -1233,8 +1285,26 @@ void QCocoaWindow::windowDidResize()
         handleWindowStateChanged();
 }
 
+void QCocoaWindow::windowWillStartLiveResize()
+{
+    // Track live resizing for all windows, including
+    // child windows, so we know if it's safe to update
+    // the window unthrottled outside of the main thread.
+    m_inLiveResize = true;
+}
+
+bool QCocoaWindow::inLiveResize() const
+{
+    // Use member variable to track this instead of reflecting
+    // NSView.inLiveResize directly, so it can be called from
+    // non-main threads.
+    return m_inLiveResize;
+}
+
 void QCocoaWindow::windowDidEndLiveResize()
 {
+    m_inLiveResize = false;
+
     if (!isContentView())
         return;
 
@@ -1243,32 +1313,33 @@ void QCocoaWindow::windowDidEndLiveResize()
 
 void QCocoaWindow::windowDidBecomeKey()
 {
-    if (!isContentView())
+    // The NSWindow we're part of become key. Check if we're the first
+    // responder, and if so, deliver focus window change to our window.
+    if (m_view.window.firstResponder != m_view)
         return;
 
-    if (isForeignWindow())
-        return;
+    qCDebug(lcQpaWindow) << m_view.window << "became key window."
+        << "Updating focus window to" << this << "with view" << m_view;
 
-    QNSView *firstResponderView = qt_objc_cast<QNSView *>(m_view.window.firstResponder);
-    if (!firstResponderView)
+    if (windowIsPopupType()) {
+        qCDebug(lcQpaWindow) << "Window is popup. Skipping focus window change.";
         return;
-
-    const QCocoaWindow *focusCocoaWindow = firstResponderView.platformWindow;
-    if (focusCocoaWindow->windowIsPopupType())
-        return;
+    }
 
     // See also [QNSView becomeFirstResponder]
-    QWindowSystemInterface::handleWindowActivated<QWindowSystemInterface::SynchronousDelivery>(
-                focusCocoaWindow->window(), Qt::ActiveWindowFocusReason);
+    QWindowSystemInterface::handleFocusWindowChanged<QWindowSystemInterface::SynchronousDelivery>(
+                window(), Qt::ActiveWindowFocusReason);
 }
 
 void QCocoaWindow::windowDidResignKey()
 {
-    if (!isContentView())
+    // The NSWindow we're part of lost key. Check if we're the first
+    // responder, and if so, deliver window deactivation to our window.
+    if (m_view.window.firstResponder != m_view)
         return;
 
-    if (isForeignWindow())
-        return;
+    qCDebug(lcQpaWindow) << m_view.window << "resigned key window."
+        << "Clearing focus window" << this << "with view" << m_view;
 
     // Make sure popups are closed before we deliver activation changes, which are
     // otherwise ignored by QApplication.
@@ -1280,12 +1351,14 @@ void QCocoaWindow::windowDidResignKey()
     NSWindow *newKeyWindow = [NSApp keyWindow];
     if (newKeyWindow && newKeyWindow != m_view.window
         && [newKeyWindow conformsToProtocol:@protocol(QNSWindowProtocol)]) {
+        qCDebug(lcQpaWindow) << "New key window" << newKeyWindow
+            << "is Qt window. Deferring focus window change.";
         return;
     }
 
     // Lost key window, go ahead and set the active window to zero
     if (!windowIsPopupType()) {
-        QWindowSystemInterface::handleWindowActivated<QWindowSystemInterface::SynchronousDelivery>(
+        QWindowSystemInterface::handleFocusWindowChanged<QWindowSystemInterface::SynchronousDelivery>(
             nullptr, Qt::ActiveWindowFocusReason);
     }
 }
@@ -1428,6 +1501,12 @@ void QCocoaWindow::handleGeometryChange()
                                << "current" << geometry() << "new" << newGeometry;
 
     QWindowSystemInterface::handleGeometryChange(window(), newGeometry);
+
+    // Changing the window geometry may affect the safe area margins
+    if (safeAreaMargins() != m_lastReportedSafeAreaMargins) {
+        m_lastReportedSafeAreaMargins = safeAreaMargins();
+        QWindowSystemInterface::handleSafeAreaMarginsChanged(window());
+    }
 
     // Guard against processing window system events during QWindow::setGeometry
     // calls, which Qt and Qt applications do not expect.
@@ -1611,6 +1690,23 @@ bool QCocoaWindow::updatesWithDisplayLink() const
 void QCocoaWindow::deliverUpdateRequest()
 {
     qCDebug(lcQpaDrawing) << "Delivering update request to" << window();
+
+    if (auto *qtMetalLayer = qt_objc_cast<QMetalLayer*>(m_view.layer)) {
+        // We attempt a read lock here, so that the animation/render thread is
+        // prioritized lower than the main thread's displayLayer processing.
+        // Without this the two threads might fight over the next drawable,
+        // starving the main thread's presentation of the resized layer.
+        if (!qtMetalLayer.displayLock.tryLockForRead()) {
+            qCDebug(lcQpaDrawing) << "Deferring update request"
+                << "due to" << qtMetalLayer << "needing display";
+            return;
+        }
+
+        // But we don't hold the lock, as the update request can recurse
+        // back into setNeedsDisplay, which would deadlock.
+        qtMetalLayer.displayLock.unlock();
+    }
+
     QPlatformWindow::deliverUpdateRequest();
 }
 
@@ -1657,7 +1753,7 @@ void QCocoaWindow::setupPopupMonitor()
                                                 | NSEventMaskMouseMoved;
         s_globalMouseMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:mouseButtonMask
                                         handler:^(NSEvent *e){
-            if (!QGuiApplicationPrivate::instance()->popupActive()) {
+            if (!QGuiApplicationPrivate::instance()->activePopupWindow()) {
                 removePopupMonitor();
                 return;
             }
@@ -1789,8 +1885,9 @@ QCocoaNSWindow *QCocoaWindow::createNSWindow(bool shouldBePanel)
         // Qt::Tool windows hide on app deactivation, unless Qt::WA_MacAlwaysShowToolWindow is set
         nsWindow.hidesOnDeactivate = ((type & Qt::Tool) == Qt::Tool) && !alwaysShowToolWindow();
 
-        // Make popup windows show on the same desktop as the parent full-screen window
-        nsWindow.collectionBehavior = NSWindowCollectionBehaviorFullScreenAuxiliary;
+        // Make popup windows show on the same desktop as the parent window
+        nsWindow.collectionBehavior = NSWindowCollectionBehaviorFullScreenAuxiliary
+                | NSWindowCollectionBehaviorMoveToActiveSpace;
 
         if ((type & Qt::Popup) == Qt::Popup) {
             nsWindow.hasShadow = YES;
@@ -1805,11 +1902,15 @@ QCocoaNSWindow *QCocoaWindow::createNSWindow(bool shouldBePanel)
 
     applyContentBorderThickness(nsWindow);
 
-    if (QColorSpace colorSpace = format().colorSpace(); colorSpace.isValid()) {
-        NSData *iccData = colorSpace.iccProfile().toNSData();
-        nsWindow.colorSpace = [[[NSColorSpace alloc] initWithICCProfileData:iccData] autorelease];
-        qCDebug(lcQpaDrawing) << "Set" << this << "color space to" << nsWindow.colorSpace;
-    }
+    // We propagate the view's color space granulary to both the IOSurfaces
+    // used for QSurface::RasterSurface, as well as the CAMetalLayer used for
+    // QSurface::MetalSurface, but for QSurface::OpenGLSurface we don't have
+    // that option as we use NSOpenGLContext instead of CAOpenGLLayer. As a
+    // workaround we set the NSWindow's color space, which affects GL drawing
+    // with NSOpenGLContext as well. This does not conflict with the granular
+    // modifications we do to each surface for raster or Metal.
+    if (auto *qtView = qnsview_cast(m_view))
+        nsWindow.colorSpace = qtView.colorSpace;
 
     return nsWindow;
 }

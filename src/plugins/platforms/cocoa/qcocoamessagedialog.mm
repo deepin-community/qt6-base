@@ -170,8 +170,7 @@ bool QCocoaMessageDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality w
         else if ([button.keyEquivalent isEqualToString:@"\e"])
             button.keyEquivalent = @"";
 
-        if (@available(macOS 11, *))
-            button.hasDestructiveAction = role == DestructiveRole;
+        button.hasDestructiveAction = role == DestructiveRole;
 
         // The NSModalResponse of showing an NSAlert normally depends on the order of the
         // button that was clicked, starting from the right with NSAlertFirstButtonReturn (1000),
@@ -278,7 +277,7 @@ bool QCocoaMessageDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality w
         // but also make sure that if the user returns to the main runloop
         // we'll run the modal dialog from there.
         QTimer::singleShot(0, this, [this]{
-            if (m_alert && NSApp.modalWindow != m_alert.window) {
+            if (m_alert && !m_alert.window.visible) {
                 qCDebug(lcQpaDialogs) << "Running deferred modal" << m_alert;
                 QCocoaEventDispatcher::clearCurrentThreadCocoaEventDispatcherInterruptFlag();
                 processResponse(runModal());

@@ -92,6 +92,16 @@ QWasmScreen::QWasmScreen(const emscripten::val &containerOrCanvas)
             QPointingDevice::Capability::Position | QPointingDevice::Capability::Area
                     | QPointingDevice::Capability::NormalizedPosition,
             10, 0);
+    m_tabletDevice = std::make_unique<QPointingDevice>(
+            "stylus", 2, QInputDevice::DeviceType::Stylus,
+            QPointingDevice::PointerType::Pen,
+            QPointingDevice::Capability::Position | QPointingDevice::Capability::Pressure
+                | QPointingDevice::Capability::NormalizedPosition
+                | QInputDevice::Capability::MouseEmulation
+                | QInputDevice::Capability::Hover | QInputDevice::Capability::Rotation
+                | QInputDevice::Capability::XTilt | QInputDevice::Capability::YTilt
+                | QInputDevice::Capability::TangentialPressure,
+            0, 0);
 
     QWindowSystemInterface::registerInputDevice(m_touchDevice.get());
 }
@@ -213,12 +223,18 @@ void QWasmScreen::resizeMaximizedWindows()
 
 QWindow *QWasmScreen::topWindow() const
 {
-    return m_compositor->keyWindow();
+    return activeChild() ? activeChild()->window() : nullptr;
 }
 
 QWindow *QWasmScreen::topLevelAt(const QPoint &p) const
 {
-    return m_compositor->windowAt(p);
+    const auto found =
+            std::find_if(childStack().begin(), childStack().end(), [&p](const QWasmWindow *window) {
+                const QRect geometry = window->windowFrameGeometry();
+
+                return window->isVisible() && geometry.contains(p);
+            });
+    return found != childStack().end() ? (*found)->window() : nullptr;
 }
 
 QPointF QWasmScreen::mapFromLocal(const QPointF &p) const
@@ -244,6 +260,22 @@ void QWasmScreen::setGeometry(const QRect &rect)
     QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(),
                                                        availableGeometry());
     resizeMaximizedWindows();
+}
+
+void QWasmScreen::onSubtreeChanged(QWasmWindowTreeNodeChangeType changeType,
+                                   QWasmWindowTreeNode *parent, QWasmWindow *child)
+{
+    Q_UNUSED(parent);
+
+    QWindow *window = child->window();
+    const bool isMaxFull = (window->windowState() & Qt::WindowMaximized) ||
+                           (window->windowState() & Qt::WindowFullScreen);
+    if (changeType == QWasmWindowTreeNodeChangeType::NodeInsertion && parent == this
+        && childStack().size() == 1 && isMaxFull) {
+        window->setFlag(Qt::WindowStaysOnBottomHint);
+    }
+    QWasmWindowTreeNode::onSubtreeChanged(changeType, parent, child);
+    m_compositor->onWindowTreeChanged(changeType, child);
 }
 
 void QWasmScreen::updateQScreenAndCanvasRenderSize()
@@ -317,6 +349,33 @@ void QWasmScreen::installCanvasResizeObserver()
                           emscripten::val(intptr_t(this)));
 
     resizeObserver.call<void>("observe", m_shadowContainer);
+}
+
+emscripten::val QWasmScreen::containerElement()
+{
+    return m_shadowContainer;
+}
+
+QWasmWindowTreeNode *QWasmScreen::parentNode()
+{
+    return nullptr;
+}
+
+QList<QWasmWindow *> QWasmScreen::allWindows()
+{
+    QList<QWasmWindow *> windows;
+    for (auto *child : childStack()) {
+        const QWindowList list = child->window()->findChildren<QWindow *>(Qt::FindChildrenRecursively);
+        for (auto child : list) {
+            auto handle = child->handle();
+            if (handle) {
+                auto wnd = static_cast<QWasmWindow *>(handle);
+                windows.push_back(wnd);
+            }
+        }
+        windows.push_back(child);
+    }
+    return windows;
 }
 
 QT_END_NAMESPACE

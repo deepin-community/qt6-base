@@ -1,5 +1,8 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #define QFUTURE_TEST
 
 #include <QCoreApplication>
@@ -14,6 +17,7 @@
 #include <private/qobject_p.h>
 
 #include <QTest>
+#include <QtTest/private/qcomparisontesthelper_p.h>
 #include <qfuture.h>
 #include <qfuturewatcher.h>
 #include <qresultstore.h>
@@ -158,6 +162,7 @@ class tst_QFuture: public QObject
 {
     Q_OBJECT
 private slots:
+    void compareCompiles();
     void resultStore();
     void future();
     void futureToVoid();
@@ -201,6 +206,7 @@ private slots:
 #endif
     void onCanceled();
     void cancelContinuations();
+    void continuationsWithContext_data();
     void continuationsWithContext();
     void continuationsWithMoveOnlyLambda();
 #if 0
@@ -268,6 +274,12 @@ public:
 private:
     QtPrivate::ResultStoreBase &store;
 };
+
+void tst_QFuture::compareCompiles()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QFuture<int>::const_iterator>();
+    QTestPrivate::testEqualityOperatorsCompile<QFuture<QString>::const_iterator>();
+}
 
 void tst_QFuture::resultStore()
 {
@@ -1355,16 +1367,16 @@ void tst_QFuture::iterators()
         QFuture<int>::const_iterator i1 = f.begin(), i2 = i1 + 1;
         QFuture<int>::const_iterator c1 = i1, c2 = c1 + 1;
 
-        QCOMPARE(i1, i1);
-        QCOMPARE(i1, c1);
-        QCOMPARE(c1, i1);
-        QCOMPARE(c1, c1);
-        QCOMPARE(i2, i2);
-        QCOMPARE(i2, c2);
-        QCOMPARE(c2, i2);
-        QCOMPARE(c2, c2);
-        QCOMPARE(1 + i1, i1 + 1);
-        QCOMPARE(1 + c1, c1 + 1);
+        QT_TEST_EQUALITY_OPS(i1, i1, true);
+        QT_TEST_EQUALITY_OPS(i1, c1, true);
+        QT_TEST_EQUALITY_OPS(c1, i1, true);
+        QT_TEST_EQUALITY_OPS(c1, c1, true);
+        QT_TEST_EQUALITY_OPS(i2, i2, true);
+        QT_TEST_EQUALITY_OPS(i2, c2, true);
+        QT_TEST_EQUALITY_OPS(c2, i2, true);
+        QT_TEST_EQUALITY_OPS(c2, c2, true);
+        QT_TEST_EQUALITY_OPS(1 + i1, i1 + 1, true);
+        QT_TEST_EQUALITY_OPS(1 + c1, c1 + 1, true);
 
         QVERIFY(i1 != i2);
         QVERIFY(i1 != c2);
@@ -3220,15 +3232,35 @@ void tst_QFuture::cancelContinuations()
     }
 }
 
+void tst_QFuture::continuationsWithContext_data()
+{
+    QTest::addColumn<bool>("inOtherThread");
+    QTest::addRow("in-other-thread") << true;
+    QTest::addRow("in-main-thread-qtbug119406") << false;
+}
+
 void tst_QFuture::continuationsWithContext()
 {
-    QThread thread;
-    thread.start();
-
-    auto context = new QObject();
-    context->moveToThread(&thread);
+    QFETCH(bool, inOtherThread);
 
     auto tstThread = QThread::currentThread();
+    QThread *thread = inOtherThread ? new QThread
+                                    : tstThread;
+    auto context = new QObject();
+
+    const auto cleanupGuard = qScopeGuard([&] {
+        context->deleteLater();
+        if (thread != tstThread) {
+            thread->quit();
+            thread->wait();
+            delete thread;
+        }
+    });
+
+    if (inOtherThread) {
+        thread->start();
+        context->moveToThread(thread);
+    }
 
     // .then()
     {
@@ -3241,12 +3273,12 @@ void tst_QFuture::continuationsWithContext()
                               })
                               .then(context,
                                     [&](int val) {
-                                        if (QThread::currentThread() != &thread)
+                                        if (QThread::currentThread() != thread)
                                             return 0;
                                         return val + 1;
                                     })
                               .then([&](int val) {
-                                  if (QThread::currentThread() != &thread)
+                                  if (QThread::currentThread() != thread)
                                       return 0;
                                   return val + 1;
                               });
@@ -3262,12 +3294,12 @@ void tst_QFuture::continuationsWithContext()
         auto future = promise.future()
                               .onCanceled(context,
                                           [&] {
-                                              if (QThread::currentThread() != &thread)
+                                              if (QThread::currentThread() != thread)
                                                   return 0;
                                               return 1;
                                           })
                               .then([&](int val) {
-                                  if (QThread::currentThread() != &thread)
+                                  if (QThread::currentThread() != thread)
                                       return 0;
                                   return val + 1;
                               });
@@ -3284,17 +3316,17 @@ void tst_QFuture::continuationsWithContext()
         // like QPointers to the parent not being set to nullptr during child
         // object destruction.
         QPointer shortLivedContext = new FakeQWidget();
-        shortLivedContext->moveToThread(&thread);
+        shortLivedContext->moveToThread(thread);
 
         QPromise<int> promise;
         auto future = promise.future()
                               .then(shortLivedContext, [&](int val) {
-                                  if (QThread::currentThread() != &thread)
+                                  if (QThread::currentThread() != thread)
                                       return 0;
                                   return val + 1000;
                               })
                               .onCanceled([&, ptr=QPointer(shortLivedContext)] {
-                                  if (QThread::currentThread() != &thread)
+                                  if (QThread::currentThread() != thread)
                                       return 0;
                                   if (ptr)
                                       return 1;
@@ -3304,10 +3336,10 @@ void tst_QFuture::continuationsWithContext()
 
         QMetaObject::invokeMethod(shortLivedContext, [&]() {
             delete shortLivedContext;
-        }, Qt::BlockingQueuedConnection);
+        }, inOtherThread ? Qt::BlockingQueuedConnection
+                         : Qt::DirectConnection);
 
         promise.finish();
-
         QCOMPARE(future.result(), 2);
     }
 
@@ -3323,12 +3355,12 @@ void tst_QFuture::continuationsWithContext()
                               })
                               .onFailed(context,
                                         [&] {
-                                            if (QThread::currentThread() != &thread)
+                                            if (QThread::currentThread() != thread)
                                                 return 0;
                                             return 1;
                                         })
                               .then([&](int val) {
-                                  if (QThread::currentThread() != &thread)
+                                  if (QThread::currentThread() != thread)
                                       return 0;
                                   return val + 1;
                               });
@@ -3337,11 +3369,6 @@ void tst_QFuture::continuationsWithContext()
         QCOMPARE(future.result(), 2);
     }
 #endif // QT_NO_EXCEPTIONS
-
-    context->deleteLater();
-
-    thread.quit();
-    thread.wait();
 }
 
 void tst_QFuture::continuationsWithMoveOnlyLambda()
@@ -3888,7 +3915,7 @@ void tst_QFuture::signalConnect()
     {
         SenderObject sender;
 
-#if defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
+#if defined(Q_CC_MSVC_ONLY) && (Q_CC_MSVC < 1940 || !defined(_DEBUG))
 #define EXPECT_FUTURE_CONNECT_FAIL() QEXPECT_FAIL("", "QTBUG-101761, test fails on Windows/MSVC", Continue)
 #else
         QTest::ignoreMessage(QtWarningMsg, "QObject::connect: signal not found in SenderObject");
@@ -3908,9 +3935,6 @@ void tst_QFuture::signalConnect()
 
 void tst_QFuture::waitForFinished()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires QThread::create");
-#else
     QFutureInterface<void> fi;
     auto future = fi.future();
 
@@ -3931,7 +3955,6 @@ void tst_QFuture::waitForFinished()
 
     QVERIFY(waitingThread->wait());
     QVERIFY(waitingThread->isFinished());
-#endif
 }
 
 void tst_QFuture::rejectResultOverwrite_data()
@@ -4544,7 +4567,7 @@ void tst_QFuture::whenAllIteratorsWithFailed()
     p1.finish();
     QVERIFY(finished);
 #else
-    QSKIP("Exceptions are disabled, skipping the test")
+    QSKIP("Exceptions are disabled, skipping the test");
 #endif
 }
 
@@ -4609,6 +4632,9 @@ void testWhenAllDifferentTypes()
 
 void tst_QFuture::whenAllDifferentTypes()
 {
+#ifdef Q_OS_VXWORKS
+    QSKIP("std::variant implementation on VxWorks 24.03 is broken and doesn't work with duplicated types");
+#endif
     using Futures = std::variant<QFuture<int>, QFuture<int>, QFuture<void>>;
     testWhenAllDifferentTypes<QList<Futures>>();
     if (QTest::currentTestFailed())
@@ -4818,6 +4844,9 @@ void tst_QFuture::whenAnyIteratorsWithFailed()
 
 void tst_QFuture::whenAnyDifferentTypes()
 {
+#ifdef Q_OS_VXWORKS
+    QSKIP("std::variant implementation on VxWorks 24.03 is broken and doesn't work with duplicated types");
+#endif
     QPromise<int> pInt1;
     QPromise<int> pInt2;
     QPromise<void> pVoid;
