@@ -1,7 +1,8 @@
-# SymbolsHelper-Confirmed: 6.6.1 amd64
+# SymbolsHelper-Confirmed: 6.8.0 amd64 arm64 i386 loong64 riscv64
 libQt6Network.so.6 libqt6network6 #MINVER#
 | libqt6network6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
+ NonQt@NonQt 6.8.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _Z15qIsEffectiveTLD11QStringView@Qt_6 6.1.2
@@ -26,6 +27,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _Z57qRegisterNormalizedMetaType_QNetworkRequest__KnownHeadersRK10QByteArray@Qt_6 6.3.1
  _Z57qRegisterNormalizedMetaType_QSslPreSharedKeyAuthenticatorRK10QByteArray@Qt_6 6.4.0
  _Z59qRegisterNormalizedMetaType_QNetworkRequest__RedirectPolicyRK10QByteArray@Qt_6 6.4.0
+ _Z5print6QDebugN9QSslError8SslErrorE@Qt_6 6.8.0
  (subst)_Z5qHashRK12QHostAddress{size_t}@Qt_6 6.1.2
  (subst)_Z5qHashRK13QOcspResponse{size_t}@Qt_6 6.1.2
  (subst)_Z5qHashRK15QSslCertificate{size_t}@Qt_6 6.1.2
@@ -45,23 +47,32 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN10QDnsLookup11typeChangedENS_4TypeE@Qt_6 6.1.2
  _ZN10QDnsLookup12bindableNameEv@Qt_6 6.1.2
  _ZN10QDnsLookup12bindableTypeEv@Qt_6 6.1.2
+ _ZN10QDnsLookup13setNameserverENS_8ProtocolERK12QHostAddresst@Qt_6 6.8.0
  _ZN10QDnsLookup13setNameserverERK12QHostAddress@Qt_6 6.1.2
  _ZN10QDnsLookup13setNameserverERK12QHostAddresst@Qt_6 6.6.0
  _ZN10QDnsLookup16staticMetaObjectE@Qt_6 6.1.2
  _ZN10QDnsLookup17nameserverChangedERK12QHostAddress@Qt_6 6.1.2
  _ZN10QDnsLookup17setNameserverPortEt@Qt_6 6.6.0
  _ZN10QDnsLookup18bindableNameserverEv@Qt_6 6.1.2
+ _ZN10QDnsLookup19isProtocolSupportedENS_8ProtocolE@Qt_6 6.8.0
+ _ZN10QDnsLookup19setSslConfigurationERK17QSslConfiguration@Qt_6 6.8.0
  _ZN10QDnsLookup21nameserverPortChangedEt@Qt_6 6.6.0
+ _ZN10QDnsLookup21setNameserverProtocolENS_8ProtocolE@Qt_6 6.8.0
  _ZN10QDnsLookup22bindableNameserverPortEv@Qt_6 6.6.0
+ _ZN10QDnsLookup22defaultPortForProtocolENS_8ProtocolE@Qt_6 6.8.0
+ _ZN10QDnsLookup25nameserverProtocolChangedENS_8ProtocolE@Qt_6 6.8.0
+ _ZN10QDnsLookup26bindableNameserverProtocolEv@Qt_6 6.8.0
  _ZN10QDnsLookup5abortEv@Qt_6 6.1.2
  _ZN10QDnsLookup6lookupEv@Qt_6 6.1.2
  _ZN10QDnsLookup7setNameERK7QString@Qt_6 6.1.2
  _ZN10QDnsLookup7setTypeENS_4TypeE@Qt_6 6.1.2
  _ZN10QDnsLookup8finishedEv@Qt_6 6.1.2
+ _ZN10QDnsLookupC1ENS_4TypeERK7QStringNS_8ProtocolERK12QHostAddresstP7QObject@Qt_6 6.8.0
  _ZN10QDnsLookupC1ENS_4TypeERK7QStringP7QObject@Qt_6 6.1.2
  _ZN10QDnsLookupC1ENS_4TypeERK7QStringRK12QHostAddressP7QObject@Qt_6 6.1.2
  _ZN10QDnsLookupC1ENS_4TypeERK7QStringRK12QHostAddresstP7QObject@Qt_6 6.6.0
  _ZN10QDnsLookupC1EP7QObject@Qt_6 6.1.2
+ _ZN10QDnsLookupC2ENS_4TypeERK7QStringNS_8ProtocolERK12QHostAddresstP7QObject@Qt_6 6.8.0
  _ZN10QDnsLookupC2ENS_4TypeERK7QStringP7QObject@Qt_6 6.1.2
  _ZN10QDnsLookupC2ENS_4TypeERK7QStringRK12QHostAddressP7QObject@Qt_6 6.1.2
  _ZN10QDnsLookupC2ENS_4TypeERK7QStringRK12QHostAddresstP7QObject@Qt_6 6.6.0
@@ -69,6 +80,13 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN10QDnsLookupD0Ev@Qt_6 6.1.2
  _ZN10QDnsLookupD1Ev@Qt_6 6.1.2
  _ZN10QDnsLookupD2Ev@Qt_6 6.1.2
+ _ZN10QRestReply8readBodyEv@Qt_6 6.8.0
+ _ZN10QRestReply8readJsonEP15QJsonParseError@Qt_6 6.8.0
+ _ZN10QRestReply8readTextEv@Qt_6 6.8.0
+ _ZN10QRestReplyC1EP13QNetworkReply@Qt_6 6.8.0
+ _ZN10QRestReplyC2EP13QNetworkReply@Qt_6 6.8.0
+ _ZN10QRestReplyD1Ev@Qt_6 6.8.0
+ _ZN10QRestReplyD2Ev@Qt_6 6.8.0
  _ZN10QSslCipherC1ERK7QString@Qt_6 6.1.2
  _ZN10QSslCipherC1ERK7QStringN4QSsl11SslProtocolE@Qt_6 6.1.2
  _ZN10QSslCipherC1ERKS_@Qt_6 6.1.2
@@ -280,6 +298,31 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN12QHostAddressD2Ev@Qt_6 6.1.2
  _ZN12QHostAddressaSENS_14SpecialAddressE@Qt_6 6.1.2
  _ZN12QHostAddressaSERKS_@Qt_6 6.1.2
+ _ZN12QHttpHeaders12fromMultiMapERK9QMultiMapI10QByteArrayS1_E@Qt_6 6.8.0
+ _ZN12QHttpHeaders13fromMultiHashERK10QMultiHashI10QByteArrayS1_E@Qt_6 6.8.0
+ _ZN12QHttpHeaders15fromListOfPairsERK5QListISt4pairI10QByteArrayS2_EE@Qt_6 6.8.0
+ _ZN12QHttpHeaders15replaceOrAppendE14QAnyStringViewS0_@Qt_6 6.8.0
+ _ZN12QHttpHeaders15replaceOrAppendENS_15WellKnownHeaderE14QAnyStringView@Qt_6 6.8.0
+ _ZN12QHttpHeaders16staticMetaObjectE@Qt_6 6.8.0
+ _ZN12QHttpHeaders19wellKnownHeaderNameENS_15WellKnownHeaderE@Qt_6 6.8.0
+ _ZN12QHttpHeaders5clearEv@Qt_6 6.8.0
+ _ZN12QHttpHeaders6appendE14QAnyStringViewS0_@Qt_6 6.8.0
+ _ZN12QHttpHeaders6appendENS_15WellKnownHeaderE14QAnyStringView@Qt_6 6.8.0
+ (subst)_ZN12QHttpHeaders6insertE{qptrdiff}14QAnyStringViewS0_@Qt_6 6.8.0
+ (subst)_ZN12QHttpHeaders6insertE{qptrdiff}NS_15WellKnownHeaderE14QAnyStringView@Qt_6 6.8.0
+ (subst)_ZN12QHttpHeaders7replaceE{qptrdiff}14QAnyStringViewS0_@Qt_6 6.8.0
+ (subst)_ZN12QHttpHeaders7replaceE{qptrdiff}NS_15WellKnownHeaderE14QAnyStringView@Qt_6 6.8.0
+ (subst)_ZN12QHttpHeaders7reserveE{qptrdiff}@Qt_6 6.8.0
+ (subst)_ZN12QHttpHeaders8removeAtE{qptrdiff}@Qt_6 6.8.0
+ _ZN12QHttpHeaders9removeAllE14QAnyStringView@Qt_6 6.8.0
+ _ZN12QHttpHeaders9removeAllENS_15WellKnownHeaderE@Qt_6 6.8.0
+ _ZN12QHttpHeadersC1ERKS_@Qt_6 6.8.0
+ _ZN12QHttpHeadersC1Ev@Qt_6 6.8.0
+ _ZN12QHttpHeadersC2ERKS_@Qt_6 6.8.0
+ _ZN12QHttpHeadersC2Ev@Qt_6 6.8.0
+ _ZN12QHttpHeadersD1Ev@Qt_6 6.8.0
+ _ZN12QHttpHeadersD2Ev@Qt_6 6.8.0
+ _ZN12QHttpHeadersaSERKS_@Qt_6 6.8.0
  _ZN12QLocalServer11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
  _ZN12QLocalServer11qt_metacastEPKc@Qt_6 6.1.2
  _ZN12QLocalServer12removeServerERK7QString@Qt_6 6.1.2
@@ -287,6 +330,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN12QLocalServer16setSocketOptionsE6QFlagsINS_12SocketOptionEE@Qt_6 6.1.2
  _ZN12QLocalServer16staticMetaObjectE@Qt_6 6.1.2
  (subst)_ZN12QLocalServer18incomingConnectionE{quintptr}@Qt_6 6.1.2
+ _ZN12QLocalServer20addPendingConnectionEP12QLocalSocket@Qt_6 6.8.0
  _ZN12QLocalServer20setListenBacklogSizeEi@Qt_6 6.3.0
  _ZN12QLocalServer20waitForNewConnectionEiPb@Qt_6 6.1.2
  _ZN12QLocalServer21bindableSocketOptionsEv@Qt_6 6.1.2
@@ -335,11 +379,14 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN13QMetaSequence12MetaSequenceI5QListI14QNetworkCookieEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListI9QSslErrorEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListISt4pairI10QByteArrayS3_EEE5valueE@Qt_6 6.1.2
+ _ZN13QNetworkProxy10setHeadersEO12QHttpHeaders@Qt_6 6.8.0
+ _ZN13QNetworkProxy10setHeadersERK12QHttpHeaders@Qt_6 6.8.0
  _ZN13QNetworkProxy11setHostNameERK7QString@Qt_6 6.1.2
  _ZN13QNetworkProxy11setPasswordERK7QString@Qt_6 6.1.2
  _ZN13QNetworkProxy12setRawHeaderERK10QByteArrayS2_@Qt_6 6.1.2
  _ZN13QNetworkProxy15setCapabilitiesE6QFlagsINS_10CapabilityEE@Qt_6 6.1.2
  _ZN13QNetworkProxy16applicationProxyEv@Qt_6 6.1.2
+ _ZN13QNetworkProxy16staticMetaObjectE@Qt_6 6.8.0
  _ZN13QNetworkProxy19setApplicationProxyERKS_@Qt_6 6.1.2
  _ZN13QNetworkProxy7setPortEt@Qt_6 6.1.2
  _ZN13QNetworkProxy7setTypeENS_9ProxyTypeE@Qt_6 6.1.2
@@ -355,6 +402,8 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN13QNetworkProxyD2Ev@Qt_6 6.1.2
  _ZN13QNetworkProxyaSERKS_@Qt_6 6.1.2
  _ZN13QNetworkReply10redirectedERK4QUrl@Qt_6 6.1.2
+ _ZN13QNetworkReply10setHeadersEO12QHttpHeaders@Qt_6 6.8.0
+ _ZN13QNetworkReply10setHeadersERK12QHttpHeaders@Qt_6 6.8.0
  _ZN13QNetworkReply10setRequestERK15QNetworkRequest@Qt_6 6.1.2
  _ZN13QNetworkReply11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
  _ZN13QNetworkReply11qt_metacastEPKc@Qt_6 6.1.2
@@ -372,6 +421,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN13QNetworkReply16downloadProgressExx@Qt_6 6.1.2
  _ZN13QNetworkReply16staticMetaObjectE@Qt_6 6.1.2
  _ZN13QNetworkReply17setReadBufferSizeEx@Qt_6 6.1.2
+ _ZN13QNetworkReply18setWellKnownHeaderEN12QHttpHeaders15WellKnownHeaderE14QByteArrayView@Qt_6 6.8.0
  _ZN13QNetworkReply19setSslConfigurationERK17QSslConfiguration@Qt_6 6.1.2
  _ZN13QNetworkReply23socketStartedConnectingEv@Qt_6 6.3.0
  _ZN13QNetworkReply29ignoreSslErrorsImplementationERK5QListI9QSslErrorE@Qt_6 6.1.2
@@ -401,6 +451,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN13QOcspResponseaSEOS_@Qt_6 6.1.2
  _ZN13QOcspResponseaSERKS_@Qt_6 6.1.2
  _ZN14QAuthenticator11setPasswordERK7QString@Qt_6 6.1.2
+ _ZN14QAuthenticator16staticMetaObjectE@Qt_6 6.8.0
  _ZN14QAuthenticator6detachEv@Qt_6 6.1.2
  _ZN14QAuthenticator7setUserERK7QString@Qt_6 6.1.2
  _ZN14QAuthenticator8setRealmERK7QString@Qt_6 6.1.2
@@ -433,6 +484,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN14QHttpMultiPartD1Ev@Qt_6 6.1.2
  _ZN14QHttpMultiPartD2Ev@Qt_6 6.1.2
  _ZN14QNetworkCookie11setHttpOnlyEb@Qt_6 6.1.2
+ _ZN14QNetworkCookie12parseCookiesE14QByteArrayView@Qt_6 6.8.0
  _ZN14QNetworkCookie12parseCookiesERK10QByteArray@Qt_6 6.1.2
  _ZN14QNetworkCookie16staticMetaObjectE@Qt_6 6.1.2
  _ZN14QNetworkCookie17setExpirationDateERK9QDateTime@Qt_6 6.1.2
@@ -495,15 +547,20 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN15QAbstractSocketD0Ev@Qt_6 6.1.2
  _ZN15QAbstractSocketD1Ev@Qt_6 6.1.2
  _ZN15QAbstractSocketD2Ev@Qt_6 6.1.2
+ _ZN15QNetworkRequest10setHeadersEO12QHttpHeaders@Qt_6 6.8.0
+ _ZN15QNetworkRequest10setHeadersERK12QHttpHeaders@Qt_6 6.8.0
  _ZN15QNetworkRequest11setPriorityENS_8PriorityE@Qt_6 6.1.2
  _ZN15QNetworkRequest12setAttributeENS_9AttributeERK8QVariant@Qt_6 6.1.2
  _ZN15QNetworkRequest12setRawHeaderERK10QByteArrayS2_@Qt_6 6.1.2
+ _ZN15QNetworkRequest16staticMetaObjectE@Qt_6 6.8.0
  _ZN15QNetworkRequest17setPeerVerifyNameERK7QString@Qt_6 6.1.2
+ (subst)_ZN15QNetworkRequest18setTransferTimeoutENSt6chrono8durationI{int64_t}St5ratioIL{int64_t}1EL{int64_t}1000EEEE@Qt_6 6.8.0
  _ZN15QNetworkRequest18setTransferTimeoutEi@Qt_6 6.1.2
  _ZN15QNetworkRequest19setSslConfigurationERK17QSslConfiguration@Qt_6 6.1.2
  _ZN15QNetworkRequest20setOriginatingObjectEP7QObject@Qt_6 6.1.2
  _ZN15QNetworkRequest21setHttp1ConfigurationERK19QHttp1Configuration@Qt_6 6.6.0
  _ZN15QNetworkRequest21setHttp2ConfigurationERK19QHttp2Configuration@Qt_6 6.1.2
+ _ZN15QNetworkRequest22DefaultTransferTimeoutE@Qt_6 6.8.0
  _ZN15QNetworkRequest26setMaximumRedirectsAllowedEi@Qt_6 6.1.2
  _ZN15QNetworkRequest35setDecompressedSafetyCheckThresholdEx@Qt_6 6.2.0
  _ZN15QNetworkRequest6setUrlERK4QUrl@Qt_6 6.1.2
@@ -532,6 +589,12 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN15QSslCertificateD1Ev@Qt_6 6.1.2
  _ZN15QSslCertificateD2Ev@Qt_6 6.1.2
  _ZN15QSslCertificateaSERKS_@Qt_6 6.1.2
+ _ZN16QFormDataBuilder14buildMultiPartE6QFlagsINS_6OptionEE@Qt_6 6.8.0
+ _ZN16QFormDataBuilder4partE14QAnyStringView@Qt_6 6.8.0
+ _ZN16QFormDataBuilderC1Ev@Qt_6 6.8.0
+ _ZN16QFormDataBuilderC2Ev@Qt_6 6.8.0
+ _ZN16QFormDataBuilderD1Ev@Qt_6 6.8.0
+ _ZN16QFormDataBuilderD2Ev@Qt_6 6.8.0
  _ZN16QNetworkDatagram11setHopLimitEi@Qt_6 6.1.2
  _ZN16QNetworkDatagram14setDestinationERK12QHostAddresst@Qt_6 6.1.2
  _ZN16QNetworkDatagram17setInterfaceIndexEj@Qt_6 6.1.2
@@ -643,6 +706,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN17QSslConfigurationaSERKS_@Qt_6 6.1.2
  _ZN17QSslEllipticCurve12fromLongNameERK7QString@Qt_6 6.1.2
  _ZN17QSslEllipticCurve13fromShortNameERK7QString@Qt_6 6.1.2
+ _ZN18QHttpHeadersHelper13compareStrictERK12QHttpHeadersS2_@Qt_6 6.8.0
  _ZN18QNetworkProxyQuery11setPeerPortEi@Qt_6 6.1.2
  _ZN18QNetworkProxyQuery12setLocalPortEi@Qt_6 6.1.2
  _ZN18QNetworkProxyQuery12setQueryTypeENS_9QueryTypeE@Qt_6 6.1.2
@@ -663,6 +727,37 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN18QNetworkProxyQueryD1Ev@Qt_6 6.1.2
  _ZN18QNetworkProxyQueryD2Ev@Qt_6 6.1.2
  _ZN18QNetworkProxyQueryaSERKS_@Qt_6 6.1.2
+ _ZN18QRestAccessManager11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.8.0
+ _ZN18QRestAccessManager11qt_metacastEPKc@Qt_6 6.8.0
+ _ZN18QRestAccessManager13getNoDataImplERK15QNetworkRequestPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager14headNoDataImplERK15QNetworkRequestPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager15getWithDataImplERK15QNetworkRequestP9QIODevicePK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager15getWithDataImplERK15QNetworkRequestRK10QByteArrayPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager15getWithDataImplERK15QNetworkRequestRK13QJsonDocumentPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager15putWithDataImplERK15QNetworkRequestP14QHttpMultiPartPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager15putWithDataImplERK15QNetworkRequestP9QIODevicePK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager15putWithDataImplERK15QNetworkRequestRK10QByteArrayPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager15putWithDataImplERK15QNetworkRequestRK13QJsonDocumentPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager15putWithDataImplERK15QNetworkRequestRK4QMapI7QString8QVariantEPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager16postWithDataImplERK15QNetworkRequestP14QHttpMultiPartPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager16postWithDataImplERK15QNetworkRequestP9QIODevicePK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager16postWithDataImplERK15QNetworkRequestRK10QByteArrayPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager16postWithDataImplERK15QNetworkRequestRK13QJsonDocumentPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager16postWithDataImplERK15QNetworkRequestRK4QMapI7QString8QVariantEPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager16staticMetaObjectE@Qt_6 6.8.0
+ _ZN18QRestAccessManager17patchWithDataImplERK15QNetworkRequestP9QIODevicePK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager17patchWithDataImplERK15QNetworkRequestRK10QByteArrayPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager17patchWithDataImplERK15QNetworkRequestRK13QJsonDocumentPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager17patchWithDataImplERK15QNetworkRequestRK4QMapI7QString8QVariantEPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager18customWithDataImplERK15QNetworkRequestRK10QByteArrayP14QHttpMultiPartPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager18customWithDataImplERK15QNetworkRequestRK10QByteArrayP9QIODevicePK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager18customWithDataImplERK15QNetworkRequestRK10QByteArrayS5_PK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManager24deleteResourceNoDataImplERK15QNetworkRequestPK7QObjectPN9QtPrivate15QSlotObjectBaseE@Qt_6 6.8.0
+ _ZN18QRestAccessManagerC1EP21QNetworkAccessManagerP7QObject@Qt_6 6.8.0
+ _ZN18QRestAccessManagerC2EP21QNetworkAccessManagerP7QObject@Qt_6 6.8.0
+ _ZN18QRestAccessManagerD0Ev@Qt_6 6.8.0
+ _ZN18QRestAccessManagerD1Ev@Qt_6 6.8.0
+ _ZN18QRestAccessManagerD2Ev@Qt_6 6.8.0
  _ZN19QDtlsClientVerifier11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
  _ZN19QDtlsClientVerifier11qt_metacastEPKc@Qt_6 6.1.2
  _ZN19QDtlsClientVerifier12verifyClientEP10QUdpSocketRK10QByteArrayRK12QHostAddresst@Qt_6 6.1.2
@@ -725,6 +820,10 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN20QDnsDomainNameRecordD1Ev@Qt_6 6.1.2
  _ZN20QDnsDomainNameRecordD2Ev@Qt_6 6.1.2
  _ZN20QDnsDomainNameRecordaSERKS_@Qt_6 6.1.2
+ _ZN20QFormDataPartBuilder10setHeadersERK12QHttpHeaders@Qt_6 6.8.0
+ _ZN20QFormDataPartBuilder13setBodyDeviceEP9QIODevice14QAnyStringViewS2_@Qt_6 6.8.0
+ _ZN20QFormDataPartBuilder13setBodyHelperERK10QByteArray14QAnyStringViewS3_@Qt_6 6.8.0
+ _ZN20QFormDataPartBuilder7setBodyE14QByteArrayView14QAnyStringViewS1_@Qt_6 6.8.0
  _ZN20QNetworkAddressEntry10setNetmaskERK12QHostAddress@Qt_6 6.1.2
  _ZN20QNetworkAddressEntry12setBroadcastERK12QHostAddress@Qt_6 6.1.2
  _ZN20QNetworkAddressEntry15setPrefixLengthEi@Qt_6 6.1.2
@@ -777,6 +876,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN21QNetworkAccessManager17sendCustomRequestERK15QNetworkRequestRK10QByteArrayP9QIODevice@Qt_6 6.1.2
  _ZN21QNetworkAccessManager17sendCustomRequestERK15QNetworkRequestRK10QByteArrayS5_@Qt_6 6.1.2
  _ZN21QNetworkAccessManager17setRedirectPolicyEN15QNetworkRequest14RedirectPolicyE@Qt_6 6.1.2
+ (subst)_ZN21QNetworkAccessManager18setTransferTimeoutENSt6chrono8durationI{int64_t}St5ratioIL{int64_t}1EL{int64_t}1000EEEE@Qt_6 6.8.0
  _ZN21QNetworkAccessManager18setTransferTimeoutEi@Qt_6 6.1.2
  _ZN21QNetworkAccessManager20clearConnectionCacheEv@Qt_6 6.1.2
  _ZN21QNetworkAccessManager20setAutoDeleteRepliesEb@Qt_6 6.1.2
@@ -789,6 +889,8 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN21QNetworkAccessManager34enableStrictTransportSecurityStoreEbRK7QString@Qt_6 6.1.2
  _ZN21QNetworkAccessManager34preSharedKeyAuthenticationRequiredEP13QNetworkReplyP29QSslPreSharedKeyAuthenticator@Qt_6 6.1.2
  _ZN21QNetworkAccessManager3getERK15QNetworkRequest@Qt_6 6.1.2
+ _ZN21QNetworkAccessManager3getERK15QNetworkRequestP9QIODevice@Qt_6 6.8.0
+ _ZN21QNetworkAccessManager3getERK15QNetworkRequestRK10QByteArray@Qt_6 6.8.0
  _ZN21QNetworkAccessManager3putERK15QNetworkRequestP14QHttpMultiPart@Qt_6 6.1.2
  _ZN21QNetworkAccessManager3putERK15QNetworkRequestP9QIODevice@Qt_6 6.1.2
  _ZN21QNetworkAccessManager3putERK15QNetworkRequestRK10QByteArray@Qt_6 6.1.2
@@ -806,6 +908,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN21QNetworkAccessManagerD0Ev@Qt_6 6.1.2
  _ZN21QNetworkAccessManagerD1Ev@Qt_6 6.1.2
  _ZN21QNetworkAccessManagerD2Ev@Qt_6 6.1.2
+ _ZN21QNetworkCacheMetaData10setHeadersERK12QHttpHeaders@Qt_6 6.8.0
  _ZN21QNetworkCacheMetaData13setAttributesERK5QHashIN15QNetworkRequest9AttributeE8QVariantE@Qt_6 6.1.2
  _ZN21QNetworkCacheMetaData13setRawHeadersERK5QListISt4pairI10QByteArrayS2_EE@Qt_6 6.1.2
  _ZN21QNetworkCacheMetaData13setSaveToDiskEb@Qt_6 6.1.2
@@ -826,6 +929,40 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN22QDnsMailExchangeRecordD1Ev@Qt_6 6.1.2
  _ZN22QDnsMailExchangeRecordD2Ev@Qt_6 6.1.2
  _ZN22QDnsMailExchangeRecordaSERKS_@Qt_6 6.1.2
+ _ZN22QNetworkRequestFactory10setBaseUrlERK4QUrl@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory11setPasswordERK7QString@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory11setPriorityEN15QNetworkRequest8PriorityE@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory11setUserNameERK7QString@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory12setAttributeEN15QNetworkRequest9AttributeERK8QVariant@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory13clearPasswordEv@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory13clearUserNameEv@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory14clearAttributeEN15QNetworkRequest9AttributeE@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory14setBearerTokenERK10QByteArray@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory15clearAttributesEv@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory16clearBearerTokenEv@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory16setCommonHeadersERK12QHttpHeaders@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory18clearCommonHeadersEv@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory18setQueryParametersERK9QUrlQuery@Qt_6 6.8.0
+ (subst)_ZN22QNetworkRequestFactory18setTransferTimeoutENSt6chrono8durationI{int64_t}St5ratioIL{int64_t}1EL{int64_t}1000EEEE@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory19setSslConfigurationERK17QSslConfiguration@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactory20clearQueryParametersEv@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryC1ERK4QUrl@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryC1ERKS_@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryC1Ev@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryC2ERK4QUrl@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryC2ERKS_@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryC2Ev@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryD1Ev@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryD2Ev@Qt_6 6.8.0
+ _ZN22QNetworkRequestFactoryaSERKS_@Qt_6 6.8.0
+ _ZN24QDnsTlsAssociationRecord16staticMetaObjectE@Qt_6 6.8.0
+ _ZN24QDnsTlsAssociationRecordC1ERKS_@Qt_6 6.8.0
+ _ZN24QDnsTlsAssociationRecordC1Ev@Qt_6 6.8.0
+ _ZN24QDnsTlsAssociationRecordC2ERKS_@Qt_6 6.8.0
+ _ZN24QDnsTlsAssociationRecordC2Ev@Qt_6 6.8.0
+ _ZN24QDnsTlsAssociationRecordD1Ev@Qt_6 6.8.0
+ _ZN24QDnsTlsAssociationRecordD2Ev@Qt_6 6.8.0
+ _ZN24QDnsTlsAssociationRecordaSERKS_@Qt_6 6.8.0
  _ZN24QSslCertificateExtensionC1ERKS_@Qt_6 6.1.2
  _ZN24QSslCertificateExtensionC1Ev@Qt_6 6.1.2
  _ZN24QSslCertificateExtensionC2ERKS_@Qt_6 6.1.2
@@ -843,8 +980,13 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN27QSslDiffieHellmanParametersD1Ev@Qt_6 6.1.2
  _ZN27QSslDiffieHellmanParametersD2Ev@Qt_6 6.1.2
  _ZN27QSslDiffieHellmanParametersaSERKS_@Qt_6 6.1.2
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI19QHttpHeadersPrivateED1Ev@Qt_6 6.8.0
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI19QHttpHeadersPrivateED2Ev@Qt_6 6.8.0
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI29QNetworkRequestFactoryPrivateED1Ev@Qt_6 6.8.0
+ (optional=templinst)_ZN28QExplicitlySharedDataPointerI29QNetworkRequestFactoryPrivateED2Ev@Qt_6 6.8.0
  _ZN29QSslPreSharedKeyAuthenticator11setIdentityERK10QByteArray@Qt_6 6.1.2
  _ZN29QSslPreSharedKeyAuthenticator15setPreSharedKeyERK10QByteArray@Qt_6 6.1.2
+ _ZN29QSslPreSharedKeyAuthenticator16staticMetaObjectE@Qt_6 6.8.0
  _ZN29QSslPreSharedKeyAuthenticatorC1ERKS_@Qt_6 6.1.2
  _ZN29QSslPreSharedKeyAuthenticatorC1Ev@Qt_6 6.1.2
  _ZN29QSslPreSharedKeyAuthenticatorC2ERKS_@Qt_6 6.1.2
@@ -852,6 +994,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN29QSslPreSharedKeyAuthenticatorD1Ev@Qt_6 6.1.2
  _ZN29QSslPreSharedKeyAuthenticatorD2Ev@Qt_6 6.1.2
  _ZN29QSslPreSharedKeyAuthenticatoraSERKS_@Qt_6 6.1.2
+ _ZN4QSsl16staticMetaObjectE@Qt_6 6.8.0
  _ZN5QDtls10setMtuHintEt@Qt_6 6.1.2
  _ZN5QDtls11doHandshakeEP10QUdpSocketRK10QByteArray@Qt_6 6.1.2
  _ZN5QDtls11pskRequiredEP29QSslPreSharedKeyAuthenticator@Qt_6 6.1.2
@@ -895,6 +1038,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN7QSslKeyaSEOS_@Qt_6 6.1.2
  _ZN7QSslKeyaSERKS_@Qt_6 6.1.2
  _ZN9QHostInfo10lookupHostERK7QStringP7QObjectPKc@Qt_6 6.1.2
+ _ZN9QHostInfo10lookupHostERK7QStringPK7QObjectPKc@Qt_6 6.8.0
  _ZN9QHostInfo11setHostNameERK7QString@Qt_6 6.1.2
  _ZN9QHostInfo11setLookupIdEi@Qt_6 6.1.2
  _ZN9QHostInfo12setAddressesERK5QListI12QHostAddressE@Qt_6 6.1.2
@@ -903,6 +1047,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZN9QHostInfo14setErrorStringERK7QString@Qt_6 6.1.2
  _ZN9QHostInfo15abortHostLookupEi@Qt_6 6.1.2
  _ZN9QHostInfo15localDomainNameEv@Qt_6 6.1.2
+ _ZN9QHostInfo16staticMetaObjectE@Qt_6 6.8.0
  _ZN9QHostInfo8fromNameERK7QString@Qt_6 6.1.2
  _ZN9QHostInfo8setErrorENS_13HostInfoErrorE@Qt_6 6.1.2
  _ZN9QHostInfoC1ERKS_@Qt_6 6.1.2
@@ -943,13 +1088,23 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK10QDnsLookup14nameserverPortEv@Qt_6 6.6.0
  _ZNK10QDnsLookup14pointerRecordsEv@Qt_6 6.1.2
  _ZNK10QDnsLookup14serviceRecordsEv@Qt_6 6.1.2
+ _ZNK10QDnsLookup15isAuthenticDataEv@Qt_6 6.8.0
+ _ZNK10QDnsLookup16sslConfigurationEv@Qt_6 6.8.0
  _ZNK10QDnsLookup17nameServerRecordsEv@Qt_6 6.1.2
  _ZNK10QDnsLookup18hostAddressRecordsEv@Qt_6 6.1.2
+ _ZNK10QDnsLookup18nameserverProtocolEv@Qt_6 6.8.0
  _ZNK10QDnsLookup19mailExchangeRecordsEv@Qt_6 6.1.2
  _ZNK10QDnsLookup20canonicalNameRecordsEv@Qt_6 6.1.2
+ _ZNK10QDnsLookup21tlsAssociationRecordsEv@Qt_6 6.8.0
  _ZNK10QDnsLookup4nameEv@Qt_6 6.1.2
  _ZNK10QDnsLookup4typeEv@Qt_6 6.1.2
  _ZNK10QDnsLookup5errorEv@Qt_6 6.1.2
+ _ZNK10QRestReply10httpStatusEv@Qt_6 6.8.0
+ _ZNK10QRestReply11errorStringEv@Qt_6 6.8.0
+ _ZNK10QRestReply12networkReplyEv@Qt_6 6.8.0
+ _ZNK10QRestReply19isHttpStatusSuccessEv@Qt_6 6.8.0
+ _ZNK10QRestReply5errorEv@Qt_6 6.8.0
+ _ZNK10QRestReply8hasErrorEv@Qt_6 6.8.0
  _ZNK10QSslCipher13supportedBitsEv@Qt_6 6.1.2
  _ZNK10QSslCipher14protocolStringEv@Qt_6 6.1.2
  _ZNK10QSslCipher16encryptionMethodEv@Qt_6 6.1.2
@@ -1031,6 +1186,20 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK12QHostAddress8toStringEv@Qt_6 6.1.2
  _ZNK12QHostAddresseqENS_14SpecialAddressE@Qt_6 6.1.2
  _ZNK12QHostAddresseqERKS_@Qt_6 6.1.2
+ _ZNK12QHttpHeaders10toMultiMapEv@Qt_6 6.8.0
+ _ZNK12QHttpHeaders11toMultiHashEv@Qt_6 6.8.0
+ _ZNK12QHttpHeaders13combinedValueE14QAnyStringView@Qt_6 6.8.0
+ _ZNK12QHttpHeaders13combinedValueENS_15WellKnownHeaderE@Qt_6 6.8.0
+ _ZNK12QHttpHeaders13toListOfPairsEv@Qt_6 6.8.0
+ _ZNK12QHttpHeaders4sizeEv@Qt_6 6.8.0
+ _ZNK12QHttpHeaders5valueE14QAnyStringView14QByteArrayView@Qt_6 6.8.0
+ _ZNK12QHttpHeaders5valueENS_15WellKnownHeaderE14QByteArrayView@Qt_6 6.8.0
+ (subst)_ZNK12QHttpHeaders6nameAtE{qptrdiff}@Qt_6 6.8.0
+ _ZNK12QHttpHeaders6valuesE14QAnyStringView@Qt_6 6.8.0
+ _ZNK12QHttpHeaders6valuesENS_15WellKnownHeaderE@Qt_6 6.8.0
+ (subst)_ZNK12QHttpHeaders7valueAtE{qptrdiff}@Qt_6 6.8.0
+ _ZNK12QHttpHeaders8containsE14QAnyStringView@Qt_6 6.8.0
+ _ZNK12QHttpHeaders8containsENS_15WellKnownHeaderE@Qt_6 6.8.0
  _ZNK12QLocalServer10metaObjectEv@Qt_6 6.1.2
  _ZNK12QLocalServer10serverNameEv@Qt_6 6.1.2
  _ZNK12QLocalServer11errorStringEv@Qt_6 6.1.2
@@ -1064,12 +1233,14 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK13QNetworkProxy4typeEv@Qt_6 6.1.2
  _ZNK13QNetworkProxy4userEv@Qt_6 6.1.2
  _ZNK13QNetworkProxy6headerEN15QNetworkRequest12KnownHeadersE@Qt_6 6.1.2
+ _ZNK13QNetworkProxy7headersEv@Qt_6 6.8.0
  _ZNK13QNetworkProxy8hostNameEv@Qt_6 6.1.2
  _ZNK13QNetworkProxy8passwordEv@Qt_6 6.1.2
  _ZNK13QNetworkProxy9rawHeaderERK10QByteArray@Qt_6 6.1.2
  _ZNK13QNetworkProxyeqERKS_@Qt_6 6.1.2
  _ZNK13QNetworkReply10isFinishedEv@Qt_6 6.1.2
  _ZNK13QNetworkReply10metaObjectEv@Qt_6 6.1.2
+ _ZNK13QNetworkReply12hasRawHeaderE14QAnyStringView@Qt_6 6.8.0
  _ZNK13QNetworkReply12hasRawHeaderERK10QByteArray@Qt_6 6.1.2
  _ZNK13QNetworkReply12isSequentialEv@Qt_6 6.1.2
  _ZNK13QNetworkReply13rawHeaderListEv@Qt_6 6.1.2
@@ -1080,11 +1251,13 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK13QNetworkReply3urlEv@Qt_6 6.1.2
  _ZNK13QNetworkReply5errorEv@Qt_6 6.1.2
  _ZNK13QNetworkReply6headerEN15QNetworkRequest12KnownHeadersE@Qt_6 6.1.2
+ _ZNK13QNetworkReply7headersEv@Qt_6 6.8.0
  _ZNK13QNetworkReply7managerEv@Qt_6 6.1.2
  _ZNK13QNetworkReply7requestEv@Qt_6 6.1.2
  _ZNK13QNetworkReply9attributeEN15QNetworkRequest9AttributeE@Qt_6 6.1.2
  _ZNK13QNetworkReply9isRunningEv@Qt_6 6.1.2
  _ZNK13QNetworkReply9operationEv@Qt_6 6.1.2
+ _ZNK13QNetworkReply9rawHeaderE14QAnyStringView@Qt_6 6.8.0
  _ZNK13QNetworkReply9rawHeaderERK10QByteArray@Qt_6 6.1.2
  _ZNK13QOcspResponse16revocationReasonEv@Qt_6 6.1.2
  _ZNK13QOcspResponse17certificateStatusEv@Qt_6 6.1.2
@@ -1133,6 +1306,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK15QAbstractSocket8peerPortEv@Qt_6 6.1.2
  _ZNK15QAbstractSocket9localPortEv@Qt_6 6.1.2
  _ZNK15QAbstractSocket9pauseModeEv@Qt_6 6.1.2
+ _ZNK15QNetworkRequest12hasRawHeaderE14QAnyStringView@Qt_6 6.8.0
  _ZNK15QNetworkRequest12hasRawHeaderERK10QByteArray@Qt_6 6.1.2
  _ZNK15QNetworkRequest13rawHeaderListEv@Qt_6 6.1.2
  _ZNK15QNetworkRequest14peerVerifyNameEv@Qt_6 6.1.2
@@ -1142,11 +1316,14 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK15QNetworkRequest18http1ConfigurationEv@Qt_6 6.6.0
  _ZNK15QNetworkRequest18http2ConfigurationEv@Qt_6 6.1.2
  _ZNK15QNetworkRequest23maximumRedirectsAllowedEv@Qt_6 6.1.2
+ _ZNK15QNetworkRequest25transferTimeoutAsDurationEv@Qt_6 6.8.0
  _ZNK15QNetworkRequest32decompressedSafetyCheckThresholdEv@Qt_6 6.2.0
  _ZNK15QNetworkRequest3urlEv@Qt_6 6.1.2
  _ZNK15QNetworkRequest6headerENS_12KnownHeadersE@Qt_6 6.1.2
+ _ZNK15QNetworkRequest7headersEv@Qt_6 6.8.0
  _ZNK15QNetworkRequest8priorityEv@Qt_6 6.1.2
  _ZNK15QNetworkRequest9attributeENS_9AttributeERK8QVariant@Qt_6 6.1.2
+ _ZNK15QNetworkRequest9rawHeaderE14QAnyStringView@Qt_6 6.8.0
  _ZNK15QNetworkRequest9rawHeaderERK10QByteArray@Qt_6 6.1.2
  _ZNK15QNetworkRequesteqERKS_@Qt_6 6.1.2
  _ZNK15QSslCertificate10expiryDateEv@Qt_6 6.1.2
@@ -1245,6 +1422,8 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK18QNetworkProxyQuery9localPortEv@Qt_6 6.1.2
  _ZNK18QNetworkProxyQuery9queryTypeEv@Qt_6 6.1.2
  _ZNK18QNetworkProxyQueryeqERKS_@Qt_6 6.1.2
+ _ZNK18QRestAccessManager10metaObjectEv@Qt_6 6.8.0
+ _ZNK18QRestAccessManager20networkAccessManagerEv@Qt_6 6.8.0
  _ZNK19QDtlsClientVerifier10metaObjectEv@Qt_6 6.1.2
  _ZNK19QDtlsClientVerifier13verifiedHelloEv@Qt_6 6.1.2
  _ZNK19QDtlsClientVerifier15dtlsErrorStringEv@Qt_6 6.1.2
@@ -1290,6 +1469,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK21QNetworkAccessManager15transferTimeoutEv@Qt_6 6.1.2
  _ZNK21QNetworkAccessManager16supportedSchemesEv@Qt_6 6.1.2
  _ZNK21QNetworkAccessManager17autoDeleteRepliesEv@Qt_6 6.1.2
+ _ZNK21QNetworkAccessManager25transferTimeoutAsDurationEv@Qt_6 6.8.0
  _ZNK21QNetworkAccessManager28strictTransportSecurityHostsEv@Qt_6 6.1.2
  _ZNK21QNetworkAccessManager30supportedSchemesImplementationEv@Qt_6 6.1.2
  _ZNK21QNetworkAccessManager32isStrictTransportSecurityEnabledEv@Qt_6 6.1.2
@@ -1303,12 +1483,34 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZNK21QNetworkCacheMetaData12lastModifiedEv@Qt_6 6.1.2
  _ZNK21QNetworkCacheMetaData14expirationDateEv@Qt_6 6.1.2
  _ZNK21QNetworkCacheMetaData3urlEv@Qt_6 6.1.2
+ _ZNK21QNetworkCacheMetaData7headersEv@Qt_6 6.8.0
  _ZNK21QNetworkCacheMetaData7isValidEv@Qt_6 6.1.2
  _ZNK21QNetworkCacheMetaDataeqERKS_@Qt_6 6.1.2
  _ZNK22QDnsMailExchangeRecord10preferenceEv@Qt_6 6.1.2
  _ZNK22QDnsMailExchangeRecord10timeToLiveEv@Qt_6 6.1.2
  _ZNK22QDnsMailExchangeRecord4nameEv@Qt_6 6.1.2
  _ZNK22QDnsMailExchangeRecord8exchangeEv@Qt_6 6.1.2
+ _ZNK22QNetworkRequestFactory11bearerTokenEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory13commonHeadersEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory13createRequestERK7QString@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory13createRequestERK7QStringRK9QUrlQuery@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory13createRequestERK9QUrlQuery@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory13createRequestEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory15queryParametersEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory15transferTimeoutEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory16sslConfigurationEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory7baseUrlEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory8passwordEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory8priorityEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory8userNameEv@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory9attributeEN15QNetworkRequest9AttributeE@Qt_6 6.8.0
+ _ZNK22QNetworkRequestFactory9attributeEN15QNetworkRequest9AttributeERK8QVariant@Qt_6 6.8.0
+ _ZNK24QDnsTlsAssociationRecord10timeToLiveEv@Qt_6 6.8.0
+ _ZNK24QDnsTlsAssociationRecord4nameEv@Qt_6 6.8.0
+ _ZNK24QDnsTlsAssociationRecord5usageEv@Qt_6 6.8.0
+ _ZNK24QDnsTlsAssociationRecord5valueEv@Qt_6 6.8.0
+ _ZNK24QDnsTlsAssociationRecord8selectorEv@Qt_6 6.8.0
+ _ZNK24QDnsTlsAssociationRecord9matchTypeEv@Qt_6 6.8.0
  _ZNK24QSslCertificateExtension10isCriticalEv@Qt_6 6.1.2
  _ZNK24QSslCertificateExtension11isSupportedEv@Qt_6 6.1.2
  _ZNK24QSslCertificateExtension3oidEv@Qt_6 6.1.2
@@ -1373,6 +1575,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZTI15QAbstractSocket@Qt_6 6.1.2
  _ZTI17QNetworkCookieJar@Qt_6 6.1.2
  _ZTI17QNetworkDiskCache@Qt_6 6.1.2
+ _ZTI18QRestAccessManager@Qt_6 6.8.0
  _ZTI19QDtlsClientVerifier@Qt_6 6.1.2
  _ZTI19QNetworkInformation@Qt_6 6.1.2
  _ZTI20QNetworkProxyFactory@Qt_6 6.1.2
@@ -1380,11 +1583,11 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZTI21QNetworkAccessManager@Qt_6 6.1.2
  _ZTI5QDtls@Qt_6 6.1.2
  (arch=armel riscv64)_ZTIN9__gnu_cxx7__mutexE@Qt_6 6.3.0
- (arch=armel riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
- (arch=!armel !riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
- (arch=armel riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
- (arch=!armel !riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
- _ZTISt19_Sp_make_shared_tag@Qt_6 6.4.2
+#MISSING: 6.8.0# (arch=armel riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
+#MISSING: 6.8.0# (arch=!armel !riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
+#MISSING: 6.8.0# (arch=armel riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
+#MISSING: 6.8.0# (arch=!armel !riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
+#MISSING: 6.8.0# _ZTISt19_Sp_make_shared_tag@Qt_6 6.4.2
  _ZTIZN9QMetaType17registerConverterI5QListI14QNetworkCookieE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListI9QSslErrorE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListISt4pairI10QByteArrayS3_EE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS5_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
@@ -1407,6 +1610,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZTS15QAbstractSocket@Qt_6 6.1.2
  _ZTS17QNetworkCookieJar@Qt_6 6.1.2
  _ZTS17QNetworkDiskCache@Qt_6 6.1.2
+ _ZTS18QRestAccessManager@Qt_6 6.8.0
  _ZTS19QDtlsClientVerifier@Qt_6 6.1.2
  _ZTS19QNetworkInformation@Qt_6 6.1.2
  _ZTS20QNetworkProxyFactory@Qt_6 6.1.2
@@ -1414,13 +1618,13 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZTS21QNetworkAccessManager@Qt_6 6.1.2
  _ZTS5QDtls@Qt_6 6.1.2
  (arch=armel riscv64)_ZTSN9__gnu_cxx7__mutexE@Qt_6 6.3.0
- (arch=armel riscv64)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
- (arch=!armel !riscv64)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
- (arch=armel riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
- (arch=!armel !riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
- _ZTSSt19_Sp_make_shared_tag@Qt_6 6.3.0
- (arch=armel riscv64)_ZTSSt23_Sp_counted_ptr_inplaceI6QTimerSaIvELN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.4.0
- (arch=!armel !riscv64)_ZTSSt23_Sp_counted_ptr_inplaceI6QTimerSaIvELN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.4.0
+#MISSING: 6.8.0# (arch=armel riscv64)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
+#MISSING: 6.8.0# (arch=!armel !riscv64)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
+#MISSING: 6.8.0# (arch=armel riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.3.0
+#MISSING: 6.8.0# (arch=!armel !riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.3.0
+#MISSING: 6.8.0# _ZTSSt19_Sp_make_shared_tag@Qt_6 6.3.0
+#MISSING: 6.8.0# (arch=armel riscv64)_ZTSSt23_Sp_counted_ptr_inplaceI6QTimerSaIvELN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.4.0
+#MISSING: 6.8.0# (arch=!armel !riscv64)_ZTSSt23_Sp_counted_ptr_inplaceI6QTimerSaIvELN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.4.0
  _ZTSZN9QMetaType17registerConverterI5QListI14QNetworkCookieE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListI9QSslErrorE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListISt4pairI10QByteArrayS3_EE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS5_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
@@ -1443,6 +1647,7 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _ZTV15QAbstractSocket@Qt_6 6.1.2
  _ZTV17QNetworkCookieJar@Qt_6 6.1.2
  _ZTV17QNetworkDiskCache@Qt_6 6.1.2
+ _ZTV18QRestAccessManager@Qt_6 6.8.0
  _ZTV19QDtlsClientVerifier@Qt_6 6.1.2
  _ZTV19QNetworkInformation@Qt_6 6.1.2
  _ZTV20QNetworkProxyFactory@Qt_6 6.1.2
@@ -1463,16 +1668,20 @@ libQt6Network.so.6 libqt6network6 #MINVER#
  _Zls6QDebugN15QAbstractSocket11SocketErrorE@Qt_6 6.1.2
  _Zls6QDebugN15QAbstractSocket11SocketStateE@Qt_6 6.1.2
  _Zls6QDebugN15QSslCertificate11SubjectInfoE@Qt_6 6.1.2
+ _Zls6QDebugRK10QRestReply@Qt_6 6.8.0
  _Zls6QDebugRK10QSslCipher@Qt_6 6.1.2
  _Zls6QDebugRK12QHostAddress@Qt_6 6.1.2
+ _Zls6QDebugRK12QHttpHeaders@Qt_6 6.8.0
  _Zls6QDebugRK13QNetworkProxy@Qt_6 6.1.2
  _Zls6QDebugRK14QNetworkCookie@Qt_6 6.1.2
  _Zls6QDebugRK15QSslCertificate@Qt_6 6.1.2
  _Zls6QDebugRK17QNetworkInterface@Qt_6 6.1.2
  _Zls6QDebugRK18QNetworkProxyQuery@Qt_6 6.1.2
  _Zls6QDebugRK20QNetworkAddressEntry@Qt_6 6.2.0
+ _Zls6QDebugRK22QNetworkRequestFactory@Qt_6 6.8.0
  _Zls6QDebugRK27QSslDiffieHellmanParameters@Qt_6 6.1.2
  _Zls6QDebugRK7QSslKey@Qt_6 6.1.2
+ _Zls6QDebugRK9QHttpPart@Qt_6 6.8.0
  _Zls6QDebugRK9QSslError@Qt_6 6.1.2
  _Zls6QDebugRKN9QSslError8SslErrorE@Qt_6 6.1.2
  _ZlsR11QDataStreamRK12QHostAddress@Qt_6 6.1.2
