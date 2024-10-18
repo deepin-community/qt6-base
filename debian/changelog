@@ -1,8 +1,12 @@
-qt6-base (6.8.0+dfsg-0deepin1) UNRELEASED; urgency=medium
+qt6-base (6.8.0+dfsg-0deepin1) unstable; urgency=medium
 
-  * 
+  * New upstream release (6.8.0).
+  * Refresh patches.
+  * Update ABI to 6.8.0.
+  * Update list of installed files.
+  * Update symbols from buildlogs.
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Thu, 17 Oct 2024 14:31:15 +0800
+ -- Tianyu Chen <sweetyfish@deepin.org>  Fri, 18 Oct 2024 11:41:53 +0800
 
 qt6-base (6.6.1+dfsg-5deepin5) unstable; urgency=medium
 
