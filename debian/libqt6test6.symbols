@@ -1,13 +1,23 @@
-# SymbolsHelper-Confirmed: 6.6.0 amd64
+# SymbolsHelper-Confirmed: 6.8.0 amd64 arm64 i386 loong64 riscv64
 libQt6Test.so.6 libqt6test6 #MINVER#
 | libqt6test6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
+ NonQt@NonQt 6.8.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _ZGVZN14QTestEventLoop8instanceEvE8testLoop@Qt_6 6.3.0
+ _ZN10QSignalSpy10appendArgsEPPv@Qt_6 6.8.0
+ (subst)_ZN10QSignalSpy4waitENSt6chrono8durationI{int64_t}St5ratioIL{int64_t}1EL{int64_t}1000EEEE@Qt_6 6.8.0
+ _ZN10QSignalSpy6verifyEPK7QObject11QMetaMethod@Qt_6 6.8.0
+ _ZN10QSignalSpy6verifyEPK7QObjectPKc@Qt_6 6.8.0
+ _ZN10QSignalSpyC1ENS_12ObjectSignalE@Qt_6 6.8.0
+ _ZN10QSignalSpyC2ENS_12ObjectSignalE@Qt_6 6.8.0
+ _ZN10QSignalSpyD1Ev@Qt_6 6.8.0
+ _ZN10QSignalSpyD2Ev@Qt_6 6.8.0
  _ZN12QTestPrivate14parseBlackListEv@Qt_6 6.1.2
  _ZN12QTestPrivate15checkBlackListsEPKcS1_S1_@Qt_6 6.3.1
  _ZN12QTestPrivate17qtestMouseButtonsE@Qt_6 6.1.2
+ _ZN12QTestPrivate22formatTypeWithCRefImplE9QMetaTypebbb@Qt_6 6.8.0
  _ZN14QTestEventLoop11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
  _ZN14QTestEventLoop11qt_metacastEPKc@Qt_6 6.1.2
  _ZN14QTestEventLoop16staticMetaObjectE@Qt_6 6.1.2
@@ -26,21 +36,39 @@ libQt6Test.so.6 libqt6test6 #MINVER#
  _ZN5QTest11qExpectFailEPKcS1_NS_12TestFailModeES1_i@Qt_6 6.1.2
  _ZN5QTest11qGlobalDataEPKci@Qt_6 6.1.2
  _ZN5QTest11runningTestEv@Qt_6 6.4.1
+ _ZN5QTest12CrashHandler17prepareStackTraceEv@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandler10oldActionsEv@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandler12fatalSignalsE@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandler12pauseOnCrashE@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandler13actionHandlerEiP9siginfo_tPv@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandler15crashingSignalsE@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandler18alternateStackSizeEv@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandler18freeAlternateStackEv@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandler19setupAlternateStackEv@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandlerC1Ev@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandlerC2Ev@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandlerD1Ev@Qt_6 6.8.0
+ _ZN5QTest12CrashHandler18FatalSignalHandlerD2Ev@Qt_6 6.8.0
  (subst)_ZN5QTest12formatStringEPKcS1_{size_t}z@Qt_6 6.1.2
  _ZN5QTest12qElementDataEPKci@Qt_6 6.1.2
  (optional=templinst)_ZN5QTest12reportResultEbN3qxp12function_refIJFPKcvEEEES5_S3_S3_NS_19ComparisonOperationES3_i@Qt_6 6.4.0
+ _ZN5QTest12reportResultEbPKvS1_PFPKcS1_ES5_S3_S3_NS_19ComparisonOperationES3_i@Qt_6 6.8.0
  _ZN5QTest13failOnWarningEPKc@Qt_6 6.3.0
  _ZN5QTest13failOnWarningERK18QRegularExpression@Qt_6 6.3.0
+ _ZN5QTest13failOnWarningEv@Qt_6 6.8.0
  _ZN5QTest13ignoreMessageE9QtMsgTypePKc@Qt_6 6.1.2
  _ZN5QTest13ignoreMessageE9QtMsgTypeRK18QRegularExpression@Qt_6 6.1.2
  _ZN5QTest13qFindTestDataEPKcS1_iS1_S1_@Qt_6 6.1.2
  _ZN5QTest13qFindTestDataERK7QStringPKciS4_S4_@Qt_6 6.1.2
  _ZN5QTest13testFunctionsE@Qt_6 6.1.2
  (optional=templinst)_ZN5QTest14compare_helperEbPKcN3qxp12function_refIJFS1_vEEEES5_S1_S1_S1_i@Qt_6 6.4.0
+ _ZN5QTest14compare_helperEbPKcPKvS3_PFS1_S3_ES5_S1_S1_S1_i@Qt_6 6.8.0
  _ZN5QTest14compare_helperEbPKcPcS2_S1_S1_S1_i@Qt_6 6.1.2
  _ZN5QTest14compare_helperEbPKcS1_S1_S1_i@Qt_6 6.4.0
  _ZN5QTest14currentAppNameEv@Qt_6 6.1.2
  _ZN5QTest14currentDataTagEv@Qt_6 6.1.2
+ _ZN5QTest14setThrowOnFailEb@Qt_6 6.8.0
+ _ZN5QTest14setThrowOnSkipEb@Qt_6 6.8.0
  _ZN5QTest15defaultKeyDelayEv@Qt_6 6.1.2
  (subst)_ZN5QTest15toPrettyCStringEPKc{qptrdiff}@Qt_6 6.4.0
  _ZN5QTest15toPrettyUnicodeE11QStringView@Qt_6 6.1.2
@@ -59,7 +87,7 @@ libQt6Test.so.6 libqt6test6 #MINVER#
  _ZN5QTest21compare_string_helperEPKcS1_S1_S1_S1_i@Qt_6 6.1.2
  _ZN5QTest23printAvailableFunctionsE@Qt_6 6.1.2
  _ZN5QTest29QBenchmarkIterationController4nextEv@Qt_6 6.1.2
- _ZN5QTest29QBenchmarkIterationController6isDoneEv@Qt_6 6.1.2
+#MISSING: 6.8.0# _ZN5QTest29QBenchmarkIterationController6isDoneEv@Qt_6 6.1.2
  _ZN5QTest29QBenchmarkIterationControllerC1ENS0_7RunModeE@Qt_6 6.1.2
  _ZN5QTest29QBenchmarkIterationControllerC1Ev@Qt_6 6.1.2
  _ZN5QTest29QBenchmarkIterationControllerC2ENS0_7RunModeE@Qt_6 6.1.2
@@ -77,8 +105,15 @@ libQt6Test.so.6 libqt6test6 #MINVER#
  _ZN5QTest6addRowEPKcz@Qt_6 6.1.2
  _ZN5QTest6newRowEPKc@Qt_6 6.1.2
  _ZN5QTest7qCaughtEPKcS1_S1_i@Qt_6 6.3.0
+ _ZN5QTest7qCaughtEPKcS1_i@Qt_6 6.8.0
  _ZN5QTest7qVerifyEbPKcS1_S1_i@Qt_6 6.1.2
+ _ZN5QTest8Internal11throwOnFailEv@Qt_6 6.8.0
+ _ZN5QTest8Internal11throwOnSkipEv@Qt_6 6.8.0
+ _ZN5QTest8Internal14noCrashHandlerE@Qt_6 6.8.0
+ _ZN5QTest8Internal16maybeThrowOnFailEv@Qt_6 6.8.0
+ _ZN5QTest8Internal16maybeThrowOnSkipEv@Qt_6 6.8.0
  _ZN5QTest8Internal28formatTryTimeoutDebugMessageE20QBasicUtf8StringViewILb0EEii@Qt_6 6.3.0
+ (subst)_ZN5QTest8Internal31formatPropertyTestHelperFailureEPc{size_t}PKcS3_S3_S3_@Qt_6 6.8.0
  _ZN5QTest8qCleanupEv@Qt_6 6.1.2
  _ZN5QTest8qCompareE11QStringViewRK13QLatin1StringPKcS5_S5_i@Qt_6 6.1.2
  _ZN5QTest8qCompareE11QStringViewS0_PKcS2_S2_i@Qt_6 6.1.2
@@ -90,6 +125,7 @@ libQt6Test.so.6 libqt6test6 #MINVER#
  _ZN5QTest8qCompareEjjPKcS1_S1_i@Qt_6 6.1.2
  (arch-bits=64)_ZN5QTest8qCompareExxPKcS1_S1_i@Qt_6 6.1.2
  _ZN5QTest8testTagsE@Qt_6 6.1.2
+ _ZN5QTest8toStringEPK7QObject@Qt_6 6.8.0
  _ZN5QTest8toStringEPKc@Qt_6 6.1.2
  _ZN5QTest8toStringEPKv@Qt_6 6.1.2
  _ZN5QTest8toStringEPVK7QObject@Qt_6 6.2.0
@@ -116,6 +152,7 @@ libQt6Test.so.6 libqt6test6 #MINVER#
  _ZNK24QAbstractItemModelTester10metaObjectEv@Qt_6 6.1.2
  _ZNK24QAbstractItemModelTester20failureReportingModeEv@Qt_6 6.1.2
  _ZNK24QAbstractItemModelTester5modelEv@Qt_6 6.1.2
+ _ZNK5QTest29QBenchmarkIterationController6isDoneEv@Qt_6 6.8.0
  _ZNK9QTestData4dataEi@Qt_6 6.1.2
  _ZNK9QTestData6parentEv@Qt_6 6.1.2
  _ZNK9QTestData7dataTagEv@Qt_6 6.1.2

@@ -1,7 +1,8 @@
-# SymbolsHelper-Confirmed: 6.6.0 amd64
+# SymbolsHelper-Confirmed: 6.8.0 amd64 arm64 i386 loong64 riscv64
 libQt6Sql.so.6 libqt6sql6 #MINVER#
 | libqt6sql6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
+ NonQt@NonQt 6.8.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _ZN10QSqlDriver11cancelQueryEv@Qt_6 6.1.2
@@ -24,6 +25,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN10QSqlDriverD1Ev@Qt_6 6.1.2
  _ZN10QSqlDriverD2Ev@Qt_6 6.1.2
  _ZN10QSqlRecord11clearValuesEv@Qt_6 6.1.2
+ _ZN10QSqlRecord12setGeneratedE14QAnyStringViewb@Qt_6 6.8.0
  _ZN10QSqlRecord12setGeneratedERK7QStringb@Qt_6 6.1.2
  _ZN10QSqlRecord12setGeneratedEib@Qt_6 6.1.2
  _ZN10QSqlRecord5clearEv@Qt_6 6.1.2
@@ -32,8 +34,10 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN10QSqlRecord6insertEiRK9QSqlField@Qt_6 6.1.2
  _ZN10QSqlRecord6removeEi@Qt_6 6.1.2
  _ZN10QSqlRecord7replaceEiRK9QSqlField@Qt_6 6.1.2
+ _ZN10QSqlRecord7setNullE14QAnyStringView@Qt_6 6.8.0
  _ZN10QSqlRecord7setNullERK7QString@Qt_6 6.1.2
  _ZN10QSqlRecord7setNullEi@Qt_6 6.1.2
+ _ZN10QSqlRecord8setValueE14QAnyStringViewRK8QVariant@Qt_6 6.8.0
  _ZN10QSqlRecord8setValueERK7QStringRK8QVariant@Qt_6 6.1.2
  _ZN10QSqlRecord8setValueEiRK8QVariant@Qt_6 6.1.2
  _ZN10QSqlRecordC1ERKS_@Qt_6 6.1.2
@@ -54,6 +58,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN10QSqlResult14setForwardOnlyEb@Qt_6 6.1.2
  _ZN10QSqlResult19detachFromResultSetEv@Qt_6 6.1.2
  _ZN10QSqlResult27setNumericalPrecisionPolicyEN4QSql24NumericalPrecisionPolicyE@Qt_6 6.1.2
+ _ZN10QSqlResult27setPositionalBindingEnabledEb@Qt_6 6.8.0
  _ZN10QSqlResult4execEv@Qt_6 6.1.2
  _ZN10QSqlResult5clearEv@Qt_6 6.1.2
  _ZN10QSqlResult5setAtEi@Qt_6 6.1.2
@@ -76,11 +81,13 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN12QSqlDatabase11setPasswordERK7QString@Qt_6 6.1.2
  _ZN12QSqlDatabase11setUserNameERK7QString@Qt_6 6.1.2
  _ZN12QSqlDatabase11transactionEv@Qt_6 6.1.2
+ _ZN12QSqlDatabase12moveToThreadEP7QThread@Qt_6 6.8.0
  _ZN12QSqlDatabase13cloneDatabaseERK7QStringS2_@Qt_6 6.1.2
  _ZN12QSqlDatabase13cloneDatabaseERKS_RK7QString@Qt_6 6.1.2
  _ZN12QSqlDatabase14removeDatabaseERK7QString@Qt_6 6.1.2
  _ZN12QSqlDatabase15connectionNamesEv@Qt_6 6.1.2
  _ZN12QSqlDatabase15setDatabaseNameERK7QString@Qt_6 6.1.2
+ _ZN12QSqlDatabase16staticMetaObjectE@Qt_6 6.8.0
  _ZN12QSqlDatabase17defaultConnectionE@Qt_6 6.1.2
  _ZN12QSqlDatabase17isDriverAvailableERK7QString@Qt_6 6.1.2
  _ZN12QSqlDatabase17registerSqlDriverERK7QStringP21QSqlDriverCreatorBase@Qt_6 6.1.2
@@ -179,6 +186,9 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN16QSqlDriverPluginD0Ev@Qt_6 6.1.2
  _ZN16QSqlDriverPluginD1Ev@Qt_6 6.1.2
  _ZN16QSqlDriverPluginD2Ev@Qt_6 6.1.2
+ _ZN21QSqlDriverCreatorBaseD0Ev@Qt_6 6.8.0
+ _ZN21QSqlDriverCreatorBaseD1Ev@Qt_6 6.8.0
+ _ZN21QSqlDriverCreatorBaseD2Ev@Qt_6 6.8.0
  _ZN24QSqlRelationalTableModel11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
  _ZN24QSqlRelationalTableModel11qt_metacastEPKc@Qt_6 6.1.2
  _ZN24QSqlRelationalTableModel11setJoinModeENS_8JoinModeE@Qt_6 6.1.2
@@ -218,6 +228,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN9QSqlField12setPrecisionEi@Qt_6 6.1.2
  _ZN9QSqlField12setTableNameERK7QString@Qt_6 6.1.2
  _ZN9QSqlField15setDefaultValueERK8QVariant@Qt_6 6.1.2
+ _ZN9QSqlField16staticMetaObjectE@Qt_6 6.8.0
  _ZN9QSqlField17setRequiredStatusENS_14RequiredStatusE@Qt_6 6.1.2
  _ZN9QSqlField5clearEv@Qt_6 6.1.2
  _ZN9QSqlField6detachEv@Qt_6 6.1.2
@@ -233,6 +244,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN9QSqlFieldaSERKS_@Qt_6 6.1.2
  _ZN9QSqlIndex13setCursorNameERK7QString@Qt_6 6.1.2
  _ZN9QSqlIndex13setDescendingEib@Qt_6 6.1.2
+ _ZN9QSqlIndex16staticMetaObjectE@Qt_6 6.8.0
  _ZN9QSqlIndex6appendERK9QSqlField@Qt_6 6.1.2
  _ZN9QSqlIndex6appendERK9QSqlFieldb@Qt_6 6.1.2
  _ZN9QSqlIndex7setNameERK7QString@Qt_6 6.1.2
@@ -246,7 +258,9 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZN9QSqlQuery10nextResultEv@Qt_6 6.1.2
  _ZN9QSqlQuery12addBindValueERK8QVariant6QFlagsIN4QSql13ParamTypeFlagEE@Qt_6 6.1.2
  _ZN9QSqlQuery14setForwardOnlyEb@Qt_6 6.1.2
+ _ZN9QSqlQuery16staticMetaObjectE@Qt_6 6.8.0
  _ZN9QSqlQuery27setNumericalPrecisionPolicyEN4QSql24NumericalPrecisionPolicyE@Qt_6 6.1.2
+ _ZN9QSqlQuery27setPositionalBindingEnabledEb@Qt_6 6.8.0
  _ZN9QSqlQuery4execERK7QString@Qt_6 6.1.2
  _ZN9QSqlQuery4execEv@Qt_6 6.1.2
  _ZN9QSqlQuery4lastEv@Qt_6 6.1.2
@@ -288,17 +302,23 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK10QSqlDriver6tablesEN4QSql9TableTypeE@Qt_6 6.1.2
  _ZNK10QSqlDriver8dbmsTypeEv@Qt_6 6.1.2
  _ZNK10QSqlDriver9lastErrorEv@Qt_6 6.1.2
+ _ZNK10QSqlRecord11isGeneratedE14QAnyStringView@Qt_6 6.8.0
  _ZNK10QSqlRecord11isGeneratedERK7QString@Qt_6 6.1.2
  _ZNK10QSqlRecord11isGeneratedEi@Qt_6 6.1.2
  _ZNK10QSqlRecord5countEv@Qt_6 6.1.2
+ _ZNK10QSqlRecord5fieldE14QAnyStringView@Qt_6 6.8.0
  _ZNK10QSqlRecord5fieldERK7QString@Qt_6 6.1.2
  _ZNK10QSqlRecord5fieldEi@Qt_6 6.1.2
+ _ZNK10QSqlRecord5valueE14QAnyStringView@Qt_6 6.8.0
  _ZNK10QSqlRecord5valueERK7QString@Qt_6 6.1.2
  _ZNK10QSqlRecord5valueEi@Qt_6 6.1.2
+ _ZNK10QSqlRecord6isNullE14QAnyStringView@Qt_6 6.8.0
  _ZNK10QSqlRecord6isNullERK7QString@Qt_6 6.1.2
  _ZNK10QSqlRecord6isNullEi@Qt_6 6.1.2
+ _ZNK10QSqlRecord7indexOfE14QAnyStringView@Qt_6 6.8.0
  _ZNK10QSqlRecord7indexOfERK7QString@Qt_6 6.1.2
  _ZNK10QSqlRecord7isEmptyEv@Qt_6 6.1.2
+ _ZNK10QSqlRecord8containsE14QAnyStringView@Qt_6 6.8.0
  _ZNK10QSqlRecord8containsERK7QString@Qt_6 6.1.2
  _ZNK10QSqlRecord9fieldNameEi@Qt_6 6.1.2
  _ZNK10QSqlRecord9keyValuesERKS_@Qt_6 6.1.2
@@ -318,6 +338,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK10QSqlResult15boundValueCountEv@Qt_6 6.1.2
  _ZNK10QSqlResult15boundValueNamesEv@Qt_6 6.6.0
  _ZNK10QSqlResult24numericalPrecisionPolicyEv@Qt_6 6.1.2
+ _ZNK10QSqlResult26isPositionalBindingEnabledEv@Qt_6 6.8.0
  _ZNK10QSqlResult2atEv@Qt_6 6.1.2
  _ZNK10QSqlResult6driverEv@Qt_6 6.1.2
  _ZNK10QSqlResult6handleEv@Qt_6 6.1.2
@@ -340,6 +361,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK12QSqlDatabase6isOpenEv@Qt_6 6.1.2
  _ZNK12QSqlDatabase6recordERK7QString@Qt_6 6.1.2
  _ZNK12QSqlDatabase6tablesEN4QSql9TableTypeE@Qt_6 6.1.2
+ _ZNK12QSqlDatabase6threadEv@Qt_6 6.8.0
  _ZNK12QSqlDatabase7isValidEv@Qt_6 6.1.2
  _ZNK12QSqlDatabase8hostNameEv@Qt_6 6.1.2
  _ZNK12QSqlDatabase8passwordEv@Qt_6 6.1.2
@@ -406,7 +428,7 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK9QSqlField9precisionEv@Qt_6 6.1.2
  _ZNK9QSqlField9tableNameEv@Qt_6 6.1.2
  _ZNK9QSqlFieldeqERKS_@Qt_6 6.1.2
- _ZNK9QSqlIndex11createFieldEiRK7QStringb@Qt_6 6.1.2
+#MISSING: 6.8.0# _ZNK9QSqlIndex11createFieldEiRK7QStringb@Qt_6 6.1.2
  _ZNK9QSqlIndex12isDescendingEi@Qt_6 6.1.2
  _ZNK9QSqlQuery10boundValueERK7QString@Qt_6 6.1.2
  _ZNK9QSqlQuery10boundValueEi@Qt_6 6.1.2
@@ -418,11 +440,14 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZNK9QSqlQuery15boundValueNamesEv@Qt_6 6.6.0
  _ZNK9QSqlQuery15numRowsAffectedEv@Qt_6 6.1.2
  _ZNK9QSqlQuery24numericalPrecisionPolicyEv@Qt_6 6.1.2
+ _ZNK9QSqlQuery26isPositionalBindingEnabledEv@Qt_6 6.8.0
  _ZNK9QSqlQuery2atEv@Qt_6 6.1.2
  _ZNK9QSqlQuery4sizeEv@Qt_6 6.1.2
+ _ZNK9QSqlQuery5valueE14QAnyStringView@Qt_6 6.8.0
  _ZNK9QSqlQuery5valueERK7QString@Qt_6 6.1.2
  _ZNK9QSqlQuery5valueEi@Qt_6 6.1.2
  _ZNK9QSqlQuery6driverEv@Qt_6 6.1.2
+ _ZNK9QSqlQuery6isNullE14QAnyStringView@Qt_6 6.8.0
  _ZNK9QSqlQuery6isNullERK7QString@Qt_6 6.1.2
  _ZNK9QSqlQuery6isNullEi@Qt_6 6.1.2
  _ZNK9QSqlQuery6recordEv@Qt_6 6.1.2
@@ -437,18 +462,21 @@ libQt6Sql.so.6 libqt6sql6 #MINVER#
  _ZTI14QSqlQueryModel@Qt_6 6.1.2
  _ZTI14QSqlTableModel@Qt_6 6.1.2
  _ZTI16QSqlDriverPlugin@Qt_6 6.1.2
+ _ZTI21QSqlDriverCreatorBase@Qt_6 6.8.0
  _ZTI24QSqlRelationalTableModel@Qt_6 6.1.2
  _ZTS10QSqlDriver@Qt_6 6.1.2
  _ZTS10QSqlResult@Qt_6 6.1.2
  _ZTS14QSqlQueryModel@Qt_6 6.1.2
  _ZTS14QSqlTableModel@Qt_6 6.1.2
  _ZTS16QSqlDriverPlugin@Qt_6 6.1.2
+ _ZTS21QSqlDriverCreatorBase@Qt_6 6.8.0
  _ZTS24QSqlRelationalTableModel@Qt_6 6.1.2
  _ZTV10QSqlDriver@Qt_6 6.1.2
  _ZTV10QSqlResult@Qt_6 6.1.2
  _ZTV14QSqlQueryModel@Qt_6 6.1.2
  _ZTV14QSqlTableModel@Qt_6 6.1.2
  _ZTV16QSqlDriverPlugin@Qt_6 6.1.2
+ _ZTV21QSqlDriverCreatorBase@Qt_6 6.8.0
  _ZTV24QSqlRelationalTableModel@Qt_6 6.1.2
  _Zls6QDebugRK10QSqlRecord@Qt_6 6.1.2
  _Zls6QDebugRK12QSqlDatabase@Qt_6 6.1.2

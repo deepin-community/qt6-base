@@ -1,12 +1,13 @@
-# SymbolsHelper-Confirmed: 6.6.1 amd64
+# SymbolsHelper-Confirmed: 6.8.0 amd64 arm64 i386 loong64 riscv64
 libQt6Widgets.so.6 libqt6widgets6 #MINVER#
 | libqt6widgets6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
+ NonQt@NonQt 6.8.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _Z11qFadeEffectP7QWidgeti@Qt_6 6.1.2
- _Z12qt_blurImageP8QPainterR6QImagedbbi@Qt_6 6.1.2
- _Z12qt_blurImageR6QImagedbi@Qt_6 6.1.2
+#MISSING: 6.8.0# _Z12qt_blurImageP8QPainterR6QImagedbbi@Qt_6 6.1.2
+#MISSING: 6.8.0# _Z12qt_blurImageR6QImagedbi@Qt_6 6.1.2
  _Z13qDrawWinPanelP8QPainterRK5QRectRK8QPalettebPK6QBrush@Qt_6 6.1.2
  _Z13qDrawWinPanelP8QPainteriiiiRK8QPalettebPK6QBrush@Qt_6 6.1.2
  _Z13qScrollEffectP7QWidgetji@Qt_6 6.1.2
@@ -17,7 +18,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _Z13qSmartMinSizePK7QWidget@Qt_6 6.1.2
  _Z13qSmartMinSizeRK5QSizeS1_S1_S1_RK11QSizePolicy@Qt_6 6.1.2
  _Z13qSmartSpacingPK7QLayoutN6QStyle11PixelMetricE@Qt_6 6.1.2
- _Z13qt_halfScaledRK6QImage@Qt_6 6.1.2
+#MISSING: 6.8.0# _Z13qt_halfScaledRK6QImage@Qt_6 6.1.2
  _Z14qDrawPlainRectP8QPainterRK5QRectRK6QColoriPK6QBrush@Qt_6 6.1.2
  _Z14qDrawPlainRectP8QPainteriiiiRK6QColoriPK6QBrush@Qt_6 6.1.2
  _Z14qDrawShadeLineP8QPainterRK6QPointS3_RK8QPalettebii@Qt_6 6.1.2
@@ -35,6 +36,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _Z17qt_tryModalHelperP7QWidgetPS0_@Qt_6 6.1.2
  _Z17qt_widget_privateP7QWidget@Qt_6 6.1.2
  _Z18qt_tab_all_widgetsv@Qt_6 6.1.2
+ _Z21qDrawPlainRoundedRectP8QPainteriiiiddRK6QColoriPK6QBrush@Qt_6 6.8.0
  _Z21qt_qsliderStyleOptionP7QSlider@Qt_6 6.1.2
  _Z24qt_qscrollbarStyleOptionP10QScrollBar@Qt_6 6.1.2
  _Z33qt_graphicsItem_highlightSelectedP13QGraphicsItemP8QPainterPK24QStyleOptionGraphicsItem@Qt_6 6.1.2
@@ -45,12 +47,12 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _Z57qRegisterNormalizedMetaType_QGesture__GestureCancelPolicyRK10QByteArray@Qt_6 6.4.0
  _Z59qRegisterNormalizedMetaType_QScrollerProperties__FrameRatesRK10QByteArray@Qt_6 6.4.0
  _Z64qRegisterNormalizedMetaType_QScrollerProperties__OvershootPolicyRK10QByteArray@Qt_6 6.4.0
- _ZGVZN9QMetaType21registerConverterImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
+#MISSING: 6.8.0# _ZGVZN9QMetaType21registerConverterImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListI6QRectFE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType21registerConverterImplI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.4.0
  _ZGVZN9QMetaType21registerConverterImplI5QListIiE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- _ZGVZN9QMetaType23registerMutableViewImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
+#MISSING: 6.8.0# _ZGVZN9QMetaType23registerMutableViewImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListI6QRectFE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  _ZGVZN9QMetaType23registerMutableViewImplI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Qt_6 6.4.0
@@ -140,6 +142,33 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN10QLCDNumberD0Ev@Qt_6 6.1.2
  _ZN10QLCDNumberD1Ev@Qt_6 6.1.2
  _ZN10QLCDNumberD2Ev@Qt_6 6.1.2
+ _ZN10QRhiWidget10initializeEP17QRhiCommandBuffer@Qt_6 6.8.0
+ _ZN10QRhiWidget10paintEventEP11QPaintEvent@Qt_6 6.8.0
+ _ZN10QRhiWidget11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.8.0
+ _ZN10QRhiWidget11qt_metacastEPKc@Qt_6 6.8.0
+ _ZN10QRhiWidget11resizeEventEP12QResizeEvent@Qt_6 6.8.0
+ _ZN10QRhiWidget12renderFailedEv@Qt_6 6.8.0
+ _ZN10QRhiWidget14frameSubmittedEv@Qt_6 6.8.0
+ _ZN10QRhiWidget14setSampleCountEi@Qt_6 6.8.0
+ _ZN10QRhiWidget16releaseResourcesEv@Qt_6 6.8.0
+ _ZN10QRhiWidget16staticMetaObjectE@Qt_6 6.8.0
+ _ZN10QRhiWidget18sampleCountChangedEi@Qt_6 6.8.0
+ _ZN10QRhiWidget19setAutoRenderTargetEb@Qt_6 6.8.0
+ _ZN10QRhiWidget19setMirrorVerticallyEb@Qt_6 6.8.0
+ _ZN10QRhiWidget20setColorBufferFormatENS_13TextureFormatE@Qt_6 6.8.0
+ _ZN10QRhiWidget20setDebugLayerEnabledEb@Qt_6 6.8.0
+ _ZN10QRhiWidget23mirrorVerticallyChangedEb@Qt_6 6.8.0
+ _ZN10QRhiWidget23setFixedColorBufferSizeE5QSize@Qt_6 6.8.0
+ _ZN10QRhiWidget24colorBufferFormatChangedENS_13TextureFormatE@Qt_6 6.8.0
+ _ZN10QRhiWidget27fixedColorBufferSizeChangedERK5QSize@Qt_6 6.8.0
+ _ZN10QRhiWidget5eventEP6QEvent@Qt_6 6.8.0
+ _ZN10QRhiWidget6renderEP17QRhiCommandBuffer@Qt_6 6.8.0
+ _ZN10QRhiWidget6setApiENS_3ApiE@Qt_6 6.8.0
+ _ZN10QRhiWidgetC1EP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.8.0
+ _ZN10QRhiWidgetC2EP7QWidget6QFlagsIN2Qt10WindowTypeEE@Qt_6 6.8.0
+ _ZN10QRhiWidgetD0Ev@Qt_6 6.8.0
+ _ZN10QRhiWidgetD1Ev@Qt_6 6.8.0
+ _ZN10QRhiWidgetD2Ev@Qt_6 6.8.0
  _ZN10QScrollBar10paintEventEP11QPaintEvent@Qt_6 6.1.2
  _ZN10QScrollBar10wheelEventEP11QWheelEvent@Qt_6 6.1.2
  _ZN10QScrollBar11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.1.2
@@ -275,6 +304,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN10QTableView8rowMovedEiii@Qt_6 6.1.2
  _ZN10QTableView8scrollToERK11QModelIndexN17QAbstractItemView10ScrollHintE@Qt_6 6.1.2
  _ZN10QTableView8setModelEP18QAbstractItemModel@Qt_6 6.1.2
+ _ZN10QTableView9dropEventEP10QDropEvent@Qt_6 6.8.0
  _ZN10QTableView9selectRowEi@Qt_6 6.1.2
  _ZN10QTableViewC1EP7QWidget@Qt_6 6.1.2
  _ZN10QTableViewC2EP7QWidget@Qt_6 6.1.2
@@ -364,6 +394,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN11QFileDialog15getOpenFileUrlsEP7QWidgetRK7QStringRK4QUrlS4_PS2_6QFlagsINS_6OptionEERK5QListIS2_E@Qt_6 6.1.2
  _ZN11QFileDialog15getSaveFileNameEP7QWidgetRK7QStringS4_S4_PS2_6QFlagsINS_6OptionEE@Qt_6 6.1.2
  _ZN11QFileDialog15saveFileContentERK10QByteArrayRK7QString@Qt_6 6.1.2
+ _ZN11QFileDialog15saveFileContentERK10QByteArrayRK7QStringP7QWidget@Qt_6 6.8.0
  _ZN11QFileDialog15setDirectoryUrlERK4QUrl@Qt_6 6.1.2
  _ZN11QFileDialog15setIconProviderEP25QAbstractFileIconProvider@Qt_6 6.1.2
  _ZN11QFileDialog15setItemDelegateEP21QAbstractItemDelegate@Qt_6 6.1.2
@@ -374,6 +405,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN11QFileDialog16staticMetaObjectE@Qt_6 6.1.2
  _ZN11QFileDialog17currentUrlChangedERK4QUrl@Qt_6 6.1.2
  _ZN11QFileDialog18getOpenFileContentERK7QStringRKSt8functionIFvS2_RK10QByteArrayEE@Qt_6 6.1.2
+ _ZN11QFileDialog18getOpenFileContentERK7QStringRKSt8functionIFvS2_RK10QByteArrayEEP7QWidget@Qt_6 6.8.0
  _ZN11QFileDialog18setMimeTypeFiltersERK5QListI7QStringE@Qt_6 6.1.2
  _ZN11QFileDialog19directoryUrlEnteredERK4QUrl@Qt_6 6.1.2
  _ZN11QFileDialog19setSupportedSchemesERK5QListI7QStringE@Qt_6 6.1.2
@@ -1251,6 +1283,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN13QDateTimeEdit11setCalendarE9QCalendar@Qt_6 6.1.2
  _ZN13QDateTimeEdit11setDateTimeERK9QDateTime@Qt_6 6.1.2
  _ZN13QDateTimeEdit11setTimeSpecEN2Qt8TimeSpecE@Qt_6 6.1.2
+ _ZN13QDateTimeEdit11setTimeZoneERK9QTimeZone@Qt_6 6.8.0
  _ZN13QDateTimeEdit11timeChangedE5QTime@Qt_6 6.1.2
  _ZN13QDateTimeEdit12focusInEventEP11QFocusEvent@Qt_6 6.1.2
  _ZN13QDateTimeEdit12setDateRangeE5QDateS0_@Qt_6 6.1.2
@@ -1538,7 +1571,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN13QMdiSubWindowD0Ev@Qt_6 6.1.2
  _ZN13QMdiSubWindowD1Ev@Qt_6 6.1.2
  _ZN13QMdiSubWindowD2Ev@Qt_6 6.1.2
- _ZN13QMetaSequence12MetaSequenceI5QListI21QPersistentModelIndexEE5valueE@Qt_6 6.1.2
+#MISSING: 6.8.0# _ZN13QMetaSequence12MetaSequenceI5QListI21QPersistentModelIndexEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListI4QUrlEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListI6QRectFEE5valueE@Qt_6 6.1.2
  _ZN13QMetaSequence12MetaSequenceI5QListIN2Qt3KeyEEE5valueE@Qt_6 6.4.0
@@ -3251,6 +3284,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN5QMenuD2Ev@Qt_6 6.1.2
  _ZN5QTest20qWaitForWindowActiveEP7QWidgeti@Qt_6 6.1.2
  _ZN5QTest21qWaitForWindowExposedEP7QWidgeti@Qt_6 6.1.2
+ _ZN5QTest21qWaitForWindowFocusedEP7QWidget14QDeadlineTimer@Qt_6 6.8.0
  _ZN5QTest25QTouchEventWidgetSequence10stationaryEi@Qt_6 6.1.2
  _ZN5QTest25QTouchEventWidgetSequence11mapToScreenEP7QWidgetRK6QPoint@Qt_6 6.1.2
  _ZN5QTest25QTouchEventWidgetSequence4moveEiRK6QPointP7QWidget@Qt_6 6.1.2
@@ -3875,6 +3909,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZN9QCheckBox14mouseMoveEventEP11QMouseEvent@Qt_6 6.1.2
  _ZN9QCheckBox14nextCheckStateEv@Qt_6 6.1.2
  _ZN9QCheckBox16staticMetaObjectE@Qt_6 6.1.2
+ _ZN9QCheckBox17checkStateChangedEN2Qt10CheckStateE@Qt_6 6.8.0
  _ZN9QCheckBox5eventEP6QEvent@Qt_6 6.1.2
  _ZN9QCheckBoxC1EP7QWidget@Qt_6 6.1.2
  _ZN9QCheckBoxC1ERK7QStringP7QWidget@Qt_6 6.1.2
@@ -4430,6 +4465,21 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZNK10QLCDNumber5valueEv@Qt_6 6.1.2
  _ZNK10QLCDNumber8intValueEv@Qt_6 6.1.2
  _ZNK10QLCDNumber8sizeHintEv@Qt_6 6.1.2
+ _ZNK10QRhiWidget10metaObjectEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget11sampleCountEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget12colorTextureEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget12renderTargetEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget14resolveTextureEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget15grabFramebufferEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget15msaaColorBufferEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget17colorBufferFormatEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget18depthStencilBufferEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget19isDebugLayerEnabledEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget20fixedColorBufferSizeEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget25isAutoRenderTargetEnabledEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget25isMirrorVerticallyEnabledEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget3apiEv@Qt_6 6.8.0
+ _ZNK10QRhiWidget3rhiEv@Qt_6 6.8.0
  _ZNK10QScrollBar10metaObjectEv@Qt_6 6.1.2
  _ZNK10QScrollBar15initStyleOptionEP18QStyleOptionSlider@Qt_6 6.1.2
  _ZNK10QScrollBar8sizeHintEv@Qt_6 6.1.2
@@ -4955,6 +5005,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZNK13QDateTimeEdit8dateTimeEv@Qt_6 6.1.2
  _ZNK13QDateTimeEdit8sizeHintEv@Qt_6 6.1.2
  _ZNK13QDateTimeEdit8timeSpecEv@Qt_6 6.1.2
+ _ZNK13QDateTimeEdit8timeZoneEv@Qt_6 6.8.0
  _ZNK13QDateTimeEdit8validateER7QStringRi@Qt_6 6.1.2
  _ZNK13QDateTimeEdit9sectionAtEi@Qt_6 6.1.2
  _ZNK13QErrorMessage10metaObjectEv@Qt_6 6.1.2
@@ -6021,6 +6072,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZNK7QWidget6windowEv@Qt_6 6.1.2
  _ZNK7QWidget7actionsEv@Qt_6 6.1.2
  _ZNK7QWidget7childAtERK6QPoint@Qt_6 6.1.2
+ _ZNK7QWidget7childAtERK7QPointF@Qt_6 6.8.0
  _ZNK7QWidget7devTypeEv@Qt_6 6.1.2
  _ZNK7QWidget7mapFromEPKS_RK6QPoint@Qt_6 6.1.2
  _ZNK7QWidget7mapFromEPKS_RK7QPointF@Qt_6 6.1.2
@@ -6343,10 +6395,11 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZNK9QUndoView5groupEv@Qt_6 6.1.2
  _ZNK9QUndoView5stackEv@Qt_6 6.1.2
  _ZNK9QUndoView9cleanIconEv@Qt_6 6.1.2
- _ZSt19piecewise_construct@Qt_6 6.4.1
+#MISSING: 6.8.0# _ZSt19piecewise_construct@Qt_6 6.4.1
  _ZTI10QBoxLayout@Qt_6 6.1.2
  _ZTI10QCompleter@Qt_6 6.1.2
  _ZTI10QLCDNumber@Qt_6 6.1.2
+ _ZTI10QRhiWidget@Qt_6 6.8.0
  _ZTI10QScrollBar@Qt_6 6.1.2
  _ZTI10QStatusBar@Qt_6 6.1.2
  _ZTI10QTabWidget@Qt_6 6.1.2
@@ -6499,12 +6552,12 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZTI9QTreeView@Qt_6 6.1.2
  _ZTI9QUndoView@Qt_6 6.1.2
  _ZTIN5QTest25QTouchEventWidgetSequenceE@Qt_6 6.1.2
- _ZTIZN9QMetaType17registerConverterI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
+#MISSING: 6.8.0# _ZTIZN9QMetaType17registerConverterI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListI4QUrlE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListI6QRectFE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTIZN9QMetaType17registerConverterI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS4_EEEEbT1_EUlPKvPvE_@Qt_6 6.4.0
  _ZTIZN9QMetaType17registerConverterI5QListIiE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS2_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTIZN9QMetaType19registerMutableViewI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
+#MISSING: 6.8.0# _ZTIZN9QMetaType19registerMutableViewI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListI4QUrlE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListI6QRectFE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTIZN9QMetaType19registerMutableViewI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Qt_6 6.4.0
@@ -6512,6 +6565,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZTS10QBoxLayout@Qt_6 6.1.2
  _ZTS10QCompleter@Qt_6 6.1.2
  _ZTS10QLCDNumber@Qt_6 6.1.2
+ _ZTS10QRhiWidget@Qt_6 6.8.0
  _ZTS10QScrollBar@Qt_6 6.1.2
  _ZTS10QStatusBar@Qt_6 6.1.2
  _ZTS10QTabWidget@Qt_6 6.1.2
@@ -6664,12 +6718,12 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZTS9QTreeView@Qt_6 6.1.2
  _ZTS9QUndoView@Qt_6 6.1.2
  _ZTSN5QTest25QTouchEventWidgetSequenceE@Qt_6 6.1.2
- _ZTSZN9QMetaType17registerConverterI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
+#MISSING: 6.8.0# _ZTSZN9QMetaType17registerConverterI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListI4QUrlE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListI6QRectFE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS3_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS4_EEEEbT1_EUlPKvPvE_@Qt_6 6.4.0
  _ZTSZN9QMetaType17registerConverterI5QListIiE9QIterableI13QMetaSequenceEN9QtPrivate33QSequentialIterableConvertFunctorIS2_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
- _ZTSZN9QMetaType19registerMutableViewI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
+#MISSING: 6.8.0# _ZTSZN9QMetaType19registerMutableViewI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListI4QUrlE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListI6QRectFE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS3_EEEEbT1_EUlPvSB_E_@Qt_6 6.1.2
  _ZTSZN9QMetaType19registerMutableViewI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Qt_6 6.4.0
@@ -6677,6 +6731,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZTV10QBoxLayout@Qt_6 6.1.2
  _ZTV10QCompleter@Qt_6 6.1.2
  _ZTV10QLCDNumber@Qt_6 6.1.2
+ _ZTV10QRhiWidget@Qt_6 6.8.0
  _ZTV10QScrollBar@Qt_6 6.1.2
  _ZTV10QStatusBar@Qt_6 6.1.2
  _ZTV10QTabWidget@Qt_6 6.1.2
@@ -6828,12 +6883,12 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _ZTV9QTreeView@Qt_6 6.1.2
  _ZTV9QUndoView@Qt_6 6.1.2
  _ZTVN5QTest25QTouchEventWidgetSequenceE@Qt_6 6.1.2
- (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
+#MISSING: 6.8.0# (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListI6QRectFE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.4.0
  (optional=templinst)_ZZN9QMetaType21registerConverterImplI5QListIiE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.2.0
- (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
+#MISSING: 6.8.0# (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI21QPersistentModelIndexE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI4QUrlE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListI6QRectFE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS8_EES_S_E10unregister@Qt_6 6.2.0
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListIN2Qt3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Qt_6 6.4.0
@@ -6848,7 +6903,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  _Zls6QDebugPK19QGraphicsSceneEvent@Qt_6 6.1.2
  _Zls6QDebugPK7QWidget@Qt_6 6.1.2
  _Zls6QDebugPK8QGesture@Qt_6 6.1.2
- _Zls6QDebugRK11QDockWidget@Qt_6 6.6.1
+#MISSING: 6.8.0# _Zls6QDebugRK11QDockWidget@Qt_6 6.6.1
  _Zls6QDebugRK11QSizePolicy@Qt_6 6.1.2
  _Zls6QDebugRK12QStyleOption@Qt_6 6.1.2
  _Zls6QDebugRKN12QStyleOption10OptionTypeE@Qt_6 6.1.2
@@ -7019,6 +7074,7 @@ libQt6Widgets.so.6 libqt6widgets6 #MINVER#
  (c++)"non-virtual thunk to QProgressDialog::~QProgressDialog()@Qt_6" 6.1.2
  (c++)"non-virtual thunk to QPushButton::~QPushButton()@Qt_6" 6.1.2
  (c++)"non-virtual thunk to QRadioButton::~QRadioButton()@Qt_6" 6.1.2
+ (c++)"non-virtual thunk to QRhiWidget::~QRhiWidget()@Qt_6" 6.8.0
  (c++)"non-virtual thunk to QRubberBand::~QRubberBand()@Qt_6" 6.1.2
  (c++)"non-virtual thunk to QScrollArea::~QScrollArea()@Qt_6" 6.1.2
  (c++)"non-virtual thunk to QScrollBar::~QScrollBar()@Qt_6" 6.1.2

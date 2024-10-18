@@ -1,7 +1,8 @@
-# SymbolsHelper-Confirmed: 6.6.0 amd64
+# SymbolsHelper-Confirmed: 6.8.0 amd64 arm64 i386 loong64 riscv64
 libQt6OpenGLWidgets.so.6 libqt6openglwidgets6 #MINVER#
 | libqt6openglwidgets6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
+ NonQt@NonQt 6.8.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _ZN13QOpenGLWidget10paintEventEP11QPaintEvent@Qt_6 6.1.2

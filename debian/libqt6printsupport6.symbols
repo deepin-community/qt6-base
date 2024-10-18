@@ -1,7 +1,8 @@
-# SymbolsHelper-Confirmed: 6.6.0 amd64
+# SymbolsHelper-Confirmed: 6.8.0 amd64 arm64 i386 loong64 riscv64
 libQt6PrintSupport.so.6 libqt6printsupport6 #MINVER#
 | libqt6printsupport6 #MINVER#, qt6-base-private-abi (= 6.6.1)
 * Build-Depends-Package: qt6-base-dev
+ NonQt@NonQt 6.8.0
  Qt_6@Qt_6 6.1.2
  (symver)Qt_6_PRIVATE_API 0 1
  _Z49qRegisterNormalizedMetaType_QCUPSSupport__PageSetRK10QByteArray@Qt_6 6.4.0
@@ -38,6 +39,9 @@ libQt6PrintSupport.so.6 libqt6printsupport6 #MINVER#
  _ZN12QPrintDialogD0Ev@Qt_6 6.1.2
  _ZN12QPrintDialogD1Ev@Qt_6 6.1.2
  _ZN12QPrintDialogD2Ev@Qt_6 6.1.2
+ _ZN12QPrintEngineD0Ev@Qt_6 6.8.0
+ _ZN12QPrintEngineD1Ev@Qt_6 6.8.0
+ _ZN12QPrintEngineD2Ev@Qt_6 6.8.0
  _ZN12QPrinterInfo11printerInfoERK7QString@Qt_6 6.1.2
  _ZN12QPrinterInfo14defaultPrinterEv@Qt_6 6.1.2
  _ZN12QPrinterInfo17availablePrintersEv@Qt_6 6.1.2
@@ -237,6 +241,7 @@ libQt6PrintSupport.so.6 libqt6printsupport6 #MINVER#
  _ZTS8QPrinter@Qt_6 6.1.2
  _ZTSZN9QMetaType17registerConverterISt4pairI9QMarginsFN11QPageLayout4UnitEEN17QtMetaTypePrivate25QPairVariantInterfaceImplENS6_35QPairVariantInterfaceConvertFunctorIS5_EEEEbT1_EUlPKvPvE_@Qt_6 6.1.2
  _ZTV12QPrintDialog@Qt_6 6.1.2
+ _ZTV12QPrintEngine@Qt_6 6.8.0
  _ZTV16QPageSetupDialog@Qt_6 6.1.2
  _ZTV19QPrintPreviewDialog@Qt_6 6.1.2
  _ZTV19QPrintPreviewWidget@Qt_6 6.1.2
