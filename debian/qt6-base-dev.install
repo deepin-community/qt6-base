@@ -2773,3 +2773,4 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/macx-watchos-clang/qplatfo
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/vxworks-clang/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/wasm-emscripten-64/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/wasm-emscripten-64/qplatformdefs.h
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6PrintSupport/Qt6PrintSupportPlugins.cmake
