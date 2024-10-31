@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin2) unstable; urgency=medium
+
+  * update install.
+
+ -- lichenggang <lichenggang@deepin.org>  Thu, 31 Oct 2024 21:00:41 +0800
+
 qt6-base (6.8.0+dfsg-0deepin1) unstable; urgency=medium
 
   * New upstream release (6.8.0).
