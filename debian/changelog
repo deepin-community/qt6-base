@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin5) unstable; urgency=medium
+
+  * Add fix-QApplciation-with-a-QML-popupWindow.patch.
+
+ -- Lu YaNing <luyaning@uniontech.com>  Sat, 30 Nov 2024 15:28:56 +0800
+
 qt6-base (6.8.0+dfsg-0deepin4) unstable; urgency=medium
 
   * add qt6-base-dev depends libcups2-dev.

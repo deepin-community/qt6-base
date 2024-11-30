@@ -1,0 +1,60 @@
+From 706d54eefee22e2feb16a7a7717c0a48ff270460 Mon Sep 17 00:00:00 2001
+From: Liu Heng <liuhenga@uniontech.com>
+Date: Wed, 27 Nov 2024 17:55:15 +0800
+Subject: [PATCH] fix QApplciation with a QML popupWindow
+
+Since 6.8, QML has popupWindow. When in popupModeMode,
+it does not necessarily have a popupWidget.
+
+Not checking whether popWidget is nullptr will cause the
+program to crash.
+
+Fixes: QTBUG-131664
+Pick-to: 6.8
+Change-Id: I624b62ef7185f0ab35215c2c34b0d6e9c80539a0
+Reviewed-by: Tor Arne Vestbø <tor.arne.vestbo@qt.io>
+---
+
+diff --git a/src/widgets/kernel/qwidgetwindow.cpp b/src/widgets/kernel/qwidgetwindow.cpp
+index 04c9e1c..9b2d6ca 100644
+--- a/src/widgets/kernel/qwidgetwindow.cpp
++++ b/src/widgets/kernel/qwidgetwindow.cpp
+@@ -505,8 +505,7 @@
+ 
+ void QWidgetWindow::handleMouseEvent(QMouseEvent *event)
+ {
+-    if (QApplicationPrivate::inPopupMode()) {
+-        QPointer<QWidget> activePopupWidget = QApplication::activePopupWidget();
++    if (auto *activePopupWidget = QApplication::activePopupWidget()) {
+         QPointF mapped = event->position();
+         if (activePopupWidget != m_widget)
+             mapped = activePopupWidget->mapFromGlobal(event->globalPosition());
+@@ -682,7 +681,7 @@
+     if (event->type() == QEvent::TouchCancel) {
+         QApplicationPrivate::translateTouchCancel(event->pointingDevice(), event->timestamp());
+         event->accept();
+-    } else if (QApplicationPrivate::inPopupMode()) {
++    } else if (QApplication::activePopupWidget()) {
+         // Ignore touch events for popups. This will cause QGuiApplication to synthesise mouse
+         // events instead, which QWidgetWindow::handleMouseEvent will forward correctly:
+         event->ignore();
+@@ -697,8 +696,7 @@
+         return;
+ 
+     QObject *receiver = QWidget::keyboardGrabber();
+-    if (!receiver && QApplicationPrivate::inPopupMode()) {
+-        QWidget *popup = QApplication::activePopupWidget();
++    if (auto *popup = QApplication::activePopupWidget(); !receiver && popup) {
+         QWidget *popupFocusWidget = popup->focusWidget();
+         receiver = popupFocusWidget ? popupFocusWidget : popup;
+     }
+@@ -1151,8 +1149,7 @@
+ {
+     // copy-pasted code to find correct widget follows:
+     QObject *receiver = nullptr;
+-    if (QApplicationPrivate::inPopupMode()) {
+-        QWidget *popup = QApplication::activePopupWidget();
++    if (auto *popup = QApplication::activePopupWidget()) {
+         QWidget *popupFocusWidget = popup->focusWidget();
+         receiver = popupFocusWidget ? popupFocusWidget : popup;
+     }
