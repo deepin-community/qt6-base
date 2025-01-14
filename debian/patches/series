@@ -27,3 +27,4 @@ enable_skip_plugins.patch
 CMake-Fix-Threads-Threads-global-target-promotion-is.patch
 QT_FORCE_OPENGL_TYPE.patch
 fix-QApplciation-with-a-QML-popupWindow.patch
+Give-the-popup-window-focus.patch
