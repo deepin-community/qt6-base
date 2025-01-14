@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin6) unstable; urgency=medium
+
+  * Add Give-the-popup-window-focus.patch.
+
+ -- tsic404 <liuheng@depein.org>  Tue, 14 Jan 2025 12:49:35 +0800
+
 qt6-base (6.8.0+dfsg-0deepin5) unstable; urgency=medium
 
   * Add fix-QApplciation-with-a-QML-popupWindow.patch.
