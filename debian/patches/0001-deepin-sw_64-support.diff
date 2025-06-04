@@ -1,0 +1,155 @@
+diff --git a/src/3rdparty/double-conversion/double-conversion/utils.h b/src/3rdparty/double-conversion/double-conversion/utils.h
+index 4f4dd71b..ac914f78 100644
+--- a/src/3rdparty/double-conversion/double-conversion/utils.h
++++ b/src/3rdparty/double-conversion/double-conversion/utils.h
+@@ -144,13 +144,13 @@ int main(int argc, char** argv) {
+     defined(__powerpc__) || defined(__ppc__) || defined(__ppc64__) || \
+     defined(_POWER) || defined(_ARCH_PPC) || defined(_ARCH_PPC64) || \
+     defined(__sparc__) || defined(__sparc) || defined(__s390__) || \
+-    defined(__SH4__) || defined(__alpha__) || \
++    defined(__SH4__) || defined(__alpha__) || defined(__sw_64__) || \
+     defined(_MIPS_ARCH_MIPS32R2) || defined(__ARMEB__) ||\
+     defined(__AARCH64EL__) || defined(__aarch64__) || defined(__AARCH64EB__) || \
+     defined(__riscv) || defined(__e2k__) || \
+     defined(__or1k__) || defined(__arc__) || defined(__ARC64__) || \
+     defined(__microblaze__) || defined(__XTENSA__) || \
+-    defined(__EMSCRIPTEN__) || defined(__wasm32__)
++    defined(__EMSCRIPTEN__) || defined(__wasm32__) || defined(__sw_64__)
+ #define DOUBLE_CONVERSION_CORRECT_DOUBLE_OPERATIONS 1
+ #elif defined(__mc68000__) || \
+     defined(__pnacl__) || defined(__native_client__)
+diff --git a/src/3rdparty/forkfd/forkfd_linux.c b/src/3rdparty/forkfd/forkfd_linux.c
+index 4dacc191..0a776c5a 100644
+--- a/src/3rdparty/forkfd/forkfd_linux.c
++++ b/src/3rdparty/forkfd/forkfd_linux.c
+@@ -85,7 +85,7 @@ static int sys_clone(unsigned long cloneflags, int *ptid)
+ #elif defined(__arc__) || defined(__arm__) || defined(__aarch64__) || defined(__mips__) || \
+     defined(__nds32__) || defined(__hppa__) || defined(__powerpc__) || defined(__i386__) || \
+     defined(__x86_64__) || defined(__xtensa__) || defined(__alpha__) || defined(__riscv) || \
+-    defined(__loongarch__)
++    defined(__loongarch__) || defined(__sw_64__)
+     /* ctid and newtls are inverted on CONFIG_CLONE_BACKWARDS architectures,
+      * but since both values are 0, there's no harm. */
+     return syscall(__NR_clone, cloneflags, child_stack, ptid, ctid, newtls);
+diff --git a/src/3rdparty/sha3/brg_endian.h b/src/3rdparty/sha3/brg_endian.h
+index 0baac93d..3842bbaa 100644
+--- a/src/3rdparty/sha3/brg_endian.h
++++ b/src/3rdparty/sha3/brg_endian.h
+@@ -108,7 +108,7 @@ Changes for ARM 9/9/2010 [Downstream relative to Gladman's GitHub, upstream to Q
+       defined( __i386__ )  || defined( _M_I86 )  || defined( _M_IX86 )    || \
+       defined( __OS2__ )   || defined( sun386 )  || defined( __TURBOC__ ) || \
+       defined( vax )       || defined( vms )     || defined( VMS )        || \
+-      defined( __VMS )     || defined( _M_X64 )
++      defined( __VMS )     || defined( _M_X64 ) || defined( __sw_64__ )
+ #  define PLATFORM_BYTE_ORDER IS_LITTLE_ENDIAN
+ 
+ #elif defined( AMIGA )   || defined( applec )    || defined( __AS400__ )  || \
+diff --git a/src/corelib/global/archdetect.cpp b/src/corelib/global/archdetect.cpp
+index 6a1e110a..5e16e1fe 100644
+--- a/src/corelib/global/archdetect.cpp
++++ b/src/corelib/global/archdetect.cpp
+@@ -7,6 +7,8 @@
+ // main part: processor type
+ #if defined(Q_PROCESSOR_ALPHA)
+ #  define ARCH_PROCESSOR "alpha"
++#elif defined(Q_PROCESSOR_SW_64)
++#  define ARCH_PROCESSOR "sw_64"
+ #elif defined(Q_PROCESSOR_ARM_32)
+ #  define ARCH_PROCESSOR "arm"
+ #elif defined(Q_PROCESSOR_ARM_64)
+diff --git a/src/corelib/global/qprocessordetection.h b/src/corelib/global/qprocessordetection.h
+index f7298bbb..d634e0ae 100644
+--- a/src/corelib/global/qprocessordetection.h
++++ b/src/corelib/global/qprocessordetection.h
+@@ -141,6 +141,10 @@
+ // #elif defined(__bfin__)
+ // #  define Q_PROCESSOR_BLACKFIN
+ // #  define Q_BYTE_ORDER Q_LITTLE_ENDIAN
++#elif defined(__sw_64__)
++#  define Q_PROCESSOR_SW_64
++#  define Q_BYTE_ORDER Q_LITTLE_ENDIAN
++#  define Q_PROCESSOR_WORDSIZE 8
+ 
+ /*
+     PA-RISC family, no revisions or variants
+diff --git a/src/corelib/global/qprocessordetection.qdoc b/src/corelib/global/qprocessordetection.qdoc
+index e6605fb9..6313e68c 100644
+--- a/src/corelib/global/qprocessordetection.qdoc
++++ b/src/corelib/global/qprocessordetection.qdoc
+@@ -28,6 +28,15 @@
+     \sa QSysInfo::buildCpuArchitecture()
+ */
+ 
++/*!
++    \macro Q_PROCESSOR_SW_64
++    \relates <QtProcessorDetection>
++
++    Defined if the application is compiled for SunWay 64-bit processors.
++
++    \sa QSysInfo::buildCpuArchitecture()
++*/
++
+ /*!
+     \macro Q_PROCESSOR_ARM
+     \relates <QtProcessorDetection>
+diff --git a/src/corelib/io/qfilesystemwatcher_inotify.cpp b/src/corelib/io/qfilesystemwatcher_inotify.cpp
+index e60f6881..5df6265c 100644
+--- a/src/corelib/io/qfilesystemwatcher_inotify.cpp
++++ b/src/corelib/io/qfilesystemwatcher_inotify.cpp
+@@ -55,7 +55,7 @@
+ # define __NR_inotify_add_watch 285
+ # define __NR_inotify_rm_watch  286
+ # define __NR_inotify_init1     324
+-#elif defined (__alpha__)
++#elif defined (__alpha__) || defined (__sw_64__)
+ # define __NR_inotify_init      444
+ # define __NR_inotify_add_watch 445
+ # define __NR_inotify_rm_watch  446
+diff --git a/src/corelib/plugin/qelfparser_p.cpp b/src/corelib/plugin/qelfparser_p.cpp
+index 7f6271cd..8543d4fc 100644
+--- a/src/corelib/plugin/qelfparser_p.cpp
++++ b/src/corelib/plugin/qelfparser_p.cpp
+@@ -113,6 +113,8 @@ struct ElfMachineCheck
+             // nothing
+ #elif defined(Q_PROCESSOR_ALPHA)
+             EM_ALPHA
++#elif defined(Q_PROCESSOR_SW_64)
++            EM_SW_64
+ #elif defined(Q_PROCESSOR_ARM_32)
+             EM_ARM
+ #elif defined(Q_PROCESSOR_ARM_64)
+@@ -384,6 +386,7 @@ Q_DECL_UNUSED Q_DECL_COLD_FUNCTION static QDebug &operator<<(QDebug &d, ElfHeade
+     // list definitely not exhaustive!
+     case EM_NONE:       d << ", no machine"; break;
+     case EM_ALPHA:      d << ", Alpha"; break;
++    case EM_SW_64:      d << ", SunWay"; break;
+     case EM_68K:        d << ", MC68000"; break;
+     case EM_ARM:        d << ", ARM"; break;
+     case EM_AARCH64:    d << ", AArch64"; break;
+diff --git a/src/testlib/3rdparty/cycle/cycle_p.h b/src/testlib/3rdparty/cycle/cycle_p.h
+index f281c55d..dc4b9644 100644
+--- a/src/testlib/3rdparty/cycle/cycle_p.h
++++ b/src/testlib/3rdparty/cycle/cycle_p.h
+@@ -412,6 +412,22 @@ INLINE_ELAPSED(__inline__)
+ #define HAVE_TICK_COUNTER
+ #endif
+ 
++/*----------------------------------------------------------------*/
++#if defined(__GNUC__) && defined(__sw_64__) && !defined(HAVE_TICK_COUNTER)
++typedef unsigned long CycleCounterTicks;
++
++static __inline__ CycleCounterTicks getticks(void)
++{
++     CycleCounterTicks ret;
++     __asm__ __volatile__ ("rtc %0" : "=r"(ret));
++     return ret;
++}
++
++INLINE_ELAPSED(__inline__)
++
++#define HAVE_TICK_COUNTER
++#endif
++
+ /*----------------------------------------------------------------*/
+ #if defined(__GNUC__) && defined(__sparc_v9__) && !defined(HAVE_TICK_COUNTER)
+ typedef unsigned long ticks;
