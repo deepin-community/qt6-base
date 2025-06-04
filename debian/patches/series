@@ -28,3 +28,4 @@ CMake-Fix-Threads-Threads-global-target-promotion-is.patch
 QT_FORCE_OPENGL_TYPE.patch
 fix-QApplciation-with-a-QML-popupWindow.patch
 CVE-2025-5455_qDecodeDataUrl_FixMalformedCharsetHandling.patch
+0001-deepin-sw_64-support.diff

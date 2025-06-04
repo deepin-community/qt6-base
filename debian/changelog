@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin9) unstable; urgency=medium
+  
+  * feat: add sw64 support.
+
+ -- hudeng <hudeng@deepin.org>  Wed, 04 Jun 2025 16:05:45 +0800
+
 qt6-base (6.8.0+dfsg-0deepin8) unstable; urgency=medium
 
   * New upstream release.
@@ -5,7 +11,7 @@ qt6-base (6.8.0+dfsg-0deepin8) unstable; urgency=medium
     -- CVE-2025-5455_qDecodeDataUrl_FixMalformedCharsetHandling.patch
 
  -- Tian ShiLin <tianshilin@uniontech.com>  Fri, 13 Jun 2025 11:02:43 +0800
-
+  
 qt6-base (6.8.0+dfsg-0deepin7) unstable; urgency=medium
 
   * Revert "Add Give-the-popup-window-focus.patch"
