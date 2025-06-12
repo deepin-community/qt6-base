@@ -1,3 +1,11 @@
+qt6-base (6.8.0+dfsg-0deepin7.1) UNRELEASED; urgency=medium
+
+  * New upstream release.
+  * fix: Handle missing charset value in qDecodeDataUrl to avoid assertion
+    -- CVE-2025-5455_qDecodeDataUrl_FixMalformedCharsetHandling.patch
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Thu, 12 Jun 2025 17:08:43 +0800
+
 qt6-base (6.8.0+dfsg-0deepin7) unstable; urgency=medium
 
   * Revert "Add Give-the-popup-window-focus.patch"
