@@ -18,4 +18,4 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqminimal.so
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqoffscreen.so
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqxcb.so
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/xcbglintegrations/libqxcb-egl-integration.so
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/xcbglintegrations/libqxcb-glx-integration.so
+[!riscv64] usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/xcbglintegrations/libqxcb-glx-integration.so

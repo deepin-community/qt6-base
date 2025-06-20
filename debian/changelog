@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin9) unstable; urgency=medium
+
+  * only build gles for riscv64
+
+ -- Chang Yang <yangchang@deepin.org>  Fri, 20 Jun 2025 15:40:44 +0800
+
 qt6-base (6.8.0+dfsg-0deepin8) unstable; urgency=medium
 
   * New upstream release.

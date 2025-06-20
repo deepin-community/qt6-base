@@ -1054,6 +1054,7 @@ usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/qopenglcontext_platform.h
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/qopenglcontext.h
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/QOpenGLContextGroup
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/qopenglext.h
+[riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/qopengles2ext.h
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/QOpenGLExtraFunctions
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/qopenglextrafunctions.h
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtGui/QOpenGLExtraFunctionsPrivate
@@ -1367,58 +1368,60 @@ usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLDebugMessage
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFramebufferObject
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglframebufferobject.h
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFramebufferObjectFormat
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_0
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_0.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_1
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_1.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_2
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_2.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_3
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_3.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_4
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_4.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_5
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_5.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_2_0
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_2_0.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_2_1
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_2_1.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_0
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_0.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_1
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_1.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_2_Compatibility
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_2_compatibility.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_2_Core
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_2_core.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_3_Compatibility
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_3_compatibility.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_3_Core
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_3_core.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_0_Compatibility
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_0_compatibility.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_0_Core
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_0_core.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_1_Compatibility
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_1_compatibility.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_1_Core
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_1_core.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_2_Compatibility
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_2_compatibility.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_2_Core
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_2_core.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_3_Compatibility
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_3_compatibility.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_3_Core
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_3_core.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_4_Compatibility
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_4_compatibility.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_4_Core
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_4_core.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_5_Compatibility
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_5_compatibility.h
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_5_Core
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_5_core.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_0
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_0.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_1
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_1.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_2
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_2.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_3
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_3.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_4
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_4.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_1_5
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_1_5.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_2_0
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_2_0.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_2_1
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_2_1.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_0
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_0.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_1
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_1.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_2_Compatibility
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_2_compatibility.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_2_Core
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_2_core.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_3_Compatibility
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_3_compatibility.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_3_3_Core
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_3_3_core.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_0_Compatibility
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_0_compatibility.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_0_Core
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_0_core.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_1_Compatibility
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_1_compatibility.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_1_Core
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_1_core.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_2_Compatibility
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_2_compatibility.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_2_Core
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_2_core.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_3_Compatibility
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_3_compatibility.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_3_Core
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_3_core.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_4_Compatibility
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_4_compatibility.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_4_Core
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_4_core.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_5_Compatibility
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_5_compatibility.h
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_4_5_Core
+[!riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_4_5_core.h
+[riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLFunctions_ES2
+[riscv64] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglfunctions_es2.h
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLPaintDevice
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/qopenglpaintdevice.h
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtOpenGL/QOpenGLPixelTransferOptions
@@ -2320,12 +2323,12 @@ usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbEglIntegrationPluginConfigVers
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbEglIntegrationPluginConfigVersionImpl.cmake
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbEglIntegrationPluginTargets-none.cmake
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbEglIntegrationPluginTargets.cmake
-usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginAdditionalTargetInfo.cmake
-usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginConfig.cmake
-usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginConfigVersion.cmake
-usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginConfigVersionImpl.cmake
-usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginTargets-none.cmake
-usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginTargets.cmake
+[!riscv64] usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginAdditionalTargetInfo.cmake
+[!riscv64] usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginConfig.cmake
+[!riscv64] usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginConfigVersion.cmake
+[!riscv64] usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginConfigVersionImpl.cmake
+[!riscv64] usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginTargets-none.cmake
+[!riscv64] usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbGlxIntegrationPluginTargets.cmake
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbIntegrationPluginAdditionalTargetInfo.cmake
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbIntegrationPluginConfig.cmake
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6QXcbIntegrationPluginConfigVersion.cmake

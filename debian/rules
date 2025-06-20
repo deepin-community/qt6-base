@@ -27,6 +27,16 @@ ifneq ($(DEB_BUILD_ARCH),$(DEB_HOST_ARCH))
 		-DQT_FORCE_BUILD_TOOLS=ON
 endif
 
+# opengles
+ifeq ($(DEB_BUILD_ARCH),riscv64)
+	extra_cmake_args += \
+		-DFEATURE_opengles2=ON \
+		-DFEATURE_opengles3=ON \
+		-DFEATURE_opengles31=ON \
+		-DFEATURE_opengles32=ON \
+		-DFEATURE_opengl_desktop=OFF
+endif
+
 %:
 	dh $@ --with pkgkde_symbolshelper --buildsystem=cmake+ninja
 
