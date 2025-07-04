@@ -4,6 +4,9 @@
 # Use already defined DEB_HOST_* variables.
 include /usr/share/dpkg/architecture.mk
 
+# Use already defined upstream version as DEB_VERSION_UPSTREAM.
+include /usr/share/dpkg/pkg-info.mk
+
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=+lto
 sslpkgname := $(shell dpkg-query --show '--showformat=$${Depends}' libssl-dev | cut -d ' ' -f1)
 
@@ -104,6 +107,9 @@ execute_after_dh_auto_install-arch:
 	# Fix Qt6::qmake IMPORTED_LOCATION, see https://bugs.debian.org/1030980
 	sed -i 's,lib/qt6/bin/qmake,bin/$(DEB_HOST_GNU_TYPE)-qmake6,' \
 		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/cmake/Qt6CoreTools/Qt6CoreToolsTargets-none.cmake
+
+	install -Dv -t debian/tmp/usr/include/$(DEB_HOST_MULTIARCH)/qt6/QtXcb/$(DEB_VERSION_UPSTREAM:+dfsg=)/QtXcb/private \
+		src/plugins/platforms/xcb/*.h
 
 override_dh_auto_build-indep:
 	dh_auto_build -- docs
