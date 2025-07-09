@@ -1,8 +1,9 @@
 qt6-base (6.8.0+dfsg-0deepin9) unstable; urgency=medium
-  
+
+  * Add xcb private headers
   * feat: add sw64 support.
 
- -- hudeng <hudeng@deepin.org>  Wed, 04 Jun 2025 16:05:45 +0800
+ -- Cryolitia <cryolitia@deepin.org>  Thu, 03 Jul 2025 17:54:59 +0800
 
 qt6-base (6.8.0+dfsg-0deepin8) unstable; urgency=medium
 
