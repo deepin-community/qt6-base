@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin10) unstable; urgency=medium
+
+  * chore: update sw64 support patch.
+
+ -- hudeng <hudeng@deepin.org>  Wed, 09 Jul 2025 18:49:57 +0800
+
 qt6-base (6.8.0+dfsg-0deepin9) unstable; urgency=medium
 
   * Add xcb private headers

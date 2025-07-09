@@ -1,3 +1,20 @@
+From 3121edf96c6c2c9f6869ab49c311fb13ca565457 Mon Sep 17 00:00:00 2001
+From: hudeng <hudeng@deepin.org>
+Date: Wed, 9 Jul 2025 18:46:19 +0800
+Subject: [PATCH] feat: add sw64 support
+
+---
+ .../double-conversion/double-conversion/utils.h  |  4 ++--
+ src/3rdparty/forkfd/forkfd_linux.c               |  2 +-
+ src/3rdparty/sha3/brg_endian.h                   |  2 +-
+ src/corelib/global/archdetect.cpp                |  2 ++
+ src/corelib/global/qprocessordetection.h         |  4 ++++
+ src/corelib/global/qprocessordetection.qdoc      |  9 +++++++++
+ src/corelib/io/qfilesystemwatcher_inotify.cpp    |  2 +-
+ src/corelib/plugin/qelfparser_p.cpp              |  5 +++++
+ src/testlib/3rdparty/cycle/cycle_p.h             | 16 ++++++++++++++++
+ 9 files changed, 41 insertions(+), 5 deletions(-)
+
 diff --git a/src/3rdparty/double-conversion/double-conversion/utils.h b/src/3rdparty/double-conversion/double-conversion/utils.h
 index 4f4dd71b..ac914f78 100644
 --- a/src/3rdparty/double-conversion/double-conversion/utils.h
@@ -19,7 +36,7 @@ index 4f4dd71b..ac914f78 100644
  #elif defined(__mc68000__) || \
      defined(__pnacl__) || defined(__native_client__)
 diff --git a/src/3rdparty/forkfd/forkfd_linux.c b/src/3rdparty/forkfd/forkfd_linux.c
-index 4dacc191..0a776c5a 100644
+index 40b02657..f0eed06c 100644
 --- a/src/3rdparty/forkfd/forkfd_linux.c
 +++ b/src/3rdparty/forkfd/forkfd_linux.c
 @@ -85,7 +85,7 @@ static int sys_clone(unsigned long cloneflags, int *ptid)
@@ -58,7 +75,7 @@ index 6a1e110a..5e16e1fe 100644
  #  define ARCH_PROCESSOR "arm"
  #elif defined(Q_PROCESSOR_ARM_64)
 diff --git a/src/corelib/global/qprocessordetection.h b/src/corelib/global/qprocessordetection.h
-index f7298bbb..d634e0ae 100644
+index bb4759c4..b7ed91a9 100644
 --- a/src/corelib/global/qprocessordetection.h
 +++ b/src/corelib/global/qprocessordetection.h
 @@ -141,6 +141,10 @@
@@ -106,7 +123,7 @@ index e60f6881..5df6265c 100644
  # define __NR_inotify_add_watch 445
  # define __NR_inotify_rm_watch  446
 diff --git a/src/corelib/plugin/qelfparser_p.cpp b/src/corelib/plugin/qelfparser_p.cpp
-index 7f6271cd..8543d4fc 100644
+index 7f6271cd..aef69bd2 100644
 --- a/src/corelib/plugin/qelfparser_p.cpp
 +++ b/src/corelib/plugin/qelfparser_p.cpp
 @@ -113,6 +113,8 @@ struct ElfMachineCheck
@@ -118,11 +135,13 @@ index 7f6271cd..8543d4fc 100644
  #elif defined(Q_PROCESSOR_ARM_32)
              EM_ARM
  #elif defined(Q_PROCESSOR_ARM_64)
-@@ -384,6 +386,7 @@ Q_DECL_UNUSED Q_DECL_COLD_FUNCTION static QDebug &operator<<(QDebug &d, ElfHeade
+@@ -384,6 +386,9 @@ Q_DECL_UNUSED Q_DECL_COLD_FUNCTION static QDebug &operator<<(QDebug &d, ElfHeade
      // list definitely not exhaustive!
      case EM_NONE:       d << ", no machine"; break;
      case EM_ALPHA:      d << ", Alpha"; break;
++#if defined(__sw_64__)
 +    case EM_SW_64:      d << ", SunWay"; break;
++#endif
      case EM_68K:        d << ", MC68000"; break;
      case EM_ARM:        d << ", ARM"; break;
      case EM_AARCH64:    d << ", AArch64"; break;
@@ -153,3 +172,6 @@ index f281c55d..dc4b9644 100644
  /*----------------------------------------------------------------*/
  #if defined(__GNUC__) && defined(__sparc_v9__) && !defined(HAVE_TICK_COUNTER)
  typedef unsigned long ticks;
+-- 
+2.47.2
+
