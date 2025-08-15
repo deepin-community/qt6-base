@@ -1,0 +1,172 @@
+Author: Tian Shilin<tianshilin@uniontech.com>
+Date:   Sun Aug 17 14:20:24 2025
+Subject: fix addsingle finger to scroll under the-touch screen 
+
+---
+
+Index: qt6-base/src/widgets/itemviews/qlistview.cpp
+===================================================================
+--- qt6-base.orig/src/widgets/itemviews/qlistview.cpp
++++ qt6-base/src/widgets/itemviews/qlistview.cpp
+@@ -21,6 +21,7 @@
+ #include <qrubberband.h>
+ #endif
+ #include <qscrollbar.h>
++#include <qscroller.h>
+ #include <qstyle.h>
+ #include <private/qapplication_p.h>
+ #include <private/qlistview_p.h>
+@@ -150,6 +151,9 @@ QListView::QListView(QWidget *parent)
+     setAttribute(Qt::WA_MacShowFocusRect);
+     Q_D(QListView);               // We rely on a qobject_cast for PM_DefaultFrameWidth to change
+     d->updateStyledFrameWidths(); // hence we have to force an update now that the object has been constructed
++
++    horizontalScrollBar()->installEventFilter(this);
++    verticalScrollBar()->installEventFilter(this);
+ }
+ 
+ /*!
+@@ -163,6 +167,9 @@ QListView::QListView(QListViewPrivate &d
+     setAttribute(Qt::WA_MacShowFocusRect);
+     Q_D(QListView);               // We rely on a qobject_cast for PM_DefaultFrameWidth to change
+     d->updateStyledFrameWidths(); // hence we have to force an update now that the object has been constructed
++
++    horizontalScrollBar()->installEventFilter(this);
++    verticalScrollBar()->installEventFilter(this);
+ }
+ 
+ /*!
+@@ -740,6 +747,29 @@ void QListView::rowsAboutToBeRemoved(con
+     d->doDelayedItemsLayout();
+ }
+ 
++void QListView::mousePressEvent(QMouseEvent *e)
++{
++    Q_D(QListView);
++
++    if (e->source() == Qt::MouseEventSynthesizedByQt) {
++        if (e->button() == Qt::LeftButton) {
++
++            if (QScroller::hasScroller(this)) {
++                QScroller::scroller(this)->deleteLater();
++            }
++
++            if (!d->touchSlideTimer.isActive()) {
++                d->touchSlideTimer.start(QApplication::doubleClickInterval(), this);
++            }
++        }
++    } else {
++        if (QScroller::hasScroller(this)) {
++            QScroller::scroller(this)->deleteLater();
++        }
++    }
++    QAbstractItemView::mousePressEvent(e);
++}
++
+ /*!
+   \reimp
+ */
+@@ -748,6 +778,40 @@ void QListView::mouseMoveEvent(QMouseEve
+     if (!isVisible())
+         return;
+     Q_D(QListView);
++    if (e->source() == Qt::MouseEventSynthesizedByQt) {
++        if (QScroller::hasScroller(this)) {
++            return;
++        }
++
++        if (d->touchSlideTimer.isActive()) {
++
++            this->setVerticalScrollMode(ScrollPerPixel);
++            this->setHorizontalScrollMode(ScrollPerPixel);
++            QScroller::grabGesture(this, QScroller::LeftMouseButtonGesture);
++
++            QScrollerProperties properties = QScroller::scroller(this)->scrollerProperties();
++            QVariant overshootPolicy = QVariant::fromValue<QScrollerProperties::OvershootPolicy>(QScrollerProperties::OvershootAlwaysOff);
++            properties.setScrollMetric(QScrollerProperties::VerticalOvershootPolicy, overshootPolicy);
++            properties.setScrollMetric(QScrollerProperties::HorizontalOvershootPolicy, overshootPolicy);
++            properties.setScrollMetric(QScrollerProperties::MaximumVelocity, 0.0);
++            QScroller::scroller(this)->setScrollerProperties(properties);
++
++
++            QScroller *scroller = QScroller::scroller(this);
++            scroller->handleInput(QScroller::InputPress, e->localPos(), static_cast<qint64>(e->timestamp()));
++            scroller->handleInput(QScroller::InputMove, e->localPos(), static_cast<qint64>(e->timestamp()));
++            return;
++        } else {
++            d->touchSlideTimer.start(QApplication::doubleClickInterval(), this);
++            return;
++        }
++
++    } else {
++        if (QScroller::hasScroller(this)) {
++            QScroller::ungrabGesture(this);
++            QScroller::scroller(this)->deleteLater();
++        }
++    }
+     QAbstractItemView::mouseMoveEvent(e);
+     if (state() == DragSelectingState
+         && d->showElasticBand
+@@ -820,6 +884,8 @@ void QListView::timerEvent(QTimerEvent *
+             updateGeometries();
+             d->viewport->update();
+         }
++    } else if (e->timerId() == d->touchSlideTimer.timerId()) {
++        d->touchSlideTimer.stop();
+     }
+     QAbstractItemView::timerEvent(e);
+ }
+@@ -1756,6 +1822,20 @@ bool QListView::event(QEvent *e)
+     return QAbstractItemView::event(e);
+ }
+ 
++bool QListView::eventFilter(QObject *obj, QEvent *e)
++{
++
++    if ((obj == horizontalScrollBar() || obj == verticalScrollBar()) && (e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseMove)) {
++
++        QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(e);
++        if (/*mouseEvent->source() == Qt::MouseEventSynthesizedByQt &&*/ QScroller::hasScroller(this)) {
++            QScroller::scroller(this)->deleteLater();
++        }
++    }
++    return QAbstractItemView::eventFilter(obj, e);
++}
++
++
+ /*
+  * private object implementation
+  */
+Index: qt6-base/src/widgets/itemviews/qlistview.h
+===================================================================
+--- qt6-base.orig/src/widgets/itemviews/qlistview.h
++++ qt6-base/src/widgets/itemviews/qlistview.h
+@@ -108,6 +108,7 @@ protected:
+     QListView(QListViewPrivate &, QWidget *parent = nullptr);
+ 
+     bool event(QEvent *e) override;
++    bool eventFilter(QObject *obj, QEvent *e) override;
+ 
+     void scrollContentsBy(int dx, int dy) override;
+ 
+@@ -119,6 +120,7 @@ protected:
+     void rowsInserted(const QModelIndex &parent, int start, int end) override;
+     void rowsAboutToBeRemoved(const QModelIndex &parent, int start, int end) override;
+ 
++    void mousePressEvent(QMouseEvent *e) override;
+     void mouseMoveEvent(QMouseEvent *e) override;
+     void mouseReleaseEvent(QMouseEvent *e) override;
+ #if QT_CONFIG(wheelevent)
+Index: qt6-base/src/widgets/itemviews/qlistview_p.h
+===================================================================
+--- qt6-base.orig/src/widgets/itemviews/qlistview_p.h
++++ qt6-base/src/widgets/itemviews/qlistview_p.h
+@@ -424,6 +424,8 @@ public:
+     bool showElasticBand;
+ 
+     Qt::Alignment itemAlignment;
++    QBasicTimer touchSlideTimer;
++
+ };
+ 
+ // inline implementations
