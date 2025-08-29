@@ -1,8 +1,9 @@
-qt6-base (6.8.0+dfgs-0deepin11) unstable; urgency=medium
+qt6-base (6.8.0+dfsg-0deepin11) unstable; urgency=medium
 
-  * Update version. 
+  [ Tian ShiLin ]
+  * fix addsingle finger to scroll under the-touch screen
 
- -- Tian ShiLin <tianshilin@uniontech.com>  Mon, 18 Aug 2025 10:12:07 +0800
+ -- Tianyu Chen <sweetyfish@deepin.org>  Fri, 29 Aug 2025 17:12:45 +0800
 
 qt6-base (6.8.0+dfsg-0deepin10) unstable; urgency=medium
 
