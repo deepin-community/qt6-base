@@ -30,3 +30,4 @@ fix-QApplciation-with-a-QML-popupWindow.patch
 CVE-2025-5455_qDecodeDataUrl_FixMalformedCharsetHandling.patch
 0001-deepin-sw_64-support.diff
 add-single-finger-to-scroll-under-the-touch-screen.patch
+Fix-Optimized-Happy-Eyeballs-processing-in-HTTPS-mode.patch
