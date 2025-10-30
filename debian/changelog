@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin12) unstable; urgency=medium
+
+  * fix Improve Happy Eyeballs for HTTPS and HTTP/2 to avoid stalls 
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Thu, 30 Oct 2025 21:15:30 +0800
+
 qt6-base (6.8.0+dfsg-0deepin11) unstable; urgency=medium
 
   [ Tian ShiLin ]
