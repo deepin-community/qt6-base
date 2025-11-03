@@ -1,3 +1,10 @@
+qt6-base (6.8.0+dfsg-0deepin13) unstable; urgency=medium
+
+    * Remove version contrain on firebird-dev, as it does not exist << 4.0
+    anymore.
+
+ -- lichenggang <lichenggang@deepin.org>  Mon, 03 Nov 2025 11:00:16 +0800
+
 qt6-base (6.8.0+dfsg-0deepin12) unstable; urgency=medium
 
   * fix Improve Happy Eyeballs for HTTPS and HTTP/2 to avoid stalls 
