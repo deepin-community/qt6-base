@@ -1,0 +1,17 @@
+Index: qt6-base/src/widgets/itemviews/qabstractitemview.cpp
+===================================================================
+--- qt6-base.orig/src/widgets/itemviews/qabstractitemview.cpp
++++ qt6-base/src/widgets/itemviews/qabstractitemview.cpp
+@@ -4317,7 +4317,11 @@ QItemSelectionModel::SelectionFlags QAbs
+         return QItemSelectionModel::Toggle|selectionBehaviorFlags();
+     if (state == QAbstractItemView::DragSelectingState) {
+         //when drag-selecting we need to clear any previous selection and select the current one
+-        return QItemSelectionModel::Clear|QItemSelectionModel::SelectCurrent|selectionBehaviorFlags();
++        //fix multiple selection of QListView under touch screen and long press function conflict
++        if (event && event->type() == QEvent::MouseButtonPress)
++            return QItemSelectionModel::ClearAndSelect|selectionBehaviorFlags();
++        else
++            return QItemSelectionModel::Clear|QItemSelectionModel::SelectCurrent|selectionBehaviorFlags();
+     }
+ 
+     return QItemSelectionModel::ClearAndSelect|selectionBehaviorFlags();
