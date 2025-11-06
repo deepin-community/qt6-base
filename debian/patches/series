@@ -31,3 +31,6 @@ CVE-2025-5455_qDecodeDataUrl_FixMalformedCharsetHandling.patch
 0001-deepin-sw_64-support.diff
 add-single-finger-to-scroll-under-the-touch-screen.patch
 Fix-Optimized-Happy-Eyeballs-processing-in-HTTPS-mode.patch
+fix-single-finger-to-scroll-under-the-touch-screen.patch
+fix-QListView-multiple-selection-conflicts-with-long-press-function.patch
+fix-touch-screen-QListView-sliding-acceleration.patch

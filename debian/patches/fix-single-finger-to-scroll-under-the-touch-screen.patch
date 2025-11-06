@@ -1,0 +1,59 @@
+Index: qt6-base/src/widgets/itemviews/qlistview.cpp
+===================================================================
+--- qt6-base.orig/src/widgets/itemviews/qlistview.cpp
++++ qt6-base/src/widgets/itemviews/qlistview.cpp
+@@ -758,9 +758,7 @@ void QListView::mousePressEvent(QMouseEv
+                 QScroller::scroller(this)->deleteLater();
+             }
+ 
+-            if (!d->touchSlideTimer.isActive()) {
+-                d->touchSlideTimer.start(QApplication::doubleClickInterval(), this);
+-            }
++            d->touchSlideTimer.start(QApplication::doubleClickInterval(), this);
+         }
+     } else {
+         if (QScroller::hasScroller(this)) {
+@@ -783,7 +781,12 @@ void QListView::mouseMoveEvent(QMouseEve
+             return;
+         }
+ 
+-        if (d->touchSlideTimer.isActive()) {
++        if (d->touchSlideTimer.isActive() && (d->pressedPosition - d->offset() - e->pos()).manhattanLength() > 1.5 * QApplication::startDragDistance()) {
++            // #### move this implementation into a dynamic class
++            if (d->showElasticBand && d->elasticBand.isValid()) {
++                d->viewport->update(d->mapToViewport(d->elasticBand));
++                d->elasticBand = QRect();
++            }
+ 
+             this->setVerticalScrollMode(ScrollPerPixel);
+             this->setHorizontalScrollMode(ScrollPerPixel);
+@@ -801,9 +804,6 @@ void QListView::mouseMoveEvent(QMouseEve
+             scroller->handleInput(QScroller::InputPress, e->localPos(), static_cast<qint64>(e->timestamp()));
+             scroller->handleInput(QScroller::InputMove, e->localPos(), static_cast<qint64>(e->timestamp()));
+             return;
+-        } else {
+-            d->touchSlideTimer.start(QApplication::doubleClickInterval(), this);
+-            return;
+         }
+ 
+     } else {
+@@ -1819,6 +1819,10 @@ Qt::Alignment QListView::itemAlignment()
+ */
+ bool QListView::event(QEvent *e)
+ {
++    QScrollEvent *mouseEvent = static_cast<QScrollEvent *>(e);
++    if (mouseEvent->scrollState() == QScrollEvent::ScrollFinished && QScroller::hasScroller(this)) {
++        QScroller::scroller(this)->deleteLater();
++    }
+     return QAbstractItemView::event(e);
+ }
+ 
+@@ -1828,7 +1832,7 @@ bool QListView::eventFilter(QObject *obj
+     if ((obj == horizontalScrollBar() || obj == verticalScrollBar()) && (e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseMove)) {
+ 
+         QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(e);
+-        if (/*mouseEvent->source() == Qt::MouseEventSynthesizedByQt &&*/ QScroller::hasScroller(this)) {
++        if (QScroller::hasScroller(this)) {
+             QScroller::scroller(this)->deleteLater();
+         }
+     }

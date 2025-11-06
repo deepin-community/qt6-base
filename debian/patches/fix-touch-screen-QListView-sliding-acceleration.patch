@@ -1,0 +1,18 @@
+Index: qt6-base/src/widgets/itemviews/qlistview.cpp
+===================================================================
+--- qt6-base.orig/src/widgets/itemviews/qlistview.cpp
++++ qt6-base/src/widgets/itemviews/qlistview.cpp
+@@ -792,13 +792,6 @@ void QListView::mouseMoveEvent(QMouseEve
+             this->setHorizontalScrollMode(ScrollPerPixel);
+             QScroller::grabGesture(this, QScroller::LeftMouseButtonGesture);
+ 
+-            QScrollerProperties properties = QScroller::scroller(this)->scrollerProperties();
+-            QVariant overshootPolicy = QVariant::fromValue<QScrollerProperties::OvershootPolicy>(QScrollerProperties::OvershootAlwaysOff);
+-            properties.setScrollMetric(QScrollerProperties::VerticalOvershootPolicy, overshootPolicy);
+-            properties.setScrollMetric(QScrollerProperties::HorizontalOvershootPolicy, overshootPolicy);
+-            properties.setScrollMetric(QScrollerProperties::MaximumVelocity, 0.0);
+-            QScroller::scroller(this)->setScrollerProperties(properties);
+-
+ 
+             QScroller *scroller = QScroller::scroller(this);
+             scroller->handleInput(QScroller::InputPress, e->localPos(), static_cast<qint64>(e->timestamp()));
