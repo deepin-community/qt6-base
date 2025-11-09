@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin14) unstable; urgency=medium
+
+  * Remove version contrain on firebird-dev, as it does not exist << 4.0
+
+ -- lichenggang <lichenggang@deepin.org>  Sun, 09 Nov 2025 19:04:47 +0800
+
 qt6-base (6.8.0+dfsg-0deepin13) unstable; urgency=medium
 
   * fix: Migration v20 scroll wheel-related patches
