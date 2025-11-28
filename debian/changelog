@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin15) unstable; urgency=medium
+
+  * fix: Improve Happy Eyeballs for HTTPS and HTTP/2 to avoid stalls(Optimization)
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Fri, 28 Nov 2025 14:33:08 +0800
+
 qt6-base (6.8.0+dfsg-0deepin14) unstable; urgency=medium
 
   * Remove version contrain on firebird-dev, as it does not exist << 4.0
