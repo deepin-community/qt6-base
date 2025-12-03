@@ -1,0 +1,136 @@
+Index: qt6-base/src/widgets/widgets/qlineedit.cpp
+===================================================================
+--- qt6-base.orig/src/widgets/widgets/qlineedit.cpp
++++ qt6-base/src/widgets/widgets/qlineedit.cpp
+@@ -1499,6 +1499,13 @@ void QLineEdit::mousePressEvent(QMouseEv
+ {
+     Q_D(QLineEdit);
+ 
++    if (e->source() == Qt::MouseEventSynthesizedByQt) {
++        d->touchPress = true;
++        if (d->touchPopup)
++            d->touchPopup = false;
++        d->oldPosX = e->globalPosition().x();
++    }
++
+     d->mousePressPos = e->position().toPoint();
+ 
+     if (d->sendMouseEventToInputContext(e))
+@@ -1531,7 +1538,19 @@ void QLineEdit::mousePressEvent(QMouseEv
+     } else
+ #endif
+     {
+-        d->control->moveCursor(cursor, mark);
++        if (d->touchPress) {
++            d->CurrentCursor = cursor;
++            d->modStateMark = mark;
++            QTimer::singleShot(QApplication::doubleClickInterval(), this, [this]() {
++                Q_D(QLineEdit);
++                if (d->touchPopup) {
++                    d->control->moveCursor(d->CurrentCursor, d->modStateMark);
++                    d->touchPopup = false;
++                }
++            });
++        } else {
++            d->control->moveCursor(cursor, mark);
++        }
+     }
+ }
+ 
+@@ -1574,6 +1593,26 @@ void QLineEdit::mouseMoveEvent(QMouseEve
+             } else
+ #endif
+             {
++                if (d->oldPosX == 0) {
++                    d->oldPosX = e->globalPosition().x();
++                    return;
++                }
++
++                if (d->doublePress)
++                    return;
++
++                // Touch jitter: ignore tiny horizontal movements
++                if ((d->touchPress && !d->touchPopup) && (qAbs(e->globalPosition().x() - d->oldPosX) < 1.0)) {
++                    d->oldPosX = e->globalPosition().x();
++                    return;
++                }
++
++                d->oldPosX = e->globalPosition().x();
++
++                // Long press under touch may trigger MouseEventNotSynthesized; filter it
++                if (d->touchPress && (e->globalPosition().x() - (qreal)e->globalPosition().toPoint().x() == 0))
++                    return;
++
+                 d->control->moveCursor(d->xToPos(e->position().toPoint().x()), select);
+             }
+         }
+@@ -1587,6 +1626,14 @@ void QLineEdit::mouseMoveEvent(QMouseEve
+ void QLineEdit::mouseReleaseEvent(QMouseEvent* e)
+ {
+     Q_D(QLineEdit);
++    if (e->source() == Qt::MouseEventSynthesizedByQt && d->touchPress) {
++        d->touchPress = false;
++        d->touchPopup = true;
++        if (d->doublePress) {
++            d->touchPopup = false;
++            d->doublePress = false;
++        }
++    }
+     if (d->sendMouseEventToInputContext(e))
+         return;
+ #if QT_CONFIG(draganddrop)
+@@ -1619,6 +1666,8 @@ void QLineEdit::mouseReleaseEvent(QMouse
+ void QLineEdit::mouseDoubleClickEvent(QMouseEvent* e)
+ {
+     Q_D(QLineEdit);
++    if (e->source() == Qt::MouseEventSynthesizedByQt)
++        d->doublePress = true;
+ 
+     if (e->button() == Qt::LeftButton) {
+         int position = d->xToPos(e->position().toPoint().x());
+@@ -2189,6 +2238,10 @@ void QLineEdit::dropEvent(QDropEvent* e)
+ */
+ void QLineEdit::contextMenuEvent(QContextMenuEvent *event)
+ {
++    Q_D(QLineEdit);
++    d->touchPress = false;
++    d->touchPopup = false;
++    d->doublePress = false;
+     if (QMenu *menu = createStandardContextMenu()) {
+         menu->setAttribute(Qt::WA_DeleteOnClose);
+         menu->popup(event->globalPos());
+Index: qt6-base/src/widgets/widgets/qlineedit_p.cpp
+===================================================================
+--- qt6-base.orig/src/widgets/widgets/qlineedit_p.cpp
++++ qt6-base/src/widgets/widgets/qlineedit_p.cpp
+@@ -240,6 +240,13 @@ void QLineEditPrivate::init(const QStrin
+ 
+     q->setAttribute(Qt::WA_MacShowFocusRect);
+ 
++    touchPress = false;
++    touchPopup = false;
++    doublePress = false;
++    oldPosX = 0;
++    CurrentCursor = 0;
++    modStateMark = false;
++
+     initMouseYThreshold();
+ }
+ 
+Index: qt6-base/src/widgets/widgets/qlineedit_p.h
+===================================================================
+--- qt6-base.orig/src/widgets/widgets/qlineedit_p.h
++++ qt6-base/src/widgets/widgets/qlineedit_p.h
+@@ -181,6 +181,12 @@ public:
+     uint clickCausedFocus : 1;
+     uint edited : 1;
+     int hscroll;
++    int CurrentCursor;
++    bool touchPress;
++    bool touchPopup;
++    bool doublePress;
++    bool modStateMark;
++    qreal oldPosX;
+     int vscroll;
+     uint alignment;
+     static const int verticalMargin;
