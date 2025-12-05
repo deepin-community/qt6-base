@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin16) unstable; urgency=medium
+
+  * fix:QLineEdit fix the problem under the touch screen (Migrate v20 patch)
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Fri, 05 Dec 2025 10:44:56 +0800
+
 qt6-base (6.8.0+dfsg-0deepin15) unstable; urgency=medium
 
   * fix: Improve Happy Eyeballs for HTTPS and HTTP/2 to avoid stalls(Optimization)
