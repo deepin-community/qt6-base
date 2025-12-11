@@ -1,0 +1,30 @@
+Index: qt6-base/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+===================================================================
+--- qt6-base.orig/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
++++ qt6-base/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+@@ -1143,6 +1143,12 @@ void QXcbConnection::xi2HandleGesturePin
+     setTime(xiEvent->time);
+ 
+     TouchDeviceData *dev = touchDeviceForId(xiEvent->sourceid);
++    // Fix for crash when device is removed but gesture events are still in the queue
++    // This can happen during mouse hotplug/unplug when device hierarchy changes.
++    if (!dev) {
++        qCDebug(lcQpaXInputEvents, "ignoring gesture event from unknown device %d", xiEvent->sourceid);
++        return;
++    }
+     Q_ASSERT(dev);
+ 
+     uint32_t fingerCount = xiEvent->detail;
+@@ -1230,6 +1236,12 @@ void QXcbConnection::xi2HandleGestureSwi
+     setTime(xiEvent->time);
+ 
+     TouchDeviceData *dev = touchDeviceForId(xiEvent->sourceid);
++    // Fix for crash when device is removed but gesture events are still in the queue
++    // This can happen during mouse hotplug/unplug when device hierarchy changes.
++    if (!dev) {
++        qCDebug(lcQpaXInputEvents, "ignoring gesture event from unknown device %d", xiEvent->sourceid);
++        return;
++    }
+     Q_ASSERT(dev);
+ 
+     uint32_t fingerCount = xiEvent->detail;
