@@ -35,3 +35,4 @@ fix-QListView-multiple-selection-conflicts-with-long-press-function.patch
 fix-touch-screen-QListView-sliding-acceleration.patch
 Fix-Optimized-Happy-Eyeballs-processing-in-HTTPS-mode.patch
 QTBUG-85978-85985-QlineEdit-Fix-the-problem-under-the-touch-screen.patch
+fix-touchpat-crush-from-xcb-nullptr.patch

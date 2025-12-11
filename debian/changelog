@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin17) unstable; urgency=medium
+
+  * fix: prevent crash from null device pointer in gesture events
+
+ -- zhanghongyuan <zhanghongyuan@uniontech.com>  Thu, 11 Dec 2025 10:23:41 +0800
+
 qt6-base (6.8.0+dfsg-0deepin16) unstable; urgency=medium
 
   * fix:QLineEdit fix the problem under the touch screen (Migrate v20 patch)
