@@ -36,3 +36,7 @@ fix-touch-screen-QListView-sliding-acceleration.patch
 Fix-Optimized-Happy-Eyeballs-processing-in-HTTPS-mode.patch
 QTBUG-85978-85985-QlineEdit-Fix-the-problem-under-the-touch-screen.patch
 fix-touchpat-crush-from-xcb-nullptr.patch
+Use-modern-key-management-APIs.patch
+Fix-heap-buffer-overflow.patch
+Add-clamping-to-QColor-Transfer-Generic-Function.patch
+

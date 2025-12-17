@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin18) unstable; urgency=medium
+
+  * Update cve patch. 
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Wed, 17 Dec 2025 17:15:39 +0800
+
 qt6-base (6.8.0+dfsg-0deepin17) unstable; urgency=medium
 
   * fix: prevent crash from null device pointer in gesture events
