@@ -39,4 +39,5 @@ fix-touchpat-crush-from-xcb-nullptr.patch
 Use-modern-key-management-APIs.patch
 Fix-heap-buffer-overflow.patch
 Add-clamping-to-QColor-Transfer-Generic-Function.patch
+Check-exactly-the-first-bit-of-XdndStatus-flags-in-QXcbDrag.patch
 
