@@ -9,7 +9,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
 ===================================================================
 --- qt6-base.orig/src/network/access/qhttpnetworkconnection.cpp
 +++ qt6-base/src/network/access/qhttpnetworkconnection.cpp
-@@ -173,14 +173,33 @@ bool QHttpNetworkConnectionPrivate::shou
+@@ -173,14 +173,49 @@ bool QHttpNetworkConnectionPrivate::shou
      // If the IPv4 connection still isn't started we need to start it now.
      if (delayedConnectionTimer.isActive()) {
          delayedConnectionTimer.stop();
@@ -20,13 +20,30 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
  
      if (activeChannelCount < channelCount) {
 -        if (networkLayerState == HostLookupPending || networkLayerState == IPv4or6)
-+        // Limited channel mode (e.g., Happy Eyeballs using only 2 channels)
-+        if (networkLayerState == HostLookupPending || networkLayerState == IPv4or6) {
-             networkLayerState = QHttpNetworkConnectionPrivate::Unknown;
+-            networkLayerState = QHttpNetworkConnectionPrivate::Unknown;
 -        channels[0].close();
 -        emitError = true;
-+            channels[0].close();
-+            emitError = true;
++        if (networkLayerState == HostLookupPending || networkLayerState == IPv4or6) {
++            // Happy Eyeballs race (IPv4or6): one address family can fail early while the other
++            // is still connecting/handshaking (especially HTTPS where selected is decided at TLS encrypted()).
++            // Must not terminate the other channel prematurely.
++
++            const bool otherValid = otherSocket >= 0 && otherSocket < activeChannelCount;
++            const bool otherAlive = otherValid
++                    && channels[otherSocket].isSocketBusy()
++                    && (channels[otherSocket].state != QHttpNetworkConnectionChannel::ClosingState);
++
++            if (otherAlive) {
++                // First channel to fail: close only the failing channel and suppress error reporting.
++                // Continue racing with the other channel.
++                channels[i].close();
++                emitError = false;
++            } else {
++                // Both connection attempts failed (or the other is not active/usable).
++                networkLayerState = QHttpNetworkConnectionPrivate::Unknown;
++                channels[i].close();
++                emitError = true;
++            }
 +        } else if (networkLayerState == IPv4 || networkLayerState == IPv6) {
 +            // Network layer already decided, check if this is the non-winning channel
 +            bool anyProtocol = channels[i].networkLayerPreference == QAbstractSocket::AnyIPProtocol;
@@ -47,7 +64,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
      } else {
          if (networkLayerState == HostLookupPending || networkLayerState == IPv4or6) {
              if (channels[otherSocket].isSocketBusy() && (channels[otherSocket].state != QHttpNetworkConnectionChannel::ClosingState)) {
-@@ -195,8 +214,9 @@ bool QHttpNetworkConnectionPrivate::shou
+@@ -195,8 +230,9 @@ bool QHttpNetworkConnectionPrivate::shou
                  emitError = true;
              }
          } else {
@@ -59,7 +76,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
                  // First connection worked so this is the second one to complete and it failed.
                  channels[i].close();
                  QMetaObject::invokeMethod(q, "_q_startNextRequest", Qt::QueuedConnection);
-@@ -646,7 +666,8 @@ QHttpNetworkReply* QHttpNetworkConnectio
+@@ -646,7 +682,8 @@ QHttpNetworkReply* QHttpNetworkConnectio
      else { // HTTP/2 ('h2' mode)
          if (!pair.second->d_func()->requestIsPrepared)
              prepareRequest(pair);
@@ -69,7 +86,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
      }
  
      // For Happy Eyeballs the networkLayerState is set to Unknown
-@@ -671,10 +692,12 @@ QHttpNetworkReply* QHttpNetworkConnectio
+@@ -671,10 +708,12 @@ QHttpNetworkReply* QHttpNetworkConnectio
  
  void QHttpNetworkConnectionPrivate::fillHttp2Queue()
  {
@@ -83,7 +100,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
      }
  
      highPriorityQueue.clear();
-@@ -682,7 +705,7 @@ void QHttpNetworkConnectionPrivate::fill
+@@ -682,7 +721,7 @@ void QHttpNetworkConnectionPrivate::fill
      for (auto &pair : lowPriorityQueue) {
          if (!pair.second->d_func()->requestIsPrepared)
              prepareRequest(pair);
@@ -92,7 +109,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
      }
  
      lowPriorityQueue.clear();
-@@ -1079,28 +1102,30 @@ void QHttpNetworkConnectionPrivate::_q_s
+@@ -1079,28 +1118,30 @@ void QHttpNetworkConnectionPrivate::_q_s
      }
      case QHttpNetworkConnection::ConnectionTypeHTTP2Direct:
      case QHttpNetworkConnection::ConnectionTypeHTTP2: {
@@ -134,7 +151,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
              }
          }
          break;
-@@ -1315,12 +1340,18 @@ void QHttpNetworkConnectionPrivate::_q_h
+@@ -1315,12 +1356,18 @@ void QHttpNetworkConnectionPrivate::_q_h
  // connection will then be disconnected.
  void QHttpNetworkConnectionPrivate::startNetworkLayerStateLookup()
  {
@@ -153,7 +170,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
  
          channels[0].networkLayerPreference = QAbstractSocket::IPv4Protocol;
          channels[1].networkLayerPreference = QAbstractSocket::IPv6Protocol;
-@@ -1333,6 +1364,7 @@ void QHttpNetworkConnectionPrivate::star
+@@ -1333,6 +1380,7 @@ void QHttpNetworkConnectionPrivate::star
              channels[0].ensureConnection();
      } else {
          networkLayerState = IPv4or6;
@@ -161,7 +178,7 @@ Index: qt6-base/src/network/access/qhttpnetworkconnection.cpp
          channels[0].networkLayerPreference = QAbstractSocket::AnyIPProtocol;
          channels[0].ensureConnection();
      }
-@@ -1340,7 +1372,28 @@ void QHttpNetworkConnectionPrivate::star
+@@ -1340,7 +1388,28 @@ void QHttpNetworkConnectionPrivate::star
  
  void QHttpNetworkConnectionPrivate::networkLayerDetected(QAbstractSocket::NetworkLayerProtocol protocol)
  {
