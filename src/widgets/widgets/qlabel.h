@@ -116,6 +116,7 @@ protected:
     void keyPressEvent(QKeyEvent *ev) override;
     void paintEvent(QPaintEvent *) override;
     void changeEvent(QEvent *) override;
+    void leaveEvent(QEvent *) override;
     void mousePressEvent(QMouseEvent *ev) override;
     void mouseMoveEvent(QMouseEvent *ev) override;
     void mouseReleaseEvent(QMouseEvent *ev) override;

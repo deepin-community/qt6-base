@@ -1389,6 +1389,20 @@ void QLabel::changeEvent(QEvent *ev)
 }
 
 /*!
+  \reimp
+*/
+void QLabel::leaveEvent(QEvent *ev)
+{
+    Q_D(QLabel);
+    if (d->isTextLabel && d->control) {
+        // Clear the link hover state in the text control
+        QMouseEvent e(QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        d->sendControlEvent(&e);
+    }
+    QFrame::leaveEvent(ev);
+}
+
+/*!
     \property QLabel::scaledContents
     \brief whether the label will scale its contents to fill all
     available space.
