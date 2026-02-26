@@ -1,0 +1,71 @@
+From 808000eb7e359d126736197e14bd0fd7dae7b864 Mon Sep 17 00:00:00 2001
+From: ComixHe <heyuming@deepin.org>
+Date: Thu, 26 Feb 2026 11:58:40 +0800
+Subject: [PATCH] fix(xcb): clear stale internal state when setting up slave
+ devices
+
+Upstream: https://codereview.qt-project.org/c/qt/qtbase/+/710308
+
+Signed-off-by: ComixHe <heyuming@deepin.org>
+---
+ src/plugins/platforms/xcb/qxcbconnection.h     |  2 +-
+ .../platforms/xcb/qxcbconnection_xi2.cpp       | 18 ++++++++----------
+ 2 files changed, 9 insertions(+), 11 deletions(-)
+
+diff --git a/src/plugins/platforms/xcb/qxcbconnection.h b/src/plugins/platforms/xcb/qxcbconnection.h
+index 527744fe..97c4a4d1 100644
+--- a/src/plugins/platforms/xcb/qxcbconnection.h
++++ b/src/plugins/platforms/xcb/qxcbconnection.h
+@@ -238,7 +238,7 @@ private:
+     inline bool timeGreaterThan(xcb_timestamp_t a, xcb_timestamp_t b) const
+     { return static_cast<int32_t>(a - b) > 0 || b == XCB_CURRENT_TIME; }
+ 
+-    void xi2SetupSlavePointerDevice(void *info, bool removeExisting = true, QPointingDevice *master = nullptr);
++    void xi2SetupSlavePointerDevice(void *info, QPointingDevice *master = nullptr);
+     void xi2SetupDevices();
+     // TODO get rid of this: store minimal necessary info in a subclass of QPointingDevicePrivate
+     struct TouchDeviceData {
+diff --git a/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp b/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+index 4f62a188..cb6f390e 100644
+--- a/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
++++ b/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+@@ -223,20 +223,18 @@ static const char *pointerTypeName(QPointingDevice::PointerType ptype) {
+ }
+ #endif
+ 
+-void QXcbConnection::xi2SetupSlavePointerDevice(void *info, bool removeExisting, QPointingDevice *master)
++void QXcbConnection::xi2SetupSlavePointerDevice(void *info, QPointingDevice *master)
+ {
+     auto *deviceInfo = reinterpret_cast<xcb_input_xi_device_info_t *>(info);
+-    if (removeExisting) {
+ #if QT_CONFIG(tabletevent)
+-        for (int i = 0; i < m_tabletData.size(); ++i) {
+-            if (m_tabletData.at(i).deviceId == deviceInfo->deviceid) {
+-                m_tabletData.remove(i);
+-                break;
+-            }
++    for (int i = 0; i < m_tabletData.size(); ++i) {
++        if (m_tabletData.at(i).deviceId == deviceInfo->deviceid) {
++            m_tabletData.remove(i);
++            break;
+         }
+-#endif
+-        m_touchDevices.remove(deviceInfo->deviceid);
+     }
++#endif
++    m_touchDevices.remove(deviceInfo->deviceid);
+ 
+     const QByteArray nameRaw = QByteArray(xcb_input_xi_device_info_name(deviceInfo),
+                                     xcb_input_xi_device_info_name_length(deviceInfo));
+@@ -517,7 +515,7 @@ void QXcbConnection::xi2SetupDevices()
+                 m_xiSlavePointerIds.append(deviceInfo->deviceid);
+                 QInputDevice *master = const_cast<QInputDevice *>(QInputDevicePrivate::fromId(deviceInfo->attachment));
+                 Q_ASSERT(master);
+-                xi2SetupSlavePointerDevice(deviceInfo, false, qobject_cast<QPointingDevice *>(master));
++                xi2SetupSlavePointerDevice(deviceInfo, qobject_cast<QPointingDevice *>(master));
+             }
+         } break;
+         case XCB_INPUT_DEVICE_TYPE_SLAVE_KEYBOARD: {
+-- 
+2.53.0
+
