@@ -1,0 +1,19 @@
+Index: qt6-base/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+===================================================================
+--- qt6-base.orig/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
++++ qt6-base/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+@@ -1113,10 +1113,13 @@ void QXcbConnection::xi2HandleHierarchyE
+     // We don't report anything for DEVICE_ENABLED or DEVICE_DISABLED
+     // (but often that goes with adding or removal anyway).
+     // We don't react to SLAVE_ATTACHED or SLAVE_DETACHED either.
++    // But we need to handle DEVICE_ENABLED to update device lists
++    // when a device (like touchpad) is disabled and then re-enabled.
+     if (xiEvent->flags & (XCB_INPUT_HIERARCHY_MASK_MASTER_ADDED |
+                             XCB_INPUT_HIERARCHY_MASK_MASTER_REMOVED |
+                             XCB_INPUT_HIERARCHY_MASK_SLAVE_REMOVED |
+-                            XCB_INPUT_HIERARCHY_MASK_SLAVE_ADDED))
++                            XCB_INPUT_HIERARCHY_MASK_SLAVE_ADDED |
++                            XCB_INPUT_HIERARCHY_MASK_DEVICE_ENABLED))
+         xi2SetupDevices();
+ }
+ 
