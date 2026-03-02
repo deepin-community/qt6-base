@@ -41,3 +41,4 @@ Fix-heap-buffer-overflow.patch
 Add-clamping-to-QColor-Transfer-Generic-Function.patch
 Check-exactly-the-first-bit-of-XdndStatus-flags-in-QXcbDrag.patch
 fix-xcb-clear-stale-internal-state-when-setting-up-slave-devices.patch
+fix-xcb-Handle-DEVICE_ENABLED-in-XI2-hierarchy-events.patch
