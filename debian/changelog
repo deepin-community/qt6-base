@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin23) unstable; urgency=medium
+
+  * fix: QLabel reset link hover state when mouse leaves
+
+ -- Yingzhen Zhao <zhaoyingzhen@uniontech.com>  Mon, 16 Mar 2026 11:18:00 +0800
+
 qt6-base (6.8.0+dfsg-0deepin22) unstable; urgency=medium
 
   * chore: Update version to 6.8.0+dfsg-0deepin22

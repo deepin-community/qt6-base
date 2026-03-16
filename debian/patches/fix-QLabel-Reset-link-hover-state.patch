@@ -1,0 +1,182 @@
+From 4647a2b6ea3deb87d001bcba5cb2a09a91fc0ef6 Mon Sep 17 00:00:00 2001
+From: Yingzhen Zhao <zhaoyingzhen@uniontech.com>
+Date: Sat, 7 Feb 2026 15:22:12 +0800
+Subject: [PATCH] QLabel: Reset link hover state when mouse enters or leaves
+ the label
+
+Upstream: https://codereview.qt-project.org/c/qt/qtbase/+/710824
+
+When the mouse leaves a QLabel containing rich text with links, the
+internal QWidgetTextControl was not notified. This caused the
+highlightedAnchor state to remain cached. If the mouse later re-entered
+the label directly over the same link, QWidgetTextControl would see that
+the anchor hadn't changed and would not emit the linkHovered signal.
+
+Simarily, when the label is shown with the mouse cursor where a link
+will be, then we would not update the highlighted anchor and not emit
+the signal.
+
+This fix factors the code that updates the highlighted anchor into a
+helper, and adds a dedicated resetHighlightedAnchor() helper to
+QWidgetTextControlPrivate. Those helpers update the cached anchor state
+and emit linkHovered when changed. Extend the existing QLabel::event
+override to pass QEvent::Enter/Leave on to the text control, where we
+can call the new helpers. Overriding leaveEvent() would mean that we
+cannot cherry-pick this fix back into stable branches.
+
+Pick-to: 6.11 6.8
+Fixes: QTBUG-143965
+Change-Id: Id33ac5ac8f2cf31b0514c7e0905b2e05197ea3aa
+---
+diff --git a/src/widgets/widgets/qlabel.cpp b/src/widgets/widgets/qlabel.cpp
+index 5694a485..84b36070 100644
+--- a/src/widgets/widgets/qlabel.cpp
++++ b/src/widgets/widgets/qlabel.cpp
+@@ -952,6 +952,8 @@ bool QLabel::event(QEvent *e)
+     } else if (type == QEvent::Polish) {
+         if (d->needTextControl())
+             d->ensureTextControl();
++    } else if (type == QEvent::Enter || type == QEvent::Leave) {
++        d->sendControlEvent(e);
+     }
+ 
+     return QFrame::event(e);
+diff --git a/src/widgets/widgets/qwidgettextcontrol.cpp b/src/widgets/widgets/qwidgettextcontrol.cpp
+index 6dcaeee0..15316f95 100644
+--- a/src/widgets/widgets/qwidgettextcontrol.cpp
++++ b/src/widgets/widgets/qwidgettextcontrol.cpp
+@@ -1027,6 +1027,12 @@ void QWidgetTextControl::processEvent(QEvent *e, const QTransform &transform, QW
+             d->mousePressEvent(ev, ev->button(), transform.map(ev->position().toPoint()), ev->modifiers(),
+                                ev->buttons(), ev->globalPosition().toPoint());
+             break; }
++        case QEvent::Enter:
++            d->updateHighlightedAnchor(transform.map(static_cast<QEnterEvent *>(e)->position()));
++            break;
++        case QEvent::Leave:
++            d->resetHighlightedAnchor();
++            break;
+         case QEvent::MouseMove: {
+             QMouseEvent *ev = static_cast<QMouseEvent *>(e);
+             d->mouseMoveEvent(ev, ev->button(), transform.map(ev->position().toPoint()), ev->modifiers(),
+@@ -1667,13 +1673,8 @@ void QWidgetTextControlPrivate::mouseMoveEvent(QEvent *e, Qt::MouseButton button
+ {
+     Q_Q(QWidgetTextControl);
+ 
+-    if (interactionFlags & Qt::LinksAccessibleByMouse) {
+-        QString anchor = q->anchorAt(mousePos);
+-        if (anchor != highlightedAnchor) {
+-            highlightedAnchor = anchor;
+-            emit q->linkHovered(anchor);
+-        }
+-    }
++    if (interactionFlags & Qt::LinksAccessibleByMouse)
++        updateHighlightedAnchor(mousePos);
+ 
+     if (buttons & Qt::LeftButton) {
+         const bool editable = interactionFlags & Qt::TextEditable;
+@@ -2961,6 +2962,25 @@ void QWidgetTextControlPrivate::activateLinkUnderCursor(QString href)
+         emit q_func()->linkActivated(href);
+ }
+ 
++void QWidgetTextControlPrivate::updateHighlightedAnchor(QPointF mousePos)
++{
++    Q_Q(QWidgetTextControl);
++    const QString anchor = q->anchorAt(mousePos);
++    if (anchor != highlightedAnchor) {
++        highlightedAnchor = anchor;
++        emit q->linkHovered(anchor);
++    }
++}
++
++void QWidgetTextControlPrivate::resetHighlightedAnchor()
++{
++    Q_Q(QWidgetTextControl);
++    if (!highlightedAnchor.isEmpty()) {
++        highlightedAnchor.clear();
++        emit q->linkHovered(QString());
++    }
++}
++
+ #if QT_CONFIG(tooltip)
+ void QWidgetTextControlPrivate::showToolTip(const QPoint &globalPos, const QPointF &pos, QWidget *contextWidget)
+ {
+diff --git a/src/widgets/widgets/qwidgettextcontrol_p_p.h b/src/widgets/widgets/qwidgettextcontrol_p_p.h
+index 955a70ec..8094a662 100644
+--- a/src/widgets/widgets/qwidgettextcontrol_p_p.h
++++ b/src/widgets/widgets/qwidgettextcontrol_p_p.h
+@@ -99,6 +99,8 @@ public:
+     { return selectionRect(this->cursor); }
+ 
+     QString anchorForCursor(const QTextCursor &anchor) const;
++    void updateHighlightedAnchor(QPointF mousePos);
++    void resetHighlightedAnchor();
+ 
+     void keyPressEvent(QKeyEvent *e);
+     void mousePressEvent(QEvent *e, Qt::MouseButton button, const QPointF &pos,
+diff --git a/tests/auto/widgets/widgets/qlabel/tst_qlabel.cpp b/tests/auto/widgets/widgets/qlabel/tst_qlabel.cpp
+index 325e1880..b2cf40fa 100644
+--- a/tests/auto/widgets/widgets/qlabel/tst_qlabel.cpp
++++ b/tests/auto/widgets/widgets/qlabel/tst_qlabel.cpp
+@@ -4,6 +4,7 @@
+ 
+ #include <QTest>
+ #include <QTimer>
++#include <QSignalSpy>
+ 
+ #include "qlabel.h"
+ #include <qapplication.h>
+@@ -87,6 +88,7 @@ private Q_SLOTS:
+     void resourceProvider();
+     void mouseEventPropagation_data();
+     void mouseEventPropagation();
++    void linkHoverLeave();
+ 
+ private:
+     QLabel *testWidget;
+@@ -730,5 +732,46 @@ void tst_QLabel::mouseEventPropagation()
+     QTRY_COMPARE(widget.released(), count);
+ }
+ 
++// Test that linkHovered is re-emitted when mouse leaves and re-enters
++// the label over the same link (QTBUG-143965)
++void tst_QLabel::linkHoverLeave()
++{
++    if (QStringList{"minimal", "offscreen"}.contains(QGuiApplication::platformName(), Qt::CaseInsensitive))
++        QSKIP("minimal/offscreen: mouse moves don't generate enter/leave reliably.");
++
++    QWidget widget;
++    QLabel label;
++    label.setText(QLatin1String("<a href=\"test\">Click here to test link hover</a>"));
++    label.setTextInteractionFlags(Qt::LinksAccessibleByMouse);
++    label.setAlignment(Qt::AlignCenter);
++    label.setMouseTracking(true);
++    label.resize(200, 100);
++    QHBoxLayout hbox(&widget);
++    hbox.addWidget(&label);
++    widget.setLayout(&hbox);
++
++    QSignalSpy spy(&label, &QLabel::linkHovered);
++
++    widget.show();
++    QVERIFY(QTest::qWaitForWindowExposed(&label));
++
++    const QPoint center = label.rect().center();
++
++    // Step 1: Move mouse over the link
++    QTest::mouseMove(&label, center);
++    QTRY_COMPARE(spy.count(), 1);
++    QCOMPARE(spy.last().at(0).toString(), QLatin1String("test"));
++
++    // Step 2: Move mouse out (trigger leave event)
++    QTest::mouseMove(&label, QPoint(-10, -10));
++    QTRY_COMPARE(spy.count(), 2);
++    QCOMPARE(spy.last().at(0).toString(), QString());
++
++    // Step 3: Move mouse back over the center
++    QTest::mouseMove(&label, center);
++    QTRY_COMPARE(spy.count(), 3);
++    QCOMPARE(spy.last().at(0).toString(), QLatin1String("test"));
++}
++
+ QTEST_MAIN(tst_QLabel)
+ #include "tst_qlabel.moc"
