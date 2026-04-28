@@ -1,0 +1,42 @@
+Author: ZhangTingan <ZhangTingan@uniontech.com>
+Date:   Tue Apr 28 18:49:29 2026 +0800
+Subject: keep IVS selectors in the same shaping run as their base character
+
+When font fallback assigns the IVS variation selector and its base
+character to different font engines, keep the selector in the same
+harfbuzz shaping run as the base character so the variation glyph can
+be resolved.
+
+---
+
+Index: qt6-base/src/gui/text/qtextengine.cpp
+===================================================================
+--- qt6-base.orig/src/gui/text/qtextengine.cpp
++++ qt6-base/src/gui/text/qtextengine.cpp
+@@ -1449,17 +1449,25 @@
+                     : QFontEngine::ShaperFlag(0);
+         if (fontEngine->stringToCMap(reinterpret_cast<const QChar *>(string), itemLength, &initialGlyphs, &nGlyphs, shaperFlags) < 0)
+             Q_UNREACHABLE();
+     }
+ 
+     if (fontEngine->type() == QFontEngine::Multi) {
+         uint lastEngine = ~0u;
+         for (int i = 0, glyph_pos = 0; i < itemLength; ++i, ++glyph_pos) {
+-            const uint engineIdx = initialGlyphs.glyphs[glyph_pos] >> 24;
++            uint engineIdx = initialGlyphs.glyphs[glyph_pos] >> 24;
++
++            if (QChar::isHighSurrogate(string[i]) && i + 1 < itemLength && QChar::isLowSurrogate(string[i + 1])) {
++                const uint ucs4 = QChar::surrogateToUcs4(string[i], string[i + 1]);
++                const bool isIvsVariationSelector = (ucs4 >= 0xE0100 && ucs4 <= 0xE01EF);
++                if (isIvsVariationSelector && lastEngine != ~0u)
++                    engineIdx = lastEngine;
++            }
++
+             if (lastEngine != engineIdx) {
+                 itemBoundaries.push_back(i);
+                 itemBoundaries.push_back(glyph_pos);
+                 itemBoundaries.push_back(engineIdx);
+ 
+                 if (engineIdx != 0) {
+                     QFontEngine *actualFontEngine = static_cast<QFontEngineMulti *>(fontEngine)->engine(engineIdx);
+                     si.ascent = qMax(actualFontEngine->ascent(), si.ascent);
