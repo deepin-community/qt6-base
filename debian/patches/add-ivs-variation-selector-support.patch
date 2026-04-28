@@ -1,0 +1,248 @@
+Author: ZhangTingan <ZhangTingan@uniontech.com>
+Date:   Tue Apr 28 18:49:29 2026 +0800
+Subject: support IVS shaping in QTextLayout
+
+Pass variation selectors through the Qt font engine glyph lookup so
+that QTextLayout can resolve IVS (Ideographic Variation Sequence)
+glyphs correctly.
+
+---
+
+Index: qt6-base/src/gui/text/coretext/qfontengine_coretext.mm
+===================================================================
+--- qt6-base.orig/src/gui/text/coretext/qfontengine_coretext.mm
++++ qt6-base/src/gui/text/coretext/qfontengine_coretext.mm
+@@ -256,8 +256,10 @@ void QCoreTextFontEngine::init()
+     kerningPairsLoaded = false;
+ }
+ 
+-glyph_t QCoreTextFontEngine::glyphIndex(uint ucs4) const
++glyph_t QCoreTextFontEngine::glyphIndex(uint ucs4, uint variationSelector) const
+ {
++    Q_UNUSED(variationSelector); // CoreText does not expose IVS API currently
++
+     int len = 0;
+ 
+     QChar str[2];
+Index: qt6-base/src/gui/text/coretext/qfontengine_coretext_p.h
+===================================================================
+--- qt6-base.orig/src/gui/text/coretext/qfontengine_coretext_p.h
++++ qt6-base/src/gui/text/coretext/qfontengine_coretext_p.h
+@@ -37,7 +37,7 @@ public:
+     QCoreTextFontEngine(CGFontRef font, const QFontDef &def);
+     ~QCoreTextFontEngine();
+ 
+-    glyph_t glyphIndex(uint ucs4) const override;
++    glyph_t glyphIndex(uint ucs4, uint variationSelector = 0) const override;
+     int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
+     void recalcAdvances(QGlyphLayout *, ShaperFlags) const override;
+ 
+Index: qt6-base/src/gui/text/freetype/qfontengine_ft.cpp
+===================================================================
+--- qt6-base.orig/src/gui/text/freetype/qfontengine_ft.cpp
++++ qt6-base/src/gui/text/freetype/qfontengine_ft.cpp
+@@ -1646,11 +1646,20 @@ void QFontEngineFT::addGlyphsToPath(glyp
+     unlockFace();
+ }
+ 
+-glyph_t QFontEngineFT::glyphIndex(uint ucs4) const
++glyph_t QFontEngineFT::glyphIndex(uint ucs4, uint variationSelector) const
+ {
++    FT_Face face = freetype->face;
++
++    // Handle variation selectors (IVS - Ideographic Variation Sequences)
++    if (variationSelector != 0) {
++        FT_UInt variantGlyph = FT_Face_GetCharVariantIndex(face, ucs4, variationSelector);
++        if (variantGlyph != 0)
++            return variantGlyph;
++        // Fall back to base character if variant not found
++    }
++
+     glyph_t glyph = ucs4 < QFreetypeFace::cmapCacheSize ? freetype->cmapCache[ucs4] : 0;
+     if (glyph == 0) {
+-        FT_Face face = freetype->face;
+         glyph = FT_Get_Char_Index(face, ucs4);
+         if (glyph == 0) {
+             // Certain fonts don't have no-break space and tab,
+Index: qt6-base/src/gui/text/freetype/qfontengine_ft_p.h
+===================================================================
+--- qt6-base.orig/src/gui/text/freetype/qfontengine_ft_p.h
++++ qt6-base/src/gui/text/freetype/qfontengine_ft_p.h
+@@ -174,7 +174,7 @@ private:
+     QFixed lineThickness() const override;
+     QFixed underlinePosition() const override;
+ 
+-    glyph_t glyphIndex(uint ucs4) const override;
++    glyph_t glyphIndex(uint ucs4, uint variationSelector = 0) const override;
+     void doKerning(QGlyphLayout *, ShaperFlags) const override;
+ 
+     void getUnscaledGlyph(glyph_t glyph, QPainterPath *path, glyph_metrics_t *metrics) override;
+Index: qt6-base/src/gui/text/qfontengine.cpp
+===================================================================
+--- qt6-base.orig/src/gui/text/qfontengine.cpp
++++ qt6-base/src/gui/text/qfontengine.cpp
+@@ -1542,9 +1542,10 @@ QFontEngineBox::~QFontEngineBox()
+ {
+ }
+ 
+-glyph_t QFontEngineBox::glyphIndex(uint ucs4) const
++glyph_t QFontEngineBox::glyphIndex(uint ucs4, uint variationSelector) const
+ {
+     Q_UNUSED(ucs4);
++    Q_UNUSED(variationSelector);
+     return 1;
+ }
+ 
+@@ -1796,9 +1797,9 @@ QFontEngine *QFontEngineMulti::loadEngin
+     return nullptr;
+ }
+
+-glyph_t QFontEngineMulti::glyphIndex(uint ucs4) const
++glyph_t QFontEngineMulti::glyphIndex(uint ucs4, uint variationSelector) const
+ {
+-    glyph_t glyph = engine(0)->glyphIndex(ucs4);
++    glyph_t glyph = engine(0)->glyphIndex(ucs4, variationSelector);
+     if (glyph == 0 && !isIgnorableChar(ucs4)) {
+         if (!m_fallbackFamiliesQueried)
+             const_cast<QFontEngineMulti *>(this)->ensureFallbackFamiliesQueried();
+@@ -1814,7 +1815,7 @@ glyph_t QFontEngineMulti::glyphIndex(uin
+             if (engine->type() == Box)
+                 continue;
+
+-            glyph = engine->glyphIndex(ucs4);
++            glyph = engine->glyphIndex(ucs4, variationSelector);
+             if (glyph != 0) {
+                 // set the high byte to indicate which engine the glyph came from
+                 glyph |= (x << 24);
+@@ -1941,6 +1942,20 @@ int QFontEngineMulti::stringToCMap(const QChar *str, int len,
+             // end up with different font selections for the selector and the character it
+             // modifies, we try applying the selector font to the preceding character as well
+             const int variantSelectorBlock = 0xFE00;
++            const char32_t ivsFirstSelector = 0xE0100;
++            const char32_t ivsLastSelector = 0xE01EF;
++            const bool isSupplementaryVariantSelector = ucs4 >= ivsFirstSelector && ucs4 <= ivsLastSelector;
++            if ((flags & GlyphIndicesOnly) && isSupplementaryVariantSelector && glyph_pos > 0) {
++                int selectorFontEngine = glyphs->glyphs[glyph_pos] >> 24;
++                int precedingCharacterFontEngine = glyphs->glyphs[glyph_pos - 1] >> 24;
++
++                if (selectorFontEngine != precedingCharacterFontEngine) {
++                    QFontEngine *precedingEngine = m_engines.at(precedingCharacterFontEngine);
++                    if (precedingEngine->glyphIndex(previousUcs4, ucs4) != 0)
++                        glyphs->glyphs[glyph_pos] = precedingCharacterFontEngine << 24;
++                }
++            }
++
+             if ((ucs4 & 0xFFF0) == variantSelectorBlock && glyph_pos > 0) {
+                 int selectorFontEngine = glyphs->glyphs[glyph_pos] >> 24;
+                 int precedingCharacterFontEngine = glyphs->glyphs[glyph_pos - 1] >> 24;
+Index: qt6-base/src/gui/text/qfontengine_p.h
+===================================================================
+--- qt6-base.orig/src/gui/text/qfontengine_p.h
++++ qt6-base/src/gui/text/qfontengine_p.h
+@@ -162,7 +162,7 @@ public:
+     virtual QFixed emSquareSize() const { return ascent(); }
+ 
+     /* returns 0 as glyph index for non existent glyphs */
+-    virtual glyph_t glyphIndex(uint ucs4) const = 0;
++    virtual glyph_t glyphIndex(uint ucs4, uint variationSelector = 0) const = 0;
+     virtual int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const = 0;
+     virtual void recalcAdvances(QGlyphLayout *, ShaperFlags) const {}
+     virtual void doKerning(QGlyphLayout *, ShaperFlags) const;
+@@ -402,7 +402,7 @@ public:
+     QFontEngineBox(int size);
+     ~QFontEngineBox();
+ 
+-    virtual glyph_t glyphIndex(uint ucs4) const override;
++    virtual glyph_t glyphIndex(uint ucs4, uint variationSelector = 0) const override;
+     virtual int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
+     virtual void recalcAdvances(QGlyphLayout *, ShaperFlags) const override;
+ 
+@@ -440,7 +440,7 @@ public:
+     explicit QFontEngineMulti(QFontEngine *engine, int script, const QStringList &fallbackFamilies = QStringList());
+     ~QFontEngineMulti();
+ 
+-    virtual glyph_t glyphIndex(uint ucs4) const override;
++    virtual glyph_t glyphIndex(uint ucs4, uint variationSelector = 0) const override;
+     virtual int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
+ 
+     virtual glyph_metrics_t boundingBox(const QGlyphLayout &glyphs) override;
+Index: qt6-base/src/gui/text/qharfbuzzng.cpp
+===================================================================
+--- qt6-base.orig/src/gui/text/qharfbuzzng.cpp
++++ qt6-base/src/gui/text/qharfbuzzng.cpp
+@@ -454,15 +454,14 @@ _hb_qt_font_get_nominal_glyph(hb_font_t
+ 
+ static hb_bool_t
+ _hb_qt_font_get_variation_glyph(hb_font_t * /*font*/, void *font_data,
+-                                hb_codepoint_t unicode, hb_codepoint_t /*variation_selector*/,
++                                hb_codepoint_t unicode, hb_codepoint_t variation_selector,
+                                 hb_codepoint_t *glyph,
+                                 void * /*user_data*/)
+ {
+     QFontEngine *fe = static_cast<QFontEngine *>(font_data);
+     Q_ASSERT(fe);
+ 
+-    // ### TODO add support for variation selectors
+-    *glyph = fe->glyphIndex(unicode);
++    *glyph = fe->glyphIndex(unicode, variation_selector);
+ 
+     return *glyph != 0;
+ }
+Index: qt6-base/src/gui/text/windows/qwindowsfontengine.cpp
+===================================================================
+--- qt6-base.orig/src/gui/text/windows/qwindowsfontengine.cpp
++++ qt6-base/src/gui/text/windows/qwindowsfontengine.cpp
+@@ -240,8 +240,10 @@ QWindowsFontEngine::~QWindowsFontEngine(
+     }
+ }
+ 
+-glyph_t QWindowsFontEngine::glyphIndex(uint ucs4) const
++glyph_t QWindowsFontEngine::glyphIndex(uint ucs4, uint variationSelector) const
+ {
++    Q_UNUSED(variationSelector); // Windows platform does not support IVS currently
++
+     glyph_t glyph = 0;
+ 
+     if (symbol) {
+Index: qt6-base/src/gui/text/windows/qwindowsfontengine_p.h
+===================================================================
+--- qt6-base.orig/src/gui/text/windows/qwindowsfontengine_p.h
++++ qt6-base/src/gui/text/windows/qwindowsfontengine_p.h
+@@ -47,7 +47,7 @@ public:
+     int synthesized() const override;
+     QFixed emSquareSize() const override;
+ 
+-    glyph_t glyphIndex(uint ucs4) const override;
++    glyph_t glyphIndex(uint ucs4, uint variationSelector = 0) const override;
+     int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
+     void recalcAdvances(QGlyphLayout *glyphs, ShaperFlags) const override;
+ 
+Index: qt6-base/src/gui/text/windows/qwindowsfontenginedirectwrite.cpp
+===================================================================
+--- qt6-base.orig/src/gui/text/windows/qwindowsfontenginedirectwrite.cpp
++++ qt6-base/src/gui/text/windows/qwindowsfontenginedirectwrite.cpp
+@@ -422,8 +422,10 @@ QFixed QWindowsFontEngineDirectWrite::em
+         return QFontEngine::emSquareSize();
+ }
+ 
+-glyph_t QWindowsFontEngineDirectWrite::glyphIndex(uint ucs4) const
++glyph_t QWindowsFontEngineDirectWrite::glyphIndex(uint ucs4, uint variationSelector) const
+ {
++    Q_UNUSED(variationSelector); // DirectWrite does not support IVS currently
++
+     UINT16 glyphIndex;
+ 
+     HRESULT hr = m_directWriteFontFace->GetGlyphIndicesW(&ucs4, 1, &glyphIndex);
+Index: qt6-base/src/gui/text/windows/qwindowsfontenginedirectwrite_p.h
+===================================================================
+--- qt6-base.orig/src/gui/text/windows/qwindowsfontenginedirectwrite_p.h
++++ qt6-base/src/gui/text/windows/qwindowsfontenginedirectwrite_p.h
+@@ -52,7 +52,7 @@ public:
+     bool getSfntTableData(uint tag, uchar *buffer, uint *length) const override;
+     QFixed emSquareSize() const override;
+ 
+-    glyph_t glyphIndex(uint ucs4) const override;
++    glyph_t glyphIndex(uint ucs4, uint variationSelector = 0) const override;
+     int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs,
+                      ShaperFlags flags) const override;
+     void recalcAdvances(QGlyphLayout *glyphs, ShaperFlags) const override;

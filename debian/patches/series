@@ -1,4 +1,6 @@
 # Needs to be fixed upstream.
+add-ivs-variation-selector-support.patch
+fix-ivs-harfbuzz-run-boundaries.patch
 Add-SH-detection.patch
 
 # Pushed to gerrit

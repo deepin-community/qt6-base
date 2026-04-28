@@ -1,3 +1,11 @@
+qt6-base (6.8.0+dfsg-0deepin30) unstable; urgency=medium
+
+  * fix: support IVS shaping in QTextLayout
+    Pass variation selectors through Qt font engine glyph lookup and keep
+    IVS selectors in the same shaping run as their base character.
+
+ -- ZhangTingan <ZhangTingan@uniontech.com>  Tue, 18 Aug 2026 16:51:29 +0800
+
 qt6-base (6.8.0+dfsg-0deepin29) unstable; urgency=medium
 
   * Add patch: CVE-2026-11573 - fix uncontrolled recursion in
