@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin24) unstable; urgency=medium
+
+  * fix: add multi-seat event support for QWindowSystemInterface key events
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Mon, 15 Jun 2026 15:28:47 +0800
+
 qt6-base (6.8.0+dfsg-0deepin23) unstable; urgency=medium
 
   * fix: QLabel reset link hover state when mouse leaves

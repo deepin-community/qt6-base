@@ -1,0 +1,43 @@
+Author: Tian Shilin<tianshilin@uniontech.com>
+Date:   Mon Jun 15 15:26:49 2026
+Subject: add multi-seat event support for QWindowSystemInterface key events
+
+
+---
+
+Index: qt6-base/src/gui/kernel/qguiapplication.cpp
+===================================================================
+--- qt6-base.orig/src/gui/kernel/qguiapplication.cpp
++++ qt6-base/src/gui/kernel/qguiapplication.cpp
+@@ -2596,7 +2596,7 @@ void QGuiApplicationPrivate::processKeyE
+ 
+     QKeyEvent ev(e->keyType, e->key, e->modifiers,
+                  e->nativeScanCode, e->nativeVirtualKey, e->nativeModifiers,
+-                 e->unicode, e->repeat, e->repeatCount);
++                 e->unicode, e->repeat, e->repeatCount, e->device);
+     ev.setTimestamp(e->timestamp);
+ 
+     const auto *activePopup = activePopupWindow();
+Index: qt6-base/src/gui/kernel/qwindowsysteminterface.cpp
+===================================================================
+--- qt6-base.orig/src/gui/kernel/qwindowsysteminterface.cpp
++++ qt6-base/src/gui/kernel/qwindowsysteminterface.cpp
+@@ -495,6 +495,18 @@ bool QWindowSystemInterface::handleExten
+         timestamp, type, key, modifiers, nativeScanCode, nativeVirtualKey, nativeModifiers, text, autorep, count);
+ }
+ 
++bool QWindowSystemInterface::handleExtendedKeyEvent(QWindow *window, ulong timestamp, const QInputDevice *device,
++                                                  QEvent::Type type, int key, Qt::KeyboardModifiers modifiers,
++                                                  quint32 nativeScanCode, quint32 nativeVirtualKey,
++                                                  quint32 nativeModifiers,
++                                                  const QString& text, bool autorep,
++                                                  ushort count)
++{
++    return handleWindowSystemEvent<QWindowSystemInterfacePrivate::KeyEvent>(window,
++        timestamp, type, key, modifiers, nativeScanCode, nativeVirtualKey, 
++        nativeModifiers, text, autorep, count, device);
++}
++
+ bool QWindowSystemInterface::handleWheelEvent(QWindow *window, const QPointF &local, const QPointF &global, QPoint pixelDelta, QPoint angleDelta, Qt::KeyboardModifiers mods, Qt::ScrollPhase phase, Qt::MouseEventSource source)
+ {
+     unsigned long time = QWindowSystemInterfacePrivate::eventTime.elapsed();
