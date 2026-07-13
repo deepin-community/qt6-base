@@ -44,3 +44,4 @@ fix-xcb-clear-stale-internal-state-when-setting-up-slave-devices.patch
 fix-xcb-Handle-DEVICE_ENABLED-in-XI2-hierarchy-events.patch
 fix-QLabel-Reset-link-hover-state.patch
 qt6-base-add-multi-seat-event.patch
+QDom-Change-default-InvalidDataPolicy-to-ReturnNullNode.patch

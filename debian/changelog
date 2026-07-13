@@ -1,3 +1,10 @@
+qt6-base (6.8.0+dfsg-0deepin25) unstable; urgency=medium
+
+  * Update patch: change QDom default InvalidDataPolicy to
+    ReturnNullNode (CVE-2026-15037, QTBUG-147717).
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Mon, 13 Jul 2026 10:51:47 +0800
+
 qt6-base (6.8.0+dfsg-0deepin24) unstable; urgency=medium
 
   * fix: add multi-seat event support for QWindowSystemInterface key events
