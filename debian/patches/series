@@ -45,3 +45,4 @@ fix-xcb-Handle-DEVICE_ENABLED-in-XI2-hierarchy-events.patch
 fix-QLabel-Reset-link-hover-state.patch
 qt6-base-add-multi-seat-event.patch
 QDom-Change-default-InvalidDataPolicy-to-ReturnNullNode.patch
+CVE-2026-16762_fix-quadratic-behavior-in-resolvetag.patch
