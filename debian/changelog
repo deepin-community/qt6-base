@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin27) unstable; urgency=medium
+
+  * fix quadratic behavior in resolveTag (CVE-2026-16762,update)
+
+ -- Tian ShiLin <tianshilin@uniontech.com >  Fri, 31 Jul 2026 14:27:11 +0800
+
 qt6-base (6.8.0+dfsg-0deepin26) unstable; urgency=medium
 
   * Update patch: fix quadratic behavior in resolveTag (CVE-2026-16762, QTBUG-147009).
