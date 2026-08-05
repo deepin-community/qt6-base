@@ -1,0 +1,240 @@
+From 03289c25d0cc3e9089dcd275c160a7cbb3895617 Mon Sep 17 00:00:00 2001
+From: Wang Zichong <wangzichong@deepin.org>
+Date: Wed, 5 Aug 2026 13:09:30 +0800
+Subject: [PATCH] fix: add truncated entries to QLocale::uiLanguages()
+ (QTBUG-124898, QTBUG-129434)
+Upstream: https://codereview.qt-project.org/c/qt/qtbase/+/595318
+
+Backport of upstream commit 84afaafc9c6 (Qt 6.9). The original
+QTranslator::find_translation() progressively truncates each uiLanguages
+entry from the end, causing locale names like pt_Latn_BR to fall through
+to pt before pt_BR is ever tried. This manifests as pt_BR locale loading
+pt (European Portuguese) translations when both _pt_BR.qm and _pt.qm
+exist.
+
+The fix moves truncation-fallback into QLocale::uiLanguages() with proper
+ordering (truncations appended after all specific entries) and removes
+the inner truncation loop from QTranslator.
+
+Task-number: QTBUG-124898
+Task-number: QTBUG-129434
+---
+ src/corelib/kernel/qtranslator.cpp | 49 +++++++--------
+ src/corelib/text/qlocale.cpp       | 98 ++++++++++++++++++++++++------
+ 2 files changed, 101 insertions(+), 46 deletions(-)
+
+diff --git a/src/corelib/kernel/qtranslator.cpp b/src/corelib/kernel/qtranslator.cpp
+index ec92404a..e2739864 100644
+--- a/src/corelib/kernel/qtranslator.cpp
++++ b/src/corelib/kernel/qtranslator.cpp
+@@ -623,39 +623,36 @@ static QString find_translation(const QLocale & locale,
+ 
+     // see http://www.unicode.org/reports/tr35/#LanguageMatching for inspiration
+ 
+-    // For each language_country returned by locale.uiLanguages(), add
+-    // also a lowercase version to the list. Since these languages are
+-    // used to create file names, this is important on case-sensitive
+-    // file systems, where otherwise a file called something like
+-    // "prefix_en_us.qm" won't be found under the "en_US" locale. Note
+-    // that the Qt resource system is always case-sensitive, even on
+-    // Windows (in other words: this codepath is *not* UNIX-only).
+-    QStringList languages = locale.uiLanguages(QLocale::TagSeparator::Underscore);
+-    for (int i = languages.size()-1; i >= 0; --i) {
+-        QString lang = languages.at(i);
+-        QString lowerLang = lang.toLower();
+-        if (lang != lowerLang)
+-            languages.insert(i + 1, lowerLang);
+-    }
+-
+-    for (QString localeName : std::as_const(languages)) {
+-        // try the complete locale name first and progressively truncate from
+-        // the end until a matching language tag is found (with or without suffix)
+-        for (;;) {
+-            realname += localeName + suffixOrDotQM;
++    // For each name returned by locale.uiLanguages(), also try a lowercase
++    // version. Since these languages are used to create file names, this is
++    // important on case-sensitive file systems, where otherwise a file called
++    // something like "prefix_en_us.qm" won't be found under the "en_US"
++    // locale. Note that the Qt resource system is always case-sensitive, even
++    // on Windows (in other words: this codepath is *not* UNIX-only).
++    const QStringList languages = locale.uiLanguages(QLocale::TagSeparator::Underscore);
++
++    for (const QString &localeName : languages) {
++        QString loc = localeName;
++        // First try this given name, then in lower-case form (if different):
++        while (true) {
++            // First, try with suffix:
++            realname += loc + suffixOrDotQM;
+             if (is_readable_file(realname))
+                 return realname;
+ 
+-            realname.truncate(realNameBaseSize + localeName.size());
++            // Next, try without:
++            realname.truncate(realNameBaseSize + loc.size());
+             if (is_readable_file(realname))
+                 return realname;
+-
++            // Reset realname:
+             realname.truncate(realNameBaseSize);
+ 
+-            int rightmost = localeName.lastIndexOf(u'_');
+-            if (rightmost <= 0)
+-                break; // no truncations anymore, break
+-            localeName.truncate(rightmost);
++            // Non-trivial while-loop condition:
++            if (loc != localeName) // loc was the lower-case form, we're done.
++                break;
++            loc = std::move(loc).toLower(); // Try lower-case next,
++            if (loc == localeName) // but only if different.
++                break;
+         }
+     }
+ 
+diff --git a/src/corelib/text/qlocale.cpp b/src/corelib/text/qlocale.cpp
+index 8ba9b0b3..8c4b9d32 100644
+--- a/src/corelib/text/qlocale.cpp
++++ b/src/corelib/text/qlocale.cpp
+@@ -4837,24 +4837,45 @@ QStringList QLocale::uiLanguages(TagSeparator separator) const
+     {
+         localeIds.append(d->m_data->id());
+     }
++
++    // Warning: this processing is quadratic in the length of the final list.
++    // Hopefully that list isn't too long, though.
++    QStringList fallbacks;
++    auto gatherTruncations = [&fallbacks, cut = QLatin1Char(sep)](const QString &name) {
++        fallbacks.removeAll(name);
++        for (qsizetype at = name.indexOf(cut); at >= 0; at = name.indexOf(cut, at + 1)) {
++            Q_ASSERT(at > 1); // First sub-tag length is >= 2 (C is handled separately).
++            // We find shorter entries before fuller ones; we want the long ones
++            // earlier, the short ones later, but all before any entries from
++            // later in the localeIds list (already present in fallbacks because
++            // of the reverse traversal). However, that can still leave a
++            // shorter truncation of a long name before some truncations of
++            // shorter names of which the shorter one is a prefix; that's
++            // handled in the final appending to uiLanguages; see exclude.
++            fallbacks.insert(0, name.first(at));
++        }
++    };
++
+     for (qsizetype i = localeIds.size(); i-- > 0; ) {
+         QLocaleId id = localeIds.at(i);
+         qsizetype j;
+-        QByteArray prior;
++        if (id.language_id == C) {
++            if (!uiLanguages.contains(u"C"_s))
++                uiLanguages.append(u"C"_s);
++            // Attempt no likely sub-tag amendments to C.
++            continue;
++        }
++
++        const auto prior = QString::fromLatin1(id.name(sep));
+         if (isSystem && i < uiLanguages.size()) {
+             // Adding likely-adjusted forms to system locale's list.
+-            // Name the locale is derived from:
+-            prior = uiLanguages.at(i).toLatin1();
++            Q_ASSERT(uiLanguages.at(i) == prior);
+             // Insert just after the entry we're supplementing:
+             j = i + 1;
+-        } else if (id.language_id == C) {
+-            // Attempt no likely sub-tag amendments to C:
+-            uiLanguages.append(QString::fromLatin1(id.name(sep)));
+-            continue;
+         } else {
+             // Plain locale or empty system uiLanguages; just append.
+-            prior = id.name(sep);
+-            uiLanguages.append(QString::fromLatin1(prior));
++            if (!uiLanguages.contains(prior))
++                uiLanguages.append(prior);
+             j = uiLanguages.size();
+         }
+ 
+@@ -4862,37 +4883,74 @@ QStringList QLocale::uiLanguages(TagSeparator separator) const
+         const QLocaleId min = max.withLikelySubtagsRemoved();
+ 
+         // Include minimal version (last) unless it's what our locale is derived from:
+-        if (auto name = min.name(sep); name != prior)
+-            uiLanguages.insert(j, QString::fromLatin1(name));
+-        else if (!isSystem)
+-            --j; // bcp47Name() matches min(): put more specific forms *before* it.
++        if (auto name = QString::fromLatin1(min.name(sep)); name != prior) {
++            uiLanguages.insert(j, name);
++            gatherTruncations(name);
++        } else if (!isSystem && min == id) {
++            --j; // Put more specific forms *before* minimal entry.
++        }
+ 
+         if (id.script_id) {
+             // Include scriptless version if likely-equivalent and distinct:
+             id.script_id = 0;
+             if (id != min && id.withLikelySubtagsAdded() == max) {
+-                if (auto name = id.name(sep); name != prior)
+-                    uiLanguages.insert(j, QString::fromLatin1(name));
++                if (auto name = QString::fromLatin1(id.name(sep)); name != prior) {
++                    uiLanguages.insert(j, name);
++                    gatherTruncations(name);
++                }
+             }
+         }
+ 
+         if (!id.territory_id) {
+             Q_ASSERT(!min.territory_id);
+             Q_ASSERT(!id.script_id); // because we just cleared it.
+-            // Include version with territory if it likely-equivalent and distinct:
++            // Include version with territory if likely-equivalent and distinct:
+             id.territory_id = max.territory_id;
+             if (id != max && id.withLikelySubtagsAdded() == max) {
+-                if (auto name = id.name(sep); name != prior)
+-                    uiLanguages.insert(j, QString::fromLatin1(name));
++                if (auto name = QString::fromLatin1(id.name(sep)); name != prior) {
++                    uiLanguages.insert(j, name);
++                    gatherTruncations(name);
++                }
+             }
+         }
++        gatherTruncations(prior); // After trimmed forms, before max.
+ 
+         // Include version with all likely sub-tags (first) if distinct from the rest:
+         if (max != min && max != id) {
+-            if (auto name = max.name(sep); name != prior)
+-                uiLanguages.insert(j, QString::fromLatin1(name));
++            if (auto name = QString::fromLatin1(max.name(sep)); name != prior) {
++                uiLanguages.insert(j, name);
++                gatherTruncations(name);
++            }
+         }
+     }
++
++    auto exclude = [fallbacks, cut = QLatin1Char(sep)](QStringList::const_iterator entry,
++                                                       const QStringList &uiLanguages) {
++        // If this entry in fallbacks reappears later, after one of which it is
++        // a prefix, that's not yet in uiLanguages, leave it for the later entry
++        // to take care of.
++        const QString &name = *entry;
++        // entry < constEnd(), so found < constEnd()
++        auto found = entry;
++        // Initial found < constEnd(), so found + 1 is at worst constEnd(), not beyond it.
++        while ((found = std::find(found + 1, fallbacks.constEnd(), name)) != fallbacks.constEnd()) {
++            // entry < returned found < constEnd()
++            // *found is a repeat of name
++            // entry < found, so found - 1 is at worst entry
++            const QString &prev = *(found - 1);
++            if (uiLanguages.contains(prev))
++                continue;
++            if (prev.size() > name.size() && prev.startsWith(name) && prev[name.size()] == cut)
++                return true;
++        }
++        return false;
++    };
++    for (auto it = fallbacks.constBegin(); it < fallbacks.constEnd(); ++it) {
++        const QString &name = *it;
++        if (uiLanguages.contains(name) || exclude(it, uiLanguages))
++            continue;
++        uiLanguages.append(name);
++    }
+     return uiLanguages;
+ }
+ 
+-- 
+2.51.0
+

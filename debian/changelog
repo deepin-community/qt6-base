@@ -1,3 +1,12 @@
+qt6-base (6.8.0+dfsg-0deepin28) unstable; urgency=medium
+
+  * Backport of upstream commit 84afaafc9c6: Add truncated entries to
+    QLocale::uiLanguages() (QTBUG-124898, QTBUG-129434). Fixes pt_BR locale
+    loading pt (European Portuguese) translations when both _pt_BR.qm and
+    _pt.qm exist.
+
+ -- Wang Zichong <wangzichong@deepin.org>  Tue, 05 Aug 2026 15:00:00 +0800
+
 qt6-base (6.8.0+dfsg-0deepin27) unstable; urgency=medium
 
   * fix quadratic behavior in resolveTag (CVE-2026-16762,update)
