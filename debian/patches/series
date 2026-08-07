@@ -51,3 +51,4 @@ CVE-2026-16762_fix-quadratic-behavior-in-resolvetag.patch
 # Backport of upstream commit 84afaafc9c6 (Qt 6.9). Fixes pt_BR loading pt
 # translations when both _pt_BR.qm and _pt.qm exist.
 Add-truncated-entries-to-QLocale-uiLanguages.patch
+CVE-2026-11573_fix-stack-overflow-in-qdom-serialization.patch
