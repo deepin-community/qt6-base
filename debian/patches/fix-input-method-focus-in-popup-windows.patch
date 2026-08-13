@@ -1,0 +1,361 @@
+Description: Fix input method focus in non-activating popup windows
+ Non-activating Qt Quick popup windows keep the native focus on their parent
+ window while owning a separate logical focus object. Propagate that focus to
+ platform input contexts and map input method geometry back to native focus
+ window coordinates.
+Origin: upstream, https://codereview.qt-project.org/c/qt/qtbase/+/758893
+Bug: https://bugreports.qt.io/browse/QTBUG-149014
+Bug-Deepin: https://pms.uniontech.com/bug-view-372273.html
+Author: Kun Zhang <zhangkun2@uniontech.com>
+Last-Update: 2026-08-13
+---
+diff --git a/src/gui/kernel/qguiapplication.cpp b/src/gui/kernel/qguiapplication.cpp
+index e0cee816..16dd8340 100644
+--- a/src/gui/kernel/qguiapplication.cpp
++++ b/src/gui/kernel/qguiapplication.cpp
+@@ -186,6 +186,7 @@ Q_CONSTINIT QWindowList QGuiApplicationPrivate::window_list;
+ Q_CONSTINIT QWindowList QGuiApplicationPrivate::popup_list;
+ Q_CONSTINIT const QWindow *QGuiApplicationPrivate::active_popup_on_press = nullptr;
+ Q_CONSTINIT QWindow *QGuiApplicationPrivate::focus_window = nullptr;
++Q_CONSTINIT static QPointer<QWindow> popupInputFocusWindow;
+
+ Q_CONSTINIT static QBasicMutex applicationFontMutex;
+ Q_CONSTINIT QFont *QGuiApplicationPrivate::app_font = nullptr;
+@@ -973,6 +974,12 @@ QWindow *QGuiApplicationPrivate::activePopupWindow()
+             nullptr : QGuiApplicationPrivate::popup_list.constLast();
+ }
+
++// A popup may contain the input focus without becoming the native focus window.
++QWindow *QGuiApplicationPrivate::inputMethodFocusWindow()
++{
++    return popupInputFocusWindow ? popupInputFocusWindow.data() : focus_window;
++}
++
+ void QGuiApplicationPrivate::activatePopup(QWindow *popup)
+ {
+     if (!popup->isVisible())
+@@ -980,12 +987,28 @@ void QGuiApplicationPrivate::activatePopup(QWindow *popup)
+     popup_list.removeOne(popup); // ensure that there's only one entry, and it's the last
+     qCDebug(lcPopup) << "appending popup" << popup << "to existing" << popup_list;
+     popup_list.append(popup);
++    if (qApp) {
++        QObject::connect(popup, SIGNAL(focusObjectChanged(QObject*)),
++                         qApp, SLOT(_q_updateFocusObject(QObject*)), Qt::UniqueConnection);
++        if (auto *appPrivate = instance())
++            appPrivate->_q_updateFocusObject(popup->focusObject());
++    }
+ }
+
+ bool QGuiApplicationPrivate::closePopup(QWindow *popup)
+ {
+     const auto removed = QGuiApplicationPrivate::popup_list.removeAll(popup);
+     qCDebug(lcPopup) << "removed?" << removed << "popup" << popup << "; remaining" << popup_list;
++    if (removed && qApp) {
++        QObject::disconnect(popup, SIGNAL(focusObjectChanged(QObject*)),
++                            qApp, SLOT(_q_updateFocusObject(QObject*)));
++        if (auto *appPrivate = instance()) {
++            QWindow *window = activePopupWindow();
++            if (!window)
++                window = focus_window;
++            appPrivate->_q_updateFocusObject(window ? window->focusObject() : nullptr);
++        }
++    }
+     return removed; // >= 1 if something was removed
+ }
+
+@@ -1035,11 +1058,14 @@ QWindow *QGuiApplication::focusWindow()
+ /*!
+     Returns the QObject in currently active window that will be final receiver of events
+     tied to focus, such as key events.
++
++    An input-method-enabled object in a non-activating popup can be returned while
++    focusWindow() remains unchanged.
+  */
+ QObject *QGuiApplication::focusObject()
+ {
+-    if (focusWindow())
+-        return focusWindow()->focusObject();
++    if (QWindow *window = QGuiApplicationPrivate::inputMethodFocusWindow())
++        return window->focusObject();
+     return nullptr;
+ }
+
+@@ -4513,13 +4539,24 @@ const QColorTrcLut *QGuiApplicationPrivate::colorProfileForA32Text()
+         m_a32ColorProfile = QColorTrcLut::fromGamma(float(fontSmoothingGamma));
+     return m_a32ColorProfile.get();
+ }
+-
+-void QGuiApplicationPrivate::_q_updateFocusObject(QObject *object)
++void QGuiApplicationPrivate::_q_updateFocusObject(QObject *)
+ {
+     Q_Q(QGuiApplication);
+
++    popupInputFocusWindow.clear();
++    // Prefer the topmost popup that accepts input methods, falling back through nested
++    // popups and finally to the native focus window.
++    for (auto it = popup_list.crbegin(); it != popup_list.crend(); ++it) {
++        if (QInputMethodPrivate::objectAcceptsInputMethod((*it)->focusObject())) {
++            popupInputFocusWindow = *it;
++            break;
++        }
++    }
++
++    QObject *object = q->focusObject();
+     QPlatformInputContext *inputContext = platformIntegration()->inputContext();
+-    const bool enabled = inputContext && QInputMethodPrivate::objectAcceptsInputMethod(object);
++    const bool enabled = inputContext
++            && (popupInputFocusWindow || QInputMethodPrivate::objectAcceptsInputMethod(object));
+
+     QPlatformInputContextPrivate::setInputMethodAccepted(enabled);
+     if (inputContext)
+diff --git a/src/gui/kernel/qguiapplication_p.h b/src/gui/kernel/qguiapplication_p.h
+index 45eac1c2..38f584b2 100644
+--- a/src/gui/kernel/qguiapplication_p.h
++++ b/src/gui/kernel/qguiapplication_p.h
+@@ -204,6 +204,7 @@ public:
+     bool isWindowBlocked(QWindow *window, QWindow **blockingWindow = nullptr) const;
+     static qsizetype popupCount() { return QGuiApplicationPrivate::popup_list.size(); }
+     static QWindow *activePopupWindow();
++    static QWindow *inputMethodFocusWindow();
+     static void activatePopup(QWindow *popup);
+     static bool closePopup(QWindow *popup);
+     static bool closeAllPopups();
+diff --git a/src/gui/kernel/qinputmethod.cpp b/src/gui/kernel/qinputmethod.cpp
+index e37e85e2..7d22ff82 100644
+--- a/src/gui/kernel/qinputmethod.cpp
++++ b/src/gui/kernel/qinputmethod.cpp
+@@ -4,6 +4,7 @@
+ #include <qinputmethod.h>
+ #include <private/qinputmethod_p.h>
+ #include <qguiapplication.h>
++#include <qwindow.h>
+ #include <qtimer.h>
+ #include <qpa/qplatforminputcontext_p.h>
+
+@@ -11,6 +12,21 @@
+
+ QT_BEGIN_NAMESPACE
+
++// Platform input contexts expect geometry relative to the native focus window.
++// Translate from a non-activating popup's coordinate system when necessary.
++QTransform QInputMethodPrivate::inputItemTransformToFocusWindow() const
++{
++    QWindow *focusWindow = QGuiApplication::focusWindow();
++    QWindow *inputWindow = QGuiApplicationPrivate::inputMethodFocusWindow();
++    if (!focusWindow || !inputWindow || inputWindow == focusWindow)
++        return inputItemTransform;
++
++    const QPointF inputWindowOrigin =
++            focusWindow->mapFromGlobal(inputWindow->mapToGlobal(QPointF()));
++    return inputItemTransform
++            * QTransform::fromTranslate(inputWindowOrigin.x(), inputWindowOrigin.y());
++}
++
+ /*!
+     \internal
+ */
+@@ -114,7 +130,8 @@ static QRectF inputMethodQueryRectangle_helper(Qt::InputMethodQuery imquery, con
+ QRectF QInputMethod::cursorRectangle() const
+ {
+     Q_D(const QInputMethod);
+-    return inputMethodQueryRectangle_helper(Qt::ImCursorRectangle, d->inputItemTransform);
++    return inputMethodQueryRectangle_helper(Qt::ImCursorRectangle,
++                                            d->inputItemTransformToFocusWindow());
+ }
+
+ /*!
+@@ -127,7 +144,8 @@ QRectF QInputMethod::cursorRectangle() const
+ QRectF QInputMethod::anchorRectangle() const
+ {
+     Q_D(const QInputMethod);
+-    return inputMethodQueryRectangle_helper(Qt::ImAnchorRectangle, d->inputItemTransform);
++    return inputMethodQueryRectangle_helper(Qt::ImAnchorRectangle,
++                                            d->inputItemTransformToFocusWindow());
+ }
+
+ /*!
+@@ -156,7 +174,8 @@ QRectF QInputMethod::keyboardRectangle() const
+ QRectF QInputMethod::inputItemClipRectangle() const
+ {
+     Q_D(const QInputMethod);
+-    return inputMethodQueryRectangle_helper(Qt::ImInputItemClipRectangle, d->inputItemTransform);
++    return inputMethodQueryRectangle_helper(Qt::ImInputItemClipRectangle,
++                                            d->inputItemTransformToFocusWindow());
+ }
+ /*!
+     Requests virtual keyboard to open. If the platform
+diff --git a/src/gui/kernel/qinputmethod_p.h b/src/gui/kernel/qinputmethod_p.h
+index 9191813b..076c6231 100644
+--- a/src/gui/kernel/qinputmethod_p.h
++++ b/src/gui/kernel/qinputmethod_p.h
+@@ -45,6 +45,7 @@ public:
+     void _q_connectFocusObject();
+     void _q_checkFocusObject(QObject *object);
+     static bool objectAcceptsInputMethod(QObject *object);
++    QTransform inputItemTransformToFocusWindow() const;
+
+     QTransform inputItemTransform;
+     QRectF inputRectangle;
+diff --git a/src/gui/kernel/qplatforminputcontext.cpp b/src/gui/kernel/qplatforminputcontext.cpp
+index 9d3ee4ac..473a3ef9 100644
+--- a/src/gui/kernel/qplatforminputcontext.cpp
++++ b/src/gui/kernel/qplatforminputcontext.cpp
+@@ -6,6 +6,7 @@
+ #include <QRect>
+ #include "private/qkeymapper_p.h"
+ #include "private/qhighdpiscaling_p.h"
++#include "private/qinputmethod_p.h"
+ #include <qpa/qplatforminputcontext_p.h>
+
+ #include <QtGui/qtransform.h>
+@@ -262,7 +263,8 @@ void QPlatformInputContext::setSelectionOnFocusObject(const QPointF &nativeAncho
+     const QPointF &cursorPos = QHighDpi::fromNativePixels(nativeCursorPos, window);
+
+     QInputMethod *im = QGuiApplication::inputMethod();
+-    const QTransform mapToLocal = im->inputItemTransform().inverted();
++    const QTransform mapToLocal =
++            QInputMethodPrivate::get(im)->inputItemTransformToFocusWindow().inverted();
+     bool success;
+     int anchor = QInputMethod::queryFocusObject(Qt::ImCursorPosition, anchorPos * mapToLocal).toInt(&success);
+     if (success) {
+@@ -286,8 +288,9 @@ void QPlatformInputContext::setSelectionOnFocusObject(const QPointF &nativeAncho
+ QVariant QPlatformInputContext::queryFocusObject(Qt::InputMethodQuery query, QPointF nativePosition)
+ {
+     const QPointF position = QHighDpi::fromNativePixels(nativePosition, QGuiApplication::focusWindow());
+-    const QInputMethod *im = QGuiApplication::inputMethod();
+-    const QTransform mapToLocal = im->inputItemTransform().inverted();
++    QInputMethod *im = QGuiApplication::inputMethod();
++    const QTransform mapToLocal =
++            QInputMethodPrivate::get(im)->inputItemTransformToFocusWindow().inverted();
+     return im->queryFocusObject(query, mapToLocal.map(position));
+ }
+
+@@ -300,7 +303,10 @@ QVariant QPlatformInputContext::queryFocusObject(Qt::InputMethodQuery query, QPo
+ QRectF QPlatformInputContext::inputItemRectangle()
+ {
+     QInputMethod *im = QGuiApplication::inputMethod();
+-    const QRectF deviceIndependentRectangle = im->inputItemTransform().mapRect(im->inputItemRectangle());
++    const QTransform inputItemTransform =
++            QInputMethodPrivate::get(im)->inputItemTransformToFocusWindow();
++    const QRectF deviceIndependentRectangle =
++            inputItemTransform.mapRect(im->inputItemRectangle());
+     return QHighDpi::toNativePixels(deviceIndependentRectangle, QGuiApplication::focusWindow());
+ }
+
+diff --git a/tests/auto/gui/kernel/qguiapplication/tst_qguiapplication.cpp b/tests/auto/gui/kernel/qguiapplication/tst_qguiapplication.cpp
+index d1a50e3d..99951c32 100644
+--- a/tests/auto/gui/kernel/qguiapplication/tst_qguiapplication.cpp
++++ b/tests/auto/gui/kernel/qguiapplication/tst_qguiapplication.cpp
+@@ -24,6 +24,8 @@
+ #include <QtGui/private/qopenglcontext_p.h>
+
+ #include <QDebug>
++#include <QInputMethodEvent>
++#include <QInputMethod>
+
+ #include "tst_qcoreapplication.h"
+
+@@ -41,6 +43,7 @@ private slots:
+     void firstWindowTitle();
+     void windowIcon();
+     void focusObject();
++    void popupFocusObject();
+     void allWindows();
+     void topLevelWindows();
+     void abortQuitOnShow();
+@@ -180,6 +183,25 @@ public:
+     QObject *m_focusObject;
+ };
+
++class InputMethodObject : public QObject
++{
++public:
++    QRectF cursorRectangle = QRectF(4, 5, 1, 10);
++
++protected:
++    bool event(QEvent *event) override
++    {
++        if (event->type() == QEvent::InputMethodQuery) {
++            auto *queryEvent = static_cast<QInputMethodQueryEvent *>(event);
++            if (queryEvent->queries().testFlag(Qt::ImEnabled))
++                queryEvent->setValue(Qt::ImEnabled, true);
++            if (queryEvent->queries().testFlag(Qt::ImCursorRectangle))
++                queryEvent->setValue(Qt::ImCursorRectangle, cursorRectangle);
++        }
++        return QObject::event(event);
++    }
++};
++
+
+ void tst_QGuiApplication::focusObject()
+ {
+@@ -248,6 +270,69 @@ void tst_QGuiApplication::focusObject()
+     QCOMPARE(app.focusObject(), &obj3);
+ }
+
++void tst_QGuiApplication::popupFocusObject()
++{
++    int argc = 0;
++    QGuiApplication app(argc, nullptr);
++
++    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
++        QSKIP("QWindow::requestActivate() is not supported.");
++
++    InputMethodObject mainInput, popupInput, nestedInput;
++    QObject nonInput;
++    DummyWindow window;
++    window.setPosition(100, 100);
++    window.setFocusObject(&mainInput);
++    window.show();
++    window.requestActivate();
++    QVERIFY(QTest::qWaitForWindowActive(&window));
++    QCOMPARE(app.focusObject(), &mainInput);
++
++    DummyWindow popup;
++    popup.setPosition(350, 250);
++    popup.setFlags(Qt::Popup | Qt::WindowDoesNotAcceptFocus);
++    popup.setTransientParent(&window);
++    popup.setFocusObject(&popupInput);
++    popup.show();
++    QCOMPARE(app.focusWindow(), &window);
++    QCOMPARE(app.focusObject(), &popupInput);
++    QTransform popupInputTransform;
++    popupInputTransform.translate(10, 20);
++    popupInputTransform.scale(2, 3);
++    app.inputMethod()->setInputItemTransform(popupInputTransform);
++    QCOMPARE(app.inputMethod()->inputItemTransform(), popupInputTransform);
++    const auto expectedCursorRectangle = [&] {
++        const QRectF popupCursorRectangle = popupInputTransform.mapRect(popupInput.cursorRectangle);
++        return QRectF(window.mapFromGlobal(popup.mapToGlobal(popupCursorRectangle.topLeft())),
++                      popupCursorRectangle.size());
++    };
++    QCOMPARE(app.inputMethod()->cursorRectangle(), expectedCursorRectangle());
++
++    popup.setPosition(400, 300);
++    QCOMPARE(app.inputMethod()->cursorRectangle(), expectedCursorRectangle());
++
++    popup.setFocusObject(&nonInput);
++    QCOMPARE(app.focusObject(), &mainInput);
++    popup.setFocusObject(&popupInput);
++    QCOMPARE(app.focusObject(), &popupInput);
++
++    DummyWindow nestedPopup;
++    nestedPopup.setFlags(Qt::Popup | Qt::WindowDoesNotAcceptFocus);
++    nestedPopup.setTransientParent(&popup);
++    nestedPopup.setFocusObject(&nestedInput);
++    nestedPopup.show();
++    QCOMPARE(app.focusObject(), &nestedInput);
++    nestedPopup.setFocusObject(&nonInput);
++    QCOMPARE(app.focusObject(), &popupInput);
++    nestedPopup.setFocusObject(&nestedInput);
++    QCOMPARE(app.focusObject(), &nestedInput);
++
++    nestedPopup.hide();
++    QCOMPARE(app.focusObject(), &popupInput);
++    popup.hide();
++    QCOMPARE(app.focusObject(), &mainInput);
++}
++
+ void tst_QGuiApplication::allWindows()
+ {
+     int argc = 0;
