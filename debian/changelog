@@ -1,3 +1,11 @@
+qt6-base (6.8.0+dfsg-0deepin31) unstable; urgency=medium
+
+  * Add patch: CVE-2026-76151 - port nextNonWhitespace() and all its
+    users to qsizetype to fix qsizetype-to-int narrowing in HTTP Cache-
+    Control parser causing OOB read (remote DoS) (Coverity-Id: 911179).
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Fri, 21 Aug 2026 11:42:05 +0800
+
 qt6-base (6.8.0+dfsg-0deepin30) unstable; urgency=medium
 
   * fix: support IVS shaping in QTextLayout
