@@ -1,3 +1,15 @@
+qt6-base (6.8.0+dfsg-0deepin32) unstable; urgency=medium
+
+  * Add patch: CVE-2026-19248 - fix unbounded nesting depth in QDomNode
+    destructor and clear() causing stack exhaustion (DoS) (QTBUG-147191).
+
+  * Add patch: CVE-2026-78253 - fix stack-exhaustion in
+    QXmlStreamReader::readElementText on deeply nested elements by
+    replacing recursion with iterative nesting-level tracking
+    (QTBUG-148482).
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Thu, 27 Aug 2026 16:09:43 +0800
+
 qt6-base (6.8.0+dfsg-0deepin31) unstable; urgency=medium
 
   * Add patch: CVE-2026-76151 - port nextNonWhitespace() and all its
