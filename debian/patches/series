@@ -57,4 +57,3 @@ CVE-2026-11573_fix-stack-overflow-in-qdom-serialization.patch
 CVE-2026-76151_port-nextNonWhitespace-to-qsizetype.patch
 CVE-2026-19248_fix-unbounded-nesting-depth-in-QDomNode-dtor.patch
 CVE-2026-78253_fix-stack-exhaustion-in-readElementText.patch
-CVE-2026-82292_guard-against-null-nodes-in-QDomBuilder.patch
