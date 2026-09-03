@@ -92,48 +92,6 @@ Index: qt6-base/src/gui/text/qtextmarkdownimporter.cpp
          }
      }
      const auto mdUtf8 = md.toUtf8();
-Index: qt6-base/tests/auto/gui/text/qtextmarkdownimporter/data/front-marker-malformed1.md
-===================================================================
---- /dev/null
-+++ qt6-base/tests/auto/gui/text/qtextmarkdownimporter/data/front-marker-malformed1.md
-@@ -0,0 +1,3 @@
-+----
-+name: "Pluto"---
-+Pluto may not be a planet. And this document does not contain Front Matter.
-Index: qt6-base/tests/auto/gui/text/qtextmarkdownimporter/data/front-marker-malformed2.md
-===================================================================
---- /dev/null
-+++ qt6-base/tests/auto/gui/text/qtextmarkdownimporter/data/front-marker-malformed2.md
-@@ -0,0 +1,5 @@
-+----
-+name: "Sloppy"
-+----
-+This document has trailing whitespace after its second Front Matter marker.
-+Therefore the marker does not qualify, and the document does not have Front Matter.
-Index: qt6-base/tests/auto/gui/text/qtextmarkdownimporter/data/front-marker-malformed3.md
-===================================================================
---- /dev/null
-+++ qt6-base/tests/auto/gui/text/qtextmarkdownimporter/data/front-marker-malformed3.md
-@@ -0,0 +1,4 @@
-+----
-+name: "Aborted YAML"
-+description: "The ending marker does not end with a newline, so it's invalid."
-+----
-Index: qt6-base/tests/auto/gui/text/qtextmarkdownimporter/data/yaml-crlf.md
-===================================================================
---- /dev/null
-+++ qt6-base/tests/auto/gui/text/qtextmarkdownimporter/data/yaml-crlf.md
-@@ -0,0 +1,10 @@
-+----
-+name: "Venus"
-+discoverer: "Galileo Galilei"
-+title: "A description of the planet Venus"
-+keywords:
-+  - planets
-+  - solar system
-+  - astronomy
-+----
-+*Venus* is the second planet from the Sun, orbiting it every 224.7 Earth days.
 Index: qt6-base/tests/auto/gui/text/qtextmarkdownimporter/tst_qtextmarkdownimporter.cpp
 ===================================================================
 --- qt6-base.orig/tests/auto/gui/text/qtextmarkdownimporter/tst_qtextmarkdownimporter.cpp
