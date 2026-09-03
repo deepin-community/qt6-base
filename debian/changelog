@@ -1,3 +1,12 @@
+qt6-base (6.8.0+dfsg-0deepin33) unstable; urgency=medium
+
+  * Add patch: CVE-2026-82292 - guard against null nodes returned by
+    QDomDocument factory functions in QDomBuilder::characters(),
+    skippedEntity() and comment() to prevent crash when
+    InvalidDataPolicy is ReturnNullNode (QTBUG-148791).
+
+ -- Tian ShiLin <tianshilin@uniontech.com >  Thu, 03 Sep 2026 11:03:48 +0800
+
 qt6-base (6.8.0+dfsg-0deepin32) unstable; urgency=medium
 
   * Add patch: CVE-2026-19248 - fix unbounded nesting depth in QDomNode
