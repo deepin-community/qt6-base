@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin35) unstable; urgency=medium
+
+  * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
+
+ -- tunaichao <tunaichao@uniontech.com>  Fri, 11 Sep 2026 17:45:22 +0800
+
 qt6-base (6.8.0+dfsg-0deepin34) unstable; urgency=medium
 
   * fix: QComboBox ignores wheel events when the style hint disables
