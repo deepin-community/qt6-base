@@ -1,0 +1,113 @@
+From 9c966d837fe33b1e32f5e95f29a380dd3063055b Mon Sep 17 00:00:00 2001
+From: Sebastian Beckmann <beckmann.sebastian@outlook.de>
+Date: Wed, 19 Mar 2025 18:00:57 +0100
+Subject: [PATCH] QComboBox: Ignore wheel event when not reacting to it
+Upstream: https://codereview.qt-project.org/c/qt/qtbase/+/632991
+
+With the SH_ComboBox_AllowWheelScrolling style hint introduced in [1],
+it's possible for combo boxes to not react to wheel scrolling. However,
+since the event isn't explicitly ignored, it gets "eaten" by the combo
+box instead of propagating up. This leads to upper level scroll areas
+not receiving the event (and thus not scrolling).
+By ignoring the event, the scroll area now scrolls if the hint is set
+to false instead of nothing happening. This feels more intuitive and
+mimics system behavior on both macOS (where the hint is set to false by
+default) and Windows 11.
+
+[1]: 5e9e4ccdc363297f70d4ebfbbb3e279670eca553
+
+Pick-to: 6.9 6.8
+Change-Id: I2207af8aad81fb76f3b1bbe074c3c4fbf22e3eca
+Reviewed-by: Richard Moe Gustavsen <richard.gustavsen@qt.io>
+---
+
+diff --git a/src/widgets/widgets/qcombobox.cpp b/src/widgets/widgets/qcombobox.cpp
+index d3e82b5..fbec606 100644
+--- a/src/widgets/widgets/qcombobox.cpp
++++ b/src/widgets/widgets/qcombobox.cpp
+@@ -3449,6 +3449,8 @@
+             d->emitActivated(d->currentIndex);
+         }
+         e->accept();
++    } else {
++        e->ignore();
+     }
+ }
+ #endif
+diff --git a/tests/auto/widgets/widgets/qcombobox/tst_qcombobox.cpp b/tests/auto/widgets/widgets/qcombobox/tst_qcombobox.cpp
+index cb83bd3..8ee122e 100644
+--- a/tests/auto/widgets/widgets/qcombobox/tst_qcombobox.cpp
++++ b/tests/auto/widgets/widgets/qcombobox/tst_qcombobox.cpp
+@@ -105,6 +105,8 @@
+     void mouseWheel_data();
+     void mouseWheel();
+     void popupWheelHandling();
++    void ignoreWheelEvents_data();
++    void ignoreWheelEvents();
+ #endif // QT_CONFIG(wheelevent)
+     void sendKeyEventToPopup();
+     void layoutDirection();
+@@ -2192,6 +2194,63 @@
+     QVERIFY(comboBox->view()->isVisible());
+     QCOMPARE(comboBox->view()->pos(), popupPos);
+ }
++
++void tst_QComboBox::ignoreWheelEvents_data()
++{
++    QTest::addColumn<bool>("allowWheelScrolling");
++    QTest::newRow("Check that QComboBox ignores wheel scrolling and propagates") << false;
++    QTest::newRow("Check that QComboBox allows wheel scrolling and doesn't propagate") << true;
++}
++
++void tst_QComboBox::ignoreWheelEvents()
++{
++    class AllowWheelScrollStyle : public QProxyStyle
++    {
++    public:
++        explicit AllowWheelScrollStyle(bool allowWheelScroll) : allow(allowWheelScroll) { }
++
++        int styleHint(const QStyle::StyleHint hint, const QStyleOption *opt, const QWidget *widget,
++                      QStyleHintReturn *returnData) const override
++        {
++            if (hint == QStyle::SH_ComboBox_AllowWheelScrolling)
++                return allow;
++
++            return QProxyStyle::styleHint(hint, opt, widget, returnData);
++        }
++
++        bool allow;
++    };
++    class WheelEventTestWidget : public QWidget
++    {
++    public:
++        bool eventReceived = false;
++        void wheelEvent(QWheelEvent *e) override
++        {
++            eventReceived = true;
++            e->accept();
++        }
++    };
++
++    QFETCH(bool, allowWheelScrolling);
++
++    WheelEventTestWidget widget;
++    QComboBox *comboBox = new QComboBox(&widget);
++    comboBox->addItems({ "0", "1" });
++    comboBox->setStyle(new AllowWheelScrollStyle(allowWheelScrolling));
++    widget.show();
++    QVERIFY(QTest::qWaitForWindowExposed(&widget));
++
++    const QPoint wheelPoint = comboBox->rect().center();
++    QWheelEvent event(wheelPoint, comboBox->mapToGlobal(wheelPoint), {}, { 0, -WHEEL_DELTA },
++                      Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
++    QSpontaneKeyEvent::setSpontaneous(&event);
++    QVERIFY(QCoreApplication::instance()->notify(comboBox, &event));
++
++    const int expectedComboBoxIndex = allowWheelScrolling ? 1 : 0;
++    QCOMPARE(comboBox->currentIndex(), expectedComboBoxIndex);
++    QCOMPARE(widget.eventReceived, !allowWheelScrolling);
++}
++
+ #endif // QT_CONFIG(wheelevent)
+ 
+ void tst_QComboBox::sendKeyEventToPopup()

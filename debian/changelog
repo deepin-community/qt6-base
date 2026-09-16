@@ -1,3 +1,11 @@
+qt6-base (6.8.0+dfsg-0deepin34) unstable; urgency=medium
+
+  * fix: QComboBox ignores wheel events when the style hint disables
+    wheel scrolling, allowing parent scroll widgets to continue handling
+    the input instead of swallowing it.
+
+ -- Wu JiangYu <wujiangyu@uniontech.com>  Wed, 16 Sep 2026 13:30:44 +0800
+
 qt6-base (6.8.0+dfsg-0deepin33) unstable; urgency=medium
 
   * Add patch: CVE-2026-82292 - guard against null nodes returned by
