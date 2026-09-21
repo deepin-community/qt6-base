@@ -1,3 +1,11 @@
+qt6-base (6.8.0+dfsg-0deepin36) unstable; urgency=medium
+
+  * fix: enable fix-ComboBox-Wheelevent.patch in the patch series so
+    QComboBox propagates wheel events to parent scroll widgets when
+    the style hint disables wheel scrolling.
+
+ -- Wu JiangYu <wujiangyu@uniontech.com>  Mon, 21 Sep 2026 13:52:45 +0800
+
 qt6-base (6.8.0+dfsg-0deepin35) unstable; urgency=medium
 
   * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
