@@ -59,3 +59,4 @@ CVE-2026-19248_fix-unbounded-nesting-depth-in-QDomNode-dtor.patch
 CVE-2026-78253_fix-stack-exhaustion-in-readElementText.patch
 CVE-2026-82292_guard-against-null-nodes-in-QDomBuilder.patch
 fix-ComboBox-Wheelevent.patch
+Fix-crash-when-fontconfig-fallback-pattern-has-no-charset.patch
