@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin37) unstable; urgency=medium
+
+  * Fix crash when fontconfig fallback pattern has no charset.
+
+ -- zhanghongyuan <zhanghongyuan@uniontech.com>  Mon, 28 Sep 2026 09:27:41 +0800
+
 qt6-base (6.8.0+dfsg-0deepin36) unstable; urgency=medium
 
   * fix: enable fix-ComboBox-Wheelevent.patch in the patch series so
