@@ -61,3 +61,7 @@ CVE-2026-82292_guard-against-null-nodes-in-QDomBuilder.patch
 fix-ComboBox-Wheelevent.patch
 Fix-crash-when-fontconfig-fallback-pattern-has-no-charset.patch
 Fix-do-not-dispatch-events-while-closing.patch
+CVE-2026-95620_qhttp2stream-fix-upload-device-use-after-free.patch
+CVE-2026-96432_qhttp2connection-guard-null-qpointer.patch
+CVE-2026-105923_clamp-coordinates-in-qtriangulator.patch
+CVE-2026-107157_qcborvalue-fix-buffer-overread-fromcbor.patch
