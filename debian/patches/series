@@ -65,3 +65,6 @@ CVE-2026-95620_qhttp2stream-fix-upload-device-use-after-free.patch
 CVE-2026-96432_qhttp2connection-guard-null-qpointer.patch
 CVE-2026-105923_clamp-coordinates-in-qtriangulator.patch
 CVE-2026-107157_qcborvalue-fix-buffer-overread-fromcbor.patch
+CVE-2026-105946_qauthenticator-harden-qextractservertime.patch
+CVE-2026-105946_qauthenticator-fix-ntlm-phase2-bounds-overflow.patch
+CVE-2026-105946_qauthenticator-fix-digest-parser-pointer.patch
