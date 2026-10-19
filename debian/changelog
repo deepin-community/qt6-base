@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin41) unstable; urgency=medium
+
+  * Add CVE-2026-105943 and CVE-2026-108081 security patches.
+
+ -- Tian ShiLin <tianshilin@uniontech.com>  Mon, 19 Oct 2026 09:09:20 +0800
+
 qt6-base (6.8.0+dfsg-0deepin40) unstable; urgency=medium
 
   * Add CVE-2026-105946 patches hardening QAuthenticator against

@@ -68,3 +68,5 @@ CVE-2026-107157_qcborvalue-fix-buffer-overread-fromcbor.patch
 CVE-2026-105946_qauthenticator-harden-qextractservertime.patch
 CVE-2026-105946_qauthenticator-fix-ntlm-phase2-bounds-overflow.patch
 CVE-2026-105946_qauthenticator-fix-digest-parser-pointer.patch
+CVE-2026-105943_qauthenticator-pass-spn-to-sspi-for-ntlm.patch
+CVE-2026-108081_limit-glyph-sizes.patch
