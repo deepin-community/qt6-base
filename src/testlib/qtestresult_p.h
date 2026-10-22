@@ -21,12 +21,29 @@
 
 QT_BEGIN_NAMESPACE
 
-class QTestResultPrivate;
 class QTestData;
 
 class Q_TESTLIB_EXPORT QTestResult
 {
 public:
+    // Locks the parts of the current test's identifier for reading, from any thread. The
+    // strings below are only valid while the locker lives, so keep the scope short. Never
+    // log while holding one: the loggers take this lock too.
+    class IdentifierLocker
+    {
+    public:
+        Q_NODISCARD_CTOR IdentifierLocker();
+        ~IdentifierLocker();
+
+        const char *objectName() const;
+        const char *testFunction() const;
+        const char *dataTag() const;
+        const char *globalDataTag() const;
+
+    private:
+        Q_DISABLE_COPY_MOVE(IdentifierLocker)
+    };
+
     static const char *currentTestObjectName();
     static bool currentTestFailed();
     static QTestData *currentTestData();
@@ -107,6 +124,18 @@ public:
                              const char *lhsExpr, const char *rhsExpr,
                              QTest::ComparisonOperation op, const char *file, int line,
                              const char *failureMessage = nullptr);
+
+    static bool report3WayResult(bool success,
+                                 const char *failureMessage,
+                                 const void *lhs, const void *rhs,
+                                 const char *(*lhsFormatter)(const void *),
+                                 const char *(*rhsFormatter)(const void *),
+                                 const char *lhsExpression, const char *rhsExpression,
+                                 const char *(*actualOrderFormatter)(const void *),
+                                 const char *(*expectedOrderFormatter)(const void *),
+                                 const void *actualOrder, const void *expectedOrder,
+                                 const char *expectedExpression,
+                                 const char *file, int line);
 
 private:
     Q_DISABLE_COPY(QTestResult)

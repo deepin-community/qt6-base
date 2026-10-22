@@ -2,7 +2,7 @@
 
 # The directory of this script is the expanded absolute path of the "$qt_prefix/bin" directory.
 script_dir_path=`dirname $0`
-script_dir_path=`(cd "$script_dir_path"; /bin/pwd)`
+script_dir_path=`(cd "$script_dir_path"; pwd)`
 
 # Try to use original cmake, otherwise to make it relocatable, use any cmake found in PATH.
 original_cmake_path="@CMAKE_COMMAND@"
@@ -16,4 +16,7 @@ toolchain_path="$script_dir_path/@__GlobalConfig_relative_path_from_bin_dir_to_c
 @extra_qt_cmake_code@
 
 # Find the qt toolchain relative to the absolute bin dir path where the script is located.
-exec "$cmake_path" -DCMAKE_TOOLCHAIN_FILE="$toolchain_path" @__qt_cmake_extra@ "$@"
+CMAKE_TOOLCHAIN_FILE="$toolchain_path"
+export CMAKE_TOOLCHAIN_FILE
+
+exec "$cmake_path" @__qt_cmake_extra@ "$@"

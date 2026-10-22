@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QICON_H
 #define QICON_H
@@ -18,9 +19,13 @@ class QPainter;
 
 class Q_GUI_EXPORT QIcon
 {
+    Q_GADGET
+    Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
 public:
     enum Mode { Normal, Disabled, Active, Selected };
+    Q_ENUM(Mode);
     enum State { On, Off };
+    Q_ENUM(State);
 
     enum class ThemeIcon {
         AddressBookNew,
@@ -178,6 +183,7 @@ public:
 
         NThemeIcons
     };
+    Q_ENUM(ThemeIcon);
 
     QIcon() noexcept;
     QIcon(const QPixmap &pixmap);
@@ -260,6 +266,8 @@ private:
     friend Q_GUI_EXPORT QDataStream &operator<<(QDataStream &, const QIcon &);
     friend Q_GUI_EXPORT QDataStream &operator>>(QDataStream &, QIcon &);
 #endif
+
+    friend class QIconPrivate;
 
 public:
     typedef QIconPrivate * DataPtr;

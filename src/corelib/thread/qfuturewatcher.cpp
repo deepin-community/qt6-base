@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfuturewatcher.h"
 #include "qfuturewatcher_p.h"
@@ -21,9 +22,11 @@ QT_BEGIN_NAMESPACE
     \brief The QFutureWatcher class allows monitoring a QFuture using signals
     and slots.
 
-    QFutureWatcher provides information and notifications about a QFuture. Use
-    the setFuture() function to start watching a particular QFuture. The
-    future() function returns the future set with setFuture().
+    QFutureWatcher is a template class where the template parameter \a T
+    specifies the result type of the QFuture being watched. QFutureWatcher
+    provides information and notifications about a QFuture. Use the setFuture()
+    function to start watching a particular QFuture. The future() function
+    returns the future set with setFuture().
 
     For convenience, several of QFuture's functions are also available in
     QFutureWatcher: progressValue(), progressMinimum(), progressMaximum(),
@@ -100,7 +103,7 @@ void QFutureWatcherBase::cancel()
 #if QT_DEPRECATED_SINCE(6, 0)
 /*! \fn template <typename T> void QFutureWatcher<T>::setPaused(bool paused)
 
-    \deprecated [6.6] Use setSuspended() instead.
+    \deprecated [6.0] Use setSuspended() instead.
 
     If \a paused is true, this function pauses the asynchronous computation
     represented by the future(). If the computation is already paused, this
@@ -126,7 +129,7 @@ void QFutureWatcherBase::setPaused(bool paused)
 
 /*! \fn template <typename T> void QFutureWatcher<T>::pause()
 
-    \deprecated
+    \deprecated [6.0]
     Use suspend() instead.
 
     Pauses the asynchronous computation represented by the future(). This is a
@@ -651,7 +654,7 @@ QT_WARNING_POP
     no more running computations. After receiving this signal no more result
     ready or progress reporting signals are expected.
 
-    \sa setSuspended(), suspend(), suspended()
+    \sa setSuspended(), suspend()
 */
 
 /*! \fn template <typename T> void QFutureWatcher<T>::resumed()
@@ -662,7 +665,7 @@ QT_WARNING_POP
     \fn template <typename T> void QFutureWatcher<T>::progressRangeChanged(int minimum, int maximum)
 
     The progress range for the watched future has changed to \a minimum and
-    \a maximum
+    \a maximum.
 */
 
 /*!

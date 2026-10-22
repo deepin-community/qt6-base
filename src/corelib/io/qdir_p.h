@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDIR_P_H
 #define QDIR_P_H
@@ -15,6 +16,7 @@
 // We mean it.
 //
 
+#include "qdirlisting.h"
 #include "qfilesystementry_p.h"
 #include "qfilesystemmetadata_p.h"
 
@@ -29,11 +31,10 @@ class QDirPrivate : public QSharedData
 public:
     enum PathNormalization {
         DefaultNormalization = 0x00,
-        AllowUncPaths = 0x01,
-        RemotePath = 0x02
+        UrlNormalizationMode = 0x01,
+        RemotePath = 0x02,
     };
     Q_DECLARE_FLAGS(PathNormalizations, PathNormalization)
-    Q_FLAGS(PathNormalizations)
 
     explicit QDirPrivate(const QString &path, const QStringList &nameFilters_ = QStringList(),
                          QDir::SortFlags sort_ = QDir::SortFlags(QDir::Name | QDir::IgnoreCase),
@@ -43,13 +44,20 @@ public:
 
     bool exists() const;
 
+#ifndef QT_BOOTSTRAPPED
+    static QDirListing::IteratorFlags toDirListingFlags(QDir::Filters filters);
+    static bool checkNonDirListingFlags(const QDirListing::DirEntry &dirEntry,
+                                        QDir::Filters filters);
+
     void initFileLists(const QDir &dir) const;
+#endif // !QT_BOOTSTRAPPED
 
     static void sortFileList(QDir::SortFlags, const QFileInfoList &, QStringList *, QFileInfoList *);
 
     static inline QChar getFilterSepChar(const QString &nameFilter);
 
     static inline QStringList splitFilters(const QString &nameFilter, QChar sep = {});
+
 
     void setPath(const QString &path);
 
@@ -80,7 +88,8 @@ public:
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QDirPrivate::PathNormalizations)
 
-Q_AUTOTEST_EXPORT QString qt_normalizePathSegments(const QString &name, QDirPrivate::PathNormalizations flags, bool *ok = nullptr);
+bool qt_isPathNormalized(const QString &path, QDirPrivate::PathNormalizations flags) noexcept;
+Q_AUTOTEST_EXPORT bool qt_normalizePathSegments(QString *path, QDirPrivate::PathNormalizations flags);
 
 QT_END_NAMESPACE
 

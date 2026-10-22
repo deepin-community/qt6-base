@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qdebug.h>
 
@@ -9,6 +10,7 @@
 #include "private/qobject_p.h"
 #include "private/qlocale_p.h"
 #include "private/qnumeric_p.h"
+#include "private/qstringiterator_p.h"
 
 #include <limits.h>
 #include <cmath>
@@ -347,28 +349,26 @@ QIntValidator::~QIntValidator()
     By default, the \a pos parameter is not used by this validator.
 */
 
-static int numDigits(qlonglong n)
+static bool hasMoreIntegerDigits(double value, double bound)
 {
-    if (n == 0)
-        return 1;
-    return (int)std::log10(double(n)) + 1;
-}
-
-static qlonglong pow10(int exp)
-{
-    qlonglong result = 1;
-    for (int i = 0; i < exp; ++i)
-        result *= 10;
-    return result;
+    if (value <= bound)
+        return false;
+    double factor = 10;
+    while (bound >= factor)
+        factor *= 10;
+    return value >= factor;
 }
 
 template <typename T> static inline
-std::optional<QValidator::State> initialResultCheck(T min, T max, const ParsingResult &result)
+std::optional<QValidator::State> initialResultCheck(T min, T max,
+                                                    const QLocaleData::ParsingResult &result)
 {
+
+    using ParsingResult = QLocaleData::ParsingResult;
     if (result.state == ParsingResult::Invalid)
         return QValidator::Invalid;
 
-    const CharBuff &buff = result.buff;
+    const QLocaleData::CharBuff &buff = result.buff;
     if (buff.isEmpty())
         return QValidator::Intermediate;
 
@@ -385,7 +385,7 @@ std::optional<QValidator::State> initialResultCheck(T min, T max, const ParsingR
 
 QValidator::State QIntValidator::validate(QString & input, int&) const
 {
-    ParsingResult result =
+    QLocaleData::ParsingResult result =
         locale().d->m_data->validateChars(input, QLocaleData::IntegerMode, -1,
                                           locale().numberOptions());
 
@@ -393,7 +393,7 @@ QValidator::State QIntValidator::validate(QString & input, int&) const
     if (opt)
         return *opt;
 
-    const CharBuff &buff = result.buff;
+    const QLocaleData::CharBuff &buff = result.buff;
     QSimpleParsedNumber r = QLocaleData::bytearrayToLongLong(buff, 10);
     if (!r.ok())
         return Invalid;
@@ -428,7 +428,7 @@ void QIntValidator::fixup(QString &input) const
     auto [parseState, buff] =
         locale().d->m_data->validateChars(input, QLocaleData::IntegerMode, -1,
                                           locale().numberOptions());
-    if (parseState == ParsingResult::Invalid)
+    if (parseState == QLocaleData::ParsingResult::Invalid)
         return;
 
     QSimpleParsedNumber r = QLocaleData::bytearrayToLongLong(buff, 10);
@@ -657,7 +657,7 @@ QValidator::State QDoubleValidator::validate(QString & input, int &) const
 QValidator::State QDoubleValidatorPrivate::validateWithLocale(QString &input, QLocaleData::NumberMode numMode, const QLocale &locale) const
 {
     Q_Q(const QDoubleValidator);
-    ParsingResult result =
+    QLocaleData::ParsingResult result =
             locale.d->m_data->validateChars(input, numMode, q->dec, locale.numberOptions());
 
     std::optional<QValidator::State> opt = initialResultCheck(q->b, q->t, result);
@@ -674,25 +674,9 @@ QValidator::State QDoubleValidatorPrivate::validateWithLocale(QString &input, QL
         return QValidator::Acceptable;
 
     if (notation == QDoubleValidator::StandardNotation) {
-        double max = qMax(qAbs(q->b), qAbs(q->t));
-        qlonglong v;
-        // Need a whole number to pass to convertDoubleTo() or it fails. Use
-        // floor, as max is positive so this has the same number of digits
-        // before the decimal point, where qCeil() might take us up to a power
-        // of ten, adding a digit.
-        if (convertDoubleTo(qFloor(max), &v)) {
-            qlonglong n = pow10(numDigits(v));
-            // In order to get the highest possible number in the intermediate
-            // range we need to get 10 to the power of the number of digits
-            // after the decimal's and subtract that from the top number.
-            //
-            // For example, where q->dec == 2 and with a range of 0.0 - 9.0
-            // then the minimum possible number is 0.00 and the maximum
-            // possible is 9.99. Therefore 9.999 and 10.0 should be seen as
-            // invalid.
-            if (qAbs(i) > (n - std::pow(10, -q->dec)))
-                return QValidator::Invalid;
-        }
+        const double max = qMax(qAbs(q->b), qAbs(q->t));
+        if (hasMoreIntegerDigits(qAbs(i), max))
+            return QValidator::Invalid;
     }
 
     return QValidator::Intermediate;
@@ -745,7 +729,7 @@ void QDoubleValidatorPrivate::fixupWithLocale(QString &input, QLocaleData::Numbe
     // an Intermediate value, if it can.
     auto [parseState, buff] =
             locale.d->m_data->validateChars(input, numMode, -1, locale.numberOptions());
-    if (parseState == ParsingResult::Invalid)
+    if (parseState == QLocaleData::ParsingResult::Invalid)
         return;
 
     // buff contains data in C locale.
@@ -757,8 +741,19 @@ void QDoubleValidatorPrivate::fixupWithLocale(QString &input, QLocaleData::Numbe
         if (numMode == QLocaleData::DoubleStandardMode) {
             mode = 'f';
         } else {
-            // scientific mode can be either 'e' or 'E'
-            mode = input.contains(QChar::fromLatin1('E')) ? 'E' : 'e';
+            // Scientific mode can be either 'e' or 'E'
+            const QString exp = locale.exponential();
+            bool preferUpper = false;
+            QStringIterator scan(exp);
+            while (!preferUpper && scan.hasNext()) {
+                const char32_t ch = scan.next();
+                if (QChar::isUpper(ch))
+                    preferUpper = true;
+            }
+            if (preferUpper)
+                mode = input.contains(exp.toLower()) ? 'e' : 'E';
+            else // If case-free, we don't care which we use; otherwise, prefer lower.
+                mode = input.contains(exp.toUpper()) ? 'E' : 'e';
         }
         int precision;
         if (q->dec < 0) {

@@ -13,6 +13,9 @@
 #if defined(Q_OS_WIN)
 #  include <qt_windows.h>
 #endif
+#ifdef Q_OS_ANDROID
+#include <private/qjnihelpers_p.h>
+#endif
 
 #ifdef Q_OS_UNIX
 #include <unistd.h>
@@ -20,7 +23,7 @@
 #include <pwd.h>
 #endif
 
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS) && !defined(Q_OS_ANDROID)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS) && !defined(Q_OS_ANDROID) && !defined(Q_OS_HARMONY)
 #define Q_XDG_PLATFORM
 #endif
 
@@ -68,7 +71,7 @@ static QString configLoc()
 {
     return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
 }
-static QString appConfigLoc()
+[[maybe_unused]] static QString appConfigLoc()
 {
     return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
 }
@@ -395,7 +398,8 @@ void tst_qstandardpaths::testDataLocation()
     // This allows one app to access the data of another app.
     // Android is an exception to this case, owing to the fact that
     // applications are sandboxed.
-#if !defined(Q_OS_ANDROID)
+    // OHOS is also an exception for the same reason.
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_HARMONY)
     const QString base = genericDataLoc();
     QCOMPARE(appLocalDataLoc(), base + "/tst_qstandardpaths");
     QCoreApplication::instance()->setOrganizationName("Qt");
@@ -420,7 +424,7 @@ void tst_qstandardpaths::testAppConfigLocation()
 {
     // On all platforms where applications are not sandboxed,
     // AppConfigLocation should be GenericConfigLocation / organization name / app name
-#if !defined(Q_OS_ANDROID)
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_HARMONY)
     const QString base = genericConfigLoc();
     QCOMPARE(appConfigLoc(), base + "/tst_qstandardpaths");
     QCoreApplication::setOrganizationName("Qt");
@@ -459,7 +463,7 @@ void tst_qstandardpaths::testFindExecutable_data()
     QTest::addColumn<QString>("needle");
     QTest::addColumn<QString>("expected");
 #ifdef Q_OS_WIN
-    const QFileInfo cmdFi = QFileInfo(QDir::cleanPath(QString::fromLocal8Bit(qgetenv("COMSPEC"))));
+    const QFileInfo cmdFi = QFileInfo(QDir::cleanPath(qEnvironmentVariable("COMSPEC")));
     const QString cmdPath = cmdFi.absoluteFilePath();
 
     Q_ASSERT(cmdFi.exists());
@@ -472,16 +476,21 @@ void tst_qstandardpaths::testFindExecutable_data()
     QTest::newRow("win-cmd-nosuffix")
         << QString() << QString::fromLatin1("cmd") << cmdPath;
 
-    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows8) {
-        // The logo executable on Windows 8 is perfectly suited for testing that the
-        // suffix mechanism is not thrown off by dots in the name.
-        // Note: Requires disabling WOW64 redirection, see initTestCase()
-        const QString logo = QLatin1String("microsoft.windows.softwarelogo.showdesktop");
-        const QString logoPath = cmdFi.absolutePath() + QLatin1Char('/') + logo + QLatin1String(".exe");
-        QTest::newRow("win8-logo")
-            << QString() << (logo + QLatin1String(".exe")) << logoPath;
-        QTest::newRow("win8-logo-nosuffix")
-            << QString() << logo << logoPath;
+    // Windows 8 has some executables with multiple dots in the name such as
+    // the logo executable, which are perfectly suited for testing that the
+    // suffix mechanism is not thrown off by dots in the name. Testing has
+    // shown that some are sometimes missing and this requires disabling WOW64
+    // redirection (see initTestCase()), so search for something applicable.
+    QDirListing list(cmdFi.absolutePath(), QDirListing::IteratorFlag::FilesOnly);
+    for (const QDirListing::DirEntry &e : list) {
+        QString path = e.absoluteFilePath();
+        QString basename = e.completeBaseName();
+        if (!path.endsWith(u".exe") || !basename.contains(u'.'))
+            continue;
+        QTest::addRow("win-multidot-%s", qPrintable(basename))
+            << QString() << (basename + ".exe"_L1) << path;
+        QTest::addRow("win-multidot-nosuffix-%s", qPrintable(basename))
+            << QString() << basename << path;
     }
 #else
 # ifndef Q_OS_WASM
@@ -520,6 +529,11 @@ void tst_qstandardpaths::testFindExecutable()
 #else
     const Qt::CaseSensitivity sensitivity = Qt::CaseSensitive;
 #endif
+#ifdef Q_OS_HARMONY
+    if (QByteArray(QTest::currentDataTag()).contains("unix-sh"))
+        QEXPECT_FAIL("", "stat() returns EACCES on /bin/sh while access() succeeds, "
+            "causing QFileInfo::isFile() to fail, see also QTBUG-146625", Continue);
+#endif
     QVERIFY2(!result.compare(expected, sensitivity),
              qPrintable(QString::fromLatin1("Actual: '%1', Expected: '%2'").arg(result, expected)));
 }
@@ -528,11 +542,18 @@ void tst_qstandardpaths::testFindExecutableLinkToDirectory()
 {
 #ifdef Q_OS_WASM
     QSKIP("No applicationdir on wasm");
+#elif defined(Q_OS_HARMONY)
+    QSKIP("Creating symbolic links is not permitted in the OHOS app sandbox (EACCES)");
 #else
+    const QString appPath = QCoreApplication::applicationDirPath();
+#ifdef Q_OS_ANDROID
+    if (QtAndroidPrivate::isUncompressedNativeLibs())
+        QSKIP("Can't create a link to applicationDir which points inside an APK on Android");
+#endif
     // link to directory
     const QString target = QDir::tempPath() + QDir::separator() + QLatin1String("link.lnk");
     QFile::remove(target);
-    QFile appFile(QCoreApplication::applicationDirPath());
+    QFile appFile(appPath);
     QVERIFY(appFile.link(target));
     QVERIFY(QStandardPaths::findExecutable(target).isEmpty());
     QFile::remove(target);
@@ -555,11 +576,14 @@ void tst_qstandardpaths::testRuntimeDirectory()
 #if defined(Q_XDG_PLATFORM) && !defined(Q_OS_INTEGRITY)
 static QString fallbackXdgRuntimeDir()
 {
+#ifdef Q_OS_HARMONY
+    QString username = "ohos-currentUser";
+#else
     static QString username = [] {
         struct passwd *pw = getpwuid(geteuid());
         return QString::fromLocal8Bit(pw->pw_name);
     }();
-
+#endif
     // QDir::temp() might change from call to call
     return QDir::temp().filePath("runtime-" + username);
 }

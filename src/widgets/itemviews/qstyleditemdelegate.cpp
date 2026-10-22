@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstyleditemdelegate.h"
 
@@ -35,9 +36,6 @@
 #include <private/qlayoutengine_p.h>
 #include <qdebug.h>
 #include <qlocale.h>
-#if QT_CONFIG(tableview)
-#include <qtableview.h>
-#endif
 
 #include <array>
 #include <limits.h>
@@ -83,8 +81,6 @@ public:
     \ingroup model-view
     \inmodule QtWidgets
 
-    \since 4.4
-
     When displaying data from models in Qt item views, e.g., a
     QTableView, the individual items are drawn by a delegate. Also,
     when an item is edited, it provides an editor widget, which is
@@ -115,7 +111,7 @@ public:
     \row    \li \l Qt::AccessibleDescriptionRole \li QString
     \row    \li \l Qt::AccessibleTextRole \li QString
     \endomit
-    \row    \li \l Qt::BackgroundRole \li QBrush \since 4.2
+    \row    \li \l Qt::BackgroundRole \li QBrush
     \row    \li \l Qt::CheckStateRole \li Qt::CheckState
     \row    \li \l Qt::DecorationRole \li QIcon, QPixmap, QImage and QColor
     \row    \li \l Qt::DisplayRole \li QString and types with a string representation
@@ -126,7 +122,7 @@ public:
     \row    \li \l Qt::StatusTipRole \li
     \endomit
     \row    \li \l Qt::TextAlignmentRole \li Qt::Alignment
-    \row    \li \l Qt::ForegroundRole \li QBrush \since 4.2
+    \row    \li \l Qt::ForegroundRole \li QBrush
     \omit
     \row    \li \l Qt::ToolTipRole
     \row    \li \l Qt::WhatsThisRole
@@ -513,42 +509,14 @@ void QStyledItemDelegate::setItemEditorFactory(QItemEditorFactory *factory)
     d->factory = factory;
 }
 
-
 /*!
-    \fn bool QStyledItemDelegate::eventFilter(QObject *editor, QEvent *event)
+    \reimp
 
-    Returns \c true if the given \a editor is a valid QWidget and the
-    given \a event is handled; otherwise returns \c false. The following
-    key press events are handled by default:
-
-    \list
-        \li \uicontrol Tab
-        \li \uicontrol Backtab
-        \li \uicontrol Enter
-        \li \uicontrol Return
-        \li \uicontrol Esc
-    \endlist
-
-    If the \a editor's type is QTextEdit or QPlainTextEdit then \uicontrol Tab,
-    \uicontrol Backtab, \uicontrol Enter and \uicontrol Return keys are \e not
-    handled.
-
-    In the case of \uicontrol Tab, \uicontrol Backtab, \uicontrol Enter and \uicontrol Return
-    key press events, the \a editor's data is committed to the model
-    and the editor is closed. If the \a event is a \uicontrol Tab key press
-    the view will open an editor on the next item in the
-    view. Likewise, if the \a event is a \uicontrol Backtab key press the
-    view will open an editor on the \e previous item in the view.
-
-    If the event is a \uicontrol Esc key press event, the \a editor is
-    closed \e without committing its data.
-
-    \sa commitData(), closeEditor()
+    See details in QAbstractItemDelegate::handleEditorEvent().
 */
 bool QStyledItemDelegate::eventFilter(QObject *object, QEvent *event)
 {
-    Q_D(QStyledItemDelegate);
-    return d->editorEventFilter(object, event);
+    return handleEditorEvent(object, event);
 }
 
 /*!

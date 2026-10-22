@@ -13,7 +13,8 @@ static const QStringList VERSIONS = {
     QStringLiteral("VK_VERSION_1_0"), // must be the first and always present
     QStringLiteral("VK_VERSION_1_1"),
     QStringLiteral("VK_VERSION_1_2"),
-    QStringLiteral("VK_VERSION_1_3")
+    QStringLiteral("VK_VERSION_1_3"),
+    QStringLiteral("VK_VERSION_1_4")
 };
 
 class VkSpecParser
@@ -102,7 +103,7 @@ void VkSpecParser::parseFeature()
         else if (attr.name() == QStringLiteral("name"))
             versionName = attr.value().toString().trimmed();
     }
-    const bool isVulkan = api == QStringLiteral("vulkan");
+    const bool isVulkan = api.split(',').contains(QStringLiteral("vulkan"));
 
     while (!m_reader.atEnd()) {
         m_reader.readNext();
@@ -144,7 +145,7 @@ void VkSpecParser::parseCommands()
             return;
         if (m_reader.isStartElement() && m_reader.name() == QStringLiteral("command")) {
             const Command c = parseCommand();
-            if (!c.cmd.name.isEmpty()) // skip aliases
+            if (!c.cmd.name.isEmpty()) // skip aliases and commands for another api
                 m_commands.append(c);
         }
     }
@@ -159,6 +160,17 @@ VkSpecParser::Command VkSpecParser::parseCommand()
     //   <param>const <type>VkInstanceCreateInfo</type>* <name>pCreateInfo</name></param>
     //   <param optional="true">const <type>VkAllocationCallbacks</type>* <name>pAllocator</name></param>
     //   <param><type>VkInstance</type>* <name>pInstance</name></param>
+
+    QString api;
+    for (const QXmlStreamAttribute &attr : m_reader.attributes()) {
+        if (attr.name() == QStringLiteral("api"))
+            api = attr.value().toString().trimmed();
+    }
+    // skip commands with api="vulkansc", but the api attribute is optional
+    if (!api.isEmpty() && !api.split(',').contains(QStringLiteral("vulkan"))) {
+        skip();
+        return {};
+    }
 
     while (!m_reader.atEnd()) {
         m_reader.readNext();
@@ -331,7 +343,7 @@ bool genVulkanFunctionsH(const QList<VkSpecParser::Command> &commands,
 "\n"
 "#include <QtGui/qtguiglobal.h>\n"
 "\n"
-"#if QT_CONFIG(vulkan) || defined(Q_QDOC)\n"
+"#if (QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)) || defined(Q_QDOC)\n"
 "\n"
 "#ifndef VK_NO_PROTOTYPES\n"
 "#define VK_NO_PROTOTYPES\n"
@@ -376,7 +388,7 @@ bool genVulkanFunctionsH(const QList<VkSpecParser::Command> &commands,
 "\n"
 "QT_END_NAMESPACE\n"
 "\n"
-"#endif // QT_CONFIG(vulkan) || defined(Q_QDOC)\n"
+"#endif // QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)\n"
 "\n"
 "#endif // QVULKANFUNCTIONS_H\n";
 
@@ -435,6 +447,8 @@ bool genVulkanFunctionsPH(const QList<VkSpecParser::Command> &commands,
 "\n"
 "#include \"qvulkanfunctions.h\"\n"
 "\n"
+"#if QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)\n"
+"\n"
 "QT_BEGIN_NAMESPACE\n"
 "\n"
 "class QVulkanInstance;\n"
@@ -456,6 +470,8 @@ bool genVulkanFunctionsPH(const QList<VkSpecParser::Command> &commands,
 "};\n"
 "\n"
 "QT_END_NAMESPACE\n"
+"\n"
+"#endif // QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)\n"
 "\n"
 "#endif // QVULKANFUNCTIONS_P_H\n";
 

@@ -1,6 +1,8 @@
 # From freetype CMakeLists.txt
 
 set(BASE_SRCS
+  src/autofit/afadjust.c
+  src/autofit/afgsub.c
   src/autofit/autofit.c
   src/base/ftbase.c
   src/base/ftbbox.c
@@ -109,7 +111,7 @@ qt_internal_extend_target(BundledFreetype CONDITION NOT QT_FEATURE_system_zlib
         ../zlib/src
 )
 
-qt_internal_extend_target(BundledFreetype CONDITION NOT QT_FEATURE_system_zlib AND NOT no_core_dep
+qt_internal_extend_target(BundledFreetype CONDITION NOT QT_FEATURE_system_zlib
     LIBRARIES
         Qt::Core
 )

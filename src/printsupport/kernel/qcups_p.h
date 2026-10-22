@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCUPS_P_H
 #define QCUPS_P_H
@@ -41,6 +42,7 @@ class QPrintDevice;
 #define PDPK_CupsJobBilling   QPrintDevice::PrintDevicePropertyKey(QPrintDevice::PDPK_CustomBase + 4)
 #define PDPK_CupsJobHoldUntil QPrintDevice::PrintDevicePropertyKey(QPrintDevice::PDPK_CustomBase + 5)
 #define PDPK_PpdChoiceIsInstallableConflict QPrintDevice::PrintDevicePropertyKey(QPrintDevice::PDPK_CustomBase + 6)
+#define PDPK_PpdCustomOption  QPrintDevice::PrintDevicePropertyKey(QPrintDevice::PDPK_CustomBase + 7)
 
 class Q_PRINTSUPPORT_EXPORT QCUPSSupport
 {

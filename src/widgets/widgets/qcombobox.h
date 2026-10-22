@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOMBOBOX_H
 #define QCOMBOBOX_H
@@ -40,6 +41,7 @@ class Q_WIDGETS_EXPORT QComboBox : public QWidget
     Q_PROPERTY(bool duplicatesEnabled READ duplicatesEnabled WRITE setDuplicatesEnabled)
     Q_PROPERTY(bool frame READ hasFrame WRITE setFrame)
     Q_PROPERTY(int modelColumn READ modelColumn WRITE setModelColumn)
+    Q_PROPERTY(LabelDrawingMode labelDrawingMode READ labelDrawingMode WRITE setLabelDrawingMode)
 
 public:
     explicit QComboBox(QWidget *parent = nullptr);
@@ -85,6 +87,12 @@ public:
     };
     Q_ENUM(SizeAdjustPolicy)
 
+    enum class LabelDrawingMode {
+        UseStyle,
+        UseDelegate,
+    };
+    Q_ENUM(LabelDrawingMode)
+
     SizeAdjustPolicy sizeAdjustPolicy() const;
     void setSizeAdjustPolicy(SizeAdjustPolicy policy);
     int minimumContentsLength() const;
@@ -120,6 +128,9 @@ public:
 
     int modelColumn() const;
     void setModelColumn(int visibleColumn);
+
+    LabelDrawingMode labelDrawingMode() const;
+    void setLabelDrawingMode(LabelDrawingMode labelDrawing);
 
     int currentIndex() const;
     QString currentText() const;

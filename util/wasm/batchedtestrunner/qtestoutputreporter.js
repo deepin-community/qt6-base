@@ -43,12 +43,12 @@ class OutputArea
 {
     #outputDiv;
 
-    constructor()
+    constructor(parentElement)
     {
         this.#outputDiv = document.createElement('div');
         this.#outputDiv.classList.add('output-area');
         this.#outputDiv.classList.add('light-background');
-        document.querySelector('body').appendChild(this.#outputDiv);
+        (parentElement || document.querySelector('body')).appendChild(this.#outputDiv);
     }
 
     addOutput(text, attentionType)
@@ -172,6 +172,7 @@ export class UI
     constructor(parentElement, hasCounters)
     {
         this.#contentsDiv = document.createElement('div');
+        this.#contentsDiv.className = 'test-ui-container';
         parentElement.appendChild(this.#contentsDiv);
 
         if (hasCounters)

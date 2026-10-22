@@ -3,7 +3,7 @@
 
 add_subdirectory(fetchapi)
 add_subdirectory(localfileapi)
-add_subdirectory(qwasmkeytranslator)
 add_subdirectory(qwasmwindowstack)
 add_subdirectory(qwasmwindowtreenode)
+add_subdirectory(qwasmpromise)
 add_subdirectory(selenium)

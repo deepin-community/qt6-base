@@ -33,6 +33,16 @@ function(_qt_internal_wasm_add_target_helpers target)
             set(PRELOAD "")
         endif()
 
+        if(DEFINED QT_WASM_SOURCE_MAP_BASE)
+            set(WASM_SOURCE_MAP_BASE "${QT_WASM_SOURCE_MAP_BASE}")
+            target_link_options("${target}"
+            PRIVATE
+            "-gsource-map"
+            "--source-map-base"
+            "${WASM_SOURCE_MAP_BASE}")
+
+        endif()
+
         get_target_property(target_output_directory ${target} RUNTIME_OUTPUT_DIRECTORY)
 
         get_target_property(is_test ${target} _qt_is_test_executable)
@@ -40,7 +50,7 @@ function(_qt_internal_wasm_add_target_helpers target)
         if(is_test AND NOT is_manual_test)
             # Keep in sync with testrunner_files in testlib/CMakeLists.txt
             configure_file("${WASM_BUILD_DIR}/libexec/batchedtestrunner.html"
-                           "${target_output_directory}/${_target_output_name}.html" COPYONLY)
+                           "${target_output_directory}/${_target_output_name}.html" @ONLY)
             configure_file("${WASM_BUILD_DIR}/libexec/qtestoutputreporter.css"
                            "${target_output_directory}/qtestoutputreporter.css" COPYONLY)
             configure_file("${WASM_BUILD_DIR}/libexec/batchedtestrunner.js"
@@ -56,18 +66,43 @@ function(_qt_internal_wasm_add_target_helpers target)
             configure_file("${WASM_BUILD_DIR}/libexec/util.js"
                            "${target_output_directory}/util.js" COPYONLY)
         else()
+            get_target_property(no_wasm_files ${target} NO_WASM_DEFAULT_FILES)
+
             if(target_output_directory)
                 set(_target_directory "${target_output_directory}")
             else()
                 set(_target_directory "${CMAKE_CURRENT_BINARY_DIR}")
             endif()
 
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/wasm_shell.html"
-                "${_target_directory}/${_target_output_name}.html" @ONLY)
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
-                ${_target_directory}/qtloader.js COPYONLY)
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
-                ${_target_directory}/qtlogo.svg COPYONLY)
+            if (NOT no_wasm_files)
+                configure_file("${WASM_BUILD_DIR}/plugins/platforms/wasm_shell.html"
+                    "${_target_directory}/${_target_output_name}.html" @ONLY)
+                if(CMAKE_CONFIGURATION_TYPES) # if multiconfig generator
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${_target_directory}/${_target_output_name}.html"
+                            ${_target_directory}/$<CONFIG>/${_target_output_name}.html
+                    )
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
+                            ${_target_directory}/$<CONFIG>/qtloader.js
+                    )
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
+                            ${_target_directory}/$<CONFIG>/qtlogo.svg
+                    )
+                else()
+                    configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
+                        ${_target_directory}/qtloader.js COPYONLY)
+                    configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
+                        ${_target_directory}/qtlogo.svg COPYONLY)
+                endif()
+            endif()
         endif()
 
         if(QT_FEATURE_thread)
@@ -87,7 +122,11 @@ function(_qt_internal_wasm_add_target_helpers target)
         if(_tmp_initialMemory)
             set(QT_WASM_INITIAL_MEMORY "${_tmp_initialMemory}")
         elseif(NOT DEFINED QT_WASM_INITIAL_MEMORY)
-            set(QT_WASM_INITIAL_MEMORY "50MB")
+            if (QT_FEATURE_sanitize_address OR QT_FEATURE_sanitize_undefined)
+                set(QT_WASM_INITIAL_MEMORY "200MB")
+            else()
+                set(QT_WASM_INITIAL_MEMORY "50MB")
+            endif()
         endif()
         target_link_options("${target}" PRIVATE "SHELL:-s INITIAL_MEMORY=${QT_WASM_INITIAL_MEMORY}")
 
@@ -96,7 +135,11 @@ function(_qt_internal_wasm_add_target_helpers target)
         if(_tmp_maximumMemory)
             set(QT_WASM_MAXIMUM_MEMORY "${_tmp_maximumMemory}")
         elseif(NOT DEFINED QT_WASM_MAXIMUM_MEMORY)
-            set(QT_WASM_MAXIMUM_MEMORY "4GB")
+            if(WASM64)
+                set(QT_WASM_MAXIMUM_MEMORY "16GB")
+            else()
+                set(QT_WASM_MAXIMUM_MEMORY "4GB")
+            endif()
         endif()
         target_link_options("${target}" PRIVATE "SHELL:-s MAXIMUM_MEMORY=${QT_WASM_MAXIMUM_MEMORY}")
 

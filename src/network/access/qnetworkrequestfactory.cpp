@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkrequestfactory.h"
 #include "qnetworkrequestfactory_p.h"
@@ -17,7 +18,7 @@ QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QNetworkRequestFactoryPrivate)
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcQrequestfactory, "qt.network.access.request.factory")
+Q_STATIC_LOGGING_CATEGORY(lcQrequestfactory, "qt.network.access.request.factory")
 
 /*!
     \class QNetworkRequestFactory
@@ -115,9 +116,7 @@ QNetworkRequestFactory &QNetworkRequestFactory::operator=(const QNetworkRequestF
 
 /*!
     \fn void QNetworkRequestFactory::swap(QNetworkRequestFactory &other)
-
-    Swaps this factory with \a other. This operation is
-    very fast and never fails.
+    \memberswap{factory}
  */
 
 /*!
@@ -363,7 +362,7 @@ void QNetworkRequestFactory::clearUserName()
 /*!
     Returns the password set to this factory.
 
-    \sa password(), clearPassword(), userName()
+    \sa setPassword(), clearPassword(), userName()
 */
 QString QNetworkRequestFactory::password() const
 {
@@ -602,9 +601,6 @@ QNetworkRequestFactoryPrivate::QNetworkRequestFactoryPrivate(const QUrl &baseUrl
 {
 }
 
-QNetworkRequestFactoryPrivate::~QNetworkRequestFactoryPrivate()
-    = default;
-
 QNetworkRequest QNetworkRequestFactoryPrivate::newRequest(const QUrl &url) const
 {
     QNetworkRequest request;
@@ -642,13 +638,13 @@ QUrl QNetworkRequestFactoryPrivate::requestUrl(const QString *path,
 
     QUrl resultUrl = baseUrl;
     QUrlQuery resultQuery(providedQuery);
-    QString basePath = baseUrl.path();
+    QString basePath = baseUrl.path(QUrl::ComponentFormattingOption::FullyEncoded);
 
     resultUrl.setUserName(userName);
     resultUrl.setPassword(password);
 
     // Separate the path and query parameters components on the application-provided path
-    const QString requestPath{providedPath.path()};
+    const QString requestPath{providedPath.path(QUrl::ComponentFormattingOption::FullyEncoded)};
     const QUrlQuery pathQueryItems{providedPath};
 
     if (!pathQueryItems.isEmpty()) {
@@ -680,7 +676,8 @@ QUrl QNetworkRequestFactoryPrivate::requestUrl(const QString *path,
     else if (!requestPath.startsWith(u'/') && !basePath.endsWith(u'/'))
         basePath.append(u'/');
 
-    resultUrl.setPath(basePath.append(requestPath));
+    resultUrl.setPath(basePath.append(requestPath), QUrl::StrictMode);
+
     return resultUrl;
 }
 

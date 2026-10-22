@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QLOCALE_TOOLS_P_H
 #define QLOCALE_TOOLS_P_H
@@ -36,7 +37,6 @@ using qinternaluint128 = std::_Unsigned128;
 enum StrayCharacterMode {
     TrailingJunkProhibited,
     TrailingJunkAllowed,
-    WhitespacesAllowed
 };
 
 // API note: this function can't process a number with more than 2.1 billion digits
@@ -63,10 +63,13 @@ void qt_doubleToAscii(double d, QLocaleData::DoubleForm form, int precision,
                                                         int base = 10);
 #endif
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 12, 0)
+[[deprecated("Use qIsNull(double) instead.")]]
 [[nodiscard]] constexpr inline bool isZero(double d)
 {
-    return d == 0; // Amusingly, compilers do not grumble.
+    return qIsNull(d);
 }
+#endif
 
 // Enough space for the digits before the decimal separator:
 [[nodiscard]] inline int wholePartSpace(double d)
@@ -81,7 +84,7 @@ void qt_doubleToAscii(double d, QLocaleData::DoubleForm form, int precision,
 template <typename UcsInt>
 [[nodiscard]] inline UcsInt unicodeForDigit(uint digit, UcsInt zero)
 {
-    // Must match qlocale.cpp's NumberTokenizer's digit-digestion.
+    // Must match QLocaleData::NumericData::digitValue()'s digit-digestion.
     Q_ASSERT(digit < 10);
     if (!digit)
         return zero;

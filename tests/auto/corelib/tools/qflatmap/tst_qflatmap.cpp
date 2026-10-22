@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #define QT_USE_QSTRINGBUILDER
-#define QFLATMAP_ENABLE_STL_COMPATIBLE_INSERT
 
 #include <QTest>
 
@@ -719,7 +718,7 @@ void tst_QFlatMap::viewIterators()
 
 void tst_QFlatMap::varLengthArray()
 {
-    using Map = QVarLengthFlatMap<int, QByteArray, 1024>;
+    using Map = QVarLengthFlatMap<int, QByteArray, 32>;
     Map m(Qt::OrderedUniqueRange, { { 2, "twee" } });
     m.insert_or_assign(1, "een");
     m.remove(1);

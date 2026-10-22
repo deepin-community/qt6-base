@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "quiwindow.h"
 
@@ -53,7 +54,9 @@
     if (self.screen == UIScreen.mainScreen) {
         // Check if the current userInterfaceStyle reports a different appearance than
         // the platformTheme's appearance. We might have set that one based on the UIScreen
+        // Check for changes in the "Increase contrast" setting too.
         if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle
+            || previousTraitCollection.accessibilityContrast != self.traitCollection.accessibilityContrast
             || QGuiApplicationPrivate::platformTheme()->colorScheme() != colorScheme) {
             QIOSTheme::initializeSystemPalette();
             QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();

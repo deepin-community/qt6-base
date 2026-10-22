@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2020 Intel Corporation
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #include "qplatformdefs.h"
 
@@ -14,6 +15,11 @@
 
 #ifdef Q_OS_DARWIN
 #  include <private/qcore_mac_p.h>
+
+// Apple's dyld *does* support RTLD_NODELETE and the library remains loaded in
+// memory after the dlclose() call, but their Objective C crashes when running
+// code from unloaded-but-still-loaded plugins.
+#  undef RTLD_NODELETE
 #endif
 
 #ifdef Q_OS_ANDROID
@@ -53,6 +59,12 @@ QStringList QLibraryPrivate::suffixes_sys(const QString &fullVersion)
     } else {
         suffixes << ".sl"_L1;
     }
+#elif defined(Q_OS_CYGWIN)
+    if (!fullVersion.isEmpty()) {
+        suffixes << "-%1.dll"_L1.arg(fullVersion);
+    } else {
+        suffixes << QStringLiteral(".dll");
+    }
 #elif defined(Q_OS_AIX)
     suffixes << ".a";
 
@@ -77,11 +89,6 @@ QStringList QLibraryPrivate::suffixes_sys(const QString &fullVersion)
     return suffixes;
 }
 
-QStringList QLibraryPrivate::prefixes_sys()
-{
-    return QStringList() << "lib"_L1;
-}
-
 bool QLibraryPrivate::load_sys()
 {
 #if defined(Q_OS_WASM) && defined(QT_STATIC)
@@ -103,7 +110,7 @@ bool QLibraryPrivate::load_sys()
     QStringList suffixes;
     QStringList prefixes;
     if (pluginState != IsAPlugin) {
-        prefixes = prefixes_sys();
+        prefixes << prefix_sys().toString();
         suffixes = suffixes_sys(fullVersion);
     }
     int dlFlags = 0;

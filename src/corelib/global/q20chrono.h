@@ -1,5 +1,6 @@
 // Copyright (C) 2023 Ahmad Samir <a.samirh78@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef Q20CHRONO_H
 #define Q20CHRONO_H
@@ -38,7 +39,8 @@ using IntRep = int64_t;
 using IntRep = int;
 #endif
 
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
 using std::chrono::days;
 using std::chrono::weeks;
 using std::chrono::years;

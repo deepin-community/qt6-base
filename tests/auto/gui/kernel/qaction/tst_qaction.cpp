@@ -148,6 +148,7 @@ void tst_QAction::setText_data()
     QTest::newRow("Normal") << "Action" << "Action" << "Action";
     QTest::newRow("Ampersand") << "Search && Destroy" << "Search & Destroy" << "Search && Destroy";
     QTest::newRow("Mnemonic and ellipsis") << "O&pen File ..." << "Open File" << "Open File";
+    QTest::newRow("Mnemonic and ellipsis (unicode)") << QString("O&pen File") + u'\x2026' << "Open File" << "Open File";
 }
 
 void tst_QAction::setText()
@@ -235,17 +236,18 @@ void tst_QAction::setStandardKeys()
     QCOMPARE(act.shortcut(), act.shortcuts().constFirst());
 
     QList<QKeySequence> expected;
+    const QKeySequence copy = QKeySequence(QStringLiteral("Copy"));
     const QKeySequence ctrlC = QKeySequence(QStringLiteral("CTRL+C"));
     const QKeySequence ctrlInsert = QKeySequence(QStringLiteral("CTRL+INSERT"));
     switch (m_keyboardScheme) {
     case QPlatformTheme::MacKeyboardScheme:
-        expected  << ctrlC;
+        expected  << ctrlC << copy;
         break;
     case QPlatformTheme::WindowsKeyboardScheme:
-        expected  << ctrlC << ctrlInsert;
+        expected  << ctrlC<< ctrlInsert << copy ;
         break;
     default: // X11
-        expected  << ctrlC << ctrlInsert << QKeySequence(QStringLiteral("F16"));
+        expected  << ctrlC << ctrlInsert << QKeySequence(QStringLiteral("F16")) << copy;
         break;
     }
 

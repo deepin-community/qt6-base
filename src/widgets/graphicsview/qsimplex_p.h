@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSIMPLEX_P_H
 #define QSIMPLEX_P_H
@@ -17,7 +18,6 @@
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/qhash.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qstring.h>
 
 QT_REQUIRE_CONFIG(graphicsview);
@@ -30,8 +30,14 @@ struct QSimplexVariable
 
     qreal result;
     int index;
+protected:
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QSimplexVariable)
 };
 
+// "pure" QSimplexVariable without the protected destructor
+struct QConcreteSimplexVariable final : QSimplexVariable
+{
+};
 
 /*!
   \internal
@@ -44,8 +50,10 @@ struct QSimplexVariable
 
     Where (ci, Xi) are the pairs in "variables" and K the real "constant".
 */
-struct QSimplexConstraint
+struct QSimplexConstraint final
 {
+    Q_DISABLE_COPY_MOVE(QSimplexConstraint)
+
     QSimplexConstraint() : constant(0), ratio(Equal), artificial(nullptr) {}
 
     enum Ratio {
@@ -58,16 +66,15 @@ struct QSimplexConstraint
     qreal constant;
     Ratio ratio;
 
-    QPair<QSimplexVariable *, qreal> helper;
-    QSimplexVariable * artificial;
+    std::pair<QConcreteSimplexVariable *, qreal> helper;
+    QConcreteSimplexVariable *artificial;
 
     void invert();
 
     bool isSatisfied() {
         qreal leftHandSide(0);
 
-        QHash<QSimplexVariable *, qreal>::const_iterator iter;
-        for (iter = variables.constBegin(); iter != variables.constEnd(); ++iter) {
+        for (auto iter = variables.cbegin(); iter != variables.cend(); ++iter) {
             leftHandSide += iter.value() * iter.key()->result;
         }
 
@@ -91,8 +98,7 @@ struct QSimplexConstraint
         QString result;
         result += QString::fromLatin1("-- QSimplexConstraint %1 --").arg(quintptr(this), 0, 16);
 
-        QHash<QSimplexVariable *, qreal>::const_iterator iter;
-        for (iter = variables.constBegin(); iter != variables.constEnd(); ++iter) {
+        for (auto iter = variables.cbegin(); iter != variables.cend(); ++iter) {
             result += QString::fromLatin1("  %1 x %2").arg(iter.value()).arg(quintptr(iter.key()), 0, 16);
         }
 
@@ -112,7 +118,7 @@ struct QSimplexConstraint
 #endif
 };
 
-class QSimplex
+class QSimplex final
 {
     Q_DISABLE_COPY_MOVE(QSimplex)
 public:

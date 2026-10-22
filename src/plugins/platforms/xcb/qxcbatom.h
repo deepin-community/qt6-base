@@ -1,9 +1,14 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-#ifndef QXCBATOM_H
-#define QXCBATOM_H
+// Qt-Security score:significant reason:default
+
+#pragma once
 
 #include <xcb/xcb.h>
+
+#include <QtCore/qglobal.h>
+
+QT_BEGIN_NAMESPACE
 
 class QXcbAtom
 {
@@ -211,6 +216,10 @@ public:
 
         Atom_ICC_PROFILE,
 
+        // AppMenu
+        Atom_KDE_NET_WM_APPMENU_SERVICE_NAME,
+        Atom_KDE_NET_WM_APPMENU_OBJECT_PATH,
+
         NAtoms
     };
 
@@ -227,4 +236,4 @@ private:
     xcb_atom_t m_allAtoms[QXcbAtom::NAtoms];
 };
 
-#endif // QXCBATOM_H
+QT_END_NAMESPACE

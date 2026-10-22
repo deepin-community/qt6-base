@@ -7,12 +7,15 @@ include(selfcover.cmake)
 ## Test Module:
 #####################################################################
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/QtTestProperties.cmake")
+
 qt_internal_add_module(Test
     CONFIG_MODULE_NAME testlib
     QMAKE_MODULE_CONFIG console testlib_defines
     EXCEPTIONS
     SOURCES
         3rdparty/cycle/cycle_p.h # Needed by tests, so visible to syncqt.
+        3rdparty/cycle/cycle_include_p.h # Also needed by tests.
         3rdparty/catch2/catch_p.h # Also needed by tests.
         removed_api.cpp     # keep first
         qabstracttestlogger.cpp qabstracttestlogger_p.h
@@ -42,7 +45,7 @@ qt_internal_add_module(Test
         qtestblacklist.cpp qtestblacklist_p.h
         qtestcase.cpp qtestcase.h qtestcase_p.h
         qtestcoreelement_p.h
-        qtestcrashhandler.cpp qtestcrashhandler_p.h
+        qtestcrashhandler_p.h
         qtestdata.cpp qtestdata.h
         qtestelement.cpp qtestelement_p.h
         qtestelementattribute.cpp qtestelementattribute_p.h
@@ -61,13 +64,14 @@ qt_internal_add_module(Test
         qtesttostring.h
         qtestwheel.h
         qttestglobal.h
+        qmeanvarianceaccumulator_p.h
         qxmltestlogger.cpp qxmltestlogger_p.h
     DEFINES
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
         QT_NO_CONTEXTLESS_CONNECT
         QT_NO_DATASTREAM
-        QT_NO_FOREACH
+        QT_NO_URL_CAST_FROM_STRING
         QT_USE_NODISCARD_FILE_OPEN
         # Ensure uniform location info between release and debug builds
         QT_NO_MESSAGELOGCONTEXT
@@ -84,6 +88,10 @@ qt_internal_add_module(Test
         3rdparty/cycle
         3rdparty/linux
         3rdparty/valgrind
+    EXTRA_CMAKE_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/QtTestProperties.cmake"
+    EXTRA_CMAKE_INCLUDES
+        QtTestProperties.cmake
 )
 
 if(TARGET Gui)
@@ -93,6 +101,11 @@ endif()
 
 ## Scopes:
 #####################################################################
+
+qt_internal_extend_target(Test CONDITION QT_FEATURE_gui
+    SOURCES
+        qtestaccessible.cpp
+)
 
 qt_internal_extend_target(Test CONDITION QT_FEATURE_itemmodeltester
     SOURCES
@@ -123,6 +136,12 @@ qt_internal_extend_target(Test CONDITION APPLE
         qappletestlogger.cpp qappletestlogger_p.h
     PUBLIC_LIBRARIES
         ${FWSecurity}
+
+    # cycle_p.h expects the configure system to set up these defines.
+    # Pass through COMPILE_OPTIONS instead of DEFINES, as we know
+    # Clang supports defines with function macros on the command line.
+    COMPILE_OPTIONS
+        "-DHAVE_ARMV8_CNTVCT_EL0='defined(Q_PROCESSOR_ARM)'"
 )
 
 qt_internal_extend_target(Test CONDITION MACOS
@@ -135,14 +154,35 @@ qt_internal_extend_target(Test CONDITION MACOS
         ${FWIOKit}
 )
 
+qt_internal_extend_target(Test CONDITION OHOS
+    LIBRARIES
+        hilog_ndk.z
+)
+
+qt_internal_extend_target(Test CONDITION UNIX
+    SOURCES
+        qtestcrashhandler_unix.cpp
+)
+
+qt_internal_extend_target(Test CONDITION WIN32
+    SOURCES
+        qtestcrashhandler_win.cpp
+)
+
 set(qt_tc_build_dir "$<TARGET_PROPERTY:QT_TESTCASE_BUILDDIR>")
 set(qt_bool_tc_build_dir "$<BOOL:${qt_tc_build_dir}>")
 set(qt_tc_build_dir_def
     "$<IF:${qt_bool_tc_build_dir},${qt_tc_build_dir},$<TARGET_PROPERTY:BINARY_DIR>>"
 )
+
+string(JOIN "" testcase_dirs_genex
+    "$<$<NOT:$<BOOL:$<TARGET_PROPERTY:QT_SKIP_DEFAULT_TESTCASE_DIRS>>>:"
+        "QT_TESTCASE_BUILDDIR=\"${qt_tc_build_dir_def}\"$<SEMICOLON>"
+        "QT_TESTCASE_SOURCEDIR=\"$<TARGET_PROPERTY:SOURCE_DIR>\""
+    ">"
+)
 set_property(TARGET Test APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS
-    QT_TESTCASE_BUILDDIR="${qt_tc_build_dir_def}"
-    QT_TESTCASE_SOURCEDIR="$<TARGET_PROPERTY:SOURCE_DIR>"
+    ${testcase_dirs_genex}
 )
 
 qt_internal_add_docs(Test
@@ -151,8 +191,7 @@ qt_internal_add_docs(Test
 
 qt_internal_apply_testlib_coverage_options(Test)
 
-# include the snippet projects for developer-builds
-if(QT_FEATURE_private_tests)
+if(QT_BUILD_DOC_SNIPPETS)
     add_subdirectory(doc/snippets/code)
 endif()
 

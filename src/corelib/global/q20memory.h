@@ -1,15 +1,16 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef Q20MEMORY_H
 #define Q20MEMORY_H
 
 #include <QtCore/qtconfigmacros.h>
 
-#include <memory>
+#include <QtCore/q17memory.h>
 
-#include <type_traits>
+#include <QtCore/q20type_traits.h>
 #include <utility>
 
 //
@@ -46,6 +47,32 @@ T *construct_at(T *ptr, Args && ... args)
 #endif // __cpp_lib_constexpr_dynamic_alloc
 } // namespace q20
 
+// like std::make_unique_for_overwrite (excl. C++23-added constexpr)
+namespace q20 {
+#ifdef __cpp_lib_smart_ptr_for_overwrite
+using std::make_unique_for_overwrite;
+#else
+// https://eel.is/c++draft/unique.ptr.create#6
+template <typename T>
+std::enable_if_t<!std::is_array_v<T>, std::unique_ptr<T>>
+make_unique_for_overwrite()
+// https://eel.is/c++draft/unique.ptr.create#7
+{ return std::unique_ptr<T>(new T); }
+
+// https://eel.is/c++draft/unique.ptr.create#8
+template <typename T>
+std::enable_if_t<q20::is_unbounded_array_v<T>, std::unique_ptr<T>>
+make_unique_for_overwrite(std::size_t n)
+// https://eel.is/c++draft/unique.ptr.create#9
+{ return std::unique_ptr<T>(new std::remove_extent_t<T>[n]); }
+
+// https://eel.is/c++draft/unique.ptr.create#10
+template <typename T, typename...Args>
+std::enable_if_t<q20::is_bounded_array_v<T>>
+make_unique_for_overwrite(Args&&...) = delete;
+
+#endif // __cpp_lib_smart_ptr_for_overwrite
+} // namespace q20
 
 namespace q20 {
 // like std::to_address

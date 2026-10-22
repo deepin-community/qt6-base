@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qtextstream.h>
 #include <QtGui/private/qguiapplication_p.h>
@@ -32,13 +33,13 @@
 #endif
 
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixservices_p.h>
-#include <QtGui/private/qgenericunixthemes_p.h>
+#include <QtGui/private/qgenericunixtheme_p.h>
 #include <QtGui/private/qgenericunixeventdispatcher_p.h>
 #include <QtFbSupport/private/qfbvthandler_p.h>
 #ifndef QT_NO_OPENGL
 # include <QtOpenGL/private/qopenglcompositorbackingstore_p.h>
 #endif
+#include <qpa/qplatformservices.h>
 
 #if QT_CONFIG(libinput)
 #include <QtInputSupport/private/qlibinputhandler_p.h>
@@ -48,6 +49,10 @@
 #include <QtInputSupport/private/qevdevmousemanager_p.h>
 #include <QtInputSupport/private/qevdevkeyboardmanager_p.h>
 #include <QtInputSupport/private/qevdevtouchmanager_p.h>
+#elif QT_CONFIG(vxworksevdev)
+#include <QtInputSupport/private/qvxkeyboardmanager_p.h>
+#include <QtInputSupport/private/qvxmousemanager_p.h>
+#include <QtInputSupport/private/qvxtouchmanager_p.h>
 #endif
 
 #if QT_CONFIG(tslib)
@@ -70,11 +75,9 @@ QT_BEGIN_NAMESPACE
 using namespace Qt::StringLiterals;
 
 QEglFSIntegration::QEglFSIntegration()
-    : m_kbdMgr(nullptr),
-      m_display(EGL_NO_DISPLAY),
+    : m_display(EGL_NO_DISPLAY),
       m_inputContext(nullptr),
       m_fontDb(new QGenericUnixFontDatabase),
-      m_services(new QGenericUnixServices),
       m_disableInputHandlers(false)
 {
     m_disableInputHandlers = qEnvironmentVariableIntValue("QT_QPA_EGLFS_DISABLE_INPUT");
@@ -129,6 +132,9 @@ QAbstractEventDispatcher *QEglFSIntegration::createEventDispatcher() const
 
 QPlatformServices *QEglFSIntegration::services() const
 {
+    if (m_services.isNull())
+        m_services.reset(new QPlatformServices);
+
     return m_services.data();
 }
 
@@ -149,6 +155,7 @@ QPlatformBackingStore *QEglFSIntegration::createPlatformBackingStore(QWindow *wi
     if (!window->handle())
         window->create();
     static_cast<QEglFSWindow *>(window->handle())->setBackingStore(bs);
+    m_bs = bs;
     return bs;
 #else
     Q_UNUSED(window);
@@ -169,6 +176,9 @@ QPlatformWindow *QEglFSIntegration::createPlatformWindow(QWindow *window) const
     // Activate only the window for the primary screen to make input work
     if (window->type() != Qt::ToolTip && window->screen() == QGuiApplication::primaryScreen())
         w->requestActivateWindow();
+
+    if (window->isTopLevel())
+        w->setBackingStore(static_cast<QOpenGLCompositorBackingStore *>(m_bs));
 
     return w;
 }
@@ -219,14 +229,13 @@ bool QEglFSIntegration::hasCapability(QPlatformIntegration::Capability cap) cons
 #ifndef QT_NO_OPENGL
     case OpenGL: return true;
     case ThreadedOpenGL: return true;
-    case RasterGLSurface: return true;
 #else
     case OpenGL: return false;
     case ThreadedOpenGL: return false;
-    case RasterGLSurface: return false;
 #endif
     case WindowManagement: return false;
     case OpenGLOnRasterSurface: return true;
+    case OffscreenSurface: return true;
     default: return QPlatformIntegration::hasCapability(cap);
     }
 }
@@ -395,7 +404,7 @@ QVariant QEglFSIntegration::styleHint(QPlatformIntegration::StyleHint hint) cons
     return QPlatformIntegration::styleHint(hint);
 }
 
-#if QT_CONFIG(evdev)
+#if QT_CONFIG(evdev) || QT_CONFIG(vxworksevdev)
 void QEglFSIntegration::loadKeymap(const QString &filename)
 {
     if (m_kbdMgr)
@@ -435,6 +444,10 @@ void QEglFSIntegration::createInputHandlers()
     if (!useTslib)
 #endif
         new QEvdevTouchManager("EvdevTouch"_L1, QString() /* spec */, this);
+#elif QT_CONFIG(vxworksevdev)
+    m_kbdMgr = new QVxKeyboardManager("VxKeyboard"_L1, QString() /* spec */, this);
+    new QVxMouseManager("VxMouse"_L1, QString() /* spec */, this);
+    new QVxTouchManager("VxTouch"_L1, QString() /* spec */, this);
 #endif
 
 #if QT_CONFIG(integrityhid)

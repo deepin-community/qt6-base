@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#include <QtWidgets>
+
 //! [0]
 class SimpleItem : public QGraphicsItem
 {
@@ -22,7 +24,7 @@ public:
 
 
 //! [1]
-class CustomItem : public QGraphicsItem
+class Item : public QGraphicsItem
 {
 public:
    enum { Type = UserType + 1 };
@@ -32,44 +34,74 @@ public:
        // Enable the use of qgraphicsitem_cast with this item.
        return Type;
    }
-   ...
+   //...
 };
 //! [1]
 
+void example(QGraphicsItem *item, QGraphicsView *view)
+{
+    {
+        //! [2]
+        item->setCursor(Qt::IBeamCursor);
+        //! [2]
+    }
 
-//! [2]
-item->setCursor(Qt::IBeamCursor);
-//! [2]
+    {
+        //! [3]
+        item->setCursor(Qt::IBeamCursor);
+        //! [3]
+    }
 
+    {
+        //! [4]
+        QGraphicsRectItem rect;
+        rect.setPos(100, 100);
 
-//! [3]
-item->setCursor(Qt::IBeamCursor);
-//! [3]
+        rect.sceneTransform().map(QPointF(0, 0));
+        // returns QPointF(100, 100);
 
+        rect.sceneTransform().inverted().map(QPointF(100, 100));
+        // returns QPointF(0, 0);
+        //! [4]
+    }
 
-//! [4]
-QGraphicsRectItem rect;
-rect.setPos(100, 100);
+    {
+        //! [5]
+        QGraphicsRectItem rect;
+        rect.setPos(100, 100);
 
-rect.sceneTransform().map(QPointF(0, 0));
-// returns QPointF(100, 100);
+        rect.deviceTransform(view->viewportTransform()).map(QPointF(0, 0));
+        // returns the item's (0, 0) point in view's viewport coordinates
 
-rect.sceneTransform().inverted().map(QPointF(100, 100));
-// returns QPointF(0, 0);
-//! [4]
+        rect.deviceTransform(view->viewportTransform()).inverted().map(QPointF(100, 100));
+        // returns view's viewport's (100, 100) coordinate in item coordinates
+        //! [5]
+    }
+}
 
+class CustomItem : public QGraphicsItem
+{
+ public:
+    CustomItem();
+    QRectF boundingRect() const override;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
+               QWidget *widget) override;
+    QPainterPath shape() const override;
+    void setRadius(qreal newRadius);
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent *event) override;
+    void dragEnterEvent(QGraphicsSceneDragDropEvent *event) override;
+    QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
+ private:
+    qreal radius;
+    qreal diameter;
 
-//! [5]
-QGraphicsRectItem rect;
-rect.setPos(100, 100);
+    void setAcceptDrops(bool on);
+};
 
-rect.deviceTransform(view->viewportTransform()).map(QPointF(0, 0));
-// returns the item's (0, 0) point in view's viewport coordinates
-
-rect.deviceTransform(view->viewportTransform()).inverted().map(QPointF(100, 100));
-// returns view's viewport's (100, 100) coordinate in item coordinates
-//! [5]
-
+using RoundRectItem = CustomItem;
+using RoundItem = CustomItem;
+using CircleItem = CustomItem;
+using Component = CustomItem;
 
 //! [8]
 QRectF CircleItem::boundingRect() const
@@ -80,7 +112,6 @@ QRectF CircleItem::boundingRect() const
 }
 //! [8]
 
-
 //! [9]
 QPainterPath RoundItem::shape() const
 {
@@ -89,7 +120,6 @@ QPainterPath RoundItem::shape() const
     return path;
 }
 //! [9]
-
 
 //! [10]
 void RoundRectItem::paint(QPainter *painter,
@@ -100,30 +130,33 @@ void RoundRectItem::paint(QPainter *painter,
 }
 //! [10]
 
+void data_snippet(QGraphicsScene &scene, QTransform &transform)
+{
+    //! [11]
+    static const int ObjectName = 0;
 
-//! [11]
-static const int ObjectName = 0;
-
-QGraphicsItem *item = scene.itemAt(100, 50);
-if (item->data(ObjectName).toString().isEmpty()) {
-    if (qgraphicsitem_cast<ButtonItem *>(item))
-        item->setData(ObjectName, "Button");
+    QGraphicsItem *item = scene.itemAt(100, 50, transform);
+    if (item->data(ObjectName).toString().isEmpty()) {
+        if (qgraphicsitem_cast<CustomItem *>(item))
+            item->setData(ObjectName, "Custom");
+    }
+    //! [11]
 }
-//! [11]
 
+void wrapperFunction()
+{
+    //! [12]
+    QGraphicsScene scene;
+    QGraphicsEllipseItem *ellipse = scene.addEllipse(QRectF(-10, -10, 20, 20));
+    QGraphicsLineItem *line = scene.addLine(QLineF(-10, -10, 20, 20));
 
-//! [12]
-QGraphicsScene scene;
-QGraphicsEllipseItem *ellipse = scene.addEllipse(QRectF(-10, -10, 20, 20));
-QGraphicsLineItem *line = scene.addLine(QLineF(-10, -10, 20, 20));
+    line->installSceneEventFilter(ellipse);
+    // line's events are filtered by ellipse's sceneEventFilter() function.
 
-line->installSceneEventFilter(ellipse);
-// line's events are filtered by ellipse's sceneEventFilter() function.
-
-ellipse->installSceneEventFilter(line);
-// ellipse's events are filtered by line's sceneEventFilter() function.
-//! [12]
-
+    ellipse->installSceneEventFilter(line);
+    // ellipse's events are filtered by line's sceneEventFilter() function.
+    //! [12]
+}
 
 //! [13]
 void CustomItem::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)
@@ -141,7 +174,7 @@ void CustomItem::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)
 CustomItem::CustomItem()
 {
     setAcceptDrops(true);
-    ...
+    //...
 }
 
 void CustomItem::dragEnterEvent(QGraphicsSceneDragDropEvent *event)
@@ -169,7 +202,6 @@ QVariant Component::itemChange(GraphicsItemChange change, const QVariant &value)
 }
 //! [15]
 
-
 //! [16]
 void CircleItem::setRadius(qreal newRadius)
 {
@@ -180,28 +212,32 @@ void CircleItem::setRadius(qreal newRadius)
 }
 //! [16]
 
+void snippets( QGraphicsScene *scene, QGraphicsItem *item,
+               QGraphicsView *view, const QRectF &rect, int dx, int dy)
+{
+    //! [17]
+    // Group all selected items together
+    QGraphicsItemGroup *group = scene->createItemGroup(scene->selectedItems());
 
-//! [17]
-// Group all selected items together
-QGraphicsItemGroup *group = scene->createItemGroup(scene->selecteditems());
+    // Destroy the group, and delete the group item
+    scene->destroyItemGroup(group);
+    //! [17]
 
-// Destroy the group, and delete the group item
-scene->destroyItemGroup(group);
-//! [17]
+    //! [19]
+    QTransform xform = item->deviceTransform(view->viewportTransform());
+    QRect deviceRect = xform.mapRect(rect).toAlignedRect();
+    view->viewport()->scroll(dx, dy, deviceRect);
+    //! [19]
+}
 
-
+/* For convenient quoting in the documentation
 //! [18]
 class QGraphicsPathItem : public QAbstractGraphicsShapeItem
 {
  public:
   enum { Type = 2 };
     int type() const override { return Type; }
-  ...
+  //...
 };
 //! [18]
-
-//! [19]
-QTransform xform = item->deviceTransform(view->viewportTransform());
-QRect deviceRect = xform.mapRect(rect).toAlignedRect();
-view->viewport()->scroll(dx, dy, deviceRect);
-//! [19]
+*/

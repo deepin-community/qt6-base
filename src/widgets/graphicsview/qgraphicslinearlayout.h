@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGRAPHICSLINEARLAYOUT_H
 #define QGRAPHICSLINEARLAYOUT_H
@@ -51,10 +52,6 @@ public:
 
     void invalidate() override;
     QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const override;
-
-#if 0 // ###
-    Q5SizePolicy::ControlTypes controlTypes(LayoutSide side) const;
-#endif
 
     void dump(int indent = 0) const;
 

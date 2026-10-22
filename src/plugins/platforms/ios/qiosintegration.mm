@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -16,6 +17,7 @@
 #include "qiostheme.h"
 #include "qiosservices.h"
 #include "qiosoptionalplugininterface.h"
+#include "qiosapplicationdelegate.h"
 
 #if defined(Q_OS_VISIONOS)
 #include "qiosswiftintegration.h"
@@ -59,7 +61,6 @@ QIOSIntegration::QIOSIntegration()
     , m_clipboard(new QIOSClipboard)
 #endif
     , m_inputContext(0)
-    , m_platformServices(new QIOSServices)
     , m_accessibility(0)
     , m_optionalPlugins(new QFactoryLoader(QIosOptionalPluginInterface_iid, "/platforms/darwin"_L1))
 {
@@ -69,48 +70,49 @@ QIOSIntegration::QIOSIntegration()
                "parts of the application, a good place to create QApplication is from within\n" \
                "'applicationDidFinishLaunching' inside your UIApplication delegate.\n");
     }
-
-    // Set current directory to app bundle folder
-    QDir::setCurrent(QString::fromUtf8([[[NSBundle mainBundle] bundlePath] UTF8String]));
 }
 
 void QIOSIntegration::initialize()
 {
-#if defined(Q_OS_VISIONOS)
-    // Qt requires a screen, so let's give it a dummy one
-    QWindowSystemInterface::handleScreenAdded(new QIOSScreen);
-#else
-    UIScreen *mainScreen = [UIScreen mainScreen];
-    NSMutableArray<UIScreen *> *screens = [[[UIScreen screens] mutableCopy] autorelease];
-    if (![screens containsObject:mainScreen]) {
-        // Fallback for iOS 7.1 (QTBUG-42345)
-        [screens insertObject:mainScreen atIndex:0];
-    }
-
-    for (UIScreen *screen in screens)
-        QWindowSystemInterface::handleScreenAdded(new QIOSScreen(screen));
-#endif
+    QIOSScreen::initializeScreens();
 
     // Depends on a primary screen being present
     m_inputContext = new QIOSInputContext;
 
-    m_touchDevice = new QPointingDevice;
-    m_touchDevice->setType(QInputDevice::DeviceType::TouchScreen);
-    QPointingDevice::Capabilities touchCapabilities = QPointingDevice::Capability::Position | QPointingDevice::Capability::NormalizedPosition;
+    QPointingDevice::Capabilities touchCapabilities = QPointingDevice::Capability::Position;
 #if !defined(Q_OS_VISIONOS)
-    if (mainScreen.traitCollection.forceTouchCapability == UIForceTouchCapabilityAvailable)
+    if (UIScreen.mainScreen.traitCollection.forceTouchCapability == UIForceTouchCapabilityAvailable)
         touchCapabilities |= QPointingDevice::Capability::Pressure;
 #endif
-    m_touchDevice->setCapabilities(touchCapabilities);
+    m_touchDevice = new QPointingDevice("touchscreen", 0, QInputDevice::DeviceType::TouchScreen,
+                                QPointingDevice::PointerType::Finger, touchCapabilities, 10, 0);
     QWindowSystemInterface::registerInputDevice(m_touchDevice);
 #if QT_CONFIG(tabletevent)
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
+    m_pencilDevice = new QPointingDevice(
+            "Apple Pencil", 0, QInputDevice::DeviceType::Stylus, QPointingDevice::PointerType::Pen,
+            QInputDevice::Capability::Position | QInputDevice::Capability::Pressure
+                    | QInputDevice::Capability::XTilt | QInputDevice::Capability::YTilt
+                    | QInputDevice::Capability::Hover | QInputDevice::Capability::ZPosition
+                    | QInputDevice::Capability::Rotation,
+            1, 0);
+    QWindowSystemInterface::registerInputDevice(m_pencilDevice);
 #endif
     QMacMimeRegistry::initializeMimeTypes();
 
     qsizetype size = QList<QPluginParsedMetaData>(m_optionalPlugins->metaData()).size();
     for (qsizetype i = 0; i < size; ++i)
         qobject_cast<QIosOptionalPluginInterface *>(m_optionalPlugins->instance(i))->initPlugin();
+
+    // On visionOS the Swift entry point is used, which sets up the application
+    // delegate itself, so we don't want to install the QIOSApplicationDelegate
+#if !defined(Q_OS_VISIONOS)
+    if (QIOSEventDispatcher::isQtApplication()) {
+        qCDebug(lcQpaWindowScene) << "Replacing application delegate"
+            << UIApplication.sharedApplication.delegate << "with QIOSApplicationDelegate";
+        UIApplication.sharedApplication.delegate = [QIOSApplicationDelegate new];
+    }
+#endif
 }
 
 QIOSIntegration::~QIOSIntegration()
@@ -149,8 +151,6 @@ bool QIOSIntegration::hasCapability(Capability cap) const
         return true;
     case OpenGL:
     case ThreadedOpenGL:
-        return true;
-    case RasterGLSurface:
         return true;
 #endif
     case ThreadedPixmaps:
@@ -233,6 +233,9 @@ QPlatformInputContext *QIOSIntegration::inputContext() const
 
 QPlatformServices *QIOSIntegration::services() const
 {
+    if (!m_platformServices)
+        m_platformServices = new QIOSServices;
+
     return m_platformServices;
 }
 
@@ -271,6 +274,13 @@ QPointingDevice *QIOSIntegration::touchDevice()
 {
     return m_touchDevice;
 }
+
+#if QT_CONFIG(tabletevent)
+QPointingDevice *QIOSIntegration::pencilDevice()
+{
+    return m_pencilDevice;
+}
+#endif
 
 #if QT_CONFIG(accessibility)
 QPlatformAccessibility *QIOSIntegration::accessibility() const

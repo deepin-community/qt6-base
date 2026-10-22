@@ -26,6 +26,7 @@
 #include <qsortfilterproxymodel.h>
 #include <qlineedit.h>
 #include <qlayout.h>
+#include <qsettings.h>
 #include <qtemporarydir.h>
 #include <private/qfiledialog_p.h>
 #if defined QT_BUILD_INTERNAL
@@ -52,8 +53,8 @@ QT_END_NAMESPACE
 static inline bool isCaseSensitiveFileSystem(const QString &path)
 {
     Q_UNUSED(path);
-#if defined(Q_OS_MAC)
-    return pathconf(QFile::encodeName(path).constData(), _PC_CASE_SENSITIVE);
+#if defined(Q_OS_MACOS)
+    return pathconf(QFile::encodeName(path).constData(), _PC_CASE_SENSITIVE) == 1;
 #elif defined(Q_OS_WIN)
     return false;
 #else
@@ -88,6 +89,7 @@ private slots:
     void fileMode();
     void filters();
     void history();
+    void saveSettingsUsesFullyEncodedUrls();
     void iconProvider();
     void isReadOnly();
     void itemDelegate();
@@ -232,6 +234,10 @@ void tst_QFiledialog::directoryEnteredSignal()
     sidebar->setCurrentIndex(secondItem);
     QTest::keyPress(sidebar->viewport(), Qt::Key_Return);
     QCOMPARE(spyDirectoryEntered.size(), 1);
+    // ensure signal isn't emitted again when clicking on the already active item
+    QTest::mouseClick(sidebar->viewport(), Qt::LeftButton, {},
+                      sidebar->visualRect(secondItem).center());
+    QCOMPARE(spyDirectoryEntered.size(), 1);
     spyDirectoryEntered.clear();
 
     // lookInCombo
@@ -270,21 +276,39 @@ void tst_QFiledialog::directoryEnteredSignal()
 Q_DECLARE_METATYPE(QFileDialog::FileMode)
 void tst_QFiledialog::filesSelectedSignal_data()
 {
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    const auto homePaths = QStandardPaths::standardLocations(QStandardPaths::HomeLocation);
+    QVERIFY(!homePaths.isEmpty());
+    QDir testDir(homePaths.first());
+
+    // Create a dir and a file because Android's home dir is initially empty
+    testDir.mkdir("qtest");
+    QVERIFY(testDir.exists("qtest"));
+
+    QFile file(testDir.filePath("file.txt"));
+    if (file.open(QIODevice::WriteOnly))
+        file.close();
+#else
+    QDir testDir(QT_TESTCASE_SOURCEDIR);
+#endif
+
+    QTest::addColumn<QDir>("testDir");
     QTest::addColumn<QFileDialog::FileMode>("fileMode");
-    QTest::newRow("any") << QFileDialog::AnyFile;
-    QTest::newRow("existing") << QFileDialog::ExistingFile;
-    QTest::newRow("directory") << QFileDialog::Directory;
-    QTest::newRow("existingFiles") << QFileDialog::ExistingFiles;
+    QTest::newRow("any") << testDir << QFileDialog::AnyFile;
+    QTest::newRow("existing") << testDir << QFileDialog::ExistingFile;
+    QTest::newRow("directory") << testDir << QFileDialog::Directory;
+    QTest::newRow("existingFiles") << testDir << QFileDialog::ExistingFiles;
 }
 
 // emitted when the dialog closes with the selected files
 void tst_QFiledialog::filesSelectedSignal()
 {
+    QFETCH(QDir, testDir);
+    QFETCH(QFileDialog::FileMode, fileMode);
+
     QFileDialog fd;
     fd.setViewMode(QFileDialog::List);
-    QDir testDir(QT_TESTCASE_SOURCEDIR);
     fd.setDirectory(testDir);
-    QFETCH(QFileDialog::FileMode, fileMode);
     fd.setFileMode(fileMode);
     QSignalSpy spyFilesSelected(&fd, SIGNAL(filesSelected(QStringList)));
 
@@ -307,6 +331,7 @@ void tst_QFiledialog::filesSelectedSignal()
         }
         file = QModelIndex();
     }
+
     QVERIFY(file.isValid());
     listView->selectionModel()->select(file, QItemSelectionModel::Select | QItemSelectionModel::Rows);
     listView->setCurrentIndex(file);
@@ -412,25 +437,28 @@ void tst_QFiledialog::completer_data()
     QTest::addColumn<QString>("input");
     QTest::addColumn<int>("expected");
 
-    const QString rootPath = QDir::rootPath();
-
     QTest::newRow("r, 10")   << QString() << "r"   << 10;
     QTest::newRow("x, 0")    << QString() << "x"   << 0;
     QTest::newRow("../, -1") << QString() << "../" << -1;
 
+
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_HARMONY)
+    const QString rootPath = QDir::rootPath();
     QTest::newRow("goto root")     << QString()        << rootPath << -1;
     QTest::newRow("start at root") << rootPath << QString()        << -1;
-
-    QDir dir = QDir::root();
-#ifdef Q_OS_ANDROID
-    const auto homePaths = QStandardPaths::standardLocations(QStandardPaths::HomeLocation);
-    QVERIFY(!homePaths.isEmpty());
-    dir = QDir(homePaths.first());
 #endif
 
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    const auto homePaths = QStandardPaths::standardLocations(QStandardPaths::HomeLocation);
+    QVERIFY(!homePaths.isEmpty());
+    const QString folder = homePaths.first();
+#else
+    QDir dir = QDir::root();
     QFileInfoList list = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
     QVERIFY(!list.isEmpty());
     const QString folder = list.first().absoluteFilePath();
+#endif
+
     QTest::newRow("start at one below root r") << folder << "r" << -1;
     QTest::newRow("start at one below root ../") << folder << "../" << -1;
 }
@@ -743,6 +771,34 @@ void tst_QFiledialog::history()
     QCOMPARE(spyFilterSelected.size(), 0);
 }
 
+void tst_QFiledialog::saveSettingsUsesFullyEncodedUrls()
+{
+    QTemporaryDir temporaryDir;
+    QVERIFY(temporaryDir.isValid());
+    const QString path = temporaryDir.filePath(
+            QStringLiteral("M\u00fasica/\u041a\u0438\u0440\u0438\u043b\u043b\u0438\u0446\u0430"));
+    QVERIFY(QDir().mkpath(path));
+
+    const QUrl url = QUrl::fromLocalFile(path);
+    const QString fullyEncodedUrl = url.toString(QUrl::FullyEncoded);
+    QVERIFY(url.toString() != fullyEncodedUrl);
+
+    {
+        QFileDialog dialog;
+        dialog.setSidebarUrls({url});
+        dialog.setHistory({path});
+        QCOMPARE(dialog.sidebarUrls(), QList<QUrl>{url});
+        QFileDialogPrivate::setLastVisitedDirectory(url);
+    }
+
+    QSettings settings(QSettings::UserScope, QStringLiteral("QtProject"));
+    settings.beginGroup(QStringLiteral("FileDialog"));
+    QCOMPARE(settings.value(QStringLiteral("shortcuts")).toStringList(),
+             QStringList{fullyEncodedUrl});
+    QVERIFY(settings.value(QStringLiteral("history")).toStringList().contains(fullyEncodedUrl));
+    QCOMPARE(settings.value(QStringLiteral("lastVisited")).toString(), fullyEncodedUrl);
+}
+
 void tst_QFiledialog::iconProvider()
 {
     QFileDialog *fd = new QFileDialog();
@@ -792,9 +848,9 @@ void tst_QFiledialog::labelText()
     QFileDialog fd;
     QDialogButtonBox buttonBox;
     QPushButton *cancelButton = buttonBox.addButton(QDialogButtonBox::Cancel);
-    QCOMPARE(fd.labelText(QFileDialog::LookIn), QString("Look in:"));
+    QCOMPARE(fd.labelText(QFileDialog::LookIn), QString("&Look in:"));
     QCOMPARE(fd.labelText(QFileDialog::FileName), QString("File &name:"));
-    QCOMPARE(fd.labelText(QFileDialog::FileType), QString("Files of type:"));
+    QCOMPARE(fd.labelText(QFileDialog::FileType), QString("Files of &type:"));
     QCOMPARE(fd.labelText(QFileDialog::Accept), QString("&Open")); ///### see task 241462
     QCOMPARE(fd.labelText(QFileDialog::Reject), cancelButton->text());
 
@@ -1223,7 +1279,7 @@ void tst_QFiledialog::disableSaveButton_data()
 
     QTest::newRow("valid path") << QDir::temp().absolutePath() + QDir::separator() + "qfiledialog.new_file" << true;
     QTest::newRow("no path") << "" << false;
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MAC) && !defined(Q_OS_OPENBSD)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS) && !defined(Q_OS_OPENBSD)
     QTest::newRow("too long path") << "iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii" << false;
 #endif
     QTest::newRow("file") << "foo.html" << true;
@@ -1351,14 +1407,10 @@ void tst_QFiledialog::clearLineEdit()
     DirPopulatedPredicate dirPopulated(list, dirName);
     QTRY_VERIFY(dirPopulated);
 
-#ifdef QT_KEYPAD_NAVIGATION
-    list->setEditFocus(true);
-#endif
-
     SelectDirTestPredicate selectTestDir(list, dirName);
     QTRY_VERIFY(selectTestDir);
 
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     QTest::keyClick(list, Qt::Key_Return);
 #else
     QTest::keyClick(list, Qt::Key_O, Qt::ControlModifier);
@@ -1377,7 +1429,7 @@ void tst_QFiledialog::clearLineEdit()
 
     QTRY_VERIFY(selectTestDir);
 
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     QTest::keyClick(list, Qt::Key_Return);
 #else
     QTest::keyClick(list, Qt::Key_O, Qt::ControlModifier);
@@ -1412,9 +1464,9 @@ void tst_QFiledialog::widgetlessNativeDialog()
 {
     if (!QGuiApplicationPrivate::platformTheme()->usePlatformNativeDialog(QPlatformTheme::FileDialog))
         QSKIP("This platform always uses widgets to realize its QFileDialog, instead of the native file dialog.");
-#ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This keeps the window open. Figure out why.");
+
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("It's not possible to hide the native file dialog because its owned by system.");
 #endif
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, false);
     QFileDialog fd;
@@ -1433,9 +1485,8 @@ void tst_QFiledialog::hideNativeByDestruction()
     if (!QGuiApplicationPrivate::platformTheme()->usePlatformNativeDialog(QPlatformTheme::FileDialog))
         QSKIP("This platform always uses widgets to realize its QFileDialog, instead of the native file dialog.");
 
-#ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This keeps the native window open. Figure out why.");
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("It's not possible to hide the native file dialog because its owned by system.");
 #endif
 
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, false);
@@ -1508,13 +1559,11 @@ void tst_QFiledialog::trailingDotsAndSpaces()
     int currentChildrenCount = list->model()->rowCount(list->rootIndex());
     QTest::keyClick(lineEdit, Qt::Key_Space);
     QTest::keyClick(lineEdit, Qt::Key_Period);
-    QTest::qWait(1000);
-    QCOMPARE(currentChildrenCount, list->model()->rowCount(list->rootIndex()));
+    QTRY_COMPARE(currentChildrenCount, list->model()->rowCount(list->rootIndex()));
     lineEdit->clear();
     QTest::keyClick(lineEdit, Qt::Key_Period);
     QTest::keyClick(lineEdit, Qt::Key_Space);
-    QTest::qWait(1000);
-    QCOMPARE(currentChildrenCount, list->model()->rowCount(list->rootIndex()));
+    QTRY_COMPARE(currentChildrenCount, list->model()->rowCount(list->rootIndex()));
 }
 
 #ifdef Q_OS_UNIX
@@ -1525,7 +1574,9 @@ void tst_QFiledialog::tildeExpansion_data()
     QTest::addColumn<QString>("expandedPath");
 
     const QString tilde = QStringLiteral("~");
+#if !defined(Q_OS_HARMONY)
     const QString tildeUser = tilde + QString(qgetenv("USER"));
+#endif
     const QLatin1String someSubDir("/some/sub/dir");
     const QString homePath = QDir::homePath();
     const QString invalid = QStringLiteral("~thisIsNotAValidUserName");
@@ -1533,8 +1584,10 @@ void tst_QFiledialog::tildeExpansion_data()
     QTest::newRow("empty path") << QString() << QString();
     QTest::newRow("~")                    << tilde                  << homePath;
     QTest::newRow("~/some/sub/dir/")      << tilde     + someSubDir << homePath + someSubDir;
+#if !defined(Q_OS_HARMONY)
     QTest::newRow("~<user>")              << tildeUser              << homePath;
     QTest::newRow("~<user>/some/sub/dir") << tildeUser + someSubDir << homePath + someSubDir;
+#endif
     QTest::newRow("invalid user name")    << invalid                << invalid;
 }
 #endif // QT_BUILD_INTERNAL
@@ -1572,9 +1625,11 @@ void tst_QFiledialog::rejectModalDialogs()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This freezes. Figure out why.");
+
 #ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This freezes. Figure out why.");
+    // This would require android.permission.INJECT_EVENTS which is a system permission,
+    // or running the test with as Instrumentation Test which is not supported by Qt.
+    QSKIP("Rejecting dialog with escape or back button is not supported on Android tests.");
 #endif
 
     // QTBUG-38672 , static functions should return empty Urls
@@ -1609,10 +1664,8 @@ void tst_QFiledialog::QTBUG49600_nativeIconProviderCrash()
         QSKIP("This platform always uses widgets to realize its QFileDialog, instead of the native file dialog.");
 
 #ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This hangs. Figure out why.");
+    QSKIP("It's not possible to hide the native file dialog because its owned by Android system.");
 #endif
-
     QFileDialog fd;
     fd.iconProvider();
 }
@@ -1644,9 +1697,11 @@ void tst_QFiledialog::focusObjectDuringDestruction()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This freezes. Figure out why.");
+
 #ifdef Q_OS_ANDROID
-    // QTBUG-101194
-    QSKIP("Android: This freezes. Figure out why.");
+    // This would require android.permission.INJECT_EVENTS which is a system permission,
+    // or running the test with as Instrumentation Test which is not supported by Qt.
+    QSKIP("Rejecting dialog with escape or back button is not supported on Android tests.");
 #endif
 
     QTRY_VERIFY(QGuiApplication::topLevelWindows().isEmpty());

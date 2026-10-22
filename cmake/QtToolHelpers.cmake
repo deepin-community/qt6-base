@@ -22,6 +22,10 @@
 #     TRY_RUN_FLAGS
 #         Command line flags that are going to be passed to the tool for testing its correctness.
 #         If no flags were given, we default to `-v`.
+#     REQUIRED_FOR_DOCS
+#         Specifies that the built tool is required to generate documentation. Examples are qdoc,
+#         and qvkgen (because they participate in header file generation, which are needed for
+#         documentation generation).
 #
 # One-value Arguments:
 #     EXTRA_CMAKE_FILES
@@ -51,6 +55,7 @@ function(qt_internal_add_tool target_name)
         EXCEPTIONS
         NO_UNITY_BUILD
         TRY_RUN
+        REQUIRED_FOR_DOCS
         ${__qt_internal_sbom_optional_args}
     )
     set(one_value_keywords
@@ -112,6 +117,17 @@ function(qt_internal_add_tool target_name)
         set(arg_NO_UNITY_BUILD "")
     endif()
 
+    _qt_internal_forward_function_args(
+        FORWARD_PREFIX arg
+        FORWARD_OUT_VAR add_executable_args
+        FORWARD_SINGLE
+            TARGET_COMPANY
+            TARGET_COPYRIGHT
+            TARGET_DESCRIPTION
+            TARGET_PRODUCT
+            TARGET_VERSION
+    )
+
     qt_internal_add_executable("${target_name}"
         OUTPUT_DIRECTORY "${output_dir}"
         ${exceptions}
@@ -122,9 +138,10 @@ function(qt_internal_add_tool target_name)
         NO_UNITY_BUILD_SOURCES ${arg_NO_UNITY_BUILD_SOURCES}
         INCLUDE_DIRECTORIES
             ${arg_INCLUDE_DIRECTORIES}
+        SYSTEM_INCLUDE_DIRECTORIES
+            ${arg_SYSTEM_INCLUDE_DIRECTORIES}
         DEFINES
             ${arg_DEFINES}
-            ${deprecation_define}
         ${corelib}
         LIBRARIES
             ${arg_LIBRARIES}
@@ -134,11 +151,7 @@ function(qt_internal_add_tool target_name)
         LINK_OPTIONS ${arg_LINK_OPTIONS}
         MOC_OPTIONS ${arg_MOC_OPTIONS}
         DISABLE_AUTOGEN_TOOLS ${disable_autogen_tools}
-        TARGET_VERSION ${arg_TARGET_VERSION}
-        TARGET_PRODUCT ${arg_TARGET_PRODUCT}
-        TARGET_DESCRIPTION ${arg_TARGET_DESCRIPTION}
-        TARGET_COMPANY ${arg_TARGET_COMPANY}
-        TARGET_COPYRIGHT ${arg_TARGET_COPYRIGHT}
+        ${add_executable_args}
         # If you are putting anything after these, make sure that
         # qt_set_target_info_properties knows how to process them
     )
@@ -146,7 +159,7 @@ function(qt_internal_add_tool target_name)
     qt_internal_adjust_main_config_runtime_output_dir("${target_name}" "${output_dir}")
 
     if (WIN32)
-        _qt_internal_generate_longpath_win32_rc_file_and_manifest("${target_name}")
+        _qt_internal_generate_win32_rc_file_and_manifest("${target_name}")
     endif()
 
     set_target_properties(${target_name} PROPERTIES
@@ -156,7 +169,10 @@ function(qt_internal_add_tool target_name)
                  APPEND PROPERTY
                  EXPORT_PROPERTIES "_qt_package_version")
 
-    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.19.0" AND QT_FEATURE_debug_and_release)
+    get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.19.0"
+            AND QT_FEATURE_debug_and_release
+            AND is_multi_config)
         set_property(TARGET "${target_name}"
             PROPERTY EXCLUDE_FROM_ALL "$<NOT:$<CONFIG:${QT_MULTI_CONFIG_FIRST_CONFIG}>>")
     endif()
@@ -170,6 +186,9 @@ function(qt_internal_add_tool target_name)
 
     if(TARGET host_tools)
         add_dependencies(host_tools "${target_name}")
+        if(arg_REQUIRED_FOR_DOCS)
+            add_dependencies(doc_tools "${target_name}")
+        endif()
         if(arg_CORE_LIBRARY STREQUAL "Bootstrap")
             add_dependencies(bootstrap_tools "${target_name}")
         endif()
@@ -193,7 +212,7 @@ function(qt_internal_add_tool target_name)
 
     if(QT_GENERATE_SBOM)
         set(sbom_args "")
-        list(APPEND sbom_args TYPE QT_TOOL)
+        list(APPEND sbom_args DEFAULT_SBOM_ENTITY_TYPE QT_TOOL)
     endif()
 
     if(NOT arg_NO_INSTALL AND arg_TOOLS_TARGET)
@@ -215,7 +234,9 @@ function(qt_internal_add_tool target_name)
         qt_get_cmake_configurations(cmake_configs)
 
         set(install_initial_call_args
-            EXPORT "${INSTALL_CMAKE_NAMESPACE}${arg_TOOLS_TARGET}ToolsTargets")
+            EXPORT "${INSTALL_CMAKE_NAMESPACE}${arg_TOOLS_TARGET}ToolsTargets"
+            COMPONENT host_tools
+        )
 
         foreach(cmake_config ${cmake_configs})
             qt_get_install_target_default_args(
@@ -266,8 +287,15 @@ function(qt_internal_add_tool target_name)
         _qt_internal_add_try_run_post_build("${target_name}" "${arg_TRY_RUN_FLAGS}")
     endif()
 
-    qt_enable_separate_debug_info(${target_name} "${install_dir}" QT_EXECUTABLE)
+    qt_internal_defer_separate_debug_info("${target_name}"
+        SEPARATE_DEBUG_INFO_ARGS
+            "${install_dir}"
+            QT_EXECUTABLE
+    )
     qt_internal_install_pdb_files(${target_name} "${install_dir}")
+
+    qt_internal_add_target_optimized_flags_for_debug_config_in_parent_scope("${target_name}")
+    qt_internal_enable_optimized_tools_lto("${target_name}")
 
     if(QT_GENERATE_SBOM)
         _qt_internal_forward_function_args(
@@ -282,7 +310,7 @@ function(qt_internal_add_tool target_name)
                 ${__qt_internal_sbom_multi_args}
         )
 
-        _qt_internal_extend_sbom(${target_name} ${sbom_args})
+        qt_internal_extend_qt_entity_sbom(${target_name} ${sbom_args})
     endif()
 
     qt_add_list_file_finalizer(qt_internal_finalize_tool ${target_name})
@@ -337,21 +365,181 @@ echo. > ${target_bin_dir}/${target}_try_run_passed"
                       DEPENDS ${target_bin_dir}/${target}_try_run_passed)
 endfunction()
 
+# Create a standalone FooTools package, similar to the ones automatically generated by
+# qt_internal_add_module, e.g. Core -> CoreTools.
+#
+# A standalone tools package can be useful when one wants to associate some special targets and
+# cmake scripts to a package that is not associated with any Qt module, and is not architecture
+# dependent (e.g. java binaries).
+#
+# Arguments
+#   PACKAGE_BASE_NAME - base name of the package, e.g. for a value of Foo, it will create a
+#     Qt6FooToolsConfig.cmake file.
+#
+#   PACKAGE_VERSION - version to use for the package, defaults to PROJECT_VERSION.
+#
+#   EXTRA_CMAKE_FILES - list of additional cmake files to install alongside the package
+#
+#   EXTRA_CMAKE_INCLUDES - list of cmake files to include in the package config file
+#
+#   EXTRA_CMAKE_STATEMENTS - list of additional cmake statements (strings) to append to the end of
+#     the package config file.
+#
+#   TOOL_TARGETS - list of add_executable targets that should be install(EXPORT)ed for this package.
+#     It can NOT take imported targets or custom targets.
+#
+#   TOOL_PACKAGE_DEPENDENCIES - list of other Qt Tools package dependencies that should be
+#     find_package'd when using this Tools package.
+function(qt_internal_add_tools_package)
+    set(opt_args "")
+    set(single_args
+        PACKAGE_BASE_NAME
+        PACKAGE_VERSION
+    )
+    set(multi_args
+        EXTRA_CMAKE_FILES
+        EXTRA_CMAKE_INCLUDES
+        EXTRA_CMAKE_STATEMENTS
+        TOOL_TARGETS
+        TOOL_PACKAGE_DEPENDENCIES
+    )
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_PACKAGE_BASE_NAME)
+        message(FATAL_ERROR "Missing PACKAGE_BASE_NAME value")
+    endif()
+
+    if(arg_PACKAGE_VERSION)
+        set(tools_package_version "${arg_PACKAGE_VERSION}")
+    else()
+        set(tools_package_version "${PROJECT_VERSION}")
+    endif()
+
+    set(id "${arg_PACKAGE_BASE_NAME}")
+    _qt_internal_append_to_cmake_property_without_duplicates(_qt_standalone_tool_packages "${id}")
+
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_package_base_name "${id}")
+
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_version
+        "${tools_package_version}")
+
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_list_dir
+        "${CMAKE_CURRENT_LIST_DIR}")
+
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_extra_cmake_files
+        "${arg_EXTRA_CMAKE_FILES}")
+
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_extra_cmake_includes
+        "${arg_EXTRA_CMAKE_INCLUDES}")
+
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_extra_cmake_statements
+        "${arg_EXTRA_CMAKE_STATEMENTS}")
+
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_tool_targets
+        "${arg_TOOL_TARGETS}")
+
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_tool_package_dependencies
+        "${arg_TOOL_PACKAGE_DEPENDENCIES}")
+endfunction()
+
+# Creates a FooTools package with information about tool targets.
+# The source of information for the created package is taken either from a Qt module and its
+# tool targets, or from global properties associated with a standalone tools package.
 function(qt_export_tools module_name)
+    set(opt_args "")
+    set(single_args
+        MODULE_NAME
+        PACKAGE_BASE_NAME
+    )
+    set(multi_args "")
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
     # Bail out when not building tools.
     if(NOT QT_WILL_BUILD_TOOLS)
         return()
     endif()
 
-    # If no tools were defined belonging to this module, don't create a config and targets file.
-    if(NOT "${module_name}" IN_LIST QT_KNOWN_MODULES_WITH_TOOLS)
-        return()
+    if(NOT arg_MODULE_NAME AND NOT arg_PACKAGE_BASE_NAME)
+        message(FATAL_ERROR "Either MODULE_NAME or PACKAGE_BASE_NAME must be specified")
     endif()
 
-    # The tools target name. For example: CoreTools
-    set(target "${module_name}Tools")
+    # Qt module case.
+    if(arg_MODULE_NAME)
+        # The tools package name. For example: CoreTools
+        set(module_name "${arg_MODULE_NAME}")
 
-    set(path_suffix "${INSTALL_CMAKE_NAMESPACE}${target}")
+        # If no tools were defined belonging to this module, don't create a config and targets file.
+        if(NOT "${module_name}" IN_LIST QT_KNOWN_MODULES_WITH_TOOLS)
+            return()
+        endif()
+
+        set(package_name "${module_name}Tools")
+        set(known_tools ${QT_KNOWN_MODULE_${module_name}_TOOLS})
+    endif()
+
+    # Standalone package case.
+    if(arg_PACKAGE_BASE_NAME)
+        set(package_name "${arg_PACKAGE_BASE_NAME}Tools")
+
+        set(id "${arg_PACKAGE_BASE_NAME}")
+
+        get_cmake_property(standalone_tools_package_version
+            _qt_standalone_tool_package_${id}_version)
+        if(NOT standalone_tools_package_version)
+            message(FATAL_ERROR "Missing version for standalone tools package ${id}")
+        endif()
+
+        get_cmake_property(standalone_tools_list_dir
+            _qt_standalone_tool_package_${id}_list_dir)
+        if(NOT standalone_tools_list_dir)
+            set(standalone_tools_list_dir "")
+        endif()
+
+        get_cmake_property(package_extra_cmake_files
+            _qt_standalone_tool_package_${id}_extra_cmake_files)
+        if(NOT package_extra_cmake_files)
+            set(package_extra_cmake_files "")
+        endif()
+
+        get_cmake_property(package_extra_cmake_includes
+            _qt_standalone_tool_package_${id}_extra_cmake_includes)
+        if(NOT package_extra_cmake_includes)
+            set(package_extra_cmake_includes "")
+        endif()
+
+        get_cmake_property(package_extra_cmake_statements
+            _qt_standalone_tool_package_${id}_extra_cmake_statements)
+        if(NOT package_extra_cmake_statements)
+            set(package_extra_cmake_statements "")
+        endif()
+
+        get_cmake_property(known_tools _qt_standalone_tool_package_${id}_tool_targets)
+        if(NOT known_tools)
+            set(known_tools "")
+        endif()
+
+        get_cmake_property(tool_package_dependencies
+            _qt_standalone_tool_package_${id}_tool_package_dependencies)
+        if(NOT tool_package_dependencies)
+            set(tool_package_dependencies "")
+        endif()
+
+        get_cmake_property(third_party_package_dependencies
+            _qt_standalone_tool_package_${id}_third_party_dependencies)
+        if(NOT third_party_package_dependencies)
+            set(third_party_package_dependencies "")
+        endif()
+
+        unset(id)
+    endif()
+
+    # This is used as a substitution variable, ala @target@ in the config / dependencies /
+    # etc files.
+    set(target ${package_name})
+
+    set(path_suffix "${INSTALL_CMAKE_NAMESPACE}${package_name}")
     qt_path_join(config_build_dir ${QT_CONFIG_BUILD_DIR} ${path_suffix})
     qt_path_join(config_install_dir ${QT_CONFIG_INSTALL_DIR} ${path_suffix})
 
@@ -364,6 +552,7 @@ function(qt_export_tools module_name)
 
     # List of package dependencies that need be find_package'd when using the Tools package.
     set(package_deps "")
+    set(third_party_deps "")
 
     # Additional cmake files to install
     set(extra_cmake_files "")
@@ -371,12 +560,31 @@ function(qt_export_tools module_name)
 
     set(first_tool_package_version "")
 
-    foreach(tool_name ${QT_KNOWN_MODULE_${module_name}_TOOLS})
+    if(package_extra_cmake_files)
+        list(APPEND extra_cmake_files ${package_extra_cmake_files})
+        foreach(cmake_file ${package_extra_cmake_files})
+            file(COPY "${cmake_file}" DESTINATION "${config_build_dir}")
+        endforeach()
+    endif()
+
+    if(package_extra_cmake_includes)
+        list(APPEND extra_cmake_includes ${package_extra_cmake_includes})
+    endif()
+
+    foreach(tool_name IN LISTS known_tools)
         # Specific tools can have package dependencies.
         # e.g. qtwaylandscanner depends on WaylandScanner (non-qt package).
         get_target_property(extra_packages "${tool_name}" QT_EXTRA_PACKAGE_DEPENDENCIES)
         if(extra_packages)
-            list(APPEND package_deps "${extra_packages}")
+            foreach(third_party_dep IN LISTS extra_packages)
+                list(GET third_party_dep 0 third_party_dep_name)
+                list(GET third_party_dep 1 third_party_dep_version)
+
+                # Assume that all tool thirdparty deps are mandatory.
+                # TODO: Components are not supported
+                list(APPEND third_party_deps
+                    "${third_party_dep_name}\\\;FALSE\\\;${third_party_dep_version}\\\;\\\;")
+            endforeach()
         endif()
 
         get_target_property(_extra_cmake_files "${tool_name}" EXTRA_CMAKE_FILES)
@@ -395,8 +603,10 @@ function(qt_export_tools module_name)
         if (QT_WILL_RENAME_TOOL_TARGETS)
             string(REGEX REPLACE "_native$" "" tool_name ${tool_name})
         endif()
+        # `__qt_${package_name}_targets_file_included` is defined in the
+        # QtModuleToolsConfig.cmake.in
         set(extra_cmake_statements "${extra_cmake_statements}
-if(NOT QT_NO_CREATE_TARGETS AND ${INSTALL_CMAKE_NAMESPACE}${target}_FOUND)
+if(__qt_${package_name}_targets_file_included AND ${INSTALL_CMAKE_NAMESPACE}${package_name}_FOUND)
     __qt_internal_promote_target_to_global(${INSTALL_CMAKE_NAMESPACE}::${tool_name})
 endif()
 ")
@@ -411,29 +621,64 @@ endif()
         endif()
     endforeach()
 
-    string(APPEND extra_cmake_statements
-"set(${QT_CMAKE_EXPORT_NAMESPACE}${module_name}Tools_TARGETS \"${tool_targets}\")")
+    if(tool_targets)
+        string(APPEND extra_cmake_statements
+"set(${QT_CMAKE_EXPORT_NAMESPACE}${package_name}_TARGETS \"${tool_targets}\")")
+    endif()
+
+    if(package_extra_cmake_statements)
+        foreach(statement ${package_extra_cmake_statements})
+            string(APPEND extra_cmake_statements "\n${statement}")
+        endforeach()
+    endif()
 
     # Extract package dependencies that were determined in QtPostProcess, but only if ${module_name}
     # is an actual target.
     # module_name can be a non-existent target, if the tool doesn't have an existing associated
     # module, e.g. qtwaylandscanner.
-    if(TARGET "${module_name}")
+    if(module_name AND TARGET "${module_name}")
         get_target_property(module_package_deps "${module_name}" _qt_tools_package_deps)
         if(module_package_deps)
             list(APPEND package_deps "${module_package_deps}")
         endif()
     endif()
 
-    # Configure and install dependencies file for the ${module_name}Tools package.
+    if(tool_package_dependencies)
+        list(APPEND package_deps "${tool_package_dependencies}")
+    endif()
+
+    if(third_party_package_dependencies)
+        foreach(third_party_dep IN LISTS third_party_package_dependencies)
+            list(GET third_party_dep 0 third_party_dep_name)
+            list(GET third_party_dep 1 third_party_dep_version)
+
+            # Assume that all tool thirdparty deps are mandatory.
+            # TODO: Components are not supported
+            list(APPEND third_party_deps
+                "${third_party_dep_name}\\\;FALSE\\\;${third_party_dep_version}\\\;\\\;")
+        endforeach()
+    endif()
+
+    # Generate ConfigExtras.cmake if a template exists. Include it first.
+    set(config_extras_path_in
+        "${standalone_tools_list_dir}/${path_suffix}ConfigExtras.cmake.in")
+    if(EXISTS "${config_extras_path_in}")
+        configure_file("${config_extras_path_in}"
+            "${config_build_dir}/${path_suffix}ConfigExtras.cmake"
+            @ONLY)
+        list(PREPEND extra_cmake_files "${config_build_dir}/${path_suffix}ConfigExtras.cmake")
+        list(PREPEND extra_cmake_includes "${path_suffix}ConfigExtras.cmake")
+    endif()
+
+    # Configure and install dependencies file for the ${package_name}Tools package.
     configure_file(
         "${QT_CMAKE_DIR}/QtModuleToolsDependencies.cmake.in"
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}Dependencies.cmake"
+        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}Dependencies.cmake"
         @ONLY
     )
 
     qt_install(FILES
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}Dependencies.cmake"
+        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}Dependencies.cmake"
         DESTINATION "${config_install_dir}"
         COMPONENT Devel
     )
@@ -446,19 +691,43 @@ endif()
         )
     endif()
 
-    # Configure and install the ${module_name}Tools package Config file.
+    # Used in the template.
+    set(QT_SHOULD_INCLUDE_TARGETS_CODE FALSE)
+    if(known_tools)
+        set(QT_SHOULD_INCLUDE_TARGETS_CODE TRUE)
+    endif()
+
+    # Configure and install the ${package_name}Tools package Config file.
     qt_internal_get_min_new_policy_cmake_version(min_new_policy_version)
     qt_internal_get_max_new_policy_cmake_version(max_new_policy_version)
     configure_package_config_file(
         "${QT_CMAKE_DIR}/QtModuleToolsConfig.cmake.in"
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}Config.cmake"
+        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}Config.cmake"
         INSTALL_DESTINATION "${config_install_dir}"
     )
 
-    # There might be Tools packages which don't have a corresponding real module_name target, like
-    # WaylandScannerTools.
-    # In that case we'll use the package version of the first tool that belongs to that package.
-    if(TARGET "${module_name}")
+    if(known_tools)
+        qt_configure_file(
+            OUTPUT
+                "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}TargetsPrecheck.cmake"
+            CONTENT
+"_qt_internal_should_include_targets(
+    TARGETS ${known_tools}
+    NAMESPACE ${INSTALL_CMAKE_NAMESPACE}::
+    OUT_VAR_SHOULD_SKIP __qt_${package_name}_skip_include_targets_file
+)
+")
+    endif()
+
+    # There are multiple sources where a tools' package version can come from.
+    # For a standalone tools package, it is explicitly given.
+    # For a package associated with a Qt module, it comes from a module.
+    # For a package without a Qt module, like WaylandScannerTools,
+    # we'll use the package version of the first tool that belongs to that package.
+    if(standalone_tools_package_version)
+        # Use the explicitly given package version.
+        set(tools_package_version "${standalone_tools_package_version}")
+    elseif(TARGET "${module_name}")
         qt_internal_get_package_version_of_target("${module_name}" tools_package_version)
     elseif(first_tool_package_version)
         set(tools_package_version "${first_tool_package_version}")
@@ -468,55 +737,63 @@ endif()
         set(tools_package_version "${PROJECT_VERSION}")
         if(FEATURE_developer_build)
             message(WARNING
-                "Could not determine package version of tools package ${module_name}. "
+                "Could not determine package version of tools package ${package_name}. "
                 "Defaulting to project version ${PROJECT_VERSION}.")
         endif()
     endif()
     message(TRACE
-        "Exporting tools package ${module_name}Tools with package version ${tools_package_version}"
+        "Exporting tools package ${package_name}Tools with package version ${tools_package_version}"
         "\n     included targets: ${tool_targets_non_prefixed}")
     write_basic_package_version_file(
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}ConfigVersionImpl.cmake"
+        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}ConfigVersionImpl.cmake"
         VERSION "${tools_package_version}"
         COMPATIBILITY AnyNewerVersion
         ARCH_INDEPENDENT
     )
     qt_internal_write_qt_package_version_file(
-        "${INSTALL_CMAKE_NAMESPACE}${target}"
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}ConfigVersion.cmake"
+        "${INSTALL_CMAKE_NAMESPACE}${package_name}"
+        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}ConfigVersion.cmake"
     )
 
     qt_install(FILES
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}Config.cmake"
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}ConfigVersion.cmake"
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}ConfigVersionImpl.cmake"
+        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}Config.cmake"
+        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}ConfigVersion.cmake"
+        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}ConfigVersionImpl.cmake"
         DESTINATION "${config_install_dir}"
         COMPONENT Devel
     )
 
-    set(export_name "${INSTALL_CMAKE_NAMESPACE}${target}Targets")
-    qt_install(EXPORT "${export_name}"
-               NAMESPACE "${QT_CMAKE_EXPORT_NAMESPACE}::"
-               DESTINATION "${config_install_dir}")
+    if(known_tools)
+        qt_install(FILES
+            "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}TargetsPrecheck.cmake"
+            DESTINATION "${config_install_dir}"
+            COMPONENT Devel
+        )
 
-    qt_internal_export_additional_targets_file(
-        TARGETS ${QT_KNOWN_MODULE_${module_name}_TOOLS}
-        TARGET_EXPORT_NAMES ${tool_targets}
-        EXPORT_NAME_PREFIX ${INSTALL_CMAKE_NAMESPACE}${target}
-        CONFIG_INSTALL_DIR "${config_install_dir}")
+        set(export_name "${INSTALL_CMAKE_NAMESPACE}${package_name}Targets")
+        qt_install(EXPORT "${export_name}"
+                   NAMESPACE "${QT_CMAKE_EXPORT_NAMESPACE}::"
+                   DESTINATION "${config_install_dir}")
 
-    # Create versionless targets file.
-    configure_file(
-        "${QT_CMAKE_DIR}/QtModuleToolsVersionlessTargets.cmake.in"
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}VersionlessTargets.cmake"
-        @ONLY
-    )
+        qt_internal_export_additional_targets_file(
+            TARGETS ${known_tools}
+            TARGET_EXPORT_NAMES ${tool_targets}
+            EXPORT_NAME_PREFIX ${INSTALL_CMAKE_NAMESPACE}${package_name}
+            CONFIG_INSTALL_DIR "${config_install_dir}")
 
-    qt_install(FILES
-        "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}VersionlessTargets.cmake"
-        DESTINATION "${config_install_dir}"
-        COMPONENT Devel
-    )
+        # Create versionless targets file.
+        configure_file(
+            "${QT_CMAKE_DIR}/QtModuleToolsVersionlessTargets.cmake.in"
+            "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}VersionlessTargets.cmake"
+            @ONLY
+        )
+
+        qt_install(FILES
+            "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${package_name}VersionlessTargets.cmake"
+            DESTINATION "${config_install_dir}"
+            COMPONENT Devel
+        )
+    endif()
 endfunction()
 
 # Returns the target name for the tool with the given name.
@@ -567,7 +844,14 @@ function(qt_check_if_tools_will_be_built)
         endif()
         if(QT_FORCE_BUILD_TOOLS)
             set(will_build_tools TRUE)
-            set(need_target_rename TRUE)
+            # Target renaming exists so locally built tools (Qt6::moc_native)
+            # don't collide with imported host tools (Qt6::moc). With no host
+            # install in scope there is nothing to collide with, and renaming
+            # would push qt_internal_find_tool into a host-package search
+            # that has nothing to find.
+            if(QT_HOST_PATH OR QT_FORCE_FIND_TOOLS)
+                set(need_target_rename TRUE)
+            endif()
         endif()
     endif()
 
@@ -653,11 +937,6 @@ function(qt_internal_find_tool out_var target_name tools_target)
         set(tools_package_name "${INSTALL_CMAKE_NAMESPACE}${tools_target}Tools")
         message(STATUS "Searching for tool '${full_name}' in package ${tools_package_name}.")
 
-        # Create the tool targets, even if QT_NO_CREATE_TARGETS is set.
-        # Otherwise targets like Qt6::moc are not available in a top-level cross-build.
-        set(BACKUP_QT_NO_CREATE_TARGETS ${QT_NO_CREATE_TARGETS})
-        set(QT_NO_CREATE_TARGETS OFF)
-
         # When cross-compiling, we want to search for Tools packages in QT_HOST_PATH.
         # To do that, we override CMAKE_PREFIX_PATH and CMAKE_FIND_ROOT_PATH.
         #
@@ -679,14 +958,14 @@ function(qt_internal_find_tool out_var target_name tools_target)
         set(${tools_package_name}_BACKUP_CMAKE_FIND_ROOT_PATH "${CMAKE_FIND_ROOT_PATH}")
         if(QT_HOST_PATH_CMAKE_DIR)
             set(qt_host_path_cmake_dir_absolute "${QT_HOST_PATH_CMAKE_DIR}")
-        elseif(Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR)
+        elseif(${INSTALL_CMAKE_NAMESPACE}HostInfo_DIR)
             get_filename_component(qt_host_path_cmake_dir_absolute
-                "${Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR}/.." ABSOLUTE)
+                "${${INSTALL_CMAKE_NAMESPACE}HostInfo_DIR}/.." ABSOLUTE)
         else()
             # This should never happen, serves as an assert.
             message(FATAL_ERROR
                 "Neither QT_HOST_PATH_CMAKE_DIR nor "
-                "Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR available.")
+                "${INSTALL_CMAKE_NAMESPACE}HostInfo_DIR available.")
         endif()
         set(CMAKE_PREFIX_PATH "${qt_host_path_cmake_dir_absolute}")
 
@@ -718,7 +997,6 @@ function(qt_internal_find_tool out_var target_name tools_target)
         # Restore backups.
         set(CMAKE_FIND_ROOT_PATH "${${tools_package_name}_BACKUP_CMAKE_FIND_ROOT_PATH}")
         set(CMAKE_PREFIX_PATH "${${tools_package_name}_BACKUP_CMAKE_PREFIX_PATH}")
-        set(QT_NO_CREATE_TARGETS ${BACKUP_QT_NO_CREATE_TARGETS})
 
         if(${${tools_package_name}_FOUND} AND TARGET ${full_name})
             # Even if the tool is already visible, make sure that our modules remain associated

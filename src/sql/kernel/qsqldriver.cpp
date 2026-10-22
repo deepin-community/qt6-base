@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qsqldriver.h"
 
@@ -799,6 +800,18 @@ int QSqlDriver::maximumIdentifierLength(QSqlDriver::IdentifierType type) const
 {
     Q_UNUSED(type);
     return INT_MAX;
+}
+
+/*!
+    \since 6.9
+
+    Returns the database connection name the driver was created by with
+    QSqlDatabase::addDatabase()
+*/
+QString QSqlDriver::connectionName() const
+{
+    Q_D(const QSqlDriver);
+    return d->connectionName;
 }
 
 QT_END_NAMESPACE

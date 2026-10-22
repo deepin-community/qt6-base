@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //#define QTCPSOCKET_DEBUG
 
@@ -20,7 +21,7 @@
     allows you to establish a TCP connection and transfer streams of
     data. See the QAbstractSocket documentation for details.
 
-    \note TCP sockets cannot be opened in QIODevice::Unbuffered mode.
+    \note TCP sockets cannot be opened in \l QIODeviceBase::Unbuffered mode.
 
     \sa QTcpServer, QUdpSocket, QNetworkAccessManager,
     {Fortune Server}, {Fortune Client},

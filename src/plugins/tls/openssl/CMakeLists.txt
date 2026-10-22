@@ -22,6 +22,8 @@ qt_internal_add_plugin(QTlsBackendOpenSSLPlugin
         Qt::CorePrivate
     DEFINES
         OPENSSL_API_COMPAT=0x10100000L
+        "QT_ENABLE_STRICT_MODE_UP_TO=QT_VERSION_CHECK(6,11,0)"
+        QT_NO_CAST_FROM_ASCII
 )
 
 if (WIN32) # Windows header issues

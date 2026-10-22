@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsqlquery.h"
 
@@ -20,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcSqlQuery, "qt.sql.qsqlquery")
+Q_STATIC_LOGGING_CATEGORY(lcSqlQuery, "qt.sql.qsqlquery")
 
 class QSqlQueryPrivate
 {
@@ -216,11 +217,12 @@ QSqlQuery::~QSqlQuery()
         delete d;
 }
 
-#if QT_DEPRECATED_SINCE(6, 2)
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
 /*!
     Constructs a copy of \a other.
 
-    \deprecated QSqlQuery cannot be meaningfully copied. Prepared
+    \deprecated [6.2] QSqlQuery cannot be meaningfully copied, and
+    therefore will no longer be copiable in Qt 7. Prepared
     statements, bound values and so on will not work correctly, depending
     on your database driver (for instance, changing the copy will affect
     the original). Treat QSqlQuery as a move-only type instead.
@@ -235,7 +237,8 @@ QSqlQuery::QSqlQuery(const QSqlQuery& other)
 /*!
     Assigns \a other to this object.
 
-    \deprecated QSqlQuery cannot be meaningfully copied. Prepared
+    \deprecated [6.2] QSqlQuery cannot be meaningfully copied, and
+    therefore will no longer be copiable in Qt 7. Prepared
     statements, bound values and so on will not work correctly, depending
     on your database driver (for instance, changing the copy will affect
     the original). Treat QSqlQuery as a move-only type instead.
@@ -263,8 +266,7 @@ QSqlQuery& QSqlQuery::operator=(const QSqlQuery& other)
 /*!
     \fn void QSqlQuery::swap(QSqlQuery &other) noexcept
     \since 6.2
-    Swaps \a other to this object. This operation is very
-    fast and never fails.
+    \memberswap{query}
 */
 
 /*!
@@ -275,7 +277,7 @@ static void qInit(QSqlQuery *q, const QString& query, const QSqlDatabase &db)
     QSqlDatabase database = db;
     if (!database.isValid()) {
         database =
-                QSqlDatabase::database(QLatin1StringView(QSqlDatabase::defaultConnection), false);
+                QSqlDatabase::database(QSqlDatabase::defaultConnectionName(), false);
     }
     if (database.isValid())
         *q = QSqlQuery(database.driver()->createResult());

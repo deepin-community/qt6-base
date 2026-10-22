@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSVISTASTYLE_P_P_H
 #define QWINDOWSVISTASTYLE_P_P_H
@@ -18,6 +19,7 @@
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qwindowsvistastyle_p.h"
 #include "qwindowsthemedata_p.h"
+#include <private/qfonticonengine_p.h>
 #include <private/qpaintengine_raster_p.h>
 #include <qpaintengine.h>
 #include <qwidget.h>
@@ -67,7 +69,9 @@
 #if QT_CONFIG(dialogbuttonbox)
 #include <qdialogbuttonbox.h>
 #endif
+#if QT_CONFIG(inputdialog)
 #include <qinputdialog.h>
+#endif
 #if QT_CONFIG(tableview)
 #include <qtableview.h>
 #endif
@@ -148,10 +152,18 @@ public:
     QRgb groupBoxTextColorDisabled = 0;
     QRgb sliderTickColor = 0;
     bool hasInitColors = false;
-    QIcon dockFloat, dockClose;
 
     QTime animationTime() const;
     bool transitionsEnabled() const;
+
+protected:
+    QFont assetFont;
+
+private:
+    QIcon m_titleBarMinIcon;
+    QIcon m_titleBarMaxIcon;
+    QIcon m_titleBarCloseIcon;
+    QIcon m_titleBarNormalIcon;
 
 private:
     static bool initVistaTreeViewTheming(const QScreen *screen);
@@ -169,6 +181,23 @@ private:
     int bufferH = 0;
 
     static QVarLengthFlatMap<const QScreen *, HWND, 4> m_vistaTreeViewHelpers;
+};
+
+class WinFontIconEngine : public QFontIconEngine
+{
+public:
+    WinFontIconEngine(const QString &glyph, const QFont &font);
+
+    QString key() const override;
+    QIconEngine *clone() const override;
+    QString string() const override;
+    void setScale(double scale);
+    void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state) override;
+
+protected:
+    QFont m_font;
+    QString m_glyph;
+    double m_scale = 0.7;
 };
 
 QT_END_NAMESPACE

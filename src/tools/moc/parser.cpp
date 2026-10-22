@@ -35,18 +35,20 @@ void Parser::printMsg(QByteArrayView formatStringSuffix, QByteArrayView msg, con
         QByteArray formatString = "%s:%d:%d: " + formatStringSuffix;
 #endif
         fprintf(stderr, formatString.constData(),
-                currentFilenames.top().constData(), sym.lineNum, 1, msg.data());
+                currentFilenames.top().constData(), sym.lineNum, 1,
+                int(msg.size()), msg.data());
     } else {
         QByteArray formatString = "%s: " + formatStringSuffix;
         fprintf(stderr, formatString.constData(),
-                currentFilenames.top().constData(), msg.data());
+                currentFilenames.top().constData(),
+                int(msg.size()), msg.data());
     }
 }
 
 void Parser::defaultErrorMsg(const Symbol &sym)
 {
     if (sym.lineNum != -1)
-        printMsg("error: Parse error at \"%s\"\n", sym.lexem().data(), sym);
+        printMsg("error: Parse error at \"%.*s\"\n", sym.lexem(), sym);
     else
         printMsg("error: could not parse file\n", "", sym);
 }
@@ -60,7 +62,7 @@ void Parser::error(const Symbol &sym)
 void Parser::error(const char *msg)
 {
     if (msg || error_msg)
-        printMsg("error: %s\n",
+        printMsg("error: %.*s\n",
                  msg ? msg : error_msg,
                  index > 0 ? symbol() : Symbol{});
     else
@@ -69,10 +71,16 @@ void Parser::error(const char *msg)
     exit(EXIT_FAILURE);
 }
 
+void Parser::error(const Symbol& symbol, const char *msg)
+{
+    printMsg("error: %.*s\n", msg, symbol);
+    exit(EXIT_FAILURE);
+}
+
 void Parser::warning(const Symbol &sym, QByteArrayView msg)
 {
     if (displayWarnings)
-        printMsg("warning: %s\n", msg, sym);
+        printMsg("warning: %.*s\n", msg, sym);
 }
 
 void Parser::warning(const char *msg) {
@@ -81,7 +89,7 @@ void Parser::warning(const char *msg) {
 
 void Parser::note(const char *msg) {
     if (displayNotes && msg)
-        printMsg("note: %s\n", msg, index > 0 ? symbol() : Symbol{});
+        printMsg("note: %.*s\n", msg, index > 0 ? symbol() : Symbol{});
 }
 
 QT_END_NAMESPACE

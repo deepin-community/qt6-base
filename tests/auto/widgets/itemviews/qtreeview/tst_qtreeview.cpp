@@ -827,7 +827,7 @@ void tst_QTreeView::editTriggers()
         break;
     case QAbstractItemView::EditKeyPressed:
         view.setFocus();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         // OS X uses Enter for editing
         QTest::keyPress(&view, Qt::Key_Enter);
 #else
@@ -873,7 +873,7 @@ void tst_QTreeView::horizontalScrollMode()
 
     QCOMPARE(view.horizontalScrollMode(), QAbstractItemView::ScrollPerPixel);
     QCOMPARE(view.horizontalScrollBar()->minimum(), 0);
-    QVERIFY(view.horizontalScrollBar()->maximum() > 2);
+    QCOMPARE_GT(view.horizontalScrollBar()->maximum(), 2);
 
     view.setHorizontalScrollMode(QAbstractItemView::ScrollPerItem);
     QCOMPARE(view.horizontalScrollMode(), QAbstractItemView::ScrollPerItem);
@@ -883,7 +883,7 @@ void tst_QTreeView::horizontalScrollMode()
     view.setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
     QCOMPARE(view.horizontalScrollMode(), QAbstractItemView::ScrollPerPixel);
     QCOMPARE(view.horizontalScrollBar()->minimum(), 0);
-    QVERIFY(view.horizontalScrollBar()->maximum() > 2);
+    QCOMPARE_GT(view.horizontalScrollBar()->maximum(), 2);
 }
 
 class RepaintTreeView : public QTreeView
@@ -931,12 +931,13 @@ void tst_QTreeView::iconSize()
 
 void tst_QTreeView::indexAt()
 {
-    QtTestModel model(5, 5);
+    int columnCount = 5;
+    QtTestModel model(5, columnCount);
 
     QTreeView view;
     QCOMPARE(view.indexAt(QPoint()), QModelIndex());
     view.setModel(&model);
-    QVERIFY(view.indexAt(QPoint()) != QModelIndex());
+    QCOMPARE_NE(view.indexAt(QPoint()), QModelIndex());
 
     QSize itemSize = view.visualRect(model.index(0, 0)).size();
     for (int i = 0; i < model.rowCount(); ++i) {
@@ -958,9 +959,10 @@ void tst_QTreeView::indexAt()
     }
 
     view.show();
-    view.resize(600, 600);
+    int columnWidth = view.header()->sectionSize(0);
+    view.resize(columnWidth * (columnCount + 1), 600);
     view.header()->setStretchLastSection(false);
-    QCOMPARE(view.indexAt(QPoint(550, 20)), QModelIndex());
+    QCOMPARE(view.indexAt(QPoint(columnWidth * (columnCount + 0.5), 20)), QModelIndex());
 }
 
 void tst_QTreeView::indexWidget()
@@ -1227,9 +1229,6 @@ void tst_QTreeView::keyboardSearch()
 
 void tst_QTreeView::keyboardSearchMultiColumn()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QTreeView view;
     QStandardItemModel model(4, 2);
 
@@ -1907,9 +1906,6 @@ void tst_QTreeView::moveCursor_data()
 
 void tst_QTreeView::moveCursor()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(bool, uniformRowHeights);
     QFETCH(bool, scrollPerPixel);
     QtTestModel model(8, 6);
@@ -2353,22 +2349,27 @@ void tst_QTreeView::resizeColumnToContents()
             for (int i = 0; i < 6; ++i) {
                 const QString iS = QString::number(i);
                 for (int j = 0; j < 2 ; ++j) {
-                    model.setData(model.index(i, j, idx), QLatin1String("child") + iS + QString::number(j));
+                    model.setData(model.index(i, j, idx), QLatin1String("child number ") + iS + QString::number(j));
                 }
             }
         }
     }
     QTreeView view;
     view.setModel(&model);
+    view.header()->setMinimumSectionSize(10);
+    view.setColumnWidth(0, 200);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
+    int oldColumnSize = view.header()->sectionSize(0);
 
     view.scrollToBottom();
     view.resizeColumnToContents(0);
-    int oldColumnSize = view.header()->sectionSize(0);
+    QCOMPARE_LT(view.header()->sectionSize(0), oldColumnSize);
+
+    oldColumnSize = view.header()->sectionSize(0);
     view.setRootIndex(model.index(0, 0));
     view.resizeColumnToContents(0);        //Earlier, this gave an assert
-    QVERIFY(view.header()->sectionSize(0) > oldColumnSize);
+    QCOMPARE_GT(view.header()->sectionSize(0), oldColumnSize);
 }
 
 void tst_QTreeView::insertAfterSelect()
@@ -2439,6 +2440,7 @@ void tst_QTreeView::spanningItems()
     QtTestModel model(10, 10);
     model.onlyValidCalls = true;
     QTreeView view;
+    view.header()->setMinimumSectionSize(20);
     view.setModel(&model);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
@@ -2489,9 +2491,6 @@ void tst_QTreeView::selectionOrderTest()
 
 void tst_QTreeView::selection()
 {
-    if (!QGuiApplication::platformName().compare(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This causes a crash triggered by setVisible(false)");
-
     QTreeView treeView;
     QStandardItemModel m(10, 2);
     for (int i = 0;i < 10; ++i)
@@ -3255,15 +3254,79 @@ void tst_QTreeView::styleOptionViewItem()
         }
     public:
         using QStyledItemDelegate::QStyledItemDelegate;
+        bool checkModel(QTreeView *view, QAbstractItemModel *model)
+        {
+            expectedIndices.clear();
+            nonexpectedIndices.clear();
+            findIndexesToCheck(view, model, QModelIndex());
+            //qDebug() << "Found" << expectedIndices.size() << "indexes to check";
+            if (expectedIndices.empty()) {
+                qWarning() << "Testcase is wrong - need at least one visible item!";
+                return false;
+            }
+            return checkModel(view);
+        }
+
+        bool checkModel(QTreeView *view)
+        {
+            isTesting = true;
+            foundError = false;
+            const auto vp = view->viewport();
+            for (const auto &idx : std::as_const(expectedIndices)) {
+                if (!QTest::qWaitFor([&]() { return !view->visualRect(idx).isEmpty(); }, 2000)) {
+                    qWarning() << "Index" << idx << "has an invalid visible rect:" << view->visualRect(idx);
+                    isTesting = false;
+                    return false;
+                }
+                vp->update(view->visualRect(idx));
+            }
+            if (!QTest::qWaitFor([&]() { return expectedIndices.empty(); }, 2000)) {
+                for (const auto &idx : std::as_const(expectedIndices))
+                    qDebug() << "Missing indexes:" << idx << idx.data(Qt::DisplayRole).toString();
+                isTesting = false;
+                return false;
+            }
+            isTesting = false;
+            return !foundError;
+        }
+        void findIndexesToCheck(QTreeView *view,
+                                QAbstractItemModel *model,
+                                const QModelIndex &parent)
+        {
+            for (int r = 0; r < model->rowCount(parent); ++r) {
+                for (int c = 0; c < model->columnCount(parent); ++c) {
+                    const auto child = model->index(r, c, parent);
+                    if (view->isRowHidden(r, parent) || view->isColumnHidden(c) ||
+                        view->isIndexHidden(child) ||
+                        (parent.isValid() && view->isIndexHidden(parent)) ||
+                        (parent.isValid() && !view->isExpanded(parent)) ||
+                        (view->isFirstColumnSpanned(r, parent) && c != 0)) {
+                        nonexpectedIndices.append(child);
+                    } else {
+                        expectedIndices.append(child);
+                    }
+                    findIndexesToCheck(view, model, child);
+                }
+            }
+        }
         void paint(QPainter *painter, const QStyleOptionViewItem &option,
                    const QModelIndex &index) const override
         {
             QStyleOptionViewItem opt(option);
             initStyleOption(&opt, index);
+            QStyledItemDelegate::paint(painter, option, index);
 
             QVERIFY(!opt.text.isEmpty());
             QCOMPARE(opt.index, index);
             //qDebug() << index << opt.text;
+
+            expectedIndices.removeAll(index);
+            if (!isTesting)
+                return;
+            if (nonexpectedIndices.contains(index)) {
+                qDebug() << "Unexpected index found:" << index << index.data(Qt::DisplayRole).toString();
+                foundError = true;
+            }
 
             if (allCollapsed) {
                 QCOMPARE(!opt.features.testFlag(QStyleOptionViewItem::Alternate),
@@ -3296,12 +3359,12 @@ void tst_QTreeView::styleOptionViewItem()
                      !opt.text.contains("Last"));
 
             QVERIFY(!opt.text.contains("Assert"));
-
-            QStyledItemDelegate::paint(painter, option, index);
-            count++;
         }
-        mutable int count = 0;
         bool allCollapsed = false;
+        mutable QModelIndexList expectedIndices;
+        QModelIndexList nonexpectedIndices;
+        mutable bool foundError = false;
+        bool isTesting = false;
     };
 
     QTreeView view;
@@ -3364,23 +3427,22 @@ void tst_QTreeView::styleOptionViewItem()
                       new QStandardItem("Hidden"),
                       new QStandardItem("Assert"),
                       new QStandardItem("Assert"),
-                      new QStandardItem("Asser") });
+                      new QStandardItem("Assert") });
     view.setRowHidden(0, par3->index(), true);
     par1->appendRow({ new QStandardItem("Assert"),
                       new QStandardItem("Hidden"),
                       new QStandardItem("Assert"),
                       new QStandardItem("Assert"),
-                      new QStandardItem("Asser") });
+                      new QStandardItem("Assert") });
     view.setRowHidden(3, par1->index(), true);
 
     view.setColumnHidden(1, true);
     view.header()->setMinimumSectionSize(10);
     // make sure that all columns are drawn in the view by using a very small section size
     for (int i = 0; i < view.header()->count(); ++i)
-        view.header()->resizeSection(i, 20);
-    view.setMinimumWidth(view.header()->count() * 20);
+        view.header()->resizeSection(i, 40);
+    view.setMinimumWidth(view.header()->count() * 40);
 
-    const int visibleColumns = 4;
     const int modelColumns = 5;
 
     view.header()->swapSections(2, 3);
@@ -3392,96 +3454,84 @@ void tst_QTreeView::styleOptionViewItem()
         // Test the rendering to pixmap before painting the widget.
         // The rendering to pixmap should not depend on having been
         // painted already yet.
-        delegate.count = 0;
         QItemSelection sel(model.index(0,0), model.index(0,modelColumns-1));
+        delegate.expectedIndices = sel.indexes();
+        delegate.expectedIndices.removeAll(model.index(0, 1)); // hidden
+        delegate.nonexpectedIndices.clear();
+        delegate.nonexpectedIndices.append(model.index(0, 1));
         QRect rect;
         view.d_func()->renderToPixmap(sel.indexes(), &rect);
-        if (delegate.count != visibleColumns) {
-            qDebug() << rect << view.rect() << view.isVisible();
-        }
-        QTRY_COMPARE(delegate.count, visibleColumns);
+        QVERIFY(delegate.checkModel(&view));
     }
 #endif
 
-    delegate.count = 0;
     delegate.allCollapsed = true;
     view.showMaximized();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QTRY_VERIFY(delegate.count >= 13);
-    delegate.count = 0;
+    QVERIFY(delegate.checkModel(&view, &model));
     delegate.allCollapsed = false;
     view.expandAll();
-    QTRY_VERIFY(delegate.count >= 13);
-    delegate.count = 0;
+    QVERIFY(delegate.checkModel(&view, &model));
     view.collapse(par2->index());
-    QTRY_VERIFY(delegate.count >= 4);
+    QVERIFY(delegate.checkModel(&view, &model));
 
     // test that the rendering of drag pixmap sets the correct options too (QTBUG-15834)
 #ifdef QT_BUILD_INTERNAL
-    delegate.count = 0;
     QItemSelection sel(model.index(0,0), model.index(0,modelColumns-1));
+    delegate.expectedIndices = sel.indexes();
+    delegate.expectedIndices.removeAll(model.index(0, 1)); // hidden
+    delegate.nonexpectedIndices.clear();
+    delegate.nonexpectedIndices.append(model.index(0, 1));
     QRect rect;
     view.d_func()->renderToPixmap(sel.indexes(), &rect);
-    if (delegate.count != visibleColumns) {
-        qDebug() << rect << view.rect() << view.isVisible();
-    }
-    QTRY_COMPARE(delegate.count, visibleColumns);
+    QVERIFY(delegate.checkModel(&view));
 #endif
 
     //test dynamic models
     {
-        delegate.count = 0;
         QStandardItemModel model2;
         QStandardItem *item0 = new QStandardItem("OnlyOne Last");
         model2.appendRow(item0);
         view.setModel(&model2);
-        QTRY_VERIFY(delegate.count >= 1);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         QStandardItem *item00 = new QStandardItem("OnlyOne Last");
         item0->appendRow(item00);
         item0->setText("OnlyOne Last HasChildren");
-        delegate.count = 0;
         view.expandAll();
-        QTRY_VERIFY(delegate.count >= 2);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         QStandardItem *item1 = new QStandardItem("OnlyOne Last");
-        delegate.count = 0;
         item0->setText("OnlyOne HasChildren");
         model2.appendRow(item1);
-        QTRY_VERIFY(delegate.count >= 3);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         QStandardItem *item01 = new QStandardItem("OnlyOne Last");
-        delegate.count = 0;
         item00->setText("OnlyOne");
         item0->appendRow(item01);
-        QTRY_VERIFY(delegate.count >= 4);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         QStandardItem *item000 = new QStandardItem("OnlyOne Last");
-        delegate.count = 0;
         item00->setText("OnlyOne HasChildren");
         item00->appendRow(item000);
-        QTRY_VERIFY(delegate.count >= 5);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
-        delegate.count = 0;
         item0->removeRow(0);
-        QTRY_VERIFY(delegate.count >= 3);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         item00 = new QStandardItem("OnlyOne");
         item0->insertRow(0, item00);
 
-        delegate.count = 0;
         view.expandAll();
-        QTRY_VERIFY(delegate.count >= 4);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
-        delegate.count = 0;
         item0->removeRow(1);
         item00->setText("OnlyOne Last");
-        QTRY_VERIFY(delegate.count >= 3);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
-        delegate.count = 0;
         item0->removeRow(0);
         item0->setText("OnlyOne");
-        QTRY_VERIFY(delegate.count >= 2);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         //with hidden items
         item0->setText("OnlyOne HasChildren");
@@ -3493,25 +3543,49 @@ void tst_QTreeView::styleOptionViewItem()
         view.expandAll();
         QStandardItem *item02 = new QStandardItem("OnlyOne Last");
         item0->appendRow(item02);
-        delegate.count = 0;
-        QTRY_VERIFY(delegate.count >= 4);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         item0->removeRow(2);
         item00->setText("OnlyOne Last");
-        delegate.count = 0;
-        QTRY_VERIFY(delegate.count >= 3);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         item00->setText("OnlyOne");
         item0->insertRow(2, new QStandardItem("OnlyOne Last"));
         view.collapse(item0->index());
         item0->removeRow(0);
-        delegate.count = 0;
-        QTRY_VERIFY(delegate.count >= 2);
+        QVERIFY(delegate.checkModel(&view, &model2));
 
         item0->removeRow(1);
         item0->setText("OnlyOne");
-        delegate.count = 0;
-        QTRY_VERIFY(delegate.count >= 2);
+        QVERIFY(delegate.checkModel(&view, &model2));
+    }
+
+    // special case, two column, first is hidden
+    model.clear();
+    model.appendRow({ new QStandardItem("Hidden"),
+                      new QStandardItem("OnlyOne Last") });
+    view.setModel(&model);
+    view.setColumnHidden(0, true);
+    view.setColumnHidden(1, false);
+    QVERIFY(delegate.checkModel(&view, &model));
+
+    // special case, four columns, only one is updated but
+    // calcLogicalIndices() returns the correct value
+    {
+        model.clear();
+        model.appendRow({ new QStandardItem("Hidden"),
+                          new QStandardItem("Beginning Last"),
+                          new QStandardItem("Middle Last"),
+                          new QStandardItem("End Last") });
+        view.setColumnHidden(0, true);
+        QVERIFY(delegate.checkModel(&view, &model));
+        // do not rely on paintEvent() as this might redraw a bigger
+        // rect than we expect
+        QList<int> logicalIndices;
+        QList<QStyleOptionViewItem::ViewItemPosition> itemPositions;
+        view.d_func()->calcLogicalIndices(&logicalIndices, &itemPositions, 3, 3);
+        QCOMPARE(itemPositions.size(), 1);
+        QCOMPARE(itemPositions.at(0), QStyleOptionViewItem::End);
     }
 }
 
@@ -3588,9 +3662,6 @@ void tst_QTreeView::task203696_hidingColumnsAndRowsn()
 
 void tst_QTreeView::addRowsWhileSectionsAreHidden()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QTreeView view;
     for (int pass = 1; pass <= 2; ++pass) {
         QStandardItemModel *model = new QStandardItemModel(6, pass, &view);
@@ -3657,9 +3728,6 @@ void tst_QTreeView::task216717_updateChildren()
 
 void tst_QTreeView::task220298_selectColumns()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     //this is a very simple 3x3 model where the internalId of the index are different for each cell
     class Model : public QAbstractTableModel
     {
@@ -3699,9 +3767,6 @@ void tst_QTreeView::task220298_selectColumns()
 
 void tst_QTreeView::task224091_appendColumns()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QStandardItemModel *model = new QStandardItemModel();
     QWidget* topLevel= new QWidget;
     setFrameless(topLevel);
@@ -3860,9 +3925,6 @@ void tst_QTreeView::task202039_closePersistentEditor()
 
 void tst_QTreeView::task238873_avoidAutoReopening()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QStandardItemModel model;
 
     QStandardItem item0("row 0");
@@ -3941,17 +4003,14 @@ void tst_QTreeView::task246536_scrollbarsNotWorking()
         items << new QStandardItem(QLatin1String("item ") + QString::number(i));
     o.count = 0;
     model.invisibleRootItem()->appendColumn(items);
-    QTRY_VERIFY(o.count > 0);
+    QTRY_COMPARE_GT(o.count, 0);
     o.count = 0;
     tree.verticalScrollBar()->setValue(50);
-    QTRY_VERIFY(o.count > 0);
+    QTRY_COMPARE_GT(o.count, 0);
 }
 
 void tst_QTreeView::task250683_wrongSectionSize()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QStandardItemModel model;
     populateFakeDirModel(&model);
 
@@ -4076,9 +4135,6 @@ void tst_QTreeView::task245654_changeModelAndExpandAll()
 
 void tst_QTreeView::doubleClickedWithSpans()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QTreeView view;
     QStandardItemModel model(1, 2);
     view.setModel(&model);
@@ -4160,20 +4216,17 @@ void tst_QTreeView::taskQTBUG_9216_setSizeAndUniformRowHeightsWrongRepaint()
     view.doCompare = false;
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QTRY_VERIFY(view.painted > 0);
+    QTRY_COMPARE_GT(view.painted, 0);
 
     QTest::qWait(100);  // This one is needed to make the test fail before the patch.
     view.painted = 0;
     view.doCompare = true;
     model.setData(model.index(0, 0), QVariant(QSize(50, 50)), Qt::SizeHintRole);
-    QTRY_VERIFY(view.painted > 0);
+    QTRY_COMPARE_GT(view.painted, 0);
 }
 
 void tst_QTreeView::keyboardNavigationWithDisabled()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QWidget topLevel;
     QTreeView view(&topLevel);
     QStandardItemModel model(90, 0);
@@ -4545,9 +4598,6 @@ void tst_QTreeView::taskQTBUG_8176_emitOnExpandAll()
 
 void tst_QTreeView::testInitialFocus()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QTreeWidget treeWidget;
     treeWidget.setColumnCount(5);
     new QTreeWidgetItem(&treeWidget, QString("1;2;3;4;5").split(QLatin1Char(';')));
@@ -4692,7 +4742,7 @@ void tst_QTreeView::taskQTBUG_45697_crash()
     testWidget.setWindowTitle(QTest::currentTestFunction());
     testWidget.resize(400, 400);
     testWidget.move(QGuiApplication::primaryScreen()->availableGeometry().topLeft() + QPoint(100, 100));
-    QTRY_VERIFY(testWidget.timerTick() >= 2);
+    QTRY_COMPARE_GE(testWidget.timerTick(), 2);
 }
 
 void tst_QTreeView::taskQTBUG_7232_AllowUserToControlSingleStep()
@@ -4719,8 +4769,8 @@ void tst_QTreeView::taskQTBUG_7232_AllowUserToControlSingleStep()
     t.setGeometry(200, 200, 200, 200);
     int vStep1 = t.verticalScrollBar()->singleStep();
     int hStep1 = t.horizontalScrollBar()->singleStep();
-    QVERIFY(vStep1 > 1);
-    QVERIFY(hStep1 > 1);
+    QCOMPARE_GT(vStep1, 1);
+    QCOMPARE_GT(hStep1, 1);
 
     t.verticalScrollBar()->setSingleStep(1);
     t.setGeometry(300, 300, 300, 300);
@@ -4746,9 +4796,6 @@ void tst_QTreeView::statusTip_data()
 
 void tst_QTreeView::statusTip()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(bool, intermediateParent);
     QMainWindow mw;
     QtTestModel model(5, 5);
@@ -4817,9 +4864,6 @@ public:
 
 void tst_QTreeView::fetchMoreOnScroll()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     if (QGuiApplication::platformName().startsWith(QLatin1String("eglfs"), Qt::CaseInsensitive))
         QSKIP("EGLFS does not allow resizing on top level window");
 
@@ -4973,7 +5017,7 @@ void tst_QTreeView::taskQTBUG_8376()
     QModelIndex idxLvl1 = model.index(0, 1, idxLvl0);
     const int rowHeightLvl0 = tv.rowHeight(idxLvl0);
     const int rowHeightLvl1Visible = tv.rowHeight(idxLvl1);
-    QVERIFY(rowHeightLvl0 < rowHeightLvl1Visible);
+    QCOMPARE_LT(rowHeightLvl0, rowHeightLvl1Visible);
 
     tv.hideColumn(1);
     const int rowHeightLvl1Hidden = tv.rowHeight(idxLvl1);
@@ -4986,9 +5030,6 @@ void tst_QTreeView::taskQTBUG_8376()
 
 void tst_QTreeView::taskQTBUG_61476()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     // This checks that if a user clicks on an item to collapse it that it
     // does not edit (in this case change the check state) the item that is
     // now over the mouse just because it got a release event
@@ -5091,7 +5132,7 @@ void tst_QTreeView::fetchUntilScreenFull()
             rootData.append(rootData1);
             rootData.append(rootData2);
 
-            m_root = new TreeItem(rootData, nullptr);
+            m_root = std::make_unique<TreeItem>(rootData, nullptr);
 
             QVariant childData1("Col 1");
             QVariant childData2("Col 2");
@@ -5099,7 +5140,7 @@ void tst_QTreeView::fetchUntilScreenFull()
             childData.append(childData1);
             childData.append(childData2);
 
-            TreeItem* item_1 = new TreeItem(childData, m_root);
+            TreeItem* item_1 = new TreeItem(childData, m_root.get());
             m_root->children.append(item_1);
 
             TreeItem* item_2 = new TreeItem(childData, item_1);
@@ -5113,7 +5154,7 @@ void tst_QTreeView::fetchUntilScreenFull()
                 return QModelIndex();
 
             TreeItem* parentItem =
-                parent.isValid() ? static_cast<TreeItem*>(parent.internalPointer()) : m_root;
+                parent.isValid() ? static_cast<TreeItem*>(parent.internalPointer()) : m_root.get();
             TreeItem* childItem = parentItem->children.at(row);
             return createIndex(row, column, childItem);
         }
@@ -5124,7 +5165,7 @@ void tst_QTreeView::fetchUntilScreenFull()
                 return 0;
 
             TreeItem* parentItem = parent.isValid() ? static_cast<TreeItem*>(parent.internalPointer())
-                : m_root;
+                                                    : m_root.get();
             return parentItem->children.size();
         }
 
@@ -5137,7 +5178,7 @@ void tst_QTreeView::fetchUntilScreenFull()
 
             TreeItem* parentItem =
                 static_cast<TreeItem*>(childIndex.internalPointer())->parent;
-            return parentItem == m_root ? QModelIndex()
+            return parentItem == m_root.get() ? QModelIndex()
                 : createIndex(parentItem->rowInParent(), 0, parentItem);
         }
 
@@ -5201,7 +5242,7 @@ void tst_QTreeView::fetchUntilScreenFull()
             QVector<TreeItem*> children;
             TreeItem* parent = nullptr;
         };
-        TreeItem* m_root;
+        std::unique_ptr<TreeItem> m_root;
     };
 
     if (QGuiApplication::platformName().startsWith(QLatin1String("eglfs"), Qt::CaseInsensitive))
@@ -5260,7 +5301,7 @@ void tst_QTreeView::expandAfterTake()
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     view.expandAll();
-    model.takeItem(0);
+    const std::unique_ptr<QStandardItem> reaper{model.takeItem(0)};
     populateModel(&model); // populate model again, having corrupted items inside QTreeViewPrivate::expandedIndexes
     view.expandAll(); // adding new items to QTreeViewPrivate::expandedIndexes with corrupted persistent indices, causing crash sometimes
 }

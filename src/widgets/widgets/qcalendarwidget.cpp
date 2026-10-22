@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qcalendarwidget.h"
 
@@ -909,7 +910,7 @@ public:
 signals:
     void showDate(QDate date);
     void changeDate(QDate date, bool changeMonth);
-    void clicked(QDate date);
+    void dateClicked(QDate date);
     void editingFinished();
 protected:
     QModelIndex moveCursor(CursorAction cursorAction, Qt::KeyboardModifiers modifiers) override;
@@ -928,9 +929,6 @@ public:
     bool readOnly;
 private:
     bool validDateClicked;
-#ifdef QT_KEYPAD_NAVIGATION
-    QDate origDate;
-#endif
 };
 
 QCalendarModel::QCalendarModel(QObject *parent)
@@ -1374,25 +1372,6 @@ QModelIndex QCalendarView::moveCursor(CursorAction cursorAction, Qt::KeyboardMod
 
 void QCalendarView::keyPressEvent(QKeyEvent *event)
 {
-#ifdef QT_KEYPAD_NAVIGATION
-    if (event->key() == Qt::Key_Select) {
-        if (QApplicationPrivate::keypadNavigationEnabled()) {
-            if (!hasEditFocus()) {
-                setEditFocus(true);
-                return;
-            }
-        }
-    } else if (event->key() == Qt::Key_Back) {
-        if (QApplicationPrivate::keypadNavigationEnabled() && hasEditFocus()) {
-            if (qobject_cast<QCalendarModel *>(model())) {
-                emit changeDate(origDate, true); //changes selection back to origDate, but doesn't activate
-                setEditFocus(false);
-                return;
-            }
-        }
-    }
-#endif
-
     if (!readOnly) {
         switch (event->key()) {
             case Qt::Key_Return:
@@ -1422,14 +1401,6 @@ void QCalendarView::wheelEvent(QWheelEvent *event)
 
 bool QCalendarView::event(QEvent *event)
 {
-#ifdef QT_KEYPAD_NAVIGATION
-    if (event->type() == QEvent::FocusIn) {
-        if (QCalendarModel *calendarModel = qobject_cast<QCalendarModel *>(model())) {
-            origDate = calendarModel->m_date;
-        }
-    }
-#endif
-
     return QTableView::event(event);
 }
 
@@ -1462,7 +1433,8 @@ void QCalendarView::mouseDoubleClickEvent(QMouseEvent *event)
 
     QDate date = handleMouseEvent(event);
     validDateClicked = false;
-    if (date == calendarModel->m_date && !style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick)) {
+    if (date == calendarModel->m_date &&
+        !style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick, nullptr, this)) {
         emit editingFinished();
     }
 }
@@ -1538,8 +1510,8 @@ void QCalendarView::mouseReleaseEvent(QMouseEvent *event)
         QDate date = handleMouseEvent(event);
         if (date.isValid()) {
             emit changeDate(date, true);
-            emit clicked(date);
-            if (style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick))
+            emit dateClicked(date);
+            if (style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick, nullptr, this))
                 emit editingFinished();
         }
         validDateClicked = false;
@@ -1576,20 +1548,15 @@ protected:
     {
         Q_UNUSED(e);
 
+        QStylePainter painter(this);
         QStyleOptionToolButton opt;
         initStyleOption(&opt);
 
-        if (opt.state & QStyle::State_MouseOver || isDown()) {
-            //act as normal button
-            setPalette(QPalette());
-        } else {
-            //set the highlight color for button text
-            QPalette toolPalette = palette();
-            toolPalette.setColor(QPalette::ButtonText, toolPalette.color(QPalette::HighlightedText));
-            setPalette(toolPalette);
-        }
+        // set the highlight color for button text so it remains legible on top of navBarBackground
+        if (!opt.state.testFlag(QStyle::State_MouseOver) || isDown())
+            opt.palette.setColor(QPalette::ButtonText, opt.palette.color(QPalette::HighlightedText));
 
-        QToolButton::paintEvent(e);
+        painter.drawComplexControl(QStyle::CC_ToolButton, opt);
     }
 };
 
@@ -2019,6 +1986,7 @@ void QCalendarWidgetPrivate::_q_editingFinished()
     \inmodule QtWidgets
 
     \image fusion-calendarwidget.png
+           {Calendar widget showing the month, year, and a selected day}
 
     The widget is initialized with the current month and year, but
     QCalendarWidget provides several public slots to change the year
@@ -2057,6 +2025,7 @@ void QCalendarWidgetPrivate::_q_editingFinished()
     \table
     \row \li
         \image qcalendarwidget-grid.png
+               {Calendar widget with a visible grid}
     \row \li
         \snippet code/src_gui_widgets_qcalendarwidget.cpp 0
     \endtable
@@ -2140,7 +2109,7 @@ QCalendarWidget::QCalendarWidget(QWidget *parent)
             this, SLOT(_q_slotShowDate(QDate)));
     connect(d->m_view, SIGNAL(changeDate(QDate,bool)),
             this, SLOT(_q_slotChangeDate(QDate,bool)));
-    connect(d->m_view, SIGNAL(clicked(QDate)),
+    connect(d->m_view, SIGNAL(dateClicked(QDate)),
             this, SIGNAL(clicked(QDate)));
     connect(d->m_view, SIGNAL(editingFinished()),
             this, SLOT(_q_editingFinished()));
@@ -2487,6 +2456,7 @@ void QCalendarWidget::showToday()
     \table
     \row
     \li \image qcalendarwidget-minimum.png
+               {Calendar widget with the disabled dates before the minimum date}
     \row
     \li
     \snippet code/src_gui_widgets_qcalendarwidget.cpp 1
@@ -2543,6 +2513,7 @@ void QCalendarWidget::clearMinimumDate()
     \table
     \row
     \li \image qcalendarwidget-maximum.png
+               {Calendar widget with the disabled dates after the maximum date}
     \row
     \li
     \snippet code/src_gui_widgets_qcalendarwidget.cpp 2
@@ -2717,6 +2688,7 @@ void QCalendarWidget::setVerticalHeaderFormat(QCalendarWidget::VerticalHeaderFor
     \table
     \row
         \li \inlineimage qcalendarwidget-grid.png
+                         {Calendar widget set to be visible}
     \row
         \li
         \snippet code/src_gui_widgets_qcalendarwidget.cpp 5
@@ -2891,7 +2863,7 @@ QMap<QDate, QTextCharFormat> QCalendarWidget::dateTextFormat() const
 
 /*!
     Returns a QTextCharFormat for \a date. The char format can be
-    empty if the date is not renderd specially.
+    empty if the date is not rendered specially.
 */
 QTextCharFormat QCalendarWidget::dateTextFormat(QDate date) const
 {
@@ -3139,7 +3111,7 @@ bool QCalendarWidget::eventFilter(QObject *watched, QEvent *event)
         if (!widget || widget->window() != tlw)
             return QWidget::eventFilter(watched, event);
 
-        QPoint mousePos = widget->mapTo(tlw, static_cast<QMouseEvent *>(event)->position().toPoint());
+        QPoint mousePos = widget->mapTo(tlw, static_cast<QMouseEvent *>(event)->position()).toPoint();
         QRect geom = QRect(d->yearEdit->mapTo(tlw, QPoint(0, 0)), d->yearEdit->size());
         if (!geom.contains(mousePos)) {
             event->accept();

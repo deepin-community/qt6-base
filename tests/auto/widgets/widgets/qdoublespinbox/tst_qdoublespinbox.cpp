@@ -17,49 +17,28 @@
 
 #include <qlineedit.h>
 #include <qdebug.h>
+#include <qscopeguard.h>
 
 #include <QStyleOptionSpinBox>
 #include <QStyle>
 #include <QProxyStyle>
 
-#include <QtWidgets/private/qapplication_p.h>
+#include <QtCore/private/qlocale_p.h> // for QSystemLocale
 
 class DoubleSpinBox : public QDoubleSpinBox
 {
     Q_OBJECT
 public:
-    DoubleSpinBox(QWidget *parent = nullptr)
-        : QDoubleSpinBox(parent)
-    { /*connect(this, SIGNAL(valueChanged(double)), this, SLOT(foo(double)));*/ }
-    QString textFromValue(double v) const override
-    {
-        return QDoubleSpinBox::textFromValue(v);
-    }
-    QValidator::State validate(QString &text, int &pos) const override
-    {
-        return QDoubleSpinBox::validate(text, pos);
-    }
-    double valueFromText(const QString &text) const override
-    {
-        return QDoubleSpinBox::valueFromText(text);
-    }
-#if QT_CONFIG(wheelevent)
-    void wheelEvent(QWheelEvent *event) override
-    {
-        QDoubleSpinBox::wheelEvent(event);
-    }
-#endif
-    void initStyleOption(QStyleOptionSpinBox *option) const override
-    {
-        QDoubleSpinBox::initStyleOption(option);
-    }
+    using QDoubleSpinBox::QDoubleSpinBox;
 
-    QLineEdit* lineEdit() const { return QDoubleSpinBox::lineEdit(); }
-public slots:
-    void foo(double vla)
-    {
-        qDebug() << vla;
-    }
+    using QDoubleSpinBox::textFromValue;
+    using QDoubleSpinBox::validate;
+    using QDoubleSpinBox::valueFromText;
+    using QDoubleSpinBox::initStyleOption;
+    using QDoubleSpinBox::lineEdit;
+#if QT_CONFIG(wheelevent)
+    using QDoubleSpinBox::wheelEvent;
+#endif
 };
 
 class PressAndHoldStyle : public QProxyStyle
@@ -108,10 +87,8 @@ class tst_QDoubleSpinBox : public QObject
     Q_OBJECT
 public:
     tst_QDoubleSpinBox();
-    virtual ~tst_QDoubleSpinBox();
 public slots:
     void initTestCase();
-    void init();
     void cleanup();
 
 private slots:
@@ -156,6 +133,8 @@ private slots:
 
     void editingFinished();
 
+    void returnPressed();
+
     void removeAll();
 
     void task199226_stateAfterEnter();
@@ -184,6 +163,10 @@ private slots:
 
     void stepModifierPressAndHold_data();
     void stepModifierPressAndHold();
+
+    void digitGroupingControl_data();
+    void digitGroupingControl();
+
 public slots:
     void valueChangedHelper(const QString &);
     void valueChangedHelper(double);
@@ -202,19 +185,14 @@ static QLatin1String modifierToName(Qt::KeyboardModifier modifier)
     switch (modifier) {
     case Qt::NoModifier:
         return QLatin1String("No");
-        break;
     case Qt::ControlModifier:
         return QLatin1String("Ctrl");
-        break;
     case Qt::ShiftModifier:
         return QLatin1String("Shift");
-        break;
     case Qt::AltModifier:
         return QLatin1String("Alt");
-        break;
     case Qt::MetaModifier:
         return QLatin1String("Meta");
-        break;
     default:
         qFatal("Unexpected keyboard modifier");
         return QLatin1String();
@@ -222,13 +200,8 @@ static QLatin1String modifierToName(Qt::KeyboardModifier modifier)
 }
 
 tst_QDoubleSpinBox::tst_QDoubleSpinBox()
-
 {
-}
-
-tst_QDoubleSpinBox::~tst_QDoubleSpinBox()
-{
-
+    QLocale::setDefault(QLocale::c());
 }
 
 void tst_QDoubleSpinBox::initTestCase()
@@ -237,14 +210,10 @@ void tst_QDoubleSpinBox::initTestCase()
         QSKIP("Wayland: This fails. Figure out why.");
 }
 
-void tst_QDoubleSpinBox::init()
-{
-    QLocale::setDefault(QLocale(QLocale::C));
-}
-
 void tst_QDoubleSpinBox::cleanup()
 {
     QTRY_VERIFY(QApplication::topLevelWidgets().isEmpty());
+    QCOMPARE(QLocale(), QLocale::c());
 }
 
 void tst_QDoubleSpinBox::setValue_data()
@@ -261,7 +230,7 @@ void tst_QDoubleSpinBox::setValue_data()
 void tst_QDoubleSpinBox::setValue()
 {
     QFETCH(double, val);
-    QDoubleSpinBox spin(0);
+    QDoubleSpinBox spin;
     spin.setRange(-DBL_MAX, DBL_MAX);
     spin.setValue(val);
     QCOMPARE(spin.value(), val);
@@ -347,7 +316,7 @@ void tst_QDoubleSpinBox::setTracking_data()
     QTestEventList keys;
     QStringList texts1;
     QStringList texts2;
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     keys.addKeyClick(Qt::Key_Right, Qt::ControlModifier);
 #else
     keys.addKeyClick(Qt::Key_End);
@@ -377,15 +346,13 @@ void tst_QDoubleSpinBox::setTracking_data()
 
 void tst_QDoubleSpinBox::setTracking()
 {
-    QLocale::setDefault(QLocale(QLocale::C));
-
     actualTexts.clear();
     QFETCH(int, decimals);
     QFETCH(QTestEventList, keys);
     QFETCH(QStringList, texts);
     QFETCH(bool, tracking);
 
-    QDoubleSpinBox spin(0);
+    QDoubleSpinBox spin;
     spin.setKeyboardTracking(tracking);
     spin.setDecimals(decimals);
     spin.show();
@@ -422,7 +389,7 @@ void tst_QDoubleSpinBox::setWrapping_data()
 
     keys.clear();
     values.clear();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     keys.addKeyClick(Qt::Key_Right, Qt::ControlModifier);
 #else
     keys.addKeyClick(Qt::Key_End);
@@ -437,7 +404,7 @@ void tst_QDoubleSpinBox::setWrapping_data()
 
     keys.clear();
     values.clear();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     keys.addKeyClick(Qt::Key_Left, Qt::ControlModifier);
 #else
     keys.addKeyClick(Qt::Key_Home);
@@ -485,7 +452,6 @@ void tst_QDoubleSpinBox::setWrapping_data()
 
 void tst_QDoubleSpinBox::setWrapping()
 {
-    QLocale::setDefault(QLocale(QLocale::C));
     QFETCH(bool, wrapping);
     QFETCH(double, minimum);
     QFETCH(double, maximum);
@@ -493,7 +459,7 @@ void tst_QDoubleSpinBox::setWrapping()
     QFETCH(QTestEventList, keys);
     QFETCH(DoubleList, expected);
 
-    QDoubleSpinBox spin(0);
+    QDoubleSpinBox spin;
     spin.setMinimum(minimum);
     spin.setMaximum(maximum);
     spin.setValue(startValue);
@@ -504,10 +470,7 @@ void tst_QDoubleSpinBox::setWrapping()
 
     keys.simulate(&spin);
 
-    QCOMPARE(actualValues.size(), expected.size());
-    for (int i=0; i<qMin(actualValues.size(), expected.size()); ++i) {
-        QCOMPARE(actualValues.at(i), expected.at(i));
-    }
+    QCOMPARE(actualValues, expected);
 }
 
 void tst_QDoubleSpinBox::setSpecialValueText_data()
@@ -536,7 +499,7 @@ void tst_QDoubleSpinBox::setSpecialValueText()
     QFETCH(QString, expected);
     QFETCH(bool, show);
 
-    QDoubleSpinBox spin(0);
+    QDoubleSpinBox spin;
     spin.setSpecialValueText(specialValueText);
     spin.setMinimum(minimum);
     spin.setMaximum(maximum);
@@ -557,22 +520,34 @@ void tst_QDoubleSpinBox::setSingleStep_data()
     QTest::addColumn<bool>("show");
 
     QTestEventList keys;
-    DoubleList values;
+    DoubleList values = { 11, 10, 11 };
     keys.addKeyClick(Qt::Key_Up);
     keys.addKeyClick(Qt::Key_Down);
     keys.addKeyClick(Qt::Key_Up);
-    values << 11 << 10 << 11;
     QTest::newRow("data0") << 1.0 << 10.0 << keys << values << false;
     QTest::newRow("data1") << 1.0 << 10.0 << keys << values << true;
 
     keys.clear();
-    values.clear();
     keys.addKeyClick(Qt::Key_Up);
     keys.addKeyClick(Qt::Key_Down);
     keys.addKeyClick(Qt::Key_Up);
-    values << 12.5 << 10.0 << 12.5;
+    values = { 12.5, 10.0, 12.5 };
     QTest::newRow("data2") << 2.5 << 10.0 << keys << values << false;
     QTest::newRow("data3") << 2.5 << 10.0 << keys << values << true;
+
+    keys.clear();
+    for (int i = 0; i < 10; ++i)
+        keys.addKeyClick(Qt::Key_Down);
+    values = { 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0 };
+    QTest::newRow("data4 - rounding error") << 0.1 << 1.0 << keys << values << true;
+
+    keys.clear();
+    for (int i = 0; i < 25; ++i)
+        keys.addKeyClick(Qt::Key_Up);
+    values = { 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5,
+               3.6, 3.7, 3.8, 3.9, 4.0, 4.1, 4.2, 4.3, 4.4, 4.5,
+               4.6, 4.7, 4.8, 4.9, 5.0 };
+    QTest::newRow("data5 - rounding error") << 0.1 << 2.5 << keys << values << true;
 }
 
 void tst_QDoubleSpinBox::setSingleStep()
@@ -583,7 +558,7 @@ void tst_QDoubleSpinBox::setSingleStep()
     QFETCH(DoubleList, expected);
     QFETCH(bool, show);
 
-    QDoubleSpinBox spin(0);
+    QDoubleSpinBox spin;
     actualValues.clear();
     spin.setSingleStep(singleStep);
     spin.setValue(startValue);
@@ -593,10 +568,7 @@ void tst_QDoubleSpinBox::setSingleStep()
 
     QCOMPARE(actualValues.size(), 0);
     keys.simulate(&spin);
-    QCOMPARE(actualValues.size(), expected.size());
-    for (int i=0; i<qMin(actualValues.size(), expected.size()); ++i) {
-        QCOMPARE(actualValues.at(i), expected.at(i));
-    }
+    QCOMPARE(actualValues, expected);
 }
 
 void tst_QDoubleSpinBox::setMinMax_data()
@@ -632,7 +604,7 @@ void tst_QDoubleSpinBox::setMinMax()
     QFETCH(bool, show);
 
     {
-        QDoubleSpinBox spin(0);
+        QDoubleSpinBox spin;
         spin.setMinimum(minimum);
         spin.setMaximum(maximum);
         spin.setValue(startValue);
@@ -644,7 +616,7 @@ void tst_QDoubleSpinBox::setMinMax()
     }
 
     {
-        QDoubleSpinBox spin(0);
+        QDoubleSpinBox spin;
         spin.setMaximum(maximum);
         spin.setMinimum(minimum);
         spin.setValue(startValue);
@@ -655,7 +627,7 @@ void tst_QDoubleSpinBox::setMinMax()
     }
 
     {
-        QDoubleSpinBox spin(0);
+        QDoubleSpinBox spin;
         spin.setRange(minimum, maximum);
         spin.setValue(startValue);
 
@@ -693,7 +665,7 @@ void tst_QDoubleSpinBox::setDecimals()
     QFETCH(double, startValue);
     QFETCH(QString, expected);
 
-    QDoubleSpinBox spin(0);
+    QDoubleSpinBox spin;
     spin.setRange(-DBL_MAX, DBL_MAX);
     spin.setDecimals(decimals);
     spin.setValue(startValue);
@@ -704,7 +676,7 @@ void tst_QDoubleSpinBox::setDecimals()
         QCOMPARE(spin.text(), expected);
 
     if (spin.decimals() > 0) {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         QTest::keyClick(&spin, Qt::Key_Right, Qt::ControlModifier);
 #else
         QTest::keyClick(&spin, Qt::Key_End);
@@ -743,67 +715,67 @@ void tst_QDoubleSpinBox::valueFromTextAndValidate_data()
     QTest::addColumn<int>("state");
     QTest::addColumn<double>("mini");
     QTest::addColumn<double>("maxi");
-    QTest::addColumn<int>("language");
+    QTest::addColumn<QLocale::Language>("language");
     QTest::addColumn<QString>("expectedText"); // if empty we don't check
 
-    QTest::newRow("data0") << QString("2.2") << Intermediate << 3.0 << 5.0 << (int)QLocale::C << QString();
-    QTest::newRow("data1") << QString() << Intermediate << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data2") << QString("asd") << Invalid << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data3") << QString("2.2") << Acceptable << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data4") << QString(" ") << Intermediate << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString();
-    QTest::newRow("data5") << QString(" ") << Intermediate << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data6") << QString(",") << Intermediate << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString();
-    QTest::newRow("data7") << QString(",") << Invalid << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data8") << QString("1 ") << Acceptable << 0.0 << 1000.0 << (int)QLocale::NorwegianBokmal << QString("1");
-    QTest::newRow("data9") << QString("1 ") << Acceptable << 0.0 << 100.0 << (int)QLocale::C << QString("1");
-    QTest::newRow("data10") << QString(" 1") << Acceptable << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString("1");
-    QTest::newRow("data11") << QString(" 1") << Acceptable << 0.0 << 100.0 << (int)QLocale::C << QString("1");
-    QTest::newRow("data12") << QString("1,") << Acceptable << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString();
-    QTest::newRow("data13") << QString("1,") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data14") << QString("1, ") << Acceptable << 0.0 << 100.0 << (int)QLocale::NorwegianBokmal << QString("1,");
-    QTest::newRow("data15") << QString("1, ") << Invalid << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data16") << QString("2") << Intermediate << 100.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data17") << QString("22.0") << Intermediate << 100.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data18") << QString("12.0") << Intermediate << 100.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data19") << QString("12.2") << Intermediate << 100. << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data20") << QString("21.") << Intermediate << 100.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data21") << QString("-21.") << Intermediate << -102.0 << -100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data22") << QString("-12.") << Intermediate << -102.0 << -100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data23") << QString("-11.11") << Intermediate << -102.0 << -101.2 << (int)QLocale::C << QString();
-    QTest::newRow("data24") << QString("-11.4") << Intermediate << -102.0 << -101.3 << (int)QLocale::C << QString();
-    QTest::newRow("data25") << QString("11.400") << Invalid << 0.0 << 100.0 << (int)QLocale::C << QString();
-    QTest::newRow("data26") << QString(".4") << Intermediate << 0.45 << 0.5 << (int)QLocale::C << QString();
-    QTest::newRow("data27") << QString("+.4") << Intermediate << 0.45 << 0.5 << (int)QLocale::C << QString();
-    QTest::newRow("data28") << QString("-.4") << Intermediate << -0.5 << -0.45 << (int)QLocale::C << QString();
-    QTest::newRow("data29") << QString(".4") << Intermediate << 1.0 << 2.4 << (int)QLocale::C << QString();
-    QTest::newRow("data30") << QString("-.4") << Intermediate << -2.3 << -1.9 << (int)QLocale::C << QString();
-    QTest::newRow("data31") << QString("-42") << Invalid << -2.43 << -1.0 << (int)QLocale::C << QString();
-    QTest::newRow("data32") << QString("-4") << Invalid << -1.4 << -1.0 << (int)QLocale::C << QString();
-    QTest::newRow("data33") << QString("-42") << Invalid << -1.4 << -1.0 << (int)QLocale::C << QString();
-    QTest::newRow("data34") << QString("1000000000000") << Invalid << -140.0 << -120.2 << (int)QLocale::C << QString();
-    QTest::newRow("data35") << QString("+.12") << Invalid << -5.0 << -3.2 << (int)QLocale::C << QString();
-    QTest::newRow("data36") << QString("-.12") << Invalid << 5.0 << 33.2 << (int)QLocale::C << QString();
-    QTest::newRow("data37") << QString("12.2") << Intermediate << 100. << 103.0 << (int)QLocale::C << QString();
-    QTest::newRow("data38") << QString("12.2") << Intermediate << 100. << 102.3 << (int)QLocale::C << QString();
-    QTest::newRow("data39") << QString("-12.") << Acceptable << -102.0 << 102.0 << (int)QLocale::C << QString();
-    QTest::newRow("data40") << QString("12.") << Invalid << -102.0 << 11.0 << (int)QLocale::C << QString();
-    QTest::newRow("data41") << QString("103.") << Invalid << -102.0 << 11.0 << (int)QLocale::C << QString();
-    QTest::newRow("data42") << QString("122") << Invalid << 10.0 << 12.2 << (int)QLocale::C << QString();
-    QTest::newRow("data43") << QString("-2.2") << Intermediate << -12.2 << -3.2 << (int)QLocale::C << QString();
-    QTest::newRow("data44") << QString("-2.20") << Intermediate << -12.1 << -3.2 << (int)QLocale::C << QString();
-    QTest::newRow("data45") << QString("200,2") << Invalid << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data46") << QString("200,2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::German << QString();
-    QTest::newRow("data47") << QString("2.2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data48") << QString("2.2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::German << QString();
-    QTest::newRow("data49") << QString("2.2,00") << Acceptable << 0.0 << 1000.0 << (int)QLocale::German << QString();
-    QTest::newRow("data50") << QString("2.2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data51") << QString("2.2,00") << Invalid << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data52") << QString("2..2,00") << Invalid << 0.0 << 1000.0 << (int)QLocale::German << QString();
-    QTest::newRow("data53") << QString("2.2") << Invalid << 0.0 << 1000.0 << (int)QLocale::NorwegianBokmal << QString();
-    QTest::newRow("data54") << QString("  2.2") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString();
-    QTest::newRow("data55") << QString("2.2  ") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString("2.2");
-    QTest::newRow("data56") << QString("  2.2  ") << Acceptable << 0.0 << 1000.0 << (int)QLocale::C << QString("2.2");
-    QTest::newRow("data57") << QString("2 2") << Invalid << 0.0 << 1000.0 << (int)QLocale::C << QString();
+    QTest::newRow("data0") << QString("2.2") << Intermediate << 3.0 << 5.0 << QLocale::C << QString();
+    QTest::newRow("data1") << QString() << Intermediate << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data2") << QString("asd") << Invalid << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data3") << QString("2.2") << Acceptable << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data4") << QString(" ") << Intermediate << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString();
+    QTest::newRow("data5") << QString(" ") << Intermediate << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data6") << QString(",") << Intermediate << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString();
+    QTest::newRow("data7") << QString(",") << Invalid << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data8") << QString("1 ") << Acceptable << 0.0 << 1000.0 << QLocale::NorwegianBokmal << QString("1");
+    QTest::newRow("data9") << QString("1 ") << Acceptable << 0.0 << 100.0 << QLocale::C << QString("1");
+    QTest::newRow("data10") << QString(" 1") << Acceptable << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString("1");
+    QTest::newRow("data11") << QString(" 1") << Acceptable << 0.0 << 100.0 << QLocale::C << QString("1");
+    QTest::newRow("data12") << QString("1,") << Acceptable << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString();
+    QTest::newRow("data13") << QString("1,") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data14") << QString("1, ") << Acceptable << 0.0 << 100.0 << QLocale::NorwegianBokmal << QString("1,");
+    QTest::newRow("data15") << QString("1, ") << Invalid << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data16") << QString("2") << Intermediate << 100.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data17") << QString("22.0") << Intermediate << 100.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data18") << QString("12.0") << Intermediate << 100.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data19") << QString("12.2") << Intermediate << 100. << 102.0 << QLocale::C << QString();
+    QTest::newRow("data20") << QString("21.") << Intermediate << 100.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data21") << QString("-21.") << Intermediate << -102.0 << -100.0 << QLocale::C << QString();
+    QTest::newRow("data22") << QString("-12.") << Intermediate << -102.0 << -100.0 << QLocale::C << QString();
+    QTest::newRow("data23") << QString("-11.11") << Intermediate << -102.0 << -101.2 << QLocale::C << QString();
+    QTest::newRow("data24") << QString("-11.4") << Intermediate << -102.0 << -101.3 << QLocale::C << QString();
+    QTest::newRow("data25") << QString("11.400") << Invalid << 0.0 << 100.0 << QLocale::C << QString();
+    QTest::newRow("data26") << QString(".4") << Intermediate << 0.45 << 0.5 << QLocale::C << QString();
+    QTest::newRow("data27") << QString("+.4") << Intermediate << 0.45 << 0.5 << QLocale::C << QString();
+    QTest::newRow("data28") << QString("-.4") << Intermediate << -0.5 << -0.45 << QLocale::C << QString();
+    QTest::newRow("data29") << QString(".4") << Intermediate << 1.0 << 2.4 << QLocale::C << QString();
+    QTest::newRow("data30") << QString("-.4") << Intermediate << -2.3 << -1.9 << QLocale::C << QString();
+    QTest::newRow("data31") << QString("-42") << Invalid << -2.43 << -1.0 << QLocale::C << QString();
+    QTest::newRow("data32") << QString("-4") << Invalid << -1.4 << -1.0 << QLocale::C << QString();
+    QTest::newRow("data33") << QString("-42") << Invalid << -1.4 << -1.0 << QLocale::C << QString();
+    QTest::newRow("data34") << QString("1000000000000") << Invalid << -140.0 << -120.2 << QLocale::C << QString();
+    QTest::newRow("data35") << QString("+.12") << Invalid << -5.0 << -3.2 << QLocale::C << QString();
+    QTest::newRow("data36") << QString("-.12") << Invalid << 5.0 << 33.2 << QLocale::C << QString();
+    QTest::newRow("data37") << QString("12.2") << Intermediate << 100. << 103.0 << QLocale::C << QString();
+    QTest::newRow("data38") << QString("12.2") << Intermediate << 100. << 102.3 << QLocale::C << QString();
+    QTest::newRow("data39") << QString("-12.") << Acceptable << -102.0 << 102.0 << QLocale::C << QString();
+    QTest::newRow("data40") << QString("12.") << Invalid << -102.0 << 11.0 << QLocale::C << QString();
+    QTest::newRow("data41") << QString("103.") << Invalid << -102.0 << 11.0 << QLocale::C << QString();
+    QTest::newRow("data42") << QString("122") << Invalid << 10.0 << 12.2 << QLocale::C << QString();
+    QTest::newRow("data43") << QString("-2.2") << Intermediate << -12.2 << -3.2 << QLocale::C << QString();
+    QTest::newRow("data44") << QString("-2.20") << Intermediate << -12.1 << -3.2 << QLocale::C << QString();
+    QTest::newRow("data45") << QString("200,2") << Invalid << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data46") << QString("200,2") << Acceptable << 0.0 << 1000.0 << QLocale::German << QString();
+    QTest::newRow("data47") << QString("2.2") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data48") << QString("2.2") << Acceptable << 0.0 << 1000.0 << QLocale::German << QString();
+    QTest::newRow("data49") << QString("2.2,00") << Acceptable << 0.0 << 1000.0 << QLocale::German << QString();
+    QTest::newRow("data50") << QString("2.2") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data51") << QString("2.2,00") << Invalid << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data52") << QString("2..2,00") << Invalid << 0.0 << 1000.0 << QLocale::German << QString();
+    QTest::newRow("data53") << QString("2.2") << Invalid << 0.0 << 1000.0 << QLocale::NorwegianBokmal << QString();
+    QTest::newRow("data54") << QString("  2.2") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString();
+    QTest::newRow("data55") << QString("2.2  ") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString("2.2");
+    QTest::newRow("data56") << QString("  2.2  ") << Acceptable << 0.0 << 1000.0 << QLocale::C << QString("2.2");
+    QTest::newRow("data57") << QString("2 2") << Invalid << 0.0 << 1000.0 << QLocale::C << QString();
 }
 
 void tst_QDoubleSpinBox::valueFromTextAndValidate()
@@ -812,9 +784,12 @@ void tst_QDoubleSpinBox::valueFromTextAndValidate()
     QFETCH(int, state);
     QFETCH(double, mini);
     QFETCH(double, maxi);
-    QFETCH(int, language);
+    QFETCH(QLocale::Language, language);
     QFETCH(QString, expectedText);
-    QLocale::setDefault(QLocale((QLocale::Language)language));
+    const auto restoreDefault = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
+    QLocale::setDefault(QLocale(language));
 
     DoubleSpinBox sb(0);
     sb.show();
@@ -828,7 +803,7 @@ void tst_QDoubleSpinBox::valueFromTextAndValidate()
 
 void tst_QDoubleSpinBox::setReadOnly()
 {
-    QDoubleSpinBox spin(0);
+    QDoubleSpinBox spin;
     spin.setValue(0.2);
     spin.show();
     QVERIFY(QTest::qWaitForWindowActive(&spin));
@@ -907,6 +882,15 @@ void tst_QDoubleSpinBox::editingFinished()
     QCOMPARE(editingFinishedSpy2.size(), 4);
 }
 
+void tst_QDoubleSpinBox::returnPressed()
+{
+    QDoubleSpinBox spinBox;
+    QSignalSpy spyCurrentChanged(&spinBox, &QDoubleSpinBox::returnPressed);
+    spinBox.show();
+    QTest::keyClick(&spinBox, Qt::Key_Return);
+    QCOMPARE(spyCurrentChanged.size(), 1);
+}
+
 void tst_QDoubleSpinBox::removeAll()
 {
     DoubleSpinBox spin(0);
@@ -915,13 +899,13 @@ void tst_QDoubleSpinBox::removeAll()
     spin.setValue(0.2);
     spin.setDecimals(1);
     spin.show();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTest::keyClick(&spin, Qt::Key_Left, Qt::ControlModifier);
 #else
     QTest::keyClick(&spin, Qt::Key_Home);
 #endif
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTest::keyClick(&spin, Qt::Key_Right, Qt::ControlModifier|Qt::ShiftModifier);
 #else
     QTest::keyClick(&spin, Qt::Key_End, Qt::ShiftModifier);
@@ -964,11 +948,14 @@ void tst_QDoubleSpinBox::task54433()
 
 void tst_QDoubleSpinBox::germanTest()
 {
+    const auto restoreDefault = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(QLocale(QLocale::German));
     DoubleSpinBox spin;
     spin.show();
     spin.setValue(2.12);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTest::keyClick(&spin, Qt::Key_Right, Qt::ControlModifier);
 #else
     QTest::keyClick(&spin, Qt::Key_End);
@@ -986,7 +973,7 @@ void tst_QDoubleSpinBox::doubleDot()
     spin.setValue(2.12);
     QTest::keyClick(&spin, Qt::Key_Backspace);
     QCOMPARE(spin.text(), QString("2.12"));
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTest::keyClick(&spin, Qt::Key_Left, Qt::ControlModifier);
 #else
     QTest::keyClick(&spin, Qt::Key_Home);
@@ -1053,15 +1040,9 @@ void tst_QDoubleSpinBox::undoRedo()
 
 #endif // QT_CONFIG(shortcut)
 
-struct task199226_DoubleSpinBox : public QDoubleSpinBox
-{
-    task199226_DoubleSpinBox(QWidget *parent = nullptr) : QDoubleSpinBox(parent) {}
-    QLineEdit *lineEdit() { return QAbstractSpinBox::lineEdit(); }
-};
-
 void tst_QDoubleSpinBox::task199226_stateAfterEnter()
 {
-    task199226_DoubleSpinBox spin;
+    DoubleSpinBox spin;
     spin.setMinimum(0);
     spin.setMaximum(10);
     spin.setDecimals(0);
@@ -1075,15 +1056,9 @@ void tst_QDoubleSpinBox::task199226_stateAfterEnter()
     QVERIFY(!spin.lineEdit()->isUndoAvailable());
 }
 
-class task224497_fltMax_DoubleSpinBox : public QDoubleSpinBox
-{
-public:
-    QLineEdit * lineEdit () const { return QDoubleSpinBox::lineEdit(); }
-};
-
 void tst_QDoubleSpinBox::task224497_fltMax()
 {
-    task224497_fltMax_DoubleSpinBox dspin;
+    DoubleSpinBox dspin;
     dspin.setMinimum(3);
     dspin.setMaximum(FLT_MAX);
     dspin.show();
@@ -1130,7 +1105,7 @@ void tst_QDoubleSpinBox::task255471_decimalsValidation()
 
 void tst_QDoubleSpinBox::taskQTBUG_5008_textFromValueAndValidate()
 {
-    class DecoratedSpinBox : public QDoubleSpinBox
+    class DecoratedSpinBox : public DoubleSpinBox
     {
     public:
         DecoratedSpinBox()
@@ -1138,11 +1113,6 @@ void tst_QDoubleSpinBox::taskQTBUG_5008_textFromValueAndValidate()
             setLocale(QLocale::French);
             setMaximum(100000000);
             setValue(1000);
-        }
-
-        QLineEdit *lineEdit() const
-        {
-            return QDoubleSpinBox::lineEdit();
         }
 
         //we use the French delimiters here
@@ -1197,7 +1167,7 @@ void tst_QDoubleSpinBox::setGroupSeparatorShown_data()
     QTest::newRow("data1") << QLocale::Swedish << QLocale::Sweden;
     QTest::newRow("data2") << QLocale::German << QLocale::Germany;
     QTest::newRow("data3") << QLocale::Georgian << QLocale::Georgia;
-    QTest::newRow("data3") << QLocale::Macedonian << QLocale::Macedonia;
+    QTest::newRow("data4") << QLocale::Macedonian << QLocale::Macedonia;
 }
 
 void tst_QDoubleSpinBox::setGroupSeparatorShown()
@@ -1205,6 +1175,9 @@ void tst_QDoubleSpinBox::setGroupSeparatorShown()
     QFETCH(QLocale::Language, lang);
     QFETCH(QLocale::Territory, country);
 
+    const auto restoreDefault = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale loc(lang, country);
     QLocale::setDefault(loc);
     DoubleSpinBox spinBox;
@@ -1570,7 +1543,7 @@ void tst_QDoubleSpinBox::stepModifierKeys()
     QFETCH(QTestEventList, keys);
     QFETCH(double, expectedValue);
 
-    QDoubleSpinBox spin(0);
+    QDoubleSpinBox spin;
     spin.setValue(startValue);
 
     QScopedPointer<StepModifierStyle, QScopedPointerDeleteLater> style(
@@ -1765,6 +1738,73 @@ void tst_QDoubleSpinBox::stepModifierPressAndHold()
     const auto value = spy.last().at(0);
     QVERIFY(value.userType() == QMetaType::Double);
     QCOMPARE(value.toDouble(), spy.size() * expectedStepModifier);
+}
+
+void tst_QDoubleSpinBox::digitGroupingControl_data()
+{
+    QTest::addColumn<QLocale>("locale");
+
+    QTest::addRow("en_US") << QLocale("en_US");
+    QTest::addRow("C") << QLocale("C");
+#if !defined(QT_NO_SYSTEMLOCALE) && defined(QT_BUILD_INTERNAL)
+    QTest::addRow("system") << QLocale(QLocale::AnyLanguage);
+#endif // !defined(QT_NO_SYSTEMLOCALE) && defined(QT_BUILD_INTERNAL)
+}
+
+void tst_QDoubleSpinBox::digitGroupingControl()
+{
+    QFETCH(QLocale, locale);
+
+#if !defined(QT_NO_SYSTEMLOCALE) && defined(QT_BUILD_INTERNAL)
+    class MySystemLocale : public QSystemLocale
+    {
+        Q_DISABLE_COPY_MOVE(MySystemLocale)
+    public:
+        MySystemLocale(const QLocale &fallback)
+            : m_fallback(fallback)
+        {}
+
+        QVariant query(QueryType type, QVariant &&/*in*/) const override
+        {
+            switch (type) {
+            case GroupSeparator:
+            case DecimalPoint:
+                return QVariant(".");
+            default:
+                break;
+            }
+            return QVariant();
+        }
+
+        QLocale fallbackLocale() const override { return m_fallback; }
+
+    private:
+        const QLocale m_fallback;
+    } customLocale(locale);
+
+    if (locale.language() == QLocale::AnyLanguage) {
+        // For the lifetime of `customLocale`, the system locale will use our
+        // custom implementation above.
+        locale = QLocale::system();
+    }
+#endif // !defined(QT_NO_SYSTEMLOCALE) && defined(QT_BUILD_INTERNAL)
+
+    QDoubleSpinBox spinbox;
+    spinbox.setLocale(locale);
+    spinbox.setRange(-100000, 100000);
+
+    constexpr int precision = 3;
+    constexpr double value = 12345.678;
+    spinbox.setDecimals(precision);
+    spinbox.setValue(value);
+
+    spinbox.setGroupSeparatorShown(true);
+    locale.setNumberOptions(locale.numberOptions() & ~QLocale::OmitGroupSeparator);
+    QCOMPARE(spinbox.text(), locale.toString(value, 'f', precision));
+
+    spinbox.setGroupSeparatorShown(false);
+    locale.setNumberOptions(locale.numberOptions() | QLocale::OmitGroupSeparator);
+    QCOMPARE(spinbox.text(), locale.toString(value, 'f', precision));
 }
 
 QTEST_MAIN(tst_QDoubleSpinBox)

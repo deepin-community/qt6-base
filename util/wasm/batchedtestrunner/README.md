@@ -49,6 +49,9 @@ Run all tests in a batch:
 Run a single test in a batch:
     - load the webpage batchedtestrunner.html?qtestname=tst_mytest
 
+Run a standalone test (non-batched mode):
+    - load the test-specific HTML file (e.g., tst_mytest.html)
+
 Query for test execution state:
     - qtTestRunner.onStatusChanged.addEventListener((runnerStatus) => (...)))
     - qtTestRunner.onTestStatusChanged.addEventListener((testName, status) => (...))

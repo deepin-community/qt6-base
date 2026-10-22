@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGESTUREMANAGER_P_H
 #define QGESTUREMANAGER_P_H
@@ -49,7 +50,7 @@ public:
 
     enum InstanceCreation { ForceCreation, DontForceCreation };
 
-    static QGestureManager *instance(InstanceCreation ic = ForceCreation); // declared in qapplication.cpp
+    static QGestureManager *instance(InstanceCreation ic = ForceCreation); // implemented in qapplication.cpp
     static bool gesturePending(QObject *o);
 
     void cleanupCachedGestures(QObject *target, Qt::GestureType type);

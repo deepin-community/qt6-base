@@ -124,9 +124,6 @@ class RunLoopDebugger : public QObject
 {
     Q_OBJECT
 
-    Q_ENUMS(Activity)
-    Q_ENUMS(Result)
-
 public:
 
     #define Q_MIRROR_ENUM(name) name = name
@@ -139,6 +136,7 @@ public:
         Q_MIRROR_ENUM(kCFRunLoopAfterWaiting),
         Q_MIRROR_ENUM(kCFRunLoopExit)
     };
+    Q_ENUM(Activity)
 
     enum Result {
         Q_MIRROR_ENUM(kCFRunLoopRunFinished),
@@ -146,6 +144,7 @@ public:
         Q_MIRROR_ENUM(kCFRunLoopRunTimedOut),
         Q_MIRROR_ENUM(kCFRunLoopRunHandledSource)
     };
+    Q_ENUM(Result)
 };
 
 #define Q_ENUM_PRINTER(enumName) \
@@ -208,6 +207,7 @@ QEventLoop *QEventDispatcherCoreFoundation::currentEventLoop() const
 }
 
 /*!
+    \internal
     Processes all pending events that match \a flags until there are no
     more events to process. Returns \c true if pending events were handled;
     otherwise returns \c false.
@@ -429,7 +429,7 @@ void QEventDispatcherCoreFoundation::processTimers(CFRunLoopTimerRef timer)
     updateTimers();
 }
 
-Q_LOGGING_CATEGORY(lcEventDispatcherActivity, "qt.eventdispatcher.activity")
+Q_STATIC_LOGGING_CATEGORY(lcEventDispatcherActivity, "qt.eventdispatcher.activity")
 
 void QEventDispatcherCoreFoundation::handleRunLoopActivity(CFRunLoopActivity activity)
 {

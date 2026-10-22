@@ -27,6 +27,7 @@ static QByteArray curFunction;
 static ImageItemList itemList;
 static bool gotBaselines;
 
+static int pauseOnCompare = 0;
 
 void handleCmdLineArgs(int *argcp, char ***argvp)
 {
@@ -87,6 +88,15 @@ void handleCmdLineArgs(int *argcp, char ***argvp)
                 break;
             }
             customInfo.addOverride(key, value);
+        } else if (arg == "-pause-compare") {
+            i++;
+            bool ok = false;
+            pauseOnCompare = nextArg.toInt(&ok);
+            if (!ok) {
+                qWarning() << "-pause-compare requires integer parameter";
+                showHelp = true;
+                break;
+            }
         } else {
             if ( (arg == "-help") || (arg == "--help") ) {
                 showHelp = true;
@@ -119,6 +129,7 @@ void handleCmdLineArgs(int *argcp, char ***argvp)
         out << " -compareto KEY=VAL  : Force comparison to baselines from a different client,\n";
         out << "                       for example: -compareto QtVersion=4.8.0\n";
         out << "                       Multiple -compareto client specifications may be given.\n";
+        out << " -pause-compare <ms> : Pauses for the given number of ms before each compare\n";
         out << "\n";
         out.flush();
         if (abortOnHelp)
@@ -228,6 +239,23 @@ bool connectToBaselineServer(QByteArray *msg)
     return connect(msg ? msg : &dummyMsg, &dummy);
 }
 
+bool finalizeTesting(QByteArray *msg) {
+    QByteArray dummyMsg;
+    return proto.finalizeTesting(msg ? msg : &dummyMsg);
+}
+
+void finalizeAndDisconnect()
+{
+    if (QByteArray msg; finalizeTesting(&msg)) {
+        if (msg.isEmpty())
+            qInfo() << "No baseline server report produced.";
+        else
+            qInfo() << "Baseline server report:" << msg.data();
+    }
+
+    disconnectFromBaselineServer();
+}
+
 void setAutoMode(bool mode)
 {
     customInfo.setAdHocRun(!mode);
@@ -268,6 +296,11 @@ void modifyImage(QImage *img)
 
 bool compareItem(const ImageItem &baseline, const QImage &img, QByteArray *msg, bool *error)
 {
+    if (pauseOnCompare) {
+        qDebug() << "Pausing for" << pauseOnCompare << "ms...";
+        QTest::qWait(pauseOnCompare);
+    }
+
     *error = false;
     ImageItem item = baseline;
     if (simfail) {
@@ -370,6 +403,10 @@ bool checkImage(const QImage &img, const char *name, quint16 checksum, QByteArra
     item.itemName = QString::fromLatin1(itemName);
     item.itemChecksum = checksum;
     item.testFunction = QString::fromLatin1(QTest::currentTestFunction());
+
+    for (auto key: img.textKeys())
+        item.metaData[key] = img.text(key);
+
     ImageItemList list;
     list.append(item);
     if (!proto.requestBaselineChecksums(QLatin1String(QTest::currentTestFunction()), &list) || list.isEmpty()) {

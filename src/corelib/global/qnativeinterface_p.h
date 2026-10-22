@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNATIVEINTERFACE_P_H
 #define QNATIVEINTERFACE_P_H
@@ -20,9 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace QtPrivate {
-Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcNativeInterface, Q_CORE_EXPORT)
-}
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcNativeInterface, Q_CORE_EXPORT)
 
 // Provides a definition for the interface destructor
 #define QT_DEFINE_NATIVE_INTERFACE_2(Namespace, InterfaceClass)                                    \
@@ -35,7 +34,6 @@ Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcNativeInterface, Q_CORE_EXPORT)
 
 #define QT_NATIVE_INTERFACE_RETURN_IF(NativeInterface, baseType)                                   \
     {                                                                                              \
-        using QtPrivate::lcNativeInterface;                                                        \
         using QNativeInterface::Private::TypeInfo;                                                 \
         qCDebug(lcNativeInterface, "Comparing requested interface name %s with available %s",      \
                 name, TypeInfo<NativeInterface>::name());                                          \
@@ -44,7 +42,7 @@ Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcNativeInterface, Q_CORE_EXPORT)
                     "Match for interface %s. Comparing revisions (requested %d / available %d)",   \
                     name, revision, TypeInfo<NativeInterface>::revision());                        \
             if (revision == TypeInfo<NativeInterface>::revision()) {                               \
-                qCDebug(lcNativeInterface) << "Full match. Returning dynamic cast of" << baseType; \
+                qCDebug(lcNativeInterface, "Full match. Returning dynamic cast of %p", baseType);  \
                 return dynamic_cast<NativeInterface *>(baseType);                                  \
             } else {                                                                               \
                 qCWarning(lcNativeInterface,                                                       \

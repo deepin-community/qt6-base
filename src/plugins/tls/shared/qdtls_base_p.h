@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDTLS_BASE_P_H
 #define QDTLS_BASE_P_H
@@ -68,11 +69,7 @@ public:
     QString peerVfyName;
     QByteArray secret;
 
-#ifdef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
-    QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Sha1;
-#else
     QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Sha256;
-#endif
 };
 
 QT_END_NAMESPACE

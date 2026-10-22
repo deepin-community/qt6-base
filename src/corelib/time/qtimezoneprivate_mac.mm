@@ -1,6 +1,7 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // Copyright (C) 2013 John Layt <jlayt@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtimezone.h"
 #include "qtimezoneprivate_p.h"
@@ -26,6 +27,7 @@ QT_BEGIN_NAMESPACE
 // Create the system default time zone
 QMacTimeZonePrivate::QMacTimeZonePrivate()
 {
+    QMacAutoReleasePool pool;
     // Reset the cached system tz then instantiate it:
     [NSTimeZone resetSystemTimeZone];
     m_nstz = [NSTimeZone.systemTimeZone retain];
@@ -57,6 +59,8 @@ QMacTimeZonePrivate *QMacTimeZonePrivate::clone() const
 
 void QMacTimeZonePrivate::init(const QByteArray &ianaId)
 {
+    QMacAutoReleasePool pool;
+
     m_nstz = [[NSTimeZone timeZoneWithName:QString::fromUtf8(ianaId).toNSString()] retain];
     if (m_nstz) {
         m_id = ianaId;
@@ -149,7 +153,12 @@ int QMacTimeZonePrivate::daylightTimeOffset(qint64 atMSecsSinceEpoch) const
 bool QMacTimeZonePrivate::hasDaylightTime() const
 {
     // TODO Scan transitions for one after which isDaylightSavingTimeForDate is true.
-    return hasTransitions();
+    // TODO No direct Mac API, so return if has next after 1970, i.e. since start of tz
+    // TODO Not sure what is returned in event of no transitions, assume will be before requested date
+    NSDate *epoch = [NSDate dateWithTimeIntervalSince1970:0];
+    const NSDate *date = [m_nstz nextDaylightSavingTimeTransitionAfterDate:epoch];
+    const bool result = (date.timeIntervalSince1970 > epoch.timeIntervalSince1970);
+    return result;
 }
 
 bool QMacTimeZonePrivate::isDaylightTime(qint64 atMSecsSinceEpoch) const
@@ -160,6 +169,7 @@ bool QMacTimeZonePrivate::isDaylightTime(qint64 atMSecsSinceEpoch) const
 
 QTimeZonePrivate::Data QMacTimeZonePrivate::data(qint64 forMSecsSinceEpoch) const
 {
+    QMacAutoReleasePool pool;
     const NSTimeInterval seconds = forMSecsSinceEpoch / 1000.0;
     NSDate *date = [NSDate dateWithTimeIntervalSince1970:seconds];
     Data data;
@@ -173,17 +183,13 @@ QTimeZonePrivate::Data QMacTimeZonePrivate::data(qint64 forMSecsSinceEpoch) cons
 
 bool QMacTimeZonePrivate::hasTransitions() const
 {
-    // TODO No direct Mac API, so return if has next after 1970, i.e. since start of tz
-    // TODO Not sure what is returned in event of no transitions, assume will be before requested date
-    NSDate *epoch = [NSDate dateWithTimeIntervalSince1970:0];
-    const NSDate *date = [m_nstz nextDaylightSavingTimeTransitionAfterDate:epoch];
-    const bool result = (date.timeIntervalSince1970 > epoch.timeIntervalSince1970);
-    return result;
+    // NB: this is about the backend capability, not the particular zone.
+    return true; // albeit with caveats, see hasDaylightTime()
 }
 
 QTimeZonePrivate::Data QMacTimeZonePrivate::nextTransition(qint64 afterMSecsSinceEpoch) const
 {
-    QTimeZonePrivate::Data tran;
+    Data tran;
     const NSTimeInterval seconds = afterMSecsSinceEpoch / 1000.0;
     NSDate *nextDate = [NSDate dateWithTimeIntervalSince1970:seconds];
     nextDate = [m_nstz nextDaylightSavingTimeTransitionAfterDate:nextDate];
@@ -278,13 +284,15 @@ QTimeZonePrivate::Data QMacTimeZonePrivate::previousTransition(qint64 beforeMSec
 
 QByteArray QMacTimeZonePrivate::systemTimeZoneId() const
 {
+    QMacAutoReleasePool pool;
+
     // Reset the cached system tz then return the name
     [NSTimeZone resetSystemTimeZone];
     Q_ASSERT(NSTimeZone.systemTimeZone);
     return QString::fromNSString(NSTimeZone.systemTimeZone.name).toUtf8();
 }
 
-bool QMacTimeZonePrivate::isTimeZoneIdAvailable(const QByteArray& ianaId) const
+bool QMacTimeZonePrivate::isTimeZoneIdAvailable(QByteArrayView ianaId) const
 {
     QMacAutoReleasePool pool;
     return [NSTimeZone timeZoneWithName:QString::fromUtf8(ianaId).toNSString()] != nil;

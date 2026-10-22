@@ -39,16 +39,8 @@ void Object::isPrefixOf()
     //! [2]
 }
 
-void QObject::parse()
+void Object::parse()
 {
-    //! [3]
-    QString string("5.4.0-alpha");
-    qsizetype suffixIndex;
-    QVersionNumber version = QVersionNumber::fromString(string, &suffixIndex);
-    // version is 5.4.0
-    // suffixIndex is 5
-    //! [3]
-
     //! [3-latin1-1]
     QLatin1StringView string("5.4.0-alpha");
     qsizetype suffixIndex;
@@ -68,13 +60,4 @@ void Object::equivalent()
     // equivalent is true
     // equal is false
     //! [4]
-}
-
-int main()
-{
-    Object::genericExample();
-    Object::equalityExample();
-    Object::isPrefixOf();
-    Object::parse();
-    Object::equivalent();
 }

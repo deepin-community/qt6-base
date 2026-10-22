@@ -9,7 +9,7 @@ void CustomStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *op
                                 QPainter *painter, const QWidget *widget) const
 {
 
-//![0]
+    //![0]
     switch (element) {
         case (PE_PanelItemViewItem): {
             painter->save();
@@ -27,5 +27,5 @@ void CustomStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *op
         default:
             QProxyStyle::drawPrimitive(element, option, painter, widget);
     }
-//![0]
+    //![0]
 }

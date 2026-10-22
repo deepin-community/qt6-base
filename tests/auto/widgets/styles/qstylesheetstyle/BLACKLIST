@@ -8,3 +8,5 @@ ci b2qt 32bit
 ci b2qt 32bit
 [task232085_spinBoxLineEditBg]
 ci b2qt 32bit
+[emptyStyleSheet]
+macos # QTBUG-21468

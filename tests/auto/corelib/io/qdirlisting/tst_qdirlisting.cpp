@@ -10,10 +10,16 @@
 #include <qstringlist.h>
 #include <QSet>
 #include <QString>
+#include <QScopeGuard>
 
+#include <QtCore/private/qdir_p.h>
 #include <QtCore/private/qfsfileengine_p.h>
 
-#if defined(Q_OS_VXWORKS)
+#ifdef Q_OS_UNIX
+#include <unistd.h>
+#endif
+
+#if defined(Q_OS_VXWORKS) || defined(Q_OS_HARMONY)
 #define Q_NO_SYMLINKS
 #endif
 
@@ -34,6 +40,8 @@ using ItFlag = QDirListing::IteratorFlag;
 class tst_QDirListing : public QObject
 {
     Q_OBJECT
+
+    bool uncServerAvailable = false;
 
 private: // convenience functions
     QStringList createdDirectories;
@@ -82,17 +90,22 @@ private slots:
     void longPath();
     void dirorder();
     void relativePaths();
+    void dotNameFilters_data();
+    void dotNameFilters();
 #if defined(Q_OS_WIN)
     void uncPaths_data();
     void uncPaths();
 #endif
 #ifndef Q_OS_WIN
-    void hiddenFiles();
-    void hiddenDirs();
+    void hidden_data();
+    void hidden();
+    void inaccessibleDir_data();
+    void inaccessibleDir();
 #endif
 
     void withStdAlgorithms();
-
+    void debugStreamOperator_data();
+    void debugStreamOperator();
 private:
     QSharedPointer<QTemporaryDir> m_dataDir;
 };
@@ -155,20 +168,20 @@ void tst_QDirListing::initTestCase()
 #  if defined(Q_OS_WIN)
     // ### Sadly, this is a platform difference right now.
     createLink("entrylist/file", "entrylist/linktofile.lnk");
-#    ifndef Q_NO_SYMLINKS_TO_DIRS
     createLink("entrylist/directory", "entrylist/linktodirectory.lnk");
-#    endif
     createLink("entrylist/nothing", "entrylist/brokenlink.lnk");
 #  else
     createLink("file", "entrylist/linktofile.lnk");
-#    ifndef Q_NO_SYMLINKS_TO_DIRS
     createLink("directory", "entrylist/linktodirectory.lnk");
-#    endif
     createLink("nothing", "entrylist/brokenlink.lnk");
 #  endif
 #endif
 
-#if !defined(Q_OS_WIN)
+#ifdef Q_OS_WIN
+    // "When used with directories, _access determines only whether the specified directory exists"
+    if (_waccess(qUtf16Printable("//" + QTest::uncServerName() + "/testshare"), 0) == 0)
+        uncServerAvailable = true;
+#else
     createDirectory("hiddenDirs_hiddenFiles");
     createFile("hiddenDirs_hiddenFiles/normalFile");
     createFile("hiddenDirs_hiddenFiles/.hiddenFile");
@@ -227,22 +240,22 @@ void tst_QDirListing::iterateRelativeDirectory_data()
     QTest::addColumn<QStringList>("nameFilters");
     QTest::addColumn<QStringList>("entries");
 
+    const auto linkToFile = u"entrylist/linktofile.lnk"_s;
+    const auto linkToDir = u"entrylist/linktodirectory.lnk"_s;
+    const auto brokenLink = u"entrylist/brokenlink.lnk"_s;
+
     const QStringList allSymlinks = {
-#if !defined(Q_NO_SYMLINKS)
-        "entrylist/linktofile.lnk"_L1,
-        "entrylist/brokenlink.lnk"_L1,
-#  if !defined(Q_NO_SYMLINKS_TO_DIRS)
-        "entrylist/linktodirectory.lnk"_L1,
-#  endif
+#ifndef Q_NO_SYMLINKS
+        linkToFile,
+        brokenLink,
+        linkToDir,
 #endif
     };
 
     const QStringList nonBrokenSymlinks = {
-#if !defined(Q_NO_SYMLINKS)
-        "entrylist/linktofile.lnk"_L1,
-#  if !defined(Q_NO_SYMLINKS_TO_DIRS)
-        "entrylist/linktodirectory.lnk"_L1,
-#  endif
+#ifndef Q_NO_SYMLINKS
+        linkToFile,
+        linkToDir,
 #endif
     };
 
@@ -294,6 +307,39 @@ void tst_QDirListing::iterateRelativeDirectory_data()
             "entrylist/writable"_L1,
         } + allSymlinks;
 
+    QTest::newRow("IncludeBrokenSymlinks")
+        << QString("entrylist")
+        << QDirListing::IteratorFlags{F::IncludeBrokenSymlinks}
+        << QStringList()
+        << QStringList{
+            "entrylist/file"_L1,
+            "entrylist/directory"_L1,
+            "entrylist/writable"_L1,
+        } + allSymlinks;
+
+    QTest::newRow("IncludeBrokenSymlinks-FilesOnly")
+        << QString("entrylist")
+        << QDirListing::IteratorFlags{F::IncludeBrokenSymlinks | F::FilesOnly}
+        << QStringList()
+        << QStringList{
+            "entrylist/file"_L1,
+            "entrylist/writable"_L1,
+#if !defined(Q_NO_SYMLINKS)
+            brokenLink,
+#endif
+        };
+
+    QTest::newRow("IncludeBrokenSymlinks-DirsOnly")
+        << QString("entrylist")
+        << QDirListing::IteratorFlags{F::IncludeBrokenSymlinks | F::DirsOnly}
+        << QStringList()
+        << QStringList{
+            "entrylist/directory"_L1,
+#if !defined(Q_NO_SYMLINKS)
+            brokenLink,
+#endif
+        };
+
     QTest::newRow("ResolveSymlinks")
         << QString("entrylist")
         << QDirListing::IteratorFlags{F::ResolveSymlinks}
@@ -303,6 +349,41 @@ void tst_QDirListing::iterateRelativeDirectory_data()
             "entrylist/directory"_L1,
             "entrylist/writable"_L1,
         } + nonBrokenSymlinks;
+
+    QTest::newRow("ResolveSymlinks-IncludeBrokenSymlinks")
+        << QString("entrylist")
+        << QDirListing::IteratorFlags{F::ResolveSymlinks | F::IncludeBrokenSymlinks}
+        << QStringList()
+        << QStringList{
+            "entrylist/file"_L1,
+            "entrylist/directory"_L1,
+            "entrylist/writable"_L1,
+        } + allSymlinks;
+
+    QTest::newRow("ResolveSymlinks-IncludeBrokenSymlinks-FilesOnly")
+        << QString("entrylist")
+        << QDirListing::IteratorFlags{F::ResolveSymlinks | F::IncludeBrokenSymlinks | F::FilesOnly}
+        << QStringList()
+        << QStringList{
+            "entrylist/file"_L1,
+            "entrylist/writable"_L1,
+#if !defined(Q_NO_SYMLINKS)
+            linkToFile,
+            brokenLink,
+#endif
+        };
+
+    QTest::newRow("ResolveSymlinks-IncludeBrokenSymlinks-DirsOnly")
+        << QString("entrylist")
+        << QDirListing::IteratorFlags{F::ResolveSymlinks | F::IncludeBrokenSymlinks | F::DirsOnly}
+        << QStringList()
+        << QStringList{
+            "entrylist/directory"_L1,
+#if !defined(Q_NO_SYMLINKS)
+            linkToDir,
+            brokenLink,
+#endif
+        };
 
     QTest::newRow("Recursive-ResolveSymlinks")
         << QString("entrylist")
@@ -314,6 +395,31 @@ void tst_QDirListing::iterateRelativeDirectory_data()
             "entrylist/directory/dummy"_L1,
             "entrylist/writable"_L1,
         } + nonBrokenSymlinks;
+
+    QTest::newRow("Recursive-ResolveSymlinks-IncludeBrokenSymlinks")
+        << QString("entrylist")
+        << QDirListing::IteratorFlags(F::Recursive | F::ResolveSymlinks | F::IncludeBrokenSymlinks)
+        << QStringList()
+        << QStringList{
+            "entrylist/file"_L1,
+            "entrylist/directory"_L1,
+            "entrylist/directory/dummy"_L1,
+            "entrylist/writable"_L1,
+        } + allSymlinks;
+
+    QTest::newRow("Recursive-ResolveSymlinks-IncludeBrokenSymlinks-FilesOnly")
+        << QString("entrylist")
+        << QDirListing::IteratorFlags(F::Recursive | F::ResolveSymlinks | F::IncludeBrokenSymlinks | F::FilesOnly)
+        << QStringList()
+        << QStringList{
+            "entrylist/file"_L1,
+            "entrylist/directory/dummy"_L1,
+            "entrylist/writable"_L1,
+#if !defined(Q_NO_SYMLINKS)
+            linkToFile,
+            brokenLink,
+#endif
+        };
 
     QTest::newRow("Recursive-FilesOnly")
         << QString("entrylist")
@@ -333,8 +439,8 @@ void tst_QDirListing::iterateRelativeDirectory_data()
             "entrylist/file"_L1,
             "entrylist/directory/dummy"_L1,
             "entrylist/writable"_L1,
-#if !defined(Q_NO_SYMLINKS)
-            "entrylist/linktofile.lnk"_L1,
+#ifndef Q_NO_SYMLINKS
+            linkToFile,
 #endif
         };
 
@@ -350,8 +456,8 @@ void tst_QDirListing::iterateRelativeDirectory_data()
         << QStringList("*")
         << QStringList{
             "entrylist/directory"_L1,
-#if !defined(Q_NO_SYMLINKS)
-            "entrylist/linktodirectory.lnk"_L1,
+#ifndef Q_NO_SYMLINKS
+            linkToDir,
 #endif
         };
 
@@ -620,7 +726,7 @@ void tst_QDirListing::recurseWithFilters() const
     expectedEntries.insert(QString::fromLatin1("recursiveDirs/dir1/textFileB.txt"));
     expectedEntries.insert(QString::fromLatin1("recursiveDirs/textFileA.txt"));
 
-    constexpr auto flags = ItFlag::ExcludeDirs | ItFlag::ExcludeSpecial| ItFlag::Recursive;
+    constexpr auto flags = ItFlag::ExcludeDirs | ItFlag::ExcludeOther| ItFlag::Recursive;
     for (const auto &dirEntry : QDirListing(u"recursiveDirs/"_s, QStringList{u"*.txt"_s}, flags))
         actualEntries.insert(dirEntry.filePath());
 
@@ -640,7 +746,7 @@ void tst_QDirListing::longPath()
         dirName.append('x');
     }
 
-    constexpr auto flags = ItFlag::ExcludeFiles | ItFlag::ExcludeSpecial| ItFlag::Recursive;
+    constexpr auto flags = ItFlag::ExcludeFiles | ItFlag::ExcludeOther| ItFlag::Recursive;
     QDirListing dirList(dir.absolutePath(), flags);
     qsizetype m = 0;
     for (auto it = dirList.begin(); it != dirList.end(); ++it)
@@ -671,9 +777,83 @@ void tst_QDirListing::relativePaths()
         QCOMPARE(dirEntry.filePath(), QDir::cleanPath(dirEntry.filePath()));
 }
 
+void tst_QDirListing::dotNameFilters_data()
+{
+    QTest::addColumn<QStringList>("nameFilters");
+    QTest::addColumn<QDirListing::IteratorFlags>("flags");
+    QTest::addColumn<QDir::Filters>("dirFilters");
+    QTest::addColumn<QStringList>("expected");
+
+    using F = QDirListing::IteratorFlag;
+
+    QTest::newRow("dirLister-default-flags")
+        << QStringList{u"."_s}
+        << QDirListing::IteratorFlags{}
+        << QDir::Filters(QDir::NoFilter)
+        << QStringList{};
+
+    QTest::newRow("dirLister-IncludeDotAndDotDot")
+        << QStringList{u"."_s}
+        << QDirListing::IteratorFlags(F::IncludeDotAndDotDot)
+        << QDir::Filters(QDir::NoFilter)
+        << QStringList{u"."_s};
+
+    QTest::newRow("dirLister-IncludeDotAndDotDot-glob-everything")
+        << QStringList{u".*"_s}
+        << QDirListing::IteratorFlags(F::IncludeDotAndDotDot)
+        << QDir::Filters(QDir::NoFilter)
+        << QStringList{u"."_s, u".."_s};
+
+    // Test legacy filters code path
+    QTest::newRow("legacy-NoDotAndDotDot")
+        << QStringList{u"."_s}
+        << QDirListing::IteratorFlags{}
+        << QDir::Filters(QDir::AllEntries | QDir::NoDotAndDotDot)
+        << QStringList{};
+
+    QTest::newRow("legacy-default-dirfilters")
+        << QStringList{u"."_s}
+        << QDirListing::IteratorFlags{}
+        << QDir::Filters(QDir::AllEntries)
+        << QStringList{u"."_s};
+
+    QTest::newRow("legacy-glob-everything")
+        << QStringList{u".*"_s}
+        << QDirListing::IteratorFlags{}
+        << QDir::Filters(QDir::AllEntries)
+        << QStringList{u"."_s, u".."_s};
+}
+
+void tst_QDirListing::dotNameFilters()
+{
+    QFETCH(QStringList, nameFilters);
+    QFETCH(QDirListing::IteratorFlags, flags);
+    QFETCH(QDir::Filters, dirFilters);
+    QFETCH(QStringList, expected);
+
+    const auto dirPath = u"empty"_s;
+    QVERIFY(QFileInfo(dirPath).isDir());
+
+    if (dirFilters == QDir::NoFilter) {
+        QStringList entries;
+        for (const auto &dirEntry : QDirListing(dirPath, nameFilters, flags))
+            entries.append(dirEntry.fileName());
+        entries.sort();
+        QCOMPARE_EQ(entries, expected);
+    } else {
+        // legacy filters code path
+        QStringList entries = QDir(dirPath).entryList(nameFilters, dirFilters);
+        entries.sort();
+        QCOMPARE_EQ(entries, expected);
+    }
+}
+
 #if defined(Q_OS_WIN)
 void tst_QDirListing::uncPaths_data()
 {
+    if (!uncServerAvailable)
+        QSKIP("UNC server not available");
+
     QTest::addColumn<QString>("dirName");
     QTest::newRow("uncserver")
             <<QString("//" + QTest::uncServerName());
@@ -698,23 +878,46 @@ void tst_QDirListing::uncPaths()
 // anything starting by a '.' is a hidden file.
 // For that reason these two tests aren't run on Windows.
 
-void tst_QDirListing::hiddenFiles()
+void tst_QDirListing::hidden_data()
 {
-    QStringList expected = {
-        "hiddenDirs_hiddenFiles/normalFile"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenFile"_L1,
-        "hiddenDirs_hiddenFiles/normalDirectory/normalFile"_L1,
-        "hiddenDirs_hiddenFiles/normalDirectory/.hiddenFile"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory/normalFile"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory/.hiddenFile"_L1,
-    };
-    expected.sort();
+    QTest::addColumn<QDirListing::IteratorFlags>("flags");
+    QTest::addColumn<QStringList>("expected");
 
-    constexpr auto flags = ItFlag::ExcludeDirs | ItFlag::IncludeHidden | ItFlag::Recursive;
+    using F = QDirListing::IteratorFlag;
+
+    QTest::newRow("Recursive-ExcludeDirs")
+        << (F::ExcludeDirs | F::IncludeHidden | F::Recursive)
+        << QStringList{
+        "hiddenDirs_hiddenFiles/.hiddenDirectory/.hiddenFile"_L1,
+        "hiddenDirs_hiddenFiles/.hiddenDirectory/normalFile"_L1,
+        "hiddenDirs_hiddenFiles/.hiddenFile"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory/.hiddenFile"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory/normalFile"_L1,
+        "hiddenDirs_hiddenFiles/normalFile"_L1,
+        };
+
+    QTest::newRow("Recursive-ExcludeFiles")
+        << (F::ExcludeFiles | F::IncludeHidden | F::Recursive)
+        << QStringList{
+        "hiddenDirs_hiddenFiles/.hiddenDirectory"_L1,
+        "hiddenDirs_hiddenFiles/.hiddenDirectory/.hidden-subdir"_L1,
+        "hiddenDirs_hiddenFiles/.hiddenDirectory/subdir"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory/.hidden-subdir"_L1,
+        "hiddenDirs_hiddenFiles/normalDirectory/subdir"_L1,
+        };
+}
+
+void tst_QDirListing::hidden()
+{
+    QFETCH(QDirListing::IteratorFlags, flags);
+    QFETCH(QStringList, expected);
+
     QStringList list;
     list.reserve(expected.size());
+    bool isDir = flags.testFlags(ItFlag::ExcludeFiles);
     for (const auto &dirEntry : QDirListing(u"hiddenDirs_hiddenFiles"_s, flags)) {
-        QVERIFY(dirEntry.isFile());
+        QVERIFY(isDir ? dirEntry.isDir() : dirEntry.isFile());
         list.emplace_back(dirEntry.filePath());
     }
     list.sort();
@@ -722,28 +925,67 @@ void tst_QDirListing::hiddenFiles()
     QCOMPARE_EQ(list, expected);
 }
 
-void tst_QDirListing::hiddenDirs()
+// Not tested on Windows because on Windows all directories have read and write
+// rights (I don't see how that makes sense, but it's what the docs[1] claim).
+// This test is intended to verify that QDirListing can cope with unreadable
+// directories and symlinks to them.
+// [1] https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess
+void tst_QDirListing::inaccessibleDir_data()
 {
-    QStringList expected = {
-        "hiddenDirs_hiddenFiles/normalDirectory"_L1,
-        "hiddenDirs_hiddenFiles/normalDirectory/subdir"_L1,
-        "hiddenDirs_hiddenFiles/normalDirectory/.hidden-subdir"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory/subdir"_L1,
-        "hiddenDirs_hiddenFiles/.hiddenDirectory/.hidden-subdir"_L1,
-    };
-    expected.sort();
+    QTest::addColumn<QDirListing::IteratorFlags>("flags");
 
-    constexpr auto flags = ItFlag::ExcludeFiles | ItFlag::IncludeHidden | ItFlag::Recursive;
-    QStringList list;
-    list.reserve(expected.size());
-    for (const auto &dirEntry : QDirListing(u"hiddenDirs_hiddenFiles"_s, flags)) {
-        QVERIFY(dirEntry.isDir());
-        list.emplace_back(dirEntry.filePath());
+    QTest::newRow("no-follow") << QDirListing::IteratorFlags(ItFlag::Recursive);
+    QTest::newRow("follow-symlinks")
+            << QDirListing::IteratorFlags(ItFlag::Recursive | ItFlag::FollowDirSymlinks);
+}
+
+void tst_QDirListing::inaccessibleDir()
+{
+#ifdef Q_NO_SYMLINKS
+    QSKIP("This platform does not support symlinks");
+#else
+    QFETCH(QDirListing::IteratorFlags, flags);
+
+    const QString parent = u"parent"_s;
+    const QString subDir = parent + "/sub"_L1;
+    const QString file = subDir + "/file"_L1;
+    const QString link = parent + "/symlink"_L1;
+    QVERIFY(createDirectory(parent));
+    QVERIFY(createDirectory(subDir));
+    QVERIFY(createFile(file));
+    QVERIFY(createLink("sub", link)); // relative to the link's directory (the parent)
+
+    // QFile is (perhaps surprisingly) how one changes a directory's permissions.
+    QFile subAsFile(subDir);
+    QVERIFY(subAsFile.setPermissions({}));
+    const auto cleanup = qScopeGuard([&] {
+        // removeRecursively can't remove a non-empty, non-accessible directory.
+        subAsFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                 | QFileDevice::ExeOwner);
+        QDir(parent).removeRecursively();
+    });
+
+    // Check that we don't have superpowers and can read into unreadable
+    // directories.
+    if (::access(QFile::encodeName(subDir).constData(), R_OK) == 0) {
+        QSKIP("Directory is still readable after dropping permissions (running as root?); "
+              "cannot test");
     }
-    list.sort();
 
-    QCOMPARE_EQ(list, expected);
+    // Listing the parent recursively must still succeed and see both the
+    // subdirectory and the symlink entries, but not anything inside.
+    QStringList found;
+    for (const auto &dirEntry : QDirListing(parent, flags))
+        found << dirEntry.filePath();
+
+    auto showListing = qScopeGuard([&found] {
+        qInfo() << "Listing was" << found;
+    });
+    QVERIFY(found.contains(subDir));
+    QVERIFY(found.contains(link));
+    QVERIFY2(!found.contains(file), "QDirListing could read the unreadable dir, check test source code");
+    showListing.dismiss();
+#endif // Q_NO_SYMLINKS
 }
 
 #endif // Q_OS_WIN
@@ -769,6 +1011,37 @@ void tst_QDirListing::withStdAlgorithms()
     QVERIFY(it != dirList.cend());
     QCOMPARE(it->fileName(), fileName);
 #endif
+}
+
+void tst_QDirListing::debugStreamOperator_data()
+{
+    QTest::addColumn<QDirListing::IteratorFlags>("flags");
+    QTest::addColumn<QByteArray>("expected");
+
+    auto addRow = [](const char *tagName, QDirListing::IteratorFlags f) {
+        QTest::newRow(tagName)
+            << f
+            << QByteArray("QFlags<QDirListing::IteratorFlag>("_ba + tagName + ')');
+    };
+
+    using F = QDirListing::IteratorFlag;
+    addRow("Default", F::Default);
+    addRow("ExcludeFiles|IncludeDotAndDotDot", F::ExcludeFiles | F::IncludeDotAndDotDot);
+    addRow("ResolveSymlinks|IncludeHidden", F::ResolveSymlinks | F::IncludeHidden);
+
+    QTest::addRow("ExcludeFiles|ExcludeOther|Recursive")
+        << QDirListing::IteratorFlags(F::ExcludeFiles | F:: ExcludeOther | F::Recursive)
+        << "QFlags<QDirListing::IteratorFlag>(DirsOnly|Recursive)"_ba;
+
+    addRow("DirsOnly|Recursive", F::DirsOnly | F::Recursive);
+}
+
+void tst_QDirListing::debugStreamOperator()
+{
+    QFETCH(QDirListing::IteratorFlags, flags);
+    QFETCH(QByteArray, expected);
+
+    QCOMPARE(QDebug::toBytes(flags), expected);
 }
 
 QTEST_MAIN(tst_QDirListing)

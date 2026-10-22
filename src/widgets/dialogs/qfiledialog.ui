@@ -20,7 +20,10 @@
    <item row="0" column="0">
     <widget class="QLabel" name="lookInLabel">
      <property name="text">
-      <string>Look in:</string>
+      <string>&amp;Look in:</string>
+     </property>
+     <property name="buddy">
+      <cstring>lookInCombo</cstring>
      </property>
     </widget>
    </item>
@@ -284,7 +287,10 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>Files of type:</string>
+      <string>Files of &amp;type:</string>
+     </property>
+     <property name="buddy">
+      <cstring>fileTypeCombo</cstring>
      </property>
     </widget>
    </item>

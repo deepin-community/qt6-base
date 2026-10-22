@@ -1,7 +1,10 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpixelformat.h"
+
+#include <QtCore/qdebug.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -13,33 +16,24 @@ QT_BEGIN_NAMESPACE
     layouts in graphics buffers.
 
     In Qt there is a often a need to represent the layout of the pixels in a
-    graphics buffer. Internally QPixelFormat stores everything in a 64 bit
-    datastructure. This gives performance but also some limitations.
+    graphics buffer. QPixelFormat can describe up to 5 color channels and 1 alpha
+    channel, including details about how these channels are represented in memory
+    individually and in relation to each other.
 
-    QPixelFormat can describe 5 color channels and 1 alpha channel, each can use
-    6 bits to describe the size of the color channel.
+    The typeInterpretation() and byteOrder() determines how each pixel should be
+    read/interpreted, while alphaSize(), alphaUsage(), alphaPosition(), and
+    premultiplied() describes the position and properties of the possible alpha
+    channel.
 
-    The position of the alpha channel is described with a separate enum. This is
-    to make it possible to describe QImage formats like ARGB32, and also
-    describe typical OpenGL formats like RBGA8888.
-
-    How pixels are suppose to be read is determined by the TypeInterpretation
-    enum.  It describes if color values are suppose to be read byte per byte,
-    or if a pixel is suppose to be read as a complete int and then masked.
-    \sa TypeInterpretation
-
-    There is no support for describing YUV's macro pixels. Instead a list of YUV
-    formats has been made. When a QPixelFormat is describing a YUV format, the
-    bitsPerPixel value has been deduced by the YUV Layout enum. Also, the color
-    channels should all be set to zero except the fifth color channel that
-    should store the bitsPerPixel value.
+    There is no support for describing YUV's macro pixels. Instead a list of
+    \l{QPixelFormat::YUVLayout}{YUV formats} is provided. When a QPixelFormat
+    describes a YUV format, the bitsPerPixel() value is deduced from the YUV layout.
 */
 
 /*!
     \enum QPixelFormat::ColorModel
 
-    This enum type is used to describe the color model of the pixelformat.
-    Alpha was added in 5.5.
+    This enum describes the \l{colorModel()}{color model} of the pixel format.
 
     \value RGB The color model is RGB.
 
@@ -58,85 +52,68 @@ QT_BEGIN_NAMESPACE
 
     \value YUV The color model is YUV.
 
-    \value Alpha There is no color model, only alpha is used.
+    \value [since 5.5] Alpha There is no color model, only alpha is used.
 */
 
 /*!
     \enum QPixelFormat::AlphaUsage
 
-    This enum describes if the alpha channel is used or not. Sometimes the
-    pixelformat will have a size for the alpha channel, but the pixel format
-    does actually not use the alpha channel. For example  RGB32 is such a
-    format. The RGB channels are 8 bits each, and there is no alpha channel.
-    But the complete size for each pixel is 32. Therefore the alpha channel size
-    is 8, but the alpha channel is ignored. Its important to note that in such
-    situations the position of the alpha channel is significant.
+    This enum describes the \l{alphaUsage()}{alpha usage} of the pixel format.
 
     \value IgnoresAlpha The alpha channel is not used.
 
     \value UsesAlpha    The alpha channel is used.
+
+    \sa alphaSize(), alphaPosition(), premultiplied()
 */
 
 /*!
     \enum QPixelFormat::AlphaPosition
 
-    This enum type is used to describe the alpha channels position relative to the
-    color channels.
+    This enum describes the \l{alphaPosition()}{alpha position} of the pixel format.
 
     \value AtBeginning The alpha channel will be put in front of the color
-                       channels . E.g. ARGB.
+                       channels. E.g. ARGB.
 
     \value AtEnd       The alpha channel will be put in the back of the color
                        channels. E.g. RGBA.
+
+    \sa alphaSize(), alphaUsage(), premultiplied()
 */
 
 /*!
     \enum QPixelFormat::AlphaPremultiplied
 
-    This enum type describes the boolean state if the alpha channel is multiplied
-    into the color channels or not.
+    This enum describes whether the alpha channel of the pixel format is
+    \l{premultiplied}{premultiplied} into the color channels or not.
 
     \value NotPremultiplied The alpha channel is not multiplied into the color channels.
 
     \value Premultiplied    The alpha channel is multiplied into the color channels.
+
+    \sa alphaSize(), alphaUsage(), alphaPosition()
 */
 
 /*!
     \enum QPixelFormat::TypeInterpretation
 
-    This enum describes how each pixel is interpreted. If a pixel is read as a
-    full 32 bit unsigned integer and then each channel is masked out, or if
-    each byte is read as unsigned char values. Typically QImage formats
-    interpret one pixel as an unsigned integer and then the color channels are
-    masked out. OpenGL on the other hand typically interpreted pixels "one byte
-    after the other", Ie. unsigned byte.
+    This enum describes the \l{typeInterpretation()}{type interpretation} of the pixel format.
 
-    QImage also have the format Format_RGBA8888 (and its derivatives), where
-    the pixels are interpreted as unsigned bytes. OpenGL has extensions that makes it
-    possible to upload pixel buffers in an unsigned integer format.
+    \value UnsignedInteger  The pixels should be read as one or more \c{unsigned int}.
+    \value UnsignedShort    The pixels should be read as one or more \c{unsigned short}.
+    \value UnsignedByte     The pixels should be read as one or more \c{byte}.
+    \value FloatingPoint    The pixels should be read as one or more floating point
+                            numbers, with the concrete type defined by the color/alpha
+                            channel, ie. \c{qfloat16} for 16-bit half-float formats and
+                            \c{float} for 32-bit full-float formats.
 
-    \image qpixelformat-argb32buffer.png An unsigned integer ARGB32 pixel.
-
-    The image above shows a ARGB pixel in memory read as an unsigned integer.
-    However, if this pixel was read byte for byte on a little endian system the
-    first byte would be the byte containing the B-channel. The next byte would
-    be the G-channel, then the R-channel and finally the A-channel. This shows
-    that on little endian systems, how each pixel is interpreted is significant
-    for integer formats. This is not the case on big endian systems.
-
-    \value UnsignedInteger
-    \value UnsignedShort
-    \value UnsignedByte
-    \value FloatingPoint
+    \sa byteOrder()
 */
 
 /*!
     \enum QPixelFormat::ByteOrder
 
-    This enum describes the ByteOrder of the pixel format. This enum is mostly
-    ignored but have some use cases for YUV formats. BGR formats have their own
-    color model, and should not be described by using the opposite endianness
-    on an RGB format.
+    This enum describes the \l{byteOrder()}{byte order} of the pixel format.
 
     \value LittleEndian        The byte order is little endian.
     \value BigEndian           The byte order is big endian.
@@ -144,14 +121,14 @@ QT_BEGIN_NAMESPACE
                                the constructor to the endian enum that matches
                                the enum of the current system.
 
+    \sa typeInterpretation()
 */
 
 /*!
     \enum QPixelFormat::YUVLayout
 
-    YUV is not represented by describing the size of the color channels. This is
-    because YUV often use macro pixels, making the concept of separate color channels
-    invalid. Instead the different YUV layouts are described with this enum.
+    This enum describes the \l{yuvLayout()}{YUV layout} of the pixel format,
+    given that it has a color model of QPixelFormat::YUV.
 
     \value YUV444
     \value YUV422
@@ -211,11 +188,15 @@ QT_BEGIN_NAMESPACE
     \a typeInterpretation is how the pixel is interpreted.
 
     \a byteOrder represents the endianness of the pixelformat. This defaults to
-    CurrentSystemEndian.
+    CurrentSystemEndian, which will be resolve to the system's endianness for
+    non-byte-ordered formats, and QPixelFormat::BigEndian for QPixelFormat::UnsignedByte.
 
     \a subEnum is used for colorModels that have to store some extra
     information with supplying an extra enum. This is used by YUV to store the
     YUV type The default value is 0.
+
+    \note BGR formats have their own color model, and should not be described
+    by using the opposite endianness of an RGB format.
 */
 
 /*!
@@ -328,7 +309,7 @@ QT_BEGIN_NAMESPACE
                                      QPixelFormat::AlphaPosition alphaPosition = QPixelFormat::AtBeginning,
                                      QPixelFormat::AlphaPremultiplied premultiplied = QPixelFormat::NotPremultiplied,
                                      QPixelFormat::TypeInterpretation typeInterpretation = QPixelFormat::UnsignedByte,
-                                     QPixelFormat::ByteOrder byteOrder = QPixelFormat::LittleEndian)
+                                     QPixelFormat::ByteOrder byteOrder = QPixelFormat::BigEndian)
     \relates QPixelFormat
 
     Constructor function for creating a QPixelFormat describing a YUV format with
@@ -341,14 +322,19 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn ColorModel QPixelFormat::colorModel() const
 
-    Accessor function for getting the colorModel.
+    Accessor function for the color model.
+
+    Note that for QPixelFormat::YUV the individual macro pixels can not be
+    described. Instead a list of \l{QPixelFormat::YUVLayout}{YUV formats} is provided,
+    and the bitsPerPixel() value is deduced from the YUV layout.
 */
 
 /*!
     \fn uchar QPixelFormat::channelCount() const
 
-    Accessor function for getting the channelCount. Channel Count is deduced
-    by color channels with a size > 0 and if the size of the alpha channel is > 0.
+    Accessor function for the channel count.
+
+    The channel count represents channels (color and alpha) with a size > 0.
 */
 
 /*!
@@ -427,44 +413,121 @@ QT_BEGIN_NAMESPACE
     \fn uchar QPixelFormat::bitsPerPixel() const
 
     Accessor function for the bits used per pixel. This function returns the
-    sum of the color channels + the size of the alpha channel.
+    sum of all the color channels + the size of the alpha channel.
 */
 
 /*!
     \fn AlphaPremultiplied QPixelFormat::premultiplied() const
 
-    Accessor function for the AlphaPremultiplied enum. This indicates if the
-    alpha channel is multiplied in to the color channels.
-
+    Accessor function for the whether the alpha channel is multiplied
+    in to the color channels.
 */
 
 /*!
     \fn TypeInterpretation QPixelFormat::typeInterpretation() const
 
-    Accessor function for the type representation of a color channel or a pixel.
+    The type interpretation determines how each pixel should be read.
 
-    \sa TypeInterpretation
+    Each pixel is represented as one or more units of the given type,
+    laid out sequentially in memory.
+
+    \note The \l{byteOrder()}{byte order} of the pixel format and the
+    endianness of the host system only affect the memory layout of each
+    individual unit being read — \e{not} the relative ordering of the
+    units.
+
+    For example, QImage::Format_Mono has a \l{QImage::pixelFormat()}{pixel format}
+    of 1 bits per pixel and a QPixelFormat::UnsignedByte type interpretation,
+    which should be read as a single \c{byte}. Similarly, QImage::Format_RGB888
+    has a \l{QImage::pixelFormat()}{pixel format} of 24 bits per pixel, and
+    and a QPixelFormat::UnsignedByte type interpretation, which should be
+    read as three consecutive \c{byte}s.
+
+    Many of the QImage \l{QImage::Format}{formats} are 32-bit with a type
+    interpretation of QPixelFormat::UnsignedInteger, which should be read
+    as a single \c{unsigned int}.
+
+    For QPixelFormat::FloatingPoint formats like QImage::Format_RGBA16FPx4
+    or QImage::Format_RGBA32FPx4 the type is determined based on the size
+    of the individual color/alpha channels, with \c{qfloat16} for 16-bit
+    half-float formats and \c{float} for 32-bit full-float formats.
+
+    \sa byteOrder()
 */
 
 /*!
     \fn ByteOrder QPixelFormat::byteOrder() const
 
-    The byte order is almost always set the byte order of the current
-    system. However, it can be useful to describe some YUV formats. This
-    function should never return QPixelFormat::CurrentSystemEndian as this
-    value is translated to a endian value in the constructor.
+    The byte order of the pixel format determines the memory layout of
+    the individual type units, as described by the typeInterpretation().
+
+    This function will never return QPixelFormat::CurrentSystemEndian as this
+    value is translated to the system's endian value in the constructor.
+
+    For pixel formats with typeInterpretation() QPixelFormat::UnsignedByte this
+    will typically be QPixelFormat::BigEndian, while other type interpretations
+    will typically reflect the endianness of the current system.
+
+    If the byte order of the pixel format matches the current system the
+    individual type units can be read and manipulated using the same bit
+    masks and operations, regardless of the host system endianness. For
+    example, with QImage::Format_ARGB32, which has a QPixelFormat::UnsignedInteger
+    type interpretation, the alpha can always be read by masking the
+    \c{unsigned int} by \c{0xFF000000}, regardless of the host endianness.
+
+    If the pixel format and host endianness does \e{not} match care must
+    be taken to account for this. Classes like QImage do not swap the
+    internal bits to match the host system endianness in these cases.
+
+    \sa typeInterpretation(), alphaPosition()
 */
 
 /*!
     \fn AlphaUsage QPixelFormat::alphaUsage() const
 
-    Accessor function for alphaUsage.
+    Accessor function for whether the alpha channel is used or not.
+
+    Sometimes the pixel format reserves place for an alpha channel,
+    so alphaSize() will return > 0, but the alpha channel is not
+    used/ignored.
+
+    For example, for QImage::Format_RGB32, the bitsPerPixel() is 32,
+    because the alpha channel has a size of 8, but alphaUsage()
+    reflects QPixelFormat::IgnoresAlpha.
+
+    Note that in such situations the \l{alphaPosition()}{position} of
+    the unused alpha channel is still important, as it affects the
+    placement of the color channels.
+
+    \sa alphaPosition(), alphaSize(), premultiplied()
 */
 
 /*!
     \fn AlphaPosition QPixelFormat::alphaPosition() const
 
-    Accessor function for alphaPosition.
+    Accessor function for the position of the alpha channel
+    relative to the color channels.
+
+    For formats where the individual channels map to individual
+    units, the alpha position is relative to these units. For
+    example for QImage::Format_RGBA16FPx4 which has an alpha
+    position of QPixelFormat::AtEnd, the alpha is the last
+    \c{qfloat16} read.
+
+    For formats where multiple channels are packed into a single unit,
+    the QPixelFormat::AtBeginning and QPixelFormat::AtEnd values map to
+    the most significant and least significant bits of the packed unit,
+    with respect to the format's own byteOrder().
+
+    For example, for QImage::Format_ARGB32, which has a type interpretation
+    of QPixelFormat::UnsignedInteger and a byteOrder() that always matches
+    the host system, the alpha position of QPixelFormat::AtBeginning means
+    that the alpha can always be found at \c{0xFF000000}.
+
+    If the pixel format and host endianness does \e{not} match care must be
+    taken to correctly map the pixel format layout to the host memory layout.
+
+    \sa alphaUsage(), alphaSize(), premultiplied()
 */
 
 /*!
@@ -546,4 +609,60 @@ namespace QtPrivate {
     }
 }
 
+#ifndef QT_NO_DEBUG_STREAM
+QDebug operator<<(QDebug dbg, const QPixelFormat &f)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+    dbg.noquote();
+    dbg.verbosity(0);
+
+    dbg << "QPixelFormat(" << f.colorModel();
+    if (f.colorModel() == QPixelFormat::YUV)
+        dbg << "," << f.yuvLayout();
+
+    dbg << ",bpp=" << f.bitsPerPixel()
+        << "," << f.typeInterpretation();
+
+    if (f.typeInterpretation() != QPixelFormat::UnsignedByte || f.bitsPerPixel() > 8)
+        dbg << "," << f.byteOrder();
+
+    if (f.colorModel() != QPixelFormat::YUV) {
+        dbg << ",ch=" << f.channelCount() << "[";
+        const int alphaSize = f.alphaSize();
+        const int colorChannels = f.channelCount() - (f.alphaSize() ? 1 : 0);
+        if (alphaSize && f.alphaPosition() == QPixelFormat::AtBeginning)
+            dbg << alphaSize << "-";
+        if (colorChannels >= 1)
+            dbg << f.get(QPixelFormat::FirstField, QPixelFormat::FirstFieldWidth);
+        if (colorChannels >= 2)
+            dbg << "-" << f.get(QPixelFormat::SecondField, QPixelFormat::SecondFieldWidth);
+        if (colorChannels >= 3)
+            dbg << "-" << f.get(QPixelFormat::ThirdField, QPixelFormat::ThirdFieldWidth);
+        if (colorChannels >= 4)
+            dbg << "-" << f.get(QPixelFormat::FourthField, QPixelFormat::FourthFieldWidth);
+        if (colorChannels >= 5)
+            dbg << "-" << f.get(QPixelFormat::FifthField, QPixelFormat::FifthFieldWidth);
+        if (alphaSize && f.alphaPosition() == QPixelFormat::AtEnd)
+            dbg << "-" << alphaSize;
+        dbg << "]";
+    }
+
+    if (f.alphaSize() > 0) {
+        dbg << "," << f.alphaUsage()
+            << "=" << f.alphaSize()
+            << "," << f.alphaPosition();
+        if (f.alphaUsage() == QPixelFormat::UsesAlpha)
+            dbg << "," << f.premultiplied();
+    } else {
+        dbg << ",NoAlpha";
+    }
+
+    dbg << ')';
+    return dbg;
+}
+#endif
+
 QT_END_NAMESPACE
+
+#include "moc_qpixelformat.cpp"

@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 //#define QSSLSOCKET_DEBUG
@@ -871,12 +872,19 @@ void QSslSocket::close()
 
     if (!d->abortCalled && (encryptedBytesToWrite() || !d->writeBuffer.isEmpty()))
         flush();
+
+    // Initiate TLS shutdown while the read buffer is still valid;
+    // QTcpSocket::close() destroys it before calling disconnectFromHost().
+    if (!d->abortCalled)
+        disconnectFromHost();
+
     if (d->plainSocket) {
         if (d->abortCalled)
             d->plainSocket->abort();
         else
             d->plainSocket->close();
     }
+
     QTcpSocket::close();
 
     // must be cleared, reading/writing not possible on closed socket:
@@ -968,6 +976,8 @@ void QSslSocket::setSslConfiguration(const QSslConfiguration &configuration)
     d->configuration.nextAllowedProtocols = configuration.allowedNextProtocols();
     d->configuration.nextNegotiatedProtocol = configuration.nextNegotiatedProtocol();
     d->configuration.nextProtocolNegotiationStatus = configuration.nextProtocolNegotiationStatus();
+    // The getter is non-const, it hands the values over, so read the private:
+    d->configuration.keyingMaterial = configuration.d->keyingMaterial;
 #if QT_CONFIG(ocsp)
     d->configuration.ocspStaplingEnabled = configuration.ocspStaplingEnabled();
 #endif
@@ -1843,7 +1853,7 @@ void QSslSocket::continueInterruptedHandshake()
 }
 
 /*!
-    \internal
+    \reimp
 */
 void QSslSocket::connectToHost(const QString &hostName, quint16 port, OpenMode openMode, NetworkLayerProtocol protocol)
 {
@@ -1874,7 +1884,7 @@ void QSslSocket::connectToHost(const QString &hostName, quint16 port, OpenMode o
 }
 
 /*!
-    \internal
+    \reimp
 */
 void QSslSocket::disconnectFromHost()
 {
@@ -2422,8 +2432,10 @@ void QSslSocketPrivate::setPaused(bool p)
     paused = p;
 }
 
-bool QSslSocketPrivate::bind(const QHostAddress &address, quint16 port, QAbstractSocket::BindMode mode)
+bool QSslSocketPrivate::bind(const QHostAddress &address, quint16 port, QAbstractSocket::BindMode mode,
+                             const QNetworkInterface *iface)
 {
+    Q_UNUSED(iface); // only relevant for QUdpSocket for now
     // this function is called from QAbstractSocket::bind
     if (!initialized)
         init();
@@ -2962,13 +2974,15 @@ QList<QByteArray> QSslSocketPrivate::unixRootCertDirectories()
     static const QByteArray dirs[] = {
         ba("/etc/ssl/certs/"), // (K)ubuntu, OpenSUSE, Mandriva ...
         ba("/usr/lib/ssl/certs/"), // Gentoo, Mandrake
-        ba("/usr/share/ssl/"), // Centos, Redhat, SuSE
+        ba("/usr/share/ssl/"), // Red Hat pre-2004, SuSE
+        ba("/etc/pki/ca-trust/extracted/pem/directory-hash/"), // Red Hat 2021+
         ba("/usr/local/ssl/"), // Normal OpenSSL Tarball
         ba("/var/ssl/certs/"), // AIX
         ba("/usr/local/ssl/certs/"), // Solaris
         ba("/etc/openssl/certs/"), // BlackBerry
         ba("/opt/openssl/certs/"), // HP-UX
         ba("/etc/ssl/"), // OpenBSD
+        ba("/etc/security/certificates/"), // HarmonyOS
     };
     QList<QByteArray> result = QList<QByteArray>::fromReadOnlyData(dirs);
     if constexpr (isVxworks) {

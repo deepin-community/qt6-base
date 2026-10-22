@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHEADERVIEW_P_H
 #define QHEADERVIEW_P_H
@@ -30,6 +31,15 @@
 QT_REQUIRE_CONFIG(itemviews);
 
 QT_BEGIN_NAMESPACE
+
+// Currently we support huge models with no memory per section if people are not resizing sections and not ordering sections.
+// This enum is unlikely to be public later on. (Either we go for a huge model bool or another ("subset") enum not containing the initial mode).
+
+enum HeaderMode
+{
+    InitialNoSectionMemoryUsage,         // Initial state - we don't use any memory per section until needed (needed on resize, swap, move, hide etc)
+    FlexibleWithSectionMemoryUsage,      // user can hide, resize and reorder sections at the cost of memory usage.
+};
 
 class QHeaderViewPrivate: public QAbstractItemViewPrivate
 {
@@ -132,7 +142,9 @@ public:
         else sectionSelected.fill(false);
     }
 
-    inline int sectionCount() const {return sectionItems.size();}
+    inline int sectionCount() const {
+        return noSectionMemoryUsage() ? countInNoSectionItemsMode : sectionItems.size();
+    }
 
     inline bool reverse() const {
         return orientation == Qt::Horizontal && q_func()->isRightToLeft();
@@ -155,7 +167,7 @@ public:
     }
 
     inline bool isVisualIndexHidden(int visual) const {
-        return sectionItems.at(visual).isHidden;
+        return !noSectionMemoryUsage() && sectionItems.at(visual).isHidden;
     }
 
     inline void setVisualIndexHidden(int visual, bool hidden) {
@@ -221,7 +233,7 @@ public:
 
     inline void disconnectModel()
     {
-        for (const QMetaObject::Connection &connection : modelConnections)
+        for (QMetaObject::Connection &connection : modelConnections)
             QObject::disconnect(connection);
     }
 
@@ -272,6 +284,7 @@ public:
     int stretchSections;
     int contentsSections;
     int defaultSectionSize;
+    int oldDefaultSectionSize = -1;
     int minimumSectionSize;
     int maximumSectionSize;
     int lastSectionSize;
@@ -312,6 +325,22 @@ public:
     };
 
     QList<SectionItem> sectionItems;
+
+    HeaderMode headerMode = HeaderMode::InitialNoSectionMemoryUsage;
+    qsizetype countInNoSectionItemsMode = 0;
+    inline bool noSectionMemoryUsage() const
+    {
+        return (headerMode == HeaderMode::InitialNoSectionMemoryUsage);
+    }
+
+    inline void switchToFlexibleModeWithSectionMemoryUsage()
+    {
+        setHeaderMode(HeaderMode::FlexibleWithSectionMemoryUsage);
+    }
+
+    void updateCountInNoSectionItemsMode(int newCount);
+    void setHeaderMode(HeaderMode mode);
+
     struct LayoutChangeItem {
         QPersistentModelIndex index;
         SectionItem section;

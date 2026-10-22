@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtGui/qopengl.h>
 #include <QtGui/private/qopenglcontext_p.h>
@@ -32,6 +33,12 @@ QT_BEGIN_NAMESPACE
     QOpenGLBuffer performs a shallow copy when objects are copied in this
     manner, but does not implement copy-on-write semantics.  The original
     object will be affected whenever the copy is modified.
+
+    \warning All data consumed by QOpenGLBuffer is expected to be trusted
+    content. Buffer data is passed on to the underlying OpenGL implementation.
+    Application developers are advised to carefully consider the potential
+    implications before passing in user-provided content to functions such as
+    allocate() and write().
 */
 
 /*!
@@ -216,9 +223,7 @@ QOpenGLBuffer &QOpenGLBuffer::operator=(const QOpenGLBuffer &other)
 /*!
     \fn QOpenGLBuffer::swap(QOpenGLBuffer &other)
     \since 6.5
-
-    Swaps buffer \a other with this buffer. This operation is very fast and
-    never fails.
+    \memberswap{buffer}
 */
 
 /*!

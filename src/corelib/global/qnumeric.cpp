@@ -1,9 +1,12 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qnumeric.h"
 #include "qnumeric_p.h"
 #include <string.h>
+
+#include <q20bit.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -337,6 +340,9 @@ Q_CORE_EXPORT quint64 qFloatDistance(double a, double b)
     Example:
 
     \snippet code/src_corelib_global_qglobal.cpp 10
+
+    \note If \c {T} is a \e {signed integral} type, and \a t has the value
+    of \c {std::numeric_limits<T>::min()}, the behavior is undefined.
 */
 
 /*! \fn int qRound(double d)
@@ -457,5 +463,21 @@ Q_CORE_EXPORT quint64 qFloatDistance(double a, double b)
 
     Returns true if the absolute value of \a f is within 0.00001f of 0.0.
 */
+
+namespace q20 {
+static_assert(rotl(1U, 1) == 2);
+static_assert(rotl(0x8000'0000U, 1) == 1);
+static_assert(rotl(0x8000'0001U, 1) == 3);
+static_assert(rotl(1U, -1) == 0x8000'0000U);
+static_assert(rotl(0x8000'0000U, -1) == 0x4000'0000U);
+static_assert(rotl(0x8000'0001U, -1) == 0xc000'0000U);
+
+static_assert(rotr(1U, 1) == 0x8000'0000U);
+static_assert(rotr(0x8000'0000U, 1) == 0x4000'0000U);
+static_assert(rotr(0x8000'0001U, 1) == 0xc000'0000U);
+static_assert(rotr(1U, -1) == 2);
+static_assert(rotr(0x8000'0000U, -1) == 1);
+static_assert(rotr(0x8000'0001U, -1) == 3);
+}
 
 QT_END_NAMESPACE

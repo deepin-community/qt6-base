@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qjnihelpers_p.h"
 
@@ -12,15 +13,22 @@
 #include <QtCore/private/qcoreapplication_p.h>
 #include <QtCore/private/qlocking_p.h>
 
+#if QT_CONFIG(regularexpression)
+#include <QtCore/qregularexpression.h>
+#endif
+
 #include <android/log.h>
 #include <deque>
 #include <memory>
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_JNI_CLASS(QtLoader, "org/qtproject/qt/android/QtLoader")
 Q_DECLARE_JNI_CLASS(QtInputDelegate, "org/qtproject/qt/android/QtInputDelegate");
 Q_DECLARE_JNI_CLASS(MotionEvent, "android/view/MotionEvent");
 Q_DECLARE_JNI_CLASS(KeyEvent, "android/view/KeyEvent");
+
+using namespace Qt::StringLiterals;
 
 namespace QtAndroidPrivate {
     // *Listener virtual function implementations.
@@ -246,6 +254,28 @@ void QtAndroidPrivate::handleResume()
         listeners.at(i)->handleResume();
 }
 
+bool QtAndroidPrivate::isUncompressedNativeLibs()
+{
+    const static bool isUncompressed = QtJniTypes::QtLoader::callStaticMethod<bool>(
+                "isUncompressedNativeLibs");
+    return isUncompressed;
+}
+
+QString QtAndroidPrivate::resolveApkPath(const QString &fileName)
+{
+#if QT_CONFIG(regularexpression)
+    const static QRegularExpression inApkRegex("(.+\\.apk)!\\/.+"_L1);
+    auto match = inApkRegex.matchView(fileName);
+    if (match.hasMatch())
+        return match.captured(1);
+#else
+    if (int index = fileName.lastIndexOf(u".apk!/"); index > 0)
+        return fileName.mid(0, index + 4);
+#endif
+
+    return {};
+}
+
 jint QtAndroidPrivate::initJNI(JavaVM *vm, JNIEnv *env)
 {
     g_javaVM = vm;
@@ -320,8 +350,10 @@ jint QtAndroidPrivate::initJNI(JavaVM *vm, JNIEnv *env)
         return JNI_ERR;
     }
 
+#if QT_CONFIG(permissions)
     if (!registerPermissionNatives(qJniEnv))
         return JNI_ERR;
+#endif
 
     if (!registerNativeInterfaceNatives(qJniEnv))
         return JNI_ERR;
@@ -423,9 +455,31 @@ void QtAndroidPrivate::releaseAndroidDeadlockProtector()
     g_androidDeadlockProtector.storeRelease(0);
 }
 
+QtAndroidPrivate::AndroidDeadlockProtector::AndroidDeadlockProtector(const QString &lockedBy)
+    : m_lockedBy(lockedBy)
+{ }
+
+QtAndroidPrivate::AndroidDeadlockProtector::~AndroidDeadlockProtector() {
+    if (m_acquired) {
+        QtAndroidPrivate::releaseAndroidDeadlockProtector();
+        s_lockers.removeOne(m_lockedBy);
+    }
+}
+
+bool QtAndroidPrivate::AndroidDeadlockProtector::acquire() {
+    m_acquired = QtAndroidPrivate::acquireAndroidDeadlockProtector();
+    if (m_acquired) {
+        s_lockers.append(m_lockedBy);
+    } else {
+        qWarning("Failed to acquire deadlock protector for '%s' while already locked by '%s'.",
+                 qPrintable(m_lockedBy), qPrintable(s_lockers.join(u',')));
+    }
+    return m_acquired;
+}
+
 QT_END_NAMESPACE
 
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     Q_UNUSED(reserved);
 

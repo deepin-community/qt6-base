@@ -14,6 +14,10 @@ endif()
 qt_internal_add_test(tst_qcalendar
     SOURCES
         tst_qcalendar.cpp
+    DEFINES
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII
+        QT_NO_KEYWORDS
     LIBRARIES
         Qt::CorePrivate
 )

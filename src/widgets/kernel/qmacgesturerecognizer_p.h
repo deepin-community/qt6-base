@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMACSWIPEGESTURERECOGNIZER_MAC_P_H
 #define QMACSWIPEGESTURERECOGNIZER_MAC_P_H
@@ -16,9 +17,10 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
-#include "qtimer.h"
 #include "qpoint.h"
 #include "qgesturerecognizer.h"
+#include <QtCore/qbasictimer.h>
+#include <QtCore/qobject.h>
 #include <QtCore/qpointer.h>
 
 #ifndef QT_NO_GESTURES
@@ -47,6 +49,7 @@ public:
 
 class QMacPanGestureRecognizer : public QObject, public QGestureRecognizer
 {
+    Q_OBJECT
 public:
     QMacPanGestureRecognizer();
 

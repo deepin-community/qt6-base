@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGRAPHICSVIEW_P_H
 #define QGRAPHICSVIEW_P_H
@@ -89,7 +90,7 @@ public:
     qreal topIndent;
 
     // Replaying mouse events
-    QMutableSinglePointEvent lastMouseEvent;
+    QEventStorage<QMouseEvent> lastMouseEvent;
     void replayLastMouseEvent();
     void storeMouseEvent(QMouseEvent *event);
     void mouseMoveEventHandler(QMouseEvent *event);
@@ -139,6 +140,7 @@ public:
     void populateSceneDragDropEvent(QGraphicsSceneDragDropEvent *dest,
                                     QDropEvent *source);
 
+    QTransform mapToViewTransform(const QGraphicsItem *item) const;
     QRect mapToViewRect(const QGraphicsItem *item, const QRectF &rect) const;
     QRegion mapToViewRegion(const QGraphicsItem *item, const QRectF &rect) const;
     QRegion dirtyRegion;

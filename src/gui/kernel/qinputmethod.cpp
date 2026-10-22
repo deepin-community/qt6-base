@@ -1,10 +1,10 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qinputmethod.h>
 #include <private/qinputmethod_p.h>
 #include <qguiapplication.h>
-#include <qtimer.h>
 #include <qpa/qplatforminputcontext_p.h>
 
 #include <QDebug>

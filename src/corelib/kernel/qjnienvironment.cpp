@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qjnienvironment.h"
 #include "qjnihelpers_p.h"
@@ -557,6 +558,14 @@ bool QJniEnvironment::checkAndClearExceptions(JNIEnv *env, QJniEnvironment::Outp
     }
 
     return false;
+}
+
+/*!
+    Returns the stack trace that resulted in \a exception being thrown.
+*/
+QStringList QJniEnvironment::stackTrace(jthrowable exception)
+{
+    return exceptionMessage(getJniEnv(), exception).split(u'\n');
 }
 
 QT_END_NAMESPACE

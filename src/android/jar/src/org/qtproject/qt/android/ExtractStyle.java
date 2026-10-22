@@ -5,7 +5,6 @@
 package org.qtproject.qt.android;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
@@ -16,8 +15,6 @@ import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
 import android.graphics.NinePatch;
-import android.graphics.Paint;
-import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.drawable.AnimatedStateListDrawable;
 import android.graphics.drawable.AnimationDrawable;
@@ -49,20 +46,20 @@ import org.json.JSONObject;
 import org.xmlpull.v1.XmlPullParser;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-
+@SuppressWarnings("deprecation")
 class ExtractStyle {
-
     // This used to be retrieved from android.R.styleable.ViewDrawableStates field via reflection,
     // but since the access to that is restricted, we need to have hard-coded here.
     final int[] viewDrawableStatesState = new int[]{
@@ -559,7 +556,9 @@ class ExtractStyle {
 
     private JSONArray getJsonArray(int[] array, int pos, int len) {
         JSONArray a = new JSONArray();
-        final int l = pos + len;
+        if (array == null || pos < 0)
+            return a;
+        final int l = Math.min(pos + len, array.length);
         for (int i = pos; i < l; i++)
             a.put(array[i]);
         return a;
@@ -575,7 +574,7 @@ class ExtractStyle {
 
     private JSONObject getJsonChunkInfo(int[] chunkData) throws JSONException {
         JSONObject jsonRect = new JSONObject();
-        if (chunkData == null)
+        if (chunkData == null || chunkData.length < 3)
             return jsonRect;
 
         jsonRect.put("xdivs", getJsonArray(chunkData, 3, chunkData[0]));
@@ -602,7 +601,7 @@ class ExtractStyle {
         try {
             Class<?> rippleDrawableClass = Class.forName("android.graphics.drawable.RippleDrawable");
             final Object mState = getAccessibleField(rippleDrawableClass, "mState").get(drawable);
-            ripple.put("mask", getDrawable((Drawable) getAccessibleField(rippleDrawableClass, "mMask").get(drawable), filename, padding));
+            ripple.put("mask", getDrawable(getAccessibleField(rippleDrawableClass, "mMask").get(drawable), filename, padding));
             if (mState != null) {
                 ripple.put("maxRadius", getAccessibleField(mState.getClass(), "mMaxRadius").getInt(mState));
                 ColorStateList color = (ColorStateList) getAccessibleField(mState.getClass(), "mColor").get(mState);
@@ -695,7 +694,7 @@ class ExtractStyle {
             }
             json.put("nodes", nodes);
         }
-        json.put("isClip", (Boolean) pathClass.getMethod("isClipPath").invoke(path));
+        json.put("isClip", pathClass.getMethod("isClipPath").invoke(path));
 
         if (tryGetAccessibleField(pathClass, "mStrokeColor") == null)
             return json; // not VFullPath
@@ -709,8 +708,8 @@ class ExtractStyle {
         json.put("trimPathStart", getAccessibleField(pathClass, "mTrimPathStart").getFloat(path));
         json.put("trimPathEnd", getAccessibleField(pathClass, "mTrimPathEnd").getFloat(path));
         json.put("trimPathOffset", getAccessibleField(pathClass, "mTrimPathOffset").getFloat(path));
-        json.put("strokeLineCap", (Paint.Cap) getAccessibleField(pathClass, "mStrokeLineCap").get(path));
-        json.put("strokeLineJoin", (Paint.Join) getAccessibleField(pathClass, "mStrokeLineJoin").get(path));
+        json.put("strokeLineCap", getAccessibleField(pathClass, "mStrokeLineCap").get(path));
+        json.put("strokeLineJoin", getAccessibleField(pathClass, "mStrokeLineJoin").get(path));
         json.put("strokeMiterlimit", getAccessibleField(pathClass, "mStrokeMiterlimit").getFloat(path));
         return json;
     }
@@ -753,7 +752,7 @@ class ExtractStyle {
             final ColorStateList mTint = (ColorStateList) getAccessibleField(stateClass, "mTint").get(state);
             if (mTint != null) {
                 json.put("tintList", getColorStateList(mTint));
-                json.put("tintMode", (PorterDuff.Mode) getAccessibleField(stateClass, "mTintMode").get(state));
+                json.put("tintMode", getAccessibleField(stateClass, "mTintMode").get(state));
             }
             final Object mVPathRenderer = getAccessibleField(stateClass, "mVPathRenderer").get(state);
             final Class<?> VPathRendererClass = Objects.requireNonNull(mVPathRenderer).getClass();
@@ -793,9 +792,9 @@ class ExtractStyle {
                     json.put("gravity", bitmapDrawable.getGravity());
                     json.put("tileModeX", bitmapDrawable.getTileModeX());
                     json.put("tileModeY", bitmapDrawable.getTileModeY());
-                    json.put("antialias", (Boolean) BitmapDrawable.class.getMethod("hasAntiAlias").invoke(bitmapDrawable));
-                    json.put("mipMap", (Boolean) BitmapDrawable.class.getMethod("hasMipMap").invoke(bitmapDrawable));
-                    json.put("tintMode", (PorterDuff.Mode) BitmapDrawable.class.getMethod("getTintMode").invoke(bitmapDrawable));
+                    json.put("antialias", BitmapDrawable.class.getMethod("hasAntiAlias").invoke(bitmapDrawable));
+                    json.put("mipMap", BitmapDrawable.class.getMethod("hasMipMap").invoke(bitmapDrawable));
+                    json.put("tintMode", BitmapDrawable.class.getMethod("getTintMode").invoke(bitmapDrawable));
                     ColorStateList tintList = (ColorStateList) BitmapDrawable.class.getMethod("getTint").invoke(bitmapDrawable);
                     if (tintList != null)
                         json.put("tintList", getColorStateList(tintList));
@@ -1805,8 +1804,8 @@ class ExtractStyle {
         private boolean m_addComma = false;
         private int m_indentLevel = 0;
 
-        SimpleJsonWriter(String filePath) throws FileNotFoundException {
-            m_writer = new OutputStreamWriter(new FileOutputStream(filePath));
+        SimpleJsonWriter(String filePath) throws IOException {
+            m_writer = new OutputStreamWriter(Files.newOutputStream(Paths.get(filePath)));
         }
 
         void close() throws IOException {

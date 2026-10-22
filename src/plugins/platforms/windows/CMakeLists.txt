@@ -9,6 +9,7 @@ qt_internal_add_plugin(QWindowsIntegrationPlugin
     OUTPUT_NAME qwindows
     PLUGIN_TYPE platforms
     DEFAULT_IF "windows" IN_LIST QT_QPA_PLATFORMS
+    EXCEPTIONS
     SOURCES
         main.cpp
         qtwindowsglobal.h
@@ -37,11 +38,12 @@ qt_internal_add_plugin(QWindowsIntegrationPlugin
         qwindowstheme.cpp qwindowstheme.h
         qwindowsthreadpoolrunner.h
         qwindowswindow.cpp qwindowswindow.h
+        qwindowswindowclassdescription.cpp qwindowswindowclassdescription.h
+        qwindowswindowclassregistry.cpp qwindowswindowclassregistry.h
     NO_UNITY_BUILD_SOURCES
         qwindowspointerhandler.cpp
     DEFINES
         QT_NO_CAST_FROM_ASCII
-        QT_NO_FOREACH
     INCLUDE_DIRECTORIES
         ${CMAKE_CURRENT_SOURCE_DIR}
     LIBRARIES
@@ -52,6 +54,7 @@ qt_internal_add_plugin(QWindowsIntegrationPlugin
         advapi32
         dwmapi
         gdi32
+        uxtheme
         imm32
         ole32
         oleaut32
@@ -66,6 +69,7 @@ qt_internal_add_plugin(QWindowsIntegrationPlugin
         comdlg32
         d3d9
         runtimeobject
+        mscms
 )
 
 # Resources:
@@ -198,15 +202,13 @@ qt_internal_extend_target(QWindowsIntegrationPlugin CONDITION QT_FEATURE_accessi
         uiautomation/qwindowsuiawindowprovider.cpp uiautomation/qwindowsuiawindowprovider.h
 )
 
-if(QT_FEATURE_accessibility)
-    find_library(UI_AUTOMATION_LIBRARY uiautomationcore)
-    if(UI_AUTOMATION_LIBRARY)
-        qt_internal_extend_target(QWindowsIntegrationPlugin
-            LIBRARIES
-                ${UI_AUTOMATION_LIBRARY}
-        )
-    endif()
-endif()
+# This is loaded dynamically when using MINGW as its import library is incomplete
+qt_internal_extend_target(
+    QWindowsIntegrationPlugin
+        CONDITION (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC") AND QT_FEATURE_accessibility
+    LIBRARIES
+        uiautomationcore
+)
 
 qt_internal_extend_target(QWindowsIntegrationPlugin CONDITION MINGW AND QT_FEATURE_accessibility
     LIBRARIES

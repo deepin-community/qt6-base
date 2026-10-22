@@ -3,7 +3,7 @@
 
 #include <QtWidgets>
 
-#include "mainwindow.h"
+#include "../include/mainwindow.h"
 
 MainWindow::MainWindow()
 {
@@ -23,15 +23,16 @@ MainWindow::MainWindow()
     autoSortAction = itemsMenu->addAction(tr("&Automatically Sort Items"));
     autoSortAction->setCheckable(true);
     itemsMenu->addSeparator();
-    QAction *findItemsAction = itemsMenu->addAction(tr("&Find Items"));
+    findItemsAction = itemsMenu->addAction(tr("&Find Items"));
     findItemsAction->setShortcut(tr("Ctrl+F"));
 
     menuBar()->addMenu(fileMenu);
     menuBar()->addMenu(itemsMenu);
 
-/*  For convenient quoting:
-    QTreeWidget *treeWidget = new QTreeWidget(this);
-*/
+    /*  For convenient quoting:
+        QTreeWidget *treeWidget = new QTreeWidget(this);
+    */
+
     treeWidget = new QTreeWidget(this);
     treeWidget->setColumnCount(2);
     QStringList headers;
@@ -82,14 +83,14 @@ void MainWindow::findItems()
     if (itemText.isEmpty())
         return;
 
-//! [0]
+    //! [0]
     QTreeWidgetItemIterator it(treeWidget);
     while (*it) {
         if ((*it)->text(0) == itemText)
             (*it)->setSelected(true);
         ++it;
     }
-//! [0]
+    //! [0]
 }
 
 void MainWindow::insertItem()

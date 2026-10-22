@@ -4,6 +4,7 @@
 /*!
     \example bindableproperties
     \examplecategory {Data Processing & I/O}
+    \ingroup corelib_examples
     \title Bindable Properties
     \brief Demonstrates how the usage of bindable properties can simplify
     your C++ code.
@@ -14,7 +15,8 @@
     purpose we will consider a subscription service model to calculate the
     cost of the subscription.
 
-    \image bindable_properties_example.png
+    \image bindable_properties_example.png {Subscription form with Age,
+           Interval, country flags, and Price/month}
 
     \section1 Modeling Subscription System with Signal/Slot Approach
 

@@ -17,8 +17,9 @@
     A guarded pointer, QPointer<T>, behaves like a normal C++
     pointer \c{T *}, except that it is automatically cleared when the
     referenced object is destroyed (unlike normal C++ pointers, which
-    become "dangling pointers" in such cases). \c T must be a
-    subclass of QObject.
+    become "dangling pointers" in such cases). The template parameter
+    \a T specifies the QObject-derived type being pointed to; \a T must
+    be a subclass of QObject.
 
     Guarded pointers are useful whenever you need to store a pointer
     to a QObject that is owned by someone else, and therefore might be
@@ -125,8 +126,7 @@
     Conversion assignment operator. Makes this guarded pointer guard the
     same object guarded by \a other.
 
-    \note This operator participates  in overload resolution only if \c{X*}
-    is convertible to \c{T*}.
+    \constraints \c{X*} is convertible to \c{T*}.
 */
 
 /*!
@@ -136,16 +136,13 @@
     Conversion move-assignment operator. Makes this guarded pointer guard the
     same object guarded by \a other and resets \a other to nullptr.
 
-    \note This operator participates in overload resolution only if \c{X*}
-    is convertible to \c{T*}.
+    \constraints \c{X*} is convertible to \c{T*}.
 */
 
 /*!
     \fn template <class T> void QPointer<T>::swap(QPointer &other)
     \since 5.6
-
-    Swaps the contents of this QPointer with the contents of \a other.
-    This operation is very fast and never fails.
+    \memberswap{pointer}
 */
 
 /*!

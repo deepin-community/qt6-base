@@ -1,6 +1,7 @@
 // Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB)
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qandroidplatformfiledialoghelper.h"
 
@@ -133,7 +134,7 @@ QStringList nameFilterExtensions(const QString nameFilters)
 {
     QStringList ret;
 #if QT_CONFIG(regularexpression)
-    QRegularExpression re("(\\*\\.[a-z .]+)");
+    QRegularExpression re("(\\*\\.[a-z0-9 .]+)");
     QRegularExpressionMatchIterator i = re.globalMatch(nameFilters);
     while (i.hasNext())
         ret << i.next().captured(1).trimmed();

@@ -17,6 +17,20 @@ instructions:
   - type: EnvironmentVariable
     variableName: COIN_CMAKE_ARGS
     variableValue: "{{.Env.NON_QTBASE_CMAKE_ARGS}} {{.Env.COMMON_NON_QTBASE_CMAKE_ARGS}}"
+  - type: AppendToEnvironmentVariable
+    variableName: CONFIGURE_ARGS
+    variableValue: " ${{ToUpper .Env.TESTED_MODULE_COIN}}_CONFIGURE_ARGS"
+    enable_if:
+      condition: runtime
+      env_var: "{{ToUpper .Env.TESTED_MODULE_COIN}}_CONFIGURE_ARGS"
+      not_equals_value: null
+  - type: AppendToEnvironmentVariable
+    variableName: COIN_CMAKE_ARGS
+    variableValue: " ${{ToUpper .Env.TESTED_MODULE_COIN}}_CMAKE_ARGS"
+    enable_if:
+      condition: runtime
+      env_var: "{{ToUpper .Env.TESTED_MODULE_COIN}}_CMAKE_ARGS"
+      not_equals_value: null
   - type: EnvironmentVariable
     variableName: CONFIGURE_ENV_PREFIX
     variableValue: "{{.Env.ENV_PREFIX}}"
@@ -36,6 +50,9 @@ instructions:
       condition: runtime
       env_var: CMAKE_BUILD_OUTPUT_TIMEOUT
       equals_value: null
+
+  - !include "{{qt/qtbase}}/run_early_source_sbom_check.yaml"
+
   - type: ExecuteCommand
     command: "{{.Env.CONFIGURE_ENV_PREFIX}} cmake --build . --parallel -v"
     maxTimeInSeconds: "{{.Env.CMAKE_BUILD_TIMEOUT}}"
@@ -87,9 +104,6 @@ instructions:
         - condition: property
           property: features
           contains_value: Packaging
-        - condition: property
-          property: host.arch
-          equals_value: X86_64 # Sign only on X86 until Coin has support for arm signing
     directory: "{{.InstallRoot}}/{{.AgentWorkingDir}}"
     maxTimeInSeconds: 1200
     maxTimeBetweenOutput: 1200

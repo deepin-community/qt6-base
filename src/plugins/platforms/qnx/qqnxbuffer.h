@@ -1,5 +1,6 @@
 // Copyright (C) 2011 - 2012 Research In Motion
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQNXBUFFER_H
 #define QQNXBUFFER_H
@@ -11,7 +12,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcQpaScreenBuffer)
+Q_DECLARE_LOGGING_CATEGORY(lcQpaScreenBuffer);
 
 class QQnxBuffer
 {

@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qmetallayer_p.h"
 
@@ -62,12 +63,15 @@ QT_USE_NAMESPACE
 
 - (id<CAMetalDrawable>)nextDrawable
 {
-    // Drop the presentation block early, so that if the main thread for
-    // some reason doesn't handle the presentation, the block won't hold on
-    // to a drawable unnecessarily.
-    self.mainThreadPresentation = nil;
+    {
+        // Drop the presentation block early, so that if the main thread for
+        // some reason doesn't handle the presentation, the block won't hold on
+        // to a drawable unnecessarily.
+        QMacAutoReleasePool pool;
+        self.mainThreadPresentation = nil;
+    }
+
     return [super nextDrawable];
 }
-
 
 @end

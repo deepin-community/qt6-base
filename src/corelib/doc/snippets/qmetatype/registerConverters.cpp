@@ -5,6 +5,8 @@
 #include <QMetaType>
 #include <QString>
 
+using namespace Qt::StringLiterals;
+
 int main() {
   //! [member]
   struct Coordinates {
@@ -47,16 +49,22 @@ int main() {
   struct CustomStringType {
     const char *data() const {return nullptr;}
   };
+
+  struct CustomPointType{
+    double x;
+    double y;
+  };
+
   //! [unaryfunc]
   QMetaType::registerConverter<CustomStringType, QString>([](const CustomStringType &str) {
       return QString::fromUtf8(str.data());
   });
-  QMetaType::registerConverter<QJsonValue, QPointF>(
-            [](const QJsonValue &value) -> std::optional<QPointF> {
+  QMetaType::registerConverter<QJsonValue, CustomPointType>(
+            [](const QJsonValue &value) -> std::optional<CustomPointType> {
       const auto object = value.toObject();
       if (!object.contains("x") || !object.contains("y"))
           return std::nullopt;  // The conversion fails if the required properties are missing
-      return QPointF{object["x"].toDouble(), object["y"].toDouble()};
+      return CustomPointType{object["x"].toDouble(), object["y"].toDouble()};
   });
   //! [unaryfunc]
 }

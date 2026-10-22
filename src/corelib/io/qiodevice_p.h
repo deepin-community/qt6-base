@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #ifndef QIODEVICE_P_H
 #define QIODEVICE_P_H
@@ -23,6 +24,8 @@
 #include "private/qringbuffer_p.h"
 #ifndef QT_NO_QOBJECT
 #include "private/qobject_p.h"
+#else
+static constexpr int QObjectPrivateVersion = QT_VERSION;
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -42,8 +45,14 @@ class Q_CORE_EXPORT QIODevicePrivate
     Q_DISABLE_COPY_MOVE(QIODevicePrivate)
 
 public:
-    QIODevicePrivate();
+    QIODevicePrivate(decltype(QObjectPrivateVersion) version = QObjectPrivateVersion);
     virtual ~QIODevicePrivate();
+
+    enum class ReadLineOption {
+        NotNullTerminated,
+        NullTerminated,
+    };
+    Q_DECLARE_FLAGS(ReadLineOptions, ReadLineOption)
 
     // The size of this class is a subject of the library hook data.
     // When adding a new member, do not make gaps and be aware
@@ -85,7 +94,14 @@ public:
         inline void append(const char *data, qint64 size) { Q_ASSERT(m_buf); m_buf->append(data, size); }
         inline void append(const QByteArray &qba) { Q_ASSERT(m_buf); m_buf->append(qba); }
         inline qint64 skip(qint64 length) { return (m_buf ? m_buf->skip(length) : Q_INT64_C(0)); }
-        inline qint64 readLine(char *data, qint64 maxLength) { return (m_buf ? m_buf->readLine(data, maxLength) : Q_INT64_C(-1)); }
+        qint64 readLine(char *data, qint64 maxLength,
+                        ReadLineOptions option = ReadLineOption::NullTerminated)
+        {
+            const auto appendNullByte = option & ReadLineOption::NullTerminated;
+            return !m_buf         ? Q_INT64_C(-1)                    :
+                   appendNullByte ? m_buf->readLine(data, maxLength) :
+                                    m_buf->readLineWithoutTerminatingNull(data, maxLength);
+        }
         inline bool canReadLine() const { return m_buf && m_buf->canReadLine(); }
     };
 
@@ -145,10 +161,13 @@ public:
     void setWriteChannelCount(int count);
 
     qint64 read(char *data, qint64 maxSize, bool peeking = false);
-    qint64 readLine(char *data, qint64 maxSize);
+    qint64 readLine(char *data, qint64 maxSize,
+                    ReadLineOption option = ReadLineOption::NullTerminated);
+
     virtual qint64 peek(char *data, qint64 maxSize);
     virtual QByteArray peek(qint64 maxSize);
     qint64 skipByReading(qint64 maxSize);
+    qint64 skipLine();
     void write(const char *data, qint64 size);
 
     inline bool isWriteChunkCached(const char *data, qint64 size) const
@@ -162,6 +181,8 @@ public:
     QIODevice *q_ptr = nullptr;
 #endif
 };
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(QIODevicePrivate::ReadLineOptions)
 
 QT_END_NAMESPACE
 

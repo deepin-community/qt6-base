@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDYNAMICDOCKWIDGET_P_H
 #define QDYNAMICDOCKWIDGET_P_H
@@ -61,6 +62,12 @@ public:
         Abort
     };
 
+    enum class WindowState {
+        Unplug = 0x01,
+        Floating = 0x02,
+    };
+    Q_DECLARE_FLAGS(WindowStates, WindowState)
+
     void init();
     void toggleView(bool);
     void toggleTopLevel();
@@ -88,12 +95,13 @@ public:
     QRect undockedGeometry;
     QString fixedWindowTitle;
     QString dockedWindowTitle;
+    bool closed = false;
 
     bool mousePressEvent(QMouseEvent *event);
     bool mouseDoubleClickEvent(QMouseEvent *event);
     bool mouseMoveEvent(QMouseEvent *event);
     bool mouseReleaseEvent(QMouseEvent *event);
-    void setWindowState(bool floating, bool unplug = false, const QRect &rect = QRect());
+    void setWindowState(WindowStates states, const QRect &rect = QRect());
     void nonClientAreaMouseEvent(QMouseEvent *event);
     void initDrag(const QPoint &pos, bool nca);
     void startDrag(DragScope scope);
@@ -117,7 +125,7 @@ class Q_WIDGETS_EXPORT QDockWidgetLayout : public QLayout
 {
     Q_OBJECT
 public:
-    QDockWidgetLayout(QWidget *parent = nullptr);
+    explicit QDockWidgetLayout(QWidget *parent = nullptr);
     ~QDockWidgetLayout();
     void addItem(QLayoutItem *item) override;
     QLayoutItem *itemAt(int index) const override;

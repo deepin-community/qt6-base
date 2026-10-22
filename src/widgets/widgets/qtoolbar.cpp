@@ -1,12 +1,10 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtoolbar.h"
 
 #include <qapplication.h>
-#if QT_CONFIG(combobox)
-#include <qcombobox.h>
-#endif
 #if QT_CONFIG(draganddrop)
 #include <qdrag.h>
 #endif
@@ -14,18 +12,11 @@
 #include <qlayout.h>
 #include <qmainwindow.h>
 #include <qmenu.h>
-#if QT_CONFIG(menubar)
-#include <qmenubar.h>
-#endif
 #include <qmimedata.h>
-#if QT_CONFIG(rubberband)
-#include <qrubberband.h>
-#endif
 #include <qstylepainter.h>
 #include <qstyleoption.h>
 #include <qtoolbutton.h>
 #include <qwidgetaction.h>
-#include <qtimer.h>
 #include <private/qwidgetaction_p.h>
 #include <private/qmainwindowlayout_p.h>
 #include <private/qhighdpiscaling_p.h>
@@ -116,6 +107,8 @@ void QToolBarPrivate::updateWindowFlags(bool floating, bool unplug)
     // the platform window when it would be removed later
     if (unplug && !QMainWindowLayout::needsPlatformDrag())
         flags |= Qt::X11BypassWindowManagerHint;
+#else
+    Q_UNUSED(unplug);
 #endif
 
     q->setWindowFlags(flags);
@@ -218,7 +211,7 @@ void QToolBarPrivate::endDrag()
 
         if (!layout->plug(state->widgetItem)) {
             if (q->isFloatable()) {
-                layout->restore();
+                layout->restore(QInternal::KeepSavedState);
                 setWindowState(true); // gets rid of the X11BypassWindowManager window flag
                                       // and activates the resizer
                 q->activateWindow();
@@ -316,9 +309,10 @@ bool QToolBarPrivate::mouseMoveEvent(QMouseEvent *event)
     if (layout->pluggingWidget == nullptr
         && (event->position().toPoint() - state->pressPos).manhattanLength() > QApplication::startDragDistance()) {
             const bool wasDragging = state->dragging;
+            const auto evPos = event->position().toPoint();
             const bool moving = !q->isWindow() && (orientation == Qt::Vertical ?
-                event->position().toPoint().x() >= 0 && event->position().toPoint().x() < q->width() :
-                event->position().toPoint().y() >= 0 && event->position().toPoint().y() < q->height());
+                evPos.x() >= 0 && evPos.x() < q->width() :
+                evPos.y() >= 0 && evPos.y() < q->height());
 
             startDrag(moving);
             if (!moving && !wasDragging)
@@ -546,7 +540,8 @@ QToolBar::~QToolBar()
     \brief whether the user can move the toolbar within the toolbar area,
     or between toolbar areas.
 
-    By default, this property is \c true.
+    The default value is style dependent (determined by the
+    QStyle::SH_ToolBar_Movable style hint), and is \c true for most styles.
 
     This property only makes sense if the toolbar is in a
     QMainWindow.
@@ -913,8 +908,13 @@ void QToolBar::changeEvent(QEvent *event)
         break;
     case QEvent::StyleChange:
         d->layout->invalidate();
-        if (!d->explicitIconSize)
-            setIconSize(QSize());
+        if (!d->explicitIconSize) {
+            QStyleOptionToolBar opt;
+            initStyleOption(&opt);
+            const int metric = style()->pixelMetric(QStyle::PM_ToolBarIconSize, &opt, this);
+            setIconSize({metric, metric});
+            d->explicitIconSize = false;
+        }
         d->layout->updateMarginAndSpacing();
         break;
     case QEvent::LayoutDirectionChange:
@@ -987,16 +987,12 @@ static bool waitForPopup(QToolBar *tb, QWidget *popup)
 #ifdef Q_OS_MACOS
 static void enableMacToolBar(QToolBar *toolbar, bool enable)
 {
-    QPlatformNativeInterface *nativeInterface = QApplication::platformNativeInterface();
-    if (!nativeInterface)
+    auto *mainWindow = qobject_cast<QMainWindow *>(toolbar->window());
+    if (!mainWindow)
         return;
-    QPlatformNativeInterface::NativeResourceForIntegrationFunction function =
-        nativeInterface->nativeResourceFunctionForIntegration("setContentBorderAreaEnabled");
-    if (!function)
-        return; // Not Cocoa platform plugin.
 
-    typedef void (*SetContentBorderAreaEnabledFunction)(QWindow *window, void *identifier, bool enabled);
-    (reinterpret_cast<SetContentBorderAreaEnabledFunction>(function))(toolbar->window()->windowHandle(), toolbar, enable);
+    QMainWindowLayout *layout = qt_mainwindow_layout(mainWindow);
+    layout->setUnifiedToolBarAreaEnabled(toolbar, enable);
 }
 #endif
 

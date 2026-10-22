@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -32,6 +33,15 @@ QT_BEGIN_NAMESPACE
 #endif
 #ifndef IP_HOPLIMIT
 #define IP_HOPLIMIT               21 // Receive packet hop limit.
+#endif
+#ifndef TCP_KEEPIDLE
+#define TCP_KEEPIDLE 3
+#endif
+#ifndef TCP_KEEPINTVL
+#define TCP_KEEPINTVL 17
+#endif
+#ifndef TCP_KEEPCNT
+#define TCP_KEEPCNT 16
 #endif
 
 #if defined(QNATIVESOCKETENGINE_DEBUG)
@@ -152,6 +162,9 @@ static void convertToLevelAndOption(QNativeSocketEngine::SocketOption opt,
     case QNativeSocketEngine::MaxStreamsSocketOption:
         Q_UNREACHABLE();
 
+    case QNativeSocketEngine::BindInterfaceIndex:
+        Q_UNREACHABLE(); // handled directly in setOption()
+
     case QNativeSocketEngine::ReceiveBufferSocketOption:
         n = SO_RCVBUF;
         break;
@@ -198,13 +211,7 @@ static void convertToLevelAndOption(QNativeSocketEngine::SocketOption opt,
         }
         break;
     case QNativeSocketEngine::ReceivePacketInformation:
-        if (socketProtocol == QAbstractSocket::IPv6Protocol || socketProtocol == QAbstractSocket::AnyIPProtocol) {
-            level = IPPROTO_IPV6;
-            n = IPV6_PKTINFO;
-        } else if (socketProtocol == QAbstractSocket::IPv4Protocol) {
-            level = IPPROTO_IP;
-            n = IP_PKTINFO;
-        }
+        Q_UNREACHABLE(); // handled in setOption() directly now
         break;
     case QNativeSocketEngine::ReceiveHopLimit:
         if (socketProtocol == QAbstractSocket::IPv6Protocol || socketProtocol == QAbstractSocket::AnyIPProtocol) {
@@ -218,6 +225,18 @@ static void convertToLevelAndOption(QNativeSocketEngine::SocketOption opt,
 
     case QAbstractSocketEngine::PathMtuInformation:
         break;          // not supported on Windows
+    case QNativeSocketEngine::KeepAliveIdleOption:
+        level = IPPROTO_TCP;
+        n = TCP_KEEPIDLE;  // defined in ws2ipdef.h
+        break;
+    case QNativeSocketEngine::KeepAliveIntervalOption:
+        level = IPPROTO_TCP;
+        n = TCP_KEEPINTVL;  // defined in ws2ipdef.h
+        break;
+    case QNativeSocketEngine::KeepAliveCountOption:
+        level = IPPROTO_TCP;
+        n = TCP_KEEPCNT;  // defined in ws2ipdef.h
+        break;
     }
 }
 
@@ -329,6 +348,13 @@ bool QNativeSocketEnginePrivate::createNewSocket(QAbstractSocket::SocketType soc
                  &sendmsg, sizeof(sendmsg), &bytesReturned, NULL, NULL) == SOCKET_ERROR)
         sendmsg = 0;
 
+    // Attempt to enable dual-stack
+    if (protocol == AF_INET6) {
+        int ipv6only = 0;
+        ::setsockopt(socket, IPPROTO_IPV6, IPV6_V6ONLY,
+                     reinterpret_cast<char *>(&ipv6only), sizeof(ipv6only));
+    }
+
     socketDescriptor = socket;
     this->socketProtocol = socketProtocol;
     this->socketType = socketType;
@@ -417,6 +443,86 @@ bool QNativeSocketEnginePrivate::setOption(QNativeSocketEngine::SocketOption opt
     case QNativeSocketEngine::MaxStreamsSocketOption:
         return false;
 
+    case QNativeSocketEngine::ReceivePacketInformation: {
+        if (socketProtocol == QAbstractSocket::IPv6Protocol
+            || socketProtocol == QAbstractSocket::AnyIPProtocol) {
+            // set the IPv6 option
+            if (::setsockopt(socketDescriptor, IPPROTO_IPV6, IPV6_PKTINFO,
+                             reinterpret_cast<char *>(&v), sizeof(v)) != 0) {
+                WS_ERROR_DEBUG(WSAGetLastError());
+                return false;
+            }
+        }
+        // Try to set the IPv4 option in any case, but fail only if the
+        // protocol is IPv4
+        if (::setsockopt(socketDescriptor, IPPROTO_IP, IP_PKTINFO,
+                         reinterpret_cast<char *>(&v), sizeof(v)) != 0) {
+            if (socketProtocol == QAbstractSocket::IPv4Protocol) {
+                WS_ERROR_DEBUG(WSAGetLastError());
+                return false;
+            }
+        }
+        return true;
+    }
+
+    case QNativeSocketEngine::BindInterfaceIndex: {
+        int ret = 0;
+        if (socketProtocol == QAbstractSocket::IPv6Protocol
+            || socketProtocol == QAbstractSocket::AnyIPProtocol) {
+            // IPv6 - uses host byte order
+            // Bind outgoing datagrams to the interface
+            if (!ret) {
+                ret = ::setsockopt(socketDescriptor, IPPROTO_IPV6, IPV6_UNICAST_IF,
+                                   reinterpret_cast<char *>(&v), sizeof(v));
+            }
+            if (!ret) {
+                ret = ::setsockopt(socketDescriptor, IPPROTO_IPV6, IPV6_MULTICAST_IF,
+                                   reinterpret_cast<char *>(&v), sizeof(v));
+            }
+            // Bind incoming datagrams to the interface
+            if (!ret) {
+                const int enable = 1;
+                ret = ::setsockopt(socketDescriptor, IPPROTO_IPV6, IPV6_IFLIST,
+                                   reinterpret_cast<const char *>(&enable), sizeof(enable));
+                if (!ret) {
+                    ret = ::setsockopt(socketDescriptor, IPPROTO_IPV6, IPV6_ADD_IFLIST,
+                                       reinterpret_cast<char *>(&v), sizeof(v));
+                }
+            }
+        }
+        bool result = !ret;
+        if (result) {
+            // Try to set the IPv4 options unconditionally, but ignore
+            // the result if the protocol is not IPv4-only
+
+            // IPv4 - uses network byte order
+            int netIdx = htonl(v);
+            // Bind outgoing datagrams to the interface
+            if (!ret) {
+                ret = ::setsockopt(socketDescriptor, IPPROTO_IP, IP_UNICAST_IF,
+                                   reinterpret_cast<char *>(&netIdx), sizeof(netIdx));
+            }
+            if (!ret) {
+                ret = ::setsockopt(socketDescriptor, IPPROTO_IP, IP_MULTICAST_IF,
+                                   reinterpret_cast<char *>(&netIdx), sizeof(netIdx));
+            }
+            // Bind incoming datagrams to the interface
+            if (!ret) {
+                const int enable = 1;
+                ret = ::setsockopt(socketDescriptor, IPPROTO_IP, IP_IFLIST,
+                                   reinterpret_cast<const char *>(&enable), sizeof(enable));
+                if (!ret) {
+                    // uses host byte order here
+                    ret = ::setsockopt(socketDescriptor, IPPROTO_IP, IP_ADD_IFLIST,
+                                       reinterpret_cast<char *>(&v), sizeof(v));
+                }
+            }
+            if (socketProtocol == QAbstractSocket::IPv4Protocol)
+                result = !ret;
+        }
+        return result;
+    }
+
     default:
         break;
     }
@@ -431,6 +537,11 @@ bool QNativeSocketEnginePrivate::setOption(QNativeSocketEngine::SocketOption opt
     }
     return true;
 }
+
+/*!
+    \class QNativeSocketEnginePrivate
+    \internal
+*/
 
 /*!
     Fetches information about both ends of the connection: whatever is
@@ -592,70 +703,33 @@ bool QNativeSocketEnginePrivate::nativeConnect(const QHostAddress &address, quin
         ipv6only = ::setsockopt(socketDescriptor, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only) );
     }
 
-    forever {
-        int connectResult = ::WSAConnect(socketDescriptor, &aa.a, sockAddrSize, 0,0,0,0);
-        if (connectResult == SOCKET_ERROR) {
-            int err = WSAGetLastError();
-            WS_ERROR_DEBUG(err);
+    int connectResult = ::WSAConnect(socketDescriptor, &aa.a, sockAddrSize, nullptr, nullptr,
+                                        nullptr, nullptr);
+    int socketError = WSAGetLastError();
+    if (connectResult == SOCKET_ERROR) {
+        WS_ERROR_DEBUG(socketError);
 
-            switch (err) {
-            case WSANOTINITIALISED:
-                //###
-                break;
-            case WSAEWOULDBLOCK: {
-                // If WSAConnect returns WSAEWOULDBLOCK on the second
-                // connection attempt, we have to check SO_ERROR's
-                // value to detect ECONNREFUSED. If we don't get
-                // ECONNREFUSED, we'll have to treat it as an
-                // unfinished operation.
-                int value = 0;
-                QT_SOCKLEN_T valueSize = sizeof(value);
-                bool tryAgain = false;
-                bool errorDetected = false;
-                int tries = 0;
-                do {
-                    if (::getsockopt(socketDescriptor, SOL_SOCKET, SO_ERROR, (char *) &value, &valueSize) == 0) {
-                        if (value != NOERROR) {
-                            WS_ERROR_DEBUG(value);
-                            errorDetected = true;
-                            // MSDN says getsockopt with SO_ERROR clears the error, but it's not actually cleared
-                            // and this can affect all subsequent WSAConnect attempts, so clear it now.
-                            const int val = NO_ERROR;
-                            ::setsockopt(socketDescriptor, SOL_SOCKET, SO_ERROR, reinterpret_cast<const char*>(&val), sizeof val);
-                        } else {
-                            // When we get WSAEWOULDBLOCK the outcome was not known, so a
-                            // NOERROR might indicate that the result of the operation
-                            // is still unknown. We try again to increase the chance that we did
-                            // get the correct result.
-                            tryAgain = !tryAgain;
-                        }
-                        setErrorFromWSAError(value, this);
-                    }
-                    tries++;
-                } while (tryAgain && (tries < 2));
-
-                if (errorDetected)
-                    break;
-                // fall through to unfinished operation error handling
-                err = WSAEINPROGRESS;
-                Q_FALLTHROUGH();
-            }
-
-            default:
-                setErrorFromWSAError(err, this);
-                break;
-            }
-            if (socketState != QAbstractSocket::ConnectedState) {
-#if defined (QNATIVESOCKETENGINE_DEBUG)
-                qDebug("QNativeSocketEnginePrivate::nativeConnect(%s, %i) == false (%s)",
-                        address.toString().toLatin1().constData(), port,
-                        socketState == QAbstractSocket::ConnectingState
-                        ? "Connection in progress" : socketErrorString.toLatin1().constData());
-#endif
-                return false;
-            }
+        switch (socketError) {
+        case WSANOTINITIALISED:
+            //###
+            break;
+        case WSAEWOULDBLOCK: {
+            socketError = WSAEINPROGRESS;
+            Q_FALLTHROUGH();
         }
-        break;
+        default:
+            setErrorFromWSAError(socketError, this);
+            break;
+        }
+        if (socketState != QAbstractSocket::ConnectedState) {
+#if defined (QNATIVESOCKETENGINE_DEBUG)
+            qDebug("QNativeSocketEnginePrivate::nativeConnect(%s, %i) == false (%s)",
+                    address.toString().toLatin1().constData(), port,
+                    socketState == QAbstractSocket::ConnectingState
+                    ? "Connection in progress" : socketErrorString.toLatin1().constData());
+#endif
+            return false;
+        }
     }
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
@@ -665,6 +739,30 @@ bool QNativeSocketEnginePrivate::nativeConnect(const QHostAddress &address, quin
 
     socketState = QAbstractSocket::ConnectedState;
     return true;
+}
+
+bool QNativeSocketEnginePrivate::nativeCheckConnection()
+{
+    int value = 0;
+    QT_SOCKLEN_T optlen = sizeof(value);
+    char *optval = reinterpret_cast<char *>(&value);
+    if (::getsockopt(socketDescriptor, SOL_SOCKET, SO_ERROR, optval, &optlen) != 0)
+        return false;
+
+    if (value == NO_ERROR) {
+        socketState = QAbstractSocket::ConnectedState;
+        return true;
+    }
+
+    setErrorFromWSAError(value, this);
+    if (socketState == QAbstractSocket::ConnectingState
+            && value != WSAEWOULDBLOCK
+            && value != WSAEINPROGRESS
+            && value != WSAEALREADY) {
+        socketState = QAbstractSocket::UnconnectedState;
+    }
+
+    return socketState != QAbstractSocket::ConnectingState;
 }
 
 
@@ -1363,6 +1461,10 @@ qint64 QNativeSocketEnginePrivate::nativeWrite(const char *data, qint64 len)
                 ret = -1;
                 setError(QAbstractSocket::NetworkError, WriteErrorString);
                 q->close();
+                break;
+            case WSAEMSGSIZE:
+                ret = -1;
+                setError(QAbstractSocket::DatagramTooLargeError, DatagramTooLargeErrorString);
                 break;
             default:
                 break;

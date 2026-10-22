@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGRAPHICSGRIDLAYOUT_H
 #define QGRAPHICSGRIDLAYOUT_H
@@ -80,10 +81,6 @@ public:
     // inherited from QGraphicsLayoutItem
     void setGeometry(const QRectF &rect) override;
     QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const override;
-
-    // ####
-    //QRect cellRect(int row, int column, int rowSpan = 1, int columnSpan = 1) const;
-    //QSizePolicy::ControlTypes controlTypes(LayoutSide side) const;
 
 private:
     Q_DISABLE_COPY(QGraphicsGridLayout)

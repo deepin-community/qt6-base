@@ -14,11 +14,12 @@ QT_BEGIN_NAMESPACE
 class Parser
 {
 public:
-    Parser():index(0), displayWarnings(true), displayNotes(true) {}
     Symbols symbols;
-    qsizetype index;
-    bool displayWarnings;
-    bool displayNotes;
+    qsizetype index = 0;
+    bool displayWarnings = true;
+    bool displayNotes = true;
+    bool activeQtMode = false;
+    bool qmlMacroWarningIsFatal = false;
 
     struct IncludePath
     {
@@ -43,11 +44,14 @@ public:
     inline Token token() { return symbols.at(index-1).token;}
     inline QByteArray lexem() { return symbols.at(index-1).lexem();}
     inline QByteArray unquotedLexem() { return symbols.at(index-1).unquotedLexem();}
+    inline QByteArrayView lexemView() { return symbols.at(index-1).lexemView();}
+    inline QByteArrayView unquotedLexemView() { return symbols.at(index-1).unquotedLexemView();}
     inline const Symbol &symbol() { return symbols.at(index-1);}
     inline const Symbol &symbolAt(qsizetype idx) { return symbols.at(idx); }
 
     Q_NORETURN void error(const Symbol &symbol);
     Q_NORETURN void error(const char *msg = nullptr);
+    Q_NORETURN void error(const Symbol &symbol, const char *msg);
     void warning(const char * = nullptr);
     void warning(const Symbol &sym, QByteArrayView msg);
     void note(const char * = nullptr);

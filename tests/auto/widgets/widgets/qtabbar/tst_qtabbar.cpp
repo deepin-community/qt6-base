@@ -15,6 +15,8 @@
 #include <QWindow>
 
 #include <QtWidgets/private/qtabbar_p.h>
+#include <QtGui/private/qguiapplication_p.h>
+#include <qpa/qplatformintegration.h>
 
 using namespace Qt::StringLiterals;
 
@@ -63,6 +65,7 @@ private slots:
     void removeLastVisibleTab();
 
     void closeButton();
+    void requestCloseOnMiddleClick();
 
     void tabButton_data();
     void tabButton();
@@ -548,6 +551,28 @@ void tst_QTabBar::closeButton()
     QSignalSpy spy(&tabbar, SIGNAL(tabCloseRequested(int)));
     button->click();
     QCOMPARE(tabbar.count(), 1);
+    QCOMPARE(spy.size(), 1);
+}
+
+void tst_QTabBar::requestCloseOnMiddleClick()
+{
+    QTabBar tabbar;
+    tabbar.addTab("foo");
+    tabbar.addTab("bar");
+    QCOMPARE(tabbar.count(), 2);
+
+    QSignalSpy spy(&tabbar, SIGNAL(tabCloseRequested(int)));
+
+    QCOMPARE(tabbar.tabsClosable(), false);
+    QTest::mouseClick(&tabbar, Qt::MiddleButton, {}, tabbar.tabRect(0).center());
+    QCOMPARE(spy.size(), 0);
+
+    tabbar.setTabsClosable(true);
+    QCOMPARE(tabbar.tabsClosable(), true);
+    QTest::mouseClick(&tabbar, Qt::MiddleButton, {}, tabbar.tabRect(0).center());
+    QCOMPARE(spy.size(), 1);
+
+    QTest::mouseClick(&tabbar, Qt::MiddleButton, {}, tabbar.rect().bottomRight() * 1.1);
     QCOMPARE(spy.size(), 1);
 }
 
@@ -1077,12 +1102,14 @@ void tst_QTabBar::kineticWheel()
         leftEdge = QPoint(0, 0);
         rightEdge = leftButton->geometry().topLeft();
     }
-    // avoid border lines
-    leftEdge += QPoint(2, 2);
+    // make sure the point is inside tabbar rect
+    const auto tabbarCenter = tabbar.geometry().center();
     if (horizontal) {
-        rightEdge += QPoint(-2, 2);
+        leftEdge = QPoint(leftEdge.x() + 10, tabbarCenter.y());
+        rightEdge = QPoint(rightEdge.x() - 10, tabbarCenter.y());
     } else {
-        rightEdge += QPoint(2, -2);
+        leftEdge = QPoint(tabbarCenter.x(), leftEdge.y() + 10);
+        rightEdge = QPoint(tabbarCenter.x(), rightEdge.y() - 10);
     }
 
     QCOMPARE(tabbar.tabAt(leftEdge), 0);
@@ -1288,13 +1315,14 @@ void tst_QTabBar::currentTabLargeFont()
 
 void tst_QTabBar::hoverTab_data()
 {
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::MouseCursorPositioning))
+        QSKIP("Platform does not support cursor positioning");
+
     // Move the cursor away from the widget as not to interfere.
-    // skip this test if we can't
     const QPoint topLeft = QGuiApplication::primaryScreen()->availableGeometry().topLeft();
     const QPoint cursorPos = topLeft + QPoint(10, 10);
     QCursor::setPos(cursorPos);
-    if (!QTest::qWaitFor([cursorPos]{ return QCursor::pos() == cursorPos; }, 500))
-        QSKIP("Can't move mouse");
+    QTRY_COMPARE(QCursor::pos(), cursorPos);
 
     QTest::addColumn<bool>("documentMode");
     QTest::addRow("normal mode") << true;
@@ -1370,7 +1398,7 @@ void tst_QTabBar::hoverTab()
     QCOMPARE(tabbar.styleOptions[2].state & QStyle::State_MouseOver, QStyle::State_None);
 
     // inserting a tab at index 2 again should paint the new tab hovered
-    tabbar.insertTab(2, "C2");
+    tabbar.insertTab(2, "X");
     QTRY_COMPARE(tabbar.styleOptions[2].state & QStyle::State_MouseOver, QStyle::State_MouseOver);
     QCOMPARE(tabbar.styleOptions[1].state & QStyle::State_MouseOver, QStyle::State_None);
 }
@@ -1512,7 +1540,7 @@ void tst_QTabBar::checkPositionsAfterShapeChange()
         using QTabWidget::QTabWidget;
         using QTabWidget::setTabBar;
     };
-  
+
     class TabBar : public QTabBar
     {
     public:

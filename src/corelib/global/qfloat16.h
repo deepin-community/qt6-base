@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 by Southwest Research Institute (R)
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFLOAT16_H
 #define QFLOAT16_H
@@ -11,6 +12,7 @@
 #include <QtCore/qmath.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qtconfigmacros.h>
+#include <QtCore/qtformat_impl.h>
 #include <QtCore/qtypes.h>
 
 #include <limits>
@@ -43,8 +45,24 @@ class QDataStream;
 #endif
 class QTextStream;
 
+// These macros from math.h conflict with the real functions in the std namespace:
+#ifdef copysign
+#  undef copysign
+#endif
+#ifdef signbit
+#  undef signbit
+#endif
+
 class qfloat16
 {
+#if QFLOAT16_IS_NATIVE
+#  define QF16_CONSTEXPR constexpr
+#  define QF16_PARTIALLY_ORDERED Q_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE
+#else
+#  define QF16_CONSTEXPR
+#  define QF16_PARTIALLY_ORDERED Q_DECLARE_PARTIALLY_ORDERED
+#endif
+
     struct Wrap
     {
         // To let our private constructor work, without other code seeing
@@ -62,13 +80,14 @@ public:
     static constexpr bool IsNative = QFLOAT16_IS_NATIVE;
     using NearestFloat = std::conditional_t<IsNative, NativeType, float>;
 
-    constexpr inline qfloat16() noexcept : b16(0) {}
     explicit qfloat16(Qt::Initialization) noexcept { }
 
 #if QFLOAT16_IS_NATIVE
+    constexpr inline qfloat16() noexcept : nf(0) {}
     constexpr inline qfloat16(NativeType f) : nf(f) {}
     constexpr operator NativeType() const noexcept { return nf; }
 #else
+    constexpr inline qfloat16() noexcept : b16(0) {}
     inline qfloat16(float f) noexcept;
     inline operator float() const noexcept;
 #endif
@@ -82,9 +101,14 @@ public:
     Q_CORE_EXPORT int fpClassify() const noexcept;
     // Can't specialize std::copysign() for qfloat16
     qfloat16 copySign(qfloat16 sign) const noexcept
-    { return qfloat16(Wrap((sign.b16 & 0x8000) | (b16 & 0x7fff))); }
-    // Support for std::numeric_limits<qfloat16>
+    { return copysign(*this, sign); }
+    friend qfloat16 copysign(qfloat16 mag, qfloat16 sign) noexcept
+    { return qfloat16(Wrap((sign.b16 & 0x8000) | (mag.b16 & 0x7fff))); }
+    // Can't specialize std::signbit() for qfloat16
+    friend bool signbit(qfloat16 x) noexcept
+    { return x.b16 & 0x8000; }
 
+    // Support for std::numeric_limits<qfloat16>
 #ifdef __STDCPP_FLOAT16_T__
 private:
     using Bounds = std::numeric_limits<NativeType>;
@@ -110,9 +134,19 @@ public:
 #if QT_CONFIG(signaling_nan)
     static constexpr qfloat16 _limit_signaling_NaN() noexcept { return qfloat16(Wrap(0x7d00)); }
 #endif
-#endif
+#endif // __STDCPP_FLOAT16_T__
     inline constexpr bool isNormal() const noexcept
     { return (b16 & 0x7c00) && (b16 & 0x7c00) != 0x7c00; }
+
+    QF16_CONSTEXPR qfloat16 operator++(int) noexcept
+    { qfloat16 tmp = *this; ++(*this); return tmp; }
+    QF16_CONSTEXPR qfloat16 &operator++() noexcept
+    { return *this += NearestFloat(1); }
+    QF16_CONSTEXPR qfloat16 operator--(int) noexcept
+    { qfloat16 tmp = *this; --(*this); return tmp; }
+    QF16_CONSTEXPR qfloat16 &operator--() noexcept
+    { return *this -= NearestFloat(1); }
+
 private:
     // ABI note: Qt 6's qfloat16 began with just a quint16 member so it ended
     // up passed in general purpose registers in any function call taking
@@ -143,17 +177,26 @@ private:
 
     friend bool qIsNull(qfloat16 f) noexcept;
 
-    friend inline qfloat16 operator-(qfloat16 a) noexcept
+    friend constexpr inline qfloat16 operator+(qfloat16 a) noexcept { return a; }
+    friend constexpr inline qfloat16 operator-(qfloat16 a) noexcept
     {
+#if QFLOAT16_IS_NATIVE
+        return -static_cast<NearestFloat>(a);
+#else
         qfloat16 f;
         f.b16 = a.b16 ^ quint16(0x8000);
         return f;
+#endif
     }
 
-    friend inline qfloat16 operator+(qfloat16 a, qfloat16 b) noexcept { return qfloat16(static_cast<NearestFloat>(a) + static_cast<NearestFloat>(b)); }
-    friend inline qfloat16 operator-(qfloat16 a, qfloat16 b) noexcept { return qfloat16(static_cast<NearestFloat>(a) - static_cast<NearestFloat>(b)); }
-    friend inline qfloat16 operator*(qfloat16 a, qfloat16 b) noexcept { return qfloat16(static_cast<NearestFloat>(a) * static_cast<NearestFloat>(b)); }
-    friend inline qfloat16 operator/(qfloat16 a, qfloat16 b) noexcept { return qfloat16(static_cast<NearestFloat>(a) / static_cast<NearestFloat>(b)); }
+    friend QF16_CONSTEXPR inline qfloat16 operator+(qfloat16 a, qfloat16 b) noexcept
+    { return qfloat16(static_cast<NearestFloat>(a) + static_cast<NearestFloat>(b)); }
+    friend QF16_CONSTEXPR inline qfloat16 operator-(qfloat16 a, qfloat16 b) noexcept
+    { return qfloat16(static_cast<NearestFloat>(a) - static_cast<NearestFloat>(b)); }
+    friend QF16_CONSTEXPR inline qfloat16 operator*(qfloat16 a, qfloat16 b) noexcept
+    { return qfloat16(static_cast<NearestFloat>(a) * static_cast<NearestFloat>(b)); }
+    friend QF16_CONSTEXPR inline qfloat16 operator/(qfloat16 a, qfloat16 b) noexcept
+    { return qfloat16(static_cast<NearestFloat>(a) / static_cast<NearestFloat>(b)); }
 
     friend size_t qHash(qfloat16 key, size_t seed = 0) noexcept
     { return qHash(float(key), seed); } // 6.4 algorithm, so keep using it; ### Qt 7: fix QTBUG-116077
@@ -162,10 +205,12 @@ QT_WARNING_PUSH
 QT_WARNING_DISABLE_GCC("-Wfloat-conversion")
 
 #define QF16_MAKE_ARITH_OP_FP(FP, OP) \
-    friend inline FP operator OP(qfloat16 lhs, FP rhs) noexcept { return static_cast<FP>(lhs) OP rhs; } \
-    friend inline FP operator OP(FP lhs, qfloat16 rhs) noexcept { return lhs OP static_cast<FP>(rhs); }
+    friend QF16_CONSTEXPR inline FP operator OP(qfloat16 lhs, FP rhs) noexcept  \
+    { return static_cast<FP>(lhs) OP rhs; }                                     \
+    friend QF16_CONSTEXPR inline FP operator OP(FP lhs, qfloat16 rhs) noexcept  \
+    { return lhs OP static_cast<FP>(rhs); }
 #define QF16_MAKE_ARITH_OP_EQ_FP(FP, OP_EQ, OP) \
-    friend inline qfloat16& operator OP_EQ(qfloat16& lhs, FP rhs) noexcept \
+    friend QF16_CONSTEXPR inline qfloat16 &operator OP_EQ(qfloat16& lhs, FP rhs) noexcept \
     { lhs = qfloat16(NearestFloat(static_cast<FP>(lhs) OP rhs)); return lhs; }
 #define QF16_MAKE_ARITH_OP(FP) \
     QF16_MAKE_ARITH_OP_FP(FP, +) \
@@ -187,8 +232,10 @@ QT_WARNING_DISABLE_GCC("-Wfloat-conversion")
 #undef QF16_MAKE_ARITH_OP_FP
 
 #define QF16_MAKE_ARITH_OP_INT(OP) \
-    friend inline double operator OP(qfloat16 lhs, int rhs) noexcept { return static_cast<double>(lhs) OP rhs; } \
-    friend inline double operator OP(int lhs, qfloat16 rhs) noexcept { return lhs OP static_cast<double>(rhs); }
+    friend QF16_CONSTEXPR inline double operator OP(qfloat16 lhs, int rhs) noexcept \
+    { return static_cast<double>(lhs) OP rhs; }                                     \
+    friend QF16_CONSTEXPR inline double operator OP(int lhs, qfloat16 rhs) noexcept \
+    { return lhs OP static_cast<double>(rhs); }
 
     QF16_MAKE_ARITH_OP_INT(+)
     QF16_MAKE_ARITH_OP_INT(-)
@@ -197,14 +244,6 @@ QT_WARNING_DISABLE_GCC("-Wfloat-conversion")
 #undef QF16_MAKE_ARITH_OP_INT
 
 QT_WARNING_DISABLE_FLOAT_COMPARE
-
-#if QFLOAT16_IS_NATIVE
-#  define QF16_CONSTEXPR constexpr
-#  define QF16_PARTIALLY_ORDERED Q_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE
-#else
-#  define QF16_CONSTEXPR
-#  define QF16_PARTIALLY_ORDERED Q_DECLARE_PARTIALLY_ORDERED
-#endif
 
     friend QF16_CONSTEXPR bool comparesEqual(const qfloat16 &lhs, const qfloat16 &rhs) noexcept
     { return static_cast<NearestFloat>(lhs) == static_cast<NearestFloat>(rhs); }
@@ -314,10 +353,10 @@ Q_CORE_EXPORT void qFloatFromFloat16(float *, const qfloat16 *, qsizetype length
 }
 
 // The remainder of these utility functions complement qglobal.h
-[[nodiscard]] inline int qRound(qfloat16 d) noexcept
+[[nodiscard]] inline int qRound(qfloat16 d)
 { return qRound(static_cast<float>(d)); }
 
-[[nodiscard]] inline qint64 qRound64(qfloat16 d) noexcept
+[[nodiscard]] inline qint64 qRound64(qfloat16 d)
 { return qRound64(static_cast<float>(d)); }
 
 [[nodiscard]] inline bool qFuzzyCompare(qfloat16 p1, qfloat16 p2) noexcept
@@ -350,15 +389,15 @@ inline int qIntCast(qfloat16 f) noexcept
 { return int(static_cast<qfloat16::NearestFloat>(f)); }
 
 #if !defined(Q_QDOC) && !QFLOAT16_IS_NATIVE
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_CLANG("-Wc99-extensions")
-QT_WARNING_DISABLE_GCC("-Wold-style-cast")
 inline qfloat16::qfloat16(float f) noexcept
 {
 #if defined(QT_COMPILER_SUPPORTS_F16C) && defined(__F16C__)
     __m128 packsingle = _mm_set_ss(f);
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_GCC("-Wold-style-cast") // _mm_cvtps_ph() may be a macro using C-style casts
     __m128i packhalf = _mm_cvtps_ph(packsingle, 0);
-    b16 = _mm_extract_epi16(packhalf, 0);
+    QT_WARNING_POP
+    b16 = quint16(_mm_extract_epi16(packhalf, 0));
 #elif defined (__ARM_FP16_FORMAT_IEEE)
     __fp16 f16 = __fp16(f);
     memcpy(&b16, &f16, sizeof(quint16));
@@ -389,7 +428,6 @@ inline qfloat16::qfloat16(float f) noexcept
     b16 = quint16(base + (mantissa >> shift));
 #endif
 }
-QT_WARNING_POP
 
 inline qfloat16::operator float() const noexcept
 {
@@ -434,7 +472,7 @@ inline auto qHypot(qfloat16 x, qfloat16 y)
 {
 #if defined(QT_COMPILER_SUPPORTS_F16C) && defined(__F16C__) || QFLOAT16_IS_NATIVE
     return QtPrivate::QHypotHelper<qfloat16>(x).add(y).result();
-#else
+#else // NearestFloat is float:
     return qfloat16(qHypot(float(x), float(y)));
 #endif
 }
@@ -445,6 +483,14 @@ template<typename F, typename ...Fs> auto qHypot(F first, Fs... rest);
 template <typename T> typename QtPrivate::QHypotType<T, qfloat16>::type
 qHypot(T x, qfloat16 y)
 {
+    // Two-arg qHypot() delegates to std::hypot(), which has no (T = double,
+    // NearestFloat = __fp16) overload on ARM64 Linux, leading to ambiguity in
+    // (at least) that case. Testing whether we can use it needs C++20 ...
+#ifdef __cpp_concepts
+    if constexpr (requires { std::hypot(x, qfloat16::NearestFloat(y)); })
+        return qHypot(x, qfloat16::NearestFloat(y));
+    else
+#endif
     if constexpr (std::is_floating_point_v<T>)
         return qHypot(x, float(y));
     else
@@ -456,7 +502,7 @@ template <typename T> auto qHypot(qfloat16 x, T y)
 }
 
 #if defined(__cpp_lib_hypot) && __cpp_lib_hypot >= 201603L // Expected to be true
-// If any are not qfloat16, convert each qfloat16 to float:
+// If any are not qfloat16, convert each qfloat16 to qfloat16::NearestFloat:
 /* (The following splits the some-but-not-all-qfloat16 cases up, using
    (X|Y|Z)&~(X&Y&Z) = X ? ~(Y&Z) : Y|Z = X&~(Y&Z) | ~X&Y | ~X&~Y&Z,
    into non-overlapping cases, to avoid ambiguity.) */
@@ -481,7 +527,7 @@ inline auto qHypot(qfloat16 x, qfloat16 y, qfloat16 z)
 {
 #if (defined(QT_COMPILER_SUPPORTS_F16C) && defined(__F16C__)) || QFLOAT16_IS_NATIVE
     return QtPrivate::QHypotHelper<qfloat16>(x).add(y).add(z).result();
-#else
+#else // NearestFloat is float;
     return qfloat16(qHypot(float(x), float(y), float(z)));
 #endif
 }
@@ -545,5 +591,51 @@ template<> class numeric_limits<const volatile QT_PREPEND_NAMESPACE(qfloat16)>
 // Adding overloads to std isn't allowed, so we can't extend this to support
 // for fpclassify(), isnormal() &c. (which, furthermore, are macros on MinGW).
 } // namespace std
+
+// std::format support
+#ifdef QT_SUPPORTS_STD_FORMAT
+
+QT_BEGIN_NAMESPACE
+
+namespace QtPrivate {
+
+// [format.formatter.spec] / 5
+template <typename T, typename CharT>
+constexpr bool FormatterDoesNotExist =
+        std::negation_v<
+                std::disjunction<
+                        std::is_default_constructible<std::formatter<T, CharT>>,
+                        std::is_copy_constructible<std::formatter<T, CharT>>,
+                        std::is_move_constructible<std::formatter<T, CharT>>,
+                        std::is_copy_assignable<std::formatter<T, CharT>>,
+                        std::is_move_assignable<std::formatter<T, CharT>>
+                        >
+                >;
+
+template <typename CharT>
+using QFloat16FormatterBaseType =
+        std::conditional_t<FormatterDoesNotExist<qfloat16::NearestFloat, CharT>,
+                           float,
+                           qfloat16::NearestFloat>;
+
+} // namespace QtPrivate
+
+QT_END_NAMESPACE
+
+namespace std {
+template <typename CharT>
+struct formatter<QT_PREPEND_NAMESPACE(qfloat16), CharT>
+    : std::formatter<QT_PREPEND_NAMESPACE(QtPrivate::QFloat16FormatterBaseType<CharT>), CharT>
+{
+    template <typename FormatContext>
+    auto format(QT_PREPEND_NAMESPACE(qfloat16) val, FormatContext &ctx) const
+    {
+        using FloatType = QT_PREPEND_NAMESPACE(QtPrivate::QFloat16FormatterBaseType<CharT>);
+        return std::formatter<FloatType, CharT>::format(FloatType(val), ctx);
+    }
+};
+} // namespace std
+
+#endif // QT_SUPPORTS_STD_FORMAT
 
 #endif // QFLOAT16_H

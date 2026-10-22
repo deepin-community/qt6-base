@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QUUID_H
 #define QUUID_H
@@ -48,7 +49,8 @@ public:
         Md5                 = 3, // 0 0 1 1
         Name = Md5,
         Random                = 4,  // 0 1 0 0
-        Sha1                 = 5 // 0 1 0 1
+        Sha1            = 5, // 0 1 0 1
+        UnixEpoch       = 7, // 0 1 1 1
     };
 
     enum StringFormat {
@@ -117,7 +119,25 @@ QT_WARNING_POP
 #endif
     static QUuid fromRfc4122(QByteArrayView) noexcept;
 
+#if QT_CORE_REMOVED_SINCE(6, 9)
     bool isNull() const noexcept;
+#endif
+    constexpr bool isNull(QT6_DECL_NEW_OVERLOAD) const noexcept
+    {
+#if defined(__cpp_lib_bit_cast) && defined(QT_SUPPORTS_INT128)
+        return std::bit_cast<quint128>(*this) == 0;
+#else
+        // QNX fails to compile
+        // data4[0] == 0 && data4[1] == 0 && ...
+        // in constexpr context, so rewrite it using a loop. This way we have
+        // only single data4[i] != 0 check at each iteration
+        for (size_t i = 0; i < 8; ++i) {
+            if (data4[i] != 0)
+                return false;
+        }
+        return data1 == 0 && data2 == 0 && data3 == 0;
+#endif
+    }
 
 #ifdef QT_SUPPORTS_INT128
     static constexpr QUuid fromUInt128(quint128 uuid, QSysInfo::Endian order = QSysInfo::BigEndian) noexcept;
@@ -132,7 +152,14 @@ private:
     static constexpr Qt::strong_ordering
     compareThreeWay_helper(const QUuid &lhs, const QUuid &rhs) noexcept
     {
-#if defined(__cpp_lib_bit_cast) && defined(QT_SUPPORTS_INT128)
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+        if (const auto c = Qt::compareThreeWay(lhs.data1, rhs.data1); !is_eq(c))
+            return c;
+        if (const auto c = Qt::compareThreeWay(lhs.data2, rhs.data2); !is_eq(c))
+            return c;
+        if (const auto c = Qt::compareThreeWay(lhs.data3, rhs.data3); !is_eq(c))
+            return c;
+#elif defined(__cpp_lib_bit_cast) && defined(QT_SUPPORTS_INT128)
         quint128 lu = qFromBigEndian(std::bit_cast<quint128>(lhs));
         quint128 ru = qFromBigEndian(std::bit_cast<quint128>(rhs));
         return Qt::compareThreeWay(lu, ru);
@@ -144,13 +171,12 @@ private:
         };
         if (const auto c = Qt::compareThreeWay(make_int(lhs), make_int(rhs)); !is_eq(c))
             return c;
-
+#endif
         for (unsigned i = 0; i < sizeof(lhs.data4); ++i) {
             if (const auto c = Qt::compareThreeWay(lhs.data4[i], rhs.data4[i]); !is_eq(c))
                 return c;
         }
         return Qt::strong_ordering::equal;
-#endif
     }
     friend constexpr Qt::strong_ordering compareThreeWay(const QUuid &lhs, const QUuid &rhs) noexcept
     {
@@ -253,8 +279,49 @@ public:
         return QUuid::createUuidV5(ns, qToByteArrayViewIgnoringNull(baseData.toUtf8()));
     }
 
+    static QUuid createUuidV7();
+
+private:
+    static constexpr bool isKnownVersion(Version v) noexcept
+    {
+        switch (v) {
+        case VerUnknown:
+            return false;
+        case Time:
+        case EmbeddedPOSIX:
+        case Md5:
+        case Random:
+        case Sha1:
+        case UnixEpoch:
+            return true;
+        }
+        return false;
+    }
+
+public:
+#if QT_CORE_REMOVED_SINCE(6, 9)
     QUuid::Variant variant() const noexcept;
     QUuid::Version version() const noexcept;
+#endif
+    constexpr Variant variant(QT6_DECL_NEW_OVERLOAD) const noexcept
+    {
+        // Check the 3 MSB of data4[0]
+        const quint8 var = data4[0] & 0xE0;
+        if (var < 0x80)
+            return isNull(QT6_CALL_NEW_OVERLOAD) ? VarUnknown : NCS;
+        if (var < 0xC0)
+            return DCE;
+        return Variant(var >> 5); // Microsoft or Reserved
+    }
+    constexpr Version version(QT6_DECL_NEW_OVERLOAD) const noexcept
+    {
+        // Check the 4 MSB of data3
+        const Version ver = Version(data3 >> 12);
+        // Check that variant() == DCE and version is in a valid range
+        if (isKnownVersion(ver) && (data4[0] & 0xC0) == 0x80)
+            return ver;
+        return VerUnknown;
+    }
 
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
     static QUuid fromCFUUID(CFUUIDRef uuid);

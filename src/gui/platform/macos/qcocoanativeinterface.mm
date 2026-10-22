@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtGui/qtgui-config.h>
 #ifndef QT_NO_OPENGL
@@ -41,6 +42,23 @@ QT_DEFINE_PRIVATE_NATIVE_INTERFACE(QCocoaWindow);
 
 QT_DEFINE_PRIVATE_NATIVE_INTERFACE(QCocoaMenu);
 QT_DEFINE_PRIVATE_NATIVE_INTERFACE(QCocoaMenuBar);
+
+/*!
+    \class QNativeInterface::QCocoaScreen
+    \since 6.11
+    \brief Native interface to a screen on \macos.
+
+    Accessed through QScreen::nativeInterface().
+    \inmodule QtGui
+    \inheaderfile QScreen
+    \ingroup native-interfaces
+    \ingroup native-interfaces-qscreen
+*/
+/*!
+    \fn NSScreen *QNativeInterface::QCocoaScreen::nativeScreen() const
+    \return the underlying NSScreen of this QScreen.
+*/
+QT_DEFINE_NATIVE_INTERFACE(QCocoaScreen);
 
 #ifndef QT_NO_OPENGL
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QJNIHELPERS_H
 #define QJNIHELPERS_H
@@ -21,6 +22,8 @@
 #include <QtCore/qcoreapplication_platform.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_JNI_CLASS(QtNative, "org/qtproject/qt/android/QtNative")
 
 namespace QtAndroidPrivate
 {
@@ -67,6 +70,20 @@ namespace QtAndroidPrivate
         virtual bool handleKeyEvent(jobject event) = 0;
     };
 
+    class Q_CORE_EXPORT AndroidDeadlockProtector
+    {
+    public:
+        AndroidDeadlockProtector(const QString &lockedBy);
+        ~AndroidDeadlockProtector();
+        bool acquire();
+
+    private:
+        bool m_acquired = false;
+        QString m_lockedBy;
+
+        inline static QStringList s_lockers;
+    };
+
     Q_CORE_EXPORT QtJniTypes::Activity activity();
     Q_CORE_EXPORT QtJniTypes::Service service();
     Q_CORE_EXPORT QtJniTypes::Context context();
@@ -106,6 +123,9 @@ namespace QtAndroidPrivate
 
     Q_CORE_EXPORT bool acquireAndroidDeadlockProtector();
     Q_CORE_EXPORT void releaseAndroidDeadlockProtector();
+
+    Q_CORE_EXPORT bool isUncompressedNativeLibs();
+    Q_CORE_EXPORT QString resolveApkPath(const QString &fileName);
 }
 
 #define Q_JNI_FIND_AND_CHECK_CLASS(CLASS_NAME) \

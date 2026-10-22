@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // no, this is not a misspelling of "coffeeparser"
+// Qt-Security score:significant reason:default
 #ifndef QCOFFPEPARSER_H
 #define QCOFFPEPARSER_H
 
@@ -18,7 +19,7 @@
 
 #include "qlibrary_p.h"
 
-#if defined(Q_OS_WIN)
+#if defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
 
 QT_BEGIN_NAMESPACE
 
@@ -29,6 +30,6 @@ struct QCoffPeParser
 
 QT_END_NAMESPACE
 
-#endif // defined(Q_OF_ELF) && defined(Q_CC_GNU)
+#endif // Q_OS_WIN || Q_OS_CYGWIN
 
 #endif // QCOFFPEPARSER_H

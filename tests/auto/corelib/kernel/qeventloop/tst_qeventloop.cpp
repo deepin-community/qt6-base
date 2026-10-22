@@ -18,12 +18,18 @@
   #endif
 #endif
 #include <qmutex.h>
+#include <QtCore/qscopeguard.h>
 #include <qthread.h>
 #include <qtimer.h>
 #include <qwaitcondition.h>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QSignalSpy>
+
+#include <atomic>
+#include <thread>
+
+using namespace std::chrono_literals;
 
 class EventLoopExiter : public QObject
 {
@@ -152,6 +158,7 @@ private slots:
 #endif
     void processEventsExcludeTimers();
     void deliverInDefinedOrder();
+    void canUseQThreadQuitToExitEventLoopInStdThread();
 
     // keep this test last:
     void nestedLoops();
@@ -222,6 +229,9 @@ void tst_QEventLoop::processEvents()
 
 void tst_QEventLoop::exec()
 {
+#if !QT_CONFIG(thread)
+    QSKIP("This test requires QThread");
+#endif
     {
         QEventLoop eventLoop;
         EventLoopExiter exiter(&eventLoop);
@@ -307,6 +317,9 @@ void tst_QEventLoop::execAfterExit()
 
 void tst_QEventLoop::wakeUp()
 {
+#if !QT_CONFIG(thread)
+    QSKIP("This test requires QThread");
+#endif
     EventLoopThread thread;
     QEventLoop eventLoop;
     connect(&thread, SIGNAL(checkPoint()), &eventLoop, SLOT(quit()));
@@ -457,6 +470,12 @@ public:
 
 void tst_QEventLoop::processEventsExcludeSocket()
 {
+#ifdef Q_OS_WASM
+    QSKIP("This test requires TCP sockets");
+#endif
+#if !QT_CONFIG(thread)
+    QSKIP("This test requires QThread");
+#endif
     SocketTestThread thread;
     thread.start();
     QVERIFY(thread.wait());
@@ -475,29 +494,29 @@ void tst_QEventLoop::processEventsExcludeSocket()
 class TimerReceiver : public QObject
 {
 public:
-    int gotTimerEvent;
+    Qt::TimerId gotTimerEvent;
 
     TimerReceiver()
-        : QObject(), gotTimerEvent(-1)
+        : QObject(), gotTimerEvent(Qt::TimerId::Invalid)
     { }
 
     void timerEvent(QTimerEvent *event) override
     {
-        gotTimerEvent = event->timerId();
+        gotTimerEvent = event->id();
     }
 };
 
 void tst_QEventLoop::processEventsExcludeTimers()
 {
     TimerReceiver timerReceiver;
-    int timerId = timerReceiver.startTimer(0);
+    Qt::TimerId timerId = Qt::TimerId{timerReceiver.startTimer(0ns)};
 
     QEventLoop eventLoop;
 
     // normal process events will send timers
     eventLoop.processEvents();
     QCOMPARE(timerReceiver.gotTimerEvent, timerId);
-    timerReceiver.gotTimerEvent = -1;
+    timerReceiver.gotTimerEvent = Qt::TimerId::Invalid;
 
     // but not if we exclude timers
     eventLoop.processEvents(QEventLoop::X11ExcludeTimers);
@@ -512,13 +531,12 @@ void tst_QEventLoop::processEventsExcludeTimers()
 #endif
         QEXPECT_FAIL("", "X11ExcludeTimers only supported in the UNIX/Glib dispatchers", Continue);
 
-    QCOMPARE(timerReceiver.gotTimerEvent, -1);
-    timerReceiver.gotTimerEvent = -1;
+    QCOMPARE(timerReceiver.gotTimerEvent, Qt::TimerId::Invalid);
 
     // resume timer processing
     eventLoop.processEvents();
     QCOMPARE(timerReceiver.gotTimerEvent, timerId);
-    timerReceiver.gotTimerEvent = -1;
+    timerReceiver.gotTimerEvent = Qt::TimerId::Invalid;
 }
 
 namespace DeliverInDefinedOrder {
@@ -558,6 +576,9 @@ namespace DeliverInDefinedOrder {
 
 void tst_QEventLoop::deliverInDefinedOrder()
 {
+#if !QT_CONFIG(thread)
+    QSKIP("This test requires QThread");
+#endif
     using namespace DeliverInDefinedOrder;
     qMetaTypeId<QThread*>();
     QThread threads[NbThread];
@@ -588,6 +609,49 @@ void tst_QEventLoop::deliverInDefinedOrder()
         threads[t].wait();
     }
 
+}
+
+void tst_QEventLoop::canUseQThreadQuitToExitEventLoopInStdThread()
+{
+#if !QT_CONFIG(thread)
+    QSKIP("This test requires QThread");
+#endif
+#ifdef Q_CC_MINGW
+    QSKIP("Disabled for MINGW, due to a runtime bug (QTBUG-131892).");
+#endif
+    std::atomic<QThread*> adopted = nullptr;
+    std::atomic<bool> called = false;
+    std::atomic<bool> timedOut = false;
+
+    auto t = std::thread([&] {
+            adopted.store(QThread::currentThread());
+#ifdef __cpp_lib_atomic_wait
+            adopted.notify_one();
+#endif
+            QEventLoop loop;
+            // fallback in case the invokeMethod() below fails
+            QTimer::singleShot(1s, &loop, [&] { timedOut.store(true); loop.quit(); });
+            loop.exec();
+        });
+
+    QObject obj;
+    auto joiner = qScopeGuard([&] { t.join(); });
+#ifdef __cpp_lib_atomic_wait
+    adopted.wait(nullptr); // no timed version exists :(
+    QVERIFY(adopted.load());
+#else
+    QVERIFY(QTest::qWaitFor([&] { return adopted.load(); }));
+#endif
+    QVERIFY(obj.moveToThread(adopted.load()));
+    QCOMPARE(obj.thread(), adopted.load());
+    // The lambda will only be executed when `adopted` has an event loop running:
+    QVERIFY(QMetaObject::invokeMethod(&obj, [&] {
+                                                called.store(true);
+                                                QThread::currentThread()->quit();
+                                            }, Qt::QueuedConnection));
+    joiner.commit();
+    QVERIFY(!timedOut.load());
+    QVERIFY(called.load());
 }
 
 class JobObject : public QObject

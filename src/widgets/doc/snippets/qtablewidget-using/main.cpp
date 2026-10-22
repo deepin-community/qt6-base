@@ -3,7 +3,7 @@
 
 #include <QtGui>
 
-#include "mainwindow.h"
+#include "../include/mainwindow.h"
 
 int main(int argc, char *argv[])
 {

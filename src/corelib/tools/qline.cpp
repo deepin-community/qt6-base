@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qline.h"
 
@@ -28,8 +29,9 @@ QT_BEGIN_NAMESPACE
 
     \table
     \row
-        \li \inlineimage qline-point.png
+        \li \inlineimage qline-point.png {Line with p1, p2, dx, dy labeled}
         \li \inlineimage qline-coordinates.png
+                         {Line with x1, y1, x2, y2, dx, dy labeled}
     \endtable
 
     The positions of the line's start and end points can be retrieved
@@ -306,8 +308,9 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 
     \table
     \row
-        \li \inlineimage qline-point.png
+        \li \inlineimage qline-point.png {Line with p1, p2, dx, dy labeled}
         \li \inlineimage qline-coordinates.png
+                         {Line with x1, y1, x2, y2, dx, dy labeled}
     \endtable
 
     The positions of the line's start and end points can be retrieved
@@ -345,7 +348,7 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 
 /*!
     \typealias QLineF::IntersectType
-    \deprecated Use QLineF::IntersectionType instead.
+    \deprecated [5.14] Use QLineF::IntersectionType instead.
 */
 
 /*!
@@ -356,7 +359,8 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
     \table
     \row
     \li \inlineimage qlinef-unbounded.png
-    \li \inlineimage qlinef-bounded.png
+                     {Two lines with extensions intersecting}
+    \li \inlineimage qlinef-bounded.png {Two lines intersecting within bounds}
     \row
     \li QLineF::UnboundedIntersection
     \li QLineF::BoundedIntersection
@@ -508,7 +512,8 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
     Returns a line that is perpendicular to this line with the same starting
     point and length.
 
-    \image qlinef-normalvector.png
+    \image qlinef-normalvector.png {Diagram showing two vectors with the same
+           starting point: (v_x, v_y) and (vy, -vx).}
 
     \sa unitVector()
 */

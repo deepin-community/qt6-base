@@ -1,5 +1,6 @@
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORVALUE_H
 #define QCBORVALUE_H
@@ -122,7 +123,9 @@ public:
         : QCborValue(QCborTag(t_), tv)
     {}
 
+#if QT_CONFIG(datestring)
     explicit QCborValue(const QDateTime &dt);
+#endif
 #ifndef QT_BOOTSTRAPPED
     explicit QCborValue(const QUrl &url);
 #  if QT_CONFIG(regularexpression)
@@ -196,7 +199,10 @@ public:
 
     QByteArray toByteArray(const QByteArray &defaultValue = {}) const;
     QString toString(const QString &defaultValue = {}) const;
+    QAnyStringView toStringView(QAnyStringView defaultValue = {}) const;
+#if QT_CONFIG(datestring)
     QDateTime toDateTime(const QDateTime &defaultValue = {}) const;
+#endif
 #ifndef QT_BOOTSTRAPPED
     QUrl toUrl(const QUrl &defaultValue = {}) const;
 #  if QT_CONFIG(regularexpression)
@@ -237,9 +243,9 @@ public:
     static QCborValue fromCbor(QCborStreamReader &reader);
     static QCborValue fromCbor(const QByteArray &ba, QCborParserError *error = nullptr);
     static QCborValue fromCbor(const char *data, qsizetype len, QCborParserError *error = nullptr)
-    { return fromCbor(QByteArray(data, int(len)), error); }
+    { return fromCbor(QByteArray(data, len), error); }
     static QCborValue fromCbor(const quint8 *data, qsizetype len, QCborParserError *error = nullptr)
-    { return fromCbor(QByteArray(reinterpret_cast<const char *>(data), int(len)), error); }
+    { return fromCbor(QByteArray(reinterpret_cast<const char *>(data), len), error); }
 #endif // QT_CONFIG(cborstreamreader)
 #if QT_CONFIG(cborstreamwriter)
     QByteArray toCbor(EncodingOptions opt = NoTransformation) const;
@@ -296,6 +302,8 @@ private:
 };
 Q_DECLARE_SHARED(QCborValue)
 
+Q_CORE_EXPORT size_t qHash(const QCborValue &value, size_t seed = 0);
+
 class QCborValueConstRef
 {
 public:
@@ -346,8 +354,12 @@ public:
     { return concrete().toByteArray(defaultValue); }
     QString toString(const QString &defaultValue = {}) const
     { return concrete().toString(defaultValue); }
+    QAnyStringView toStringView(QAnyStringView defaultValue = {}) const
+    { return concreteStringView(*this, defaultValue); }
+#if QT_CONFIG(datestring)
     QDateTime toDateTime(const QDateTime &defaultValue = {}) const
     { return concrete().toDateTime(defaultValue); }
+#endif
 #ifndef QT_BOOTSTRAPPED
     QUrl toUrl(const QUrl &defaultValue = {}) const
     { return concrete().toUrl(defaultValue); }
@@ -392,6 +404,10 @@ protected:
     friend class QCborContainerPrivate;
 
     QCborValue concrete() const noexcept  { return concrete(*this); }
+
+    friend size_t qHash(const QCborValueConstRef &key, size_t seed = 0) noexcept
+    { return QHashPrivate::ex1to2arg(key.concrete(), seed); }
+
     static Q_CORE_EXPORT Q_DECL_PURE_FUNCTION bool
     comparesEqual_helper(QCborValueConstRef lhs, QCborValueConstRef rhs) noexcept;
     static Q_CORE_EXPORT Q_DECL_PURE_FUNCTION Qt::strong_ordering
@@ -425,17 +441,19 @@ protected:
     Q_DECLARE_STRONGLY_ORDERED(QCborValueConstRef, QCborValue)
 
     static Q_CORE_EXPORT QCborValue concrete(QCborValueConstRef that) noexcept;
-    static Q_CORE_EXPORT QCborValue::Type concreteType(QCborValueConstRef that) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION static Q_CORE_EXPORT QCborValue::Type concreteType(QCborValueConstRef that) noexcept;
     static Q_CORE_EXPORT bool
-    concreteBoolean(QCborValueConstRef that, bool defaultValue) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION concreteBoolean(QCborValueConstRef that, bool defaultValue) noexcept;
     static Q_CORE_EXPORT double
-    concreteDouble(QCborValueConstRef that, double defaultValue) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION concreteDouble(QCborValueConstRef that, double defaultValue) noexcept;
     static Q_CORE_EXPORT qint64
-    concreteIntegral(QCborValueConstRef that, qint64 defaultValue) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION concreteIntegral(QCborValueConstRef that, qint64 defaultValue) noexcept;
     static Q_CORE_EXPORT QByteArray
     concreteByteArray(QCborValueConstRef that, const QByteArray &defaultValue);
     static Q_CORE_EXPORT QString
     concreteString(QCborValueConstRef that, const QString &defaultValue);
+    static Q_CORE_EXPORT QAnyStringView
+    concreteStringView(QCborValueConstRef that, QAnyStringView defaultValue);
 
     constexpr QCborValueConstRef() : d(nullptr), i(0) {} // this will actually be invalid
     constexpr QCborValueConstRef(QCborContainerPrivate *dd, qsizetype ii)
@@ -516,8 +534,10 @@ public:
     { return concreteByteArray(*this, defaultValue); }
     QString toString(const QString &defaultValue = {}) const
     { return concreteString(*this, defaultValue); }
+#if QT_CONFIG(datestring)
     QDateTime toDateTime(const QDateTime &defaultValue = {}) const
     { return concrete().toDateTime(defaultValue); }
+#endif
 #ifndef QT_BOOTSTRAPPED
     QUrl toUrl(const QUrl &defaultValue = {}) const
     { return concrete().toUrl(defaultValue); }
@@ -568,7 +588,7 @@ private:
     static QCborValue concrete(QCborValueRef that) noexcept;
     QCborValue concrete() const noexcept  { return concrete(*this); }
 
-    static QCborValue::Type concreteType(QCborValueRef self) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION static QCborValue::Type concreteType(QCborValueRef self) noexcept;
     QCborValue::Type concreteType() const noexcept { return concreteType(*this); }
 
     // this will actually be invalid...
@@ -597,8 +617,6 @@ QT_WARNING_POP
 Q_DECLARE_OPERATORS_FOR_FLAGS(QCborValue::EncodingOptions)
 Q_DECLARE_OPERATORS_FOR_FLAGS(QCborValue::DiagnosticNotationOptions)
 
-Q_CORE_EXPORT size_t qHash(const QCborValue &value, size_t seed = 0);
-
 #if !defined(QT_NO_DEBUG_STREAM)
 Q_CORE_EXPORT QDebug operator<<(QDebug, const QCborValue &v);
 #endif
@@ -611,10 +629,5 @@ Q_CORE_EXPORT QDataStream &operator>>(QDataStream &, QCborValue &);
 #endif
 
 QT_END_NAMESPACE
-
-#if defined(QT_X11_DEFINES_FOUND)
-#  define True  1
-#  define False 0
-#endif
 
 #endif // QCBORVALUE_H

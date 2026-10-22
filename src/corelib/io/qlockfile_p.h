@@ -1,5 +1,6 @@
 // Copyright (C) 2013 David Faure <faure+bluesystems@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLOCKFILE_P_H
 #define QLOCKFILE_P_H
@@ -19,22 +20,23 @@
 #include <QtCore/qlockfile.h>
 #include <QtCore/qfile.h>
 
-#include <qplatformdefs.h>
-
-#ifdef Q_OS_WIN
-#include <io.h>
-#include <qt_windows.h>
-#endif
-
 QT_BEGIN_NAMESPACE
 
 class QLockFilePrivate
 {
 public:
-    QLockFilePrivate(const QString &fn)
-        : fileName(fn)
+    struct LockFileInfo
     {
-    }
+        qint64 pid;
+        QString appname;
+        QString hostname;
+        QByteArray hostid;
+        QByteArray bootid;
+    };
+
+    explicit QLockFilePrivate(const QString &fn);
+    ~QLockFilePrivate();
+
     QLockFile::LockError tryLock_sys();
     bool removeStaleLock();
     QByteArray lockFileContents() const;
@@ -48,8 +50,11 @@ public:
 
     QString fileName;
 
+    static bool getLockInfo_helper(const QString &fileName, LockFileInfo *info);
+    static int openNewFileDescriptor(const QString &fileName);
+
 #ifdef Q_OS_WIN
-    Qt::HANDLE fileHandle = INVALID_HANDLE_VALUE;
+    Qt::HANDLE fileHandle = Qt::HANDLE(-1); // INVALID_HANDLE_VALUE
 #else
     int fileHandle = -1;
 #endif
@@ -58,17 +63,10 @@ public:
     QLockFile::LockError lockError = QLockFile::NoError;
     bool isLocked = false;
 
-    static int getLockFileHandle(QLockFile *f)
+    // used in tst_QLockFile:
+    static auto getLockFileHandle(QLockFile *f)
     {
-        int fd;
-#ifdef Q_OS_WIN
-        // Use of this function on Windows WILL leak a file descriptor.
-        fd = _open_osfhandle(intptr_t(f->d_func()->fileHandle), 0);
-#else
-        fd = f->d_func()->fileHandle;
-#endif
-        QT_LSEEK(fd, 0, SEEK_SET);
-        return fd;
+        return f->d_func()->fileHandle;
     }
 };
 

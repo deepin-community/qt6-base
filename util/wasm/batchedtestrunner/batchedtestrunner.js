@@ -34,6 +34,7 @@ export class BatchedTestRunner {
     static #TestBatchModuleName = 'test_batch';
 
     #loader;
+    #qtContainerElements;
 
     #results = new Map();
     #status = RunnerStatus.Running;
@@ -52,8 +53,9 @@ export class BatchedTestRunner {
         new EventSource(
             (privateInterface) => this.#testOutputChangedEventPrivate = privateInterface);
 
-    constructor(loader) {
+    constructor(loader, qtContainerElements) {
         this.#loader = loader;
+        this.#qtContainerElements = qtContainerElements;
     }
 
     get results() { return this.#results; }
@@ -96,7 +98,8 @@ export class BatchedTestRunner {
     async #doRun(targetIsBatch, testName, functions, testOutputFormat) {
         const module = await this.#loader.loadEmscriptenModule(
             targetIsBatch ? BatchedTestRunner.#TestBatchModuleName : testName,
-            () => { }
+            () => { },
+            this.#qtContainerElements
         );
 
         const testsToExecute = (testName || !targetIsBatch)

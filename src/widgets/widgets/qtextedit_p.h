@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTEXTEDIT_P_H
 #define QTEXTEDIT_P_H
@@ -103,10 +104,6 @@ public:
     Qt::CursorShape cursorToRestoreAfterHover = Qt::IBeamCursor;
 
     std::array<QMetaObject::Connection, 13> connections;
-
-#ifdef QT_KEYPAD_NAVIGATION
-    QBasicTimer deleteAllTimer;
-#endif
 };
 
 QT_END_NAMESPACE

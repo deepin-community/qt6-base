@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOFFSCREENINTEGRATION_X11_H
 #define QOFFSCREENINTEGRATION_X11_H
@@ -33,7 +34,7 @@ public:
 #endif
 #if QT_CONFIG(xcb)
     Display *display() const override;
-    xcb_connection_t *connection() const override { return nullptr; };
+    xcb_connection_t *connection() const override { return nullptr; }
 #endif
     QScopedPointer<QOffscreenX11Connection> m_connection;
 };

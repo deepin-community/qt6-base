@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMINTEGRATION_UIKIT_H
 #define QPLATFORMINTEGRATION_UIKIT_H
@@ -72,6 +73,9 @@ public:
     QPlatformNativeInterface *nativeInterface() const override;
 
     QPointingDevice *touchDevice();
+#if QT_CONFIG(tabletevent)
+    QPointingDevice *pencilDevice();
+#endif
 #if QT_CONFIG(accessibility)
     QPlatformAccessibility *accessibility() const override;
 #endif
@@ -109,7 +113,10 @@ private:
 #endif
     QPlatformInputContext *m_inputContext;
     QPointingDevice *m_touchDevice;
-    QIOSServices *m_platformServices;
+#if QT_CONFIG(tabletevent)
+    QPointingDevice *m_pencilDevice = nullptr;
+#endif
+    mutable QIOSServices *m_platformServices = nullptr;
     mutable QPlatformAccessibility *m_accessibility;
     QFactoryLoader *m_optionalPlugins;
 #if !defined(Q_OS_TVOS) && !defined(Q_OS_VISIONOS)

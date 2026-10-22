@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLOGGING_H
 #define QLOGGING_H
@@ -134,9 +135,12 @@ public:
     QDebug fatal(const QLoggingCategory &cat) const;
     Q_DECL_COLD_FUNCTION
     QDebug fatal(CategoryFunction catFunc) const;
-
-    QNoDebug noDebug() const noexcept;
 #endif // QT_NO_DEBUG_STREAM
+
+#  if QT_CORE_REMOVED_SINCE(6, 10)
+    QNoDebug noDebug() const noexcept;
+#  endif
+    inline QNoDebug noDebug(...) const noexcept;    // in qdebug.h
 
 private:
     QMessageLogContext context;
@@ -168,6 +172,9 @@ private:
 #define qCritical QMessageLogger(QT_MESSAGELOG_FILE, QT_MESSAGELOG_LINE, QT_MESSAGELOG_FUNC).critical
 #define qFatal QMessageLogger(QT_MESSAGELOG_FILE, QT_MESSAGELOG_LINE, QT_MESSAGELOG_FUNC).fatal
 
+Q_CORE_EXPORT Q_DECL_COLD_FUNCTION void qErrnoWarning(int code, const char *msg, ...);
+Q_CORE_EXPORT Q_DECL_COLD_FUNCTION void qErrnoWarning(const char *msg, ...);
+
 #define QT_NO_QDEBUG_MACRO while (false) QMessageLogger().noDebug
 
 #if defined(QT_NO_DEBUG_OUTPUT)
@@ -181,13 +188,11 @@ private:
 #if defined(QT_NO_WARNING_OUTPUT)
 #  undef qWarning
 #  define qWarning QT_NO_QDEBUG_MACRO
+#  define qErrnoWarning QT_NO_QDEBUG_MACRO
 #endif
 
 Q_CORE_EXPORT void qt_message_output(QtMsgType, const QMessageLogContext &context,
                                      const QString &message);
-
-Q_CORE_EXPORT Q_DECL_COLD_FUNCTION void qErrnoWarning(int code, const char *msg, ...);
-Q_CORE_EXPORT Q_DECL_COLD_FUNCTION void qErrnoWarning(const char *msg, ...);
 
 typedef void (*QtMessageHandler)(QtMsgType, const QMessageLogContext &, const QString &);
 Q_CORE_EXPORT QtMessageHandler qInstallMessageHandler(QtMessageHandler);

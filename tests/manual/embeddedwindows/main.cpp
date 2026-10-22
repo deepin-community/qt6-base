@@ -3,10 +3,7 @@
 
 #include <QtGui>
 
-#if QT_CONFIG(metal) || defined(Q_OS_WIN) || QT_CONFIG(xcb) || defined(ANDROID)
-#include "../../shared/nativewindow.h"
-#define HAVE_NATIVE_WINDOW
-#endif
+#include "nativewindow.h"
 
 #include <QDebug>
 
@@ -69,8 +66,6 @@ int main(int argc, char *argv[])
     QSurfaceFormat format = transparentChildWindow->format();
     format.setAlphaBufferSize(8);
     transparentChildWindow->setFormat(format);
-    // FIXME: Windows requires this, even for child windows
-    transparentChildWindow->setFlag(Qt::FramelessWindowHint);
     transparentChildWindow->setParent(&window);
     transparentChildWindow->setGeometry(350, 50, 100, 100);
     transparentChildWindow->showNormal();

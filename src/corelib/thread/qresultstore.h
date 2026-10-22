@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTCORE_RESULTSTORE_H
 #define QTCORE_RESULTSTORE_H
@@ -110,7 +111,14 @@ public:
     int count() const;
     // ### Qt 7: 'virtual' isn't required, can be removed, along with renaming
     // the class to ResultStore and changing the members below to be private.
+    QT_WARNING_PUSH
+#if defined(Q_CC_CLANG)
+#  if __has_warning("-Wunnecessary-virtual-specifier")
+    QT_WARNING_DISABLE_CLANG("-Wunnecessary-virtual-specifier")
+#  endif
+#endif
     virtual ~ResultStoreBase();
+    QT_WARNING_POP
 
 protected:
     int insertResultItem(int index, ResultItem &resultItem);

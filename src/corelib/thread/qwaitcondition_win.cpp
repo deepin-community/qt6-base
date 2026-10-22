@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwaitcondition.h"
 #include "qdeadlinetimer.h"
@@ -160,28 +161,12 @@ bool QWaitCondition::wait(QReadWriteLock *readWriteLock, unsigned long time)
 
 bool QWaitCondition::wait(QReadWriteLock *readWriteLock, QDeadlineTimer deadline)
 {
-    using namespace QReadWriteLockStates;
-
-    if (!readWriteLock)
-        return false;
-    auto previousState = QReadWriteLockPrivate::stateForWaitCondition(readWriteLock);
-    if (previousState == Unlocked)
-        return false;
-    if (previousState == RecursivelyLocked) {
-        qWarning("QWaitCondition: cannot wait on QReadWriteLocks with recursive lockForWrite()");
-        return false;
-    }
-
-    QWaitConditionEvent *wce = d->pre();
-    readWriteLock->unlock();
-
-    bool returnValue = d->wait(wce, deadline);
-
-    if (previousState == LockedForWrite)
-        readWriteLock->lockForWrite();
-    else
-        readWriteLock->lockForRead();
-    d->post(wce, returnValue);
+    QWaitConditionEvent *wce = nullptr;
+    auto prep = [&] { wce = d->pre(); };
+    auto wait = [&] { return d->wait(wce, deadline); };
+    bool returnValue = QReadWriteLockPrivate::waitConditionWait(readWriteLock, prep, wait);
+    if (wce)
+        d->post(wce, returnValue);
 
     return returnValue;
 }

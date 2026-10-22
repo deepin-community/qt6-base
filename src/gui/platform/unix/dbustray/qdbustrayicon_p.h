@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
+// Qt-Security score:significant reason:default
 
 #ifndef QDBUSTRAYICON_H
 #define QDBUSTRAYICON_H
@@ -23,6 +23,7 @@ QT_REQUIRE_CONFIG(systemtrayicon);
 #include <QIcon>
 #include <QTemporaryFile>
 #include <QTimer>
+#include <QSet>
 #include "QtGui/qpa/qplatformsystemtrayicon.h"
 #include "private/qdbusmenuconnection_p.h"
 
@@ -125,8 +126,18 @@ private:
     QString m_attentionIconName;
     QTimer m_attentionTimer;
     bool m_registered;
+    QSet<uint> m_ownMessageIDs;
 };
 
+struct QDBusTrayImage
+{
+    QIcon ico;
+    qreal dpr = 0;
+};
+
+
 QT_END_NAMESPACE
+
+Q_DECLARE_METATYPE(QDBusTrayImage)
 
 #endif // QDBUSTRAYICON_H

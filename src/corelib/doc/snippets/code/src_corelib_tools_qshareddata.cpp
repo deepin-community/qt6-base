@@ -1,19 +1,22 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#include <QSharedDataPointer>
+
 //! [0]
-    class EmployeeData;
+class EmployeeData;
 //! [0]
 
-//! [1]
-    template<>
-    EmployeeData *QSharedDataPointer<EmployeeData>::clone()
-    {
-        return d->clone();
-    }
-//! [1]
+class EmployeeData
+{
+public:
+    virtual EmployeeData *clone() const;
+};
 
-//! [2]
-    QExplicitlySharedDataPointer<Base> base(new Base);
-    QExplicitlySharedDataPointer<Derived> derived(base); // !!! DANGER !!!
-//! [2]
+//! [1]
+template<>
+EmployeeData *QSharedDataPointer<EmployeeData>::clone()
+{
+    return d->clone();
+}
+//! [1]

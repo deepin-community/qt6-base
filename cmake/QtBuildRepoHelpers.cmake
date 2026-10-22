@@ -11,6 +11,16 @@ macro(qt_internal_project_setup)
     # Check for the minimum CMake version.
     qt_internal_require_suitable_cmake_version()
     qt_internal_upgrade_cmake_policies()
+
+    qt_internal_validate_cmake_configuration_types()
+
+    # Make sure QT_INTERNAL_BUILD_STANDALONE_PARTS is defined as early as possible
+    qt_internal_setup_standalone_parts()
+
+    # Should be called after qt_internal_setup_standalone_parts.
+    if(QT_INTERNAL_BUILD_STANDALONE_PARTS)
+        qt_internal_set_cmake_build_type_for_standalone_parts()
+    endif()
 endmacro()
 
 macro(qt_build_internals_set_up_private_api)
@@ -170,6 +180,59 @@ macro(qt_internal_setup_standalone_parts)
     endif()
 endmacro()
 
+macro(qt_internal_setup_global_doc_targets)
+    # Add global docs targets that will work both for per-repo builds, and super builds.
+    if(NOT TARGET docs AND QT_BUILD_DOCS)
+        add_custom_target(docs)
+        add_custom_target(prepare_docs)
+        add_custom_target(generate_docs)
+        add_custom_target(html_docs)
+        add_custom_target(qch_docs)
+        add_custom_target(install_html_docs)
+        add_custom_target(install_qch_docs)
+        add_custom_target(install_docs)
+        add_dependencies(html_docs generate_docs)
+        add_dependencies(docs html_docs qch_docs)
+        add_dependencies(install_docs install_html_docs install_qch_docs)
+    endif()
+
+    if(QT_BUILD_DOCS)
+        set(qt_docs_target_name docs_${project_name_lower})
+        set(qt_docs_prepare_target_name prepare_docs_${project_name_lower})
+        set(qt_docs_generate_target_name generate_docs_${project_name_lower})
+        set(qt_docs_html_target_name html_docs_${project_name_lower})
+        set(qt_docs_qch_target_name qch_docs_${project_name_lower})
+        set(qt_docs_install_html_target_name install_html_docs_${project_name_lower})
+        set(qt_docs_install_qch_target_name install_qch_docs_${project_name_lower})
+        set(qt_docs_install_target_name install_docs_${project_name_lower})
+
+        add_custom_target(${qt_docs_target_name})
+        add_custom_target(${qt_docs_prepare_target_name})
+        add_custom_target(${qt_docs_generate_target_name})
+        add_custom_target(${qt_docs_qch_target_name})
+        add_custom_target(${qt_docs_html_target_name})
+        add_custom_target(${qt_docs_install_html_target_name})
+        add_custom_target(${qt_docs_install_qch_target_name})
+        add_custom_target(${qt_docs_install_target_name})
+
+        add_dependencies(${qt_docs_generate_target_name} ${qt_docs_prepare_target_name})
+        add_dependencies(${qt_docs_html_target_name} ${qt_docs_generate_target_name})
+        add_dependencies(${qt_docs_target_name}
+            ${qt_docs_html_target_name} ${qt_docs_qch_target_name})
+        add_dependencies(${qt_docs_install_target_name}
+            ${qt_docs_install_html_target_name} ${qt_docs_install_qch_target_name})
+
+        # Make top-level prepare_docs target depend on the repository-level
+        # prepare_docs_<repo> target.
+        add_dependencies(prepare_docs ${qt_docs_prepare_target_name})
+
+        # Make top-level install_*_docs targets depend on the repository-level
+        # install_*_docs targets.
+        add_dependencies(install_html_docs ${qt_docs_install_html_target_name})
+        add_dependencies(install_qch_docs ${qt_docs_install_qch_target_name})
+    endif()
+endmacro()
+
 macro(qt_build_repo_begin)
     qt_internal_setup_standalone_parts()
 
@@ -197,21 +260,7 @@ macro(qt_build_repo_begin)
     qt_enable_cmake_languages()
 
     qt_internal_generate_binary_strip_wrapper()
-
-    # Add global docs targets that will work both for per-repo builds, and super builds.
-    if(NOT TARGET docs)
-        add_custom_target(docs)
-        add_custom_target(prepare_docs)
-        add_custom_target(generate_docs)
-        add_custom_target(html_docs)
-        add_custom_target(qch_docs)
-        add_custom_target(install_html_docs)
-        add_custom_target(install_qch_docs)
-        add_custom_target(install_docs)
-        add_dependencies(html_docs generate_docs)
-        add_dependencies(docs html_docs qch_docs)
-        add_dependencies(install_docs install_html_docs install_qch_docs)
-    endif()
+    qt_internal_create_qt_configure_redo_script()
 
     if(NOT TARGET sync_headers)
         add_custom_target(sync_headers)
@@ -262,41 +311,45 @@ macro(qt_build_repo_begin)
     endif()
 
     set(qt_repo_targets_name ${project_name_lower})
-    set(qt_docs_target_name docs_${project_name_lower})
-    set(qt_docs_prepare_target_name prepare_docs_${project_name_lower})
-    set(qt_docs_generate_target_name generate_docs_${project_name_lower})
-    set(qt_docs_html_target_name html_docs_${project_name_lower})
-    set(qt_docs_qch_target_name qch_docs_${project_name_lower})
-    set(qt_docs_install_html_target_name install_html_docs_${project_name_lower})
-    set(qt_docs_install_qch_target_name install_qch_docs_${project_name_lower})
-    set(qt_docs_install_target_name install_docs_${project_name_lower})
 
-    add_custom_target(${qt_docs_target_name})
-    add_custom_target(${qt_docs_prepare_target_name})
-    add_custom_target(${qt_docs_generate_target_name})
-    add_custom_target(${qt_docs_qch_target_name})
-    add_custom_target(${qt_docs_html_target_name})
-    add_custom_target(${qt_docs_install_html_target_name})
-    add_custom_target(${qt_docs_install_qch_target_name})
-    add_custom_target(${qt_docs_install_target_name})
-
-    add_dependencies(${qt_docs_generate_target_name} ${qt_docs_prepare_target_name})
-    add_dependencies(${qt_docs_html_target_name} ${qt_docs_generate_target_name})
-    add_dependencies(${qt_docs_target_name} ${qt_docs_html_target_name} ${qt_docs_qch_target_name})
-    add_dependencies(${qt_docs_install_target_name} ${qt_docs_install_html_target_name} ${qt_docs_install_qch_target_name})
-
-    # Make top-level prepare_docs target depend on the repository-level prepare_docs_<repo> target.
-    add_dependencies(prepare_docs ${qt_docs_prepare_target_name})
-
-    # Make top-level install_*_docs targets depend on the repository-level install_*_docs targets.
-    add_dependencies(install_html_docs ${qt_docs_install_html_target_name})
-    add_dependencies(install_qch_docs ${qt_docs_install_qch_target_name})
+    qt_internal_setup_global_doc_targets()
 
     # Add host_tools meta target, so that developrs can easily build only tools and their
     # dependencies when working in qtbase.
     if(NOT TARGET host_tools)
         add_custom_target(host_tools)
         add_custom_target(bootstrap_tools)
+        add_custom_target(doc_tools)
+
+        # TODO: Investigate complexity of installing tools for shared builds.
+        # Currently installing host tools without libraries only really makes sense for static
+        # builds. Tracking dependencies for shared builds is more involved.
+        if(NOT BUILD_SHARED_LIBS)
+            add_custom_target(install_tools
+                COMMAND ${CMAKE_COMMAND}
+                    --install ${CMAKE_BINARY_DIR} --component host_tools
+            )
+            add_custom_target(install_tools_stripped
+                COMMAND ${CMAKE_COMMAND}
+                    --install ${CMAKE_BINARY_DIR} --component host_tools --strip
+            )
+
+            add_custom_target(install_doc_tools
+                COMMAND ${CMAKE_COMMAND}
+                    --install ${CMAKE_BINARY_DIR} --component doc_tools
+            )
+            add_custom_target(install_doc_tools_stripped
+                COMMAND ${CMAKE_COMMAND}
+                    --install ${CMAKE_BINARY_DIR} --component doc_tools --strip
+            )
+
+            if(NOT QT_INTERNAL_NO_INSTALL_TOOLS_BUILD_DEPS)
+                add_dependencies(install_tools host_tools)
+                add_dependencies(install_tools_stripped host_tools)
+                add_dependencies(install_doc_tools doc_tools)
+                add_dependencies(install_doc_tools_stripped doc_tools)
+            endif()
+        endif()
     endif()
 
     # Add benchmark meta target. It's collection of all benchmarks added/registered by
@@ -309,11 +362,8 @@ macro(qt_build_repo_begin)
         set_property(GLOBAL PROPERTY _qt_synced_modules ${QT_INTERNAL_SYNCED_MODULES})
     endif()
 
-    _qt_internal_sbom_begin_project(
-        INSTALL_PREFIX "${QT_STAGING_PREFIX}"
-        INSTALL_SBOM_DIR "${INSTALL_SBOMDIR}"
-        QT_CPE
-    )
+    _qt_internal_sbom_auto_begin_qt_repo_project()
+    qt_internal_set_unity_build()
 endmacro()
 
 # Runs delayed actions on some of the Qt targets.
@@ -336,7 +386,8 @@ macro(qt_build_repo_end)
         qt_path_join(__qt_repo_build_dir ${QT_CONFIG_BUILD_DIR} ${INSTALL_CMAKE_NAMESPACE})
 
         if(NOT PROJECT_NAME STREQUAL "QtBase")
-            if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+            if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
+                    AND NOT QT_NO_INSTALL_CMAKE_DIR_FIND_SCRIPTS)
                 qt_copy_or_install(DIRECTORY cmake/
                     DESTINATION "${__qt_repo_install_dir}"
                     FILES_MATCHING PATTERN "Find*.cmake"
@@ -377,10 +428,29 @@ macro(qt_build_repo_end)
         set(QT_INTERNAL_FRESH_REQUESTED "FALSE" CACHE INTERNAL "")
     endif()
 
-    _qt_internal_sbom_end_project()
+    _qt_internal_sbom_auto_end_qt_repo_project()
+    _qt_internal_update_sbom_source_verify_file_marker_for_ci()
 
     if(NOT QT_SUPERBUILD)
         qt_internal_qt_configure_end()
+        if(QT_WILL_INSTALL AND QT_INSTALL_CONFIG_INFO_FILES)
+            string(TOLOWER "${PROJECT_NAME}" repo_name)
+            qt_install(
+                FILES
+                    "${CMAKE_BINARY_DIR}/config.opt"
+                RENAME
+                    "config_${repo_name}.opt"
+                DESTINATION ${INSTALL_DATADIR}
+                OPTIONAL
+            )
+            qt_install(
+                FILES
+                    "${CMAKE_BINARY_DIR}/config.summary"
+                RENAME
+                    "config_${repo_name}.summary"
+                DESTINATION ${INSTALL_DATADIR}
+            )
+        endif()
     endif()
 
     list(POP_BACK CMAKE_MESSAGE_CONTEXT)
@@ -452,7 +522,7 @@ function(qt_internal_show_extra_ide_sources)
 
     # changelogs
     set(changelogs_target_name ${qt_repo_targets_name}_changelogs)
-    file(GLOB change_logs_files LIST_DIRECTORIES false dist/*)
+    file(GLOB change_logs_files LIST_DIRECTORIES false dist/changes-*)
     if(change_logs_files)
         source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/dist" FILES ${change_logs_files})
         add_custom_target(${changelogs_target_name} SOURCES ${change_logs_files})
@@ -463,6 +533,7 @@ function(qt_internal_show_extra_ide_sources)
     add_custom_target(${target_name})
 
     set(recursive_glob_patterns
+        REUSE.toml
         ${QT_BUILD_EXTRA_IDE_FILE_RECURSIVE_PATTERNS}
     )
     set(simple_glob_patterns
@@ -617,7 +688,7 @@ function(qt_get_standalone_parts_config_files_path out_var)
     # the files.
     set(dir_name "StandaloneTests")
 
-    set(path_suffix "${INSTALL_LIBDIR}/cmake/${INSTALL_CMAKE_NAMESPACE}BuildInternals/${dir_name}")
+    set(path_suffix "${INSTALL_CMAKEDIR}/${INSTALL_CMAKE_NAMESPACE}BuildInternals/${dir_name}")
 
     # Each repo's standalone parts might be configured with a unique CMAKE_STAGING_PREFIX,
     # different from any previous one, and it might not coincide with where the BuildInternals
@@ -664,6 +735,71 @@ macro(qt_internal_find_standalone_test_config_file)
     endif()
 endmacro()
 
+# Used inside the standalone parts config file to find all requested Qt module packages.
+# standalone_parts_args_var_name should be the var name in the outer scope that contains
+# all the arguments for this function.
+macro(qt_internal_find_standalone_parts_qt_packages standalone_parts_args_var_name)
+    set(__standalone_parts_opt_args "")
+    set(__standalone_parts_single_args "")
+    set(__standalone_parts_multi_args
+        QT_MODULE_PACKAGES
+        QT_TOOL_PACKAGES
+    )
+    cmake_parse_arguments(__standalone_parts
+        "${__standalone_parts_opt_args}"
+        "${__standalone_parts_single_args}"
+        "${__standalone_parts_multi_args}"
+        ${${standalone_parts_args_var_name}})
+
+    # Packages looked up in standalone tests Config files should use the same version as
+    # the one recorded on the Platform target.
+    qt_internal_get_package_version_of_target(Platform __standalone_parts_main_qt_package_version)
+
+    if(__standalone_parts_QT_TOOL_PACKAGES)
+        # Set up QT_HOST_PATH as an extra root path to look for the Tools packages when
+        # cross-compiling.
+        if(NOT "${QT_HOST_PATH}" STREQUAL "")
+             set(__standalone_parts_CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH})
+             set(__standalone_parts_CMAKE_FIND_ROOT_PATH ${CMAKE_FIND_ROOT_PATH})
+             list(PREPEND CMAKE_PREFIX_PATH "${QT_HOST_PATH_CMAKE_DIR}")
+             list(PREPEND CMAKE_FIND_ROOT_PATH "${QT_HOST_PATH}")
+        endif()
+
+        foreach(__standalone_parts_package_name IN LISTS __standalone_parts_QT_TOOL_PACKAGES)
+            find_package(${QT_CMAKE_EXPORT_NAMESPACE}${__standalone_parts_package_name}
+                "${__standalone_parts_main_qt_package_version}"
+                PATHS
+                        # These come from Qt6Config.cmake
+                        ${_qt_additional_packages_prefix_path}
+                        ${_qt_additional_packages_prefix_path_env}
+            )
+        endforeach()
+
+        if(NOT "${QT_HOST_PATH}" STREQUAL "")
+             set(CMAKE_PREFIX_PATH ${__standalone_parts_CMAKE_PREFIX_PATH})
+             set(CMAKE_FIND_ROOT_PATH ${__standalone_parts_CMAKE_FIND_ROOT_PATH})
+        endif()
+    endif()
+
+    if(__standalone_parts_QT_MODULE_PACKAGES)
+        foreach(__standalone_parts_package_name IN LISTS __standalone_parts_QT_MODULE_PACKAGES)
+            find_package(${QT_CMAKE_EXPORT_NAMESPACE}
+                "${__standalone_parts_main_qt_package_version}"
+                COMPONENTS "${__standalone_parts_package_name}")
+        endforeach()
+    endif()
+
+    unset(__standalone_parts_opt_args)
+    unset(__standalone_parts_single_args)
+    unset(__standalone_parts_multi_args)
+    unset(__standalone_parts_QT_MODULE_PACKAGES)
+    unset(__standalone_parts_QT_TOOL_PACKAGES)
+    unset(__standalone_parts_main_qt_package_version)
+    unset(__standalone_parts_package_name)
+    unset(__standalone_parts_CMAKE_PREFIX_PATH)
+    unset(__standalone_parts_CMAKE_FIND_ROOT_PATH)
+endmacro()
+
 # Used by standalone tests and standalone non-ExternalProject examples to find all installed qt
 # packages.
 macro(qt_internal_find_standalone_parts_config_files)
@@ -697,13 +833,25 @@ macro(qt_internal_find_standalone_parts_config_files)
 endmacro()
 
 macro(qt_build_tests)
+    # Indicates that we are configuring tests now
+    set(QT_INTERNAL_CONFIGURING_TESTS TRUE)
+
+    # Set this as a directory scoped variable, so we can easily check the variable in child
+    # directories, to prevent certain code from running, like sbom file checks for all targets
+    # created in tests subdir.
+    if(NOT QT_BUILD_TESTS_BY_DEFAULT)
+        set(QT_INTERNAL_TEST_TARGETS_EXCLUDE_FROM_ALL TRUE)
+    endif()
+
     # Tests are not unity-ready.
     set(CMAKE_UNITY_BUILD OFF)
+
+    qt_internal_sbom_disable_sbom_for_tests_subdir()
 
     # Prepending to QT_BUILD_CMAKE_PREFIX_PATH helps find components of Qt6, because those
     # find_package calls use NO_DEFAULT_PATH, and thus CMAKE_PREFIX_PATH is ignored.
     list(PREPEND CMAKE_FIND_ROOT_PATH "${QT_BUILD_DIR}")
-    list(PREPEND QT_BUILD_CMAKE_PREFIX_PATH "${QT_BUILD_DIR}/${INSTALL_LIBDIR}/cmake")
+    list(PREPEND QT_BUILD_CMAKE_PREFIX_PATH "${QT_BUILD_DIR}/${INSTALL_CMAKEDIR}")
 
     qt_internal_find_standalone_parts_config_files()
     qt_internal_find_standalone_test_config_file()
@@ -725,13 +873,19 @@ macro(qt_build_tests)
         endif()
     endif()
 
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/auto/CMakeLists.txt")
+    # Create the HAP bundle target before any tests register, so each test can
+    # attach itself as a dependency via add_dependencies in qt_internal_add_test.
+    if(OHOS AND COMMAND qt_internal_add_harmonyos_test_bundle)
+        qt_internal_add_harmonyos_test_bundle()
+    endif()
+
+    if(QT_FEATURE_test_auto AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/auto/CMakeLists.txt")
         add_subdirectory(auto)
     endif()
+    if(QT_FEATURE_test_baseline AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/baseline/CMakeLists.txt")
+        add_subdirectory(baseline)
+    endif()
     if(NOT QT_BUILD_MINIMAL_STATIC_TESTS AND NOT QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS)
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/baseline/CMakeLists.txt")
-            add_subdirectory(baseline)
-        endif()
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/CMakeLists.txt" AND QT_BUILD_BENCHMARKS)
             add_subdirectory(benchmarks)
         endif()
@@ -751,7 +905,16 @@ macro(qt_build_tests)
         endif()
     endif()
 
+    qt_internal_add_default_tests()
+
+    if(NOT QT_SUPERBUILD)
+        # In a super build, we don't want to finalize the batch blacklist at the end of each repo,
+        # but rather once at the end of the top-level configuration.
+        qt_internal_finalize_test_batch_blacklist()
+    endif()
+
     set(CMAKE_UNITY_BUILD ${QT_UNITY_BUILD})
+    unset(QT_INTERNAL_CONFIGURING_TESTS)
 endmacro()
 
 function(qt_compute_relative_path_from_cmake_config_dir_to_prefix)
@@ -831,12 +994,7 @@ endfunction()
 # examples are being built), as well as for CMake tests (tests that call CMake to try and build
 # CMake applications).
 macro(qt_internal_set_up_build_dir_package_paths)
-    list(PREPEND CMAKE_PREFIX_PATH "${QT_BUILD_DIR}/${INSTALL_LIBDIR}/cmake")
-
-    # Make sure the CMake config files do not recreate the already-existing targets.
-    if(NOT QT_BUILD_STANDALONE_EXAMPLES)
-        set(QT_NO_CREATE_TARGETS TRUE)
-    endif()
+    list(PREPEND CMAKE_PREFIX_PATH "${QT_BUILD_DIR}/${INSTALL_CMAKEDIR}")
 endmacro()
 
 function(qt_internal_static_link_order_test)
@@ -960,7 +1118,7 @@ function(qt_build_internals_disable_pkg_config_if_needed)
     set(pkg_config_enabled ON)
     qt_build_internals_find_pkg_config_executable()
 
-    if(APPLE OR WIN32 OR QNX OR ANDROID OR WASM OR (NOT PKG_CONFIG_EXECUTABLE))
+    if(APPLE OR WIN32 OR QNX OR ANDROID OR OHOS OR WASM OR (NOT PKG_CONFIG_EXECUTABLE))
         set(pkg_config_enabled OFF)
     endif()
 

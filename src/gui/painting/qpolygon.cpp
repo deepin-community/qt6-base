@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpolygon.h"
 #include "qrect.h"
@@ -623,17 +624,13 @@ QPolygon QPolygonF::toPolygon() const
 /*!
     \fn void QPolygon::swap(QPolygon &other)
     \since 4.8
-
-    Swaps polygon \a other with this polygon. This operation is very
-    fast and never fails.
+    \memberswap{polygon}
 */
 
 /*!
     \fn void QPolygonF::swap(QPolygonF &other)
     \since 4.8
-
-    Swaps polygon \a other with this polygon. This operation is very
-    fast and never fails.
+    \memberswap{polygon}
 */
 
 /*!

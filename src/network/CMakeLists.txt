@@ -9,6 +9,7 @@ qt_internal_add_module(Network
     PLUGIN_TYPES networkaccess networkinformation tls
     SOURCES
         access/qabstractnetworkcache.cpp access/qabstractnetworkcache.h access/qabstractnetworkcache_p.h
+        access/qbytedatabuffer_p.h
         access/qhsts.cpp access/qhsts_p.h
         access/qhstspolicy.cpp access/qhstspolicy.h
         access/qnetworkaccessauthenticationmanager.cpp access/qnetworkaccessauthenticationmanager_p.h
@@ -32,15 +33,16 @@ qt_internal_add_module(Network
         kernel/qauthenticator.cpp kernel/qauthenticator.h kernel/qauthenticator_p.h
         kernel/qhostaddress.cpp kernel/qhostaddress.h kernel/qhostaddress_p.h
         kernel/qhostinfo.cpp kernel/qhostinfo.h kernel/qhostinfo_p.h
-        kernel/qnetconmonitor_p.h
         kernel/qnetworkdatagram.cpp kernel/qnetworkdatagram.h kernel/qnetworkdatagram_p.h
         kernel/qnetworkinformation.cpp kernel/qnetworkinformation_p.h kernel/qnetworkinformation.h
         kernel/qnetworkinterface.cpp kernel/qnetworkinterface.h kernel/qnetworkinterface_p.h
         kernel/qnetworkinterface_unix_p.h
         kernel/qnetworkproxy.cpp kernel/qnetworkproxy.h
+        kernel/qtcontenttypeparser_p.h
         kernel/qtnetworkglobal.h kernel/qtnetworkglobal_p.h
         socket/qabstractsocket.cpp socket/qabstractsocket.h socket/qabstractsocket_p.h
         socket/qabstractsocketengine.cpp socket/qabstractsocketengine_p.h
+        socket/qabstractsocketenginereceiver_p.h
         socket/qnativesocketengine.cpp socket/qnativesocketengine_p.h socket/qnativesocketengine_p_p.h
         socket/qtcpserver.cpp socket/qtcpserver.h socket/qtcpserver_p.h
         socket/qtcpsocket.cpp socket/qtcpsocket.h socket/qtcpsocket_p.h
@@ -57,7 +59,7 @@ qt_internal_add_module(Network
         ssl/qtlsbackend.cpp ssl/qtlsbackend_p.h
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
-        QT_NO_FOREACH
+        QT_NO_SCOPED_POINTER
         QT_NO_USING_NAMESPACE
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
@@ -128,7 +130,7 @@ qt_internal_extend_target(Network CONDITION QT_FEATURE_http
         access/qdecompresshelper.cpp access/qdecompresshelper_p.h
         access/qformdatabuilder.cpp access/qformdatabuilder.h
         access/qhttp1configuration.cpp access/qhttp1configuration.h
-        access/qhttp2configuration.cpp access/qhttp2configuration.h
+        access/qhttp2configuration.cpp access/qhttp2configuration.h access/qhttp2configuration_p.h
         access/qhttp2connection.cpp access/qhttp2connection_p.h
         access/qhttp2protocolhandler.cpp access/qhttp2protocolhandler_p.h
         access/qhttpmultipart.cpp access/qhttpmultipart.h access/qhttpmultipart_p.h
@@ -145,12 +147,13 @@ qt_internal_extend_target(Network CONDITION QT_FEATURE_http
         access/qrestaccessmanager.cpp access/qrestaccessmanager.h access/qrestaccessmanager_p.h
         access/qrestreply.cpp access/qrestreply.h access/qrestreply_p.h
         access/qsocketabstraction_p.h
+        access/qtcpkeepaliveconfiguration_p.h
         socket/qhttpsocketengine.cpp socket/qhttpsocketengine_p.h
 )
 
 qt_internal_extend_target(Network CONDITION QT_FEATURE_brotli AND QT_FEATURE_http
     LIBRARIES
-        WrapBrotli::WrapBrotliDec
+        WrapBrotli::WrapBrotliDec WrapBrotli::WrapBrotliCommon
 )
 
 qt_internal_extend_target(Network CONDITION QT_FEATURE_http AND QT_FEATURE_zstd
@@ -170,7 +173,7 @@ qt_internal_extend_target(Network CONDITION NOT QT_FEATURE_system_zlib
         ../3rdparty/zlib
 )
 
-qt_internal_extend_target(Network CONDITION NOT QT_FEATURE_system_zlib AND NOT no_core_dep
+qt_internal_extend_target(Network CONDITION NOT QT_FEATURE_system_zlib
     LIBRARIES
         Qt::Core
 )
@@ -241,31 +244,26 @@ qt_internal_extend_target(Network CONDITION QT_FEATURE_dnslookup AND QT_FEATURE_
         WrapResolv::WrapResolv
 )
 
+qt_internal_extend_target(Network CONDITION QT_FEATURE_dnslookup AND QT_FEATURE_harmony_dnsresolver
+    SOURCES
+        kernel/qdnslookup_unix.cpp
+)
+
 qt_internal_extend_target(Network CONDITION QT_FEATURE_dnslookup AND WIN32
     SOURCES
         kernel/qdnslookup_win.cpp
 )
 
-qt_internal_extend_target(Network CONDITION QT_FEATURE_dnslookup AND NOT QT_FEATURE_libresolv AND NOT WIN32
+qt_internal_extend_target(Network
+    CONDITION QT_FEATURE_dnslookup AND NOT QT_FEATURE_libresolv
+              AND NOT QT_FEATURE_harmony_dnsresolver AND NOT WIN32
     SOURCES
         kernel/qdnslookup_dummy.cpp
 )
 
 qt_internal_extend_target(Network CONDITION APPLE
-    SOURCES
-        kernel/qnetconmonitor_darwin.mm
     LIBRARIES
-        ${FWSystemConfiguration}
-)
-
-qt_internal_extend_target(Network CONDITION QT_FEATURE_networklistmanager AND NOT IOS AND NOT MACOS
-    SOURCES
-        kernel/qnetconmonitor_win.cpp
-)
-
-qt_internal_extend_target(Network CONDITION NOT APPLE AND NOT QT_FEATURE_networklistmanager
-    SOURCES
-        kernel/qnetconmonitor_stub.cpp
+        ${FWNetwork}
 )
 
 qt_internal_extend_target(Network CONDITION QT_FEATURE_gssapi
@@ -304,6 +302,15 @@ qt_internal_extend_target(Network CONDITION UNIX AND NOT ANDROID AND NOT (APPLE 
 if(ANDROID AND (ANDROID))
     set_property(TARGET Network APPEND PROPERTY QT_ANDROID_BUNDLED_JAR_DEPENDENCIES
         jar/Qt${QtBase_VERSION_MAJOR}AndroidNetwork.jar
+    )
+endif()
+
+if(OHOS)
+    qt_internal_add_harmonyos_permission(Network
+        NAME ohos.permission.INTERNET
+    )
+    qt_internal_add_harmonyos_permission(Network
+        NAME ohos.permission.GET_NETWORK_INFO
     )
 endif()
 
@@ -367,6 +374,7 @@ qt_internal_extend_target(Network CONDITION QT_FEATURE_ssl
         ssl/qssldiffiehellmanparameters.cpp ssl/qssldiffiehellmanparameters.h ssl/qssldiffiehellmanparameters_p.h
         ssl/qsslellipticcurve.cpp ssl/qsslellipticcurve.h
         ssl/qsslerror.cpp
+        ssl/qsslkeyingmaterial.cpp ssl/qsslkeyingmaterial.h
         ssl/qsslkey_p.cpp ssl/qsslkey_p.h
         ssl/qsslpresharedkeyauthenticator.cpp ssl/qsslpresharedkeyauthenticator.h ssl/qsslpresharedkeyauthenticator_p.h
         ssl/qsslsocket.cpp ssl/qsslsocket_p.h
@@ -385,6 +393,7 @@ qt_internal_extend_target(Network CONDITION QT_FEATURE_ocsp AND QT_FEATURE_opens
 
 qt_internal_add_docs(Network
     doc/qtnetwork.qdocconf
+    SKIP_JAVADOC
 )
 
 # See mkspecs/common/msvc-desktop.conf
@@ -402,10 +411,10 @@ qt_internal_extend_target(Network CONDITION WIN32
         kernel/qhostaddress.cpp
         kernel/qhostinfo.cpp
         kernel/qhostinfo_win.cpp
-        kernel/qnetconmonitor_win.cpp
         kernel/qnetworkinterface_win.cpp
         kernel/qnetworkproxy_win.cpp
         socket/qabstractsocket.cpp
+        socket/qabstractsocketengine.cpp
         socket/qlocalserver.cpp
         socket/qlocalserver_win.cpp
         socket/qlocalsocket_win.cpp
@@ -413,14 +422,14 @@ qt_internal_extend_target(Network CONDITION WIN32
         socket/qnativesocketengine_win.cpp
 )
 
-# include the snippet projects for developer-builds
-if(QT_FEATURE_private_tests)
+if(QT_BUILD_DOC_SNIPPETS)
     add_subdirectory(doc/snippets/network)
 endif()
+
 qt_internal_extend_target(Network
     # Workaround for QTBUG-118229:
     # Function called by inline methods taking a pointer to a private class as a parameter
-    EXTRA_LINKER_SCRIPT_EXPORTS
+    EXTRA_ELF_LINKER_SCRIPT_EXPORTS
         # QNetworkDatagram::destroy(QNetworkDatagramPrivate *d)
         "_ZN*16QNetworkDatagram7destroyEP*23QNetworkDatagramPrivate*"
 )

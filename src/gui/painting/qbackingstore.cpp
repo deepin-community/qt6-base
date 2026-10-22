@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qbackingstore.h>
 #include <qwindow.h>
@@ -259,10 +260,14 @@ bool QBackingStore::scroll(const QRegion &area, int dx, int dy)
     const qreal toNativeFactor = d_ptr->deviceIndependentToNativeFactor();
     const qreal nativeDx = QHighDpi::scale(qreal(dx), toNativeFactor);
     const qreal nativeDy = QHighDpi::scale(qreal(dy), toNativeFactor);
-    if (qFloor(nativeDx) != nativeDx || qFloor(nativeDy) != nativeDy)
+    const int roundedDx = qRound(nativeDx);
+    const int roundedDy = qRound(nativeDy);
+
+    if (!qFuzzyCompare(nativeDx, qreal(roundedDx)) ||
+        !qFuzzyCompare(nativeDy, qreal(roundedDy)))
         return false;
 
-    return handle()->scroll(QHighDpi::scale(area, toNativeFactor), nativeDx, nativeDy);
+    return handle()->scroll(QHighDpi::scale(area, toNativeFactor), roundedDx, roundedDy);
 }
 
 /*!

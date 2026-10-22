@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpermissions.h"
 #include "qpermissions_p.h"
@@ -15,7 +16,7 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
 /*!
     \page permissions.html
     \title Application Permissions
-    \brief Managing application permissions
+    \brief Managing application permissions.
 
     Many features of today's devices and operating systems can have
     significant privacy, security, and performance implications if
@@ -73,7 +74,7 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     why we can not record voice memos at this time (if the permission was denied),
     or proceed to using the microphone (if permission was granted).
 
-    \note On \macOS and iOS permissions can currently only be requested for
+    \note On \macos and iOS permissions can currently only be requested for
     GUI applications.
 
     \section2 Declaring Permissions
@@ -102,7 +103,7 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     application, please \l{Information Property List Files}
     {point the build system to your custom \c Info.plist}.
 
-    \sa {Information Property List Files}.
+    \sa {Information Property List Files}
 
     \section3 Android
     \target android-uses-permission
@@ -116,16 +117,29 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
         </manifest>
     \endcode
 
+    To ensure the relevant permission backend is included with your
+    application, please \l {QT_ANDROID_PACKAGE_SOURCE_DIR}
+    {point the build system to your custom \c AndroidManifest.xml}
+    or use \l {qt_add_android_permission}().
+
     The relevant permission names are described in the documentation
     for each permission type.
 
-    \sa {Qt Creator: Editing Manifest Files}.
+    \note When using this API, the \c{<!-- %%INSERT_PERMISSIONS -->} tag must be present in
+    the AndroidManifest.xml. For further information on the use of this tag,
+    see \l {Qt Permissions and Features}
+
+    \sa {Qt Creator: Editing Manifest Files}
 
     \section1 Available Permissions
 
     The following permissions types are available:
 
     \annotatedlist permissions
+
+    \note The available permission types cover core functionality of Qt modules
+    like Qt Multimedia and Qt Positioning, but do not encompass all platform-specific
+    permissions. Custom permission types are not currently supported.
 
     \section1 Best Practices
 
@@ -194,7 +208,7 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
 
     \code
     qApp->requestPermission(QCameraPermission{}, [](const QPermission &permission) {
-        if (permission.status() == Qt::PermissionStatus:Granted)
+        if (permission.status() == Qt::PermissionStatus::Granted)
             takePhoto();
     });
     \endcode
@@ -211,7 +225,7 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     \code
     void LocationWidget::permissionUpdated(const QPermission &permission)
     {
-        if (permission.status() != Qt::PermissionStatus:Granted)
+        if (permission.status() != Qt::PermissionStatus::Granted)
             return;
         auto locationPermission = permission.value<QLocationPermission>();
         if (!locationPermission || locationPermission->accuracy() != QLocationPermission::Precise)
@@ -238,8 +252,8 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     You do not need to construct this type explicitly, as the type is automatically
     used when checking or requesting permissions.
 
-    This constructor participates in overload resolution only if \c T is one of
-    the \l{typed permission} classes:
+    \constraints
+    \c T is one of the \l{typed permission} classes:
 
     \annotatedlist permissions
 */
@@ -252,8 +266,8 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
 
     Use type() for dynamically choosing which typed permission to request.
 
-    This function participates in overload resolution only if \c T is one of
-    the \l{typed permission} classes:
+    \constraints
+    \c T is one of the \l{typed permission} classes:
 
     \annotatedlist permissions
 */
@@ -371,16 +385,19 @@ QT_PERMISSION_IMPL_COMMON(QMicrophonePermission)
                 \li \c android.permission.BLUETOOTH_ADVERTISE
                 \li \c android.permission.BLUETOOTH_CONNECT
                 \li \c android.permission.BLUETOOTH_SCAN
-                \li \c android.permission.ACCESS_FINE_LOCATION
             \endlist
     \include permissions.qdocinc end-usage-declarations
 
-    \note Currently on Android the \c android.permission.ACCESS_FINE_LOCATION
-    permission is requested together with Bluetooth permissions. This is
-    required for Bluetooth to work properly, unless the application provides a
-    strong assertion in the application manifest that it does not use Bluetooth
-    to derive a physical location. This permission coupling may change in
-    future.
+    \note Since Qt 6.8.1, the ACCESS_FINE_LOCATION permission is no longer
+    requested if API Level >= 31. This
+    \l {Android Bluetooth Permissions}{may limit some Bluetooth scan results}.
+    Users needing these results need
+    to request the location permission separately (see
+    \l {QLocationPermission::Precise}{precise location}) and ensure that
+    \c {BLUETOOTH_SCAN} permission doesn't have the
+    \c {android:usesPermissionFlags="neverForLocation"} attribute set.
+    For setting and customizing permissions in the application manifest,
+    \l {Qt Permissions and Features}{see this guide}.
 
     \include permissions.qdocinc permission-metadata
 */
@@ -403,10 +420,6 @@ QT_PERMISSION_IMPL_COMMON(QBluetoothPermission)
     \note The fine-grained permissions are currently supported only on
     Android 12 and newer. On older Android versions, as well as on Apple
     operating systems, any mode results in full Bluetooth access.
-
-    \note For now the \c Access mode on Android also requests the
-    \l {QLocationPermission::Precise}{precise location} permission.
-    This permission coupling may change in the future.
 */
 
 /*!
@@ -574,7 +587,7 @@ QT_PERMISSION_IMPL_COMMON(QContactsPermission)
 {}
 
 /*!
-    Sets whether the request is for read-write (\a mode == AccessMode::ReadOnly) or
+    Sets whether the request is for read-write (\a mode == AccessMode::ReadWrite) or
     read-only (\a mode == AccessMode::ReadOnly) access to the contacts.
 */
 void QContactsPermission::setAccessMode(AccessMode mode)
@@ -608,8 +621,10 @@ QContactsPermission::AccessMode QContactsPermission::accessMode() const
       \row
         \li Android
         \li \l{android-uses-permission}{\c{uses-permission}}
-        \li \c android.permission.READ_CALENDAR. \c android.permission.WRITE_CALENDAR if
-            QCalendarPermission::accessMode() is set to AccessMode::ReadWrite.
+        \li \c android.permission.READ_CALENDAR if QCalendarPermission::accessMode() is set
+            to AccessMode::ReadOnly or AccessMode::ReadWrite.
+            \c android.permission.WRITE_CALENDAR if QCalendarPermission::accessMode() is set
+            to AccessMode::WriteOnly or AccessMode::ReadWrite.
     \include permissions.qdocinc end-usage-declarations
 
     \include permissions.qdocinc permission-metadata
@@ -622,6 +637,7 @@ QContactsPermission::AccessMode QContactsPermission::accessMode() const
 
     \value ReadOnly Read-only access to the calendar data (the default).
     \value ReadWrite Read and write access to the calendar data.
+    \value [since 6.12] WriteOnly Write-only access to the calendar data.
 
     \sa setAccessMode, accessMode
 */
@@ -631,8 +647,7 @@ QT_PERMISSION_IMPL_COMMON(QCalendarPermission)
 {}
 
 /*!
-    Sets whether the request is for read-write (\a mode == AccessMode::ReadOnly) or
-    read-only (\a mode == AccessMode::ReadOnly) access to the calendar.
+    Sets the access mode to \a mode.
 */
 void QCalendarPermission::setAccessMode(AccessMode mode)
 {
@@ -640,8 +655,7 @@ void QCalendarPermission::setAccessMode(AccessMode mode)
 }
 
 /*!
-    Returns AccessMode::ReadWrite when the request is for read-write and
-    AccessMode::ReadOnly when it is for read-only access to the calendar.
+    Returns the requested access mode.
 */
 QCalendarPermission::AccessMode QCalendarPermission::accessMode() const
 {
@@ -671,7 +685,7 @@ QDebug operator<<(QDebug debug, const QPermission &permission)
 
 #undef QT_PERMISSION_IMPL_COMMON
 
-#if !defined(Q_OS_DARWIN) && !defined(Q_OS_ANDROID) && !defined(Q_OS_WASM)
+#if !defined(Q_OS_DARWIN) && !defined(Q_OS_ANDROID) && !defined(Q_OS_WASM) && !defined(Q_OS_HARMONY)
 // Default backend for platforms without a permission implementation.
 // Always returns Granted, to match behavior when not using permission APIs
 // https://bugreports.qt.io/browse/QTBUG-90498?focusedCommentId=725085#comment-725085

@@ -2,6 +2,7 @@
 // Copyright (C) 2016 Intel Corporation.
 // Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformdefs.h"
 #include "qreadwritelock.h"
@@ -27,21 +28,19 @@ QT_BEGIN_NAMESPACE
  *  - In any other case, d_ptr points to an actual QReadWriteLockPrivate.
  */
 
-using namespace QReadWriteLockStates;
-namespace {
-
-using steady_clock = std::chrono::steady_clock;
-
-const auto dummyLockedForRead = reinterpret_cast<QReadWriteLockPrivate *>(quintptr(StateLockedForRead));
-const auto dummyLockedForWrite = reinterpret_cast<QReadWriteLockPrivate *>(quintptr(StateLockedForWrite));
-inline bool isUncontendedLocked(const QReadWriteLockPrivate *d)
-{ return quintptr(d) & StateMask; }
+static auto dummyLockedForRead()
+{
+    return reinterpret_cast<QReadWriteLockPrivate *>(QReadWriteLockPrivate::StateLockedForRead);
+}
+static auto dummyLockedForWrite()
+{
+    return reinterpret_cast<QReadWriteLockPrivate *>(QReadWriteLockPrivate::StateLockedForWrite);
 }
 
-static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLockPrivate> &d_ptr,
-                                    QDeadlineTimer timeout, QReadWriteLockPrivate *d);
-static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLockPrivate> &d_ptr,
-                                     QDeadlineTimer timeout, QReadWriteLockPrivate *d);
+static inline bool isUncontendedLocked(const QReadWriteLockPrivate *d)
+{
+    return quintptr(d) & QReadWriteLockPrivate::StateMask;
+}
 
 /*! \class QReadWriteLock
     \inmodule QtCore
@@ -64,6 +63,7 @@ static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLockPrivate> &d_pt
 
     Example:
 
+    \snippet code/src_corelib_thread_qreadwritelock.cpp lock
     \snippet code/src_corelib_thread_qreadwritelock.cpp 0
 
     To ensure that writers aren't blocked forever by readers, readers
@@ -109,7 +109,7 @@ static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLockPrivate> &d_pt
 
     \sa lockForRead(), lockForWrite(), RecursionMode
 */
-QReadWriteLockPrivate *QReadWriteLock::initRecursive()
+void *QReadWriteLock::initRecursiveHelper()
 {
     auto d = new QReadWriteLockPrivate(true);
     Q_ASSERT_X(!(quintptr(d) & StateMask), "QReadWriteLock::QReadWriteLock", "bad d_ptr alignment");
@@ -123,8 +123,9 @@ QReadWriteLockPrivate *QReadWriteLock::initRecursive()
     \warning Destroying a read-write lock that is in use may result
     in undefined behavior.
 */
-void QReadWriteLock::destroyRecursive(QReadWriteLockPrivate *d)
+void QReadWriteLock::destroyRecursiveHelper(void *dd) noexcept
 {
+    auto d = static_cast<QReadWriteLockPrivate *>(dd);
     if (isUncontendedLocked(d)) {
         qWarning("QReadWriteLock: destroying locked QReadWriteLock");
         return;
@@ -164,7 +165,16 @@ void QReadWriteLock::destroyRecursive(QReadWriteLockPrivate *d)
     \sa unlock(), lockForRead()
 */
 
+static Q_ALWAYS_INLINE bool fastTryLock(QAtomicPointer<QReadWriteLockPrivate> &d_ptr,
+                                        QReadWriteLockPrivate *dummyValue,
+                                        QReadWriteLockPrivate *&d)
+{
+    // Succeed fast if not contended
+    return d == nullptr && d_ptr.testAndSetAcquire(nullptr, dummyValue, d);
+}
+
 /*!
+    \fn bool QReadWriteLock::tryLockForRead(QDeadlineTimer timeout)
     \overload
     \since 6.6
 
@@ -181,36 +191,30 @@ void QReadWriteLock::destroyRecursive(QReadWriteLockPrivate *d)
 
     \sa unlock(), lockForRead()
 */
-bool QReadWriteLock::tryLockForRead(QDeadlineTimer timeout)
-{
-    // Fast case: non contended:
-    QReadWriteLockPrivate *d = d_ptr.loadRelaxed();
-    if (d == nullptr && d_ptr.testAndSetAcquire(nullptr, dummyLockedForRead, d))
-        return true;
-    return contendedTryLockForRead(d_ptr, timeout, d);
-}
 
-Q_NEVER_INLINE static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLockPrivate> &d_ptr,
-                                                   QDeadlineTimer timeout, QReadWriteLockPrivate *d)
+Q_NEVER_INLINE bool
+QBasicReadWriteLock::contendedTryLockForRead(QDeadlineTimer timeout, void *dd)
 {
+    auto d = static_cast<QReadWriteLockPrivate *>(dd);
     while (true) {
+        qYieldCpu();
         if (d == nullptr) {
-            if (!d_ptr.testAndSetAcquire(nullptr, dummyLockedForRead, d))
-                continue;
-            return true;
+            if (fastTryLock(d_ptr, dummyLockedForRead(), d))
+                return true;
+            continue;
         }
 
         if ((quintptr(d) & StateMask) == StateLockedForRead) {
             // locked for read, increase the counter
-            const auto val = reinterpret_cast<QReadWriteLockPrivate *>(quintptr(d) + (1U<<4));
-            Q_ASSERT_X(quintptr(val) > (1U<<4), "QReadWriteLock::tryLockForRead()",
+            const auto val = reinterpret_cast<QReadWriteLockPrivate *>(quintptr(d) + Counter);
+            Q_ASSERT_X(quintptr(val) > Counter, "QReadWriteLock::tryLockForRead()",
                        "Overflow in lock counter");
             if (!d_ptr.testAndSetAcquire(d, val, d))
                 continue;
             return true;
         }
 
-        if (d == dummyLockedForWrite) {
+        if (d == dummyLockedForWrite()) {
             if (timeout.hasExpired())
                 return false;
 
@@ -225,20 +229,23 @@ Q_NEVER_INLINE static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLock
             d = val;
         }
         Q_ASSERT(!isUncontendedLocked(d));
-        // d is an actual pointer;
+        // d is an actual pointer; acquire its contents
+        d = d_ptr.loadAcquire();
+        if (!d || isUncontendedLocked(d))
+            continue;
 
         if (d->recursive)
             return d->recursiveLockForRead(timeout);
 
         auto lock = qt_unique_lock(d->mutex);
-        if (d != d_ptr.loadRelaxed()) {
+        if (QReadWriteLockPrivate *dd = d_ptr.loadAcquire(); d != dd) {
             // d_ptr has changed: this QReadWriteLock was unlocked before we had
             // time to lock d->mutex.
             // We are holding a lock to a mutex within a QReadWriteLockPrivate
             // that is already released (or even is already re-used). That's ok
             // because the QFreeList never frees them.
             // Just unlock d->mutex (at the end of the scope) and retry.
-            d = d_ptr.loadAcquire();
+            d = dd;
             continue;
         }
         return d->lockForRead(lock, timeout);
@@ -280,6 +287,7 @@ Q_NEVER_INLINE static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLock
 */
 
 /*!
+    \fn bool QReadWriteLock::tryLockForWrite(QDeadlineTimer timeout)
     \overload
     \since 6.6
 
@@ -296,23 +304,17 @@ Q_NEVER_INLINE static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLock
 
     \sa unlock(), lockForWrite()
 */
-bool QReadWriteLock::tryLockForWrite(QDeadlineTimer timeout)
-{
-    // Fast case: non contended:
-    QReadWriteLockPrivate *d = d_ptr.loadRelaxed();
-    if (d == nullptr && d_ptr.testAndSetAcquire(nullptr, dummyLockedForWrite, d))
-        return true;
-    return contendedTryLockForWrite(d_ptr, timeout, d);
-}
 
-Q_NEVER_INLINE static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLockPrivate> &d_ptr,
-                                                    QDeadlineTimer timeout, QReadWriteLockPrivate *d)
+Q_NEVER_INLINE bool
+QBasicReadWriteLock::contendedTryLockForWrite(QDeadlineTimer timeout, void *dd)
 {
+    auto d = static_cast<QReadWriteLockPrivate *>(dd);
     while (true) {
+        qYieldCpu();
         if (d == nullptr) {
-            if (!d_ptr.testAndSetAcquire(d, dummyLockedForWrite, d))
-                continue;
-            return true;
+            if (fastTryLock(d_ptr, dummyLockedForWrite(), d))
+                return true;
+            continue;
         }
 
         if (isUncontendedLocked(d)) {
@@ -321,7 +323,7 @@ Q_NEVER_INLINE static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLoc
 
             // locked for either read or write, assign a d_ptr and wait.
             auto val = QReadWriteLockPrivate::allocate();
-            if (d == dummyLockedForWrite)
+            if (d == dummyLockedForWrite())
                 val->writerCount = 1;
             else
                 val->readerCount = (quintptr(d) >> 4) + 1;
@@ -333,17 +335,20 @@ Q_NEVER_INLINE static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLoc
             d = val;
         }
         Q_ASSERT(!isUncontendedLocked(d));
-        // d is an actual pointer;
+        // d is an actual pointer; acquire its contents
+        d = d_ptr.loadAcquire();
+        if (!d || isUncontendedLocked(d))
+            continue;
 
         if (d->recursive)
             return d->recursiveLockForWrite(timeout);
 
         auto lock = qt_unique_lock(d->mutex);
-        if (d != d_ptr.loadRelaxed()) {
+        if (QReadWriteLockPrivate *dd = d_ptr.loadAcquire(); d != dd) {
             // The mutex was unlocked before we had time to lock the mutex.
             // We are holding to a mutex within a QReadWriteLockPrivate that is already released
             // (or even is already re-used) but that's ok because the QFreeList never frees them.
-            d = d_ptr.loadAcquire();
+            d = dd;
             continue;
         }
         return d->lockForWrite(lock, timeout);
@@ -351,6 +356,22 @@ Q_NEVER_INLINE static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLoc
 }
 
 /*!
+    \internal
+    \since 6.12
+
+    Returns a flag mask describing this QReadWriteLock. This function is
+    necessary for user code built with Thread Sanitizer, because it can't tell
+    from inline what type of lock a contended QReadWriteLock is locked for.
+    This function is always present in QtCore, whether it was compiled for TSan
+    or not.
+*/
+quintptr QBasicReadWriteLock::describeLockInternal(void *dd) noexcept
+{
+    return QReadWriteLockPrivate::describeState(dd);
+}
+
+/*!
+    \fn void QReadWriteLock::unlock()
     Unlocks the lock.
 
     Attempting to unlock a lock that is not locked is an error, and will result
@@ -358,9 +379,10 @@ Q_NEVER_INLINE static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLoc
 
     \sa lockForRead(), lockForWrite(), tryLockForRead(), tryLockForWrite()
 */
-void QReadWriteLock::unlock()
+
+void QBasicReadWriteLock::contendedUnlock(void *dd)
 {
-    QReadWriteLockPrivate *d = d_ptr.loadAcquire();
+    auto d = static_cast<QReadWriteLockPrivate *>(dd);
     while (true) {
         Q_ASSERT_X(d, "QReadWriteLock::unlock()", "Cannot unlock an unlocked lock");
 
@@ -372,7 +394,7 @@ void QReadWriteLock::unlock()
         }
 
         if ((quintptr(d) & StateMask) == StateLockedForRead) {
-            Q_ASSERT(quintptr(d) > (1U<<4)); //otherwise that would be the fast case
+            Q_ASSERT(quintptr(d) > Counter); //otherwise that would be the fast case
             // Just decrease the reader's count.
             auto val = reinterpret_cast<QReadWriteLockPrivate *>(quintptr(d) - (1U<<4));
             if (!d_ptr.testAndSetOrdered(d, val, d))
@@ -412,6 +434,7 @@ void QReadWriteLock::unlock()
 
 bool QReadWriteLockPrivate::lockForRead(std::unique_lock<std::mutex> &lock, QDeadlineTimer timeout)
 {
+    using std::chrono::steady_clock;
     Q_ASSERT(!mutex.try_lock()); // mutex must be locked when entering this function
 
     while (waitingWriters || writerCount) {
@@ -433,6 +456,7 @@ bool QReadWriteLockPrivate::lockForRead(std::unique_lock<std::mutex> &lock, QDea
 
 bool QReadWriteLockPrivate::lockForWrite(std::unique_lock<std::mutex> &lock, QDeadlineTimer timeout)
 {
+    using std::chrono::steady_clock;
     Q_ASSERT(!mutex.try_lock()); // mutex must be locked when entering this function
 
     while (readerCount || writerCount) {
@@ -595,10 +619,12 @@ void QReadWriteLockPrivate::release()
     Here's an example that uses QReadLocker to lock and unlock a
     read-write lock for reading:
 
+    \snippet code/src_corelib_thread_qreadwritelock.cpp lock
     \snippet code/src_corelib_thread_qreadwritelock.cpp 1
 
     It is equivalent to the following code:
 
+    \snippet code/src_corelib_thread_qreadwritelock.cpp lock
     \snippet code/src_corelib_thread_qreadwritelock.cpp 2
 
     The QMutexLocker documentation shows examples where the use of a
@@ -668,10 +694,12 @@ void QReadWriteLockPrivate::release()
     Here's an example that uses QWriteLocker to lock and unlock a
     read-write lock for writing:
 
+    \snippet code/src_corelib_thread_qreadwritelock.cpp lock
     \snippet code/src_corelib_thread_qreadwritelock.cpp 3
 
     It is equivalent to the following code:
 
+    \snippet code/src_corelib_thread_qreadwritelock.cpp lock
     \snippet code/src_corelib_thread_qreadwritelock.cpp 4
 
     The QMutexLocker documentation shows examples where the use of a

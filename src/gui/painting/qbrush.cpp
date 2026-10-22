@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qbrush.h"
 #include "qpixmap.h"
@@ -148,6 +149,10 @@ Q_GUI_EXPORT QImage qt_imageForBrush(int brushStyle, bool invert)
     return qt_brushPatternImageCache()->getImage(brushStyle, invert);
 }
 
+struct QBasicBrushData : public QBrushData
+{
+};
+
 struct QTexturedBrushData : public QBrushData
 {
     QTexturedBrushData() {
@@ -223,8 +228,23 @@ static void deleteData(QBrushData *d)
     case Qt::ConicalGradientPattern:
         delete static_cast<QGradientBrushData*>(d);
         break;
-    default:
-        delete d;
+    case Qt::NoBrush:
+    case Qt::SolidPattern:
+    case Qt::Dense1Pattern:
+    case Qt::Dense2Pattern:
+    case Qt::Dense3Pattern:
+    case Qt::Dense4Pattern:
+    case Qt::Dense5Pattern:
+    case Qt::Dense6Pattern:
+    case Qt::Dense7Pattern:
+    case Qt::HorPattern:
+    case Qt::VerPattern:
+    case Qt::CrossPattern:
+    case Qt::BDiagPattern:
+    case Qt::FDiagPattern:
+    case Qt::DiagCrossPattern:
+        delete static_cast<QBasicBrushData*>(d);
+        break;
     }
 }
 
@@ -294,7 +314,8 @@ void QBrushDataPointerDeleter::operator()(QBrushData *d) const noexcept
 
     \table 100%
     \row
-    \li \inlineimage brush-outline.png Outlines
+    \li \inlineimage brush-outline.png
+                     {Two overlapping rectangles with outlines}
     \li
 
     To specify the style and color of lines and outlines, use the
@@ -318,8 +339,8 @@ void QBrushDataPointerDeleter::operator()(QBrushData *d) const noexcept
 class QNullBrushData
 {
 public:
-    QBrushData *brush;
-    QNullBrushData() : brush(new QBrushData)
+    QBasicBrushData *brush;
+    QNullBrushData() : brush(new QBasicBrushData)
     {
         brush->ref.storeRelaxed(1);
         brush->style = Qt::BrushStyle(0);
@@ -376,8 +397,21 @@ void QBrush::init(const QColor &color, Qt::BrushStyle style)
     case Qt::ConicalGradientPattern:
         d.reset(new QGradientBrushData);
         break;
-    default:
-        d.reset(new QBrushData);
+    case Qt::SolidPattern:
+    case Qt::Dense1Pattern:
+    case Qt::Dense2Pattern:
+    case Qt::Dense3Pattern:
+    case Qt::Dense4Pattern:
+    case Qt::Dense5Pattern:
+    case Qt::Dense6Pattern:
+    case Qt::Dense7Pattern:
+    case Qt::HorPattern:
+    case Qt::VerPattern:
+    case Qt::CrossPattern:
+    case Qt::BDiagPattern:
+    case Qt::FDiagPattern:
+    case Qt::DiagCrossPattern:
+        d.reset(new QBasicBrushData);
         break;
     }
     d->ref.storeRelaxed(1);
@@ -585,8 +619,22 @@ void QBrush::detach(Qt::BrushStyle newStyle)
         x.reset(gbd);
         break;
         }
-    default:
-        x.reset(new QBrushData);
+    case Qt::NoBrush:
+    case Qt::SolidPattern:
+    case Qt::Dense1Pattern:
+    case Qt::Dense2Pattern:
+    case Qt::Dense3Pattern:
+    case Qt::Dense4Pattern:
+    case Qt::Dense5Pattern:
+    case Qt::Dense6Pattern:
+    case Qt::Dense7Pattern:
+    case Qt::HorPattern:
+    case Qt::VerPattern:
+    case Qt::CrossPattern:
+    case Qt::BDiagPattern:
+    case Qt::FDiagPattern:
+    case Qt::DiagCrossPattern:
+        x.reset(new QBasicBrushData);
         break;
     }
     x->ref.storeRelaxed(1); // must be first lest the QBrushDataPointerDeleter turns into a no-op
@@ -598,19 +646,49 @@ void QBrush::detach(Qt::BrushStyle newStyle)
 
 
 /*!
-    \fn QBrush &QBrush::operator=(const QBrush &brush)
-
     Assigns the given \a brush to \e this brush and returns a
     reference to \e this brush.
 */
 
-QBrush &QBrush::operator=(const QBrush &b)
+QBrush &QBrush::operator=(const QBrush &brush)
 {
-    if (d == b.d)
+    if (d == brush.d)
         return *this;
 
-    b.d->ref.ref();
-    d.reset(b.d.get());
+    brush.d->ref.ref();
+    d.reset(brush.d.get());
+    return *this;
+}
+
+/*!
+    \fn QBrush &QBrush::operator=(QColor color)
+    \fn QBrush &QBrush::operator=(Qt::GlobalColor color)
+    \overload
+    \since 6.9
+
+    Makes this brush a solid pattern brush of the given \a color,
+    and returns a reference to \e this brush.
+*/
+QBrush &QBrush::operator=(QColor color)
+{
+    detach(Qt::SolidPattern);
+    d->color = color;
+    d->transform = {};
+    return *this;
+}
+
+/*!
+    \overload
+    \since 6.9
+
+    Makes this brush a black brush of the given \a style,
+    and returns a reference to \e this brush.
+*/
+QBrush &QBrush::operator=(Qt::BrushStyle style)
+{
+    detach(style);
+    d->color = Qt::black;
+    d->transform = {};
     return *this;
 }
 
@@ -625,9 +703,7 @@ QBrush &QBrush::operator=(const QBrush &b)
 /*!
     \fn void QBrush::swap(QBrush &other)
     \since 4.8
-
-    Swaps brush \a other with this brush. This operation is very
-    fast and never fails.
+    \memberswap{brush}
 */
 
 /*!
@@ -946,6 +1022,33 @@ bool QBrush::operator==(const QBrush &b) const
     }
 }
 
+/*!
+    \internal
+*/
+bool QBrush::doCompareEqualColor(QColor rhs) const noexcept
+{
+    return style() == Qt::SolidPattern && color() == rhs && d->transform.isIdentity();
+}
+
+/*!
+    \internal
+*/
+bool QBrush::doCompareEqualStyle(Qt::BrushStyle rhs) const noexcept
+{
+    switch (rhs) {
+    case Qt::NoBrush:
+    case Qt::TexturePattern:
+    case Qt::LinearGradientPattern:
+    case Qt::RadialGradientPattern:
+    case Qt::ConicalGradientPattern:
+        // A brush constructed only from one of those styles will end up
+        // using NoBrush (see qbrush_check_type)
+        return style() == Qt::NoBrush;
+    default:
+        return style() == rhs && color() == QColor(0, 0, 0);
+    }
+}
+
 #ifndef QT_NO_DEBUG_STREAM
 /*!
   \internal
@@ -1038,7 +1141,7 @@ QDataStream &operator<<(QDataStream &s, const QBrush &b)
             s << quint32(stops.size());
             for (int i = 0; i < stops.size(); ++i) {
                 const QGradientStop &stop = stops.at(i);
-                s << QPair<double, QColor>(double(stop.first), stop.second);
+                s << std::pair<double, QColor>(double(stop.first), stop.second);
             }
         }
 
@@ -1124,7 +1227,7 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
             stops.reserve(numStops);
             for (quint32 i = 0; i < numStops; ++i) {
                 s >> n >> c;
-                stops << QPair<qreal, QColor>(n, c);
+                stops << std::pair<qreal, QColor>(n, c);
             }
         }
 
@@ -1182,7 +1285,6 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
  * QGradient implementations
  */
 
-
 /*!
     \class QGradient
     \ingroup painting
@@ -1212,9 +1314,11 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
     \li QRadialGradient
     \li QConicalGradient
     \row
-    \li \inlineimage qgradient-linear.png
+    \li \inlineimage qgradient-linear.png {Linear gradient from white to blue}
     \li \inlineimage qgradient-radial.png
+                     {Radial gradient from white center to blue}
     \li \inlineimage qgradient-conical.png
+                     {Conical gradient sweeping around center}
     \endtable
 
     The colors in a gradient are defined using stop points of the
@@ -1250,8 +1354,11 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
     \table
     \row
     \li \inlineimage qradialgradient-pad.png
+                     {Radial gradient with pad spread}
     \li \inlineimage qradialgradient-repeat.png
+                     {Radial gradient with repeat spread}
     \li \inlineimage qradialgradient-reflect.png
+                     {Radial gradient with reflect spread}
     \row
     \li \l {QGradient::PadSpread}{PadSpread}
     \li \l {QGradient::RepeatSpread}{RepeatSpread}
@@ -1782,9 +1889,11 @@ bool QGradient::operator==(const QGradient &gradient) const
 
     \table
     \row
-    \li \inlineimage qlineargradient-pad.png
+    \li \inlineimage qlineargradient-pad.png {Linear gradient with pad spread}
     \li \inlineimage qlineargradient-reflect.png
+                     {Linear gradient with reflect spread}
     \li \inlineimage qlineargradient-repeat.png
+                     {Linear gradient with repeat spread}
     \row
     \li \l {QGradient::PadSpread}{PadSpread} (default)
     \li \l {QGradient::ReflectSpread}{ReflectSpread}
@@ -1807,7 +1916,6 @@ bool QGradient::operator==(const QGradient &gradient) const
     \sa QRadialGradient, QConicalGradient, {painting/gradients}{The
     Gradients Example}
 */
-
 
 /*!
     Constructs a default linear gradient with interpolation area
@@ -1947,7 +2055,6 @@ void QLinearGradient::setFinalStop(const QPointF &stop)
     m_data.linear.y2 = stop.y();
 }
 
-
 /*!
     \class QRadialGradient
     \ingroup painting
@@ -1971,8 +2078,11 @@ void QLinearGradient::setFinalStop(const QPointF &stop)
     \table
     \row
     \li \inlineimage qradialgradient-pad.png
+                     {Radial gradient with pad spread}
     \li \inlineimage qradialgradient-reflect.png
+                     {Radial gradient with reflect spread}
     \li \inlineimage qradialgradient-repeat.png
+                     {Radial gradient with repeat spread}
     \row
     \li \l {QGradient::PadSpread}{PadSpread} (default)
     \li \l {QGradient::ReflectSpread}{ReflectSpread}
@@ -2113,11 +2223,10 @@ QRadialGradient::QRadialGradient(const QPointF &center, qreal centerRadius, cons
     m_data.radial.cx = center.x();
     m_data.radial.cy = center.y();
     m_data.radial.cradius = centerRadius;
-    m_data.radial.fradius = 0;
+    m_data.radial.fradius = focalRadius;
 
     m_data.radial.fx = focalPoint.x();
     m_data.radial.fy = focalPoint.y();
-    setFocalRadius(focalRadius);
 }
 
 /*!
@@ -2134,11 +2243,10 @@ QRadialGradient::QRadialGradient(qreal cx, qreal cy, qreal centerRadius, qreal f
     m_data.radial.cx = cx;
     m_data.radial.cy = cy;
     m_data.radial.cradius = centerRadius;
-    m_data.radial.fradius = 0;
+    m_data.radial.fradius = focalRadius;
 
     m_data.radial.fx = fx;
     m_data.radial.fy = fy;
-    setFocalRadius(focalRadius);
 }
 
 /*!
@@ -2322,7 +2430,8 @@ void QRadialGradient::setFocalPoint(const QPointF &focalPoint)
     Conical gradients interpolate interpolate colors counter-clockwise
     around a center point.
 
-    \image qconicalgradient.png
+    \image qconicalgradient.png {Screenshot that shows an example of
+           what a conical gradient looks like}
 
     The colors in a gradient is defined using stop points of the
     QGradientStop type, i.e. a position and a color. Use the
@@ -2476,7 +2585,7 @@ void QConicalGradient::setAngle(qreal angle)
     \typedef QGradientStop
     \relates QGradient
 
-    Typedef for QPair<\l qreal, QColor>.
+    Typedef for std::pair<\l qreal, QColor>.
 */
 
 /*!

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformintegration.h"
 
@@ -204,7 +205,7 @@ QPlatformServices *QPlatformIntegration::services() const
     prerequisite for dynamic OpenGL loading. Starting with Qt 5.7, the platform plugin
     is required to have this capability.
 
-    \value ApplicationIcon The platform supports setting the application icon. (since 5.5)
+    \value [since 5.5] ApplicationIcon The platform supports setting the application icon.
 
     \value TopStackedNativeChildWindows The platform supports native child windows via
     QWindowContainer without having to punch a transparent hole in the
@@ -234,6 +235,15 @@ QPlatformServices *QPlatformIntegration::services() const
     On resize of the backingstore the static contents region is provided, and the backing
     store is expected to propagate the static content to the resized backing store, without
     clients needing to repaint the static content region.
+
+    \value OffscreenSurface The platform supports creating a platform offscreen surface
+    without falling back to an implementation utilizing an invisible QWindow. A platform
+    without this capability requires QOffscreenSurface::create to be called from the GUI
+    thread.
+
+    \value MouseCursorPositioning The platform supports programmatic cursor positioning via
+    QCursor::setPos(). Platforms such as Wayland that enforce pointer confinement will
+    return \c false. The default implementation returns \c false.
  */
 
 /*!
@@ -496,6 +506,8 @@ class QPlatformTheme *QPlatformIntegration::createPlatformTheme(const QString &n
    Factory function for QOffscreenSurface. An offscreen surface will typically be implemented with a
    pixel buffer (pbuffer). If the platform doesn't support offscreen surfaces, an invisible window
    will be used by QOffscreenSurface instead.
+
+   If the platform has the OffscreenSurface capability, this should always return a valid pointer.
 */
 QPlatformOffscreenSurface *QPlatformIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
 {

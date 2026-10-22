@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2013 John Layt <jlayt@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTIMEZONE_H
 #define QTIMEZONE_H
@@ -80,7 +81,13 @@ class Q_CORE_EXPORT QTimeZone
         QTimeZonePrivate *d = nullptr;
         ShortData s;
     };
+
+    friend class QTypeInfo<Data>;
+
     QTimeZone(ShortData sd) : d(sd) {}
+    QTimeZone(Qt::TimeSpec) Q_DECL_EQ_DELETE_X(
+        "Would be treated as int offsetSeconds. "
+        "Use QTimeZone::UTC or QTimeZone::LocalTime instead.");
 
 public:
     // Sane UTC offsets range from -16 to +16 hours:
@@ -175,11 +182,9 @@ public:
 #  endif
     QString comment() const;
 
-    QString displayName(const QDateTime &atDateTime,
-                        QTimeZone::NameType nameType = QTimeZone::DefaultName,
+    QString displayName(const QDateTime &atDateTime, NameType nameType = DefaultName,
                         const QLocale &locale = QLocale()) const;
-    QString displayName(QTimeZone::TimeType timeType,
-                        QTimeZone::NameType nameType = QTimeZone::DefaultName,
+    QString displayName(TimeType timeType, NameType nameType = DefaultName,
                         const QLocale &locale = QLocale()) const;
     QString abbreviation(const QDateTime &atDateTime) const;
 
@@ -201,7 +206,10 @@ public:
     static QTimeZone systemTimeZone();
     static QTimeZone utc();
 
+#if QT_CORE_REMOVED_SINCE(6, 12)
     static bool isTimeZoneIdAvailable(const QByteArray &ianaId);
+#endif
+    static bool isTimeZoneIdAvailable(QByteArrayView ianaId);
 
     static QList<QByteArray> availableTimeZoneIds();
     static QList<QByteArray> availableTimeZoneIds(QLocale::Territory territory);
@@ -253,6 +261,8 @@ private:
 #if QT_CONFIG(timezone)
 Q_DECLARE_TYPEINFO(QTimeZone::OffsetData, Q_RELOCATABLE_TYPE);
 #endif
+
+Q_DECLARE_TYPEINFO(QTimeZone::Data, Q_RELOCATABLE_TYPE);
 Q_DECLARE_SHARED(QTimeZone)
 
 #ifndef QT_NO_DATASTREAM

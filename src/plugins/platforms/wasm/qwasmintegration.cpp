@@ -1,12 +1,15 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwasmintegration.h"
 #include "qwasmeventdispatcher.h"
 #include "qwasmcompositor.h"
 #include "qwasmopenglcontext.h"
 #include "qwasmtheme.h"
+#if QT_CONFIG(clipboard)
 #include "qwasmclipboard.h"
+#endif
 #include "qwasmaccessibility.h"
 #include "qwasmservices.h"
 #include "qwasmoffscreensurface.h"
@@ -14,7 +17,9 @@
 #include "qwasmwindow.h"
 #include "qwasmbackingstore.h"
 #include "qwasmfontdatabase.h"
+#if QT_CONFIG(draganddrop)
 #include "qwasmdrag.h"
+#endif
 
 #include <qpa/qplatformwindow.h>
 #include <QtGui/qscreen.h>
@@ -22,13 +27,16 @@
 #include <QtCore/qcoreapplication.h>
 #include <qpa/qplatforminputcontextfactory_p.h>
 #include <qpa/qwindowsysteminterface_p.h>
+#include "private/qwasmsuspendresumecontrol_p.h"
 
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
 // this is where EGL headers are pulled in, make sure it is last
 #include "qwasmscreen.h"
+#if QT_CONFIG(draganddrop)
 #include <private/qsimpledrag_p.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -90,7 +98,9 @@ QWasmIntegration *QWasmIntegration::s_instance;
 QWasmIntegration::QWasmIntegration()
     : m_fontDb(nullptr)
     , m_desktopServices(nullptr)
+#if QT_CONFIG(clipboard)
     , m_clipboard(new QWasmClipboard)
+#endif
 #if QT_CONFIG(accessibility)
     , m_accessibility(new QWasmAccessibility)
 #endif
@@ -142,7 +152,9 @@ QWasmIntegration::QWasmIntegration()
         visualViewport.call<void>("addEventListener", val("resize"),
                                   val::module_property("qtResizeAllScreens"));
     }
+#if QT_CONFIG(draganddrop)
     m_drag = std::make_unique<QWasmDrag>();
+#endif
 }
 
 QWasmIntegration::~QWasmIntegration()
@@ -165,7 +177,7 @@ QWasmIntegration::~QWasmIntegration()
         elementAndScreen.wasmScreen->deleteScreen();
 
     m_screens.clear();
-
+    delete m_clipboard;
     s_instance = nullptr;
 }
 
@@ -175,20 +187,31 @@ bool QWasmIntegration::hasCapability(QPlatformIntegration::Capability cap) const
     case ThreadedPixmaps: return true;
     case OpenGL: return true;
     case ThreadedOpenGL: return false;
-    case RasterGLSurface: return false; // to enable this you need to fix qopenglwidget and quickwidget for wasm
     case MultipleWindows: return true;
     case WindowManagement: return true;
+    case ForeignWindows: return true;
     case OpenGLOnRasterSurface: return true;
+    case OffscreenSurface: return true;
     default: return QPlatformIntegration::hasCapability(cap);
     }
 }
 
-QPlatformWindow *QWasmIntegration::createPlatformWindow(QWindow *window) const
+QWasmWindow *QWasmIntegration::createWindow(QWindow *window, WId nativeHandle) const
 {
     auto *wasmScreen = QWasmScreen::get(window->screen());
     QWasmCompositor *compositor = wasmScreen->compositor();
-    return new QWasmWindow(window, wasmScreen->deadKeySupport(), compositor,
-                           m_backingStores.value(window));
+    return new QWasmWindow(window, compositor,
+                           m_backingStores.value(window), nativeHandle);
+}
+
+QPlatformWindow *QWasmIntegration::createPlatformWindow(QWindow *window) const
+{
+    return createWindow(window, 0);
+}
+
+QPlatformWindow *QWasmIntegration::createForeignWindow(QWindow *window, WId nativeHandle) const
+{
+    return createWindow(window, nativeHandle);
 }
 
 QPlatformBackingStore *QWasmIntegration::createPlatformBackingStore(QWindow *window) const
@@ -202,16 +225,6 @@ QPlatformBackingStore *QWasmIntegration::createPlatformBackingStore(QWindow *win
 void QWasmIntegration::removeBackingStore(QWindow* window)
 {
     m_backingStores.remove(window);
-}
-
-void QWasmIntegration::releaseRequesetUpdateHold()
-{
-    if (QWasmCompositor::releaseRequestUpdateHold())
-    {
-        for (const auto &elementAndScreen : m_screens) {
-            elementAndScreen.wasmScreen->compositor()->requestUpdate();
-        }
-    }
 }
 
 #ifndef QT_NO_OPENGL
@@ -253,7 +266,7 @@ QPlatformFontDatabase *QWasmIntegration::fontDatabase() const
 
 QAbstractEventDispatcher *QWasmIntegration::createEventDispatcher() const
 {
-    return new QWasmEventDispatcher;
+    return new QWasmEventDispatcher();
 }
 
 QVariant QWasmIntegration::styleHint(QPlatformIntegration::StyleHint hint) const
@@ -296,10 +309,12 @@ QPlatformServices *QWasmIntegration::services() const
     return m_desktopServices;
 }
 
+#if QT_CONFIG(clipboard)
 QPlatformClipboard* QWasmIntegration::clipboard() const
 {
     return m_clipboard;
 }
+#endif
 
 #ifndef QT_NO_ACCESSIBILITY
 QPlatformAccessibility *QWasmIntegration::accessibility() const
@@ -394,7 +409,7 @@ void QWasmIntegration::resizeScreen(const emscripten::val &element)
                    << QString::fromEcmaString(element["id"]);
         return;
     }
-    it->wasmScreen->updateQScreenAndCanvasRenderSize();
+    it->wasmScreen->updateQScreenSize();
 }
 
 void QWasmIntegration::updateDpi()
@@ -410,7 +425,7 @@ void QWasmIntegration::updateDpi()
 void QWasmIntegration::resizeAllScreens()
 {
     for (const auto &elementAndScreen : m_screens)
-        elementAndScreen.wasmScreen->updateQScreenAndCanvasRenderSize();
+        elementAndScreen.wasmScreen->updateQScreenSize();
 }
 
 void QWasmIntegration::loadLocalFontFamilies(emscripten::val families)

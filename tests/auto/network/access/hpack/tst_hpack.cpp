@@ -36,6 +36,9 @@ private Q_SLOTS:
     void lookupTableStatic();
     void lookupTableDynamic();
 
+    void dynamicTableSizeUpdate();
+    void decoderMaxHeaderListSize();
+
     void hpackEncodeRequest_data();
     void hpackEncodeRequest();
     void hpackDecodeRequest_data();
@@ -467,6 +470,70 @@ void tst_Hpack::lookupTableDynamic()
     QVERIFY(table.dynamicDataSize() == 0);
     QVERIFY(table.numberOfDynamicEntries() == 0);
     QVERIFY(table.indexOf("name1") == 0);
+}
+
+void tst_Hpack::dynamicTableSizeUpdate()
+{
+    std::vector<uchar> buffer;
+    buffer.reserve(4096);
+
+    BitOStream out(buffer);
+
+    HPack::Encoder encoder(4096u, true);
+
+    QVERIFY(encoder.encodeSizeUpdate(out, 2048u));
+    QVERIFY(encoder.encodeRequest(out, {{":method", "GET"}, {":path", "/"}, {":scheme", "https"}}));
+
+    BitIStream in(buffer.data(), buffer.data() + buffer.size());
+    HPack::Decoder decoder(4096u);
+    QCOMPARE(decoder.dynamicTableCapacity(), 4096u);
+    QCOMPARE(decoder.maxDynamicTableCapacity(), 4096u);
+
+    QVERIFY(decoder.decodeHeaderFields(in));
+    QCOMPARE(decoder.dynamicTableCapacity(), 2048u);
+    // The max is adjusted out-of-band, so it's not changed here:
+    QCOMPARE(decoder.maxDynamicTableCapacity(), 4096u);
+}
+
+void tst_Hpack::decoderMaxHeaderListSize()
+{
+    // Each field contributes name + value + 32 octets (RFC 9113, 6.5.2),
+    // counted on the uncompressed field section regardless of encoding.
+    // Sizes: :method GET = 42, :path /index.html = 48, :scheme https = 44,
+    // for a total of 134 octets.
+    const HttpHeader header = {
+        { ":method", "GET" },
+        { ":path", "/index.html" },
+        { ":scheme", "https" },
+    };
+    constexpr quint32 expectedSize = 134;
+
+    std::vector<uchar> buffer;
+    BitOStream out(buffer);
+    Encoder encoder(4096u, false);
+    QVERIFY(encoder.encodeRequest(out, header));
+
+    const auto decode = [&buffer](quint32 limit, HttpHeader &decoded) {
+        BitIStream in(buffer.data(), buffer.data() + buffer.size());
+        Decoder decoder(4096u);
+        decoder.setMaxHeaderListSize(limit);
+        const bool ok = decoder.decodeHeaderFields(in);
+        decoded = decoder.decodedHeader();
+        return ok;
+    };
+
+    HttpHeader decoded;
+    // Exactly at the limit is accepted; only a strictly larger list is refused.
+    QVERIFY(decode(expectedSize, decoded));
+    QVERIFY(decoded == header);
+
+    // One octet over: refused.
+    QVERIFY(!decode(expectedSize - 1, decoded));
+
+    // A decoder with no configured limit accepts the same block.
+    BitIStream in(buffer.data(), buffer.data() + buffer.size());
+    Decoder unlimited(4096u);
+    QVERIFY(unlimited.decodeHeaderFields(in));
 }
 
 void  tst_Hpack::hpackEncodeRequest_data()

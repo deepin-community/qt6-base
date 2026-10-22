@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
-    \page containers.html
+    \group containers
+    \noautolist
     \title Container Classes
     \ingroup groups
     \ingroup qt-basic-concepts
@@ -221,6 +222,8 @@
     from \l{Implicit Sharing}{implicitly shared copies} due to a call
     to a non-const member function.
 
+    \target iterator-begin
+    \target iterator-end
     \section3 STL-Style Iterators
 
     STL-style iterators have been available since the release of Qt
@@ -275,7 +278,7 @@
     The diagram below shows the valid iterator positions as red
     arrows for a list containing four items:
 
-    \image stliterators1.png
+    \image stliterators1.svg STL-style iterators point to items
 
     Iterating backward with an STL-style iterator is done with reverse iterators:
 
@@ -403,6 +406,14 @@
     You can use Qt containers with functions from \c{#include <algorithm>}.
 
     \snippet code/doc_src_containers.cpp 26
+
+    \section1 Qt container algorithms
+
+    Qt also provides additional generic algorithms in \l {<QtAlgorithms>} that
+    work with any container supporting STL-style iterators, such as \l {qJoin()}
+    for joining container elements into a single value, and \l {qDeleteAll()}
+    for invoking \c{operator delete} on all items in a container or in a given
+    range.
 
     \section1 Other Container-Like Classes
 

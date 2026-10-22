@@ -3,25 +3,29 @@
 
 #include <QObject>
 #include <QDebug>
+#include <QObjectBindableProperty>
 
-//! [0]
-class MyClass : public QObject
+namespace MyClassExample
 {
-    Q_OBJECT
-    Q_PROPERTY(int x READ x WRITE setX NOTIFY xChanged BINDABLE bindableX)
-public:
-    int x() const { return xProp; }
-    void setX(int x) { xProp = x; }
-    QBindable<int> bindableX() { return QBindable<int>(&xProp); }
+    //! [0]
+    class MyClass : public QObject
+    {
+        Q_OBJECT
+        Q_PROPERTY(int x READ x WRITE setX NOTIFY xChanged BINDABLE bindableX)
+    public:
+        int x() const { return xProp; }
+        void setX(int x) { xProp = x; }
+        QBindable<int> bindableX() { return QBindable<int>(&xProp); }
 
-signals:
-    void xChanged();
+    signals:
+        void xChanged();
 
-private:
-    // Declare the instance of the bindable property data.
-    Q_OBJECT_BINDABLE_PROPERTY(MyClass, int, xProp, &MyClass::xChanged)
-};
-//! [0]
+    private:
+        // Declare the instance of the bindable property data.
+        Q_OBJECT_BINDABLE_PROPERTY(MyClass, int, xProp, &MyClass::xChanged)
+    };
+    //! [0]
+}
 
 //! [1]
 class MyClass : public QObject
@@ -57,10 +61,20 @@ private:
     int anotherValue = 0;
 };
 
-// later when using CustomType as a property
-Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(MyClass, CustomType xProp, CustomType(5, 10),
-                                     &MyClass::xChanged)
 //! [2]
+
+class SomeClass : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int x READ x WRITE setX NOTIFY xChanged BINDABLE bindableX)
+
+private:
+    //! [2_property_use]
+    // later when using CustomType as a property
+    Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(SomeClass, CustomType, xProp, CustomType(5, 10),
+                                        &MyClass::xChanged)
+    //! [2_property_use]
+};
 
 void usage_QBindable() {
     //! [3]
@@ -111,42 +125,50 @@ int main()
     prop = 7; // prints "7"
 }
 
-#include "main.moc"
 //! [4]
 
-//! [5]
-class Client{};
+#if 0
+//! [4_include_moc]
+#include "main.moc"
+//! [4_include_moc]
+#endif
 
-class MyClassPrivate : public QObjectPrivate
+namespace MyClassClientExample
 {
-public:
-    QList<Client> clients;
-    bool hasClientsActualCalculation() const { return clients.size() > 0; }
-    Q_OBJECT_COMPUTED_PROPERTY(MyClassPrivate, bool, hasClientsData,
-                               &MyClassPrivate::hasClientsActualCalculation)
-};
+    //! [5]
+    class Client{};
 
-class MyClass : public QObject
-{
-    Q_OBJECT
-    Q_PROPERTY(bool hasClients READ hasClients STORED false BINDABLE bindableHasClients)
-public:
-    QBindable<bool> bindableHasClients()
+    class MyClassPrivate : public QObject
     {
-        return QBindable<bool>(&d_func()->hasClientsData);
-    }
-    bool hasClients() const
+    public:
+        QList<Client> clients;
+        bool hasClientsActualCalculation() const { return clients.size() > 0; }
+        Q_OBJECT_COMPUTED_PROPERTY(MyClassPrivate, bool, hasClientsData,
+                                   &MyClassPrivate::hasClientsActualCalculation)
+    };
+
+    class MyClass : public QObject
     {
-        return d_func()->hasClientsData.value();
-    }
-    void addClient(const Client &c)
-    {
-        Q_D(MyClass);
-        d->clients.push_back(c);
-        // notify that the value could have changed
-        d->hasClientsData.notify();
-    }
-private:
-    Q_DECLARE_PRIVATE(MyClass)
-};
-//! [5]
+        Q_OBJECT
+        Q_PROPERTY(bool hasClients READ hasClients STORED false BINDABLE bindableHasClients)
+    public:
+        QBindable<bool> bindableHasClients()
+        {
+            return QBindable<bool>(&d_func()->hasClientsData);
+        }
+        bool hasClients() const
+        {
+            return d_func()->hasClientsData.value();
+        }
+        void addClient(const Client &c)
+        {
+            Q_D(MyClass);
+            d->clients.push_back(c);
+            // notify that the value could have changed
+            d->hasClientsData.notify();
+        }
+    private:
+        Q_DECLARE_PRIVATE(MyClass)
+    };
+    //! [5]
+}

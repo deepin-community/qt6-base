@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMINTEGRATION_H
 #define QPLATFORMINTEGRATION_H
@@ -90,7 +91,9 @@ public:
         WindowManagement,
         WindowActivation, // whether requestActivate is supported
         SyncState,
-        RasterGLSurface,
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 11)
+        RasterGLSurface Q_DECL_ENUMERATOR_DEPRECATED_X("This capability is no longer used"),
+#endif
         AllGLFunctionsQueryable,
         ApplicationIcon,
         SwitchableWidgetComposition,
@@ -100,7 +103,9 @@ public:
         PaintEvents,
         RhiBasedRendering,
         ScreenWindowGrabbing, // whether QScreen::grabWindow() is supported
-        BackingStoreStaticContents
+        BackingStoreStaticContents,
+        OffscreenSurface,
+        MouseCursorPositioning,
     };
 
     virtual ~QPlatformIntegration() { }

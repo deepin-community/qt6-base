@@ -53,7 +53,7 @@ Q_DECLARE_METATYPE(QPainterPath)
 Q_DECLARE_METATYPE(Qt::ScrollBarPolicy)
 Q_DECLARE_METATYPE(ScrollBarCount)
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 //On mac we get full update. So check that the expected region is contained inside the actual
 #define COMPARE_REGIONS(ACTUAL, EXPECTED) QVERIFY((EXPECTED).subtracted(ACTUAL).isEmpty())
 #else
@@ -246,7 +246,6 @@ private slots:
     void task245469_itemsAtPointWithClip();
     void task253415_reconnectUpdateSceneOnSceneChanged();
     void task255529_transformationAnchorMouseAndViewportMargins();
-    void task259503_scrollingArtifacts();
     void QTBUG_4151_clipAndIgnore_data();
     void QTBUG_4151_clipAndIgnore();
     void QTBUG_5859_exposedRect();
@@ -1625,19 +1624,19 @@ void tst_QGraphicsView::itemsInRect_cosmeticAdjust_data()
     QTest::newRow("0, 201, 300, 99") << QRect(0, 201, 300, 99) << 0 << false;
 
     // Anti-aliased.
-    QTest::newRow("nil") << QRect() << 1 << true;
-    QTest::newRow("0, 0, 300, 100") << QRect(0, 0, 300, 100) << 1 << true;
-    QTest::newRow("0, 0, 100, 300") << QRect(0, 0, 100, 300) << 1 << true;
-    QTest::newRow("200, 0, 100, 300") << QRect(200, 0, 100, 300) << 1 << true;
-    QTest::newRow("0, 200, 300, 100") << QRect(0, 200, 300, 100) << 1 << true;
-    QTest::newRow("0, 0, 300, 99") << QRect(0, 0, 300, 99) << 1 << true;
-    QTest::newRow("0, 0, 99, 300") << QRect(0, 0, 99, 300) << 1 << true;
-    QTest::newRow("201, 0, 99, 300") << QRect(201, 0, 99, 300) << 1 << true;
-    QTest::newRow("0, 201, 300, 99") << QRect(0, 201, 300, 99) << 1 << true;
-    QTest::newRow("0, 0, 300, 98") << QRect(0, 0, 300, 98) << 0 << false;
-    QTest::newRow("0, 0, 98, 300") << QRect(0, 0, 98, 300) << 0 << false;
-    QTest::newRow("202, 0, 98, 300") << QRect(202, 0, 98, 300) << 0 << false;
-    QTest::newRow("0, 202, 300, 98") << QRect(0, 202, 300, 98) << 0 << false;
+    QTest::newRow("nil, antiAliased") << QRect() << 1 << true;
+    QTest::newRow("0, 0, 300, 100, antiAliased") << QRect(0, 0, 300, 100) << 1 << true;
+    QTest::newRow("0, 0, 100, 300, antiAliased") << QRect(0, 0, 100, 300) << 1 << true;
+    QTest::newRow("200, 0, 100, 300, antiAliased") << QRect(200, 0, 100, 300) << 1 << true;
+    QTest::newRow("0, 200, 300, 100, antiAliased") << QRect(0, 200, 300, 100) << 1 << true;
+    QTest::newRow("0, 0, 300, 99, antiAliased") << QRect(0, 0, 300, 99) << 1 << true;
+    QTest::newRow("0, 0, 99, 300, antiAliased") << QRect(0, 0, 99, 300) << 1 << true;
+    QTest::newRow("201, 0, 99, 300, antiAliased") << QRect(201, 0, 99, 300) << 1 << true;
+    QTest::newRow("0, 201, 300, 99, antiAliased") << QRect(0, 201, 300, 99) << 1 << true;
+    QTest::newRow("0, 0, 300, 98, antiAliased") << QRect(0, 0, 300, 98) << 0 << false;
+    QTest::newRow("0, 0, 98, 300, antiAliased") << QRect(0, 0, 98, 300) << 0 << false;
+    QTest::newRow("202, 0, 98, 300, antiAliased") << QRect(202, 0, 98, 300) << 0 << false;
+    QTest::newRow("0, 202, 300, 98, antiAliased") << QRect(0, 202, 300, 98) << 0 << false;
 }
 
 void tst_QGraphicsView::itemsInRect_cosmeticAdjust()
@@ -1833,11 +1832,7 @@ void tst_QGraphicsView::itemAt2()
 
 void tst_QGraphicsView::mapToScene()
 {
-    // Uncomment the commented-out code to see what's going on. It doesn't
-    // affect the test; it just slows it down.
-
     QGraphicsScene scene;
-    scene.addPixmap(QPixmap("3D-Qt-1-2.png"));
 
     QWidget topLevel;
     QGraphicsView view(&topLevel);
@@ -1847,16 +1842,11 @@ void tst_QGraphicsView::mapToScene()
 
     view.setFixedSize(viewSize);
     topLevel.show();
-    QApplication::processEvents();
-    QVERIFY(view.isVisible());
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
     QCOMPARE(view.size(), viewSize);
 
     // First once without setting the scene rect
-#ifdef Q_PROCESSOR_ARM
-    const int step = 20;
-#else
     const int step = 5;
-#endif
 
     for (int x = 0; x < view.width(); x += step) {
         for (int y = 0; y < view.height(); y += step) {
@@ -1920,20 +1910,21 @@ void tst_QGraphicsView::mapToSceneRect_data()
     QTest::addColumn<QPolygonF>("scenePoly");
     QTest::addColumn<qreal>("rotation");
 
-    QTest::newRow("nil") << QRect() << QPolygonF() << qreal(0);
-    QTest::newRow("0, 0, 1, 1") << QRect(0, 0, 1, 1) << QPolygonF(QRectF(0, 0, 1, 1)) << qreal(0);
-    QTest::newRow("0, 0, 10, 10") << QRect(0, 0, 10, 10) << QPolygonF(QRectF(0, 0, 10, 10)) << qreal(0);
-    QTest::newRow("nil") << QRect() << QPolygonF() << qreal(90);
-    QPolygonF p;
-    p << QPointF(0, 0) << QPointF(0, -1) << QPointF(1, -1) << QPointF(1, 0) << QPointF(0, 0);
-    QTest::newRow("0, 0, 1, 1") << QRect(0, 0, 1, 1)
-                                << p
-                                << qreal(90);
-    p.clear();
-    p << QPointF(0, 0) << QPointF(0, -10) << QPointF(10, -10) << QPointF(10, 0) << QPointF(0, 0);
-    QTest::newRow("0, 0, 10, 10") << QRect(0, 0, 10, 10)
-                                  << p
-                                  << qreal(90);
+    const auto translate90 = [&](const QPolygonF &poly) -> QPolygonF {
+        const QTransform mat = QTransform().rotate(-90); // the view is rotated
+        return mat.map(QPolygonF(poly));
+    };
+
+    constexpr QRect r1(0, 0, 1, 1);
+    constexpr QRect r2(0, 0, 10, 10);
+    const QPolygonF p1 = QPolygonF(QRectF(r1));
+    const QPolygonF p2 = QPolygonF(QRectF(r2));
+    QTest::newRow("nil, no rotation") << QRect() << QPolygonF() << qreal(0);
+    QTest::newRow("0, 0, 1, 1, no rotation") << r1 << p1 << qreal(0);
+    QTest::newRow("0, 0, 10, 10, no rotation") << r2 << p2 << qreal(0);
+    QTest::newRow("nil, 90 degree") << QRect() << QPolygonF() << qreal(90);
+    QTest::newRow("0, 0, 1, 1, 90 degree") << r1 << translate90(p1) << qreal(90);
+    QTest::newRow("0, 0, 10, 10, 90 degree") << r2 << translate90(p2) << qreal(90);
 }
 
 void tst_QGraphicsView::mapToSceneRect()
@@ -1954,6 +1945,7 @@ void tst_QGraphicsView::mapToSceneRect()
     view.setTransformationAnchor(QGraphicsView::NoAnchor);
     view.setResizeAnchor(QGraphicsView::NoAnchor);
     view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
 
     view.rotate(rotation);
 
@@ -1972,20 +1964,16 @@ void tst_QGraphicsView::mapToScenePoly()
     view.translate(100, 100);
     view.setFixedSize(117, 117);
     view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
     QPoint center = view.viewport()->rect().center();
     QRect rect(center + QPoint(10, 0), QSize(10, 10));
 
-    QPolygon poly;
-    poly << rect.topLeft();
-    poly << rect.topRight();
-    poly << rect.bottomRight();
-    poly << rect.bottomLeft();
-
-    QPolygonF poly2;
-    poly2 << view.mapToScene(rect.topLeft());
-    poly2 << view.mapToScene(rect.topRight());
-    poly2 << view.mapToScene(rect.bottomRight());
-    poly2 << view.mapToScene(rect.bottomLeft());
+    const QPolygon poly = { rect.topLeft(), rect.topRight(),
+                            rect.bottomRight(), rect.bottomLeft() };
+    const QPolygonF poly2 = { view.mapToScene(rect.topLeft()),
+                              view.mapToScene(rect.topRight()),
+                              view.mapToScene(rect.bottomRight()),
+                              view.mapToScene(rect.bottomLeft()) };
 
     QCOMPARE(view.mapToScene(poly), poly2);
 }
@@ -1998,6 +1986,7 @@ void tst_QGraphicsView::mapToScenePath()
     view.translate(10, 10);
     view.setFixedSize(300, 300);
     view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
     QRect rect(QPoint(10, 0), QSize(10, 10));
 
     QPainterPath path;
@@ -2019,6 +2008,7 @@ void tst_QGraphicsView::mapFromScenePoint()
         view.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         view.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         view.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&view));
 
         QPoint mapped = view.mapFromScene(0, 0);
         QPoint center = view.viewport()->rect().center();
@@ -2038,6 +2028,7 @@ void tst_QGraphicsView::mapFromScenePoint()
         view.ensurePolished();
         view.resize(view.sizeHint());
         toplevel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&toplevel));
 
         QCOMPARE(view.mapFromScene(0, 0), QPoint(0, 0));
         QCOMPARE(view.mapFromScene(0.4, 0.4), QPoint(0, 0));
@@ -2058,28 +2049,21 @@ void tst_QGraphicsView::mapFromSceneRect()
     QWidget topLevel;
     QGraphicsView view(&scene,&topLevel);
     view.rotate(90);
-    view.setFixedSize(200, 200);
-    view.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    view.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    const auto fw = view.frameWidth() * 2;
+    view.setFixedSize(200 + fw, 200 + fw);
     topLevel.show();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(QTest::qWaitForWindowActive(&topLevel));
+    QVERIFY(!view.horizontalScrollBar()->isVisible());
+    QVERIFY(!view.verticalScrollBar()->isVisible());
 
-    QPolygon polygon;
-    polygon << QPoint(98, 98);
-    polygon << QPoint(98, 108);
-    polygon << QPoint(88, 108);
-    polygon << QPoint(88, 98);
-
-
-    QPolygon viewPolygon = view.mapFromScene(0, 0, 10, 10);
-    for (int i = 0; i < 4; ++i) {
-        QVERIFY(qAbs(viewPolygon[i].x() - polygon[i].x()) < 3);
-        QVERIFY(qAbs(viewPolygon[i].y() - polygon[i].y()) < 3);
-    }
+    const QRectF input(0, 0, 10, 10);
+    // fixed size is 200x200 so center is 100x100
+    const QPolygon polygon{ QPoint(100, 100), QPoint(100, 110), QPoint(90, 110), QPoint(90, 100) };
+    const QPolygon viewPolygon = view.mapFromScene(input);
+    QCOMPARE(viewPolygon, polygon);
 
     QPoint pt = view.mapFromScene(QPointF());
-    QPolygon p;
-    p << pt << pt << pt << pt;
+    QPolygon p{ pt, pt, pt, pt };
     QCOMPARE(view.mapFromScene(QRectF()), p);
 }
 
@@ -2088,28 +2072,18 @@ void tst_QGraphicsView::mapFromScenePoly()
     QGraphicsScene scene;
     QGraphicsView view(&scene);
     view.rotate(90);
-    view.setFixedSize(200, 200);
-    view.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    view.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    const auto fw = view.frameWidth() * 2;
+    view.setFixedSize(200 + fw, 200 + fw);
     view.show();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(!view.horizontalScrollBar()->isVisible());
+    QVERIFY(!view.verticalScrollBar()->isVisible());
 
-    QPolygonF polygon;
-    polygon << QPoint(0, 0);
-    polygon << QPoint(10, 0);
-    polygon << QPoint(10, 10);
-    polygon << QPoint(0, 10);
-
-    QPolygon polygon2;
-    polygon2 << QPoint(98, 98);
-    polygon2 << QPoint(98, 108);
-    polygon2 << QPoint(88, 108);
-    polygon2 << QPoint(88, 98);
-
-    QPolygon viewPolygon = view.mapFromScene(polygon);
-    for (int i = 0; i < 4; ++i) {
-        QVERIFY(qAbs(viewPolygon[i].x() - polygon2[i].x()) < 3);
-        QVERIFY(qAbs(viewPolygon[i].y() - polygon2[i].y()) < 3);
-    }
+    const QPolygonF input{ QPoint(0, 0), QPoint(10, 0), QPoint(10, 10), QPoint(0, 10) };
+    // fixed size is 200x200 so center is 100x100
+    const QPolygon polygon{ QPoint(100, 100), QPoint(100, 110), QPoint(90, 110), QPoint(90, 100) };
+    const QPolygon viewPolygon = view.mapFromScene(input);
+    QCOMPARE(viewPolygon, polygon);
 }
 
 void tst_QGraphicsView::mapFromScenePath()
@@ -2117,34 +2091,22 @@ void tst_QGraphicsView::mapFromScenePath()
     QGraphicsScene scene;
     QGraphicsView view(&scene);
     view.rotate(90);
-    view.setFixedSize(200, 200);
-    view.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    view.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    const auto fw = view.frameWidth() * 2;
+    view.setFixedSize(200 + fw, 200 + fw);
     view.show();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(!view.horizontalScrollBar()->isVisible());
+    QVERIFY(!view.verticalScrollBar()->isVisible());
 
-    QPolygonF polygon;
-    polygon << QPoint(0, 0);
-    polygon << QPoint(10, 0);
-    polygon << QPoint(10, 10);
-    polygon << QPoint(0, 10);
+    const QPolygonF input{ QPoint(0, 0), QPoint(10, 0), QPoint(10, 10), QPoint(0, 10) };
+    QPainterPath inputPath;
+    inputPath.addPolygon(input);
+    // fixed size is 200x200 so center is 100x100
+    const QPolygon polygon{ QPoint(100, 100), QPoint(100, 110), QPoint(90, 110), QPoint(90, 100) };
     QPainterPath path;
     path.addPolygon(polygon);
-
-    QPolygon polygon2;
-    polygon2 << QPoint(98, 98);
-    polygon2 << QPoint(98, 108);
-    polygon2 << QPoint(88, 108);
-    polygon2 << QPoint(88, 98);
-    QPainterPath path2;
-    path2.addPolygon(polygon2);
-
-    QPolygonF pathPoly = view.mapFromScene(path).toFillPolygon();
-    QPolygonF path2Poly = path2.toFillPolygon();
-
-    for (int i = 0; i < pathPoly.size(); ++i) {
-        QVERIFY(qAbs(pathPoly[i].x() - path2Poly[i].x()) < 3);
-        QVERIFY(qAbs(pathPoly[i].y() - path2Poly[i].y()) < 3);
-    }
+    QPainterPath viewPath = view.mapFromScene(inputPath);
+    QCOMPARE(viewPath, path);
 }
 
 void tst_QGraphicsView::sendEvent()
@@ -2159,7 +2121,7 @@ void tst_QGraphicsView::sendEvent()
     QGraphicsView view(&scene);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(QTest::qWaitForWindowFocused(&view));
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&view));
 
     item->setFocus();
@@ -2226,7 +2188,7 @@ void tst_QGraphicsView::wheelEvent()
     QGraphicsView view(&scene);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(QTest::qWaitForWindowFocused(&view));
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&view));
 
 
@@ -2472,7 +2434,7 @@ void tst_QGraphicsView::viewportUpdateMode()
 
     // The view gets two updates for the update scene updates.
     QTRY_VERIFY(!view.lastUpdateRegions.isEmpty());
-#ifndef Q_OS_MAC //cocoa doesn't support drawing regions
+#ifndef Q_OS_MACOS //cocoa doesn't support drawing regions
     QCOMPARE(view.lastUpdateRegions.last().rectCount(), 2);
     QCOMPARE(view.lastUpdateRegions.last().begin()[0].size(), QSize(14, 14));
     QCOMPARE(view.lastUpdateRegions.last().begin()[1].size(), QSize(14, 14));
@@ -2828,15 +2790,15 @@ void tst_QGraphicsView::levelOfDetail_data()
 
     QTest::newRow("1:4, 1:4") << QTransform().scale(0.25, 0.25) << qreal(0.25);
     QTest::newRow("1:2, 1:4") << QTransform().scale(0.5, 0.25) << qreal(::sqrt(0.125));
-    QTest::newRow("4:1, 1:2") << QTransform().scale(0.25, 0.5) << qreal(::sqrt(0.125));
+    QTest::newRow("1:4, 1:2") << QTransform().scale(0.25, 0.5) << qreal(::sqrt(0.125));
 
     QTest::newRow("1:2, 1:2") << QTransform().scale(0.5, 0.5) << qreal(0.5);
     QTest::newRow("1:1, 1:2") << QTransform().scale(1, 0.5) << qreal(::sqrt(0.5));
-    QTest::newRow("2:1, 1:1") << QTransform().scale(0.5, 1) << qreal(::sqrt(0.5));
+    QTest::newRow("1:2, 1:1") << QTransform().scale(0.5, 1) << qreal(::sqrt(0.5));
 
     QTest::newRow("1:1, 1:1") << QTransform().scale(1, 1) << qreal(1.0);
     QTest::newRow("2:1, 1:1") << QTransform().scale(2, 1) << qreal(::sqrt(2.0));
-    QTest::newRow("1:1, 2:1") << QTransform().scale(2, 1) << qreal(::sqrt(2.0));
+    QTest::newRow("1:1, 2:1") << QTransform().scale(1, 2) << qreal(::sqrt(2.0));
     QTest::newRow("2:1, 2:1") << QTransform().scale(2, 2) << qreal(2.0);
     QTest::newRow("2:1, 4:1") << QTransform().scale(2, 4) << qreal(::sqrt(8.0));
     QTest::newRow("4:1, 2:1") << QTransform().scale(4, 2) << qreal(::sqrt(8.0));
@@ -2864,38 +2826,1216 @@ void tst_QGraphicsView::levelOfDetail()
     QTRY_COMPARE(item->lastLod, lod);
 }
 
-// Moved to tst_qgraphicsview_2.cpp
-extern void _scrollBarRanges_data();
+static void scrollBarRanges_addTestData(const QString &style, bool styled)
+{
+    const int viewWidth = 400;
+    const int viewHeight = 100;
+
+    static constexpr struct Data {
+        const char *name;
+        QRectF sceneRect;
+        ScrollBarCount sceneRectOffsetFactors;
+        int scale;
+        Qt::ScrollBarPolicy hbarpolicy, vbarpolicy;
+        ExpectedValueDescription hmin, hmax, vmin, vmax;
+    } data [] = {
+        {
+            "1",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "2",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "3",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 1, 1),
+            ExpectedValueDescription(0, 0),
+            ExpectedValueDescription(100, 1, 1),
+        },
+        {
+            "4",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "5",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "6",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "7",
+            QRectF(0, 0, viewWidth + 1, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1, 1, 1),
+        },
+        {
+            "8",
+            QRectF(0, 0, viewWidth + 51, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(51, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1, 1, 1),
+        },
+        {
+            "9",
+            QRectF(0, 0, viewWidth + 51, viewHeight + 101),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(51, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(101, 1, 1),
+        },
+        {
+            "10",
+            QRectF(-101, -101, viewWidth + 1, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "11",
+            QRectF(-101, -101, viewWidth + 51, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "12",
+            QRectF(-101, -101, viewWidth + 51, viewHeight + 101),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "13",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 2, 1),
+        },
+        {
+            "14",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 2, 1),
+        },
+        {
+            "15",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(100, 2, 1),
+        },
+        {
+            "16",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "17",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "18",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "1 x2",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight, 1, 1),
+        },
+        {
+            "2 x2",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth + 100, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight, 1, 1),
+        },
+        {
+            "3 x2",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth + 100, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight + 200, 1, 1),
+        },
+        {
+            "4 x2",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 200, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight - 200, 1, 1),
+        },
+        {
+            "5 x2",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 100, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight - 200, 1, 1),
+        },
+        {
+            "6 x2",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAsNeeded,
+            Qt::ScrollBarAsNeeded,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 100, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight, 1, 1),
+        },
+        {
+            "1 No ScrollBars",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "2 No ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "3 No ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(100),
+        },
+        {
+            "4 No ScrollBars",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "5 No ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-50),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "6 No ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-50),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(),
+        },
+        {
+            "7 No ScrollBars",
+            QRectF(0, 0, viewWidth + 1, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1),
+        },
+        {
+            "8 No ScrollBars",
+            QRectF(0, 0, viewWidth + 51, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(51),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1),
+        },
+        {
+            "9 No ScrollBars",
+            QRectF(0, 0, viewWidth + 51, viewHeight + 101),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(51),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(101),
+        },
+        {
+            "10 No ScrollBars",
+            QRectF(-101, -101, viewWidth + 1, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100),
+        },
+        {
+            "11 No ScrollBars",
+            QRectF(-101, -101, viewWidth + 51, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-50),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100),
+        },
+        {
+            "12 No ScrollBars",
+            QRectF(-101, -101, viewWidth + 51, viewHeight + 101),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-50),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(),
+        },
+        {
+            "13 No ScrollBars",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1),
+        },
+        {
+            "14 No ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1),
+        },
+        {
+            "15 No ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(100, 1),
+        },
+        {
+            "16 No ScrollBars",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100),
+        },
+        {
+            "17 No ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-50),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100),
+        },
+        {
+            "18 No ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-50),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(),
+        },
+        {
+            "1 x2 No ScrollBars",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight),
+        },
+        {
+            "2 x2 No ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth + 100),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight),
+        },
+        {
+            "3 x2 No ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth + 100),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight + 200),
+        },
+        {
+            "4 x2 No ScrollBars",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 200),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight - 200),
+        },
+        {
+            "5 x2 No ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 100),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight - 200),
+        },
+        {
+            "6 x2 No ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOff,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 100),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight),
+        },
+        {
+            "1 Always ScrollBars",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "2 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "3 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(100, 1, 1),
+        },
+        {
+            "4 Always ScrollBars",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-100, 1, 1),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "5 Always ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "6 Always ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "7 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 1, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1, 1, 1),
+        },
+        {
+            "8 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 51, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(51, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1, 1, 1),
+        },
+        {
+            "9 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 51, viewHeight + 101),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(51, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(101, 1, 1),
+        },
+        {
+            "10 Always ScrollBars",
+            QRectF(-101, -101, viewWidth + 1, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "11 Always ScrollBars",
+            QRectF(-101, -101, viewWidth + 51, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "12 Always ScrollBars",
+            QRectF(-101, -101, viewWidth + 51, viewHeight + 101),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "13 Always ScrollBars",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 2, 1),
+        },
+        {
+            "14 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 2, 1),
+        },
+        {
+            "15 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(100, 2, 1),
+        },
+        {
+            "16 Always ScrollBars",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "17 Always ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100, 1, 1),
+        },
+        {
+            "18 Always ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(0, 1, 1),
+        },
+        {
+            "1 x2 Always ScrollBars",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight, 1, 1),
+        },
+        {
+            "2 x2 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth + 100, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight, 1, 1),
+        },
+        {
+            "3 x2 Always ScrollBars",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth + 100, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight + 200, 1, 1),
+        },
+        {
+            "4 x2 Always ScrollBars",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 200, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight - 200, 1, 1),
+        },
+        {
+            "5 x2 Always ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 100, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight - 200, 1, 1),
+        },
+        {
+            "6 x2 Always ScrollBars",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOn,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 100, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight, 1, 1),
+        },
+        {
+            "1 Vertical Only",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "2 Vertical Only",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "3 Vertical Only",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(100),
+        },
+        {
+            "4 Vertical Only",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-100, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "5 Vertical Only",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(),
+        },
+        {
+            "6 Vertical Only",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100),
+            ExpectedValueDescription(),
+        },
+        {
+            "7 Vertical Only",
+            QRectF(0, 0, viewWidth + 1, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1),
+        },
+        {
+            "8 Vertical Only",
+            QRectF(0, 0, viewWidth + 51, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(51, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(1),
+        },
+        {
+            "9 Vertical Only",
+            QRectF(0, 0, viewWidth + 51, viewHeight + 101),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(51, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(101),
+        },
+        {
+            "10 Vertical Only",
+            QRectF(-101, -101, viewWidth + 1, viewHeight +1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100),
+        },
+        {
+            "11 Vertical Only",
+            QRectF(-101, -101, viewWidth + 51, viewHeight + 1),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-100),
+        },
+        {
+            "12 Vertical Only",
+            QRectF(-101, -101, viewWidth + 51, viewHeight + 101),
+            ScrollBarCount(0, 0, 0, 0),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-101),
+            ExpectedValueDescription(),
+        },
+        {
+            "13 Vertical Only",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1),
+        },
+        {
+            "14 Vertical Only",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(0, 1),
+        },
+        {
+            "15 Vertical Only",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(50, 2, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(100, 1),
+        },
+        {
+            "16 Vertical Only",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100),
+        },
+        {
+            "17 Vertical Only",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-100),
+        },
+        {
+            "18 Vertical Only",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(-1, -1, 1, 1),
+            1,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(-50, 1, 1),
+            ExpectedValueDescription(-100, -1),
+            ExpectedValueDescription(),
+        },
+        {
+            "1 x2 Vertical Only",
+            QRectF(0, 0, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight),
+        },
+        {
+            "2 x2 Vertical Only",
+            QRectF(0, 0, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth + 100, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight),
+        },
+        {
+            "3 x2 Vertical Only",
+            QRectF(0, 0, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewWidth + 100, 1, 1),
+            ExpectedValueDescription(),
+            ExpectedValueDescription(viewHeight + 200),
+        },
+        {
+            "4 x2 Vertical Only",
+            QRectF(-100, -100, viewWidth, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 200, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight - 200),
+        },
+        {
+            "5 x2 Vertical Only",
+            QRectF(-100, -100, viewWidth + 50, viewHeight),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 100, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight - 200),
+        },
+        {
+            "6 x2 Vertical Only",
+            QRectF(-100, -100, viewWidth + 50, viewHeight + 100),
+            ScrollBarCount(0, 0, 0, 0),
+            2,
+            Qt::ScrollBarAlwaysOff,
+            Qt::ScrollBarAlwaysOn,
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewWidth - 100, 1, 1),
+            ExpectedValueDescription(-200),
+            ExpectedValueDescription(viewHeight),
+        },
+    };
+
+    const QSize viewSize(viewWidth, viewHeight);
+
+    for (const Data &e : data) {
+        QTest::addRow("%s%s, %s", style.toLatin1().data(), styled ? ", Styled" : "", e.name)
+            << style << viewSize
+            << e.sceneRect
+            << e.sceneRectOffsetFactors
+            << QTransform().scale(e.scale, e.scale)
+            << e.hbarpolicy
+            << e.vbarpolicy
+            << e.hmin << e.hmax << e.vmin << e.vmax
+            << styled;
+    }
+}
 
 void tst_QGraphicsView::scrollBarRanges_data()
 {
-    _scrollBarRanges_data();
+    QTest::addColumn<QString>("style");
+    QTest::addColumn<QSize>("viewportSize");
+    QTest::addColumn<QRectF>("sceneRect");
+    QTest::addColumn<ScrollBarCount>("sceneRectOffsetFactors");
+    QTest::addColumn<QTransform>("transform");
+    QTest::addColumn<Qt::ScrollBarPolicy>("hbarpolicy");
+    QTest::addColumn<Qt::ScrollBarPolicy>("vbarpolicy");
+    QTest::addColumn<ExpectedValueDescription>("hmin");
+    QTest::addColumn<ExpectedValueDescription>("hmax");
+    QTest::addColumn<ExpectedValueDescription>("vmin");
+    QTest::addColumn<ExpectedValueDescription>("vmax");
+    QTest::addColumn<bool>("useStyledPanel");
+
+    const auto styles = QStyleFactory::keys();
+    for (const QString &style : styles) {
+        scrollBarRanges_addTestData(style, false);
+        scrollBarRanges_addTestData(style, true);
+    }
 }
-
-// Simulates motif scrollbar for range tests
-class FauxMotifStyle : public QCommonStyle {
-public:
-    int styleHint(StyleHint hint, const QStyleOption *option, const QWidget *widget, QStyleHintReturn *returnData) const override
-    {
-        if (hint == QStyle::SH_ScrollView_FrameOnlyAroundContents)
-            return true;
-        return QCommonStyle::styleHint(hint, option, widget, returnData);
-    }
-
-    int pixelMetric(PixelMetric m, const QStyleOption *opt, const QWidget *widget) const override
-    {
-        if (m == QStyle::PM_ScrollView_ScrollBarSpacing)
-            return 4;
-        return QCommonStyle::pixelMetric(m, opt, widget);
-    }
-};
 
 void tst_QGraphicsView::scrollBarRanges()
 {
     if (isPlatformEGLFS())
         QSKIP("", "Resizing does not work on EGLFS on top level window", Continue);
 
-    QFETCH(QByteArray, style);
+    QFETCH(QString, style);
     QFETCH(QSize, viewportSize);
     QFETCH(QRectF, sceneRect);
     QFETCH(ScrollBarCount, sceneRectOffsetFactors);
@@ -2919,10 +4059,7 @@ void tst_QGraphicsView::scrollBarRanges()
     view.setTransform(transform);
     view.setFrameStyle(useStyledPanel ? QFrame::StyledPanel : QFrame::NoFrame);
 
-    if (style == "motif")
-        stylePtr.reset(new FauxMotifStyle);
-    else
-        stylePtr.reset(QStyleFactory::create(QLatin1String(style)));
+    stylePtr.reset(QStyleFactory::create(style));
     view.setStyle(stylePtr.data());
     view.setStyleSheet(" "); // enables style propagation ;-)
 
@@ -3191,7 +4328,7 @@ void tst_QGraphicsView::task172231_untransformableItems()
     view.scale(2, 1);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(QTest::qWaitForWindowFocused(&view));
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&view));
 
     QRectF origExposedRect = text->exposedRect;
@@ -3730,8 +4867,6 @@ void tst_QGraphicsView::moveItemWhileScrolling()
     int a = adjustForAntialiasing ? 2 : 1;
     expectedRegion += QRect(40, 50, 10, 10).adjusted(-a, -a, a, a);
     expectedRegion += QRect(40, 60, 10, 10).adjusted(-a, -a, a, a);
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
     COMPARE_REGIONS(view.lastPaintedRegion, expectedRegion);
 }
 
@@ -4080,7 +5215,7 @@ void tst_QGraphicsView::exposeRegion()
     COMPARE_REGIONS(view.lastUpdateRegions.at(0), expectedExposeRegion);
 
     // Make sure the item didn't get any repaints.
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     QCOMPARE(item->paints, 0);
 #endif
 }
@@ -4243,7 +5378,7 @@ void tst_QGraphicsView::update2()
     rect->update();
     QTRY_VERIFY(view.painted);
 
-#ifndef Q_OS_MAC //cocoa doesn't support drawing regions
+#ifndef Q_OS_MACOS //cocoa doesn't support drawing regions
     QTRY_VERIFY(view.painted);
     QCOMPARE(view.lastUpdateRegions.size(), 1);
     QCOMPARE(view.lastUpdateRegions.at(0), expectedUpdateRegion);
@@ -4301,7 +5436,7 @@ void tst_QGraphicsView::update_ancestorClipsChildrenToShape()
     child->update();
     QTRY_VERIFY(view.painted);
 
-#ifndef Q_OS_MAC //cocoa doesn't support drawing regions
+#ifndef Q_OS_MACOS //cocoa doesn't support drawing regions
     QTRY_VERIFY(view.painted);
     QCOMPARE(view.lastUpdateRegions.size(), 1);
     QCOMPARE(view.lastUpdateRegions.at(0), QRegion(expected.toAlignedRect()));
@@ -4355,7 +5490,7 @@ void tst_QGraphicsView::update_ancestorClipsChildrenToShape2()
     child->update();
     QTRY_VERIFY(view.painted);
 
-#ifndef Q_OS_MAC //cocoa doesn't support drawing regions
+#ifndef Q_OS_MACOS //cocoa doesn't support drawing regions
     QTRY_VERIFY(view.painted);
     QCOMPARE(view.lastUpdateRegions.size(), 1);
     QCOMPARE(view.lastUpdateRegions.at(0), QRegion(expected.toAlignedRect()));
@@ -4373,7 +5508,7 @@ void tst_QGraphicsView::update_ancestorClipsChildrenToShape2()
     expected = child->deviceTransform(view.viewportTransform()).mapRect(child->boundingRect());
     expected.adjust(-2, -2, 2, 2); // Antialiasing
 
-#ifndef Q_OS_MAC //cocoa doesn't support drawing regions
+#ifndef Q_OS_MACOS //cocoa doesn't support drawing regions
     QTRY_VERIFY(view.painted);
     QCOMPARE(view.lastUpdateRegions.size(), 1);
     QCOMPARE(view.lastUpdateRegions.at(0), QRegion(expected.toAlignedRect()));
@@ -4402,7 +5537,7 @@ void tst_QGraphicsView::inputMethodSensitivity()
     QGraphicsView view(&scene);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(QTest::qWaitForWindowFocused(&view));
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&view));
 
     FocusItem *item = new FocusItem;
@@ -4650,7 +5785,7 @@ void tst_QGraphicsView::task255529_transformationAnchorMouseAndViewportMargins()
     if (!isActiveWindow)
         QSKIP("Window activation failed, skipping test", Abort);
     // This is highly unstable (observed to pass on Windows and some Linux configurations).
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     for (int i = 0; i < 4; ++i) {
         QPoint mouseViewPos(20, 20);
         sendMouseMove(view.viewport(), mouseViewPos);
@@ -4674,63 +5809,6 @@ void tst_QGraphicsView::task255529_transformationAnchorMouseAndViewportMargins()
         QTest::qWait(100);
     }
 #endif
-}
-
-void tst_QGraphicsView::task259503_scrollingArtifacts()
-{
-    QGraphicsScene scene(0, 0, 800, 600);
-
-    QGraphicsRectItem card;
-    card.setRect(0, 0, 50, 50);
-    card.setPen(QPen(Qt::darkRed));
-    card.setBrush(QBrush(Qt::cyan));
-    card.setZValue(2.0);
-    card.setPos(300, 300);
-    scene.addItem(&card);
-
-    class SAGraphicsView: public QGraphicsView
-    {
-    public:
-        SAGraphicsView(QGraphicsScene *scene)
-            : QGraphicsView(scene)
-            , itSTimeToTest(false)
-        {
-            setViewportUpdateMode( QGraphicsView::MinimalViewportUpdate );
-            resize(QSize(640, 480));
-        }
-
-        QRegion updateRegion;
-        bool itSTimeToTest;
-
-        void paintEvent(QPaintEvent *event) override
-        {
-            QGraphicsView::paintEvent(event);
-
-            if (itSTimeToTest)
-            {
-                QEXPECT_FAIL("", "QTBUG-24296", Continue);
-                QCOMPARE(event->region(), updateRegion);
-            }
-        }
-    };
-
-    SAGraphicsView view(&scene);
-    view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
-
-    int hsbValue = view.horizontalScrollBar()->value();
-    view.horizontalScrollBar()->setValue(hsbValue / 2);
-    QTest::qWait(10);
-    view.horizontalScrollBar()->setValue(0);
-    QTest::qWait(10);
-
-    QRect itemDeviceBoundingRect = card.deviceTransform(view.viewportTransform()).mapRect(card.boundingRect()).toRect();
-    itemDeviceBoundingRect.adjust(-2, -2, 2, 2);
-    view.updateRegion = itemDeviceBoundingRect;
-    view.updateRegion += itemDeviceBoundingRect.translated(-100, 0);
-    view.itSTimeToTest = true;
-    card.setPos(200, 300);
-    QTest::qWait(10);
 }
 
 void tst_QGraphicsView::QTBUG_4151_clipAndIgnore_data()
@@ -4999,7 +6077,7 @@ void tst_QGraphicsView::QTBUG_53974_mismatched_hide_show_events()
 
     topLevel.show();
     topLevel.activateWindow();
-    QVERIFY(QTest::qWaitForWindowActive(&topLevel));
+    QVERIFY(QTest::qWaitForWindowFocused(&topLevel));
 
     // Starting point
     QCOMPARE_EQ(topLevel.currentIndex(), 0);
@@ -5013,9 +6091,7 @@ void tst_QGraphicsView::QTBUG_53974_mismatched_hide_show_events()
     QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
 
     lowLevel->setCurrentIndex(0);
-    QEXPECT_FAIL("", "The view was already hidden, so the refcount should still be 0", Continue);
     QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
-    scene->d_func()->activationRefCount = 0;
 
     // Make lowLevel visible.
     topLevel.setCurrentIndex(1);
@@ -5043,9 +6119,7 @@ void tst_QGraphicsView::QTBUG_53974_mismatched_hide_show_events()
     QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
 
     lowLevel->setCurrentIndex(0);
-    QEXPECT_FAIL("", "The view was already hidden, so the refcount should still be 0", Continue);
     QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
-    scene->d_func()->activationRefCount = 0;
 
     // Make lowLevel and the QGV visible.
     lowLevel->setCurrentIndex(1);
@@ -5060,9 +6134,7 @@ void tst_QGraphicsView::QTBUG_53974_mismatched_hide_show_events()
 
     // Hide the QGV:
     lowLevel->setCurrentIndex(0);
-    QEXPECT_FAIL("", "The view was already hidden, so the refcount should still be 0", Continue);
     QCOMPARE_EQ(scene->d_func()->activationRefCount, 0);
-    scene->d_func()->activationRefCount = 0;
 }
 #endif
 

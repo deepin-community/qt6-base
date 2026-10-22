@@ -78,9 +78,3 @@ static void readRegularEmptyFile_snippet()
     }
 //! [3]
 }
-
-int main()
-{
-    lineByLine_snippet();
-    writeStream_snippet();
-}

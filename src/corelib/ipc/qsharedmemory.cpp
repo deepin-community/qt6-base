@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsharedmemory.h"
 #include "qsharedmemory_p.h"
@@ -12,9 +13,14 @@
 #ifdef Q_OS_WIN
 #  include <qt_windows.h>
 #endif
+#include <errno.h>
 
 #ifndef MAX_PATH
-#  define MAX_PATH PATH_MAX
+#  ifdef PATH_MAX
+#    define MAX_PATH PATH_MAX
+#  else
+#    define MAX_PATH 1024
+#  endif
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -43,6 +49,13 @@ inline void QSharedMemoryPrivate::destructBackend()
 #if QT_CONFIG(systemsemaphore)
 inline QNativeIpcKey QSharedMemoryPrivate::semaphoreNativeKey() const
 {
+#if defined(Q_OS_HARMONY)
+    auto suffix = "_sem"_L1;
+    QString semkey = nativeKey.nativeKey();
+    semkey.truncate(MAX_PATH - suffix.size() - 1);
+    semkey += suffix;
+    return { semkey, nativeKey.type() };
+#else
     if (isIpcSupported(IpcType::SharedMemory, QNativeIpcKey::Type::Windows)
             && nativeKey.type() == QNativeIpcKey::Type::Windows) {
         // native keys are plain kernel object names, limited to MAX_PATH
@@ -52,6 +65,7 @@ inline QNativeIpcKey QSharedMemoryPrivate::semaphoreNativeKey() const
         semkey += suffix;
         return { semkey, QNativeIpcKey::Type::Windows };
     }
+#endif
 
     // System V and POSIX keys appear to operate in different namespaces, so we
     // can just use the same native key

@@ -1,17 +1,15 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsdirect2dbitmap.h"
 #include "qwindowsdirect2dcontext.h"
 #include "qwindowsdirect2dhelpers.h"
 #include "qwindowsdirect2ddevicecontext.h"
 
+#include <QtCore/private/qcomptr_p.h>
 #include <QtGui/qimage.h>
 #include <QtGui/qcolor.h>
-
-#include <wrl.h>
-
-using Microsoft::WRL::ComPtr;
 
 QT_BEGIN_NAMESPACE
 

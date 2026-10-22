@@ -7,18 +7,36 @@ analysis_instructions_axivion: &analysis_instructions_axivion
         variableName: AXIVION_CHAINLOAD_TOOLCHAIN_FILE
         variableValue: "{{.AgentWorkingDir}}/install/lib/cmake/Qt6/qt.toolchain.cmake"
       - type: EnvironmentVariable
+        variableName: AXIVION_DIVIDED_MODULES
+        variableValue: "qtbase_qtdeclarative_qtcanvaspainter_qtconnectivity_qtgrpc_qtopenapi_qttools"
+      - type: EnvironmentVariable
         variableName: CMAKE_PREFIX_PATH
         variableValue: "{{.AgentWorkingDir}}/install/lib/cmake"
         enable_if:
           condition: runtime
           env_var: TESTED_MODULE_COIN
           not_equals_value: "qtbase"
+      - type: EnvironmentVariable
+        variableName: TESTED_MODULE_BRANCH_COIN
+        variableValue: "unknown"
+        enable_if:
+          condition: runtime
+          env_var: TESTED_MODULE_BRANCH_COIN
+          equals_value: null
     - type: Group
       instructions:
       - type: Rename
         sourcePath: "{{.SourceDir}}/coin/axivion/ci_config_{{.Env.TARGET_OS_COIN}}.json"
         targetPath: "{{.Env.HOME}}/axivion/ci_config.json"
         userMessageOnFailure: "Moving ci_config.json failed. Make sure you have included the file in coin/axivion/ -folder"
+      - type: Rename
+        sourcePath: "{{.SourceDir}}/coin/axivion/start_analysis.sh"
+        targetPath: "{{.Env.HOME}}/axivion/start_analysis.sh"
+        userMessageOnFailure: "Moving start_analysis.sh failed. Make sure you have included the file in coin/axivion/ -folder"
+        enable_if:
+          condition: runtime
+          env_var: AXIVION_DIVIDED_MODULES
+          contains_value: "{{.Env.TESTED_MODULE_COIN}}"
       - type: SetBuildDirectory
         directory: "{{.SourceDir}}"
       - type: ChangeDirectory
@@ -73,18 +91,17 @@ build_environment_axivion: &build_environment_axivion
       userMessageOnFailure: "Failed to initialize git submodules"
     - type: Group
       instructions:
+      - type: EnvironmentVariable
+        variableName: AXIVION_ANALYSIS
+        variableValue: null
       - !include "{{qt/qtbase}}/cmake_module_build_instructions.yaml"
+      - type: EnvironmentVariable
+        variableName: AXIVION_ANALYSIS
+        variableValue: "1"
       enable_if:
         condition: runtime
-        env_var: TESTED_MODULE_COIN
-        not_equals_value: "qtbase"
-    - type: Group
-      instructions:
-      - !include "{{qt/qtbase}}/cmake_qtbase_build_instructions.yaml"
-      enable_if:
-        condition: runtime
-        env_var: TESTED_MODULE_COIN
-        equals_value: "qtbase"
+        env_var: PREBUILD_MODULE_FOR_AXIVION
+        not_equals_value: null
 
 type: Group
 instructions:

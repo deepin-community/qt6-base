@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QVULKANWINDOW_H
 #define QVULKANWINDOW_H
@@ -11,7 +12,7 @@
 #pragma qt_sync_skip_header_check
 #endif
 
-#if QT_CONFIG(vulkan) || defined(Q_QDOC)
+#if (QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)) || defined(Q_QDOC)
 
 #include <QtGui/qvulkaninstance.h>
 #include <QtGui/qwindow.h>
@@ -158,6 +159,6 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QVulkanWindow::Flags)
 
 QT_END_NAMESPACE
 
-#endif // QT_CONFIG(vulkan)
+#endif // QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
 
 #endif

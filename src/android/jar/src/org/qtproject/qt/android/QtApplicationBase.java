@@ -8,8 +8,7 @@ import android.app.Application;
 public class QtApplicationBase extends Application {
     @Override
     public void onTerminate() {
-        QtNative.terminateQt();
-        QtNative.getQtThread().exit();
         super.onTerminate();
+        QtNative.terminateQtNativeApplication();
     }
 }

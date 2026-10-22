@@ -1,19 +1,28 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qassociativeiterable.h>
+#include <QtCore/qiterable_impl.h>
 #include <QtCore/qvariant.h>
 
-#include <QtCore/private/qiterable_p.h>
-
 QT_BEGIN_NAMESPACE
+
+#if QT_DEPRECATED_SINCE(6, 15)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+
+/*!
+    \class QAssociativeIterator
+    \internal
+ */
 
 /*!
     Returns the key this iterator points to.
 */
 QVariant QAssociativeIterator::key() const
 {
-    return QIterablePrivate::retrieveElement(
+    return QtIterablePrivate::retrieveElement(
                 metaContainer().keyMetaType(), [this](void *dataPtr) {
         metaContainer().keyAtIterator(constIterator(), dataPtr);
     });
@@ -50,11 +59,16 @@ QVariantPointer<QAssociativeIterator> QAssociativeIterator::operator->() const
 }
 
 /*!
+    \class QAssociativeConstIterator
+    \internal
+ */
+
+/*!
     Returns the key this iterator points to.
 */
 QVariant QAssociativeConstIterator::key() const
 {
-    return QIterablePrivate::retrieveElement(
+    return QtIterablePrivate::retrieveElement(
                 metaContainer().keyMetaType(), [this](void *dataPtr) {
         metaContainer().keyAtConstIterator(constIterator(), dataPtr);
     });
@@ -66,7 +80,7 @@ QVariant QAssociativeConstIterator::key() const
 */
 QVariant QAssociativeConstIterator::value() const
 {
-    return QIterablePrivate::retrieveElement(
+    return QtIterablePrivate::retrieveElement(
                 metaContainer().mappedMetaType(), [this](void *dataPtr) {
         metaContainer().mappedAtConstIterator(constIterator(), dataPtr);
     });
@@ -94,6 +108,7 @@ QVariantConstPointer QAssociativeConstIterator::operator->() const
 
 /*!
     \class QAssociativeIterable
+    \deprecated [6.15] Use QMetaAssociation::Iterable instead.
     \since 5.2
     \inmodule QtCore
     \brief The QAssociativeIterable class is an iterable interface for an associative container in a QVariant.
@@ -101,8 +116,6 @@ QVariantConstPointer QAssociativeConstIterator::operator->() const
     This class allows several methods of accessing the elements of an associative container held within
     a QVariant. An instance of QAssociativeIterable can be extracted from a QVariant if it can
     be converted to a QVariantHash or QVariantMap or if a custom mutable view has been registered.
-
-    \snippet code/src_corelib_kernel_qvariant.cpp 10
 
     The container itself is not copied before iterating over it.
 
@@ -261,13 +274,12 @@ void QAssociativeIterable::setValue(const QVariant &key, const QVariant &mapped)
 
 /*!
     \typealias QAssociativeIterable::const_iterator
+    \deprecated [6.15] Use QMetaAssociation::Iterable::ConstIterator instead.
     \inmodule QtCore
     \brief The QAssociativeIterable::const_iterator allows iteration over a container in a QVariant.
 
     A QAssociativeIterable::const_iterator can only be created by a QAssociativeIterable instance,
     and can be used in a way similar to other stl-style iterators.
-
-    \snippet code/src_corelib_kernel_qvariant.cpp 10
 
     \sa QAssociativeIterable
 */
@@ -275,6 +287,7 @@ void QAssociativeIterable::setValue(const QVariant &key, const QVariant &mapped)
 /*!
     \typealias QAssociativeIterable::iterator
     \since 6.0
+    \deprecated [6.15] Use QMetaAssociation::Iterable::Iterator instead.
     \inmodule QtCore
     \brief The QAssociativeIterable::iterator allows iteration over a container in a QVariant.
 
@@ -283,5 +296,8 @@ void QAssociativeIterable::setValue(const QVariant &key, const QVariant &mapped)
 
     \sa QAssociativeIterable
 */
+
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 15)
 
 QT_END_NAMESPACE

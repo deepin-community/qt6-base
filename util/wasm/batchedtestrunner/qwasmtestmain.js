@@ -40,9 +40,18 @@ Object.defineProperty(StandardArg, 'isKnown', {
     }
 
     const parsed = parseQuery(location.search);
-    const outputInPage = parsed.has(StandardArg.qVisualOutput);
-    const testName = parsed.get(StandardArg.qTestName);
+
+    // Get test name from data attribute or query parameter
+    const getTestNameFromDataAttribute = () => {
+        const scriptTag = document.querySelector('script[data-qtestname]');
+        return scriptTag?.dataset?.qtestname;
+    };
+
     const isBatch = parsed.has(StandardArg.qBatchedTest);
+    const testName = parsed.get(StandardArg.qTestName) ??
+                     (isBatch ? undefined : getTestNameFromDataAttribute());
+    const outputInPage = parsed.has(StandardArg.qVisualOutput) ||
+                         (!parsed.has(StandardArg.qUseEmrun) && testName !== undefined);
     const useEmrun = parsed.has(StandardArg.qUseEmrun);
     const functions = [...parsed.keys()].filter(arg => !StandardArg.isKnown(arg));
 
@@ -61,8 +70,14 @@ Object.defineProperty(StandardArg, 'isKnown', {
     })();
 
     const resourceLocator = new ResourceLocator('');
+
+    // Get or create container elements
+    const testOutputContainer = document.querySelector('#test-output-container') || document.querySelector('body');
+    const qtGuiContainer = document.querySelector('#qt-gui-container');
+
     const testRunner = new BatchedTestRunner(
         new ModuleLoader(new ResourceFetcher(resourceLocator), resourceLocator),
+        qtGuiContainer ? [qtGuiContainer] : undefined
     );
     window.qtTestRunner = testRunner;
 
@@ -75,7 +90,7 @@ Object.defineProperty(StandardArg, 'isKnown', {
     }
     if (outputInPage) {
         const scanner = ScannerFactory.createScannerForFormat(testOutputFormat);
-        const ui = new UI(document.querySelector('body'), !!scanner);
+        const ui = new UI(testOutputContainer, !!scanner);
         const adapter =
             new VisualOutputProducer(ui.outputArea, ui.counters, scanner, testRunner);
         adapter.run();

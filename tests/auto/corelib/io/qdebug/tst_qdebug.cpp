@@ -4,9 +4,11 @@
 
 
 #include <QtCore/QCoreApplication>
+#include <QtCore/QtCompare>
 #include <QtCore/QtDebug>
 
 #include <QTest>
+#include <QtCore/qbuffer.h>
 #include <QtConcurrentRun>
 #include <QFutureSynchronizer>
 #include <QVariant>
@@ -24,6 +26,10 @@ namespace pmr = std::pmr;
 #else
 namespace pmr = std;
 #endif
+#include <set>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace std::chrono;
 using namespace q20::chrono;
@@ -33,6 +39,11 @@ static_assert(QTypeTraits::has_ostream_operator_v<QDebug, int>);
 static_assert(QTypeTraits::has_ostream_operator_v<QDebug, QMetaType>);
 static_assert(QTypeTraits::has_ostream_operator_v<QDebug, QList<int>>);
 static_assert(QTypeTraits::has_ostream_operator_v<QDebug, QMap<int, QString>>);
+static_assert(QTypeTraits::has_ostream_operator_v<QDebug, std::multiset<int>>);
+static_assert(QTypeTraits::has_ostream_operator_v<QDebug, std::set<int>>);
+static_assert(QTypeTraits::has_ostream_operator_v<QDebug, std::tuple<int, QString, QMap<int, QString>>>);
+static_assert(QTypeTraits::has_ostream_operator_v<QDebug, std::unordered_map<int, QString>>);
+static_assert(QTypeTraits::has_ostream_operator_v<QDebug, std::unordered_set<int>>);
 struct NonStreamable {};
 static_assert(!QTypeTraits::has_ostream_operator_v<QDebug, NonStreamable>);
 static_assert(!QTypeTraits::has_ostream_operator_v<QDebug, QList<NonStreamable>>);
@@ -53,15 +64,21 @@ class tst_QDebug: public QObject
 public:
     enum EnumType { EnumValue1 = 1, EnumValue2 = INT_MIN };
     enum FlagType { EnumFlag1 = 1, EnumFlag2 = INT_MIN };
+    enum Enum64Type { Enum64Value1 = 1, Enum64Value2 = Q_UINT64_C(0x1'0000'0002) };
+    enum Flag64Type : qlonglong { Enum64Flag1 = 1, Enum64Flag2 = Q_UINT64_C(0x1'0000'0002) };
     Q_ENUM(EnumType)
+    Q_ENUM(Enum64Type)
     Q_DECLARE_FLAGS(Flags, FlagType)
     Q_FLAG(Flags)
+    Q_DECLARE_FLAGS(Flags64, Flag64Type)
+    Q_FLAG(Flags64)
 
 private slots:
     void assignment() const;
     void warningWithoutDebug() const;
     void criticalWithoutDebug() const;
     void basics() const;
+    void constructors() const;
     void debugWithBool() const;
     void debugSpaceHandling() const;
     void debugNoQuotes() const;
@@ -74,6 +91,12 @@ private slots:
     void qDebugQStringView() const;
     void qDebugQUtf8StringView() const;
     void qDebugQLatin1String() const;
+    void qDebugStdMultiSet() const;
+    void qDebugStdPair() const;
+    void qDebugStdSet() const;
+    void qDebugStdTuple() const;
+    void qDebugStdUnorderedMap() const;
+    void qDebugStdUnorderedSet() const;
     void qDebugStdString() const;
     void qDebugStdStringView() const;
     void qDebugStdWString() const;
@@ -87,14 +110,17 @@ private slots:
     void qDebugQByteArray() const;
     void qDebugQByteArrayView() const;
     void qDebugQFlags() const;
+    void qDebugQFlags64() const;
     void qDebugStdChrono_data() const;
     void qDebugStdChrono() const;
     void qDebugStdOptional() const;
+    void qDebugStdOrdering() const;
     void textStreamModifiers() const;
     void resetFormat() const;
     void defaultMessagehandler() const;
     void threadSafety() const;
     void toString() const;
+    void toBytes() const;
     void noQVariantEndlessRecursion() const;
 #if defined(Q_OS_DARWIN)
     void objcInCppMode_data() const;
@@ -103,6 +129,8 @@ private slots:
     void objcInObjcMode() const;
 #endif
 };
+Q_DECLARE_OPERATORS_FOR_FLAGS(tst_QDebug::Flags)
+Q_DECLARE_OPERATORS_FOR_FLAGS(tst_QDebug::Flags64)
 
 void tst_QDebug::assignment() const
 {
@@ -229,6 +257,57 @@ void tst_QDebug::basics() const
 
     qDebug() << nullptr;
     QCOMPARE(s_msg, "(nullptr)");
+}
+
+void tst_QDebug::constructors() const
+{
+    const char input[] = "testing QDebug constructors";
+    const QLatin1StringView expected{"testing QDebug constructors "};
+
+    // QDebug(QString *); no buffering for a QTextStream that operates on a QString,
+    // so flushing is no-op, see QTextStream::flush()
+    {
+        QString str;
+        QDebug d(&str);
+        d << input;
+        QCOMPARE(str, expected);
+    }
+
+    // QDebug(QByteArray *)
+    {
+        QByteArray ba;
+        QDebug d(&ba);
+        d << input << Qt::flush;
+        QCOMPARE(ba, expected);
+    }
+    {
+        QByteArray ba;
+        {
+            QDebug d(&ba);
+            d << input;
+        }
+        QCOMPARE(ba, expected);
+    }
+
+    // QDebug(QIODevice *)
+    {
+        QByteArray ba;
+        QBuffer buf(&ba);
+        QVERIFY(buf.open(QIODevice::WriteOnly));
+        QDebug d(&buf);
+        d << input << Qt::flush;
+        QCOMPARE(ba, expected);
+    }
+    {
+        QByteArray ba;
+        QBuffer buf(&ba);
+        QVERIFY(buf.open(QIODevice::WriteOnly));
+        {
+            QDebug d(&buf);
+            d << input;
+        }
+        QCOMPARE(ba, expected);
+    }
 }
 
 void tst_QDebug::debugWithBool() const
@@ -678,6 +757,207 @@ void tst_QDebug::qDebugQLatin1String() const
     QCOMPARE(s_msg, QString("\"\\nSm\\u00F8rg\\u00E5sbord\\\\\""));
 }
 
+void tst_QDebug::qDebugStdMultiSet() const
+{
+    QByteArray file, function;
+    int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+
+    {
+        QDebug d = qDebug();
+        std::multiset<int> multiset{1, 2, 3, 2, 1};
+        d.nospace().noquote() << multiset;
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 5; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, "std::multiset(1, 1, 2, 2, 3)"_L1);
+    QCOMPARE(s_file, file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(s_function, function);
+
+    qDebug() << std::multiset<std::string>{"apple", "banana", "cherry", "banana", "apple"};
+    QCOMPARE(s_msg, "std::multiset(\"apple\", \"apple\", \"banana\", \"banana\", \"cherry\")"_L1);
+
+    qDebug() << std::multiset<int>{};
+    QCOMPARE(s_msg, "std::multiset()"_L1);
+}
+
+void tst_QDebug::qDebugStdPair() const
+{
+    QByteArray file, function;
+    int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+    {
+        QDebug d = qDebug();
+        d << std::pair(42, u"foo"_s) << std::pair(u"barbaz"_s, 4.2);
+        d.nospace().noquote() << std::pair(u"baz"_s, -42);
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 5; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, R"(std::pair(42, "foo") std::pair("barbaz", 4.2) std::pair(baz, -42))"_L1);
+    QCOMPARE(s_file, file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(s_function, function);
+
+    /* simpler tests from now on */
+    // nested:
+    qDebug() << std::pair(std::pair(std::pair(4.2, 42), ".42"), u"42"_s);
+    QCOMPARE(s_msg, R"(std::pair(std::pair(std::pair(4.2, 42), .42), "42"))"_L1);
+    // with references:
+    {
+        auto d = 4.2; auto i = 42;
+        qDebug() << std::pair<double &, const int &>(d, i);
+        QCOMPARE(s_msg, R"(std::pair(4.2, 42))"_L1);
+        s_msg.clear(); // avoid False Positives (next line outputs same as prior)
+        qDebug() << std::pair<const double &&, int &&>(std::move(d), std::move(i));
+        QCOMPARE(s_msg, R"(std::pair(4.2, 42))"_L1);
+    }
+}
+
+void tst_QDebug::qDebugStdSet() const
+{
+    QByteArray file, function;
+    int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+
+    {
+        QDebug d = qDebug();
+        std::set<int>set{1, 2, 3, 2, 1};
+        d.nospace().noquote() << set;
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 5; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, "std::set(1, 2, 3)"_L1);
+    QCOMPARE(s_file, file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(s_function, function);
+
+    qDebug() << std::set<std::string>{"apple", "banana", "cherry", "banana", "apple"};
+
+    QCOMPARE(s_msg, "std::set(\"apple\", \"banana\", \"cherry\")"_L1);
+
+    qDebug() << std::set<int>{};
+
+    QCOMPARE(s_msg, "std::set()"_L1);
+}
+
+void tst_QDebug::qDebugStdTuple() const
+{
+    QByteArray file, function;
+    int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+    {
+        QDebug d = qDebug();
+        d << std::tuple(42, u"foo"_s, 4.2) << std::tuple(42);
+        d.nospace().noquote() << std::tuple(u"baz"_s);
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 5; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, R"(std::tuple(42, "foo", 4.2) std::tuple(42) std::tuple(baz))"_L1);
+    QCOMPARE(s_file, file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(s_function, function);
+
+    /* simpler tests from now on */
+#ifndef Q_OS_QNX // QNX's stdlib doesn't appear to allow nesting tuples (at least not w/CTAD)...
+    // nested:
+    qDebug() << std::tuple(std::tuple(std::tuple(4.2, 42), ".42"), u"42"_s);
+    QCOMPARE(s_msg, R"(std::tuple(std::tuple(std::tuple(4.2, 42), .42), "42"))"_L1);
+#endif
+    // empty:
+    qDebug() << std::tuple<>();
+    QCOMPARE(s_msg, R"(std::tuple())"_L1);
+    // very long:
+    qDebug() << std::tuple(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                           16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+    QCOMPARE(s_msg, R"(std::tuple(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31))"_L1);
+    // with references:
+    {
+        auto d = 4.2; auto i = 42; auto s = u"foo"_s;
+        qDebug() << std::tie(d, i, s);
+        QCOMPARE(s_msg, R"(std::tuple(4.2, 42, "foo"))"_L1);
+        s_msg.clear(); // avoid False Positives (next line outputs same as prior)
+        qDebug() << std::forward_as_tuple(std::move(d), std::move(i), std::as_const(s));
+        QCOMPARE(s_msg, R"(std::tuple(4.2, 42, "foo"))"_L1);
+    }
+}
+
+void tst_QDebug::qDebugStdUnorderedMap() const
+{
+    QByteArray file, function;
+    int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+
+    {
+        QDebug d = qDebug();
+        std::unordered_map<int, QString> unorderedMap{{1, "One"}, {2, "Two"}, {3, "Three"}};
+        d.nospace().noquote() << unorderedMap;
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 5; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+
+    QStringList expectedValues = {"std::unordered_map","std::pair(1, One)","std::pair(2, Two)","std::pair(3, Three)"};
+
+    for (const QString &expextedValue : expectedValues)
+        QVERIFY(s_msg.contains(expextedValue));
+    QCOMPARE(s_file, file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(s_function, function);
+
+    qDebug() << std::unordered_map<std::string, float>{{"quarter", 0.25f}, {"half", 0.5f}, {"full", 1.0f}};
+
+    expectedValues = {"std::unordered_map","std::pair(\"quarter\", 0.25)","std::pair(\"half\", 0.5)","std::pair(\"full\", 1)"};
+    for (const QString &expectedValue : expectedValues)
+        QVERIFY(s_msg.contains(expectedValue));
+
+    qDebug()<< std::unordered_map<int, QString> {};
+
+    QCOMPARE(s_msg, "std::unordered_map()"_L1);
+}
+
+void tst_QDebug::qDebugStdUnorderedSet() const
+{
+    QByteArray file, function;
+    [[maybe_unused]] int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+
+    {
+        QDebug d = qDebug();
+        std::unordered_set<int> unorderedSet{1, 2, 3, 2, 1};
+        d.nospace().noquote() << unorderedSet;
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 5; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+
+    QStringList expectedValues = {"std::unordered_set", "1", "2", "3"};
+
+    for (const QString &expectedValue : expectedValues)
+        QVERIFY(s_msg.contains(expectedValue));
+
+    qDebug() << std::unordered_set<std::string>{"apple", "banana", "cherry", "banana", "apple"};
+
+
+    expectedValues = {"std::unordered_set", "\"apple\"", "\"banana\"", "\"cherry\""};
+    for (const QString &expectedValue : expectedValues)
+        QVERIFY(s_msg.contains(expectedValue));
+
+    qDebug() << std::unordered_set<int>{};
+
+    QCOMPARE(s_msg, "std::unordered_set()"_L1);
+}
+
 void tst_QDebug::qDebugStdString() const
 {
     QString file, function;
@@ -1093,8 +1373,9 @@ void tst_QDebug::qDebugQFlags() const
     QString file, function;
     int line = 0;
     QFlags<TestEnum> flags(Flag1 | Flag2 | SignFlag);
-
     MessageHandlerSetter mhs(myMessageHandler);
+
+    // first, test QFlags on an enum where neither are Q_FLAG or Q_ENUM
     { qDebug() << flags; }
 #ifndef QT_NO_MESSAGELOGCONTEXT
     file = __FILE__; line = __LINE__ - 2; function = Q_FUNC_INFO;
@@ -1105,15 +1386,52 @@ void tst_QDebug::qDebugQFlags() const
     QCOMPARE(s_line, line);
     QCOMPARE(QString::fromLatin1(s_function), function);
 
-    // Test the output of QFlags with an enum not declared with Q_DECLARE_FLAGS and Q_FLAGS
+    // QFlags where the backing enum is a Q_ENUM but the QFlags isn't a QFLAG
     QFlags<EnumType> flags2(EnumValue2);
     qDebug() << flags2;
     QCOMPARE(s_msg, QString::fromLatin1("QFlags<tst_QDebug::EnumType>(EnumValue2)"));
 
-    // A now for one that was fully declared
+    // And now for one that was fully declared
     tst_QDebug::Flags flags3(EnumFlag1);
     qDebug() << flags3;
     QCOMPARE(s_msg, QString::fromLatin1("QFlags<tst_QDebug::FlagType>(EnumFlag1)"));
+}
+
+enum class TestEnum64 : qulonglong {
+    Flag1 = 0x1,
+    Flag2 = Q_UINT64_C(0x8000'0000'0000'0000)
+};
+
+Q_DECLARE_FLAGS(TestFlags64, TestEnum64)
+Q_DECLARE_OPERATORS_FOR_FLAGS(TestFlags64)
+
+void tst_QDebug::qDebugQFlags64() const
+{
+    QString file, function;
+    int line = 0;
+    QFlags<TestEnum64> flags(TestEnum64::Flag1 | TestEnum64::Flag2);
+    MessageHandlerSetter mhs(myMessageHandler);
+
+    // first, test QFlags on an enum where neither are Q_FLAG or Q_ENUM
+    qDebug() << flags;
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 2; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, "QFlags(0x1|0x8000000000000000)");
+    QCOMPARE(QString::fromLatin1(s_file), file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(QString::fromLatin1(s_function), function);
+
+    // QFlags where the backing enum is a Q_ENUM but the QFlags isn't a QFLAG
+    QFlags<Enum64Type> flags2(Enum64Value2);
+    qDebug() << flags2;
+    QCOMPARE(s_msg, QString::fromLatin1("QFlags<tst_QDebug::Enum64Type>(Enum64Value2)"));
+
+    // And now for one that was fully declared
+    tst_QDebug::Flags64 flags3(Enum64Flag1|Enum64Flag2);
+    qDebug() << flags3;
+    QCOMPARE(s_msg, QString::fromLatin1("QFlags<tst_QDebug::Flag64Type>(Enum64Flag1|Enum64Flag2)"));
 }
 
 using ToStringFunction = std::function<QString()>;
@@ -1174,7 +1492,7 @@ void tst_QDebug::qDebugStdChrono_data() const
     addRow("1decades", decades{1}, "1[10]yr");
     addRow("1centuries", centuries{1}, "1[100]yr");
     addRow("1millennia", millennia{1}, "1[1000]yr");
-#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN)
+#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN) || defined(__GLIBC__)
     // some OSes print the exponent differently
     addRow("1Es", exaseconds{1}, "1[1e+18]s");
     addRow("13gigayears", gigayears{13}, "13[1e+09]yr");
@@ -1237,6 +1555,53 @@ void tst_QDebug::qDebugStdOptional() const
     QCOMPARE(QString::fromLatin1(s_file), file);
     QCOMPARE(s_line, line);
     QCOMPARE(QString::fromLatin1(s_function), function);
+
+    /* simpler tests from now on */
+    // const
+    qDebug() << std::optional<const int>(42) << std::optional<const int>(std::nullopt);
+    QCOMPARE(s_msg, R"(std::optional(42) nullopt)"_L1);
+    // nested
+    {
+        auto d = qDebug();
+        // the constructors would do the wrong thing (convert payload types), so use emplace()
+        std::optional<std::optional<int>> opt;
+        d << opt;
+        opt.emplace();
+        d << opt;
+        *opt = 42;
+        d << opt;
+    }
+    QCOMPARE(s_msg, R"(nullopt std::optional(nullopt) std::optional(std::optional(42)))"_L1);
+}
+
+void tst_QDebug::qDebugStdOrdering() const
+{
+    QLatin1StringView file, function;
+    MessageHandlerSetter mhs(myMessageHandler);
+    {
+        QDebug d = qDebug();
+        d << Qt::partial_ordering::less
+          << Qt::partial_ordering::unordered
+          << Qt::weak_ordering::greater
+          << Qt::strong_ordering::equal;
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = QLatin1StringView(__FILE__);
+    function = QLatin1StringView(Q_FUNC_INFO);
+#endif
+    const auto cmpStr = "Qt::partial_ordering::lessQt::partial_ordering::unorderedQt::weak_ordering::greaterQt::strong_ordering::equal"_L1;
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, cmpStr);
+#ifdef __cpp_lib_three_way_comparison
+    qDebug() << std::partial_ordering::less
+             << std::partial_ordering::unordered
+             << std::weak_ordering::greater
+             << std::strong_ordering::equal;
+    const auto stdStr = "std::partial_ordering::lessstd::partial_ordering::unorderedstd::weak_ordering::greaterstd::strong_ordering::equal"_L1;
+    QCOMPARE(s_msg, stdStr);
+#endif
+    QCOMPARE(QLatin1StringView(s_file), file);
+    QCOMPARE(QLatin1StringView(s_function), function);
 }
 
 void tst_QDebug::textStreamModifiers() const
@@ -1308,6 +1673,11 @@ static void doDebug() // called in each thread
 
 void tst_QDebug::threadSafety() const
 {
+#ifdef Q_OS_WASM
+    QSKIP("threadSafety does not run on wasm");
+#else
+    s_messages = {};
+
     MessageHandlerSetter mhs(threadSafeMessageHandler);
     const int numThreads = 10;
     QThreadPool::globalInstance()->setMaxThreadCount(numThreads);
@@ -1322,6 +1692,7 @@ void tst_QDebug::threadSafety() const
     for (int i = 0; i < numThreads; ++i) {
         QCOMPARE(s_messages.at(i), QStringLiteral("doDebug"));
     }
+#endif
 }
 
 void tst_QDebug::toString() const
@@ -1356,6 +1727,41 @@ void tst_QDebug::toString() const
         TypeWithAddressOf object;
         QString expectedString {"\"test\""};
         QCOMPARE(QDebug::toString(object), expectedString);
+    }
+}
+
+void tst_QDebug::toBytes() const
+{
+    // By reference.
+    {
+        MyPoint point(3, 4);
+        QString expected;
+        QDebug stream(&expected);
+        stream.nospace() << point;
+        QCOMPARE(QDebug::toBytes(point), expected);
+    }
+
+    // By pointer.
+    {
+        QObject qobject;
+        qobject.setObjectName("test");
+        QString expected;
+        QDebug stream(&expected);
+        stream.nospace() << &qobject;
+        QCOMPARE(QDebug::toBytes(&qobject), expected);
+    }
+
+    // Overloaded operator&
+    {
+        struct TypeWithAddressOf
+        {
+            int *operator&() const { return nullptr; }
+            operator QByteArray() const { return "test"; }
+        };
+
+        TypeWithAddressOf object;
+        QString expected{ "\"test\"" };
+        QCOMPARE(QDebug::toBytes(object), expected);
     }
 }
 
@@ -1440,4 +1846,5 @@ TestClassA& operator<< (TestClassA& s, T&) { return s; };
 template<> TestClassA& operator<< <TestClassB>(TestClassA& s, TestClassB& l);
 
 QTEST_MAIN(tst_QDebug);
+
 #include "tst_qdebug.moc"

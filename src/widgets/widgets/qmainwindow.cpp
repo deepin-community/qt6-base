@@ -1,7 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-//#define QT_EXPERIMENTAL_CLIENT_DECORATIONS
+// Qt-Security score:significant reason:default
 
 #include "qmainwindow.h"
 #include "qmainwindowlayout_p.h"
@@ -69,57 +68,11 @@ QMainWindowLayout *qt_mainwindow_layout(const QMainWindow *mainWindow)
     return QMainWindowPrivate::mainWindowLayout(mainWindow);
 }
 
-#ifdef QT_EXPERIMENTAL_CLIENT_DECORATIONS
-Q_WIDGETS_EXPORT void qt_setMainWindowTitleWidget(QMainWindow *mainWindow, Qt::DockWidgetArea area, QWidget *widget)
-{
-    QGridLayout *topLayout = qobject_cast<QGridLayout *>(mainWindow->layout());
-    Q_ASSERT(topLayout);
-
-    int row = 0;
-    int column = 0;
-
-    switch (area) {
-    case Qt::LeftDockWidgetArea:
-        row = 1;
-        column = 0;
-        break;
-    case Qt::TopDockWidgetArea:
-        row = 0;
-        column = 1;
-        break;
-    case Qt::BottomDockWidgetArea:
-        row = 2;
-        column = 1;
-        break;
-    case Qt::RightDockWidgetArea:
-        row = 1;
-        column = 2;
-        break;
-    default:
-        Q_ASSERT_X(false, "qt_setMainWindowTitleWidget", "Unknown area");
-        return;
-    }
-
-    if (QLayoutItem *oldItem = topLayout->itemAtPosition(row, column))
-        delete oldItem->widget();
-    topLayout->addWidget(widget, row, column);
-}
-#endif
-
 void QMainWindowPrivate::init()
 {
     Q_Q(QMainWindow);
 
-#ifdef QT_EXPERIMENTAL_CLIENT_DECORATIONS
-    QGridLayout *topLayout = new QGridLayout(q);
-    topLayout->setContentsMargins(0, 0, 0, 0);
-
-    layout = new QMainWindowLayout(q, topLayout);
-
-    topLayout->addItem(layout, 1, 1);
-#else
     layout = new QMainWindowLayout(q, nullptr);
-#endif
 
     const int metric = q->style()->pixelMetric(QStyle::PM_ToolBarIconSize, nullptr, q);
     iconSize = QSize(metric, metric);
@@ -178,6 +131,7 @@ void QMainWindowPrivate::init()
     layout below.
 
     \image mainwindowlayout.png
+           {Diagram of main window and the position of its components}
 
     \section1 Creating Main Window Components
 
@@ -277,6 +231,23 @@ void QMainWindowPrivate::init()
     saveState(); it can later be retrieved with \c restoreState(). It
     is the position and size (relative to the size of the main window)
     of the toolbars and dock widgets that are stored.
+
+    \section1 Security Considerations
+
+    The restoreState() function deserializes a versioned binary blob that
+    describes the toolbar and dock widget layout, including a recursively
+    nested tree structure for split and tabbed dock areas. The format's magic
+    marker and version are validated, but individual fields - such as dock area
+    indices and the depth of the nested layout tree - are not bounds-checked
+    against the main window's actual configuration once the outer structure is
+    accepted.
+
+    Only pass restoreState() a QByteArray that was previously produced by
+    saveState() and persisted by the same, or a compatible, version of your
+    application, typically through QSettings. Do not call restoreState()
+    with data of unknown or untrusted origin, such as a file downloaded from
+    the network, a synced or shared configuration file, or data supplied by
+    another, potentially compromised, application.
 
     \sa QMenuBar, QToolBar, QStatusBar, QDockWidget, {Menus Example}
 */
@@ -1021,7 +992,7 @@ void QMainWindow::setTabPosition(Qt::DockWidgetAreas areas, QTabWidget::TabPosit
 #endif // QT_CONFIG(tabwidget)
 
 /*!
-    Adds the given \a dockwidget to the specified \a area.
+    Adds the given \a dockwidget to the specified \a area in the main window.
 */
 void QMainWindow::addDockWidget(Qt::DockWidgetArea area, QDockWidget *dockwidget)
 {
@@ -1037,8 +1008,11 @@ void QMainWindow::addDockWidget(Qt::DockWidgetArea area, QDockWidget *dockwidget
     default:
         break;
     }
+    const Qt::DockWidgetArea oldArea = dockWidgetArea(dockwidget);
     d_func()->layout->removeWidget(dockwidget); // in case it was already in here
     addDockWidget(area, dockwidget, orientation);
+    if (oldArea != area)
+       emit dockwidget->dockLocationChanged(area);
 }
 
 /*!
@@ -1100,9 +1074,12 @@ void QMainWindow::splitDockWidget(QDockWidget *after, QDockWidget *dockwidget,
     \fn void QMainWindow::tabifyDockWidget(QDockWidget *first, QDockWidget *second)
 
     Moves \a second dock widget on top of \a first dock widget, creating a tabbed
-    docked area in the main window.
+    dock area at the current location of \a first.
 
-    \sa tabifiedDockWidgets()
+    Both dock widgets must have been added to the main window with
+    addDockWidget() before calling this function, and neither can already be tabbed.
+
+    \sa tabifiedDockWidgets(), addDockWidget()
 */
 void QMainWindow::tabifyDockWidget(QDockWidget *first, QDockWidget *second)
 {
@@ -1302,7 +1279,7 @@ bool QMainWindow::event(QEvent *event)
         case QEvent::DragLeave:
             if (!d->layout->draggingWidget)
                 break;
-            d->layout->hover(d->layout->draggingWidget, pos() - QPoint(-1, -1));
+            d->layout->hover(d->layout->draggingWidget, pos() - QPoint(1, 1));
             return true;
 #endif
         default:
@@ -1342,10 +1319,16 @@ void QMainWindow::setUnifiedTitleAndToolBarOnMac(bool enabled)
     setAttribute(Qt::WA_NativeWindow);
     setAttribute(Qt::WA_TranslucentBackground, enabled);
 
-    d->create(); // Create first, before querying the platform window
-    using namespace QNativeInterface::Private;
-    if (auto *platformWindow = dynamic_cast<QCocoaWindow*>(window()->windowHandle()->handle()))
-        platformWindow->setContentBorderEnabled(enabled);
+    d->create(); // Create first, so we can update the window flag without hiding the window
+
+    auto *windowHandle = window()->windowHandle();
+    windowHandle->setFlag(Qt::NoTitleBarBackgroundHint, enabled);
+    // Expand client area if we need to manage a titlebar visual effects view ourselves
+    if (QOperatingSystemVersion::current() < QOperatingSystemVersion::MacOSTahoe)
+        windowHandle->setFlag(Qt::ExpandedClientAreaHint, enabled);
+    overrideWindowFlags(windowHandle->flags());
+
+    d->layout->updateUnifiedToolBarArea();
 
     update();
 #else

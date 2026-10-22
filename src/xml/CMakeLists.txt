@@ -10,8 +10,8 @@ qt_internal_add_module(Xml
         qtxmlglobal.h
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
-        QT_NO_FOREACH
         QT_NO_USING_NAMESPACE
+        QT_NO_URL_CAST_FROM_STRING
         QT_USE_NODISCARD_FILE_OPEN
     LIBRARIES
         Qt::CorePrivate
@@ -23,8 +23,11 @@ qt_internal_add_module(Xml
 
 qt_internal_extend_target(Xml CONDITION QT_FEATURE_dom
     SOURCES
+        compat/removed_api.cpp
         dom/qdom.cpp dom/qdom.h dom/qdom_p.h
         dom/qdomhelpers.cpp dom/qdomhelpers_p.h
+    NO_PCH_SOURCES
+        compat/removed_api.cpp
 )
 
 qt_internal_extend_target(Xml CONDITION MSVC AND (TEST_architecture_arch STREQUAL "i386")

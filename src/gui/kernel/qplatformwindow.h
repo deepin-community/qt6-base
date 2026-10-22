@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef QPLATFORMWINDOW_H
 #define QPLATFORMWINDOW_H
 
@@ -66,6 +67,7 @@ public:
     virtual void setParent(const QPlatformWindow *window);
 
     virtual void setWindowTitle(const QString &title);
+    virtual QString windowTitle() const;
     virtual void setWindowFilePath(const QString &title);
     virtual void setWindowIcon(const QIcon &icon);
     virtual bool close();
@@ -117,6 +119,7 @@ public:
     virtual void requestUpdate();
     bool hasPendingUpdateRequest() const;
     virtual void deliverUpdateRequest();
+    virtual bool allowsIndependentThreadedRendering() const;
 
     // Window property accessors. Platform plugins should use these
     // instead of accessing QWindow directly.
@@ -133,6 +136,8 @@ protected:
     static QString formatWindowTitle(const QString &title, const QString &separator);
     QPlatformScreen *screenForGeometry(const QRect &newGeometry) const;
     static QSize constrainWindowSize(const QSize &size);
+
+    static bool isSubWindow(const QWindow *window);
 
     QScopedPointer<QPlatformWindowPrivate> d_ptr;
 };

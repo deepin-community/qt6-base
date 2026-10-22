@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #include "treewalker.h"
 #include "ui4.h"
@@ -239,7 +240,8 @@ void TreeWalker::acceptConnections(DomConnections *connections)
 
 void TreeWalker::acceptConnection(DomConnection *connection)
 {
-    acceptConnectionHints(connection->elementHints());
+    if (connection->hasElementHints())
+        acceptConnectionHints(connection->elementHints());
 }
 
 void TreeWalker::acceptConnectionHints(DomConnectionHints *connectionHints)

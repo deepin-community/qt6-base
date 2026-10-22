@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qobjectcleanuphandler.h"
 
@@ -73,7 +74,7 @@ QObject *QObjectCleanupHandler::add(QObject *object)
 */
 void QObjectCleanupHandler::remove(QObject *object)
 {
-    int index;
+    qsizetype index;
     if ((index = cleanupObjects.indexOf(object)) != -1) {
         cleanupObjects.removeAt(index);
         disconnect(object, SIGNAL(destroyed(QObject*)), this, SLOT(objectDestroyed(QObject*)));

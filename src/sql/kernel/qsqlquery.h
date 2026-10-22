@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSQLQUERY_H
 #define QSQLQUERY_H
@@ -32,7 +33,7 @@ public:
     explicit QSqlQuery(const QString& query = QString(), const QSqlDatabase &db = QSqlDatabase());
     explicit QSqlQuery(const QSqlDatabase &db);
 
-#if QT_DEPRECATED_SINCE(6, 2)
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
     QT_DEPRECATED_VERSION_X_6_2("QSqlQuery is not meant to be copied. Use move construction instead.")
     QSqlQuery(const QSqlQuery &other);
     QT_DEPRECATED_VERSION_X_6_2("QSqlQuery is not meant to be copied. Use move assignment instead.")
@@ -111,6 +112,10 @@ public:
     void finish();
     bool nextResult();
 
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
+    // Avoid raising warnings in QMetaType, cf. QTBUG-132752
+    using _q_hasDeprecatedCopyConstructor = void;
+#endif
 private:
     QSqlQueryPrivate* d;
 };

@@ -1,5 +1,7 @@
 // Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #ifndef QWAITCONDITION_P_H
 #define QWAITCONDITION_P_H
 
@@ -28,7 +30,7 @@ namespace QtPrivate {
 // Ideal alignment for mutex and condition_variable: it's the hardware
 // interference size (size of a cache line) if the types are likely to contain
 // the actual data structures, otherwise just that of a pointer.
-static constexpr quintptr IdealMutexAlignment =
+inline constexpr quintptr IdealMutexAlignment =
         sizeof(std::mutex) > sizeof(void *) &&
         sizeof(std::condition_variable) > sizeof(void *) ?
             64 : alignof(void*);

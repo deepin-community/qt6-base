@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QINPUTDEVICE_H
 #define QINPUTDEVICE_H
@@ -19,7 +20,8 @@ class Q_GUI_EXPORT QInputDevice : public QObject
     Q_DECLARE_PRIVATE(QInputDevice)
     Q_PROPERTY(QString name READ name CONSTANT)
     Q_PROPERTY(DeviceType type READ type CONSTANT)
-    Q_PROPERTY(Capabilities capabilities READ capabilities CONSTANT)
+    Q_PROPERTY(Capabilities capabilities READ capabilities
+               NOTIFY capabilitiesChanged)
     Q_PROPERTY(qint64 systemId READ systemId CONSTANT)
     Q_PROPERTY(QString seatName READ seatName CONSTANT)
     Q_PROPERTY(QRect availableVirtualGeometry READ availableVirtualGeometry
@@ -82,6 +84,7 @@ public:
 
 Q_SIGNALS:
     void availableVirtualGeometryChanged(QRect area);
+    Q_REVISION(6, 9) void capabilitiesChanged(Capabilities capabilities);
 
 protected:
     QInputDevice(QInputDevicePrivate &d, QObject *parent);

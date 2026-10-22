@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILEINFO_H
 #define QFILEINFO_H
@@ -17,12 +18,15 @@ QT_BEGIN_NAMESPACE
 
 class QDir;
 class QDirIteratorPrivate;
+
 class QFileInfoPrivate;
+QT_DECLARE_QSDP_SPECIALIZATION_DTOR(QFileInfoPrivate)
 
 class Q_CORE_EXPORT QFileInfo
 {
     friend class QDirIteratorPrivate;
     friend class QDirListingPrivate;
+    friend class QFileInfoPrivate;
 public:
     explicit QFileInfo(QFileInfoPrivate *d);
 
@@ -37,6 +41,7 @@ public:
     QFILEINFO_MAYBE_EXPLICIT QFileInfo(const QFileDevice &file);
     QFILEINFO_MAYBE_EXPLICIT QFileInfo(const QDir &dir, const QString &file);
     QFileInfo(const QFileInfo &fileinfo);
+    QFileInfo(QFileInfo &&other) = default;
 #ifdef Q_QDOC
     QFileInfo(const std::filesystem::path &file);
     QFileInfo(const QDir &dir, const std::filesystem::path &file);
@@ -124,6 +129,7 @@ public:
     bool isDir() const;
     bool isSymLink() const;
     bool isSymbolicLink() const;
+    bool isOther() const;
     bool isShortcut() const;
     bool isAlias() const;
     bool isJunction() const;

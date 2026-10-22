@@ -1,5 +1,6 @@
 // Copyright (C) 2013 Klaralvdalens Datakonsult AB (KDAB)
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qopenglfunctions_es2.h"
 #include "qopenglcontext.h"
@@ -52,8 +53,8 @@ bool QOpenGLFunctions_ES2::isContextCompatible(QOpenGLContext *context)
 {
     Q_ASSERT(context);
     QSurfaceFormat f = context->format();
-    const QPair<int, int> v = qMakePair(f.majorVersion(), f.minorVersion());
-    if (v < qMakePair(2, 0))
+    const auto v = std::pair(f.majorVersion(), f.minorVersion());
+    if (v < std::pair(2, 0))
         return false;
     if (f.renderableType() != QSurfaceFormat::OpenGLES)
         return false;

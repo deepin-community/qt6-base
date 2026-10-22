@@ -1,13 +1,15 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2012 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Christoph Schleifenbaum <christoph.schleifenbaum@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMSYSTEMTRAYICON_H
 #define QPLATFORMSYSTEMTRAYICON_H
 
 #include <QtGui/qtguiglobal.h>
 #include <qpa/qplatformscreen.h>
-#include "QtCore/qobject.h"
+
+#include <QtCore/qobject.h>
 
 #ifndef QT_NO_SYSTEMTRAYICON
 

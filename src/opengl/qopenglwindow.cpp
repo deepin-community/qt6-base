@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qopenglwindow.h"
 #include <QtGui/QOpenGLFunctions>
@@ -161,7 +162,7 @@ public:
         , shareContext(shareContext)
     {
         if (!shareContext)
-            this->shareContext = qt_gl_global_share_context();
+            this->shareContext = QOpenGLContext::globalShareContext();
     }
 
     ~QOpenGLWindowPrivate();
@@ -328,9 +329,10 @@ QOpenGLWindow::QOpenGLWindow(QOpenGLWindow::UpdateBehavior updateBehavior, QWind
 }
 
 /*!
-  Constructs a new QOpenGLWindow with the given \a parent and \a updateBehavior. The QOpenGLWindow's context will share with \a shareContext.
+  Constructs a new QOpenGLWindow with the given \a parent and \a updateBehavior.
+  The QOpenGLWindow's context will share with \a shareContext.
 
-  \sa QOpenGLWindow::UpdateBehavior shareContext
+  \sa QOpenGLWindow::UpdateBehavior, shareContext
 */
 QOpenGLWindow::QOpenGLWindow(QOpenGLContext *shareContext, UpdateBehavior updateBehavior, QWindow *parent)
     : QPaintDeviceWindow(*(new QOpenGLWindowPrivate(shareContext, updateBehavior)), parent)

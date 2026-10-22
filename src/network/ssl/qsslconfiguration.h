@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /****************************************************************************
 **
@@ -26,6 +27,8 @@
 #include <QtNetwork/qsslsocket.h>
 #include <QtNetwork/qssl.h>
 
+#include <optional>
+
 #ifndef QT_NO_SSL
 
 QT_BEGIN_NAMESPACE
@@ -33,6 +36,7 @@ QT_BEGIN_NAMESPACE
 class QSslCertificate;
 class QSslCipher;
 class QSslKey;
+class QSslKeyingMaterial;
 class QSslEllipticCurve;
 class QSslDiffieHellmanParameters;
 
@@ -156,6 +160,10 @@ public:
 
     static const char ALPNProtocolHTTP2[];
     static const char NextProtocolHttp1_1[];
+
+    [[nodiscard]] QList<QSslKeyingMaterial> takeKeyingMaterial();
+    [[nodiscard]] std::optional<QSslKeyingMaterial> takeKeyingMaterial(const QSslKeyingMaterial &material);
+    void setKeyingMaterial(const QList<QSslKeyingMaterial> &keyMaterial);
 
 private:
     friend class QSslSocket;

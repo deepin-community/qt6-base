@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qsql_oci_p.h"
 
@@ -26,6 +27,8 @@
 #include <qvariant.h>
 #include <qvarlengtharray.h>
 
+#include <QtCore/q20memory.h>
+
 // This is needed for oracle oci when compiling with mingw-w64 headers
 #if defined(__MINGW64_VERSION_MAJOR) && defined(_WIN64)
 #define _int64 __int64
@@ -45,14 +48,16 @@
 
 //#define QOCI_DEBUG
 
-Q_DECLARE_OPAQUE_POINTER(OCIEnv*);
+Q_DECLARE_OPAQUE_POINTER(QOCIResult*)
+Q_DECLARE_METATYPE(QOCIResult*)
+Q_DECLARE_OPAQUE_POINTER(OCIEnv*)
 Q_DECLARE_METATYPE(OCIEnv*)
-Q_DECLARE_OPAQUE_POINTER(OCIStmt*);
+Q_DECLARE_OPAQUE_POINTER(OCIStmt*)
 Q_DECLARE_METATYPE(OCIStmt*)
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcOci, "qt.sql.oci")
+Q_STATIC_LOGGING_CATEGORY(lcOci, "qt.sql.oci")
 
 using namespace Qt::StringLiterals;
 
@@ -77,7 +82,7 @@ static const ub2 qOraCharset = OCI_UCS2ID;
 #endif
 
 typedef QVarLengthArray<sb2, 32> IndicatorArray;
-typedef QVarLengthArray<ub2, 32> SizeArray;
+typedef QVarLengthArray<ub4, 32> SizeArray;
 
 static QByteArray qMakeOCINumber(const qlonglong &ll, OCIError *err);
 static QByteArray qMakeOCINumber(const qulonglong& ull, OCIError* err);
@@ -203,31 +208,6 @@ public:
 };
 
 class QOCICols;
-class QOCIResultPrivate;
-
-class QOCIResult: public QSqlCachedResult
-{
-    Q_DECLARE_PRIVATE(QOCIResult)
-    friend class QOCIDriver;
-    friend class QOCICols;
-public:
-    QOCIResult(const QOCIDriver *db);
-    ~QOCIResult();
-    bool prepare(const QString &query) override;
-    bool exec() override;
-    QVariant handle() const override;
-
-protected:
-    bool gotoNext(ValueCache &values, int index) override;
-    bool reset(const QString &query) override;
-    int size() override;
-    int numRowsAffected() override;
-    QSqlRecord record() const override;
-    QVariant lastInsertId() const override;
-    bool execBatch(bool arrayBind = false) override;
-    void virtual_hook(int id, void *data) override;
-    bool fetchNext() override;
-};
 
 class QOCIResultPrivate: public QSqlCachedResultPrivate
 {
@@ -241,14 +221,14 @@ public:
     OCIEnv *env;
     OCIError *err = nullptr;
     OCISvcCtx *&svc;
-    OCIStmt *sql = nullptr;
+    OCIStmt *stmtp = nullptr;
     bool transaction;
     int serverVersion;
     int prefetchRows, prefetchMem;
 
     void setStatementAttributes();
-    int bindValue(OCIStmt *sql, OCIBind **hbnd, OCIError *err, int pos,
-                  const QVariant &val, dvoid *indPtr, ub2 *tmpSize, TempStorage &tmpStorage);
+    int bindValue(OCIStmt *stmtp, OCIBind **hbnd, OCIError *err, int pos,
+                  const QVariant &val, dvoid *indPtr, ub4 *tmpSize, TempStorage &tmpStorage);
     int bindValues(QVariantList &values, IndicatorArray &indicators, SizeArray &tmpSizes,
                    TempStorage &tmpStorage);
     void outValues(QVariantList &values, IndicatorArray &indicators,
@@ -296,12 +276,12 @@ public:
 
 void QOCIResultPrivate::setStatementAttributes()
 {
-    Q_ASSERT(sql);
+    Q_ASSERT(stmtp);
 
     int r = 0;
 
     if (prefetchRows >= 0) {
-        r = OCIAttrSet(sql,
+        r = OCIAttrSet(stmtp,
                        OCI_HTYPE_STMT,
                        &prefetchRows,
                        0,
@@ -312,7 +292,7 @@ void QOCIResultPrivate::setStatementAttributes()
                         " Couldn't set OCI_ATTR_PREFETCH_ROWS: ", err);
     }
     if (prefetchMem >= 0) {
-        r = OCIAttrSet(sql,
+        r = OCIAttrSet(stmtp,
                        OCI_HTYPE_STMT,
                        &prefetchMem,
                        0,
@@ -324,15 +304,15 @@ void QOCIResultPrivate::setStatementAttributes()
     }
 }
 
-int QOCIResultPrivate::bindValue(OCIStmt *sql, OCIBind **hbnd, OCIError *err, int pos,
-                                 const QVariant &val, dvoid *indPtr, ub2 *tmpSize, TempStorage &tmpStorage)
+int QOCIResultPrivate::bindValue(OCIStmt *stmtp, OCIBind **hbnd, OCIError *err, int pos,
+                                 const QVariant &val, dvoid *indPtr, ub4 *tmpSize, TempStorage &tmpStorage)
 {
     int r = OCI_SUCCESS;
     void *data = const_cast<void *>(val.constData());
 
     switch (val.typeId()) {
     case QMetaType::QByteArray:
-        r = OCIBindByPos2(sql, hbnd, err,
+        r = OCIBindByPos2(stmtp, hbnd, err,
                           pos + 1,
                           isOutValue(pos)
                             ?  const_cast<char *>(reinterpret_cast<QByteArray *>(data)->constData())
@@ -344,67 +324,67 @@ int QOCIResultPrivate::bindValue(OCIStmt *sql, OCIBind **hbnd, OCIError *err, in
     case QMetaType::QDate:
     case QMetaType::QDateTime: {
         QOCIDateTime *ptr = new QOCIDateTime(env, err, val.toDateTime());
-        r = OCIBindByPos(sql, hbnd, err,
-                         pos + 1,
-                         &ptr->dateTime,
-                         sizeof(OCIDateTime *),
-                         SQLT_TIMESTAMP_TZ, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+        r = OCIBindByPos2(stmtp, hbnd, err,
+                          pos + 1,
+                          &ptr->dateTime,
+                          sizeof(OCIDateTime *),
+                          SQLT_TIMESTAMP_TZ, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
         tmpStorage.dateTimes.append(ptr);
         break;
     }
     case QMetaType::Int:
-        r = OCIBindByPos(sql, hbnd, err,
-                         pos + 1,
-                         // if it's an out value, the data is already detached
-                         // so the const cast is safe.
-                         const_cast<void *>(data),
-                         sizeof(int),
-                         SQLT_INT, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+        r = OCIBindByPos2(stmtp, hbnd, err,
+                          pos + 1,
+                          // if it's an out value, the data is already detached
+                          // so the const cast is safe.
+                          const_cast<void *>(data),
+                          sizeof(int),
+                          SQLT_INT, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
         break;
     case QMetaType::UInt:
-        r = OCIBindByPos(sql, hbnd, err,
-                         pos + 1,
-                         // if it's an out value, the data is already detached
-                         // so the const cast is safe.
-                         const_cast<void *>(data),
-                         sizeof(uint),
-                         SQLT_UIN, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+        r = OCIBindByPos2(stmtp, hbnd, err,
+                          pos + 1,
+                          // if it's an out value, the data is already detached
+                          // so the const cast is safe.
+                          const_cast<void *>(data),
+                          sizeof(uint),
+                          SQLT_UIN, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
         break;
     case QMetaType::LongLong:
     {
         QByteArray ba = qMakeOCINumber(val.toLongLong(), err);
-        r = OCIBindByPos(sql, hbnd, err,
-                           pos + 1,
-                           ba.data(),
-                           ba.size(),
-                           SQLT_VNU, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+        r = OCIBindByPos2(stmtp, hbnd, err,
+                          pos + 1,
+                          ba.data(),
+                          ba.size(),
+                          SQLT_VNU, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
         tmpStorage.rawData.append(ba);
         break;
     }
     case QMetaType::ULongLong:
     {
         QByteArray ba = qMakeOCINumber(val.toULongLong(), err);
-        r = OCIBindByPos(sql, hbnd, err,
-                           pos + 1,
-                           ba.data(),
-                           ba.size(),
-                           SQLT_VNU, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+        r = OCIBindByPos2(stmtp, hbnd, err,
+                          pos + 1,
+                          ba.data(),
+                          ba.size(),
+                          SQLT_VNU, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
         tmpStorage.rawData.append(ba);
         break;
     }
     case QMetaType::Double:
-        r = OCIBindByPos(sql, hbnd, err,
-                         pos + 1,
-                         // if it's an out value, the data is already detached
-                         // so the const cast is safe.
-                         const_cast<void *>(data),
-                         sizeof(double),
-                         SQLT_FLT, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+        r = OCIBindByPos2(stmtp, hbnd, err,
+                          pos + 1,
+                          // if it's an out value, the data is already detached
+                          // so the const cast is safe.
+                          const_cast<void *>(data),
+                          sizeof(double),
+                          SQLT_FLT, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
         break;
     case QMetaType::QString: {
         const QString s = val.toString();
         if (isBinaryValue(pos)) {
-            r = OCIBindByPos2(sql, hbnd, err,
+            r = OCIBindByPos2(stmtp, hbnd, err,
                               pos + 1,
                               const_cast<ushort *>(s.utf16()),
                               s.length() * sizeof(QChar),
@@ -412,7 +392,7 @@ int QOCIResultPrivate::bindValue(OCIStmt *sql, OCIBind **hbnd, OCIError *err, in
             break;
         } else if (!isOutValue(pos)) {
             // don't detach the string
-            r = OCIBindByPos2(sql, hbnd, err,
+            r = OCIBindByPos2(stmtp, hbnd, err,
                               pos + 1,
                               // safe since oracle doesn't touch OUT values
                               const_cast<ushort *>(s.utf16()),
@@ -429,12 +409,25 @@ int QOCIResultPrivate::bindValue(OCIStmt *sql, OCIBind **hbnd, OCIError *err, in
             if (val.canConvert<QOCIRowIdPointer>() && !isOutValue(pos)) {
                 // use a const pointer to prevent a detach
                 const QOCIRowIdPointer rptr = qvariant_cast<QOCIRowIdPointer>(val);
-                r = OCIBindByPos(sql, hbnd, err,
-                                 pos + 1,
-                                 // it's an IN value, so const_cast is ok
-                                 const_cast<OCIRowid **>(&rptr->id),
-                                 -1,
-                                 SQLT_RDD, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+                r = OCIBindByPos2(stmtp, hbnd, err,
+                                  pos + 1,
+                                  // it's an IN value, so const_cast is ok
+                                  const_cast<OCIRowid **>(&rptr->id),
+                                  -1,
+                                  SQLT_RDD, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+            } else if (val.canConvert<QOCIResult *>() && isOutValue(pos)) {
+                QOCIResult *res = qvariant_cast<QOCIResult *>(val);
+                QOCIResultPrivate *resPrivate = static_cast<QOCIResultPrivate *>(res->d_ptr);
+
+                if (res->internal_prepare()) {
+                    r = OCIBindByPos2(stmtp, hbnd, err,
+                                      pos + 1,
+                                      &resPrivate->stmtp,
+                                      (sb4)0,
+                                      SQLT_RSET, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+
+                    res->isCursor = true;
+                }
             } else {
                 qCWarning(lcOci, "Unknown bind variable");
                 r = OCI_ERROR;
@@ -446,17 +439,17 @@ int QOCIResultPrivate::bindValue(OCIStmt *sql, OCIBind **hbnd, OCIError *err, in
             if (isOutValue(pos)) {
                 ba.reserve((s.capacity() + 1) * sizeof(QChar));
                 *tmpSize = ba.size();
-                r = OCIBindByPos(sql, hbnd, err,
-                                 pos + 1,
-                                 ba.data(),
-                                 ba.capacity(),
-                                 SQLT_STR, indPtr, tmpSize, 0, 0, 0, OCI_DEFAULT);
+                r = OCIBindByPos2(stmtp, hbnd, err,
+                                  pos + 1,
+                                  ba.data(),
+                                  ba.capacity(),
+                                  SQLT_STR, indPtr, tmpSize, 0, 0, 0, OCI_DEFAULT);
             } else {
-                r = OCIBindByPos(sql, hbnd, err,
-                                 pos + 1,
-                                 ba.data(),
-                                 ba.size(),
-                                 SQLT_STR, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
+                r = OCIBindByPos2(stmtp, hbnd, err,
+                                  pos + 1,
+                                  ba.data(),
+                                  ba.size(),
+                                  SQLT_STR, indPtr, 0, 0, 0, 0, OCI_DEFAULT);
             }
             if (r == OCI_SUCCESS)
                 setCharset(*hbnd, OCI_HTYPE_BIND);
@@ -483,7 +476,7 @@ int QOCIResultPrivate::bindValues(QVariantList &values, IndicatorArray &indicato
         sb2 *indPtr = &indicators[i];
         *indPtr = QSqlResultPrivate::isVariantNull(val) ? -1 : 0;
 
-        bindValue(sql, &hbnd, err, i, val, indPtr, &tmpSizes[i], tmpStorage);
+        bindValue(stmtp, &hbnd, err, i, val, indPtr, &tmpSizes[i], tmpStorage);
     }
     return r;
 }
@@ -861,7 +854,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
     sb4 parmStatus = 0;
     ub4 count = 1;
     int idx = 0;
-    parmStatus = OCIParamGet(d->sql,
+    parmStatus = OCIParamGet(d->stmtp,
                              OCI_HTYPE_STMT,
                              d->err,
                              reinterpret_cast<void **>(&param),
@@ -899,7 +892,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
                 qCWarning(lcOci, "QOCICols: Unable to allocate the OCIDateTime descriptor");
                 break;
             }
-            r = OCIDefineByPos(d->sql,
+            r = OCIDefineByPos(d->stmtp,
                                &dfn,
                                d->err,
                                count,
@@ -910,7 +903,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
                                0, 0, OCI_DEFAULT);
             break;
         case QMetaType::Double:
-            r = OCIDefineByPos(d->sql,
+            r = OCIDefineByPos(d->stmtp,
                                &dfn,
                                d->err,
                                count,
@@ -921,7 +914,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
                                0, 0, OCI_DEFAULT);
             break;
         case QMetaType::Int:
-            r = OCIDefineByPos(d->sql,
+            r = OCIDefineByPos(d->stmtp,
                                &dfn,
                                d->err,
                                count,
@@ -932,7 +925,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
                                0, 0, OCI_DEFAULT);
             break;
         case QMetaType::LongLong:
-            r = OCIDefineByPos(d->sql,
+            r = OCIDefineByPos(d->stmtp,
                                &dfn,
                                d->err,
                                count,
@@ -946,7 +939,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
             // RAW and LONG RAW fields can't be bound to LOB locators
             if (ofi.oraType == SQLT_BIN) {
 //                                qDebug("binding SQLT_BIN");
-                r = OCIDefineByPos(d->sql,
+                r = OCIDefineByPos(d->stmtp,
                                    &dfn,
                                    d->err,
                                    count,
@@ -957,7 +950,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
                                    0, 0, OCI_DYNAMIC_FETCH);
             } else if (ofi.oraType == SQLT_LBI) {
 //                                    qDebug("binding SQLT_LBI");
-                r = OCIDefineByPos(d->sql,
+                r = OCIDefineByPos(d->stmtp,
                                    &dfn,
                                    d->err,
                                    count,
@@ -967,7 +960,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
                                    &(fieldInf[idx].ind),
                                    0, 0, OCI_DYNAMIC_FETCH);
             } else if (ofi.oraType == SQLT_CLOB) {
-                r = OCIDefineByPos(d->sql,
+                r = OCIDefineByPos(d->stmtp,
                                    &dfn,
                                    d->err,
                                    count,
@@ -978,7 +971,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
                                    0, 0, OCI_DEFAULT);
             } else {
 //                 qDebug("binding SQLT_BLOB");
-                r = OCIDefineByPos(d->sql,
+                r = OCIDefineByPos(d->stmtp,
                                    &dfn,
                                    d->err,
                                    count,
@@ -991,7 +984,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
             break;
         case QMetaType::QString:
             if (ofi.oraType == SQLT_LNG) {
-                r = OCIDefineByPos(d->sql,
+                r = OCIDefineByPos(d->stmtp,
                         &dfn,
                         d->err,
                         count,
@@ -1003,7 +996,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
             } else {
                 dataSize += dataSize + sizeof(QChar);
                 //qDebug("OCIDefineByPosStr(%d): %d", count, dataSize);
-                r = OCIDefineByPos(d->sql,
+                r = OCIDefineByPos(d->stmtp,
                         &dfn,
                         d->err,
                         count,
@@ -1020,7 +1013,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
             // this should make enough space even with character encoding
             dataSize = (dataSize + 1) * sizeof(utext) ;
             //qDebug("OCIDefineByPosDef(%d): %d", count, dataSize);
-            r = OCIDefineByPos(d->sql,
+            r = OCIDefineByPos(d->stmtp,
                                 &dfn,
                                 d->err,
                                 count,
@@ -1036,7 +1029,7 @@ QOCICols::QOCICols(qsizetype size, QOCIResultPrivate* dp)
         fieldInf[idx].def = dfn;
         ++count;
         ++idx;
-        parmStatus = OCIParamGet(d->sql,
+        parmStatus = OCIParamGet(d->stmtp,
                                   OCI_HTYPE_STMT,
                                   d->err,
                                   reinterpret_cast<void **>(&param),
@@ -1078,12 +1071,12 @@ int QOCICols::readPiecewise(QVariantList &values, int index)
     ub4            idxp;
     ub1            piecep;
     sword          status;
-    text           col [QOCI_DYNAMIC_CHUNK_SIZE+1];
     int            r = 0;
     bool           nullField;
 
+    const auto col = q20::make_unique_for_overwrite<text[]>(QOCI_DYNAMIC_CHUNK_SIZE + 1);
     do {
-        r = OCIStmtGetPieceInfo(d->sql, d->err, reinterpret_cast<void **>(&dfn), &typep,
+        r = OCIStmtGetPieceInfo(d->stmtp, d->err, reinterpret_cast<void **>(&dfn), &typep,
                                  &in_outp, &iterp, &idxp, &piecep);
         if (r != OCI_SUCCESS)
             qOraWarning("OCIResultPrivate::readPiecewise: unable to get piece info:", d->err);
@@ -1092,11 +1085,11 @@ int QOCICols::readPiecewise(QVariantList &values, int index)
         ub4 chunkSize = QOCI_DYNAMIC_CHUNK_SIZE;
         nullField = false;
         r  = OCIStmtSetPieceInfo(dfn, OCI_HTYPE_DEFINE,
-                                 d->err, col,
+                                 d->err, col.get(),
                                  &chunkSize, piecep, NULL, NULL);
         if (r != OCI_SUCCESS)
             qOraWarning("OCIResultPrivate::readPiecewise: unable to set piece info:", d->err);
-        status = OCIStmtFetch (d->sql, d->err, 1, OCI_FETCH_NEXT, OCI_DEFAULT);
+        status = OCIStmtFetch (d->stmtp, d->err, 1, OCI_FETCH_NEXT, OCI_DEFAULT);
         if (status == -1) {
             sb4 errcode;
             OCIErrorGet(d->err, 1, 0, &errcode, 0, 0,OCI_HTYPE_ERROR);
@@ -1115,15 +1108,13 @@ int QOCICols::readPiecewise(QVariantList &values, int index)
             fieldInf[fieldNum].ind = -1;
         } else {
             if (isStringField) {
-                QString str = values.at(fieldNum + index).toString();
-                str += QString(reinterpret_cast<const QChar *>(col), chunkSize / 2);
+                QString str = values.at(fieldNum + index).toString()
+                            + QStringView(reinterpret_cast<const QChar *>(col.get()), chunkSize / 2);
                 values[fieldNum + index] = str;
                 fieldInf[fieldNum].ind = 0;
             } else {
-                QByteArray ba = values.at(fieldNum + index).toByteArray();
-                int sz = ba.size();
-                ba.resize(sz + chunkSize);
-                memcpy(ba.data() + sz, reinterpret_cast<char *>(col), chunkSize);
+                QByteArray ba = values.at(fieldNum + index).toByteArray()
+                              + QByteArrayView(col.get(), chunkSize);
                 values[fieldNum + index] = ba;
                 fieldInf[fieldNum].ind = 0;
             }
@@ -1321,7 +1312,7 @@ bool QOCICols::execBatch(QOCIResultPrivate *d, QVariantList &boundValues, bool a
             singleCol.indicators = new sb2[1];
             *singleCol.indicators = QSqlResultPrivate::isVariantNull(boundValues.at(i)) ? -1 : 0;
 
-            r = d->bindValue(d->sql, &singleCol.bindh, d->err, i,
+            r = d->bindValue(d->stmtp, &singleCol.bindh, d->err, i,
                              boundValues.at(i), singleCol.indicators, &tmpSizes[i], tmpStorage);
 
             if (r != OCI_SUCCESS && r != OCI_SUCCESS_WITH_INFO) {
@@ -1409,8 +1400,8 @@ bool QOCICols::execBatch(QOCIResultPrivate *d, QVariantList &boundValues, bool a
             }
         }
 
-        col.data = new char[col.maxLen * col.recordCount];
-        memset(col.data, 0, col.maxLen * col.recordCount);
+        col.data = new char[size_t(col.maxLen) * col.recordCount];
+        memset(col.data, 0, size_t(col.maxLen) * col.recordCount);
 
         // we may now populate column with data
         for (uint row = 0; row < col.recordCount; ++row) {
@@ -1421,7 +1412,7 @@ bool QOCICols::execBatch(QOCIResultPrivate *d, QVariantList &boundValues, bool a
                 columns[i].lengths[row] = 0;
             } else {
                 columns[i].indicators[row] = 0;
-                char *dataPtr = columns[i].data + (columns[i].maxLen * row);
+                char *const dataPtr = columns[i].data + size_t(columns[i].maxLen) * row;
                 switch (fieldTypes[i].id()) {
                     case QMetaType::QTime:
                     case QMetaType::QDate:
@@ -1492,8 +1483,8 @@ bool QOCICols::execBatch(QOCIResultPrivate *d, QVariantList &boundValues, bool a
         QOCIBatchColumn &bindColumn = columns[i];
 
 #ifdef QOCI_DEBUG
-            qCDebug(lcOci, "OCIBindByPos(%p, %p, %p, %d, %p, %d, %d, %p, %p, 0, %d, %p, OCI_DEFAULT)",
-            d->sql, &bindColumn.bindh, d->err, i + 1, bindColumn.data,
+            qCDebug(lcOci, "OCIBindByPos2(%p, %p, %p, %d, %p, %d, %d, %p, %p, 0, %d, %p, OCI_DEFAULT)",
+            d->stmtp, &bindColumn.bindh, d->err, i + 1, bindColumn.data,
             bindColumn.maxLen, bindColumn.bindAs, bindColumn.indicators, bindColumn.lengths,
             arrayBind ? bindColumn.maxarr_len : 0, arrayBind ? &bindColumn.curelep : 0);
 
@@ -1506,7 +1497,7 @@ bool QOCICols::execBatch(QOCIResultPrivate *d, QVariantList &boundValues, bool a
 
         // binding the column
         r = OCIBindByPos2(
-                d->sql, &bindColumn.bindh, d->err, i + 1,
+                d->stmtp, &bindColumn.bindh, d->err, i + 1,
                 bindColumn.data,
                 bindColumn.maxLen,
                 bindColumn.bindAs,
@@ -1546,7 +1537,7 @@ bool QOCICols::execBatch(QOCIResultPrivate *d, QVariantList &boundValues, bool a
     }
 
     //finally we can execute
-    r = OCIStmtExecute(d->svc, d->sql, d->err,
+    r = OCIStmtExecute(d->svc, d->stmtp, d->err,
                        arrayBind ? 1 : columns[0].recordCount,
                        0, NULL, NULL,
                        d->transaction ? OCI_DEFAULT : OCI_COMMIT_ON_SUCCESS);
@@ -1582,28 +1573,29 @@ bool QOCICols::execBatch(QOCIResultPrivate *d, QVariantList &boundValues, bool a
                 continue;
             }
 
+            char *const colData = data + r * size_t(columns[i].maxLen);
             switch(columns[i].bindAs) {
 
                 case SQLT_TIMESTAMP_TZ:
                     (*list)[r] = QOCIDateTime::fromOCIDateTime(d->env, d->err,
-                                    *reinterpret_cast<OCIDateTime **>(data + r * columns[i].maxLen));
+                                    *reinterpret_cast<OCIDateTime **>(colData));
                     break;
                 case SQLT_INT:
-                    (*list)[r] =  *reinterpret_cast<int*>(data + r * columns[i].maxLen);
+                    (*list)[r] = *reinterpret_cast<int*>(colData);
                     break;
 
                 case SQLT_UIN:
-                    (*list)[r] =  *reinterpret_cast<uint*>(data + r * columns[i].maxLen);
+                    (*list)[r] = *reinterpret_cast<uint*>(colData);
                     break;
 
                 case SQLT_VNU:
                 {
                     switch (boundValues.at(i).typeId()) {
                     case QMetaType::LongLong:
-                        (*list)[r] =  qMakeLongLong(data + r * columns[i].maxLen, d->err);
+                        (*list)[r] = qMakeLongLong(colData, d->err);
                         break;
                     case QMetaType::ULongLong:
-                        (*list)[r] =  qMakeULongLong(data + r * columns[i].maxLen, d->err);
+                        (*list)[r] = qMakeULongLong(colData, d->err);
                         break;
                     default:
                         break;
@@ -1612,16 +1604,15 @@ bool QOCICols::execBatch(QOCIResultPrivate *d, QVariantList &boundValues, bool a
                 }
 
                 case SQLT_FLT:
-                    (*list)[r] =  *reinterpret_cast<double*>(data + r * columns[i].maxLen);
+                    (*list)[r] = *reinterpret_cast<double*>(colData);
                     break;
 
                 case SQLT_STR:
-                    (*list)[r] =  QString(reinterpret_cast<const QChar *>(data
-                                                                + r * columns[i].maxLen));
+                    (*list)[r] = QString(reinterpret_cast<const QChar *>(colData));
                     break;
 
                 default:
-                    (*list)[r] =  QByteArray(data + r * columns[i].maxLen, columns[i].maxLen);
+                    (*list)[r] = QByteArray(colData, columns[i].maxLen);
                 break;
             }
         }
@@ -1787,7 +1778,7 @@ void QOCICols::getValues(QVariantList &v, int index)
 QOCIResultPrivate::QOCIResultPrivate(QOCIResult *q, const QOCIDriver *drv)
     : QSqlCachedResultPrivate(q, drv),
       env(drv_d_func()->env),
-      svc(const_cast<OCISvcCtx*&>(drv_d_func()->svc)),
+      svc(drv_d_func()->svc),
       transaction(drv_d_func()->transaction),
       serverVersion(drv_d_func()->serverVersion),
       prefetchRows(drv_d_func()->prefetchRows),
@@ -1806,7 +1797,7 @@ QOCIResultPrivate::~QOCIResultPrivate()
 {
     delete cols;
 
-    if (sql && OCIHandleFree(sql, OCI_HTYPE_STMT) != OCI_SUCCESS)
+    if (stmtp && OCIHandleFree(stmtp, OCI_HTYPE_STMT) != OCI_SUCCESS)
         qCWarning(lcOci, "~QOCIResult: unable to free statement handle");
 
     if (OCIHandleFree(err, OCI_HTYPE_ERROR) != OCI_SUCCESS)
@@ -1819,6 +1810,7 @@ QOCIResultPrivate::~QOCIResultPrivate()
 QOCIResult::QOCIResult(const QOCIDriver *db)
     : QSqlCachedResult(*new QOCIResultPrivate(this, db))
 {
+    isCursor = false;
 }
 
 QOCIResult::~QOCIResult()
@@ -1828,7 +1820,7 @@ QOCIResult::~QOCIResult()
 QVariant QOCIResult::handle() const
 {
     Q_D(const QOCIResult);
-    return QVariant::fromValue(d->sql);
+    return QVariant::fromValue(d->stmtp);
 }
 
 bool QOCIResult::reset (const QString& query)
@@ -1846,7 +1838,7 @@ bool QOCIResult::gotoNext(QSqlCachedResult::ValueCache &values, int index)
 
     bool piecewise = false;
     int r = OCI_SUCCESS;
-    r = OCIStmtFetch(d->sql, d->err, 1, OCI_FETCH_NEXT, OCI_DEFAULT);
+    r = OCIStmtFetch(d->stmtp, d->err, 1, OCI_FETCH_NEXT, OCI_DEFAULT);
 
     if (index < 0) //not interested in values
         return r == OCI_SUCCESS || r == OCI_SUCCESS_WITH_INFO;
@@ -1902,7 +1894,7 @@ int QOCIResult::numRowsAffected()
 {
     Q_D(QOCIResult);
     int rowCount;
-    OCIAttrGet(d->sql,
+    OCIAttrGet(d->stmtp,
                 OCI_HTYPE_STMT,
                 &rowCount,
                 NULL,
@@ -1911,27 +1903,27 @@ int QOCIResult::numRowsAffected()
     return rowCount;
 }
 
-bool QOCIResult::prepare(const QString& query)
+bool QOCIResult::internal_prepare()
 {
     Q_D(QOCIResult);
     int r = 0;
-    QSqlResult::prepare(query);
+    QString noStr;
+    QSqlResult::prepare(noStr);
 
     delete d->cols;
     d->cols = nullptr;
     QSqlCachedResult::cleanup();
 
-    if (d->sql) {
-        r = OCIHandleFree(d->sql, OCI_HTYPE_STMT);
+    if (d->stmtp) {
+        r = OCIHandleFree(d->stmtp, OCI_HTYPE_STMT);
         if (r == OCI_SUCCESS)
-            d->sql = nullptr;
+            d->stmtp = nullptr;
         else
             qOraWarning("QOCIResult::prepare: unable to free statement handle:", d->err);
     }
-    if (query.isEmpty())
-        return false;
+
     r = OCIHandleAlloc(d->env,
-                       reinterpret_cast<void **>(&d->sql),
+                       reinterpret_cast<void **>(&d->stmtp),
                        OCI_HTYPE_STMT,
                        0, nullptr);
     if (r != OCI_SUCCESS) {
@@ -1941,9 +1933,23 @@ bool QOCIResult::prepare(const QString& query)
         return false;
     }
     d->setStatementAttributes();
+
+    return true;
+}
+
+bool QOCIResult::prepare(const QString& query)
+{
+    if (query.isEmpty())
+        return false;
+
+    if (!internal_prepare())
+        return false;
+
+    int r;
     const OraText *txt = reinterpret_cast<const OraText *>(query.utf16());
     const auto len = ub4(query.length() * sizeof(QChar));
-    r = OCIStmtPrepare(d->sql,
+    Q_D(QOCIResult);
+    r = OCIStmtPrepare(d->stmtp,
                        d->err,
                        txt,
                        len,
@@ -1969,7 +1975,7 @@ bool QOCIResult::exec()
     IndicatorArray indicators(boundValueCount());
     SizeArray tmpSizes(boundValueCount());
 
-    r = OCIAttrGet(d->sql,
+    r = OCIAttrGet(d->stmtp,
                     OCI_HTYPE_STMT,
                     &stmtType,
                     NULL,
@@ -2001,28 +2007,30 @@ bool QOCIResult::exec()
         return false;
     }
 
-    // execute
-    r = OCIStmtExecute(d->svc,
-                       d->sql,
-                       d->err,
-                       iters,
-                       0,
-                       0,
-                       0,
-                       mode);
-    if (r != OCI_SUCCESS && r != OCI_SUCCESS_WITH_INFO) {
-        qOraWarning("QOCIResult::exec: unable to execute statement:", d->err);
-        setLastError(qMakeError(QCoreApplication::translate("QOCIResult",
-                     "Unable to execute statement"), QSqlError::StatementError, d->err));
-#ifdef QOCI_DEBUG
-        qCDebug(lcOci) << "lastQuery()" << lastQuery();
-#endif
-        return false;
+    if (!isCursor) {
+        // execute
+        r = OCIStmtExecute(d->svc,
+                           d->stmtp,
+                           d->err,
+                           iters,
+                           0,
+                           0,
+                           0,
+                           mode);
+        if (r != OCI_SUCCESS && r != OCI_SUCCESS_WITH_INFO) {
+            qOraWarning("QOCIResult::exec: unable to execute statement:", d->err);
+            setLastError(qMakeError(QCoreApplication::translate("QOCIResult",
+                        "Unable to execute statement"), QSqlError::StatementError, d->err));
+    #ifdef QOCI_DEBUG
+            qCDebug(lcOci) << "lastQuery()" << lastQuery();
+    #endif
+            return false;
+        }
     }
 
     if (stmtType == OCI_STMT_SELECT) {
         ub4 parmCount = 0;
-        int r = OCIAttrGet(d->sql, OCI_HTYPE_STMT, reinterpret_cast<void **>(&parmCount),
+        int r = OCIAttrGet(d->stmtp, OCI_HTYPE_STMT, reinterpret_cast<void **>(&parmCount),
                            0, OCI_ATTR_PARAM_COUNT, d->err);
         if (r == 0 && !d->cols)
             d->cols = new QOCICols(parmCount, d);
@@ -2055,7 +2063,7 @@ QVariant QOCIResult::lastInsertId() const
     if (isActive()) {
         QOCIRowIdPointer ptr(new QOCIRowId(d->env));
 
-        int r = OCIAttrGet(d->sql, OCI_HTYPE_STMT, ptr.constData()->id,
+        int r = OCIAttrGet(d->stmtp, OCI_HTYPE_STMT, ptr.constData()->id,
                            0, OCI_ATTR_ROWID, d->err);
         if (r == OCI_SUCCESS)
             return QVariant::fromValue(ptr);

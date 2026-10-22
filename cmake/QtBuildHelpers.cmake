@@ -6,6 +6,7 @@ function(qt_internal_validate_cmake_generator)
 
     if(NOT warning_shown
             AND NOT CMAKE_GENERATOR MATCHES "Ninja"
+            AND NOT (IOS AND QT_INTERNAL_IS_STANDALONE_TEST)
             AND NOT QT_SILENCE_CMAKE_GENERATOR_WARNING
             AND NOT DEFINED ENV{QT_SILENCE_CMAKE_GENERATOR_WARNING})
         set_property(GLOBAL PROPERTY _qt_validate_cmake_generator_warning_shown TRUE)
@@ -15,6 +16,25 @@ function(qt_internal_validate_cmake_generator)
                "You are using: '${CMAKE_GENERATOR}' instead. "
                "Thus, you might encounter issues. Use at your own risk.")
     endif()
+endfunction()
+
+# Error out when CMAKE_CONFIGURATION_TYPES is provided for a single-config generator.
+# Otherwise the build might fail in weird ways.
+# This can happen when passing -G Ninja Multi-Config without quotes.
+function(qt_internal_validate_cmake_configuration_types)
+    get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+    if(is_multi_config OR NOT CMAKE_CONFIGURATION_TYPES)
+        return()
+    endif()
+
+    message(FATAL_ERROR
+        "CMAKE_CONFIGURATION_TYPES is set to '${CMAKE_CONFIGURATION_TYPES}', but "
+        "'${CMAKE_GENERATOR}' is a single-configuration generator that ignores it.\n"
+        "To build multiple configurations, use a multi-config generator, making sure to quote "
+        "generator names that contain spaces, for example -G \"Ninja Multi-Config\".\n"
+        "To build a single configuration, remove CMAKE_CONFIGURATION_TYPES from the command line "
+        "and use -DCMAKE_BUILD_TYPE=<config> instead.\n"
+    )
 endfunction()
 
 macro(qt_internal_set_qt_building_qt)
@@ -96,6 +116,7 @@ macro(qt_internal_reset_global_state)
     qt_internal_set_qt_known_plugins("")
 
     set(QT_KNOWN_MODULES_WITH_TOOLS "" CACHE INTERNAL "Known Qt modules with tools" FORCE)
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_packages "")
 endmacro()
 
 macro(qt_internal_set_qt_path_separator)
@@ -164,6 +185,7 @@ function(qt_internal_get_qt_build_private_helpers out_var)
     set(${out_var}
         Qt3rdPartyLibraryHelpers
         QtAndroidHelpers
+        QtHarmonyOSHelpers
         QtAppHelpers
         QtAutoDetectHelpers
         QtAutogenHelpers
@@ -188,6 +210,7 @@ function(qt_internal_get_qt_build_private_helpers out_var)
         QtLalrHelpers
         QtMkspecHelpers
         QtModuleHelpers
+        QtModuleMapHelpers
         QtNoLinkTargetHelpers
         QtPkgConfigHelpers
         QtPlatformTargetHelpers
@@ -213,6 +236,7 @@ function(qt_internal_get_qt_build_private_helpers out_var)
         QtToolchainHelpers
         QtUnityBuildHelpers
         QtWasmHelpers
+        QtWindowsHelpers
         QtWrapperScriptHelpers
         PARENT_SCOPE
     )
@@ -226,10 +250,14 @@ function(qt_internal_get_qt_build_private_files_to_install out_var)
         ModuleDescription.json.in
         PkgConfigLibrary.pc.in
         Qt3rdPartyLibraryConfig.cmake.in
+        QtTransitiveExtras.cmake.in
         QtBaseTopLevelHelpers.cmake
         QtBuild.cmake
         QtBuildHelpers.cmake
+        QtBuildStaticDocToolsScript.cmake
+        QtBuildCMakeFromSourcesScript.cmake
         QtCMakePackageVersionFile.cmake.in
+        QtCMakePackageVersionFileOverride.cmake.in
         QtCompilerFlags.cmake
         QtCompilerOptimization.cmake
         QtConfigDependencies.cmake.in
@@ -244,6 +272,7 @@ function(qt_internal_get_qt_build_private_files_to_install out_var)
         QtGenerateLibPri.cmake
         QtGenerateVersionScript.cmake
         QtModuleConfig.cmake.in
+        QtModuleConfigPrivate.cmake.in
         QtModuleDependencies.cmake.in
         QtModuleHeadersCheck.cmake
         QtModuleToolsConfig.cmake.in
@@ -258,12 +287,16 @@ function(qt_internal_get_qt_build_private_files_to_install out_var)
         QtProcessConfigureArgs.cmake
         QtSeparateDebugInfo.Info.plist.in
         QtSetup.cmake
+        QtSetupAndroid.cmake
         QtStandaloneTestsConfig.cmake.in
+        QtVcpkgManifestHelpers.cmake
         QtVersionlessAliasTargets.cmake.in
         QtVersionlessTargets.cmake.in
         QtWriteArgsFile.cmake
         modulecppexports.h.in
         qbatchedtestrunner.in.cpp
+        qt-internal-config.redo.in
+        qt-internal-config.redo.bat.in
         PARENT_SCOPE
     )
 endfunction()
@@ -277,6 +310,7 @@ function(qt_internal_get_qt_build_public_helpers out_var)
     set(${out_var}
         QtFeature
         QtFeatureCommon
+        QtPublicAndroidHelpers
         QtPublicAppleHelpers
         QtPublicCMakeHelpers
         QtPublicCMakeVersionHelpers
@@ -285,13 +319,33 @@ function(qt_internal_get_qt_build_public_helpers out_var)
         QtPublicFinalizerHelpers
         QtPublicFindPackageHelpers
         QtPublicGitHelpers
+        QtPublicJsonHelpers
         QtPublicPluginHelpers
+        QtPublicPluginHelpers_v2
+        QtPublicSbomAttributionHelpers
+        QtPublicSbomBuildToolHelpers
+        QtPublicSbomCommonGenerationHelpers
+        QtPublicSbomCpeHelpers
+        QtPublicSbomCycloneDXHelpers
+        QtPublicSbomDocumentNamespaceHelpers
+        QtPublicSbomDepHelpers
+        QtPublicSbomExternalReferenceHelpers
+        QtPublicSbomFileHelpers
         QtPublicSbomGenerationHelpers
+        QtPublicSbomGenerationCycloneDXHelpers
         QtPublicSbomHelpers
+        QtPublicSbomLicenseHelpers
+        QtPublicSbomOpsHelpers
+        QtPublicSbomPurlHelpers
+        QtPublicSbomPythonHelpers
+        QtPublicSbomQtEntityHelpers
+        QtPublicSbomRelationshipHelpers
+        QtPublicSbomSystemDepHelpers
         QtPublicTargetHelpers
         QtPublicTestHelpers
         QtPublicToolHelpers
         QtPublicWalkLibsHelpers
+        QtPublicWindowsHelpers
         PARENT_SCOPE
     )
 endfunction()
@@ -301,11 +355,15 @@ endfunction()
 # The files are expected to exist under the qtbase/cmake sub-directory.
 function(qt_internal_get_qt_build_public_files_to_install out_var)
     set(${out_var}
+        QtAndroidSignPackage.cmake
         QtCopyFileIfDifferent.cmake
         QtInitProject.cmake
+        QtPublicCMakeEarlyPolicyHelpers.cmake
+        QtPublicCMakeIncludeGuardHelpers.cmake
 
         # Public CMake files that are installed next Qt6Config.cmake, but are NOT included by it.
         # Instead they are included by the generated CMake toolchain file.
+        QtPublicHarmonyOSToolchainHelpers.cmake
         QtPublicWasmToolchainHelpers.cmake
 
         PARENT_SCOPE
@@ -343,15 +401,9 @@ endfunction()
 
 macro(qt_internal_setup_find_host_info_package)
     _qt_internal_determine_if_host_info_package_needed(__qt_build_requires_host_info_package)
-    _qt_internal_find_host_info_package("${__qt_build_requires_host_info_package}")
-endmacro()
-
-macro(qt_internal_setup_poor_mans_scope_finalizer)
-    # This sets up the poor man's scope finalizer mechanism.
-    # For newer CMake versions, we use cmake_language(DEFER CALL) instead.
-    if(CMAKE_VERSION VERSION_LESS "3.19.0")
-        variable_watch(CMAKE_CURRENT_LIST_DIR qt_watch_current_list_dir)
-    endif()
+    _qt_internal_setup_qt_host_path("${__qt_build_requires_host_info_package}" "" "")
+    _qt_internal_find_host_info_package("${__qt_build_requires_host_info_package}"
+        ${INSTALL_CMAKE_NAMESPACE})
 endmacro()
 
 macro(qt_internal_set_qt_namespace)
@@ -408,6 +460,7 @@ macro(qt_internal_setup_build_and_global_variables)
     qt_internal_set_qt_source_tree_var()
     qt_internal_set_export_compile_commands()
     qt_internal_set_configure_from_ide()
+    qt_internal_set_ci_options()
 
     # Depends on qt_internal_set_configure_from_ide
     qt_internal_set_sync_headers_at_configure_time()
@@ -419,10 +472,16 @@ macro(qt_internal_setup_build_and_global_variables)
 
     qt_internal_setup_build_tools()
 
+    qt_internal_setup_sbom()
+
     # Depends on qt_internal_setup_default_install_prefix
     qt_internal_setup_build_examples()
 
     qt_internal_set_qt_host_path()
+    qt_internal_setup_find_host_info_package()
+
+    qt_internal_setup_build_docs()
+    qt_internal_setup_build_java_docs_on_host()
 
     qt_internal_include_qt_platform_android()
 
@@ -439,9 +498,9 @@ macro(qt_internal_setup_build_and_global_variables)
 
     qt_internal_check_macos_host_version()
     _qt_internal_check_apple_sdk_and_xcode_versions()
+    qt_internal_check_msvc_versions()
     qt_internal_check_host_path_set_for_cross_compiling()
     qt_internal_setup_android_platform_specifics()
-    qt_internal_setup_find_host_info_package()
     qt_internal_setup_tool_path_command()
     qt_internal_setup_default_target_function_options()
     qt_internal_set_default_rpath_settings()
@@ -452,18 +511,15 @@ macro(qt_internal_setup_build_and_global_variables)
     qt_internal_set_top_level_source_dir()
     qt_internal_set_apple_archiver_flags()
     qt_internal_set_debug_extend_target()
-    qt_internal_setup_poor_mans_scope_finalizer()
 
     qt_internal_set_compiler_optimization_flags()
     qt_internal_set_compiler_warning_flags()
 
     qt_set_language_standards()
     qt_internal_set_use_ccache()
-    qt_internal_set_unity_build()
     qt_internal_set_allow_symlink_in_paths()
     qt_internal_set_skip_setup_deployment()
     qt_internal_set_qt_allow_download()
 
     qt_internal_detect_dirty_features()
 endmacro()
-

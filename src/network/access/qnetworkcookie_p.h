@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKCOOKIE_P_H
 #define QNETWORKCOOKIE_P_H
@@ -38,12 +39,14 @@ public:
     bool httpOnly = false;
 };
 
-static inline bool isLWS(char c)
+namespace {
+inline bool isLWS(char c)
 {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
-static int nextNonWhitespace(QByteArrayView text, int from)
+// Used in qnetworkcookie.cpp and qnetworkreplyhttpimpl.cpp
+inline qsizetype nextNonWhitespace(QByteArrayView text, qsizetype from)
 {
     // RFC 2616 defines linear whitespace as:
     //  LWS = [CRLF] 1*( SP | HT )
@@ -58,6 +61,7 @@ static int nextNonWhitespace(QByteArrayView text, int from)
 
     // reached the end
     return text.size();
+}
 }
 
 QT_END_NAMESPACE

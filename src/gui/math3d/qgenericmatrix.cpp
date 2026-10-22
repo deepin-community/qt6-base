@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qgenericmatrix.h"
 
@@ -16,19 +17,15 @@ QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
 
 /*!
     \class QGenericMatrix
-    \brief The QGenericMatrix class is a template class that represents a NxM transformation matrix with N columns and M rows.
+    \brief The QGenericMatrix class is a template class that represents an N x M transformation matrix with N columns and M rows.
     \since 4.6
     \ingroup painting
     \ingroup painting-3D
     \inmodule QtGui
 
-    The QGenericMatrix template has three parameters:
-
-    \table
-    \row \li N \li Number of columns.
-    \row \li M \li Number of rows.
-    \row \li T \li Element type that is visible to users of the class.
-    \endtable
+    QGenericMatrix\<N, M, T\> is a template class where \a N is the number of
+    columns, \a M is the number of rows, and \a T is the element type that is
+    visible to users of the class.
 
     \sa QMatrix4x4
 */
@@ -36,7 +33,7 @@ QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
 /*!
     \fn template <int N, int M, typename T> QGenericMatrix<N, M, T>::QGenericMatrix()
 
-    Constructs a NxM identity matrix.
+    Constructs an \a N x \a M identity matrix.
 */
 
 /*!
@@ -44,13 +41,13 @@ QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
     \since 5.5
     \internal
 
-    Constructs a NxM matrix without initializing the contents.
+    Constructs an \a N x \a M matrix without initializing the contents.
 */
 
 /*!
     \fn template <int N, int M, typename T> QGenericMatrix<N, M, T>::QGenericMatrix(const T *values)
 
-    Constructs a matrix from the given N * M floating-point \a values.
+    Constructs a matrix from the given \a N * \a M floating-point \a values.
     The contents of the array \a values is assumed to be in
     row-major order.
 
@@ -139,21 +136,21 @@ QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
     \fn template <int N, int M, typename T> QGenericMatrix<N, M, T> operator+(const QGenericMatrix<N, M, T>& m1, const QGenericMatrix<N, M, T>& m2)
     \relates QGenericMatrix
 
-    Returns the sum of \a m1 and \a m2.
+    Returns the sum of the \a N x \a M matrices \a m1 and \a m2.
 */
 
 /*!
     \fn template <int N, int M, typename T> QGenericMatrix<N, M, T> operator-(const QGenericMatrix<N, M, T>& m1, const QGenericMatrix<N, M, T>& m2)
     \relates QGenericMatrix
 
-    Returns the difference of \a m1 and \a m2.
+    Returns the difference of the \a N x \a M matrices \a m1 and \a m2.
 */
 
 /*!
     \fn template <int N, int M, typename T> template<int NN, int M1, int M2, typename TT> QGenericMatrix<M1, M2, TT> QGenericMatrix<N, M, T>::operator*(const QGenericMatrix<NN, M2, TT>& m1, const QGenericMatrix<M1, NN, TT>& m2)
 
-    Returns the product of the NNxM2 matrix \a m1 and the M1xNN matrix \a m2
-    to produce a M1xM2 matrix result.
+    Returns the product of the \a NN x \a M2 matrix \a m1 and the \a M1 x \a NN
+    matrix \a m2 to produce an \a M1 x \a M2 matrix result.
 */
 
 /*!
@@ -168,7 +165,8 @@ QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
     \fn template <int N, int M, typename T> QGenericMatrix<N, M, T> operator*(T factor, const QGenericMatrix<N, M, T>& matrix)
     \relates QGenericMatrix
 
-    Returns the result of multiplying all elements of \a matrix by \a factor.
+    Returns the result of multiplying all elements of the \a N x \a M
+    \a matrix by \a factor.
 */
 
 /*!
@@ -182,13 +180,14 @@ QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
     \fn template <int N, int M, typename T> QGenericMatrix<N, M, T> operator/(const QGenericMatrix<N, M, T>& matrix, T divisor)
     \relates QGenericMatrix
 
-    Returns the result of dividing all elements of \a matrix by \a divisor.
+    Returns the result of dividing all elements of the \a N x \a M
+    \a matrix by \a divisor.
 */
 
 /*!
     \fn template <int N, int M, typename T> void QGenericMatrix<N, M, T>::copyDataTo(T *values) const
 
-    Retrieves the N * M items in this matrix and copies them to \a values
+    Retrieves the \a N * \a M items in this matrix and copies them to \a values
     in row-major order.
 */
 
@@ -222,7 +221,7 @@ QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
     \fn template <int N, int M, typename T> QDataStream &operator<<(QDataStream &stream, const QGenericMatrix<N, M, T> &matrix)
     \relates QGenericMatrix
 
-    Writes the given \a matrix to the given \a stream and returns a
+    Writes the given \a N x \a M \a matrix to the given \a stream and returns a
     reference to the stream.
 
     \sa {Serializing Qt Data Types}
@@ -232,7 +231,7 @@ QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
     \fn template <int N, int M, typename T> QDataStream &operator>>(QDataStream &stream, QGenericMatrix<N, M, T> &matrix)
     \relates QGenericMatrix
 
-    Reads a NxM matrix from the given \a stream into the given \a matrix
+    Reads an \a N x \a M matrix from the given \a stream into the given \a matrix
     and returns a reference to the stream.
 
     \sa {Serializing Qt Data Types}

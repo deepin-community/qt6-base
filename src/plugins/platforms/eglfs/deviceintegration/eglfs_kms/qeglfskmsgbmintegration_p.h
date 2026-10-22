@@ -2,6 +2,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEGLFSKMSGBMINTEGRATION_H
 #define QEGLFSKMSGBMINTEGRATION_H
@@ -24,11 +25,14 @@
 QT_BEGIN_NAMESPACE
 
 class QEglFSKmsDevice;
+class QDeviceDiscovery;
+class QFileSystemWatcher;
 
 class Q_EGLFS_EXPORT QEglFSKmsGbmIntegration : public QEglFSKmsIntegration
 {
 public:
     QEglFSKmsGbmIntegration();
+    ~QEglFSKmsGbmIntegration() override;
 
     EGLDisplay createDisplay(EGLNativeDisplayType nativeDisplay) override;
     EGLNativeWindowType createNativeOffscreenWindow(const QSurfaceFormat &format) override;
@@ -42,6 +46,10 @@ protected:
     QKmsDevice *createDevice() override;
 
 private:
+    std::unique_ptr<QDeviceDiscovery> m_deviceDiscovery;
+#if QT_CONFIG(filesystemwatcher)
+    std::unique_ptr<QFileSystemWatcher> m_kmsConfigWatcher;
+#endif
 };
 
 QT_END_NAMESPACE

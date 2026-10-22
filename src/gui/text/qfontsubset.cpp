@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qfontsubset_p.h"
 #include <qdebug.h>
@@ -1195,7 +1196,7 @@ QByteArray QFontSubset::toTruetype() const
             name.copyright = "Fake font"_L1;
         else
             name.copyright = QLatin1StringView(properties.copyright);
-        name.family = fontEngine->fontDef.families.constFirst();
+        name.family = fontEngine->fontDef.family();
         name.subfamily = "Regular"_L1; // ######
         name.postscript_name = QLatin1StringView(properties.postscriptName);
         name_table = generateName(name);

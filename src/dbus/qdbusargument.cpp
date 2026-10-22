@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdbusargument.h"
 #include "qdbusargument_p.h"
@@ -37,18 +38,18 @@ QByteArray QDBusArgumentPrivate::createSignature(QMetaType type)
         return "";
 
     QByteArray signature;
-    QDBusMarshaller *marshaller = new QDBusMarshaller;
-    marshaller->ba = &signature;
+    const bool ok = [&signature, &type] {
+        QDBusMarshaller marshaller;
+        marshaller.ba = &signature;
 
-    // run it
-    QVariant v{type};
-    QDBusArgument arg(marshaller);
-    QDBusMetaType::marshall(arg, v.metaType(), v.constData());
-    arg.d = nullptr;
+        // run it
+        QVariant v{type};
+        QDBusArgument arg(&marshaller);
+        QDBusMetaType::marshall(arg, v.metaType(), v.constData());
+        arg.d = nullptr;
 
-    // delete it
-    bool ok = marshaller->ok;
-    delete marshaller;
+        return marshaller.ok;
+    }();
 
     if (signature.isEmpty() || !ok || !QDBusUtil::isValidSingleSignature(QString::fromLatin1(signature))) {
         qWarning("QDBusMarshaller: type '%s' produces invalid D-Bus signature '%s' "
@@ -1364,8 +1365,7 @@ QDBusArgument &operator<<(QDBusArgument &a, const QLineF &line)
 
 /*!
     \fn void QDBusArgument::swap(QDBusArgument &other)
-
-    Swaps this QDBusArgument instance with \a other.
+    \memberswap{argument}
 */
 
 QT_END_NAMESPACE

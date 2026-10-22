@@ -1,6 +1,7 @@
 // Copyright (C) 2011 Thiago Macieira <thiago@kde.org>
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QATOMIC_CXX11_H
 #define QATOMIC_CXX11_H
@@ -456,8 +457,6 @@ template <typename X> struct QAtomicOps
         return _q_value.fetch_xor(valueToAdd, std::memory_order_acq_rel);
     }
 };
-
-#  define Q_BASIC_ATOMIC_INITIALIZER(a)     { a }
 
 QT_END_NAMESPACE
 

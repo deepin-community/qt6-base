@@ -17,20 +17,32 @@
 //
 
 #include <QtCore/qbytearray.h>
+#include <QtCore/qmetatype.h>
 #include <QtCore/private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
+static void normalizeTypeInternal(QByteArrayView in, QByteArray &appendTo);
+
 // This function is shared with moc.cpp. This file should be included where needed.
 static QByteArray normalizeTypeInternal(const char *t, const char *e)
 {
+    QByteArrayView in{t, e};
+    QByteArray appendTo;
+    normalizeTypeInternal(in, appendTo);
+    return appendTo;
+}
+
+static void normalizeTypeInternal(QByteArrayView in, QByteArray &appendTo)
+{
+    const char *t = in.begin();
+    const char *e = in.end();
     int len = QtPrivate::qNormalizeType(t, e, nullptr);
     if (len == 0)
-        return QByteArray();
-    QByteArray result(len, Qt::Uninitialized);
-    len = QtPrivate::qNormalizeType(t, e, result.data());
-    Q_ASSERT(len == result.size());
-    return result;
+        return;
+    qsizetype oldLen = appendTo.size();
+    appendTo.resize(appendTo.size() + len);
+    QtPrivate::qNormalizeType(t, e, appendTo.begin() + oldLen);
 }
 
 QT_END_NAMESPACE

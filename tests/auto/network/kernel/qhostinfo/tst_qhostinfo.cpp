@@ -18,12 +18,15 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QScopeGuard>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
 #include <QTestEventLoop>
 
 #include <private/qthread_p.h>
+
+#include <memory>
 
 #include <sys/types.h>
 
@@ -83,8 +86,10 @@ private slots:
     void multipleDifferentLookups();
 
     void cache();
+    void clearCache();
 
     void abortHostLookup();
+    void abortedLookupDestroysEmitter();
 
 private:
     bool ipv6LookupsAvailable;
@@ -592,8 +597,8 @@ void tst_QHostInfo::cache()
     QVERIFY(valid);
     QVERIFY(!result.addresses().isEmpty());
 
-    // clear the cache
-    qt_qhostinfo_clear_cache();
+    // clear the cache (using public API; we don't need to cancel in-progress lookups here)
+    QHostInfo::clearCache();
 
     // lookup third time, result should not come directly.
     valid = true;
@@ -605,6 +610,49 @@ void tst_QHostInfo::cache()
 
     // the slot should have been called 2 times.
     QCOMPARE(helper.lookupsDoneCounter, 2);
+}
+
+void tst_QHostInfo::clearCache()
+{
+    QFETCH_GLOBAL(bool, cache);
+#ifdef QT_BUILD_INTERNAL
+    // This test requires cache enabled; enable it for this test when the global row is WithoutCache and restore afterward.
+    const bool needRestore = !cache;
+    if (needRestore)
+        qt_qhostinfo_enable_cache(true);
+    const auto restoreCache = qScopeGuard([needRestore]() {
+        if (needRestore)
+            qt_qhostinfo_enable_cache(false);
+    });
+    // Test clearCache() using cache_inject: inject an entry, verify it's
+    // used, clear via public API, then verify the next lookup is not from cache.
+    const QString hostname = "clearCache-api.example";
+    QHostInfo injected;
+    injected.setHostName(hostname);
+    injected.setAddresses({QHostAddress("192.0.2.99")});
+    injected.setError(QHostInfo::NoError);
+
+    qt_qhostinfo_cache_inject(hostname, injected);
+
+    bool valid = false;
+    int id = -1;
+    tst_QHostInfo_Helper helper(hostname);
+    QHostInfo result = qt_qhostinfo_lookup(hostname, &helper, SLOT(resultsReady(QHostInfo)), &valid, &id);
+    QVERIFY(valid);
+    QVERIFY(!result.addresses().isEmpty());
+    QCOMPARE(result.addresses().constFirst(), QHostAddress("192.0.2.99"));
+
+    QHostInfo::clearCache();
+
+    valid = true;
+    result = qt_qhostinfo_lookup(hostname, &helper, SLOT(resultsReady(QHostInfo)), &valid, &id);
+    QVERIFY(!valid);
+    QVERIFY(result.addresses().isEmpty());
+    // We triggered an async lookup; abort it so we don't leave it pending.
+    QHostInfo::abortHostLookup(id);
+#else
+    QSKIP("qt_qhostinfo_cache_inject is only available in internal builds");
+#endif
 }
 
 void tst_QHostInfo_Helper::resultsReady(const QHostInfo &hi)
@@ -627,6 +675,35 @@ void tst_QHostInfo::abortHostLookup()
     QHostInfo::abortHostLookup(id);
     QTestEventLoop::instance().enterLoop(5);
     QCOMPARE(helper.lookupsDoneCounter, 0);
+}
+
+// A lookup's result emitter lives in the receiver's thread, but the runnable holding it is
+// usually deleted elsewhere. When that thread has no event dispatcher to run a deferred delete,
+// the runnable must destroy the emitter directly, otherwise the emitter and the functor it
+// holds are leaked.
+void tst_QHostInfo::abortedLookupDestroysEmitter()
+{
+    QThread neverStarted; // and therefore never has an event dispatcher
+    QObject receiver;
+    receiver.moveToThread(&neverStarted);
+
+    auto functorAlive = std::make_shared<int>();
+    std::weak_ptr<int> weak = functorAlive;
+
+    // Two lookups for the same host: the second one is postponed rather than started, so
+    // aborting it deletes its runnable right here, before it emitted anything.
+    // As in abortHostLookup(), this assumes the DNS backend is slower than these few calls.
+    const QString hostname = QStringLiteral("a-single" TEST_DOMAIN);
+    const int running = QHostInfo::lookupHost(hostname, &receiver, [](const QHostInfo &) {});
+    const int postponed =
+            QHostInfo::lookupHost(hostname, &receiver, [functorAlive](const QHostInfo &) {});
+    functorAlive.reset();
+    QVERIFY(!weak.expired());
+
+    QHostInfo::abortHostLookup(postponed);
+    QVERIFY(weak.expired());
+
+    QHostInfo::abortHostLookup(running);
 }
 
 class LookupAborter : public QObject

@@ -1,12 +1,13 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtGui/qtguiglobal.h>
 #if QT_CONFIG(accessibility)
 
 #include "qwindowsuiautomation.h"
 
-#if defined(__MINGW32__) || defined(__MINGW64__)
+#ifndef Q_CC_MSVC
 
 template<typename T, typename... TArg>
 struct winapi_func
@@ -15,6 +16,7 @@ struct winapi_func
     const func_t func;
     const T error_value;
 #ifdef __GNUC__
+#   pragma GCC diagnostic push
 #   pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
     winapi_func(const char *lib_name, const char *func_name, func_t func_proto,
@@ -77,6 +79,6 @@ HRESULT WINAPI UiaRaiseNotificationEvent(
     return func.invoke(pProvider, notificationKind, notificationProcessing, displayString, activityId);
 }
 
-#endif // defined(__MINGW32__) || defined(__MINGW64__)
+#endif // !Q_CC_MSVC
 
 #endif // QT_CONFIG(accessibility)

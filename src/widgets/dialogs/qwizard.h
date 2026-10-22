@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWIZARD_H
 #define QWIZARD_H
@@ -77,7 +78,8 @@ public:
         HaveCustomButton1               = 0x00002000,
         HaveCustomButton2               = 0x00004000,
         HaveCustomButton3               = 0x00008000,
-        NoCancelButtonOnLastPage        = 0x00010000
+        NoCancelButtonOnLastPage        = 0x00010000,
+        StretchBanner                   = 0x00020000,
     };
     Q_ENUM(WizardOption)
 

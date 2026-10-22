@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsplashscreen.h"
 
@@ -65,8 +66,6 @@ public:
    main window is shown:
 
    \snippet qsplashscreen/main.cpp 0
-   \dots
-   \snippet qsplashscreen/main.cpp 1
 
    The user can hide the splash screen by clicking on it with the
    mouse. For mouse handling to work, call QApplication::processEvents()

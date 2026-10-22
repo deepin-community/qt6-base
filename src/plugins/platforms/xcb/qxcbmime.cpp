@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbmime.h"
 
@@ -163,9 +164,9 @@ QVariant QXcbMime::mimeConvertToFormat(QXcbConnection *connection, xcb_atom_t a,
                     QList<QVariant> list;
                     list.reserve(urls.size());
                     for (const QStringView &s : urls) {
-                        const QUrl url(s.trimmed().toString());
+                        QUrl url(s.trimmed().toString());
                         if (url.isValid())
-                            list.append(url);
+                            list.emplace_back(std::move(url));
                     }
                     // We expect "text/x-moz-url" as <url><space><title>.
                     // The atomName variable is not used because mimeAtomToString()

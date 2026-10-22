@@ -301,7 +301,7 @@ void tst_QBuffer::invalidSeeks()
         buffer.open(QIODevice::WriteOnly);
         QCOMPARE(buffer.buffer().size(), qsizetype(0));
         QCOMPARE(buffer.pos(), qint64(0));
-        constexpr qint64 MaxQByteArrayCapacity = (std::numeric_limits<qsizetype>::max)();
+        constexpr qint64 MaxQByteArrayCapacity = (std::numeric_limits<int>::max)();
         // this should fail fast, not after trying to allocate nearly 2 GiB of data,
         // potentially crashing in the process:
         QVERIFY(!buffer.seek(2 * MaxQByteArrayCapacity - 1));
@@ -633,6 +633,9 @@ void tst_QBuffer::writeOfMoreThan2GiB()
 
     [[maybe_unused]] constexpr size_t GiB = 1024 * 1024 * 1024;
 
+#if defined Q_OS_WEBOS
+    QSKIP("WebOS device will kill the test when using too much memory");
+#endif
 #ifndef QT_NO_EXCEPTIONS
 
     try {

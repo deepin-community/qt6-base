@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLINEEDIT_P_H
 #define QLINEEDIT_P_H
@@ -193,9 +194,6 @@ public:
     void handleWindowActivate();
     void textEdited(const QString &);
     void cursorPositionChanged(int, int);
-#ifdef QT_KEYPAD_NAVIGATION
-    void editFocusChange(bool);
-#endif
     void selectionChanged();
     void updateNeeded(const QRect &);
 #if QT_CONFIG(completer)

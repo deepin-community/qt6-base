@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2020 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNAMESPACE_H
 #define QNAMESPACE_H
@@ -52,6 +53,16 @@ namespace Qt {
         Unknown,
         Light,
         Dark,
+    };
+
+    enum class ContrastPreference {
+        NoPreference,
+        HighContrast,
+    };
+
+    enum class MotionPreference {
+        NoPreference,
+        ReducedMotion,
     };
 
     enum MouseButton {
@@ -213,7 +224,10 @@ namespace Qt {
         Tool = Popup | Dialog,
         ToolTip = Popup | Sheet,
         SplashScreen = ToolTip | Dialog,
-        Desktop = 0x00000010 | Window,
+#if QT_DEPRECATED_SINCE(6, 11)
+        Desktop Q_DECL_ENUMERATOR_DEPRECATED_X("This flag has been a no-op since Qt 6.")
+                = 0x00000010 | Window,
+#endif
         SubWindow = 0x00000012, // Note QTBUG-115729 before using
         ForeignWindow = 0x00000020 | Window,
         CoverWindow = 0x00000040 | Window,
@@ -235,12 +249,20 @@ namespace Qt {
         WindowTransparentForInput = 0x00080000,
         WindowOverridesSystemGestures = 0x00100000,
         WindowDoesNotAcceptFocus = 0x00200000,
-        MaximizeUsingFullscreenGeometryHint = 0x00400000,
+#if QT_DEPRECATED_SINCE(6, 13)
+        MaximizeUsingFullscreenGeometryHint Q_DECL_ENUMERATOR_DEPRECATED_X(
+            "Use Qt::ExpandedClientAreaHint instead") = 0x00400000,
+#endif
+        ExpandedClientAreaHint = 0x00400000,
+        NoTitleBarBackgroundHint = 0x00800000,
 
         CustomizeWindowHint = 0x02000000,
         WindowStaysOnBottomHint = 0x04000000,
         WindowCloseButtonHint = 0x08000000,
-        MacWindowToolBarButtonHint = 0x10000000,
+#if QT_DEPRECATED_SINCE(6, 9)
+        MacWindowToolBarButtonHint Q_DECL_ENUMERATOR_DEPRECATED_X(
+            "This flag has been a no-op since Qt 5") = 0x10000000,
+#endif
         BypassGraphicsProxyWidget = 0x20000000,
         NoDropShadowWindowHint = 0x40000000,
         WindowFullscreenButtonHint = 0x80000000
@@ -1004,6 +1026,8 @@ namespace Qt {
         Key_MicVolumeUp   = 0x0100011d,
         Key_MicVolumeDown = 0x0100011e,
 
+        Key_Keyboard = 0x0100011f,
+
         Key_New      = 0x01000120,
         Key_Open     = 0x01000121,
         Key_Find     = 0x01000122,
@@ -1177,8 +1201,13 @@ namespace Qt {
         DragMoveCursor,
         DragLinkCursor,
         LastCursor = DragLinkCursor,
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
         BitmapCursor = 24,
-        CustomCursor = 25
+        CustomCursor = 25,
+#else
+        BitmapCursor = 0x100,
+        CustomCursor = 0x101,
+#endif
     };
 
     enum TextFormat {
@@ -1410,6 +1439,7 @@ namespace Qt {
 
         ImhNoEditMenu = 0x800,
         ImhNoTextHandles = 0x1000,
+        ImhNoFullscreen = 0x2000,
 
         ImhDigitsOnly = 0x10000,
         ImhFormattedNumbersOnly = 0x20000,
@@ -1419,6 +1449,7 @@ namespace Qt {
         ImhEmailCharactersOnly = 0x200000,
         ImhUrlCharactersOnly = 0x400000,
         ImhLatinOnly = 0x800000,
+        ImhDecimalNumbersOnly = 0x1000000,
 
         ImhExclusiveInputMask = 0xffff0000
     };
@@ -1508,8 +1539,18 @@ namespace Qt {
         ToolTipPropertyRole = 29,
         StatusTipPropertyRole = 30,
         WhatsThisPropertyRole = 31,
+        // QRangeModel support for QML's required property var modelData
+        RangeModelDataRole = 40,
+        // QRangeModelAdapter support for accessing entire multi-role objects
+        RangeModelAdapterRole = 41,
+
         // Reserved
-        UserRole = 0x0100
+        UserRole = 0x0100,
+
+        // Used by Qt models
+        StandardItemFlagsRole = UserRole - 1,  // QStandardItemModel
+        FileInfoRole = UserRole - 4,           // QFileSystemModel
+        RemoteObjectsCacheRole = UserRole - 1, // QtRemoteObjects::QAbstractItemModelReplica
     };
 
     enum ItemFlag {
@@ -1659,7 +1700,8 @@ namespace Qt {
 
 #endif // QT_NO_GESTURES
 
-    enum NavigationMode
+#if QT_DEPRECATED_SINCE(6, 12)
+    enum Q_DECL_DEPRECATED_X("This enumeration has no effect since Qt 6.") NavigationMode
     {
         NavigationModeNone,
         NavigationModeKeypadTabOrder,
@@ -1667,6 +1709,7 @@ namespace Qt {
         NavigationModeCursorAuto,
         NavigationModeCursorForceVisible
     };
+#endif
 
     enum CursorMoveStyle {
         LogicalMoveStyle,
@@ -1771,6 +1814,8 @@ namespace Qt {
     Q_ENUM_NS(CursorShape)
     Q_ENUM_NS(GlobalColor)
     Q_ENUM_NS(ColorScheme)
+    Q_ENUM_NS(ContrastPreference)
+    Q_ENUM_NS(MotionPreference)
     Q_ENUM_NS(AspectRatioMode)
     Q_ENUM_NS(TransformationMode)
     Q_FLAG_NS(ImageConversionFlags)
@@ -1857,6 +1902,16 @@ public:
         TopDock,
         BottomDock,
         DockCount
+    };
+
+    enum CallMode {
+        Testing,
+        Live,
+    };
+
+    enum SaveStateRule {
+        KeepSavedState,
+        ClearSavedState,
     };
 
     enum Callback {

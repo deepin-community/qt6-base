@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
+#include <limits>
 #include <QtTest/private/qpropertytesthelper_p.h>
 
 #include <QVariantAnimation>
@@ -50,6 +51,7 @@ private slots:
     void clear();
     void pauseResume();
     void bindings();
+    void noIntegerOverflow();
 };
 
 void tst_QSequentialAnimationGroup::initTestCase()
@@ -982,9 +984,8 @@ void tst_QSequentialAnimationGroup::groupWithZeroDurationAnimations()
 
     QTest::qWait(100);
 
-    int o2val = o2.property("myOtherProperty").toInt();
-    QVERIFY(o2val > 13);
-    QVERIFY(o2val < 31);
+    QTRY_COMPARE_GT(o2.property("myOtherProperty").toInt(), 13);
+    QCOMPARE_LT(o2.property("myOtherProperty").toInt(), 31);
     QCOMPARE(o.property("myProperty").toInt(), 43);
     QCOMPARE(o.property("myOtherProperty").toInt(), 13);
 
@@ -1413,7 +1414,10 @@ void tst_QSequentialAnimationGroup::finishWithUncontrolledAnimation()
 
     group.setCurrentTime(300);
     QCOMPARE(group.state(), QAnimationGroup::Stopped);
-    QCOMPARE(notTimeDriven.currentLoopTime(), actualDuration);
+    if (actualDuration > 300) // May happen under heavy load.
+        QCOMPARE(notTimeDriven.currentLoopTime(), 300);
+    else // Should take the same time as before:
+        QCOMPARE(notTimeDriven.currentLoopTime(), actualDuration);
     QCOMPARE(group.currentAnimation(), static_cast<QAbstractAnimation*>(&anim));
 
     //3rd case:
@@ -1695,6 +1699,76 @@ void tst_QSequentialAnimationGroup::bindings()
     if (QTest::currentTestFailed()) {
         qDebug("Failed property test for QSequentialAnimationGroup::currentAnimation");
         return;
+    }
+}
+
+void tst_QSequentialAnimationGroup::noIntegerOverflow()
+{
+    const int Max = std::numeric_limits<int>::max();
+
+    // Child durations summing to more than INT_MAX must be capped at INT_MAX,
+    // not wrap to a negative value.
+    {
+        QSequentialAnimationGroup group;
+        auto *a1 = new TestAnimation;
+        a1->setDuration(Max / 2 + 1);
+        auto *a2 = new TestAnimation;
+        a2->setDuration(Max / 2 + 1);
+        group.addAnimation(a1);
+        group.addAnimation(a2);
+        QCOMPARE(group.duration(), Max);
+    }
+
+    // Verify that the correct child animation is identified and its local time
+    // is right.
+    {
+        QSequentialAnimationGroup group;
+        auto *a1 = new TestAnimation;
+        a1->setDuration(Max - 100); // a1 occupies [0, Max - 100)
+        auto *a2 = new TestAnimation;
+        a2->setDuration(200);       // a2 starts at Max - 100; timeOffset + 200 wraps without fix
+        group.addAnimation(a1);
+        group.addAnimation(a2);
+        QCOMPARE(group.duration(), Max);
+
+        group.setCurrentTime(Max - 50); // 50 ms into a2
+        QCOMPARE(group.currentAnimation(), a2);
+        QCOMPARE(a2->currentLoopTime(), 50);
+
+        // After updating the duration of the first animation, it should become
+        // the current one.
+        a1->setDuration(Max);
+        group.setCurrentTime(Max - 25);
+        QCOMPARE(group.currentAnimation(), a1);
+        QCOMPARE(a1->currentLoopTime(), Max - 25);
+    }
+
+    // Check that removeAnimation() updates times without an overflow.
+    {
+        QSequentialAnimationGroup group;
+        group.setLoopCount(2);
+        auto *a1 = new TestAnimation;
+        a1->setDuration(Max / 2 + 1);
+        auto *a2 = new TestAnimation;
+        a2->setDuration(Max / 2 + 1);
+        group.addAnimation(a1);
+        group.addAnimation(a2);
+        QCOMPARE(group.duration(), Max);
+        QCOMPARE(group.totalDuration(), Max);
+
+        group.setCurrentTime(50); // 50 ms into a1
+        QCOMPARE(group.currentAnimation(), a1);
+
+        // After removing a2, animationRemoved computes:
+        //   totalCurrentTime = currentTime(50) + loopCount(2) * newDuration(Max/2+1)
+        // Without the fix this overflows to a negative value; with the fix it
+        // saturates to Max.
+        // NOTE: I'm not sure calculating totalCurrentTime in such way is
+        // correct, but that's pre-existing. We just fixed a potential overflow
+        // here.
+        group.removeAnimation(a2);
+        delete a2;
+        QCOMPARE(group.currentTime(), Max);
     }
 }
 

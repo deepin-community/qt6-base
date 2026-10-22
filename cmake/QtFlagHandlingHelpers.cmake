@@ -1,6 +1,8 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+__qt_internal_cmake_include_guard(GLOBAL GUARD_KEY "QtFlagHandlingHelpers")
+
 # Sets '${var}' to a genex that extracts the target's property.
 # Sets 'have_${var}' to a genex that checks that the property has a
 # non-empty value.
@@ -97,7 +99,7 @@ function(qt_internal_add_linker_version_script target)
             set(genex_glue "$<SEMICOLON>\n    ")
             set(genex_suffix "$<SEMICOLON>")
             qt_internal_genex_get_joined_property(
-                linker_exports "${target}" _qt_extra_linker_script_exports
+                linker_exports "${target}" _qt_extra_elf_linker_script_exports
                 "${genex_prefix}" "${genex_suffix}" "${genex_glue}"
             )
             string(APPEND contents "${linker_exports}")
@@ -105,7 +107,7 @@ function(qt_internal_add_linker_version_script target)
         string(APPEND contents "\n};\n")
 
         if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
-            set(property_genex "$<TARGET_PROPERTY:${target},_qt_extra_linker_script_content>")
+            set(property_genex "$<TARGET_PROPERTY:${target},_qt_extra_elf_linker_script_content>")
             set(check_genex "$<BOOL:${property_genex}>")
             string(APPEND contents
                 "$<${check_genex}:${property_genex}>")
@@ -159,20 +161,22 @@ function(qt_internal_add_link_flags_no_undefined target)
         # passing this option is deprecated, causing a warning.
         return()
     endif()
-    if ((GCC OR CLANG) AND NOT MSVC)
-        if(CLANG AND QT_FEATURE_sanitizer)
+    if ((GCC OR CLANG) AND NOT (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC"))
+        if((GCC OR CLANG) AND QT_FEATURE_sanitizer)
             return()
         endif()
         set(previous_CMAKE_REQUIRED_LINK_OPTIONS ${CMAKE_REQUIRED_LINK_OPTIONS})
 
         set(CMAKE_REQUIRED_LINK_OPTIONS "-Wl,-undefined,error")
-        check_cxx_source_compiles("int main() {}" HAVE_DASH_UNDEFINED_SYMBOLS)
+        _qt_internal_get_check_cxx_source_compiles_out_var(test_output_undefined_error extra_args)
+        check_cxx_source_compiles("int main() {}" HAVE_DASH_UNDEFINED_SYMBOLS ${extra_args})
         if(HAVE_DASH_UNDEFINED_SYMBOLS)
             set(no_undefined_flag "-Wl,-undefined,error")
         endif()
 
         set(CMAKE_REQUIRED_LINK_OPTIONS "-Wl,--no-undefined")
-        check_cxx_source_compiles("int main() {}" HAVE_DASH_DASH_NO_UNDEFINED)
+        _qt_internal_get_check_cxx_source_compiles_out_var(test_output_no_undefined extra_args)
+        check_cxx_source_compiles("int main() {}" HAVE_DASH_DASH_NO_UNDEFINED ${extra_args})
         if(HAVE_DASH_DASH_NO_UNDEFINED)
             set(no_undefined_flag "-Wl,--no-undefined")
         endif()
@@ -180,7 +184,10 @@ function(qt_internal_add_link_flags_no_undefined target)
         set(CMAKE_REQUIRED_LINK_OPTIONS ${previous_CMAKE_REQUIRED_LINK_OPTIONS})
 
         if (NOT HAVE_DASH_UNDEFINED_SYMBOLS AND NOT HAVE_DASH_DASH_NO_UNDEFINED)
-            message(FATAL_ERROR "Platform linker doesn't support erroring upon encountering undefined symbols. Target:\"${target}\".")
+            message(FATAL_ERROR
+                "Platform linker doesn't support erroring upon encountering undefined symbols. "
+                "Target:\"${target}\". "
+                "Test errors: \n ${test_output_undefined_error} \n ${test_output_no_undefined}")
         endif()
         target_link_options("${target}" PRIVATE "${no_undefined_flag}")
     endif()
@@ -210,7 +217,8 @@ function(qt_internal_apply_gc_binaries target visibility)
     )
     set(clang_or_gcc_end ">")
 
-    if ((GCC OR CLANG) AND NOT WASM AND NOT UIKIT AND NOT MSVC)
+    if ((GCC OR CLANG) AND NOT WASM AND NOT UIKIT
+         AND NOT (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC"))
         if(APPLE)
             set(gc_sections_flag "-Wl,-dead_strip")
         elseif(SOLARIS)
@@ -232,7 +240,8 @@ function(qt_internal_apply_gc_binaries target visibility)
         target_link_options("${target}" ${visibility} "${gc_sections_flag}")
     endif()
 
-    if((GCC OR CLANG) AND NOT WASM AND NOT UIKIT AND NOT MSVC)
+    if((GCC OR CLANG) AND NOT WASM AND NOT UIKIT
+        AND NOT (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC"))
         set(split_sections_flags
             "${clang_or_gcc_begin}-ffunction-sections;-fdata-sections${clang_or_gcc_end}")
     endif()
@@ -241,7 +250,6 @@ function(qt_internal_apply_gc_binaries target visibility)
     endif()
 endfunction()
 
-# Only applied to Bootstrap and BundledPCRE2.
 function(qt_internal_apply_intel_cet target visibility)
     if(NOT QT_FEATURE_intelcet)
         return()
@@ -291,47 +299,37 @@ function(qt_internal_skip_intel_cet_hardening target)
     set_target_properties("${target}" PROPERTIES _qt_no_intel_cet_harderning TRUE)
 endfunction()
 
-# Sets the exceptions flags for the given target according to exceptions_on
-function(qt_internal_set_exceptions_flags target exceptions_on)
-    set(_defs "")
-    set(_flag "")
-    if(exceptions_on)
-        if(MSVC)
-            set(_flag "/EHsc")
-            if((MSVC_VERSION GREATER_EQUAL 1929) AND NOT CLANG)
-                # Use the undocumented compiler flag to make our binary smaller on x64.
-                # https://devblogs.microsoft.com/cppblog/making-cpp-exception-handling-smaller-x64/
-                # NOTE: It seems we'll use this new exception handling model unconditionally without
-                # this hack since some unknown MSVC version.
-                set(_flag ${_flag} "/d2FH4")
-            endif()
-        else()
-            set(_flag "-fexceptions")
-        endif()
-    else()
-        set(_defs "QT_NO_EXCEPTIONS")
-        if(MSVC)
-            set(_flag "/EHs-c-" "/wd4530" "/wd4577")
-        else()
-            set(_flag "-fno-exceptions")
-        endif()
-    endif()
-
-    target_compile_definitions("${target}" PRIVATE ${_defs})
-    target_compile_options("${target}" PRIVATE ${_flag})
-endfunction()
-
-function(qt_skip_warnings_are_errors target)
-    get_target_property(target_type "${target}" TYPE)
+# Sets the exceptions flags for the given target according to value.
+# If the value is not defined, set it to the exceptions feature value.
+function(qt_internal_set_exceptions_flags target value)
+    #INTERFACE libraries compile nothing
+    get_target_property(target_type ${target} TYPE)
     if(target_type STREQUAL "INTERFACE_LIBRARY")
         return()
     endif()
-    set_target_properties("${target}" PROPERTIES QT_SKIP_WARNINGS_ARE_ERRORS ON)
+    set_target_properties(${target} PROPERTIES _qt_internal_use_exceptions ${value})
 endfunction()
 
-function(qt_skip_warnings_are_errors_when_repo_unclean target)
-    if(QT_REPO_NOT_WARNINGS_CLEAN)
-        qt_skip_warnings_are_errors("${target}")
+# Deprecated. Replaced by qt_internal_set_skip_warnings_are_errors.
+function(qt_skip_warnings_are_errors target)
+    qt_internal_set_skip_warnings_are_errors(${target} TRUE)
+endfunction()
+
+# Controls the QT_SKIP_WARNINGS_ARE_ERRORS property for the given target.
+function(qt_internal_set_skip_warnings_are_errors target value)
+    _qt_internal_set_skip_warnings_are_errors("${target}" "${value}")
+endfunction()
+
+# Sets the default warnings behavior according to the WARNINGS_ARE_ERRORS and
+# QT_REPO_NOT_WARNINGS_CLEAN flags.
+function(qt_internal_default_warnings_are_errors target)
+    if(WARNINGS_ARE_ERRORS AND NOT QT_REPO_NOT_WARNINGS_CLEAN
+       # Xcode enables additional warnings on top of the ones we
+       # enable, and we are not warning clean in that context.
+       AND NOT "${CMAKE_GENERATOR}" STREQUAL "Xcode")
+        qt_internal_set_skip_warnings_are_errors("${target}" FALSE)
+    else()
+        qt_internal_set_skip_warnings_are_errors("${target}" TRUE)
     endif()
 endfunction()
 
@@ -361,7 +359,9 @@ endfunction()
 
 function(qt_set_language_standards)
     ## Use the latest standard the compiler supports (same as qt_common.prf)
-    if (QT_FEATURE_cxx2b)
+    if (QT_FEATURE_cxx2c)
+        set(CMAKE_CXX_STANDARD 26 PARENT_SCOPE)
+    elseif (QT_FEATURE_cxx2b)
         set(CMAKE_CXX_STANDARD 23 PARENT_SCOPE)
     elseif (QT_FEATURE_cxx20)
         set(CMAKE_CXX_STANDARD 20 PARENT_SCOPE)
@@ -472,21 +472,21 @@ endfunction()
 function(qt_internal_print_optimization_flags_values_helper languages configs target_link_types)
     foreach(lang ${languages})
         set(flag_var_name "CMAKE_${lang}_FLAGS")
-        message(STATUS "${flag_var_name}: ${${flag_var_name}}")
+        message(STATUS "${flag_var_name}: '${${flag_var_name}}'")
 
         foreach(config ${configs})
             set(flag_var_name "CMAKE_${lang}_FLAGS_${config}")
-            message(STATUS "${flag_var_name}: ${${flag_var_name}}")
+            message(STATUS "${flag_var_name}: '${${flag_var_name}}'")
         endforeach()
     endforeach()
 
     foreach(t ${target_link_types})
         set(flag_var_name "CMAKE_${t}_LINKER_FLAGS")
-        message(STATUS "${flag_var_name}: ${${flag_var_name}}")
+        message(STATUS "${flag_var_name}: '${${flag_var_name}}'")
 
         foreach(config ${configs})
             set(flag_var_name "CMAKE_${t}_LINKER_FLAGS_${config}")
-            message(STATUS "${flag_var_name}: ${${flag_var_name}}")
+            message(STATUS "${flag_var_name}: '${${flag_var_name}}'")
         endforeach()
     endforeach()
 endfunction()
@@ -718,6 +718,356 @@ function(qt_internal_remove_compiler_flags flags)
             set(${flag_var_name} "${${flag_var_name}}" PARENT_SCOPE)
         endforeach()
     endforeach()
+endfunction()
+
+# Add a series of compile options as generator expressions
+#
+# Each condition and compiler requirement are glued by $<AND:> genex.
+#
+# Synopsis
+#
+#   qt_internal_add_compiler_dependent_flags(<target> <INTERFACE|PUBLIC|PRIVATE>
+#       COMPILERS <compiler> ...
+#         [ CONDITIONS <condition> ... ]
+#               OPTIONS <items> ...
+#         [ CONDITIONS <condition> ...
+#               OPTIONS <items> ...    ]
+#     [ COMPILERS ...                  ]
+#
+#     [LANGUAGES <lang> ...]
+#     [COMMON_CONDITIONS <condition_genex> ...]
+#   )
+#
+# Example
+#   qt_internal_add_compiler_dependent_flags(tgt PUBLIC
+#       COMPILERS ALL
+#               OPTIONS -Werror
+#           CONDITIONS $<TARGET_PROPERTY:foo> OR $<TARGET_PROPERTY:bar>
+#               OPTIONS -bar -baz
+#       COMPILERS GNU
+#           CONDITIONS VERSION_GREATER_EQUAL 10
+#               OPTIONS -baz
+#   )
+#
+#   Is equivalent to:
+#
+#   target_compile_options(tgt PUBLIC
+#       $<$<AND:$<COMPILE_LANGUAGE:CXX>>:-Werror>
+#       $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<OR:$<TARGET_PROPERTY:foo>,$<TARGET_PROPERTY:bar>>>:-bar;-baz>
+#       $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,10>>:-baz>
+#   )
+#
+# Arguments
+#
+# `<target>`
+#   Equivalent to `target_compile_options(<target>)`.
+#
+# `<INTERFACE|PUBLIC|PRIVATE>`
+#   Equivalent to `target_compile_options(<INTERFACE|PUBLIC|PRIVATE>)`.
+#
+#   Unlike `target_compile_options`, only one set of target scope is implemented.
+#
+# `COMPILERS`
+#   Starts a new set of compiler specific set of options gated by `$<${lang}_COMPILER_ID>`.
+#   See `LANGUAGES` for how `${lang}` is determined.
+#
+#   Can be any value defined in `CMAKE_<LANG>_COMPILER_ID`, or one of the following shortcuts
+#     - `ALL`: drops the compiler specific condition
+#     - `CLANG`: `Clang` and `IntelLLVM` (does not include `AppleClang`)
+#
+#   At least one `COMPILERS` set *must* be defined.
+#
+# `CONDITIONS`
+#   Starts a new set of `<condition>` gated options.
+#
+#   `<condition>` can be one of:
+#   - `VERSION_* <version>`: Equivalent to `$<VERSION_*:$<${lang}_COMPILER_VERSION:>,<version>>`
+#     See `LANGUAGES` for how `${lang}` is determined.
+#   - Any genex matching regex: `\$<.*>`
+#
+#   You can use `AND` and `OR` as well as parenthesis `()` to join multiple `<condition>`.
+#
+#   If no `<condition>` is added, the current set only checks for compiler condition and the
+#   `COMMON_CONDITIONS`.
+#
+# `OPTIONS`
+#   Starts the list of compiler options for the current set of `COMPILERS` and `CONDITIONS`
+#
+#   Equivalent to `target_compile_options(<items>)`.
+#
+#   At least one `COMPILERS` set *must* be defined.
+#
+# `LANGUAGES`
+#   Language conditions applied to all options.
+#
+#   - If no `LANGUAGES` is passed `$<CXX_COMPILER_*>` is used to compute compiler-dependent
+#     variables such as `$<CXX_COMPILER_VERSION>`
+#   - If exactly 1 `LANGUAGES` is passed, this language is used in `$<${lang}_COMPILER_>` like
+#     variables
+#
+# `COMMON_CONDITIONS`
+#   Additional genex conditions to include for all compiler flags.
+function(qt_internal_add_compiler_dependent_flags target target_scope)
+    # We cannot use `cmake_parse_arguments` to parse all the other arguments. We use a special
+    # parsing for that with the remaining `arg_UNPARSED_ARGUMENTS`
+    set(option_args "")
+    set(single_args "")
+    set(multi_args
+        LANGUAGES
+        COMMON_CONDITIONS
+    )
+    cmake_parse_arguments(PARSE_ARGV 2 arg
+        "${option_args}" "${single_args}" "${multi_args}"
+    )
+
+    # For debugging purposes we save the original list of arg_UNPARSED_ARGUMENTS
+    set(arg_UNPARSED_ARGUMENTS_original ${arg_UNPARSED_ARGUMENTS})
+    # Set the language for the compiler checks
+    set(lang CXX)
+    list(LENGTH arg_LANGUAGES arg_LANGUAGES_length)
+    if(arg_LANGUAGES_length EQUAL 1)
+        set(lang ${arg_LANGUAGES})
+    endif()
+    # Always add a language genex
+    set(lang_ex "$<COMPILE_LANGUAGE:${lang}>")
+    if(arg_LANGUAGES_length GREATER 1)
+        list(JOIN arg_LANGUAGES "," arg_LANGUAGES_comma_list)
+        set(lang_ex "$<COMPILE_LANGUAGE:${arg_LANGUAGES_comma_list}>")
+    endif()
+
+    # Helper debugging function
+    function(_qt_internal_add_compiler_dependent_flags_error msg)
+        # If you are hitting such a function, something must have gone wrong with
+        # `qt_internal_add_compiler_flags` implementation.
+        message(FATAL_ERROR
+            "${msg}\n"
+            "  curr_arg = ${curr_arg}\n"
+            "  arg_UNPARSED_ARGUMENTS = ${arg_UNPARSED_ARGUMENTS}\n"
+            "  arg_UNPARSED_ARGUMENTS_original = ${arg_UNPARSED_ARGUMENTS_original}"
+        )
+    endfunction()
+
+    # Helper function finalizing each keyword set
+    # COMPILERS
+    function(_qt_internal_add_compiler_dependent_flags_do_COMPILERS)
+        set(compiler_ex "")
+        if(NOT curr_COMPILERS)
+            _qt_internal_add_compiler_dependent_flags_error(
+                "COMPILERS set cannot be empty"
+            )
+        endif()
+        # If ALL compilers is passed, we can ignore the compiler check
+        if(NOT "ALL" IN_LIST curr_COMPILERS)
+            # Check for other aliases
+            if("CLANG" IN_LIST curr_COMPILERS)
+                list(REMOVE_ITEM curr_COMPILERS CLANG)
+                list(APPEND curr_COMPILERS Clang IntelLLVM)
+            endif()
+            # Create compiler genex
+            list(REMOVE_DUPLICATES curr_COMPILERS)
+            list(JOIN curr_COMPILERS "," compilers)
+            set(compiler_ex "$<${lang}_COMPILER_ID:${compilers}>" PARENT_SCOPE)
+        endif()
+    endfunction()
+    # CONDITIONS
+    function(_qt_internal_add_compiler_dependent_flags_do_CONDITIONS)
+        function(_qt_internal_add_compiler_dependent_flags_do_CONDITIONS_end_stack
+            stack_in stack_out
+        )
+            # Resolve the current stack into a genex list
+            set(stack_conditions_ex)
+            set(prev_glue_word)
+            set(glue_word)
+            list(POP_FRONT ${stack_in} stack_conditions_ex)
+            while(${stack_in})
+                list(POP_FRONT ${stack_in} glue_word)
+                if(NOT (glue_word STREQUAL "AND" OR glue_word STREQUAL "OR"))
+                    _qt_internal_add_compiler_dependent_flags_error(
+                        "Expected AND/OR glue word, instead got: ${glue_word}"
+                    )
+                endif()
+                list(POP_FRONT ${stack_in} next_condition)
+                if(NOT next_condition)
+                    _qt_internal_add_compiler_dependent_flags_error(
+                        "No other condition provided after ${glue_word}"
+                    )
+                endif()
+                if(prev_glue_word STREQUAL glue_word)
+                    # If the glue words are the same, we just add to current genex $<${glue_word}:>
+                    # First trim the last `>` character
+                    string(LENGTH "${stack_conditions_ex}" stack_conditions_ex_length)
+                    math(EXPR stack_conditions_ex_length "${stack_conditions_ex_length} - 1")
+                    string(SUBSTRING "${stack_conditions_ex}" 0 ${stack_conditions_ex_length}
+                        stack_conditions_ex
+                    )
+                    set(stack_conditions_ex "${stack_conditions_ex},${next_condition}>")
+                else()
+                    # Otherwise create a new $<${glue_word}:>
+                    set(stack_conditions_ex
+                        "$<${glue_word}:${stack_conditions_ex},${next_condition}>"
+                    )
+                endif()
+                set(prev_glue_word "${glue_word}")
+            endwhile()
+            if(NOT stack_conditions_ex)
+                _qt_internal_add_compiler_dependent_flags_error(
+                    "Empty parenthesis stack"
+                )
+            endif()
+            # Add the current
+            list(APPEND ${stack_out} "${stack_conditions_ex}")
+            set(${stack_out} "${${stack_out}}" PARENT_SCOPE)
+        endfunction()
+        set(conditions_ex "")
+        set(stack_level 0)
+        set(stack_0)
+        while(curr_CONDITIONS)
+            list(POP_FRONT curr_CONDITIONS condition_kw)
+            # Parenthesis evaluation
+            if(condition_kw MATCHES "^\\((.*)")
+                # Start a new stack
+                math(EXPR stack_level "${stack_level} + 1")
+                set(stack_${stack_level})
+                # Check if the parenthesis was glued to another keyword
+                # Resolve the remaining keyword in the next loop
+                if(CMAKE_MATCH_1)
+                    list(PREPEND curr_CONDITIONS "${CMAKE_MATCH_1}")
+                endif()
+                continue()
+            elseif(condition_kw MATCHES "(.*)\\)$")
+                # Check if the parenthesis was glued to another keyword
+                # Separate them and evaluate each one individually
+                if(CMAKE_MATCH_1)
+                    set(condition_kw "${CMAKE_MATCH_1}")
+                    list(PREPEND curr_CONDITIONS "${CMAKE_MATCH_1}" ")")
+                endif()
+                # Finalize the current stack making it a genex for the next loop
+                set(curr_stack stack_${stack_level})
+                math(EXPR stack_level "${stack_level} - 1")
+                set(prev_stack stack_${stack_level})
+                _qt_internal_add_compiler_dependent_flags_do_CONDITIONS_end_stack(
+                    ${curr_stack} ${prev_stack}
+                )
+                if(stack_level LESS 0)
+                    _qt_internal_add_compiler_dependent_flags_error(
+                        "Unbalanced parenthesis."
+                    )
+                endif()
+                continue()
+            endif()
+            # Glue word evaluation
+            if(condition_kw STREQUAL "AND" OR condition_kw STREQUAL "OR")
+                # Insert the operator
+                list(APPEND stack_${stack_level} "${condition_kw}")
+                continue()
+            endif()
+            # Main condition keyword evaluation
+            if(condition_kw MATCHES "^VERSION_.*")
+                # Shortcut for VERSION_* keyword
+                list(POP_FRONT curr_CONDITIONS version)
+                list(APPEND stack_${stack_level}
+                    "$<${condition_kw}:$<${lang}_COMPILER_VERSION>,${version}>"
+                )
+                continue()
+            elseif(condition_kw MATCHES "^\\$<.*>$")
+                # genex expression are added as-is
+                list(APPEND stack_${stack_level} "${condition_kw}")
+                continue()
+            else()
+                # All other unrecognized forms we do not know how to deal with
+                _qt_internal_add_compiler_dependent_flags_error(
+                    "Unrecognized condition form: ${condition_kw}"
+                )
+            endif()
+        endwhile()
+        # Finalize the top-level stack and put it in `conditions_ex`
+        if(NOT stack_level EQUAL 0)
+            _qt_internal_add_compiler_dependent_flags_error(
+                "Unbalanced parenthesis."
+            )
+        endif()
+        _qt_internal_add_compiler_dependent_flags_do_CONDITIONS_end_stack(stack_0 conditions_ex)
+        set(conditions_ex "${conditions_ex}" PARENT_SCOPE)
+    endfunction()
+    # OPTIONS
+    function(_qt_internal_add_compiler_dependent_flags_do_OPTIONS)
+        # Check for required keywords
+        foreach(required_keyword IN ITEMS OPTIONS COMPILERS)
+            if(curr_${required_keyword} STREQUAL "MISSING")
+                _qt_internal_add_compiler_dependent_flags_error(
+                    "${required_keyword} keyword was not passed"
+                )
+            endif()
+        endforeach()
+        # Only handle the current set if the OPTIONS did not evaluate to empty, otherwise
+        # it is considered a no-op
+        if(curr_OPTIONS)
+            # No need to check the length of `all_conditions_ex` because `lang_ex` is
+            # always defined.
+            list(JOIN curr_OPTIONS ";" options)
+            # Combine all conditions in an `AND` statement
+            set(all_conditions_ex "")
+            list(APPEND all_conditions_ex
+                ${arg_COMMON_CONDITIONS}
+                ${lang_ex}
+                ${compiler_ex}
+                ${conditions_ex}
+            )
+            list(JOIN all_conditions_ex "," all_conditions_ex)
+            list(APPEND flags
+                "$<$<AND:${all_conditions_ex}>:${options}>"
+            )
+        endif()
+        # Reset all loop variables
+        # curr_COMPILERS is inherited from the last loop
+        set(curr_CONDITIONS "" PARENT_SCOPE)
+        set(curr_OPTIONS "MISSING" PARENT_SCOPE)
+        set(conditions_ex "" PARENT_SCOPE)
+        set(flags "${flags}" PARENT_SCOPE)
+    endfunction()
+
+    # Set initial loop variables
+    set(compiler_ex "")
+    set(conditions_ex "")
+    set(flags "")
+    # We set (REQUIRED) curr_* loop variables to a special keyword MISSING to identify when
+    # the keyword was not passed
+    set(curr_COMPILERS "MISSING")
+    set(curr_CONDITIONS "")
+    set(curr_OPTIONS "MISSING")
+    set(curr_keyword "")
+    # Parse the remaining arguments
+    while(arg_UNPARSED_ARGUMENTS)
+        list(POP_FRONT arg_UNPARSED_ARGUMENTS curr_arg)
+        # Check for separator keywords
+        if(curr_arg MATCHES "^(COMPILERS|CONDITIONS|OPTIONS)$")
+            # Resolve the previous keyword set
+            # Implicitly we skip the initial loop where curr_keyword == ""
+            if(curr_keyword STREQUAL "COMPILERS")
+                _qt_internal_add_compiler_dependent_flags_do_COMPILERS()
+            elseif(curr_keyword STREQUAL "CONDITIONS")
+                _qt_internal_add_compiler_dependent_flags_do_CONDITIONS()
+            elseif(curr_keyword STREQUAL "OPTIONS")
+                _qt_internal_add_compiler_dependent_flags_do_OPTIONS()
+            endif()
+            # Set the new keyword to accumulate the current `curr_*` variable
+            set(curr_keyword "${curr_arg}")
+            set(curr_${curr_keyword} "")
+            continue()
+        endif()
+        # If no separator keyword is passed, add the current values to `curr_*` loop variable
+        # and move on to the next loop
+        if(NOT curr_keyword)
+            _qt_internal_add_compiler_dependent_flags_error(
+                "No keyword was passed: COMPILERS/CONDITIONS/OPTIONS"
+            )
+        endif()
+        list(APPEND curr_${curr_keyword} "${curr_arg}")
+    endwhile()
+    # finalize the last set
+    _qt_internal_add_compiler_dependent_flags_do_OPTIONS()
+    # Finally add all of the flags to `target_compile_options`
+    target_compile_options("${target}" ${target_scope} ${flags})
 endfunction()
 
 # Adds compiler flags for the given CONFIGS in the calling scope. Can also update the cache
@@ -1114,8 +1464,8 @@ function(qt_internal_set_up_config_optimizations_like_in_qmake)
     # Todo:
     #   When the new toolchain is fixed, and it doesn't fall back to the legacy
     #   anymore by default, then we should be able to remove this workaround.
-    if(ANDROID AND ANDROID_COMPILER_FLAGS MATCHES "(^| )-g")
-        qt_internal_remove_compiler_flags("-g")
+    if(ANDROID AND ANDROID_COMPILER_FLAGS MATCHES "(^| )-g( |$)")
+        qt_internal_remove_compiler_flags("(^| )-g( |$)" REGEX)
         qt_internal_add_compiler_flags(FLAGS "-g" CONFIGS DEBUG RELWITHDEBINFO)
     endif()
 
@@ -1147,3 +1497,87 @@ function(qt_internal_set_up_config_optimizations_like_in_qmake)
                                                            "${target_link_types}")
     endif()
 endfunction()
+
+# Adds optimized flags to targets created in the calling directory scope.
+# This is the only way to add release flags in a debug build, which would build successfully.
+# The approach of just appending -O3, and thus overriding any previous -O0 works on GCC / Clang
+# but not MSVC, because MSVC has other debug flags which are not compatible when -Ox optimizations
+# are turned on.
+function(qt_internal_add_optimized_flags_for_debug_config_in_current_scope)
+    qt_internal_remove_known_optimization_flags(CONFIGS DEBUG)
+
+    # Remove incompatible Windows debug flags with release flags.
+    if(MSVC)
+        set(default_debug_flags_to_remove "/RTC1")
+
+        qt_internal_get_enabled_languages_for_flag_manipulation(enabled_languages)
+        foreach(lang ${enabled_languages})
+            set(flag_var_name "CMAKE_${lang}_FLAGS_DEBUG")
+            qt_internal_remove_flags_impl(${flag_var_name} "${default_debug_flags_to_remove}" "")
+        endforeach()
+    endif()
+
+    qt_internal_get_optimize_full_flags(optimize_full_flags)
+    qt_internal_add_compiler_flags(FLAGS "${optimize_full_flags}" CONFIGS DEBUG)
+
+    # Set the flags in the parent scope. This will apply the flags to all targets within
+    # that directory scope.
+    qt_internal_set_optimized_flags_for_debug_config_in_parent_scope()
+endfunction()
+
+# Conditionally adds optimized flags to the calling directory scope, depending on whether
+# the QT_FEATURE_optimized_tools is ON, and whether a target or project specific override was not
+# set.
+# Overrides can be set via:
+# -DQT_FORCE_NO_OPTIMIZE_<target>=ON
+# -DQT_FORCE_NO_OPTIMIZE_<project_name>=ON
+# e.g -DQT_FORCE_NO_OPTIMIZE_moc=ON -DQT_FORCE_NO_OPTIMIZE_qtdeclarative=ON
+function(qt_internal_add_target_optimized_flags_for_debug_config_in_current_scope target)
+    set(opt_args "")
+    set(single_args
+        OUT_VAR_DID_ADD
+    )
+    set(multi_args "")
+
+    cmake_parse_arguments(PARSE_ARGV 1 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    string(TOLOWER "${PROJECT_NAME}" project_name_lower)
+
+    if(QT_FEATURE_optimized_tools
+            AND NOT QT_FORCE_NO_OPTIMIZE_${target}
+            AND NOT QT_FORCE_NO_OPTIMIZE_${project_name_lower}
+        )
+        qt_internal_add_optimized_flags_for_debug_config_in_current_scope()
+        qt_internal_set_optimized_flags_for_debug_config_in_parent_scope()
+        set(did_add TRUE)
+    else()
+        set(did_add FALSE)
+    endif()
+
+    if(arg_OUT_VAR_DID_ADD)
+        set(${arg_OUT_VAR_DID_ADD} "${did_add}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Helper to propagate the optimized flags for the debug config to the parent scope.
+macro(qt_internal_set_optimized_flags_for_debug_config_in_parent_scope)
+    qt_internal_get_enabled_languages_for_flag_manipulation(__qt_internal_debug_enabled_languages)
+    foreach(__qt_internal_debug_lang IN LISTS __qt_internal_debug_enabled_languages)
+        set(flag_var_name "CMAKE_${__qt_internal_debug_lang}_FLAGS_DEBUG")
+        set(${flag_var_name} "${${flag_var_name}}" PARENT_SCOPE)
+    endforeach()
+    unset(__qt_internal_debug_lang)
+    unset(__qt_internal_debug_enabled_languages)
+endmacro()
+
+# Same as qt_internal_add_target_optimized_flags_for_debug_config_in_current_scope, but also
+# propagates the optimized flags to the parent scope.
+macro(qt_internal_add_target_optimized_flags_for_debug_config_in_parent_scope target)
+    qt_internal_add_target_optimized_flags_for_debug_config_in_current_scope("${target}"
+        OUT_VAR_DID_ADD __qt_internal_did_add_optimized_flag_in_current_scope)
+    if(__qt_internal_did_add_optimized_flag_in_current_scope)
+        qt_internal_set_optimized_flags_for_debug_config_in_parent_scope()
+    endif()
+    unset(__qt_internal_did_add_optimized_flag_in_current_scope)
+endmacro()

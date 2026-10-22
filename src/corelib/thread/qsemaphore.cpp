@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsemaphore.h"
 #include "qfutex_p.h"
@@ -11,10 +12,15 @@
 #include "qwaitcondition_p.h"
 
 #include <chrono>
+#if !QT_CONFIG(thread)
+#include <limits>
+#endif
 
 QT_BEGIN_NAMESPACE
 
 using namespace QtFutex;
+
+#if QT_CONFIG(thread)
 
 /*!
     \class QSemaphore
@@ -674,5 +680,48 @@ bool QSemaphore::tryAcquire(int n, QDeadlineTimer timer)
     \snippet code/src_corelib_thread_qsemaphore.cpp 7
 */
 
+#else // #if QT_CONFIG(thread)
+
+// No-thread stubs for QSemaphore. These essentially allow
+// unlimited acquire and release, since we can't ever block
+// the calling thread (which is the only thread in the no-thread
+// configuraton)
+
+QSemaphore::QSemaphore(int)
+{
+
+}
+
+QSemaphore::~QSemaphore()
+{
+
+}
+
+void QSemaphore::acquire(int)
+{
+
+}
+
+void QSemaphore::release(int)
+{
+
+}
+
+int QSemaphore::available() const
+{
+    return std::numeric_limits<int>::max();
+}
+
+bool QSemaphore::tryAcquire(int)
+{
+    return true;
+}
+
+bool QSemaphore::tryAcquire(int, QDeadlineTimer)
+{
+    return true;
+}
+
+#endif
 
 QT_END_NAMESPACE

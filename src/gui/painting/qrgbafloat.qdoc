@@ -9,6 +9,11 @@
     \ingroup painting
     \inmodule QtGui
 
+    QRgbaFloat is a template class where \a F specifies the floating-point type
+    used for the color components. Qt provides two type aliases: QRgbaFloat16
+    using 16-bit half-precision floats, and QRgbaFloat32 using 32-bit
+    single-precision floats.
+
     \sa QRgb, QRgba64, QColor
 */
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLOCALTIME_P_H
 #define QLOCALTIME_P_H
@@ -34,7 +35,8 @@ Q_CORE_EXPORT int getUtcOffset(qint64 atMSecsSinceEpoch);
 
 // Support for QDateTime
 QDateTimePrivate::ZoneState utcToLocal(qint64 utcMillis);
-QString localTimeAbbbreviationAt(qint64 local, QDateTimePrivate::TransitionOptions resolve);
+[[nodiscard]] Q_AUTOTEST_EXPORT
+QString localTimeAbbreviationAt(qint64 local, QDateTimePrivate::TransitionOptions resolve);
 QDateTimePrivate::ZoneState mapLocalTime(qint64 local, QDateTimePrivate::TransitionOptions resolve);
 
 struct SystemMillisRange { qint64 min, max; bool minClip, maxClip; };

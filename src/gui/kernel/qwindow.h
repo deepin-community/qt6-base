@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOW_H
 #define QWINDOW_H
@@ -76,7 +77,7 @@ class Q_GUI_EXPORT QWindow : public QObject, public QSurface
 
     Q_PROPERTY(QString title READ title WRITE setTitle NOTIFY windowTitleChanged)
     Q_PROPERTY(Qt::WindowModality modality READ modality WRITE setModality NOTIFY modalityChanged)
-    Q_PROPERTY(Qt::WindowFlags flags READ flags WRITE setFlags)
+    Q_PROPERTY(Qt::WindowFlags flags READ flags WRITE setFlags NOTIFY flagsChanged)
     Q_PROPERTY(int x READ x WRITE setX NOTIFY xChanged)
     Q_PROPERTY(int y READ y WRITE setY NOTIFY yChanged)
     Q_PROPERTY(int width READ width WRITE setWidth NOTIFY widthChanged)
@@ -87,10 +88,9 @@ class Q_GUI_EXPORT QWindow : public QObject, public QSurface
     Q_PROPERTY(int maximumWidth READ maximumWidth WRITE setMaximumWidth NOTIFY maximumWidthChanged)
     Q_PROPERTY(int maximumHeight READ maximumHeight WRITE setMaximumHeight
                NOTIFY maximumHeightChanged)
-    Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged)
+    Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged VIRTUAL)
     Q_PROPERTY(bool active READ isActive NOTIFY activeChanged REVISION(2, 1))
-    Q_PROPERTY(Visibility visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged
-               REVISION(2, 1))
+    Q_PROPERTY(Visibility visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged VIRTUAL REVISION(2, 1))
     Q_PROPERTY(Qt::ScreenOrientation contentOrientation READ contentOrientation
                WRITE reportContentOrientationChange NOTIFY contentOrientationChanged)
     Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity NOTIFY opacityChanged REVISION(2, 1))
@@ -201,6 +201,10 @@ public:
 
     QPoint framePosition() const;
     void setFramePosition(const QPoint &point);
+    void setFramePosition(int x, int y)
+    { setFramePosition(QPoint(x, y)); }
+
+    QMargins safeAreaMargins() const;
 
     inline int width() const { return geometry().width(); }
     inline int height() const { return geometry().height(); }
@@ -295,6 +299,7 @@ public Q_SLOTS:
 Q_SIGNALS:
     void screenChanged(QScreen *screen);
     void modalityChanged(Qt::WindowModality modality);
+    Q_REVISION(6, 10) void flagsChanged(Qt::WindowFlags flags);
     void windowStateChanged(Qt::WindowState windowState);
     Q_REVISION(2, 2) void windowTitleChanged(const QString &title);
 
@@ -308,6 +313,8 @@ Q_SIGNALS:
     void minimumHeightChanged(int arg);
     void maximumWidthChanged(int arg);
     void maximumHeightChanged(int arg);
+
+    Q_REVISION(6, 9) void safeAreaMarginsChanged(QMargins arg);
 
     void visibleChanged(bool arg);
     Q_REVISION(2, 1) void visibilityChanged(QWindow::Visibility visibility);

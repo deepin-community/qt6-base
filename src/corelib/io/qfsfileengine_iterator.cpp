@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfsfileengine_iterator_p.h"
 #include "qfileinfo_p.h"
@@ -32,10 +33,8 @@ bool QFSFileEngineIterator::advance()
     if (!nativeIterator)
         return false;
 
-    QFileSystemEntry entry;
-    QFileSystemMetaData data;
-    if (nativeIterator->advance(entry, data)) {
-        m_fileInfo = QFileInfo(new QFileInfoPrivate(entry, data));
+    if (auto r = nativeIterator->advance()) {
+        m_fileInfo = r->fileInfo();
         return true;
     } else {
         nativeIterator.reset();

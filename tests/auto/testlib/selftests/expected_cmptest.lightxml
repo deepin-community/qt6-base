@@ -79,6 +79,49 @@
     <Incident type="pass" file="" line="0" />
     <Duration msecs="0"/>
   </TestFunction>
+  <TestFunction name="compare_stringLiterals">
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared values are not the same
+   Actual   (lhs): "abc"
+   Expected (u""): ]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[The computed value is expected to be equal to the baseline, but is not
+   Computed (lhs): "abc"
+   Baseline (u""): ]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared values are not the same
+   Actual   (lhs)    : "abc"
+   Expected (u"abcd"): abcd]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[The computed value is expected to be equal to the baseline, but is not
+   Computed (lhs)    : "abc"
+   Baseline (u"abcd"): abcd]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared values are not the same
+   Actual   (lhs): "abc"
+   Expected ("") : ]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[The computed value is expected to be equal to the baseline, but is not
+   Computed (lhs): "abc"
+   Baseline ("") : ]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared values are not the same
+   Actual   (lhs)   : "abc"
+   Expected ("abcd"): abcd]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[The computed value is expected to be equal to the baseline, but is not
+   Computed (lhs)   : "abc"
+   Baseline ("abcd"): abcd]]></Description>
+    </Incident>
+    <Duration msecs="0"/>
+  </TestFunction>
   <TestFunction name="compare_tostring">
     <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
       <DataTag><![CDATA[int, string]]></DataTag>
@@ -129,6 +172,16 @@
     <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
       <Description><![CDATA[Compared QObject pointers are not the same
    Actual   (&object1): QObject/"object1"
+   Expected (&object2): QObject/"object2"]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared QObject pointers are not the same
+   Actual   (&object1): QObject/"object1"
+   Expected (nullptr) : "nullptr"]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared QObject pointers are not the same
+   Actual   (nullptr) : "nullptr"
    Expected (&object2): QObject/"object2"]]></Description>
     </Incident>
     <Duration msecs="0"/>
@@ -223,14 +276,6 @@
       <Description><![CDATA[Compared lists differ at index 2.
    Actual   (actual): 4
    Expected (ARG({1, 2, 3})): 3]]></Description>
-    </Incident>
-    <Duration msecs="0"/>
-  </TestFunction>
-  <TestFunction name="compareQListDouble">
-    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
-      <Description><![CDATA[Compared lists differ at index 0.
-   Actual   (double1): 1.5
-   Expected (double2): 1]]></Description>
     </Incident>
     <Duration msecs="0"/>
   </TestFunction>
@@ -439,6 +484,32 @@
   </TestFunction>
   <TestFunction name="verifyExplicitOperatorBool">
     <Incident type="pass" file="" line="0" />
+    <Duration msecs="0"/>
+  </TestFunction>
+  <TestFunction name="defaultTryVerifyTimeout">
+    <Incident type="xfail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <DataTag><![CDATA[times-out]]></DataTag>
+      <Description><![CDATA[The timeout (std::chrono::milliseconds) is deliberately too short]]></Description>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[times-out]]></DataTag>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[ample-time]]></DataTag>
+    </Incident>
+    <Duration msecs="0"/>
+  </TestFunction>
+  <TestFunction name="defaultTryCompareTimeout">
+    <Incident type="xfail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <DataTag><![CDATA[times-out]]></DataTag>
+      <Description><![CDATA[The timeout (std::chrono::milliseconds) is deliberately too short]]></Description>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[times-out]]></DataTag>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[ample-time]]></DataTag>
+    </Incident>
     <Duration msecs="0"/>
   </TestFunction>
   <TestFunction name="cleanupTestCase">

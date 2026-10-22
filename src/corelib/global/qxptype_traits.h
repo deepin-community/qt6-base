@@ -1,6 +1,7 @@
 // Copyright (C) 2023 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>, Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QXPTYPE_TRAITS_H
 #define QXPTYPE_TRAITS_H
@@ -8,7 +9,7 @@
 #include <QtCore/qtconfigmacros.h>
 #include <QtCore/qcompilerdetection.h>
 
-#include <QtCore/q20type_traits.h>
+#include <QtCore/q23type_traits.h>
 
 //
 //  W A R N I N G
@@ -54,8 +55,16 @@ template <template <typename...> class Op, typename...Args>
 using is_detected = typename _detail::detector<qxp::nonesuch, void, Op, Args...>::value_t;
 
 template <template <typename...> class Op, typename...Args>
-constexpr inline bool is_detected_v = is_detected<Op, Args...>::value;
+constexpr inline bool is_detected_v = qxp::is_detected<Op, Args...>::value;
 
+template <typename Default, template <typename...> class Op, typename...Args>
+using detected_or = _detail::detector<Default, void, Op, Args...>;
+
+template <typename Default, template <typename...> class Op, typename...Args>
+using detected_or_t = typename qxp::detected_or<Default, Op, Args...>::type;
+
+template <template <typename...> class Op, typename...Args>
+using detected_t = qxp::detected_or_t<qxp::nonesuch, Op, Args...>;
 
 // qxp::is_virtual_base_of_v<B, D> is true if and only if B is a virtual base class of D.
 // Just like is_base_of:
@@ -64,6 +73,10 @@ constexpr inline bool is_detected_v = is_detected<Op, Args...>::value;
 // * ignores cv-qualifications;
 // * B may be inaccessibile.
 
+#ifdef __cpp_lib_is_virtual_base_of
+using std::is_virtual_base_of;
+using std::is_virtual_base_of_v;
+#else
 namespace _detail {
     // Check that From* can be converted to To*, ignoring accessibility.
     // This can be done using a C cast (see [expr.cast]/4).
@@ -112,6 +125,7 @@ using is_virtual_base_of = _detail::is_virtual_base_of<std::remove_cv_t<Base>, s
 
 template <typename Base, typename Derived>
 constexpr inline bool is_virtual_base_of_v = is_virtual_base_of<Base, Derived>::value;
+#endif // __cpp_lib_is_virtual_base_of
 
 } // namespace qxp
 

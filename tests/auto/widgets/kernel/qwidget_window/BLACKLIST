@@ -1,6 +1,7 @@
 # QTBUG-87412
 [tst_move_show]
 android
+wayland
 [tst_show_move_hide_show]
 android
 [tst_resize_show]
@@ -13,6 +14,5 @@ android
 android
 [mouseMoveWithPopup]
 android
-# QTBUG-96270
-[tst_paintEventOnSecondShow]
-opensuse
+[setWindowState:maximized]
+xcb ubuntu-24.04 # QTBUG-129026

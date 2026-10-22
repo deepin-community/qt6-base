@@ -7,6 +7,7 @@
  * This is an auto-generated file.
  * Do not edit! All changes made to it will be lost.
  */
+// Qt-Security score:significant reason:default
 
 #ifndef QIBUSPROXY_H_1308831142
 #define QIBUSPROXY_H_1308831142
@@ -22,6 +23,8 @@
 #include <QDBusPendingReply>
 
 #include "qibustypes.h"
+
+QT_BEGIN_NAMESPACE
 
 /*
  * Proxy class for interface org.freedesktop.IBus
@@ -116,5 +119,7 @@ private Q_SLOTS:
 Q_SIGNALS: // SIGNALS
     void GlobalEngineChanged(const QString &engine_name);
 };
+
+QT_END_NAMESPACE
 
 #endif

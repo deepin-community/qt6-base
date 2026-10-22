@@ -1,17 +1,13 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-#ifndef QT_XLIB_WRAPPER_H
-#define QT_XLIB_WRAPPER_H
+// Qt-Security score:significant reason:default
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#pragma once
 
-    typedef struct _XDisplay Display;
-    void qt_XFlush(Display *dpy);
+#include <QtCore/qglobal.h>
 
-#ifdef __cplusplus
-}
-#endif
+typedef struct _XDisplay Display;
 
-#endif // QT_XLIB_WRAPPER_H
+QT_BEGIN_NAMESPACE
+void qt_XFlush(Display *dpy);
+QT_END_NAMESPACE

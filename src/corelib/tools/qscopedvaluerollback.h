@@ -1,10 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSCOPEDVALUEROLLBACK_H
 #define QSCOPEDVALUEROLLBACK_H
 
 #include <QtCore/qglobal.h>
+
+#include <QtCore/q20utility.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -20,14 +23,11 @@ public:
 
     Q_NODISCARD_CTOR
     explicit constexpr QScopedValueRollback(T &var, T value)
-        : varRef(var), oldValue(std::move(var)) // ### C++20: std::exchange(var, std::move(value))
+        : varRef(var), oldValue(q20::exchange(var, std::move(value)))
     {
-        var = std::move(value);
     }
 
-#if __cpp_constexpr >= 201907L
-    constexpr
-#endif
+    Q_DECL_CONSTEXPR_DTOR
     ~QScopedValueRollback()
     {
         varRef = std::move(oldValue);

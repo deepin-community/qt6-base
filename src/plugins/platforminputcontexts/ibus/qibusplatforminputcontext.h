@@ -1,5 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #ifndef QIBUSPLATFORMINPUTCONTEXT_H
 #define QIBUSPLATFORMINPUTCONTEXT_H
 
@@ -7,6 +9,7 @@
 
 #include <QtCore/qpointer.h>
 #include <QtCore/QLocale>
+#include <QtCore/QLoggingCategory>
 #include <QtDBus/qdbuspendingreply.h>
 #if QT_CONFIG(filesystemwatcher)
 #include <QFileSystemWatcher>
@@ -17,6 +20,8 @@
 #include "qibustypes.h"
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcQpaInputMethods);
 
 class QIBusPlatformInputContextPrivate;
 class QDBusVariant;

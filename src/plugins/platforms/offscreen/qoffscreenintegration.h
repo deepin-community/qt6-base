@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOFFSCREENINTEGRATION_H
 #define QOFFSCREENINTEGRATION_H
@@ -55,7 +56,7 @@ protected:
     QScopedPointer<QPlatformDrag> m_drag;
 #endif
     QScopedPointer<QPlatformInputContext> m_inputContext;
-    QScopedPointer<QPlatformServices> m_services;
+    mutable QScopedPointer<QPlatformServices> m_services;
     mutable QScopedPointer<QPlatformNativeInterface> m_nativeInterface;
     QList<QOffscreenScreen *> m_screens;
     bool m_windowFrameMarginsEnabled = true;

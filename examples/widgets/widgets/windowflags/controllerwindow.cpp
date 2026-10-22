@@ -100,7 +100,7 @@ void ControllerWindow::updatePreview()
     if (pos.y() < 0)
         pos.setY(0);
     previewWindow->move(pos);
-    previewWindow->show();
+    previewWindow->showNormal();
 }
 //! [4]
 

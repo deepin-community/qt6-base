@@ -1,14 +1,20 @@
 // Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Sérgio Martins <sergio.martins@kdab.com>
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSCOPEGUARD_H
 #define QSCOPEGUARD_H
 
-#include <QtCore/qglobal.h>
+#include <QtCore/qassert.h>
+#include <QtCore/qtclasshelpermacros.h>
+#include <QtCore/qcompilerdetection.h>
+#include <QtCore/qtconfigmacros.h>
 
 #include <type_traits>
 #include <utility>
+
+class tst_QScopeGuard;
 
 QT_BEGIN_NAMESPACE
 
@@ -46,8 +52,16 @@ public:
         m_invoke = false;
     }
 
+    void commit() noexcept(std::is_nothrow_invocable_v<F>)
+    {
+        Q_ASSERT(m_invoke);
+        m_invoke = false; // do it before we may throw from calling m_func()
+        m_func();
+    }
+
 private:
     Q_DISABLE_COPY(QScopeGuard)
+    friend class ::tst_QScopeGuard;
 
     F m_func;
     bool m_invoke = true;

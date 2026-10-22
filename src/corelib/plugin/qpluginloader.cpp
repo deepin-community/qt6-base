@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #include "qpluginloader.h"
 
@@ -229,8 +230,7 @@ static QString locatePlugin(const QString& fileName)
             return fi.canonicalFilePath();
         }
     }
-    QStringList prefixes = QLibraryPrivate::prefixes_sys();
-    prefixes.prepend(QString());
+    std::array<QStringView, 2> prefixes = { QStringView(), QLibraryPrivate::prefix_sys() };
     QStringList suffixes = QLibraryPrivate::suffixes_sys(QString());
     suffixes.prepend(QString());
 
@@ -247,7 +247,7 @@ static QString locatePlugin(const QString& fileName)
     }
 
     for (const QString &path : std::as_const(paths)) {
-        for (const QString &prefix : std::as_const(prefixes)) {
+        for (QStringView prefix : prefixes) {
             for (const QString &suffix : std::as_const(suffixes)) {
 #ifdef Q_OS_ANDROID
                 {

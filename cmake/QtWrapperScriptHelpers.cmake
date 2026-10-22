@@ -96,9 +96,23 @@ export CMAKE_GENERATOR=Xcode
         file(RELATIVE_PATH __relative_path_to_cmake_scripts_dir
             "${__qt_bin_dir_absolute}" "${CMAKE_CURRENT_LIST_DIR}")
     endif()
-    file(TO_NATIVE_PATH "${__relative_path_to_cmake_scripts_dir}"
-        __relative_path_to_cmake_scripts_dir)
+
+    # Store arguments we want to forward from configure to qt-configure-module arguments in a
+    # side-car file. If there's nothing to forward, create an empty file.
+    set(initial_configure_args "")
+    if(QT_USE_VCPKG)
+        list(APPEND initial_configure_args -vcpkg)
+    endif()
+    set(side_car_file_name "qt-configure-module-flags.txt")
+    set(side_car_file_path "${__GlobalConfig_build_dir}/${side_car_file_name}")
+    string(JOIN "\n" side_car_file_content "${initial_configure_args}")
+    file(CONFIGURE OUTPUT "${side_car_file_path}" CONTENT "${side_car_file_content}\n")
+    qt_copy_or_install(FILES "${side_car_file_path}" DESTINATION "${__GlobalConfig_install_dir}")
+
     if(generate_unix)
+        # Ensure forward slashes for Unix shell scripts.
+        file(TO_CMAKE_PATH "${__relative_path_to_cmake_scripts_dir}"
+            __relative_path_to_cmake_scripts_dir)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bin/qt-configure-module.in"
             "${QT_BUILD_DIR}/${INSTALL_BINDIR}/qt-configure-module" @ONLY
             NEWLINE_STYLE LF)
@@ -106,6 +120,9 @@ export CMAKE_GENERATOR=Xcode
             DESTINATION "${INSTALL_BINDIR}")
     endif()
     if(generate_non_unix)
+        # Ensure native separators for Windows batch scripts.
+        string(REPLACE "/" "\\" __relative_path_to_cmake_scripts_dir
+            "${__relative_path_to_cmake_scripts_dir}")
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bin/qt-configure-module.bat.in"
             "${QT_BUILD_DIR}/${INSTALL_BINDIR}/qt-configure-module.bat" @ONLY
             NEWLINE_STYLE CRLF)
@@ -129,10 +146,10 @@ export CMAKE_GENERATOR=Xcode
             "${INSTALL_BINDIR}/${__qt_cmake_standalone_test_name}")
     endif()
 
-    # Configuring a standalone test on iOS should use the Xcode generator, but qt-cmake-private uses
-    # the generator that was used to build Qt itself (e.g. Ninja).
+    # Configuring a standalone test on non-macOS Apple OSes should use the Xcode generator,
+    # but qt-cmake-private uses the generator that was used to build Qt itself (e.g. Ninja).
     # Use qt-cmake instead, which does use the Xcode generator since Qt 6.2.5, 6.3.1, 6.4.
-    if(IOS)
+    if(APPLE AND NOT MACOS)
         set(__qt_cmake_private_path
             "${QT_STAGING_PREFIX}/${INSTALL_BINDIR}/qt-cmake")
     else()
@@ -235,7 +252,14 @@ export CMAKE_GENERATOR=Xcode
 
     qt_internal_create_qt_configure_part_wrapper_script("STANDALONE_TESTS")
     qt_internal_create_qt_configure_part_wrapper_script("STANDALONE_EXAMPLES")
-    qt_internal_create_qt_configure_redo_script()
+    qt_internal_create_cyclone_dx_sbom_generator_script()
+
+    if(NOT CMAKE_CROSSCOMPILING)
+        qt_internal_create_qt_android_runner_wrapper_script()
+    endif()
+    if(APPLE AND NOT MACOS)
+        qt_internal_install_qt_apple_runner_script()
+    endif()
 endfunction()
 
 function(qt_internal_create_qt_configure_part_wrapper_script component)
@@ -273,10 +297,11 @@ function(qt_internal_create_qt_configure_part_wrapper_script component)
     file(RELATIVE_PATH relative_path_from_libexec_dir_to_bin_dir
         ${__qt_libexec_dir_absolute}
         ${__qt_bin_dir_absolute})
-    file(TO_NATIVE_PATH "${relative_path_from_libexec_dir_to_bin_dir}"
-                        relative_path_from_libexec_dir_to_bin_dir)
 
     if(generate_unix)
+        # Ensure forward slashes for Unix shell scripts.
+        file(TO_CMAKE_PATH "${relative_path_from_libexec_dir_to_bin_dir}"
+                            relative_path_from_libexec_dir_to_bin_dir)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/libexec/${script_name}.in"
             "${QT_BUILD_DIR}/${INSTALL_LIBEXECDIR}/${script_name}" @ONLY
             NEWLINE_STYLE LF)
@@ -285,6 +310,9 @@ function(qt_internal_create_qt_configure_part_wrapper_script component)
                    DESTINATION "${INSTALL_LIBEXECDIR}")
     endif()
     if(generate_non_unix)
+        # Ensure native separators for Windows batch scripts.
+        string(REPLACE "/" "\\" relative_path_from_libexec_dir_to_bin_dir
+            "${relative_path_from_libexec_dir_to_bin_dir}")
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/libexec/${script_name}.bat.in"
             "${QT_BUILD_DIR}/${INSTALL_BINDIR}/${script_name}.bat" @ONLY
             NEWLINE_STYLE CRLF)
@@ -302,32 +330,120 @@ endfunction()
 # The script is created in the root of the build dir and is called config.redo
 # It has the same contents as the 'config.status' script we created in qt 5.
 function(qt_internal_create_qt_configure_redo_script)
-    set(input_script_name "qt-internal-config.redo")
-    set(input_script_path "${CMAKE_CURRENT_SOURCE_DIR}/libexec/${input_script_name}")
+    # Protect against creating the script once per repo in a top level build. Only one file should
+    # be created.
+    get_cmake_property(script_created _qt_configure_redo_script_created)
+    if(script_created)
+        return()
+    endif()
+
+    set(wrapper_extension "")
+
+    if(NOT CMAKE_HOST_UNIX)
+        set(wrapper_extension ".bat")
+    endif()
+
+    set(script_name "qt-internal-config.redo")
+
+    set(wrapper_rel_path "${script_name}${wrapper_extension}.in")
+
+    # Need to find the input file depending whether the qtbase sources are available.
+    # This mirrors the logic in qt_set_up_build_internals_paths.
+    # TODO: Clean this up, together with qt_set_up_build_internals_paths to only use the
+    # the qtbase sources when building qtbase. And perhaps also when doing a non-prefix
+    # developer-build.
+    set(qtbase_in_path "${QT_SOURCE_TREE}/cmake/${wrapper_rel_path}")
+    set(installed_in_path
+        "${_qt_cmake_dir}/${QT_CMAKE_EXPORT_NAMESPACE}/${wrapper_rel_path}")
+
+    # qtbase sources available, always use them, regardless of prefix or non-prefix builds.
+    if(EXISTS "${qtbase_in_path}")
+        set(input_script_path "${qtbase_in_path}")
+
+    # qtbase sources unavailable, use installed files.
+    elseif(EXISTS "${installed_in_path}")
+        set(input_script_path "${installed_in_path}")
+    else()
+        message(FATAL_ERROR "Can't find ${script_name}${wrapper_extension}.in file.")
+    endif()
 
     # We don't use QT_BUILD_DIR because we want the file in the root of the build dir in a top-level
     # build.
     set(output_script_name "config.redo")
-    set(output_path "${CMAKE_BINARY_DIR}/${output_script_name}")
+    set(output_path "${CMAKE_BINARY_DIR}/${output_script_name}${wrapper_extension}")
 
+    set(repo_path "")
     if(QT_SUPERBUILD)
-        set(configure_script_path "${Qt_SOURCE_DIR}")
+        set(configure_script_path "${Qt_SOURCE_DIR}/configure")
+    elseif(QtBase_SOURCE_DIR)
+        set(configure_script_path "${QtBase_SOURCE_DIR}/configure")
     else()
-        set(configure_script_path "${QtBase_SOURCE_DIR}")
+        if(QT_WILL_INSTALL)
+            set(configure_script_path "${QT_STAGING_PREFIX}")
+        else()
+            set(configure_script_path "${QT_BUILD_DIR}")
+        endif()
+
+        string(APPEND configure_script_path
+            "/${INSTALL_BINDIR}/qt-configure-module${wrapper_extension}")
+
+        # When configuring a repo other than qtbase, we also need to provide the location
+        # to the repo sources.
+        set(repo_path "${CMAKE_SOURCE_DIR}")
     endif()
-    string(APPEND configure_script_path "/configure")
 
     # Used in the file contents.
     file(TO_NATIVE_PATH "${configure_script_path}" configure_path)
 
     if(CMAKE_HOST_UNIX)
-        string(APPEND input_script_path ".in")
         set(newline_style "LF")
     else()
-        string(APPEND input_script_path ".bat.in")
-        string(APPEND output_path ".bat")
         set(newline_style "CRLF")
     endif()
 
     configure_file("${input_script_path}" "${output_path}" @ONLY NEWLINE_STYLE ${newline_style})
+
+    set_property(GLOBAL PROPERTY _qt_configure_redo_script_created TRUE)
+endfunction()
+
+function(qt_internal_create_cyclone_dx_sbom_generator_script)
+    _qt_internal_sbom_get_cyclone_dx_generator_script_name(generator_name generator_relative_dir)
+
+    qt_path_join(build_dir_destination "${QT_BUILD_DIR}" "${INSTALL_LIBEXECDIR}")
+    qt_path_join(install_destination "${QT_INSTALL_DIR}" "${INSTALL_LIBEXECDIR}")
+    qt_path_join(script_path
+        "${CMAKE_CURRENT_SOURCE_DIR}" "${generator_relative_dir}" "${generator_name}")
+
+    if(QT_WILL_INSTALL)
+        file(COPY "${script_path}"
+            DESTINATION "${build_dir_destination}"
+        )
+    endif()
+
+    qt_copy_or_install(PROGRAMS "${script_path}" DESTINATION "${install_destination}")
+endfunction()
+
+function(qt_internal_create_qt_android_runner_wrapper_script)
+    qt_path_join(android_runner_destination "${QT_INSTALL_DIR}" "${INSTALL_LIBEXECDIR}")
+    qt_path_join(android_runner "${CMAKE_CURRENT_SOURCE_DIR}" "libexec" "qt-android-runner.py")
+    qt_copy_or_install(PROGRAMS "${android_runner}" DESTINATION "${android_runner_destination}")
+endfunction()
+
+function(qt_internal_install_qt_apple_runner_script)
+    qt_path_join(apple_runner_destination "${QT_INSTALL_DIR}" "${INSTALL_LIBEXECDIR}")
+    qt_path_join(apple_runner "${CMAKE_CURRENT_SOURCE_DIR}" "libexec" "qt-apple-runner.sh")
+    qt_copy_or_install(PROGRAMS "${apple_runner}" DESTINATION "${apple_runner_destination}")
+    if(NOT QT_WILL_INSTALL)
+        add_custom_target(Qt${QtBase_VERSION_MAJOR}AppleRunnerScript ALL
+            SOURCES ${apple_runner}
+        )
+        qt_internal_copy_at_build_time(TARGET Qt${QtBase_VERSION_MAJOR}AppleRunnerScript
+            FILES ${apple_runner}
+            DESTINATION ${apple_runner_destination}
+        )
+        cmake_language(DEFER CALL add_dependencies
+            Core
+            Qt${QtBase_VERSION_MAJOR}AppleRunnerScript
+        )
+    endif()
 endfunction()

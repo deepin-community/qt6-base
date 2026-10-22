@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdesktopservices.h"
 
@@ -177,9 +178,9 @@ bool QDesktopServices::openUrl(const QUrl &url)
         qWarning("The platform plugin does not support services.");
         return false;
     }
-    // We only use openDocument if there is no fragment for the URL to
+    // We only use openDocument if there is no fragment or query for the URL to
     // avoid it being lost when using openDocument
-    if (url.isLocalFile() && !url.hasFragment())
+    if (url.isLocalFile() && !url.hasFragment() && !url.hasQuery())
         return platformServices->openDocument(url);
     return platformServices->openUrl(url);
 }

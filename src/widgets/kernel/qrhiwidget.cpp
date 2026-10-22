@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qrhiwidget_p.h"
 #include <private/qguiapplication_p.h>
@@ -15,11 +16,6 @@ QT_BEGIN_NAMESPACE
 
     \brief The QRhiWidget class is a widget for rendering 3D graphics via an
     accelerated grapics API, such as Vulkan, Metal, or Direct 3D.
-
-    \preliminary
-
-    \note QRhiWidget is in tech preview in Qt 6.7. \b {The API is under
-    development and subject to change.}
 
     QRhiWidget provides functionality for displaying 3D content rendered
     through the \l QRhi APIs within a QWidget-based application. In many ways
@@ -78,7 +74,7 @@ QT_BEGIN_NAMESPACE
     The vertex and fragment shaders are provided as Vulkan-style GLSL and must
     be processed first by the Qt shader infrastructure first. This is achieved
     either by running the \c qsb command-line tool manually, or by using the
-    \l{Qt Shader Tools Build System Integration}{qt_add_shaders()} function in
+    \l{qt_add_shaders}{qt_add_shaders()} function in
     CMake. The QRhiWidget implementation loads these pre-processed \c{.qsb}
     files that are shipped with the application. See \l{Qt Shader Tools} for
     more information about Qt's shader translation infrastructure.
@@ -95,7 +91,7 @@ QT_BEGIN_NAMESPACE
 
     The result is a widget that shows the following:
 
-    \image qrhiwidget-intro.jpg
+    \image qrhiwidget-intro.jpg {Multicolored triangle on a green background}
 
     For a complete, minimal, introductory example check out the \l{Simple RHI
     Widget Example}.
@@ -174,18 +170,36 @@ QRhiWidget::QRhiWidget(QWidget *parent, Qt::WindowFlags f)
     : QWidget(*(new QRhiWidgetPrivate), parent, f)
 {
     Q_D(QRhiWidget);
+    d->init();
+}
+
+/*!
+ *  \internal
+ */
+QRhiWidget::QRhiWidget(QRhiWidgetPrivate &dd, QWidget *parent, Qt::WindowFlags f)
+    : QWidget(dd, parent, f)
+{
+    Q_D(QRhiWidget);
+    d->init();
+}
+
+/*!
+ *  \internal
+ */
+void QRhiWidgetPrivate::init()
+{
     if (Q_UNLIKELY(!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::RhiBasedRendering)))
         qWarning("QRhiWidget: QRhi is not supported on this platform.");
     else
-        d->setRenderToTexture();
+        setRenderToTexture();
 
-    d->config.setEnabled(true);
+    config.setEnabled(true);
 #if defined(Q_OS_DARWIN)
-    d->config.setApi(QPlatformBackingStoreRhiConfig::Metal);
+    config.setApi(QPlatformBackingStoreRhiConfig::Metal);
 #elif defined(Q_OS_WIN)
-    d->config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
+    config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
 #else
-    d->config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
+    config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
 #endif
 }
 
@@ -420,7 +434,7 @@ QImage QRhiWidgetPrivate::grabFramebuffer()
                             imageFormat);
         QImage result;
         if (rhi->isYUpInFramebuffer())
-            result = wrapperImage.mirrored();
+            result = wrapperImage.flipped();
         else
             result = wrapperImage.copy();
         result.setDevicePixelRatio(q->devicePixelRatio());
@@ -889,13 +903,29 @@ void QRhiWidget::setSampleCount(int samples)
     will appear stretched (scaled up) or scaled down onto the widget's area.
 
     For example, setting a size that is exactly twice the widget's (pixel) size
-    effectively performs 2x supersampling (rendering at twice the resolution
-    and then implicitly scaling down when texturing the quad corresponding to
-    the widget in the window).
+    effectively performs 2x supersampling (rendering at twice the resolution and
+    then implicitly scaling down when texturing the quad corresponding to the
+    widget in the window). On the other hand, setting a size that is half of the
+    widget's effectively achieves rendering at half resolution and then
+    upscaling the results.
 
     By default the value is a null QSize. A null or empty QSize means that the
     texture's size follows the QRhiWidget's size. (\c{texture size} = \c{widget
     size} * \c{device pixel ratio}).
+
+    \note The device pixel ratio (the system compositor's scale factor) can have
+    a big impact on performance, since a scale factor of 2 (200%) means
+    rendering at twice the resolution, so twice of what the developer and UI
+    designer perceives as the widget's size, and then effectively downscaling
+    the content, similarly to what happens when setting this property to twice
+    the widget's pixel size on a system where the device pixel ratio is 1.
+    Therefore, this property is expected to be rarely used with sizes bigger
+    than the widget's pixel size, since many modern desktop systems have neither
+    have the need nor the performance budget for it, when a larger than 1 device
+    pixel ratio is used anyway by the system. Instead, the main use case for
+    this property is to set a smaller size, in order to render at a reasonable
+    smaller resolution instead of blindly following the window geometry, however
+    big that may be.
  */
 
 QSize QRhiWidget::fixedColorBufferSize() const

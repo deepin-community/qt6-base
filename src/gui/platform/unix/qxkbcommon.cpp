@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxkbcommon_p.h"
 
@@ -327,6 +328,12 @@ static constexpr const auto KeyTbl = qMakeArray(
         Xkb2Qt<XKB_KEY_XF86Option,              Qt::Key_Option>,
         Xkb2Qt<XKB_KEY_XF86Paste,               Qt::Key_Paste>,
         Xkb2Qt<XKB_KEY_XF86Phone,               Qt::Key_Phone>,
+#ifdef XKB_KEY_XF86PickupPhone
+        Xkb2Qt<XKB_KEY_XF86PickupPhone,         Qt::Key_Call>,
+#endif
+#ifdef XKB_KEY_XF86HangupPhone
+        Xkb2Qt<XKB_KEY_XF86HangupPhone,         Qt::Key_Hangup>,
+#endif
         Xkb2Qt<XKB_KEY_XF86Reply,               Qt::Key_Reply>,
         Xkb2Qt<XKB_KEY_XF86Reload,              Qt::Key_Reload>,
         Xkb2Qt<XKB_KEY_XF86RotateWindows,       Qt::Key_RotateWindows>,
@@ -376,6 +383,7 @@ static constexpr const auto KeyTbl = qMakeArray(
         Xkb2Qt<XKB_KEY_XF86TouchpadOn,          Qt::Key_TouchpadOn>,
         Xkb2Qt<XKB_KEY_XF86TouchpadOff,         Qt::Key_TouchpadOff>,
         Xkb2Qt<XKB_KEY_XF86AudioMicMute,        Qt::Key_MicMute>,
+        Xkb2Qt<XKB_KEY_XF86Keyboard,            Qt::Key_Keyboard>,
         Xkb2Qt<XKB_KEY_XF86Launch0,             Qt::Key_Launch0>,
         Xkb2Qt<XKB_KEY_XF86Launch1,             Qt::Key_Launch1>,
         Xkb2Qt<XKB_KEY_XF86Launch2,             Qt::Key_Launch2>,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QCoreApplication>
 #include <QDir>
+#include <QDirListing>
 #include <QLibraryInfo>
 
 #include "../shared/shared.h"
@@ -14,7 +15,7 @@ int main(int argc, char **argv)
     if (argc > 1)
         appBundlePath = QString::fromLocal8Bit(argv[1]);
 
-    if (argc < 2 || appBundlePath.startsWith("-")) {
+    if (argc < 2 || appBundlePath.startsWith('-')) {
         qDebug() << "Usage: macdeployqt app-bundle [options]";
         qDebug() << "";
         qDebug() << "Options:";
@@ -27,7 +28,9 @@ int main(int argc, char **argv)
         qDebug() << "   -qmldir=<path>                : Scan for QML imports in the given path";
         qDebug() << "   -qmlimport=<path>             : Add the given path to the QML module search locations";
         qDebug() << "   -always-overwrite             : Copy files even if the target file exists";
-        qDebug() << "   -codesign=<ident>             : Run codesign with the given identity on all executables";
+        qDebug() << "   -codesign=<ident>             : Run codesign with the given identity on "
+                    "all executables (default: ad-hoc sign)";
+        qDebug() << "   -no-codesign                  : Disable code signing";
         qDebug() << "   -hardened-runtime             : Enable Hardened Runtime when code signing";
         qDebug() << "   -timestamp                    : Include a secure timestamp when code signing (requires internet connection)";
         qDebug() << "   -sign-for-notarization=<ident>: Activate the necessary options for notarization (requires internet connection)";
@@ -44,13 +47,13 @@ int main(int argc, char **argv)
         qDebug() << "plugins are always copied, unless \"-no-plugins\" is specified.";
         qDebug() << "";
         qDebug() << "Qt plugins may use private API and will cause the app to be";
-        qDebug() << "rejected from the Mac App store. MacDeployQt will print a warning";
+        qDebug() << "rejected from the Mac App store. macdeployqt will print a warning";
         qDebug() << "when known incompatible plugins are deployed. Use -appstore-compliant ";
         qDebug() << "to skip these plugins. Currently two SQL plugins are known to";
         qDebug() << "be incompatible: qsqlodbc and qsqlpsql.";
         qDebug() << "";
-        qDebug() << "See the \"Deploying Applications on OS X\" topic in the";
-        qDebug() << "documentation for more information about deployment on OS X.";
+        qDebug() << "See the \"Qt for macOS - Deployment\" topic in the";
+        qDebug() << "documentation for more information about deployment on macOS.";
 
         return 1;
     }
@@ -74,30 +77,31 @@ int main(int argc, char **argv)
     QStringList qmlDirs;
     QStringList qmlImportPaths;
     extern bool runCodesign;
-    extern QString codesignIdentiy;
+    QString codesignIdentity = QStringLiteral("-");
     extern bool hardenedRuntime;
+    bool noCodesignExplicit = false;
     extern bool appstoreCompliant;
     extern bool deployFramework;
     extern bool secureTimestamp;
 
     for (int i = 2; i < argc; ++i) {
         QByteArray argument = QByteArray(argv[i]);
-        if (argument == QByteArray("-no-plugins")) {
+        if (argument == QByteArrayView("-no-plugins")) {
             LogDebug() << "Argument found:" << argument;
             plugins = false;
-        } else if (argument == QByteArray("-dmg")) {
+        } else if (argument == QByteArrayView("-dmg")) {
             LogDebug() << "Argument found:" << argument;
             dmg = true;
-        } else if (argument == QByteArray("-no-strip")) {
+        } else if (argument == QByteArrayView("-no-strip")) {
             LogDebug() << "Argument found:" << argument;
             runStripEnabled = false;
-        } else if (argument == QByteArray("-use-debug-libs")) {
+        } else if (argument == QByteArrayView("-use-debug-libs")) {
             LogDebug() << "Argument found:" << argument;
             useDebugLibs = true;
             runStripEnabled = false;
-        } else if (argument.startsWith(QByteArray("-verbose"))) {
+        } else if (argument.startsWith(QByteArrayView("-verbose"))) {
             LogDebug() << "Argument found:" << argument;
-            int index = argument.indexOf("=");
+            int index = argument.indexOf('=');
             bool ok = false;
             int number = argument.mid(index+1).toInt(&ok);
             if (!ok) {
@@ -106,7 +110,7 @@ int main(int argc, char **argv)
             } else {
                 logLevel = number;
             }
-        } else if (argument.startsWith(QByteArray("-executable"))) {
+        } else if (argument.startsWith(QByteArrayView("-executable"))) {
             LogDebug() << "Argument found:" << argument;
             int index = argument.indexOf('=');
             if (index == -1) {
@@ -115,7 +119,7 @@ int main(int argc, char **argv)
             } else {
                 additionalExecutables << argument.mid(index+1);
             }
-        } else if (argument.startsWith(QByteArray("-qmldir"))) {
+        } else if (argument.startsWith(QByteArrayView("-qmldir"))) {
             LogDebug() << "Argument found:" << argument;
             qmldirArgumentUsed = true;
             int index = argument.indexOf('=');
@@ -125,7 +129,7 @@ int main(int argc, char **argv)
             } else {
                 qmlDirs << argument.mid(index+1);
             }
-        } else if (argument.startsWith(QByteArray("-qmlimport"))) {
+        } else if (argument.startsWith(QByteArrayView("-qmlimport"))) {
             LogDebug() << "Argument found:" << argument;
             int index = argument.indexOf('=');
             if (index == -1) {
@@ -134,7 +138,7 @@ int main(int argc, char **argv)
             } else {
                 qmlImportPaths << argument.mid(index+1);
             }
-        } else if (argument.startsWith(QByteArray("-libpath"))) {
+        } else if (argument.startsWith(QByteArrayView("-libpath"))) {
             LogDebug() << "Argument found:" << argument;
             int index = argument.indexOf('=');
             if (index == -1) {
@@ -143,22 +147,34 @@ int main(int argc, char **argv)
             } else {
                 librarySearchPath << argument.mid(index+1);
             }
-        } else if (argument == QByteArray("-always-overwrite")) {
+        } else if (argument == QByteArrayView("-always-overwrite")) {
             LogDebug() << "Argument found:" << argument;
             alwaysOwerwriteEnabled = true;
-        } else if (argument.startsWith(QByteArray("-codesign"))) {
+        } else if (argument == QByteArrayView("-no-codesign")) {
             LogDebug() << "Argument found:" << argument;
-            int index = argument.indexOf("=");
+            runCodesign = false;
+            noCodesignExplicit = true;
+        } else if (argument.startsWith(QByteArrayView("-codesign"))) {
+            LogDebug() << "Argument found:" << argument;
+            if (noCodesignExplicit) {
+                LogError() << "Error: -no-codesign cannot be combined with -codesign\n";
+                return 1;
+            }
+            int index = argument.indexOf('=');
             if (index < 0 || index >= argument.size()) {
                 LogError() << "Missing code signing identity";
                 return 1;
             } else {
                 runCodesign = true;
-                codesignIdentiy = argument.mid(index+1);
+                codesignIdentity = argument.mid(index + 1);
             }
-        } else if (argument.startsWith(QByteArray("-sign-for-notarization"))) {
+        } else if (argument.startsWith(QByteArrayView("-sign-for-notarization"))) {
             LogDebug() << "Argument found:" << argument;
-            int index = argument.indexOf("=");
+            if (noCodesignExplicit) {
+                LogError() << "Error: -no-codesign cannot be combined with -sign-for-notarization\n";
+                return 1;
+            }
+            int index = argument.indexOf('=');
             if (index < 0 || index >= argument.size()) {
                 LogError() << "Missing code signing identity";
                 return 1;
@@ -166,24 +182,24 @@ int main(int argc, char **argv)
                 runCodesign = true;
                 hardenedRuntime = true;
                 secureTimestamp = true;
-                codesignIdentiy = argument.mid(index+1);
+                codesignIdentity = argument.mid(index + 1);
             }
-        } else if (argument.startsWith(QByteArray("-hardened-runtime"))) {
+        } else if (argument.startsWith(QByteArrayView("-hardened-runtime"))) {
             LogDebug() << "Argument found:" << argument;
             hardenedRuntime = true;
-        } else if (argument.startsWith(QByteArray("-timestamp"))) {
+        } else if (argument.startsWith(QByteArrayView("-timestamp"))) {
             LogDebug() << "Argument found:" << argument;
             secureTimestamp = true;
-        } else if (argument == QByteArray("-appstore-compliant")) {
+        } else if (argument == QByteArrayView("-appstore-compliant")) {
             LogDebug() << "Argument found:" << argument;
             appstoreCompliant = true;
 
         // Undocumented option, may not work as intended
-        } else if (argument == QByteArray("-deploy-framework")) {
+        } else if (argument == QByteArrayView("-deploy-framework")) {
             LogDebug() << "Argument found:" << argument;
             deployFramework = true;
 
-        } else if (argument.startsWith(QByteArray("-fs"))) {
+        } else if (argument.startsWith(QByteArrayView("-fs"))) {
             LogDebug() << "Argument found:" << argument;
             int index = argument.indexOf('=');
             if (index == -1) {
@@ -192,7 +208,7 @@ int main(int argc, char **argv)
             } else {
                 filesystem = argument.mid(index+1);
             }
-        } else if (argument.startsWith("-")) {
+        } else if (argument.startsWith('-')) {
             LogError() << "Unknown argument" << argument << "\n";
             return 1;
         }
@@ -208,10 +224,11 @@ int main(int argc, char **argv)
 
     // Convenience: Look for .qml files in the current directory if no -qmldir specified.
     if (qmlDirs.isEmpty()) {
-        QDir dir;
-        if (!dir.entryList(QStringList() << QStringLiteral("*.qml")).isEmpty()) {
+        using namespace Qt::StringLiterals;
+        using F = QDirListing::IteratorFlag;
+        QDirListing lister(QDir::currentPath(), QStringList(u"*.qml"_s), F::FilesOnly);
+        if (lister.cbegin() != lister.cend())
             qmlDirs += QStringLiteral(".");
-        }
     }
 
     if (!qmlDirs.isEmpty()) {
@@ -230,14 +247,15 @@ int main(int argc, char **argv)
     // Handle plugins
     if (plugins) {
         // Set the plugins search directory
-        deploymentInfo.pluginPath = QLibraryInfo::path(QLibraryInfo::PluginsPath);
+        QStringList pluginPaths = QLibraryInfo::paths(QLibraryInfo::PluginsPath);
 
         // Sanity checks
-        if (deploymentInfo.pluginPath.isEmpty()) {
+        if (pluginPaths.isEmpty()) {
             LogError() << "Missing Qt plugins path\n";
             return 1;
         }
 
+        deploymentInfo.pluginPath = pluginPaths.takeFirst();
         if (!QDir(deploymentInfo.pluginPath).exists()) {
             LogError() << "Plugins path does not exist" << deploymentInfo.pluginPath << "\n";
             return 1;
@@ -248,7 +266,6 @@ int main(int argc, char **argv)
         if (!deploymentInfo.pluginPath.isEmpty()) {
             LogNormal();
             deployPlugins(appBundlePath, deploymentInfo, useDebugLibs);
-            createQtConf(appBundlePath);
         }
     }
 
@@ -256,7 +273,7 @@ int main(int argc, char **argv)
         stripAppBinary(appBundlePath);
 
     if (runCodesign)
-        codesign(codesignIdentiy, appBundlePath);
+        codesign(codesignIdentity, appBundlePath);
 
     if (dmg) {
         LogNormal();

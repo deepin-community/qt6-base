@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbwindow.h"
 
@@ -41,6 +42,7 @@
 #include <qpa/qwindowsysteminterface.h>
 
 #include <stdio.h>
+#include <unistd.h>
 
 #if QT_CONFIG(xcb_xlib)
 #define register        /* C++17 deprecated register */
@@ -59,8 +61,8 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcQpaWindow, "qt.qpa.window");
-Q_LOGGING_CATEGORY(lcQpaXcbWindow, "qt.qpa.xcb.window");
+Q_STATIC_LOGGING_CATEGORY(lcQpaWindow, "qt.qpa.window");
+Q_STATIC_LOGGING_CATEGORY(lcQpaXcbWindow, "qt.qpa.xcb.window");
 
 Q_DECLARE_TYPEINFO(xcb_rectangle_t, Q_PRIMITIVE_TYPE);
 
@@ -240,25 +242,6 @@ void QXcbWindow::create()
         ? QHighDpi::toNativeLocalPosition(window()->geometry(), platformScreen)
         : QHighDpi::toNativePixels(window()->geometry(), platformScreen);
 
-    if (type == Qt::Desktop) {
-        m_window = platformScreen->root();
-        m_depth = platformScreen->screen()->root_depth;
-        m_visualId = platformScreen->screen()->root_visual;
-        const xcb_visualtype_t *visual = nullptr;
-        if (connection()->hasDefaultVisualId()) {
-            visual = platformScreen->visualForId(connection()->defaultVisualId());
-            if (visual)
-                m_visualId = connection()->defaultVisualId();
-            if (!visual)
-                qWarning("Could not use default visual id. Falling back to root_visual for screen.");
-        }
-        if (!visual)
-            visual = platformScreen->visualForId(m_visualId);
-        setImageFormatForVisual(visual);
-        connection()->addWindowEventListener(m_window, this);
-        return;
-    }
-
     const QSize minimumSize = windowMinimumSize();
     if (rect.width() > 0 || rect.height() > 0) {
         rect.setWidth(qBound(1, rect.width(), XCOORD_MAX));
@@ -301,7 +284,7 @@ void QXcbWindow::create()
     if (QPlatformWindow::parent()) {
         // When using a Vulkan QWindow via QWidget::createWindowContainer() we
         // must make sure the visuals are compatible. Now, the parent will be
-        // of RasterGLSurface which typically chooses a GLX/EGL compatible
+        // of OpenGLSurface which typically chooses a GLX/EGL compatible
         // visual which may not be what the Vulkan window would choose.
         // Therefore, take the parent's visual.
         if (window()->surfaceType() == QSurface::VulkanSurface
@@ -805,7 +788,10 @@ void QXcbWindow::hide()
         }
     }
 
+    // Avoid race with requestActivate()
+    QMutexLocker locker(&m_mappedMutex);
     m_mapped = false;
+    m_deferredActivation = false;
 
     // Hiding a modal window doesn't send an enter event to its transient parent when the
     // mouse is already over the parent window, so the enter event must be emulated.
@@ -936,7 +922,7 @@ QXcbWindow::NetWmStates QXcbWindow::netWmStates()
     return result;
 }
 
-void QXcbWindow::setWindowFlags(Qt::WindowFlags flags)
+static inline Qt::WindowFlags x11AdjustedWindowFlags(Qt::WindowFlags flags)
 {
     Qt::WindowType type = static_cast<Qt::WindowType>(int(flags & Qt::WindowType_Mask));
 
@@ -944,8 +930,13 @@ void QXcbWindow::setWindowFlags(Qt::WindowFlags flags)
         flags |= Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::X11BypassWindowManagerHint;
     if (type == Qt::Popup)
         flags |= Qt::X11BypassWindowManagerHint;
+    return flags;
+}
 
-    Qt::WindowFlags oldflags = window()->flags();
+void QXcbWindow::setWindowFlags(Qt::WindowFlags flags)
+{
+    flags = x11AdjustedWindowFlags(flags);
+    Qt::WindowFlags oldflags = x11AdjustedWindowFlags(window()->flags());
     if ((oldflags & Qt::WindowStaysOnTopHint) != (flags & Qt::WindowStaysOnTopHint))
         m_recreationReasons |= WindowStaysOnTopHintChanged;
     if ((oldflags & Qt::WindowStaysOnBottomHint) != (flags & Qt::WindowStaysOnBottomHint))
@@ -1094,6 +1085,7 @@ void QXcbWindow::setNetWmState(Qt::WindowFlags flags)
 
 void QXcbWindow::setNetWmStateOnUnmappedWindow()
 {
+    QMutexLocker locker(&m_mappedMutex);
     if (Q_UNLIKELY(m_mapped))
         qCDebug(lcQpaXcb()) << "internal info: " << Q_FUNC_INFO << "called on mapped window";
 
@@ -1334,6 +1326,11 @@ void QXcbWindow::setParent(const QPlatformWindow *parent)
 void QXcbWindow::setWindowTitle(const QString &title)
 {
     setWindowTitle(connection(), m_window, title);
+}
+
+QString QXcbWindow::windowTitle() const
+{
+    return windowTitle(connection(), m_window);
 }
 
 void QXcbWindow::setWindowIconText(const QString &title)
@@ -2435,7 +2432,7 @@ bool QXcbWindow::startSystemMoveResize(const QPoint &pos, int edges)
     if (startedByTouch) {
         const QString wmname = connection()->windowManagerName();
         if (wmname != "kwin"_L1 && wmname != "openbox"_L1) {
-            qCDebug(lcQpaXInputDevices) << "only KDE and OpenBox support startSystemMove/Resize which is triggered from touch events: XDG_CURRENT_DESKTOP="
+            qCDebug(lcQpaInputDevices) << "only KDE and OpenBox support startSystemMove/Resize which is triggered from touch events: XDG_CURRENT_DESKTOP="
                                         << qgetenv("XDG_CURRENT_DESKTOP");
             connection()->abortSystemMoveResize(m_window);
             return false;
@@ -2473,7 +2470,7 @@ static uint qtEdgesToXcbMoveResizeDirection(Qt::Edges edges)
 
 void QXcbWindow::doStartSystemMoveResize(const QPoint &globalPos, int edges)
 {
-    qCDebug(lcQpaXInputDevices) << "triggered system move or resize via sending _NET_WM_MOVERESIZE client message";
+    qCDebug(lcQpaInputDevices) << "triggered system move or resize via sending _NET_WM_MOVERESIZE client message";
     const xcb_atom_t moveResize = connection()->atom(QXcbAtom::Atom_NET_WM_MOVERESIZE);
     xcb_client_message_event_t xev;
     xev.response_type = XCB_CLIENT_MESSAGE;
@@ -2581,7 +2578,7 @@ void QXcbWindow::setOpacity(qreal level)
     if (!m_window)
         return;
 
-    quint32 value = qRound64(qBound(qreal(0), level, qreal(1)) * 0xffffffff);
+    quint32 value = qRound64(qBound(qreal(0), level, qreal(1)) * qreal(0xffffffff));
 
     xcb_change_property(xcb_connection(),
                         XCB_PROP_MODE_REPLACE,

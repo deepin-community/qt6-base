@@ -1,6 +1,7 @@
 // Copyright (C) 2013 John Layt <jlayt@kde.org>
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtimezone.h"
 #include "qtimezoneprivate_p.h"
@@ -23,9 +24,20 @@ QT_BEGIN_NAMESPACE
 
 // ICU utilities
 
+#ifdef Q_OS_HARMONY
+#include <BasicServicesKit/time_service.h>
+#endif
+
 // Qt wrapper around ucal_getDefaultTimeZone()
 static QByteArray ucalDefaultTimeZoneId()
 {
+#ifdef Q_OS_HARMONY
+    char tzBuffer[32] = { 0 };
+    TimeService_ErrCode err = OH_TimeService_GetTimeZone(tzBuffer, sizeof(tzBuffer));
+
+    if (err == TIMESERVICE_ERR_OK)
+        return QByteArray(tzBuffer);
+#endif
     int32_t size = 30;
     QString result(size, Qt::Uninitialized);
     UErrorCode status = U_ZERO_ERROR;
@@ -105,7 +117,8 @@ static QTimeZonePrivate::Data ucalTimeZoneTransition(UCalendar *m_ucal,
 
     // Set the date to find the transition for
     status = U_ZERO_ERROR;
-    ucal_setMillis(ucal, atMSecsSinceEpoch, &status);
+    const UDate when = UDate(atMSecsSinceEpoch);
+    ucal_setMillis(ucal, when, &status);
 
     // Find the transition time
     UDate tranMSecs = 0;
@@ -117,7 +130,7 @@ static QTimeZonePrivate::Data ucalTimeZoneTransition(UCalendar *m_ucal,
         // At the end of time, that can "succeed" with tranMSecs ==
         // atMSecsSinceEpoch, which should be treated as a failure.
         // (At the start of time, previous correctly fails.)
-        ok = qint64(tranMSecs) > atMSecsSinceEpoch;
+        ok = tranMSecs > when;
     }
 
     // Set the transition time to find the offsets for
@@ -141,7 +154,7 @@ static QTimeZonePrivate::Data ucalTimeZoneTransition(UCalendar *m_ucal,
     ucal_close(ucal);
     if (!U_SUCCESS(status) || !ok)
         return tran;
-    tran.atMSecsSinceEpoch = tranMSecs;
+    tran.atMSecsSinceEpoch = qint64(tranMSecs);
     tran.offsetFromUtc = utc + dst;
     tran.standardTimeOffset = utc;
     tran.daylightTimeOffset = dst;
@@ -149,12 +162,12 @@ static QTimeZonePrivate::Data ucalTimeZoneTransition(UCalendar *m_ucal,
     QTimeZone::TimeType timeType = dst == 0 ? QTimeZone::StandardTime : QTimeZone::DaylightTime;
     using namespace QtTimeZoneLocale;
     tran.abbreviation = ucalTimeZoneDisplayName(m_ucal, timeType,
-                                                QTimeZone::ShortName, QLocale().name());
+                                                QTimeZone::ShortName, QLocale().name().toUtf8());
     return tran;
 }
 #endif // U_ICU_VERSION_SHORT
 
-// Convert a uenum to a QList<QByteArray>
+// Convert a uenum (listing zone names) to a QList<QByteArray>
 static QList<QByteArray> uenumToIdList(UEnumeration *uenum)
 {
     QList<QByteArray> list;
@@ -164,9 +177,16 @@ static QList<QByteArray> uenumToIdList(UEnumeration *uenum)
     QByteArray result = uenum_next(uenum, &size, &status);
     while (U_SUCCESS(status) && !result.isEmpty()) {
         list << result;
+        // Include the CLDR-canonical name, as well
+        const QByteArrayView zone = QTimeZonePrivate::aliasToIana(result);
+        if (!zone.isEmpty()) {
+            list << zone.toByteArray();
+            Q_ASSERT(QTimeZonePrivate::aliasToIana(zone).isEmpty());
+        }
         status = U_ZERO_ERROR;
         result = uenum_next(uenum, &size, &status);
     }
+
     std::sort(list.begin(), list.end());
     list.erase(std::unique(list.begin(), list.end()), list.end());
     return list;
@@ -258,7 +278,7 @@ QString QIcuTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
     // Technically this may be suspect, if locale isn't QLocale(), since that's
     // what we used when constructing m_ucal; does ICU cope with inconsistency ?
     using namespace QtTimeZoneLocale;
-    return ucalTimeZoneDisplayName(m_ucal, timeType, nameType, locale.name());
+    return ucalTimeZoneDisplayName(m_ucal, timeType, nameType, locale.name().toUtf8());
 }
 
 int QIcuTimeZonePrivate::offsetFromUtc(qint64 atMSecsSinceEpoch) const
@@ -325,7 +345,7 @@ bool QIcuTimeZonePrivate::isDaylightTime(qint64 atMSecsSinceEpoch) const
 QTimeZonePrivate::Data QIcuTimeZonePrivate::data(qint64 forMSecsSinceEpoch) const
 {
     // Available in ICU C++ api, and draft C api in v50
-    QTimeZonePrivate::Data data;
+    Data data;
 #if U_ICU_VERSION_MAJOR_NUM >= 50
     data = ucalTimeZoneTransition(m_ucal, UCAL_TZ_TRANSITION_PREVIOUS_INCLUSIVE,
                                   forMSecsSinceEpoch);
@@ -335,7 +355,12 @@ QTimeZonePrivate::Data QIcuTimeZonePrivate::data(qint64 forMSecsSinceEpoch) cons
         ucalOffsetsAtTime(m_ucal, forMSecsSinceEpoch, &data.standardTimeOffset,
                           &data.daylightTimeOffset);
         data.offsetFromUtc = data.standardTimeOffset + data.daylightTimeOffset;
-        data.abbreviation = abbreviation(forMSecsSinceEpoch);
+        // TODO No ICU API for abbreviation, use short name for it:
+        using namespace QtTimeZoneLocale;
+        QTimeZone::TimeType timeType
+            = data.daylightTimeOffset ? QTimeZone::DaylightTime : QTimeZone::StandardTime;
+        data.abbreviation = ucalTimeZoneDisplayName(m_ucal, timeType, QTimeZone::ShortName,
+                                                    QLocale().name().toUtf8());
     }
     data.atMSecsSinceEpoch = forMSecsSinceEpoch;
     return data;
@@ -380,32 +405,19 @@ QByteArray QIcuTimeZonePrivate::systemTimeZoneId() const
     return ucalDefaultTimeZoneId();
 }
 
-bool QIcuTimeZonePrivate::isTimeZoneIdAvailable(const QByteArray &ianaId) const
+bool QIcuTimeZonePrivate::isTimeZoneIdAvailable(QByteArrayView ianaId) const
 {
-    const QString ianaStr = QString::fromUtf8(ianaId);
-    const UChar *const name = reinterpret_cast<const UChar *>(ianaStr.constData());
-    // We are not interested in the value, but we have to pass something.
-    // No known IANA zone name is (up to 2023) longer than 30 characters.
-    constexpr size_t size = 64;
-    UChar buffer[size];
-
-    // TODO: convert to ucal_getIanaTimeZoneID(), new draft in ICU 74, once we
-    // can rely on its availability, assuming it works the same once not draft.
-    UErrorCode status = U_ZERO_ERROR;
-    UBool isSys = false;
-    // Returns the length of the IANA zone name (but we don't care):
-    ucal_getCanonicalTimeZoneID(name, ianaStr.size(), buffer, size, &isSys, &status);
-    // We're only interested if the result is a "system" (i.e. IANA) ID:
-    return isSys;
+    return QtTimeZoneLocale::ucalKnownTimeZoneId(QString::fromUtf8(ianaId));
 }
 
 QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds() const
 {
     UErrorCode status = U_ZERO_ERROR;
     UEnumeration *uenum = ucal_openTimeZones(&status);
+    // Does not document order of entries.
     QList<QByteArray> result;
     if (U_SUCCESS(status))
-        result = uenumToIdList(uenum);
+        result = uenumToIdList(uenum); // Ensures sorted, unique.
     uenum_close(uenum);
     return result;
 }
@@ -420,6 +432,8 @@ QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds(QLocale::Territory t
     if (U_SUCCESS(status))
         result = uenumToIdList(uenum);
     uenum_close(uenum);
+    // We could merge in what matchingTimeZoneIds(territory) gives us, but
+    // hopefully that's redundant, as ICU packages CLDR.
     return result;
 }
 
@@ -434,6 +448,8 @@ QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds(int offsetFromUtc) c
     if (U_SUCCESS(status))
         result = uenumToIdList(uenum);
     uenum_close(uenum);
+    // We could merge in what matchingTimeZoneIds(offsetFromUtc) gives us, but
+    // hopefully that's redundant, as ICU packages CLDR.
     return result;
 #else
     return QTimeZonePrivate::availableTimeZoneIds(offsetFromUtc);

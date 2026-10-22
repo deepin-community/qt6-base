@@ -1,7 +1,9 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpixmapcache.h"
+#include "qbasictimer.h"
 #include "qobject.h"
 #include "qdebug.h"
 #include "qpixmapcache_p.h"
@@ -70,7 +72,7 @@ static inline qsizetype cost(const QPixmap &pixmap)
 
 static inline bool qt_pixmapcache_thread_test()
 {
-    if (Q_LIKELY(QCoreApplication::instance() && QThread::currentThread() == QCoreApplication::instance()->thread()))
+    if (Q_LIKELY(QThread::isMainThread()))
         return true;
 
     return false;
@@ -144,8 +146,8 @@ bool QPixmapCache::Key::operator ==(const Key &key) const
 
 /*!
     \fn void QPixmapCache::Key::swap(Key &)
-    \internal
     \since 5.6
+    \memberswap{key}
 */
 
 /*!
@@ -205,7 +207,7 @@ private:
     static constexpr auto soon_time = 10s;
     static constexpr auto flush_time = 30s;
     int *keyArray;
-    int theid;
+    QBasicTimer timer;
     int ps;
     int keyArraySize;
     int freeKey;
@@ -218,10 +220,9 @@ QT_BEGIN_INCLUDE_NAMESPACE
 QT_END_INCLUDE_NAMESPACE
 
 /*!
-    size_t QPixmapCache::qHash(const Key &key, size_t seed = 0);
+    \fn size_t QPixmapCache::Key::qHash(const Key &key, size_t seed)
     \since 6.6
-
-    Returns the hash value for the \a key, using \a seed to seed the calculation.
+    \qhash{QPixmapCache::Key}
 */
 size_t QPixmapCache::Key::hash(size_t seed) const noexcept
 {
@@ -231,7 +232,7 @@ size_t QPixmapCache::Key::hash(size_t seed) const noexcept
 QPMCache::QPMCache()
     : QObject(nullptr),
       QCache<QPixmapCache::Key, QPixmapCacheEntry>(cache_limit_default),
-      keyArray(nullptr), theid(0), ps(0), keyArraySize(0), freeKey(0), t(false)
+      keyArray(nullptr), ps(0), keyArraySize(0), freeKey(0), t(false)
 {
 }
 QPMCache::~QPMCache()
@@ -270,11 +271,9 @@ void QPMCache::timerEvent(QTimerEvent *)
 {
     bool nt = totalCost() == ps;
     if (!flushDetachedPixmaps(nt)) {
-        killTimer(theid);
-        theid = 0;
+        timer.stop();
     } else if (nt != t) {
-        killTimer(theid);
-        theid = startTimer(nt ? soon_time : flush_time);
+        timer.start(nt ? soon_time : flush_time, this);
         t = nt;
     }
 }
@@ -318,8 +317,8 @@ QPixmapCache::Key QPMCache::insert(const QPixmap &pixmap, int cost)
     bool success = QCache<QPixmapCache::Key, QPixmapCacheEntry>::insert(cacheKey, new QPixmapCacheEntry(cacheKey, pixmap), cost);
     Q_ASSERT(success || !cacheKey.isValid());
     if (success) {
-        if (!theid) {
-            theid = startTimer(flush_time);
+        if (!timer.isActive()) {
+            timer.start(flush_time, this);
             t = false;
         }
     }
@@ -390,10 +389,7 @@ void QPMCache::clear()
     }
     QCache<QPixmapCache::Key, QPixmapCacheEntry>::clear();
     // Nothing left to flush; stop the timer
-    if (theid) {
-        killTimer(theid);
-        theid = 0;
-    }
+    timer.stop();
 }
 
 QPixmapCache::KeyData* QPMCache::getKeyData(QPixmapCache::Key *key)
@@ -492,7 +488,7 @@ bool QPixmapCache::insert(const QString &key, const QPixmap &pixmap)
     The oldest pixmaps (least recently accessed in the cache) are
     deleted when more space is needed.
 
-    \sa setCacheLimit(), replace()
+    \sa setCacheLimit()
 */
 QPixmapCache::Key QPixmapCache::insert(const QPixmap &pixmap)
 {

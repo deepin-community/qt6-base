@@ -8,12 +8,15 @@
  * This file may have been hand-edited. Look for HAND-EDIT comments
  * before re-generating it.
  */
+// Qt-Security score:significant reason:default
 
 #include <QtDBus/qdbusextratypes.h>
 
 #include "qibusproxy.h"
 
 #include <QDBusReply>
+
+QT_BEGIN_NAMESPACE
 
 /*
  * Implementation of interface class QIBusProxy
@@ -97,5 +100,7 @@ void QIBusProxy::globalEngineChanged(const QString &engine_name)
 {
     emit GlobalEngineChanged(engine_name);
 }
+
+QT_END_NAMESPACE
 
 #include "moc_qibusproxy.cpp"

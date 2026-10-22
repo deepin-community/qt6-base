@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QDebug>
 
@@ -156,7 +157,7 @@ static void updateFormatFromContext(QSurfaceFormat &format)
                 format.setOption(QSurfaceFormat::ResetNotification);
         }
 
-        if (format.version() < qMakePair(3, 0)) {
+        if (format.version() < std::pair(3, 0)) {
             format.setOption(QSurfaceFormat::DeprecatedFunctions);
             return;
         }
@@ -169,7 +170,7 @@ static void updateFormatFromContext(QSurfaceFormat &format)
             format.setOption(QSurfaceFormat::DeprecatedFunctions);
         if (value & GL_CONTEXT_FLAG_DEBUG_BIT)
             format.setOption(QSurfaceFormat::DebugContext);
-        if (format.version() < qMakePair(3, 2))
+        if (format.version() < std::pair(3, 2))
             return;
 
         // Version 3.2 and newer have a profile
@@ -503,7 +504,9 @@ bool QGLXContext::makeCurrent(QPlatformSurface *surface)
         int interval = surface->format().swapInterval();
         QXcbWindow *window = static_cast<QXcbWindow *>(surface);
         QXcbScreen *screen = screenForPlatformSurface(surface);
-        if (interval >= 0 && interval != window->swapInterval() && screen) {
+        // Always re-apply the swap interval to have it set correctly when the
+        // same drawable is used with multiple contexts. See QTBUG-147854.
+        if (interval >= 0 && screen) {
             typedef void (*qt_glXSwapIntervalEXT)(Display *, GLXDrawable, int);
             typedef void (*qt_glXSwapIntervalMESA)(unsigned int);
             static qt_glXSwapIntervalEXT glXSwapIntervalEXT = nullptr;

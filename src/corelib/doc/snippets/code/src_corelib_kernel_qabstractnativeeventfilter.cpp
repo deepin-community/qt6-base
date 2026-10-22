@@ -1,6 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#include <QtCore/qglobal.h>
+
+#if defined(Q_OS_X11)
+
+#include <QByteArray>
+#include <QAbstractNativeEventFilter>
+#include <xcb.h>
+
 //! [0]
 class MyXcbEventFilter : public QAbstractNativeEventFilter
 {
@@ -15,3 +23,4 @@ public:
     }
 };
 //! [0]
+#endif

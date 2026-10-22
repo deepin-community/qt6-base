@@ -13,10 +13,14 @@ QT_BEGIN_NAMESPACE
     \brief Provides a scope guard for calling a function at the end of
            a scope.
 
-    QScopeGuard<F> is a class of which the sole purpose is to run the function
-    \a f in its destructor. This is useful for guaranteeing
-    your cleanup code is executed, whether the function is exited normally,
-    exited early by a return statement, or exited by an exception.
+    QScopeGuard\<F\> is a template class where \a F is the type of a callable
+    (such as a function pointer, functor, or lambda) that will be invoked in
+    the destructor. This is useful for guaranteeing your cleanup code is
+    executed, whether the function is exited normally, exited early by a return
+    statement, or exited by an exception.
+
+    A scope guard can be disabled using dismiss(), in which case the function
+    is not run at all, or executed ahead of destruction, using commit().
 
     \note Exceptions are not supported. The callable shouldn't throw when
           executed, copied or moved.
@@ -28,7 +32,7 @@ QT_BEGIN_NAMESPACE
     \fn template <typename F> QScopeGuard<F>::QScopeGuard(F &&f)
     \fn template <typename F> QScopeGuard<F>::QScopeGuard(const F &f)
 
-    Create a scope guard that will execute \a f at the end of the scope.
+    Creates a scope guard that will execute \a f at the end of the scope.
 
     If \e F is a lambda, its type cannot be written. In that case you need to
     either rely on class template argument deduction (C++17 feature) and leave
@@ -42,6 +46,18 @@ QT_BEGIN_NAMESPACE
 
     Disarms the scope guard, so that the function \e F will not be called at
     the end of the scope.
+
+    \sa commit()
+*/
+
+/*!
+    \since 6.11
+    \fn template <typename F> void QScopeGuard<F>::commit()
+
+    Calls the function \e F and then disarms the scope guard. The guard must be
+    armed (not been \l{dismiss()}ed) when calling this function.
+
+    \sa dismiss()
 */
 
 /*!

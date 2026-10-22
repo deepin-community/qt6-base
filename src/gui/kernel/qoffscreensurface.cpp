@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qoffscreensurface.h"
 
@@ -121,7 +122,7 @@ void QOffscreenSurface::create()
         d->platformOffscreenSurface = QGuiApplicationPrivate::platformIntegration()->createPlatformOffscreenSurface(this);
         // No platform offscreen surface, fallback to an invisible window
         if (!d->platformOffscreenSurface) {
-            if (QThread::currentThread() != qGuiApp->thread())
+            if (!QThread::isMainThread())
                 qWarning("Attempting to create QWindow-based QOffscreenSurface outside the gui thread. Expect failures.");
             d->offscreenWindow = new QWindow(d->screen);
             // Make the window frameless to prevent Windows from enlarging it, should it

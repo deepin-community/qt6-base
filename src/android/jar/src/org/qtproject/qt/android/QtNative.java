@@ -1,6 +1,7 @@
 // Copyright (C) 2016 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 package org.qtproject.qt.android;
 
@@ -14,12 +15,14 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.system.Os;
 import android.util.Log;
 import android.view.ContextMenu;
 import android.view.Menu;
 import android.view.View;
 
 import java.lang.ref.WeakReference;
+import java.lang.UnsatisfiedLinkError;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -41,10 +44,10 @@ public class QtNative
 
     static final String QtTAG = "Qt JAVA";
 
-    // a list containing all actions which could not be performed (e.g. the main activity is destroyed, etc.)
-    private static final ArrayList<Runnable> m_lostActions = new ArrayList<>();
-
-    private static final QtThread m_qtThread = new QtThread();
+    // a list of all actions which could not be performed (e.g. the main activity is destroyed, etc.)
+    private static final BackgroundActionsTracker m_backgroundActionsTracker = new BackgroundActionsTracker();
+    private static QtThread m_qtThread = null;
+    private static final Object m_qtThreadLock = new Object();
     private static ClassLoader m_classLoader = null;
 
     private static final Runnable runPendingCppRunnablesRunnable = QtNative::runPendingCppRunnables;
@@ -66,6 +69,14 @@ public class QtNative
     {
         synchronized (m_mainActivityMutex) {
             m_activity = new WeakReference<>(qtMainActivity);
+            try {
+                if (m_stateDetails.isStarted)
+                    updateNativeActivity();
+            } catch (UnsatisfiedLinkError ignored) {
+                // No-op - this happens in certain e.g. QtQuick for Android cases when we set the
+                // Activity for the first time, before Qt native libraries have been loaded. The
+                // C++ side will update its reference when the library is loaded.
+            }
         }
     }
 
@@ -193,7 +204,15 @@ public class QtNative
     }
 
     static QtThread getQtThread() {
-        return m_qtThread;
+        if (m_qtThread != null && m_qtThread.isAlive())
+            return m_qtThread;
+
+        synchronized (m_qtThreadLock) {
+            if (m_qtThread == null || !m_qtThread.isAlive())
+                m_qtThread = new QtThread();
+
+            return m_qtThread;
+        }
     }
 
     interface AppStateDetailsListener {
@@ -232,17 +251,25 @@ public class QtNative
         m_stateDetails.nativePluginIntegrationReady = ready;
         notifyNativePluginIntegrationReadyChanged(ready);
         notifyAppStateDetailsChanged(m_stateDetails);
+
+        // Only set queue size when the plugin is fully loaded.
+        final String bufferSize = Os.getenv("QT_ANDROID_BACKGROUND_ACTIONS_QUEUE_SIZE");
+        if (bufferSize != null) {
+            try {
+                final int size = Integer.parseInt(bufferSize);
+                m_backgroundActionsTracker.setMaxAllowedActions(size);
+            } catch (NumberFormatException exception) {
+                Log.e(QtTAG, "Parsing failed, QT_ANDROID_BACKGROUND_ACTIONS_QUEUE_SIZE value is not an integer");
+            }
+        }
     }
 
     static void setApplicationState(int state)
     {
         synchronized (m_mainActivityMutex) {
             m_stateDetails.state = state;
-            if (state == ApplicationState.ApplicationActive) {
-                for (Runnable mLostAction : m_lostActions)
-                    runAction(mLostAction);
-                m_lostActions.clear();
-            }
+            if (state == ApplicationState.ApplicationActive)
+                m_backgroundActionsTracker.processActions();
         }
         updateApplicationState(state);
         notifyAppStateDetailsChanged(m_stateDetails);
@@ -294,7 +321,7 @@ public class QtNative
                         && (m_stateDetails.state != ApplicationState.ApplicationHidden);
                 final boolean active = (isActivityValid() && isStateVisible) || isServiceValid();
                 if (!active || !handler.post(action))
-                    m_lostActions.add(action);
+                    m_backgroundActionsTracker.enqueue(action);
             } else {
                 handler.post(action);
             }
@@ -331,30 +358,14 @@ public class QtNative
 
     static void startApplication(String params, String mainLib)
     {
-        synchronized (m_mainActivityMutex) {
-            m_qtThread.run(() -> {
-                final String qtParams = mainLib + " " + params;
-                if (!startQtAndroidPlugin(qtParams))
-                    Log.e(QtTAG, "An error occurred while starting the Qt Android plugin");
-            });
-            m_qtThread.post(QtNative::startQtApplication);
-            waitForServiceSetup();
-            m_stateDetails.isStarted = true;
-            notifyAppStateDetailsChanged(m_stateDetails);
-        }
-    }
+        if (m_stateDetails.isStarted)
+            return;
 
-    static void quitApp()
-    {
-        runAction(() -> {
-            quitQtAndroidPlugin();
-            if (isActivityValid())
-                m_activity.get().finish();
-            if (isServiceValid())
-                m_service.get().stopSelf();
-            m_stateDetails.isStarted = false;
-            notifyAppStateDetailsChanged(m_stateDetails);
-        });
+        getQtThread().run(() -> initAndroidQpaPlugin());
+        final String qtParams = mainLib + " " + params;
+        getQtThread().post(() -> { startQtNativeApplication(qtParams); });
+        waitForServiceSetup();
+        setStarted(true);
     }
 
     @UsedFromNativeCode
@@ -404,7 +415,7 @@ public class QtNative
             if (list != null) {
                 for (String file : list) {
                     try {
-                        String[] isDir = asset.list(path.length() > 0 ? path + "/" + file : file);
+                        String[] isDir = asset.list(!path.isEmpty() ? path + "/" + file : file);
                         if (isDir != null && isDir.length > 0)
                             file += "/";
                         res.add(file);
@@ -420,21 +431,16 @@ public class QtNative
     }
 
     // application methods
-    static native boolean startQtAndroidPlugin(String params);
-    static native void startQtApplication();
+    static native boolean initAndroidQpaPlugin();
+    static native void startQtNativeApplication(String params);
     static native void waitForServiceSetup();
-    static native void quitQtCoreApplication();
-    static native void quitQtAndroidPlugin();
-    static native void terminateQt();
+    static native void terminateQtNativeApplication();
     static native boolean updateNativeActivity();
     // application methods
 
-    // window methods
-    static native void updateWindow();
-    // window methods
-
     // application methods
     static native void updateApplicationState(int state);
+    static native void updateLocale();
 
     // menu methods
     static native boolean onPrepareOptionsMenu(Menu menu);
@@ -453,7 +459,7 @@ public class QtNative
 
     static native void runPendingCppRunnables();
 
-    static native void sendRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults);
+    static native void sendRequestPermissionsResult(int requestCode, int[] grantResults);
     // activity methods
 
     // service methods

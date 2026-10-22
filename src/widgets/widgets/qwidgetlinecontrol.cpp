@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qwidgetlinecontrol_p.h"
 
@@ -24,6 +25,8 @@
 #endif
 
 #include "qvalidator.h"
+
+using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
 
@@ -62,7 +65,7 @@ void QWidgetLineControl::updateDisplayText(bool forceUpdate)
 
     if (m_echoMode == QLineEdit::Password) {
         str.fill(m_passwordCharacter);
-        if (m_passwordEchoTimer != 0 && m_cursor > 0 && m_cursor <= m_text.size()) {
+        if (m_passwordEchoTimer.isActive() && m_cursor > 0 && m_cursor <= m_text.size()) {
             int cursor = m_cursor - 1;
             QChar uc = m_text.at(cursor);
             str[cursor] = uc;
@@ -801,8 +804,8 @@ void QWidgetLineControl::addCommand(const Command &cmd)
 void QWidgetLineControl::internalInsert(const QString &s)
 {
     if (m_echoMode == QLineEdit::Password) {
-        if (m_passwordEchoTimer != 0)
-            killTimer(m_passwordEchoTimer);
+        if (m_passwordEchoTimer.isActive())
+            m_passwordEchoTimer.stop();
         int delay = m_passwordMaskDelay;
 #ifdef QT_BUILD_INTERNAL
         if (m_passwordMaskDelayOverride >= 0)
@@ -810,7 +813,7 @@ void QWidgetLineControl::internalInsert(const QString &s)
 #endif
 
         if (delay > 0)
-            m_passwordEchoTimer = startTimer(delay);
+            m_passwordEchoTimer.start(delay * 1ms, this);
     }
     if (hasSelectedText())
         addCommand(Command(SetSelection, m_cursor, u'\0', m_selstart, m_selend));
@@ -1460,13 +1463,6 @@ void QWidgetLineControl::complete(int key)
         if (!advanceToEnabledItem(n))
             return;
     } else {
-#ifndef QT_KEYPAD_NAVIGATION
-        if (text.isEmpty()) {
-            if (auto *popup = QCompleterPrivate::get(m_completer)->popup)
-                popup->hide();
-            return;
-        }
-#endif
         m_completer->setCompletionPrefix(text);
     }
 
@@ -1500,15 +1496,12 @@ void QWidgetLineControl::setBlinkingCursorEnabled(bool enable)
 
 void QWidgetLineControl::updateCursorBlinking()
 {
-    if (m_blinkTimer) {
-        killTimer(m_blinkTimer);
-        m_blinkTimer = 0;
-    }
+    m_blinkTimer.stop();
 
     if (m_blinkEnabled && !m_readOnly) {
-        int flashTime = QGuiApplication::styleHints()->cursorFlashTime();
-        if (flashTime >= 2)
-            m_blinkTimer = startTimer(flashTime / 2);
+        const auto flashTime = QGuiApplication::styleHints()->cursorFlashTime() * 1ms;
+        if (flashTime >= 2ms)
+            m_blinkTimer.start(flashTime / 2, this);
     }
 
     m_blinkStatus = 1;
@@ -1518,31 +1511,28 @@ void QWidgetLineControl::updateCursorBlinking()
 // This is still used by QDeclarativeTextInput in the qtquick1 repo
 void QWidgetLineControl::resetCursorBlinkTimer()
 {
-    if (!m_blinkEnabled || m_blinkTimer == 0)
+    if (!m_blinkEnabled || !m_blinkTimer.isActive())
         return;
-    killTimer(m_blinkTimer);
-    m_blinkTimer = 0;
-    int flashTime = QGuiApplication::styleHints()->cursorFlashTime();
-    if (flashTime >= 2)
-        m_blinkTimer = startTimer(flashTime / 2);
+    m_blinkTimer.stop();
+    const auto flashTime = QGuiApplication::styleHints()->cursorFlashTime() * 1ms;
+    if (flashTime >= 2ms)
+        m_blinkTimer.start(flashTime / 2, this);
     m_blinkStatus = 1;
 }
 
 void QWidgetLineControl::timerEvent(QTimerEvent *event)
 {
-    if (event->timerId() == m_blinkTimer) {
+    const auto eventId = event->id();
+    if (eventId == m_blinkTimer.id()) {
         m_blinkStatus = !m_blinkStatus;
         emit updateNeeded(inputMask().isEmpty() ? cursorRect() : QRect());
-    } else if (event->timerId() == m_deleteAllTimer) {
-        killTimer(m_deleteAllTimer);
-        m_deleteAllTimer = 0;
+    } else if (eventId == m_deleteAllTimer.id()) {
+        m_deleteAllTimer.stop();
         clear();
-    } else if (event->timerId() == m_tripleClickTimer) {
-        killTimer(m_tripleClickTimer);
-        m_tripleClickTimer = 0;
-    } else if (event->timerId() == m_passwordEchoTimer) {
-        killTimer(m_passwordEchoTimer);
-        m_passwordEchoTimer = 0;
+    } else if (eventId == m_tripleClickTimer.id()) {
+        m_tripleClickTimer.stop();
+    } else if (eventId == m_passwordEchoTimer.id()) {
+        m_passwordEchoTimer.stop();
         updateDisplayText();
     }
 }
@@ -1627,11 +1617,6 @@ void QWidgetLineControl::processKeyEvent(QKeyEvent* event)
             case Qt::Key_Enter:
             case Qt::Key_Return:
             case Qt::Key_F4:
-#ifdef QT_KEYPAD_NAVIGATION
-            case Qt::Key_Select:
-                if (!QApplicationPrivate::keypadNavigationEnabled())
-                    break;
-#endif
                 if (!m_completer->currentCompletion().isEmpty() && hasSelectedText()
                     && !m_completer->completionPrefix().isEmpty()
                     && textAfterSelection().isEmpty()) {
@@ -1669,12 +1654,6 @@ void QWidgetLineControl::processKeyEvent(QKeyEvent* event)
         && !passwordEchoEditing()
         && !isReadOnly()
         && !event->text().isEmpty()
-#ifdef QT_KEYPAD_NAVIGATION
-        && event->key() != Qt::Key_Select
-        && event->key() != Qt::Key_Up
-        && event->key() != Qt::Key_Down
-        && event->key() != Qt::Key_Back
-#endif
         && !(event->modifiers() & Qt::ControlModifier)) {
         // Clear the edit and reset to normal echo mode while editing; the
         // echo mode switches back when the edit loses focus
@@ -1884,25 +1863,6 @@ void QWidgetLineControl::processKeyEvent(QKeyEvent* event)
 #endif
                 }
                 break;
-#ifdef QT_KEYPAD_NAVIGATION
-            case Qt::Key_Back:
-                if (QApplicationPrivate::keypadNavigationEnabled() && !event->isAutoRepeat()
-                    && !isReadOnly()) {
-                    if (text().length() == 0) {
-                        setText(m_cancelText);
-
-                        if (passwordEchoEditing())
-                            updatePasswordEchoEditing(false);
-
-                        emit editFocusChange(false);
-                    } else if (!m_deleteAllTimer) {
-                        m_deleteAllTimer = startTimer(750);
-                    }
-                } else {
-                    unknown = true;
-                }
-                break;
-#endif
             default:
                 if (!handled)
                     unknown = true;

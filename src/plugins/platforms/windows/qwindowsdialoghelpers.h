@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSDIALOGHELPER_H
 #define QWINDOWSDIALOGHELPER_H
@@ -7,6 +8,7 @@
 #include <QtCore/qt_windows.h>
 #include <qpa/qplatformdialoghelper.h>
 #include <qpa/qplatformtheme.h>
+#include <QtCore/qbasictimer.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qsharedpointer.h>
 
@@ -56,7 +58,7 @@ private:
 
     QWindowsNativeDialogBasePtr m_nativeDialog;
     HWND m_ownerWindow = nullptr;
-    int m_timerId = 0;
+    QBasicTimer m_timer;
     QThread *m_thread = nullptr;
 };
 

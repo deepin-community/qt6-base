@@ -11,6 +11,7 @@
 //
 // We mean it.
 //
+// Qt-Security score:significant reason:default
 
 #ifndef QOPENGLTEXTUREUPLOADER_P_H
 #define QOPENGLTEXTUREUPLOADER_P_H
@@ -34,7 +35,6 @@ public:
         PowerOfTwoBindOption                    = 0x0008
     };
     Q_DECLARE_FLAGS(BindOptions, BindOption)
-    Q_FLAGS(BindOptions)
 
     static qsizetype textureImage(GLenum target, const QImage &image, BindOptions options, QSize maxSize = QSize());
 

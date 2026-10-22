@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeventpoint.h"
 #include "private/qeventpoint_p.h"
@@ -427,7 +428,8 @@ QPointF QEventPoint::normalizedPosition() const
     auto geom = d->device->availableVirtualGeometry();
     if (geom.isNull())
         return QPointF();
-    return (globalPosition() - geom.topLeft()) / geom.width();
+    const QPointF p = globalPosition() - geom.topLeft();
+    return QPointF(p.x() / geom.width(), p.y() / geom.height());
 }
 
 #if QT_DEPRECATED_SINCE(6, 0)
@@ -444,7 +446,8 @@ QPointF QEventPoint::startNormalizedPos() const
     auto geom = d->device->availableVirtualGeometry();
     if (geom.isNull())
         return QPointF();
-    return (globalPressPosition() - geom.topLeft()) / geom.width();
+    const QPointF p = globalPressPosition() - geom.topLeft();
+    return QPointF(p.x() / geom.width(), p.y() / geom.height());
 }
 
 /*!
@@ -466,7 +469,8 @@ QPointF QEventPoint::lastNormalizedPos() const
     auto geom = d->device->availableVirtualGeometry();
     if (geom.isNull())
         return QPointF();
-    return (globalLastPosition() - geom.topLeft()) / geom.width();
+    const QPointF p = globalLastPosition() - geom.topLeft();
+    return QPointF(p.x() / geom.width(), p.y() / geom.height());
 }
 #endif // QT_DEPRECATED_SINCE(6, 0)
 

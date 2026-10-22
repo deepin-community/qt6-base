@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSCROLLBAR_P_H
 #define QSCROLLBAR_P_H
@@ -16,8 +17,11 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include "qscrollbar.h"
 #include "private/qabstractslider_p.h"
 #include "qstyle.h"
+
+#include <QtCore/qbasictimer.h>
 
 QT_REQUIRE_CONFIG(scrollbar);
 
@@ -46,7 +50,7 @@ public:
     void setTransient(bool value);
 
     bool flashed;
-    int flashTimer;
+    QBasicTimer flashTimer;
     void flash();
 };
 

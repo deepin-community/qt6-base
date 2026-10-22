@@ -28,26 +28,43 @@ set_property(CACHE INPUT_libpng PROPERTY STRINGS undefined no qt system)
 
 
 #### Libraries
-qt_set01(X11_SUPPORTED LINUX OR HPUX OR FREEBSD OR NETBSD OR OPENBSD OR SOLARIS OR
-    HURD)
-qt_find_package(ATSPI2 PROVIDED_TARGETS PkgConfig::ATSPI2 MODULE_NAME gui QMAKE_LIB atspi)
-qt_find_package(DirectFB PROVIDED_TARGETS PkgConfig::DirectFB MODULE_NAME gui QMAKE_LIB directfb)
-qt_find_package(Libdrm PROVIDED_TARGETS Libdrm::Libdrm MODULE_NAME gui QMAKE_LIB drm)
-qt_find_package(EGL PROVIDED_TARGETS EGL::EGL MODULE_NAME gui QMAKE_LIB egl)
-if(INTEGRITY AND _qt_igy_gui_libs)
-    qt_find_package(IntegrityPlatformGraphics
-        PROVIDED_TARGETS IntegrityPlatformGraphics::IntegrityPlatformGraphics
-        MODULE_NAME gui QMAKE_LIB integrity_platform_graphics)
+if(LINUX OR HPUX OR FREEBSD OR NETBSD OR OPENBSD OR SOLARIS OR HURD)
+    set(X11_SUPPORTED 1)
+else()
+    set(X11_SUPPORTED 0)
 endif()
-qt_find_package(WrapSystemFreetype 2.2.0 PROVIDED_TARGETS WrapSystemFreetype::WrapSystemFreetype MODULE_NAME gui QMAKE_LIB freetype)
+qt_feature_vcpkg_scope(gui)
+qt_find_package(ATSPI2 MODULE PROVIDED_TARGETS PkgConfig::ATSPI2 MODULE_NAME gui QMAKE_LIB atspi)
+qt_find_package(DirectFB PROVIDED_TARGETS PkgConfig::DirectFB MODULE_NAME gui QMAKE_LIB directfb)
+qt_find_package(Libdrm MODULE PROVIDED_TARGETS Libdrm::Libdrm MODULE_NAME gui QMAKE_LIB drm)
+qt_find_package(PlatformGraphics
+        PROVIDED_TARGETS PlatformGraphics::PlatformGraphics
+        MODULE_NAME gui QMAKE_LIB platform_graphics)
+qt_find_package(EGL MODULE PROVIDED_TARGETS EGL::EGL MODULE_NAME gui QMAKE_LIB egl)
+
+qt_find_package(WrapSystemFreetype 2.2.0 MODULE
+    PROVIDED_TARGETS WrapSystemFreetype::WrapSystemFreetype MODULE_NAME gui QMAKE_LIB freetype
+    VCPKG_PORT freetype
+    VCPKG_ADD_TO_FEATURE freetype
+)
 if(QT_FEATURE_system_zlib)
     qt_add_qmake_lib_dependency(freetype zlib)
 endif()
-qt_find_package(Fontconfig PROVIDED_TARGETS Fontconfig::Fontconfig MODULE_NAME gui QMAKE_LIB fontconfig)
+qt_find_package(WrapFontconfig PROVIDED_TARGETS WrapFontconfig::WrapFontconfig MODULE_NAME gui
+    QMAKE_LIB fontconfig
+    VCPKG_PORT fontconfig
+    VCPKG_ADD_TO_FEATURE fontconfig
+    VCPKG_PLATFORM "linux"
+)
 qt_add_qmake_lib_dependency(fontconfig freetype)
-qt_find_package(gbm PROVIDED_TARGETS gbm::gbm MODULE_NAME gui QMAKE_LIB gbm)
-qt_find_package(WrapSystemHarfbuzz 2.6.0 PROVIDED_TARGETS WrapSystemHarfbuzz::WrapSystemHarfbuzz MODULE_NAME gui QMAKE_LIB harfbuzz)
-qt_find_package(Libinput PROVIDED_TARGETS Libinput::Libinput MODULE_NAME gui QMAKE_LIB libinput)
+qt_find_package(gbm MODULE PROVIDED_TARGETS gbm::gbm MODULE_NAME gui QMAKE_LIB gbm)
+qt_find_package(WrapSystemHarfbuzz 2.6.0 MODULE
+    PROVIDED_TARGETS WrapSystemHarfbuzz::WrapSystemHarfbuzz MODULE_NAME gui QMAKE_LIB harfbuzz
+    VCPKG_PORT harfbuzz
+    VCPKG_ADD_TO_FEATURE harfbuzz
+)
+qt_find_package(Libinput MODULE
+    PROVIDED_TARGETS Libinput::Libinput MODULE_NAME gui QMAKE_LIB libinput)
 qt_find_package_extend_sbom(TARGETS Libinput::Libinput
     COPYRIGHTS
         "Copyright © 2006-2009 Simon Thum"
@@ -58,104 +75,185 @@ qt_find_package_extend_sbom(TARGETS Libinput::Libinput
         "Copyright © 2013-2014 Jonas Ådahl"
         "Copyright © 2013-2015 Red Hat, Inc."
 )
-qt_find_package(WrapSystemJpeg PROVIDED_TARGETS WrapSystemJpeg::WrapSystemJpeg MODULE_NAME gui QMAKE_LIB libjpeg)
-qt_find_package(WrapSystemMd4c PROVIDED_TARGETS WrapSystemMd4c::WrapSystemMd4c MODULE_NAME gui QMAKE_LIB libmd4c)
-qt_find_package(WrapSystemPNG PROVIDED_TARGETS WrapSystemPNG::WrapSystemPNG MODULE_NAME gui QMAKE_LIB libpng)
+qt_find_package(WrapSystemJpeg MODULE
+    PROVIDED_TARGETS WrapSystemJpeg::WrapSystemJpeg MODULE_NAME gui QMAKE_LIB libjpeg
+    VCPKG_PORT libjpeg-turbo
+    VCPKG_ADD_TO_FEATURE jpeg
+)
+qt_find_package(WrapSystemMd4c MODULE
+    PROVIDED_TARGETS WrapSystemMd4c::WrapSystemMd4c MODULE_NAME gui QMAKE_LIB libmd4c
+    VCPKG_PORT md4c
+    VCPKG_ADD_TO_FEATURE textmarkdownreader
+)
+qt_find_package(WrapSystemPNG MODULE
+    PROVIDED_TARGETS WrapSystemPNG::WrapSystemPNG MODULE_NAME gui QMAKE_LIB libpng
+    VCPKG_PORT libpng
+    VCPKG_ADD_TO_FEATURE png
+)
 if(QT_FEATURE_system_zlib)
     qt_add_qmake_lib_dependency(libpng zlib)
 endif()
-qt_find_package(Mtdev PROVIDED_TARGETS PkgConfig::Mtdev MODULE_NAME gui QMAKE_LIB mtdev)
-qt_find_package(WrapOpenGL PROVIDED_TARGETS WrapOpenGL::WrapOpenGL MODULE_NAME gui QMAKE_LIB opengl)
-qt_find_package(GLESv2 PROVIDED_TARGETS GLESv2::GLESv2 MODULE_NAME gui QMAKE_LIB opengl_es2)
-qt_find_package(Tslib PROVIDED_TARGETS PkgConfig::Tslib MODULE_NAME gui QMAKE_LIB tslib)
-qt_find_package(WrapVulkanHeaders PROVIDED_TARGETS WrapVulkanHeaders::WrapVulkanHeaders
+qt_find_package(Mtdev MODULE PROVIDED_TARGETS PkgConfig::Mtdev MODULE_NAME gui QMAKE_LIB mtdev)
+qt_find_package(WrapOpenGL MODULE PROVIDED_TARGETS WrapOpenGL::WrapOpenGL MODULE_NAME gui QMAKE_LIB opengl)
+qt_find_package(GLESv2 MODULE
+    PROVIDED_TARGETS GLESv2::GLESv2 MODULE_NAME gui QMAKE_LIB opengl_es2)
+# On HarmonyOS libGLESv2 and libGLESv3 are separate; elsewhere the
+# vendor libGLESv2 also provides the ES 3.x entry points.
+if(OHOS)
+    qt_find_package(GLESv3 MODULE
+        PROVIDED_TARGETS GLESv3::GLESv3 MODULE_NAME gui QMAKE_LIB opengl_es3)
+    set(_qt_gles3_test_libs GLESv3::GLESv3)
+else()
+    set(_qt_gles3_test_libs GLESv2::GLESv2)
+endif()
+qt_find_package(Tslib MODULE PROVIDED_TARGETS PkgConfig::Tslib MODULE_NAME gui QMAKE_LIB tslib)
+qt_find_package(WrapVulkanHeaders MODULE PROVIDED_TARGETS WrapVulkanHeaders::WrapVulkanHeaders
     MODULE_NAME gui QMAKE_LIB vulkan MARK_OPTIONAL)
-if((LINUX) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(Wayland PROVIDED_TARGETS Wayland::Server MODULE_NAME gui QMAKE_LIB wayland_server)
-    qt_find_package(Wayland PROVIDED_TARGETS Wayland::Client MODULE_NAME gui QMAKE_LIB wayland_client)
+if(LINUX OR FREEBSD OR QT_FIND_ALL_PACKAGES_ALWAYS)
+    qt_find_package(Wayland MODULE PROVIDED_TARGETS Wayland::Server
+                    MODULE_NAME gui QMAKE_LIB wayland_server)
+    qt_find_package(Wayland MODULE PROVIDED_TARGETS Wayland::Client
+                    MODULE_NAME gui QMAKE_LIB wayland_client)
+    # Gui doesn't use these, but the wayland qpa plugin does, and we
+    # need to list the rest of the provided targets here, so they are
+    # promoted to global, and can be accessed by the SBOM at the root
+    # project level. That's not possible to do in the wayland qpa subdir,
+    # due to different cmake directory scopes.
+    qt_find_package(Wayland MODULE PROVIDED_TARGETS Wayland::Cursor
+                    MODULE_NAME gui QMAKE_LIB wayland_cursor)
+    qt_find_package(Wayland MODULE PROVIDED_TARGETS Wayland::Egl
+                    MODULE_NAME gui QMAKE_LIB wayland_egl)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(X11 PROVIDED_TARGETS X11::X11 MODULE_NAME gui QMAKE_LIB xlib)
+    qt_find_package(X11 MODULE PROVIDED_TARGETS X11::X11 MODULE_NAME gui QMAKE_LIB xlib)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(X11 PROVIDED_TARGETS X11::SM X11::ICE MODULE_NAME gui QMAKE_LIB x11sm)
+    qt_find_package(X11 MODULE PROVIDED_TARGETS X11::SM X11::ICE MODULE_NAME gui QMAKE_LIB x11sm)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB 1.11 PROVIDED_TARGETS XCB::XCB MODULE_NAME gui QMAKE_LIB xcb)
+    qt_find_package(XCB 1.11 MODULE
+        COMPONENTS XCB PROVIDED_TARGETS XCB::XCB MODULE_NAME gui QMAKE_LIB xcb)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB 0.1.1 COMPONENTS CURSOR PROVIDED_TARGETS XCB::CURSOR MODULE_NAME gui QMAKE_LIB xcb_cursor)
+    qt_find_package(XCB MODULE
+        COMPONENTS CURSOR PROVIDED_TARGETS XCB::CURSOR MODULE_NAME gui QMAKE_LIB xcb_cursor)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB 0.3.9 COMPONENTS ICCCM PROVIDED_TARGETS XCB::ICCCM MODULE_NAME gui QMAKE_LIB xcb_icccm)
+    qt_find_package(XCB MODULE
+        COMPONENTS ICCCM PROVIDED_TARGETS XCB::ICCCM MODULE_NAME gui QMAKE_LIB xcb_icccm)
 endif()
 qt_add_qmake_lib_dependency(xcb_icccm xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB 0.3.9 COMPONENTS IMAGE PROVIDED_TARGETS XCB::IMAGE MODULE_NAME gui QMAKE_LIB xcb_image)
+    qt_find_package(XCB MODULE
+        COMPONENTS UTIL PROVIDED_TARGETS XCB::UTIL MODULE_NAME gui QMAKE_LIB xcb_util)
 endif()
-qt_add_qmake_lib_dependency(xcb_image xcb_shm xcb)
+qt_add_qmake_lib_dependency(xcb_util xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB 0.3.9 COMPONENTS KEYSYMS PROVIDED_TARGETS XCB::KEYSYMS MODULE_NAME gui QMAKE_LIB xcb_keysyms)
+    qt_find_package(XCB MODULE
+        COMPONENTS IMAGE PROVIDED_TARGETS XCB::IMAGE MODULE_NAME gui QMAKE_LIB xcb_image)
+endif()
+qt_add_qmake_lib_dependency(xcb_image xcb_shm xcb_util xcb)
+if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
+    qt_find_package(XCB MODULE
+        COMPONENTS KEYSYMS PROVIDED_TARGETS XCB::KEYSYMS MODULE_NAME gui QMAKE_LIB xcb_keysyms)
 endif()
 qt_add_qmake_lib_dependency(xcb_keysyms xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB 0.3.9 COMPONENTS RENDERUTIL PROVIDED_TARGETS XCB::RENDERUTIL MODULE_NAME gui QMAKE_LIB xcb_renderutil)
+    qt_find_package(XCB MODULE
+        COMPONENTS RENDERUTIL PROVIDED_TARGETS XCB::RENDERUTIL MODULE_NAME gui QMAKE_LIB xcb_renderutil)
 endif()
 qt_add_qmake_lib_dependency(xcb_renderutil xcb xcb_render)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB COMPONENTS RANDR PROVIDED_TARGETS XCB::RANDR MODULE_NAME gui QMAKE_LIB xcb_randr)
+    qt_find_package(XCB MODULE
+        COMPONENTS RANDR PROVIDED_TARGETS XCB::RANDR MODULE_NAME gui QMAKE_LIB xcb_randr)
 endif()
 qt_add_qmake_lib_dependency(xcb_randr xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB COMPONENTS SHAPE PROVIDED_TARGETS XCB::SHAPE MODULE_NAME gui QMAKE_LIB xcb_shape)
+    qt_find_package(XCB MODULE
+        COMPONENTS SHAPE PROVIDED_TARGETS XCB::SHAPE MODULE_NAME gui QMAKE_LIB xcb_shape)
 endif()
 qt_add_qmake_lib_dependency(xcb_shape xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB COMPONENTS SHM PROVIDED_TARGETS XCB::SHM MODULE_NAME gui QMAKE_LIB xcb_shm)
+    qt_find_package(XCB MODULE
+        COMPONENTS SHM PROVIDED_TARGETS XCB::SHM MODULE_NAME gui QMAKE_LIB xcb_shm)
 endif()
 qt_add_qmake_lib_dependency(xcb_shm xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB COMPONENTS SYNC PROVIDED_TARGETS XCB::SYNC MODULE_NAME gui QMAKE_LIB xcb_sync)
+    qt_find_package(XCB MODULE
+        COMPONENTS SYNC PROVIDED_TARGETS XCB::SYNC MODULE_NAME gui QMAKE_LIB xcb_sync)
 endif()
 qt_add_qmake_lib_dependency(xcb_sync xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB COMPONENTS XFIXES PROVIDED_TARGETS XCB::XFIXES MODULE_NAME gui QMAKE_LIB xcb_xfixes)
+    qt_find_package(XCB MODULE
+        COMPONENTS XFIXES PROVIDED_TARGETS XCB::XFIXES MODULE_NAME gui QMAKE_LIB xcb_xfixes)
 endif()
 qt_add_qmake_lib_dependency(xcb_xfixes xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(X11_XCB PROVIDED_TARGETS X11::XCB MODULE_NAME gui QMAKE_LIB xcb_xlib)
+    qt_find_package(X11_XCB MODULE PROVIDED_TARGETS X11::XCB MODULE_NAME gui QMAKE_LIB xcb_xlib)
 endif()
 qt_add_qmake_lib_dependency(xcb_xlib xcb xlib)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB COMPONENTS XKB PROVIDED_TARGETS XCB::XKB MODULE_NAME gui QMAKE_LIB xcb_xkb)
+    qt_find_package(XCB MODULE
+        COMPONENTS XKB PROVIDED_TARGETS XCB::XKB MODULE_NAME gui QMAKE_LIB xcb_xkb)
 endif()
 qt_add_qmake_lib_dependency(xcb_xkb xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB COMPONENTS RENDER PROVIDED_TARGETS XCB::RENDER MODULE_NAME gui QMAKE_LIB xcb_render)
+    qt_find_package(XCB MODULE
+        COMPONENTS RENDER PROVIDED_TARGETS XCB::RENDER MODULE_NAME gui QMAKE_LIB xcb_render)
 endif()
 qt_add_qmake_lib_dependency(xcb_render xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB COMPONENTS GLX PROVIDED_TARGETS XCB::GLX MODULE_NAME gui QMAKE_LIB xcb_glx)
+    qt_find_package(XCB MODULE
+        COMPONENTS GLX PROVIDED_TARGETS XCB::GLX MODULE_NAME gui QMAKE_LIB xcb_glx)
 endif()
 qt_add_qmake_lib_dependency(xcb_glx xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XCB 1.12 COMPONENTS XINPUT PROVIDED_TARGETS XCB::XINPUT MODULE_NAME gui QMAKE_LIB xcb_xinput)
+    qt_find_package(XCB 1.12 MODULE
+        COMPONENTS XINPUT PROVIDED_TARGETS XCB::XINPUT MODULE_NAME gui QMAKE_LIB xcb_xinput)
 endif()
 qt_add_qmake_lib_dependency(xcb_xinput xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XKB 0.5.0 PROVIDED_TARGETS XKB::XKB MODULE_NAME gui QMAKE_LIB xkbcommon)
+    qt_find_package(XKB 0.9.0 MODULE PROVIDED_TARGETS XKB::XKB MODULE_NAME gui QMAKE_LIB xkbcommon)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XKB_COMMON_X11 0.5.0 PROVIDED_TARGETS PkgConfig::XKB_COMMON_X11 MODULE_NAME gui QMAKE_LIB xkbcommon_x11)
+    qt_find_package(XKB_COMMON_X11 0.9.0 MODULE
+        PROVIDED_TARGETS PkgConfig::XKB_COMMON_X11 MODULE_NAME gui QMAKE_LIB xkbcommon_x11)
 endif()
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(XRender 0.6 PROVIDED_TARGETS PkgConfig::XRender MODULE_NAME gui QMAKE_LIB xrender)
+    qt_find_package(XRender 0.6 MODULE
+        PROVIDED_TARGETS PkgConfig::XRender MODULE_NAME gui QMAKE_LIB xrender)
 endif()
 qt_add_qmake_lib_dependency(xrender xlib)
 
-qt_find_package(RenderDoc PROVIDED_TARGETS RenderDoc::RenderDoc)
+# qt wayland client
+if(LINUX OR FREEBSD OR QT_FIND_ALL_PACKAGES_ALWAYS)
+    # EGL
+    if(NOT TARGET EGL::EGL)
+        qt_find_package(EGL MODULE
+            PROVIDED_TARGETS EGL::EGL MODULE_NAME gui QMAKE_LIB egl MARK_OPTIONAL)
+    endif()
+    # and Libdrm
+    if(NOT TARGET Libdrm::Libdrm)
+        qt_find_package(Libdrm MODULE
+            PROVIDED_TARGETS Libdrm::Libdrm
+            MODULE_NAME gui
+            QMAKE_LIB drm
+            MARK_OPTIONAL)
+    endif()
+endif()
+
+qt_find_package(Wayland 1.15 MODULE)
+qt_find_package(WaylandScanner MODULE PROVIDED_TARGETS Wayland::Scanner)
+
+qt_find_package(RenderDoc MODULE PROVIDED_TARGETS RenderDoc::RenderDoc)
 
 #### Tests
+
+if(TARGET PlatformGraphics::PlatformGraphics)
+    set(plaform_graphics_libs PlatformGraphics::PlatformGraphics)
+else()
+    set(plaform_graphics_libs "")
+endif()
 
 # drm_atomic
 qt_config_compile_test(drm_atomic
@@ -185,6 +283,7 @@ qt_config_compile_test(egl_x11
     LIBRARIES
         EGL::EGL
         X11::X11
+        ${plaform_graphics_libs}
     CODE
 "// Check if EGL is compatible with X. Some EGL implementations, typically on
 // embedded devices, are not intended to be used together with X. EGL support
@@ -214,6 +313,7 @@ qt_config_compile_test(egl_brcm
     LABEL "Broadcom EGL (Raspberry Pi)"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/egl.h>
 #include <bcm_host.h>
@@ -233,6 +333,7 @@ qt_config_compile_test(egl_egldevice
     LABEL "EGLDevice"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -255,6 +356,7 @@ qt_config_compile_test(egl_mali
     LABEL "Mali EGL"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/fbdev_window.h>
 #include <EGL/egl.h>
@@ -274,6 +376,7 @@ qt_config_compile_test(egl_mali_2
     LABEL "Mali 2 EGL"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/egl.h>
 #include <GLES2/gl2.h>
@@ -288,10 +391,12 @@ mali_native_window *w = 0;
 ")
 
 # egl-viv
+
 qt_config_compile_test(egl_viv
     LABEL "i.Mx6 EGL"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     COMPILE_OPTIONS
         "-DEGL_API_FB=1"
     CODE
@@ -314,16 +419,12 @@ fbGetDisplayByIndex(0);
 "# FIXME: qmake: ['DEFINES += EGL_API_FB=1', '!integrity: DEFINES += LINUX=1']
 )
 
-set(test_libs EGL::EGL)
-if(INTEGRITY AND _qt_igy_gui_libs)
-    set(test_libs ${test_libs} IntegrityPlatformGraphics::IntegrityPlatformGraphics)
-endif()
-
 # egl-openwfd
 qt_config_compile_test(egl_openwfd
     LABEL "OpenWFD EGL"
     LIBRARIES
-        ${test_libs}
+        EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <wfd.h>
 
@@ -342,6 +443,7 @@ qt_config_compile_test(egl_rcar
     LIBRARIES
         EGL::EGL
         GLESv2::GLESv2
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/egl.h>
 extern \"C\" {
@@ -363,25 +465,15 @@ qt_config_compile_test(evdev
     CODE
 "#if defined(__FreeBSD__)
 #  include <dev/evdev/input.h>
-#elif defined(__VXWORKS__)
-#include <evdevLib.h>
-typedef EV_DEV_EVENT input_event;
 #else
 #  include <linux/input.h>
 #  include <linux/kd.h>
 #endif
 enum {
-#if defined(__VXWORKS__)
-    e1 = EV_DEV_ABS,
-    e2 = EV_DEV_PTR_ABS_X,
-    e3 = EV_DEV_PTR_ABS_Y,
-    e4 = EV_DEV_PTR_BTN_TOUCH,
-#else
     e1 = ABS_PRESSURE,
     e2 = ABS_X,
     e3 = REL_X,
     e4 = SYN_REPORT,
-#endif
 };
 
 int main(void)
@@ -393,6 +485,26 @@ input_event buf[32];
     return 0;
 }
 ")
+
+# vxworksevdev
+qt_config_compile_test(vxworksevdev
+    LABEL "VxWorks evdev"
+"#include <evdevLib.h>
+enum {
+    e1 = EV_DEV_ABS,
+    e2 = EV_DEV_PTR_ABS_X,
+    e3 = EV_DEV_PTR_ABS_Y,
+    e4 = EV_DEV_PTR_BTN_TOUCH,
+};
+
+int main(void)
+{
+    /* BEGIN TEST: */
+EV_DEV_EVENT buf[32];
+(void) buf;
+    /* END TEST: */
+    return 0;
+}")
 
 # integrityfb
 qt_config_compile_test(integrityfb
@@ -435,15 +547,11 @@ if(WASM)
     set(extra_compiler_options "-s FULL_ES3=1")
 endif()
 
-set(test_libs GLESv2::GLESv2)
-if(INTEGRITY AND _qt_igy_gui_libs)
-    set(test_libs ${test_libs} IntegrityPlatformGraphics::IntegrityPlatformGraphics)
-endif()
-
 qt_config_compile_test(opengles3
     LABEL "OpenGL ES 3.0"
     LIBRARIES
-        ${test_libs}
+        ${_qt_gles3_test_libs}
+        ${plaform_graphics_libs}
     COMPILE_OPTIONS ${extra_compiler_options}
     CODE
 "#ifdef __APPLE__
@@ -471,7 +579,8 @@ glMapBufferRange(GL_ARRAY_BUFFER, 0, 0, GL_MAP_READ_BIT);
 qt_config_compile_test(opengles31
     LABEL "OpenGL ES 3.1"
     LIBRARIES
-        ${test_libs}
+        ${_qt_gles3_test_libs}
+        ${plaform_graphics_libs}
     CODE
 "#include <GLES3/gl31.h>
 
@@ -489,7 +598,8 @@ glProgramUniform1i(0, 0, 0);
 qt_config_compile_test(opengles32
     LABEL "OpenGL ES 3.2"
     LIBRARIES
-        ${test_libs}
+        ${_qt_gles3_test_libs}
+        ${plaform_graphics_libs}
     CODE
 "#include <GLES3/gl32.h>
 
@@ -508,6 +618,7 @@ qt_config_compile_test(xcb_syslibs
     LIBRARIES
         XCB::CURSOR
         XCB::ICCCM
+        XCB::UTIL
         XCB::IMAGE
         XCB::KEYSYMS
         XCB::RANDR
@@ -523,6 +634,7 @@ qt_config_compile_test(xcb_syslibs
 "// xkb.h is using a variable called 'explicit', which is a reserved keyword in C++
 #define explicit dont_use_cxx_explicit
 #include <xcb/xcb.h>
+#include <xcb/xcb_util.h>
 #include <xcb/xcb_image.h>
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xcb_cursor.h>
@@ -606,6 +718,36 @@ int main(int, char **)
 }
 ")
 
+# directwritecolrv1
+qt_config_compile_test(directwritecolrv1
+    LABEL "WINDOWS directwritecolrv1"
+    LIBRARIES
+        dwrite
+    CODE
+"#include <dwrite_3.h>
+int main(int, char **)
+{
+    IUnknown *factory = nullptr;
+    // Just check that the API is available for the build
+    DWRITE_PAINT_ELEMENT paintElement;
+
+    if (false) {
+        DWRITE_COLOR_F dwColor;
+        dwColor.r = 0;
+        dwColor.g = 0;
+        dwColor.b = 0;
+        dwColor.a = 0;
+        IDWritePaintReader *paintReader = nullptr;
+        // Some versions of MinGW has a dwrite_3.h header with buggy generated APIs. One of these
+        // is that the SetTextColor() function takes a pointer instead of a const-ref. We check
+        // for this to disable the COLRv1 feature for broken headers.
+        paintReader->SetTextColor(dwColor);
+    }
+
+    return 0;
+}
+")
+
 qt_config_compile_test(d2d1
     LABEL "WINDOWS Direct2D"
     LIBRARIES
@@ -650,6 +792,128 @@ int main(int, char **)
 }
 ")
 
+# qtwayland client
+# drm-egl-server
+qt_config_compile_test(drm_egl_server
+    LABEL "DRM EGL Server"
+    LIBRARIES
+    EGL::EGL
+    CODE
+    "
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+
+int main(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    /* BEGIN TEST: */
+#ifdef EGL_MESA_drm_image
+return 0;
+#else
+#error Requires EGL_MESA_drm_image to be defined
+return 1;
+#endif
+    /* END TEST: */
+    return 0;
+}
+")
+
+# libhybris-egl-server
+qt_config_compile_test(libhybris_egl_server
+    LABEL "libhybris EGL Server"
+    LIBRARIES
+    EGL::EGL
+    CODE
+    "
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <hybris/eglplatformcommon/hybris_nativebufferext.h>
+
+int main(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    /* BEGIN TEST: */
+#ifdef EGL_HYBRIS_native_buffer
+return 0;
+#else
+#error Requires EGL_HYBRIS_native_buffer to be defined
+return 1;
+#endif
+    /* END TEST: */
+    return 0;
+}
+")
+
+# dmabuf-server-buffer
+qt_config_compile_test(dmabuf_server_buffer
+    LABEL "Linux dma-buf Buffer Sharing"
+    LIBRARIES
+    EGL::EGL
+    Libdrm::Libdrm
+    CODE
+    "
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <drm_fourcc.h>
+
+int main(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    /* BEGIN TEST: */
+#ifdef EGL_LINUX_DMA_BUF_EXT
+return 0;
+#else
+#error Requires EGL_LINUX_DMA_BUF_EXT
+return 1;
+#endif
+    /* END TEST: */
+    return 0;
+}
+")
+
+# vulkan-server-buffer
+qt_config_compile_test(vulkan_server_buffer
+    LABEL "Vulkan Buffer Sharing"
+    LIBRARIES
+    Wayland::Client
+    CODE
+    "#define VK_USE_PLATFORM_WAYLAND_KHR 1
+#include <vulkan/vulkan.h>
+
+int main(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    /* BEGIN TEST: */
+VkExportMemoryAllocateInfoKHR exportAllocInfo = {};
+exportAllocInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO_KHR;
+exportAllocInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
+return 0;
+    /* END TEST: */
+    return 0;
+}
+")
+
+# egl_1_5-wayland
+qt_config_compile_test(egl_1_5_wayland
+    LABEL "EGL 1.5 with Wayland Platform"
+    LIBRARIES
+    EGL::EGL
+    Wayland::Client
+    CODE
+    "
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <wayland-client.h>
+
+int main(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    /* BEGIN TEST: */
+eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_EXT, (struct wl_display *)(nullptr), nullptr);
+    /* END TEST: */
+    return 0;
+}
+")
 
 #### Features
 
@@ -674,6 +938,11 @@ qt_feature("directwrite3" PRIVATE
     CONDITION QT_FEATURE_directwrite AND TEST_directwrite3
     EMIT_IF WIN32
 )
+qt_feature("directwritecolrv1" PRIVATE
+    LABEL "DirectWrite COLRv1 Support"
+    CONDITION QT_FEATURE_directwrite3 AND TEST_directwritecolrv1
+    EMIT_IF WIN32
+)
 qt_feature("direct2d" PRIVATE
     LABEL "Direct 2D"
     CONDITION WIN32 AND NOT WINRT AND TEST_d2d1
@@ -682,9 +951,19 @@ qt_feature("direct2d1_1" PRIVATE
     LABEL "Direct 2D 1.1"
     CONDITION QT_FEATURE_direct2d AND TEST_d2d1_1
 )
+qt_feature("emojisegmenter" PUBLIC PRIVATE
+    SECTION "Fonts"
+    LABEL "Emoji Segmenter"
+    PURPOSE "Supports parsing complex emoji sequences for better font resolution."
+)
+qt_feature_definition("emojisegmenter" "QT_NO_EMOJISEGMENTER" NEGATE VALUE "1")
 qt_feature("evdev" PRIVATE
     LABEL "evdev"
     CONDITION QT_FEATURE_thread AND TEST_evdev
+)
+qt_feature("vxworksevdev" PRIVATE
+    LABEL "vxworksevdev"
+    CONDITION QT_FEATURE_thread AND TEST_vxworksevdev
 )
 qt_feature("freetype" PUBLIC PRIVATE
     SECTION "Fonts"
@@ -692,7 +971,7 @@ qt_feature("freetype" PUBLIC PRIVATE
     PURPOSE "Supports the FreeType 2 font engine (and its supported font formats)."
 )
 qt_feature_definition("freetype" "QT_NO_FREETYPE" NEGATE VALUE "1")
-qt_feature("system-freetype" PRIVATE
+qt_feature("system-freetype" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system FreeType"
     AUTODETECT NOT MSVC
     CONDITION QT_FEATURE_freetype AND WrapSystemFreetype_FOUND
@@ -702,7 +981,7 @@ qt_feature("system-freetype" PRIVATE
 qt_feature("fontconfig" PUBLIC PRIVATE
     LABEL "Fontconfig"
     AUTODETECT NOT APPLE
-    CONDITION NOT APPLE AND NOT WIN32 AND QT_FEATURE_system_freetype AND Fontconfig_FOUND
+    CONDITION NOT APPLE AND NOT WIN32 AND QT_FEATURE_freetype AND WrapFontconfig_FOUND
 )
 qt_feature_definition("fontconfig" "QT_NO_FONTCONFIG" NEGATE VALUE "1")
 qt_feature("gbm"
@@ -714,7 +993,7 @@ qt_feature("harfbuzz" PUBLIC PRIVATE
     LABEL "HarfBuzz"
 )
 qt_feature_definition("harfbuzz" "QT_NO_HARFBUZZ" NEGATE VALUE "1")
-qt_feature("system-harfbuzz" PRIVATE
+qt_feature("system-harfbuzz" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system HarfBuzz"
     AUTODETECT NOT APPLE AND NOT WIN32
     CONDITION QT_FEATURE_harfbuzz AND WrapSystemHarfbuzz_FOUND
@@ -846,7 +1125,7 @@ qt_feature("openvg" PUBLIC
 )
 qt_feature("egl" PUBLIC
     LABEL "EGL"
-    CONDITION ( QT_FEATURE_opengl OR QT_FEATURE_openvg ) AND EGL_FOUND AND ( QT_FEATURE_dlopen OR NOT UNIX OR INTEGRITY )
+    CONDITION ( QT_FEATURE_opengl OR QT_FEATURE_openvg ) AND EGL_FOUND AND ( QT_FEATURE_dlopen OR NOT UNIX OR INTEGRITY OR VXWORKS)
 )
 qt_feature_definition("egl" "QT_NO_EGL" NEGATE VALUE "1")
 qt_feature("egl_x11" PRIVATE
@@ -914,7 +1193,7 @@ qt_feature("jpeg" PRIVATE
     DISABLE INPUT_libjpeg STREQUAL 'no'
 )
 qt_feature_definition("jpeg" "QT_NO_IMAGEFORMAT_JPEG" NEGATE VALUE "1")
-qt_feature("system-jpeg" PRIVATE
+qt_feature("system-jpeg" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system libjpeg"
     CONDITION QT_FEATURE_jpeg AND JPEG_FOUND
     ENABLE INPUT_libjpeg STREQUAL 'system'
@@ -925,7 +1204,7 @@ qt_feature("png" PRIVATE
     DISABLE INPUT_libpng STREQUAL 'no'
 )
 qt_feature_definition("png" "QT_NO_IMAGEFORMAT_PNG" NEGATE)
-qt_feature("system-png" PRIVATE
+qt_feature("system-png" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system libpng"
     AUTODETECT QT_FEATURE_system_zlib
     CONDITION QT_FEATURE_png AND WrapSystemPNG_FOUND
@@ -972,17 +1251,6 @@ qt_feature("xcb-egl-plugin" PRIVATE
     CONDITION QT_FEATURE_egl AND QT_FEATURE_opengl
     EMIT_IF QT_FEATURE_xcb
 )
-qt_feature("xcb-native-painting" PRIVATE
-    LABEL "Native painting (experimental)"
-    AUTODETECT OFF
-    CONDITION QT_FEATURE_xcb_xlib AND QT_FEATURE_fontconfig AND XRender_FOUND
-    EMIT_IF QT_FEATURE_xcb
-)
-qt_feature("xrender" PRIVATE
-    LABEL "XRender for native painting"
-    CONDITION QT_FEATURE_xcb_native_painting
-    EMIT_IF QT_FEATURE_xcb AND QT_FEATURE_xcb_native_painting
-)
 qt_feature("xcb-xlib" PRIVATE
     LABEL "XCB Xlib"
     CONDITION QT_FEATURE_xlib AND X11_XCB_FOUND
@@ -992,7 +1260,7 @@ qt_feature("xcb-sm" PRIVATE
     CONDITION QT_FEATURE_sessionmanager AND X11_SM_FOUND
     EMIT_IF QT_FEATURE_xcb
 )
-qt_feature("system-xcb-xinput" PRIVATE
+qt_feature("system-xcb-xinput" PRIVATE SYSTEM_LIBRARY
     LABEL "Using system-provided xcb-xinput"
     AUTODETECT OFF
     CONDITION XCB_XINPUT_FOUND
@@ -1000,7 +1268,7 @@ qt_feature("system-xcb-xinput" PRIVATE
     DISABLE INPUT_bundled_xcb_xinput STREQUAL 'yes'
     EMIT_IF QT_FEATURE_xcb
 )
-qt_feature("xkbcommon" PRIVATE
+qt_feature("xkbcommon" PUBLIC
     LABEL "xkbcommon"
     CONDITION XKB_FOUND
 )
@@ -1026,7 +1294,7 @@ qt_feature("textmarkdownreader" PUBLIC
     ENABLE INPUT_libmd4c STREQUAL 'system' OR INPUT_libmd4c STREQUAL 'qt' OR INPUT_libmd4c STREQUAL 'yes'
     DISABLE INPUT_libmd4c STREQUAL 'no'
 )
-qt_feature("system-textmarkdownreader" PUBLIC
+qt_feature("system-textmarkdownreader" PUBLIC SYSTEM_LIBRARY
     SECTION "Kernel"
     LABEL "  Using system libmd4c"
     CONDITION QT_FEATURE_textmarkdownreader AND WrapSystemMd4c_FOUND
@@ -1075,7 +1343,7 @@ qt_feature("clipboard" PUBLIC
     SECTION "Kernel"
     LABEL "QClipboard"
     PURPOSE "Provides cut and paste operations."
-    CONDITION NOT INTEGRITY AND NOT QNX AND NOT rtems
+    CONDITION NOT INTEGRITY AND NOT rtems
 )
 qt_feature_definition("clipboard" "QT_NO_CLIPBOARD" NEGATE VALUE "1")
 qt_feature("wheelevent" PUBLIC
@@ -1094,7 +1362,6 @@ qt_feature("im" PUBLIC
     SECTION "Kernel"
     LABEL "QInputContext"
     PURPOSE "Provides complex input methods."
-    CONDITION QT_FEATURE_library
 )
 qt_feature_definition("im" "QT_NO_IM" NEGATE VALUE "1")
 qt_feature("highdpiscaling" PUBLIC
@@ -1244,6 +1511,14 @@ qt_feature("raster-fp" PRIVATE
     PURPOSE "Internal painting support for floating point rasterization."
     CONDITION NOT VXWORKS # QTBUG-115777
 )
+
+qt_feature("qtgui-threadpool" PRIVATE
+    SECTION "Painting"
+    LABEL "Multi-threaded image and painting helpers"
+    PURPOSE "Multi-threaded image transforms and QPainter fills."
+    CONDITION QT_FEATURE_thread AND NOT WASM
+)
+
 qt_feature("undocommand" PUBLIC
     SECTION "Utilities"
     LABEL "QUndoCommand"
@@ -1273,11 +1548,96 @@ qt_feature_definition("undogroup" "QT_NO_UNDOGROUP" NEGATE VALUE "1")
 qt_feature("wayland" PUBLIC
     SECTION "Platform plugins"
     LABEL "Wayland"
-    CONDITION TARGET Wayland::Client
+    CONDITION TARGET Wayland::Client AND NOT QNX
 )
+qt_feature("waylandscanner" PUBLIC
+    SECTION "Wayland Scanner tool"
+    LABEL "Wayland Scanner"
+    CONDITION TARGET Wayland::Scanner
+)
+qt_feature("xdg-desktop-portal-file-transfer" PRIVATE
+    LABEL "portal file transfer for clipboard and drag and drop"
+    CONDITION QT_FEATURE_wayland AND QT_FEATURE_dbus AND (QT_FEATURE_clipboard OR QT_FEATURE_draganddrop)
+)
+
+# qt wayland client
+qt_feature("wayland-client" PRIVATE
+    LABEL "Client"
+    CONDITION NOT WIN32 AND QT_FEATURE_wayland AND QT_FEATURE_waylandscanner
+)
+qt_feature("wayland-server" PRIVATE
+    LABEL "Qt Wayland Compositor"
+    CONDITION NOT WIN32 AND QT_FEATURE_wayland AND QT_FEATURE_waylandscanner
+)
+qt_feature("wayland-egl" PRIVATE
+    LABEL "EGL"
+    CONDITION (QT_FEATURE_wayland_client OR QT_FEATURE_wayland_server)
+              AND QT_FEATURE_opengl AND QT_FEATURE_egl
+              AND (NOT QNX OR QT_FEATURE_egl_extension_platform_wayland)
+)
+qt_feature("wayland-brcm" PRIVATE
+    LABEL "Raspberry Pi"
+    CONDITION (QT_FEATURE_wayland_client OR QT_FEATURE_wayland_server) AND QT_FEATURE_eglfs_brcm
+)
+qt_feature("wayland-drm-egl-server-buffer" PRIVATE
+    LABEL "DRM EGL"
+    CONDITION (QT_FEATURE_wayland_client OR QT_FEATURE_wayland_server) AND QT_FEATURE_opengl
+              AND QT_FEATURE_egl AND TEST_drm_egl_server
+              AND (NOT QNX OR QT_FEATURE_egl_extension_platform_wayland)
+)
+qt_feature("wayland-libhybris-egl-server-buffer" PRIVATE
+    LABEL "libhybris EGL"
+    CONDITION (QT_FEATURE_wayland_client OR QT_FEATURE_wayland_server) AND QT_FEATURE_opengl
+              AND QT_FEATURE_egl AND TEST_libhybris_egl_server
+)
+qt_feature("wayland-dmabuf-server-buffer" PRIVATE
+    LABEL "Linux dma-buf server buffer"
+    CONDITION (QT_FEATURE_wayland_client OR QT_FEATURE_wayland_server) AND QT_FEATURE_opengl
+              AND QT_FEATURE_egl AND TEST_dmabuf_server_buffer
+)
+qt_feature("wayland-shm-emulation-server-buffer" PRIVATE
+    LABEL "Shm emulation server buffer"
+    CONDITION (QT_FEATURE_wayland_client OR QT_FEATURE_wayland_server) AND QT_FEATURE_opengl AND QT_FEATURE_sharedmemory
+)
+qt_feature("wayland-vulkan-server-buffer" PRIVATE
+    LABEL "Vulkan-based server buffer"
+    CONDITION (QT_FEATURE_wayland_client OR QT_FEATURE_wayland_server) AND QT_FEATURE_vulkan
+              AND QT_FEATURE_opengl AND QT_FEATURE_egl AND TEST_vulkan_server_buffer
+)
+qt_feature("wayland-datadevice" PRIVATE
+    CONDITION QT_FEATURE_draganddrop OR QT_FEATURE_clipboard
+)
+qt_feature("wayland-client-primary-selection" PRIVATE
+    LABEL "primary-selection clipboard"
+    CONDITION QT_FEATURE_clipboard
+)
+qt_feature("wayland-client-fullscreen-shell-v1" PRIVATE
+    LABEL "fullscreen-shell-v1"
+    CONDITION QT_FEATURE_wayland_client
+)
+qt_feature("wayland-client-wl-shell" PRIVATE
+    LABEL "wl-shell (deprecated)"
+    CONDITION QT_FEATURE_wayland_client
+)
+qt_feature("wayland-client-xdg-shell" PRIVATE
+    LABEL "xdg-shell"
+    CONDITION QT_FEATURE_wayland_client
+)
+qt_feature("egl-extension-platform-wayland" PRIVATE
+    LABEL "EGL wayland platform extension"
+    CONDITION QT_FEATURE_wayland_client AND QT_FEATURE_opengl AND QT_FEATURE_egl
+              AND TEST_egl_1_5_wayland
+)
+qt_feature("run-opengl-tests" PRIVATE
+    LABEL "Run opengl tests"
+    PURPOSE "Provides the ability to skip tests which require opengl to run"
+    CONDITION QT_FEATURE_opengl
+)
+
 
 qt_configure_add_summary_section(NAME "Qt Gui")
 qt_configure_add_summary_entry(ARGS "accessibility")
+qt_configure_add_summary_entry(ARGS "emojisegmenter")
 qt_configure_add_summary_entry(ARGS "freetype")
 qt_configure_add_summary_entry(ARGS "system-freetype")
 qt_configure_add_summary_entry(ARGS "harfbuzz")
@@ -1316,6 +1676,10 @@ qt_configure_add_summary_entry(ARGS "vulkan")
 qt_configure_add_summary_entry(ARGS "metal")
 qt_configure_add_summary_entry(ARGS "graphicsframecapture")
 qt_configure_add_summary_entry(ARGS "sessionmanager")
+qt_configure_add_summary_entry(
+    ARGS "qtgui-threadpool"
+    CONDITION QT_FEATURE_thread
+)
 qt_configure_end_summary_section() # end of "Qt Gui" section
 qt_configure_add_summary_section(NAME "Features used by QPA backends")
 qt_configure_add_summary_entry(ARGS "evdev")
@@ -1325,6 +1689,7 @@ qt_configure_add_summary_entry(ARGS "integrityhid")
 qt_configure_add_summary_entry(ARGS "mtdev")
 qt_configure_add_summary_entry(ARGS "tslib")
 qt_configure_add_summary_entry(ARGS "xkbcommon")
+qt_configure_add_summary_entry(ARGS "vxworksevdev")
 qt_configure_add_summary_section(NAME "X11 specific")
 qt_configure_add_summary_entry(ARGS "xlib")
 qt_configure_add_summary_entry(ARGS "xcb-xlib")
@@ -1372,7 +1737,24 @@ qt_configure_add_summary_entry(ARGS "direct2d")
 qt_configure_add_summary_entry(ARGS "direct2d1_1")
 qt_configure_add_summary_entry(ARGS "directwrite")
 qt_configure_add_summary_entry(ARGS "directwrite3")
+qt_configure_add_summary_entry(ARGS "directwritecolrv1")
 qt_configure_end_summary_section() # end of "Windows" section
+qt_configure_add_summary_section(NAME "Wayland")
+qt_configure_add_summary_entry(ARGS "wayland-client")
+qt_configure_add_summary_section(NAME "Hardware Integrations")
+qt_configure_add_summary_entry(ARGS "wayland-egl")
+qt_configure_add_summary_entry(ARGS "wayland-brcm")
+qt_configure_add_summary_entry(ARGS "wayland-drm-egl-server-buffer")
+qt_configure_add_summary_entry(ARGS "wayland-libhybris-egl-server-buffer")
+qt_configure_add_summary_entry(ARGS "wayland-dmabuf-server-buffer")
+qt_configure_add_summary_entry(ARGS "wayland-shm-emulation-server-buffer")
+qt_configure_add_summary_entry(ARGS "wayland-vulkan-server-buffer")
+qt_configure_end_summary_section() # end of "Qt Wayland Drivers" section
+qt_configure_add_summary_section(NAME "Shell Integrations")
+qt_configure_add_summary_entry(ARGS "wayland-client-xdg-shell")
+qt_configure_add_summary_entry(ARGS "wayland-client-wl-shell")
+qt_configure_end_summary_section() # end of "Shell Integrations" section
+qt_configure_end_summary_section() # end of "Wayland" section
 qt_configure_end_summary_section() # end of "QPA backends" section
 qt_configure_add_report_entry(
     TYPE NOTE
@@ -1404,3 +1786,31 @@ qt_configure_add_report_entry(
     MESSAGE "XCB plugin requires xkbcommon and xkbcommon-x11, but -no-xkbcommon was provided."
     CONDITION ( NOT INPUT_xcb STREQUAL '' ) AND ( NOT INPUT_xcb STREQUAL 'no' ) AND INPUT_xkbcommon STREQUAL 'no'
 )
+qt_configure_add_report_entry(
+    TYPE ERROR
+    MESSAGE "The desktopservices feature is required on macOS and iOS, and cannot be disabled."
+    CONDITION APPLE AND NOT QT_FEATURE_desktopservices
+)
+qt_configure_add_report_entry(
+    TYPE NOTE
+    MESSAGE "Qt Gui has been built without 'qtwaylandscanner' feature. This feature is required for building Qt Wayland Client."
+    CONDITION NOT QT_FEATURE_waylandscanner AND QT_FEATURE_wayland_client
+)
+qt_configure_add_report_entry(
+    TYPE NOTE
+    MESSAGE "Qt Gui has been built without 'wayland' feature. This feature is required for building Qt Wayland Client."
+    CONDITION NOT QT_FEATURE_wayland AND QT_FEATURE_wayland_client
+)
+
+#### Inputs
+
+
+
+#### Libraries
+
+
+#### Tests
+
+
+#### Features
+

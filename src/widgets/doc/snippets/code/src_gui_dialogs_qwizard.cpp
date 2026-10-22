@@ -1,6 +1,20 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#include <QWidget>
+#include <QWizard>
+
+class LicenseWizard : public QWizard
+{
+    Q_OBJECT
+
+public:
+    enum { Page_Intro, Page_Evaluate, Page_Register, Page_Details,
+           Page_Conclusion };
+
+    int nextId() const override;
+};
+
 //! [0]
 int LicenseWizard::nextId() const
 {
@@ -28,16 +42,22 @@ int LicenseWizard::nextId() const
 }
 //! [0]
 
+class MyWizard : public QWizard
+{
+    Q_OBJECT
+public:
+    MyWizard(QWidget *parent = nullptr);
+};
 
 //! [1]
 MyWizard::MyWizard(QWidget *parent)
     : QWizard(parent)
 {
-    ...
+    //...
     QList<QWizard::WizardButton> layout;
     layout << QWizard::Stretch << QWizard::BackButton << QWizard::CancelButton
            << QWizard::NextButton << QWizard::FinishButton;
     setButtonLayout(layout);
-    ...
+    //...
 }
 //! [1]

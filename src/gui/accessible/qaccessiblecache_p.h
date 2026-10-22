@@ -27,6 +27,32 @@ Q_FORWARD_DECLARE_OBJC_CLASS(QT_MANGLE_NAMESPACE(QMacAccessibilityElement));
 
 QT_BEGIN_NAMESPACE
 
+class Q_GUI_EXPORT QAccessibleObjectDestroyedEvent :public QAccessibleEvent
+{
+public:
+    /* A regular event, used when the object is still alive
+    */
+    inline QAccessibleObjectDestroyedEvent(QObject *obj)
+        : QAccessibleEvent(obj, QAccessible::ObjectDestroyed)
+    {
+    }
+    /* A regular event, used when there is no object
+    */
+    inline QAccessibleObjectDestroyedEvent(QAccessibleInterface *iface)
+        : QAccessibleEvent(static_cast<QObject *>(nullptr), QAccessible::ObjectDestroyed)
+    {
+        m_uniqueId = QAccessible::uniqueId(iface);
+    }
+    /* An event with object() == nullptr, and uniqueid set,
+    used during object destruction */
+    inline QAccessibleObjectDestroyedEvent(QAccessible::Id uniqueId)
+        : QAccessibleEvent(static_cast<QObject *>(nullptr), QAccessible::ObjectDestroyed)
+    {
+        m_uniqueId = uniqueId;
+    }
+    ~QAccessibleObjectDestroyedEvent();
+};
+
 class Q_GUI_EXPORT QAccessibleCache  :public QObject
 {
     Q_OBJECT
@@ -40,10 +66,10 @@ public:
     bool containsObject(QObject *obj) const;
     QAccessible::Id insert(QObject *object, QAccessibleInterface *iface) const;
     void deleteInterface(QAccessible::Id id, QObject *obj = nullptr);
-
+    void sendObjectDestroyedEvent(QObject *obj);
 #ifdef Q_OS_APPLE
     QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *elementForId(QAccessible::Id axid) const;
-    void insertElement(QAccessible::Id axid, QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *element) const;
+    bool insertElement(QAccessible::Id axid, QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *element) const;
 #endif
 
 private Q_SLOTS:
@@ -54,7 +80,7 @@ private:
 
     mutable QHash<QAccessible::Id, QAccessibleInterface *> idToInterface;
     mutable QHash<QAccessibleInterface *, QAccessible::Id> interfaceToId;
-    mutable QMultiHash<QObject *, QPair<QAccessible::Id, const QMetaObject*>> objectToId;
+    mutable QMultiHash<QObject *, std::pair<QAccessible::Id, const QMetaObject*>> objectToId;
 
 #ifdef Q_OS_APPLE
     void removeAccessibleElement(QAccessible::Id axid);

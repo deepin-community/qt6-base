@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 //#define QPROCESS_DEBUG
 #include <qdebug.h>
@@ -214,16 +215,13 @@ bool QProcessPrivate::openChannel(Channel &channel)
             return true;
         }
 
-        if (&channel == &stdoutChannel) {
-            if (!stdoutChannel.reader) {
-                stdoutChannel.reader = new QWindowsPipeReader(q);
-                q->connect(stdoutChannel.reader, SIGNAL(readyRead()), SLOT(_q_canReadStandardOutput()));
-            }
-        } else /* if (&channel == &stderrChannel) */ {
-            if (!stderrChannel.reader) {
-                stderrChannel.reader = new QWindowsPipeReader(q);
-                q->connect(stderrChannel.reader, SIGNAL(readyRead()), SLOT(_q_canReadStandardError()));
-            }
+        // stdout or stderr
+        if (!channel.reader) {
+            auto receiver = &channel == &stdoutChannel ? &QProcessPrivate::_q_canReadStandardOutput
+                                                       : &QProcessPrivate::_q_canReadStandardError;
+            channel.reader = new QWindowsPipeReader(q);
+            QObjectPrivate::connect(channel.reader, &QWindowsPipeReader::readyRead,
+                                    this, receiver);
         }
         if (!qt_create_pipe(channel.pipe, false, FALSE)) {
             setErrorAndEmit(QProcess::FailedToStart, "pipe: "_L1 + qt_error_string(errno));
@@ -513,6 +511,12 @@ bool QProcessPrivate::callCreateProcess(QProcess::CreateProcessArguments *cpargs
                                  cpargs->inheritHandles, cpargs->flags, cpargs->environment,
                                  cpargs->currentDirectory, cpargs->startupInfo,
                                  cpargs->processInformation);
+    if (!success) {
+        // don't CloseHandle here (we'll do that in cleanup()) so GetLastError()
+        // remains unmodified
+        return false;
+    }
+
     if (stdinChannel.pipe[0] != INVALID_Q_PIPE) {
         CloseHandle(stdinChannel.pipe[0]);
         stdinChannel.pipe[0] = INVALID_Q_PIPE;
@@ -544,7 +548,7 @@ void QProcessPrivate::startProcess()
         return;
     }
 
-    const QString args = qt_create_commandline(program, arguments, nativeArguments);
+    QString args = qt_create_commandline(program, arguments, nativeArguments);
     QByteArray envlist;
     if (!environment.inheritsFromParent())
         envlist = qt_create_environment(environment.d.constData()->vars);
@@ -566,7 +570,7 @@ void QProcessPrivate::startProcess()
     STARTUPINFOW startupInfo = createStartupInfo();
     const QString nativeWorkingDirectory = QDir::toNativeSeparators(workingDirectory);
     QProcess::CreateProcessArguments cpargs = {
-        nullptr, reinterpret_cast<wchar_t *>(const_cast<ushort *>(args.utf16())),
+        nullptr, reinterpret_cast<wchar_t *>(args.data_ptr().data()),
         nullptr, nullptr, true, dwCreationFlags,
         environment.inheritsFromParent() ? nullptr : envlist.data(),
         nativeWorkingDirectory.isEmpty()
@@ -576,9 +580,10 @@ void QProcessPrivate::startProcess()
 
     if (!callCreateProcess(&cpargs)) {
         // Capture the error string before we do CloseHandle below
-        QString errorString = QProcess::tr("Process failed to start: %1").arg(qt_error_string());
+        QString errorString = qt_error_string();
         cleanup();
-        setErrorAndEmit(QProcess::FailedToStart, errorString);
+        setErrorAndEmit(QProcess::FailedToStart,
+                        QProcess::tr("Process failed to start: %1").arg(errorString));
         return;
     }
 
@@ -596,7 +601,9 @@ void QProcessPrivate::startProcess()
 
     if (threadData.loadRelaxed()->hasEventDispatcher()) {
         processFinishedNotifier = new QWinEventNotifier(pid->hProcess, q);
-        QObject::connect(processFinishedNotifier, SIGNAL(activated(HANDLE)), q, SLOT(_q_processDied()));
+        QObjectPrivate::connect(processFinishedNotifier, &QWinEventNotifier::activated, this,
+                                &QProcessPrivate::_q_processDied);
+
         processFinishedNotifier->setEnabled(true);
     }
 
@@ -920,7 +927,7 @@ bool QProcessPrivate::startDetached(qint64 *pid)
     dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT;
     STARTUPINFOW startupInfo = createStartupInfo();
     QProcess::CreateProcessArguments cpargs = {
-        nullptr, reinterpret_cast<wchar_t *>(const_cast<ushort *>(args.utf16())),
+        nullptr, reinterpret_cast<wchar_t *>(args.data_ptr().data()),
         nullptr, nullptr, true, dwCreationFlags, envPtr,
         workingDirectory.isEmpty()
             ? nullptr : reinterpret_cast<const wchar_t *>(workingDirectory.utf16()),
@@ -946,7 +953,9 @@ bool QProcessPrivate::startDetached(qint64 *pid)
     if (!success) {
         if (pid)
             *pid = -1;
-        setErrorAndEmit(QProcess::FailedToStart);
+        QString errorString = qt_error_string();
+        setErrorAndEmit(QProcess::FailedToStart,
+                        QProcess::tr("Process failed to start: %1").arg(errorString));
     }
 
     closeChannels();

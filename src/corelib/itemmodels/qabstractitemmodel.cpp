@@ -1,9 +1,11 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qabstractitemmodel.h"
 #include <private/qabstractitemmodel_p.h>
+#include <qcollator.h>
 #include <qdatastream.h>
 #include <qstringlist.h>
 #include <qsize.h>
@@ -25,7 +27,8 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcCheckIndex, "qt.core.qabstractitemmodel.checkindex")
+Q_STATIC_LOGGING_CATEGORY(lcCheckIndex, "qt.core.qabstractitemmodel.checkindex")
+Q_STATIC_LOGGING_CATEGORY(lcReset, "qt.core.qabstractitemmodel.reset")
 
 QT_IMPL_METATYPE_EXTERN(QModelIndexList)
 
@@ -34,7 +37,7 @@ QPersistentModelIndexData *QPersistentModelIndexData::create(const QModelIndex &
     Q_ASSERT(index.isValid()); // we will _never_ insert an invalid index in the list
     QPersistentModelIndexData *d = nullptr;
     QAbstractItemModel *model = const_cast<QAbstractItemModel *>(index.model());
-    QMultiHash<QModelIndex, QPersistentModelIndexData *> &indexes = model->d_func()->persistent.indexes;
+    QMultiHash<QtPrivate::QModelIndexWrapper, QPersistentModelIndexData *> &indexes = model->d_func()->persistent.indexes;
     const auto it = indexes.constFind(index);
     if (it != indexes.cend()) {
         d = (*it);
@@ -444,9 +447,7 @@ QPersistentModelIndex &QPersistentModelIndex::operator=(const QPersistentModelIn
 /*!
     \fn void QPersistentModelIndex::swap(QPersistentModelIndex &other)
     \since 5.0
-
-    Swaps this persistent modelindex with \a other. This function is
-    very fast and never fails.
+    \memberswap{persistent modelindex}
 */
 
 /*!
@@ -757,43 +758,96 @@ const QHash<int,QByteArray> &QAbstractItemModelPrivate::defaultRoleNames()
     return *qDefaultRoleNames();
 }
 
-bool QAbstractItemModelPrivate::isVariantLessThan(const QVariant &left, const QVariant &right,
-                                                  Qt::CaseSensitivity cs, bool isLocaleAware)
-{
-    if (left.userType() == QMetaType::UnknownType)
-        return false;
-    if (right.userType() == QMetaType::UnknownType)
-        return true;
-    switch (left.userType()) {
-    case QMetaType::Int:
-        return left.toInt() < right.toInt();
-    case QMetaType::UInt:
-        return left.toUInt() < right.toUInt();
-    case QMetaType::LongLong:
-        return left.toLongLong() < right.toLongLong();
-    case QMetaType::ULongLong:
-        return left.toULongLong() < right.toULongLong();
-    case QMetaType::Float:
-        return left.toFloat() < right.toFloat();
-    case QMetaType::Double:
-        return left.toDouble() < right.toDouble();
-    case QMetaType::QChar:
-        return left.toChar() < right.toChar();
-    case QMetaType::QDate:
-        return left.toDate() < right.toDate();
-    case QMetaType::QTime:
-        return left.toTime() < right.toTime();
-    case QMetaType::QDateTime:
-        return left.toDateTime() < right.toDateTime();
-    case QMetaType::QString:
-    default:
-        if (isLocaleAware)
-            return left.toString().localeAwareCompare(right.toString()) < 0;
-        else
-            return left.toString().compare(right.toString(), cs) < 0;
-    }
-}
+/*!
+    \fn Qt::weak_ordering QAbstractItemModel::compareData(const QVariant &left, const QVariant &right)
+    \fn Qt::weak_ordering QAbstractItemModel::compareData(const QVariant &left, const QVariant &right, const QCollator &collator)
+    \since 6.12
 
+    Compares the \a left QVariant with the \a right QVariant, and returns
+    the ordering as a \l{Qt::weak_ordering}{weak ordering}.
+
+    If the QVariant is compared as a string, then the optional \a collator
+    object is used for \l{QCollator::locale()}{locale-aware} and
+    \l{QCollator::caseSensitivity()}{case-sensitive} comparison. If no collator
+    is provided, then strings are compared exclusively on the numeric Unicode
+    values of the characters. This is fast, but often not what a user expects
+    from a user interface.
+
+    This function is suitable for implementations of QAbstractItemModel::sort(),
+    providing weak ordering even for variant values that cannot be compared, i.e.
+    where QVariant::compare would return \l{QPartialOrdering}{unordered}. This
+    makes it safe to use in \c{std::sort} and \c{std::stable_sort}, which
+    require data that can be ordered.
+
+    \code
+    void Model::sort(int column, Qt::SortOrder sortOrder)
+    {
+        // Model operates on a QList<QVariant> data
+        std::sort(data.begin(), data.end(), [=](const QVariant &lhs, const Variant &rhs){
+            const auto ordering = compareData(lhs, rhs);
+            return sortOrder == Qt::AscendingOrder ? sortOrder < 0 : sortOrder > 0;
+        });
+    }
+    \endcode
+
+    If the \a left QVariant holds a string, then the variants are compared
+    \l{QVariant::toString()}{as strings}, using the optional \a collator.
+
+    Otherwise, the implementation compares \a left and \a right using
+    QVariant::compare(), which can only provide a partial ordering. If the
+    comparison produces an \l{Qt::partial_ordering::}{unordered} result, and the
+    \l{QVariant::metaType()}{meta type} of \a left and \a right are not the same,
+    then the function attempts to \l{QVariant::convert()}{convert} the variants
+    to a common type, and the comparison is tried again.
+
+    If this still produces an \l{Qt::partial_ordering::}{unordered} result, then
+    the string-representation of both variants is compared. This might compare
+    two empty strings, which are \{Qt::weak_ordering::}{equivalent}.
+
+    \l{QVariant::isValid}{Invalid variants} always compare as greater than
+    variants holding a valid value.
+
+    \sa {three-way comparison}, sort(), QVariant::compare, QSortFilterProxyModel
+*/
+Qt::weak_ordering QAbstractItemModel::compareDataImpl(const QVariant &left, const QVariant &right,
+                                                      const QCollator *collator)
+{
+    // invalid is greater than everything, except another invalid variant
+    if (!left.isValid()) {
+        if (!right.isValid())
+            return Qt::weak_ordering::equivalent;
+        return Qt::weak_ordering::greater;
+    }
+    if (!right.isValid())
+        return Qt::weak_ordering::less;
+
+    if (left.userType() != QMetaType::QString) {
+        QPartialOrdering partialOrder = QVariant::compare(left, right);
+        if (partialOrder == Qt::partial_ordering::unordered && right.metaType() != left.metaType()) {
+            if (right.canConvert(left.metaType())) {
+                QVariant rightAsLeft = right;
+                rightAsLeft.convert(left.metaType());
+                partialOrder = QVariant::compare(left, rightAsLeft);
+            } else if (left.canConvert(right.metaType())) {
+                QVariant leftAsRight = left;
+                leftAsRight.convert(right.metaType());
+                partialOrder = QVariant::compare(leftAsRight, right);
+            }
+        }
+        if (partialOrder == Qt::partial_ordering::equivalent)
+            return Qt::weak_ordering::equivalent;
+        if (partialOrder < 0)
+            return Qt::weak_ordering::less;
+        if (partialOrder > 0)
+            return Qt::weak_ordering::greater;
+    }
+
+    // unordered so far, or QString in the first place - compare as strings
+    const int res = collator
+                  ? collator->compare(left.toString(), right.toString())
+                  : left.toString().compare(right.toString());
+    return Qt::compareThreeWay(res, 0);
+}
 
 static uint typeOfVariant(const QVariant &value)
 {
@@ -1390,7 +1444,8 @@ void QAbstractItemModel::resetInternalData()
     simple table of rows and columns. Each item has a unique index specified by
     a QModelIndex.
 
-    \image modelindex-no-parent.png
+    \image modelindex-no-parent.svg {Diagram showing a 3x3 grid with numbered
+           rows and columns that shows the cell at row 1, column 2 highlighted.}
 
     Every item of data that can be accessed via a model has an associated model
     index. You can obtain this model index using the index() function. Each
@@ -1509,7 +1564,7 @@ void QAbstractItemModel::resetInternalData()
     \include models.qdocinc {thread-safety-section1}{QAbstractItemModel}
 
     \sa {Model Classes}, {Model Subclassing Reference}, QModelIndex,
-        QAbstractItemView, {Using drag and drop with item views},
+        QAbstractItemView, QRangeModel, {Using drag and drop with item views},
         {Simple Tree Model Example}, {Editable Tree Model Example},
         {Fetch More Example}
 */
@@ -2087,6 +2142,9 @@ bool QAbstractItemModel::clearItemData(const QModelIndex &index)
 */
 bool QAbstractItemModel::setItemData(const QModelIndex &index, const QMap<int, QVariant> &roles)
 {
+    if (!index.isValid() || roles.isEmpty())
+        return false;
+
     // ### TODO: Consider change the semantics of this function,
     // or deprecating/removing it altogether.
     //
@@ -2117,8 +2175,7 @@ bool QAbstractItemModel::setItemData(const QModelIndex &index, const QMap<int, Q
 */
 QStringList QAbstractItemModel::mimeTypes() const
 {
-    QStringList types;
-    types << QStringLiteral("application/x-qabstractitemmodeldatalist");
+    static QStringList types = {QStringLiteral("application/x-qabstractitemmodeldatalist")};
     return types;
 }
 
@@ -2219,18 +2276,23 @@ bool QAbstractItemModel::dropMimeData(const QMimeData *data, Qt::DropAction acti
     if (!data || !(action == Qt::CopyAction || action == Qt::MoveAction))
         return false;
     // check if the format is supported
-    QStringList types = mimeTypes();
+    const QStringList types = mimeTypes();
     if (types.isEmpty())
         return false;
-    QString format = types.at(0);
+    const QString format = types.at(0);
     if (!data->hasFormat(format))
         return false;
-    if (row > rowCount(parent))
-        row = rowCount(parent);
-    if (row == -1)
-        row = rowCount(parent);
-    if (column == -1)
-        column = 0;
+    const bool dropOnItem = row == -1 && column == -1 && parent.isValid();
+    if (!dropOnItem || !parent.flags().testFlag(Qt::ItemNeverHasChildren)) {
+        // drop in between items, or on an item that cannot have children
+        // -> insert new item
+        if (row > rowCount(parent))
+            row = rowCount(parent);
+        if (row == -1)
+            row = rowCount(parent);
+        if (column == -1)
+            column = 0;
+    }
     // decode and insert
     QByteArray encoded = data->data(format);
     QDataStream stream(&encoded, QDataStream::ReadOnly);
@@ -2656,6 +2718,9 @@ QSize QAbstractItemModel::span(const QModelIndex &) const
 */
 QHash<int,QByteArray> QAbstractItemModel::roleNames() const
 {
+    // if the return value ever becomes dependent on *this, also change the following overrides:
+    // - QFileSystemModel
+    // - QConcatenateTablesProxyModel
     return QAbstractItemModelPrivate::defaultRoleNames();
 }
 
@@ -2828,7 +2893,7 @@ bool QAbstractItemModel::decodeData(int row, int column, const QModelIndex &pare
         int flat = (relativeRow * dragColumnCount) + relativeColumn;
         // if the item was already written to, or we just can't fit it in the table, create a new row
         if (destinationColumn >= colCount || isWrittenTo.testBit(flat)) {
-            destinationColumn = qBound(column, destinationColumn, colCount - 1);
+            destinationColumn = qBound(column, destinationColumn, qMax(colCount - 1, column));
             destinationRow = row + dragRowCount;
             insertRows(row + dragRowCount, 1, parent);
             flat = (dragRowCount * dragColumnCount) + relativeColumn;
@@ -2860,7 +2925,8 @@ bool QAbstractItemModel::decodeData(int row, int column, const QModelIndex &pare
 
     \table 80%
     \row
-        \li  \inlineimage modelview-begin-insert-rows.png Inserting rows
+        \li  \inlineimage modelview-begin-insert-rows.svg
+                         {Inserting rows 2, 3, 4 into a list}
         \li  Specify the first and last row numbers for the span of rows you
             want to insert into an item in a model.
 
@@ -2871,7 +2937,8 @@ bool QAbstractItemModel::decodeData(int row, int column, const QModelIndex &pare
 
             This inserts the three new rows as rows 2, 3, and 4.
     \row
-        \li  \inlineimage modelview-begin-append-rows.png Appending rows
+        \li  \inlineimage modelview-begin-append-rows.svg
+                         {Appending rows 4, 5 to a list}
         \li  To append rows, insert them after the last row.
 
             For example, as shown in the diagram, we append two rows to a
@@ -2927,7 +2994,8 @@ void QAbstractItemModel::endInsertRows()
 
     \table 80%
     \row
-        \li  \inlineimage modelview-begin-remove-rows.png Removing rows
+        \li  \inlineimage modelview-begin-remove-rows.svg
+                         {Removing rows 2 and 3 from a list}
         \li  Specify the first and last row numbers for the span of rows you
             want to remove from an item in a model.
 
@@ -3048,7 +3116,8 @@ void QAbstractItemModelPrivate::executePendingOperations() const { }
 
     \table 80%
     \row
-        \li  \inlineimage modelview-move-rows-1.png Moving rows to another parent
+        \li  \inlineimage modelview-move-rows-1.svg
+                         {Moving rows from one parent to another}
         \li  Specify the first and last row numbers for the span of rows in
             the source parent you want to move in the model. Also specify
             the row in the destination parent to move the span to.
@@ -3062,7 +3131,8 @@ void QAbstractItemModelPrivate::executePendingOperations() const { }
             This moves the three rows rows 2, 3, and 4 in the source to become 2, 3 and 4 in
             the destination. Other affected siblings are displaced accordingly.
     \row
-        \li  \inlineimage modelview-move-rows-2.png Moving rows to append to another parent
+        \li  \inlineimage modelview-move-rows-2.svg
+                         {Appending rows to another parent}
         \li  To append rows to another parent, move them to after the last row.
 
             For example, as shown in the diagram, we move three rows to a
@@ -3072,7 +3142,8 @@ void QAbstractItemModelPrivate::executePendingOperations() const { }
 
             This moves the target rows to the end of the target parent as 6, 7 and 8.
     \row
-        \li  \inlineimage modelview-move-rows-3.png Moving rows in the same parent up
+        \li  \inlineimage modelview-move-rows-3.svg
+                         {Moving a row up within the same parent}
         \li  To move rows within the same parent, specify the row to move them to.
 
             For example, as shown in the diagram, we move one item from row 2 to row 0,
@@ -3087,7 +3158,8 @@ void QAbstractItemModelPrivate::executePendingOperations() const { }
             it is already)
 
     \row
-        \li  \inlineimage modelview-move-rows-4.png Moving rows in the same parent down
+        \li  \inlineimage modelview-move-rows-4.svg
+                         {Moving a row down within the same parent}
         \li  To move rows within the same parent, specify the row to move them to.
 
             For example, as shown in the diagram, we move one item from row 2 to row 4,
@@ -3169,7 +3241,8 @@ void QAbstractItemModel::endMoveRows()
 
     \table 80%
     \row
-        \li  \inlineimage modelview-begin-insert-columns.png Inserting columns
+        \li  \inlineimage modelview-begin-insert-columns.svg
+                         {Inserting columns 4, 5, 6 into a row}
         \li  Specify the first and last column numbers for the span of columns
             you want to insert into an item in a model.
 
@@ -3180,7 +3253,8 @@ void QAbstractItemModel::endMoveRows()
 
             This inserts the three new columns as columns 4, 5, and 6.
     \row
-        \li  \inlineimage modelview-begin-append-columns.png Appending columns
+        \li  \inlineimage modelview-begin-append-columns.svg
+                         {Appending columns 6, 7, 8 to a row}
         \li  To append columns, insert them after the last column.
 
             For example, as shown in the diagram, we append three columns to a
@@ -3238,7 +3312,8 @@ void QAbstractItemModel::endInsertColumns()
 
     \table 80%
     \row
-        \li  \inlineimage modelview-begin-remove-columns.png Removing columns
+        \li  \inlineimage modelview-begin-remove-columns.svg
+                         {Removing columns 4, 5, 6 from a row}
         \li  Specify the first and last column numbers for the span of columns
             you want to remove from an item in a model.
 
@@ -3400,6 +3475,14 @@ void QAbstractItemModel::endMoveColumns()
 */
 void QAbstractItemModel::beginResetModel()
 {
+    Q_D(QAbstractItemModel);
+    if (d->resetting) {
+        qWarning() << "beginResetModel called on" << this << "without calling endResetModel first";
+        // Warn, but don't return early in case user code relies on the incorrect behavior.
+    }
+
+    qCDebug(lcReset) << "beginResetModel called; about to emit modelAboutToBeReset";
+    d->resetting = true;
     emit modelAboutToBeReset(QPrivateSignal());
 }
 
@@ -3417,8 +3500,15 @@ void QAbstractItemModel::beginResetModel()
 void QAbstractItemModel::endResetModel()
 {
     Q_D(QAbstractItemModel);
+    if (!d->resetting) {
+        qWarning() << "endResetModel called on" << this << "without calling beginResetModel first";
+        // Warn, but don't return early in case user code relies on the incorrect behavior.
+    }
+
+    qCDebug(lcReset) << "endResetModel called; about to emit modelReset";
     d->invalidatePersistentIndexes();
     resetInternalData();
+    d->resetting = false;
     emit modelReset(QPrivateSignal());
 }
 
@@ -3747,7 +3837,7 @@ void QAbstractItemModel::multiData(const QModelIndex &index, QModelRoleDataSpan 
 
     \include models.qdocinc {thread-safety-section1}{QAbstractTableModel}
 
-    \sa {Model Classes}, QAbstractItemModel, QAbstractListModel
+    \sa {Model Classes}, QAbstractItemModel, QAbstractListModel, QRangeModel
 */
 
 /*!
@@ -3898,7 +3988,7 @@ Qt::ItemFlags QAbstractTableModel::flags(const QModelIndex &index) const
     \l{Model Subclassing Reference}.
 
     \sa {Model Classes}, {Model Subclassing Reference}, QAbstractItemView,
-        QAbstractTableModel
+        QAbstractTableModel, QRangeModel
 */
 
 /*!
@@ -4000,12 +4090,43 @@ bool QAbstractListModel::hasChildren(const QModelIndex &parent) const
     Synonym for QList<QModelIndex>.
 */
 
+bool QAbstractItemModelPrivate::dropOnItem(const QModelIndex &index, QDataStream &stream)
+{
+    Q_Q(QAbstractItemModel);
+
+    int top = INT_MAX;
+    int left = INT_MAX;
+    QList<int> rows, columns;
+    QList<QMap<int, QVariant>> data;
+
+    while (!stream.atEnd()) {
+        int r, c;
+        QMap<int, QVariant> v;
+        stream >> r >> c >> v;
+        rows.append(r);
+        columns.append(c);
+        data.append(v);
+        top = qMin(r, top);
+        left = qMin(c, left);
+    }
+
+    for (int i = 0; i < data.size(); ++i) {
+        int r = (rows.at(i) - top) + index.row();
+        int c = (columns.at(i) - left) + index.column();
+        if (q->hasIndex(r, c))
+            q->setItemData(q->index(r, c), data.at(i));
+    }
+
+    return true;
+}
+
 /*!
   \reimp
 */
 bool QAbstractTableModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
                                        int row, int column, const QModelIndex &parent)
 {
+    Q_D(QAbstractItemModel);
     if (!data || !(action == Qt::CopyAction || action == Qt::MoveAction))
         return false;
 
@@ -4020,32 +4141,11 @@ bool QAbstractTableModel::dropMimeData(const QMimeData *data, Qt::DropAction act
     QDataStream stream(&encoded, QDataStream::ReadOnly);
 
     // if the drop is on an item, replace the data in the items
-    if (parent.isValid() && row == -1 && column == -1) {
-        int top = INT_MAX;
-        int left = INT_MAX;
-        QList<int> rows, columns;
-        QList<QMap<int, QVariant>> data;
+    if (parent.isValid() && row == -1 && column == -1)
+        return d->dropOnItem(parent, stream);
 
-        while (!stream.atEnd()) {
-            int r, c;
-            QMap<int, QVariant> v;
-            stream >> r >> c >> v;
-            rows.append(r);
-            columns.append(c);
-            data.append(v);
-            top = qMin(r, top);
-            left = qMin(c, left);
-        }
-
-        for (int i = 0; i < data.size(); ++i) {
-            int r = (rows.at(i) - top) + parent.row();
-            int c = (columns.at(i) - left) + parent.column();
-            if (hasIndex(r, c))
-                setItemData(index(r, c), data.at(i));
-        }
-
-        return true;
-    }
+    if (row == -1)
+        row = rowCount(parent);
 
     // otherwise insert new rows for the data
     return decodeData(row, column, parent, stream);
@@ -4057,6 +4157,7 @@ bool QAbstractTableModel::dropMimeData(const QMimeData *data, Qt::DropAction act
 bool QAbstractListModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
                                       int row, int column, const QModelIndex &parent)
 {
+    Q_D(QAbstractItemModel);
     if (!data || !(action == Qt::CopyAction || action == Qt::MoveAction))
         return false;
 
@@ -4071,31 +4172,8 @@ bool QAbstractListModel::dropMimeData(const QMimeData *data, Qt::DropAction acti
     QDataStream stream(&encoded, QDataStream::ReadOnly);
 
     // if the drop is on an item, replace the data in the items
-    if (parent.isValid() && row == -1 && column == -1) {
-        int top = INT_MAX;
-        int left = INT_MAX;
-        QList<int> rows, columns;
-        QList<QMap<int, QVariant>> data;
-
-        while (!stream.atEnd()) {
-            int r, c;
-            QMap<int, QVariant> v;
-            stream >> r >> c >> v;
-            rows.append(r);
-            columns.append(c);
-            data.append(v);
-            top = qMin(r, top);
-            left = qMin(c, left);
-        }
-
-        for (int i = 0; i < data.size(); ++i) {
-            int r = (rows.at(i) - top) + parent.row();
-            if (columns.at(i) == left && hasIndex(r, 0))
-                setItemData(index(r), data.at(i));
-        }
-
-        return true;
-    }
+    if (parent.isValid() && row == -1 && column == -1)
+        return d->dropOnItem(parent, stream);
 
     if (row == -1)
         row = rowCount(parent);
@@ -4142,12 +4220,9 @@ bool QAbstractListModel::dropMimeData(const QMimeData *data, Qt::DropAction acti
 */
 
 /*!
-    \fn size_t qHash(const QPersistentModelIndex &index, size_t seed = 0)
+    \fn size_t qHash(const QPersistentModelIndex &key, size_t seed)
     \since 5.0
-    \relates QPersistentModelIndex
-
-    Returns a hash of the QPersistentModelIndex \a index, using \a seed to
-    seed the calculation.
+    \qhashold{QPersistentModelIndex}
 */
 
 

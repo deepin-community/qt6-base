@@ -47,6 +47,8 @@ add_subdirectory(corelib)
 # Needs to be after corelib, because some of them reference Core.
 add_subdirectory(3rdparty)
 
+add_subdirectory(android)
+
 if (QT_FEATURE_concurrent)
     add_subdirectory(concurrent)
 endif()
@@ -71,7 +73,6 @@ add_subdirectory(tools)
 
 if(QT_FEATURE_gui)
     add_subdirectory(gui)
-    add_subdirectory(assets)
 
     if(QT_FEATURE_opengl)
         add_subdirectory(opengl)
@@ -86,6 +87,7 @@ if(QT_FEATURE_gui)
     add_subdirectory(platformsupport)
 endif()
 if (QT_FEATURE_testlib)
+    add_subdirectory(testinternal)
     add_subdirectory(testlib)
 endif()
 if(QT_FEATURE_printsupport)
@@ -93,4 +95,6 @@ if(QT_FEATURE_printsupport)
 endif()
 add_subdirectory(plugins)
 
-add_subdirectory(android)
+if(OHOS)
+    add_subdirectory(harmonyos)
+endif()

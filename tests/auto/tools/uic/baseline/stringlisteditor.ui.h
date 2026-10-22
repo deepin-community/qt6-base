@@ -63,48 +63,48 @@ public:
             qdesigner_internal__Dialog->setObjectName("qdesigner_internal__Dialog");
         qdesigner_internal__Dialog->resize(400, 300);
         vboxLayout = new QVBoxLayout(qdesigner_internal__Dialog);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout->setObjectName("vboxLayout");
         groupBox = new QGroupBox(qdesigner_internal__Dialog);
         groupBox->setObjectName("groupBox");
         gridLayout = new QGridLayout(groupBox);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         gridLayout->setObjectName("gridLayout");
         vboxLayout1 = new QVBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout1->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout1->setContentsMargins(0, 0, 0, 0);
 #endif
         vboxLayout1->setObjectName("vboxLayout1");
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setContentsMargins(0, 0, 0, 0);
 #endif
         hboxLayout->setObjectName("hboxLayout");
         newButton = new QToolButton(groupBox);
         newButton->setObjectName("newButton");
-        newButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        newButton->setToolButtonStyle(Qt::ToolButtonStyle::ToolButtonTextBesideIcon);
 
         hboxLayout->addWidget(newButton);
 
         deleteButton = new QToolButton(groupBox);
         deleteButton->setObjectName("deleteButton");
-        deleteButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        deleteButton->setToolButtonStyle(Qt::ToolButtonStyle::ToolButtonTextBesideIcon);
 
         hboxLayout->addWidget(deleteButton);
 
@@ -116,7 +116,7 @@ public:
         vboxLayout1->addLayout(hboxLayout);
 
         hboxLayout1 = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout1->setSpacing(6);
 #endif
         hboxLayout1->setContentsMargins(0, 0, 0, 0);
@@ -138,7 +138,7 @@ public:
         gridLayout->addLayout(vboxLayout1, 1, 0, 1, 2);
 
         vboxLayout2 = new QVBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout2->setSpacing(6);
 #endif
         vboxLayout2->setContentsMargins(0, 0, 0, 0);
@@ -174,8 +174,8 @@ public:
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__Dialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::NoButton|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         vboxLayout->addWidget(buttonBox);
 

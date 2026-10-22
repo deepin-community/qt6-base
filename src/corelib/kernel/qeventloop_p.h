@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEVENTLOOP_P_H
 #define QEVENTLOOP_P_H
@@ -20,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class QEventLoopPrivate : public QObjectPrivate
+class Q_AUTOTEST_EXPORT QEventLoopPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QEventLoop)
 public:
@@ -30,11 +31,12 @@ public:
         returnCode.storeRelaxed(-1);
         exit.storeRelaxed(true);
     }
+    ~QEventLoopPrivate() override;
 
     QAtomicInt quitLockRef;
 
-    QBasicAtomicInt exit; // bool
-    QBasicAtomicInt returnCode;
+    QAtomicInt exit; // bool
+    QAtomicInt returnCode;
     bool inExec;
 
     void ref()

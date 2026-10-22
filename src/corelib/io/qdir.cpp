@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qplatformdefs.h"
 #include "qdir.h"
@@ -27,8 +28,11 @@
 #  include "qmutex.h"
 #endif
 
+#include <private/qorderedmutexlocker_p.h>
+
 #include <algorithm>
 #include <memory>
+#include <stack>
 #include <stdlib.h>
 
 QT_BEGIN_NAMESPACE
@@ -49,33 +53,41 @@ static QString driveSpec(const QString &path)
 }
 #endif
 
-enum {
-#if defined(Q_OS_WIN)
-    OSSupportsUncPaths = true
-#else
-    OSSupportsUncPaths = false
-#endif
-};
-
 // Return the length of the root part of an absolute path, for use by cleanPath(), cd().
-static qsizetype rootLength(QStringView name, bool allowUncPaths)
+static qsizetype rootLength(QStringView name, QDirPrivate::PathNormalizations flags)
 {
-    const qsizetype len = name.size();
-    // starts with double slash
-    if (allowUncPaths && name.startsWith("//"_L1)) {
-        // Server name '//server/path' is part of the prefix.
-        const qsizetype nextSlash = name.indexOf(u'/', 2);
-        return nextSlash >= 0 ? nextSlash + 1 : len;
-    }
+    constexpr bool UseWindowsRules = false // So we don't #include <QOperatingSystemVersion>
 #if defined(Q_OS_WIN)
-    if (len >= 2 && name.at(1) == u':') {
-        // Handle a possible drive letter
-        return len > 2 && name.at(2) == u'/' ? 3 : 2;
-    }
+            || true
 #endif
-    if (name.at(0) == u'/')
-        return 1;
-    return 0;
+            ;
+    const qsizetype len = name.size();
+    char16_t firstChar = len > 0 ? name.at(0).unicode() : u'\0';
+    char16_t secondChar = len > 1 ? name.at(1).unicode() : u'\0';
+    if constexpr (UseWindowsRules) {
+        // Handle possible UNC paths which start with double slash
+        bool urlMode = flags.testAnyFlags(QDirPrivate::UrlNormalizationMode);
+        if (firstChar == u'/' && secondChar == u'/' && !urlMode) {
+            // Server name '//server/path' is part of the prefix.
+            const qsizetype nextSlash = name.indexOf(u'/', 2);
+            return nextSlash >= 0 ? nextSlash + 1 : len;
+        }
+
+        // Handle a possible drive letter
+        qsizetype driveLength = 2;
+        if (firstChar == u'/' && urlMode && len > 2 && name.at(2) == u':') {
+            // Drive-in-URL-Path mode, e.g. "/c:" or "/c:/autoexec.bat"
+            ++driveLength;
+            secondChar = u':';
+        }
+        if (secondChar == u':') {
+            if (len > driveLength && name.at(driveLength) == u'/')
+                return driveLength + 1;     // absolute drive path, e.g. "c:/config.sys"
+            return driveLength;             // relative drive path, e.g. "c:" or "d:swapfile.sys"
+        }
+    }
+
+    return firstChar == u'/' ? 1 : 0;
 }
 
 //************* QDirPrivate
@@ -342,20 +354,119 @@ inline void QDirPrivate::sortFileList(QDir::SortFlags sort, const QFileInfoList 
     }
 }
 
+#ifndef QT_BOOTSTRAPPED
+/*! \internal
+
+    Returns \c true if the permissions flags set in \a filters match the
+    permissions of \a fileInfo; otherwise returns \c false.
+
+    If there are no permissions set in \a filters this method returns \c true.
+*/
+static bool checkPermissions(const QDirListing::DirEntry &dirEntry, QDir::Filters filters)
+{
+    const auto perms = filters & QDir::PermissionMask;
+    const bool filterByPermissions = perms != 0 && perms != QDir::PermissionMask;
+    if (filterByPermissions) {
+        const QFileInfo fileInfo = dirEntry.fileInfo();
+        if (filters.testFlags(QDir::Readable) && !fileInfo.isReadable())
+            return false;
+        if (filters.testFlags(QDir::Writable) && !fileInfo.isWritable())
+            return false;
+        if (filters.testFlags(QDir::Executable) && !fileInfo.isExecutable())
+            return false;
+    }
+    return true;
+}
+
+static bool checkDotOrDotDot(const QDirListing::DirEntry &dirEntry, QDir::Filters filters)
+{
+    const QString fileName = dirEntry.fileName();
+    if ((filters & QDir::NoDot) && fileName == u".")
+        return false;
+    if ((filters & QDir::NoDotDot) && fileName == u"..")
+        return false;
+    return true;
+}
+
+/*! \internal
+
+    Returns \c true if \a dirEntry matches the flags set in \a filters, otherwise
+    returns \c false. Note that this method only checks the flags in \a filters
+    that can't be represented by QDirListing::IteratorFlags, see toDirListingFlags().
+*/
+bool QDirPrivate::checkNonDirListingFlags(const QDirListing::DirEntry &dirEntry,
+                                          QDir::Filters filters)
+{
+    return checkPermissions(dirEntry, filters) && checkDotOrDotDot(dirEntry, filters);
+}
+
+static void appendIfMatchesNonDirListingFlags(const QDirListing::DirEntry &dirEntry,
+                                              QDir::Filters filters, QFileInfoList &l)
+{
+    if (QDirPrivate::checkNonDirListingFlags(dirEntry, filters))
+        l.emplace_back(dirEntry.fileInfo());
+}
+
+/*! \internal
+
+    Returns a set of QDirListing::IteratorFlags representing the flags in \a filters
+    that can be represented by QDirListing::IteratorFlags.
+
+    Note that not all QDir::Filter values are supported, some flags have to be checked
+    separately (see checkNonDirListingFlags()).
+*/
+QDirListing::IteratorFlags QDirPrivate::toDirListingFlags(QDir::Filters filters)
+{
+    if (filters == QDir::NoFilter)
+        filters = QDir::AllEntries;
+
+    using F = QDirListing::IteratorFlag;
+    QDirListing::IteratorFlags flags;
+    if (!(filters & QDir::Dirs) && !(filters & QDir::AllDirs))
+        flags |= F::ExcludeDirs;
+    if (!(filters & QDir::Files))
+        flags |= F::ExcludeFiles;
+    if (!(filters & QDir::NoSymLinks))
+        flags |= F::ResolveSymlinks;
+    if (filters & QDir::Hidden)
+        flags |= F::IncludeHidden;
+
+    if (!(filters & QDir::System))
+        flags |= F::ExcludeOther;
+    else
+        flags |= F::IncludeBrokenSymlinks; // QDir::System lists broken symlinks...
+
+
+    if (filters & QDir::AllDirs)
+        flags |= F::NoNameFiltersForDirs;
+    if (filters & QDir::CaseSensitive)
+        flags |= F::CaseSensitive;
+
+    // QDir::Filter has NoDot and NoDotDot; QDirListing has only one,
+    // F::IncludeDotAndDotDot. If either of the QDir::Filter values are
+    // not set, list both and use checkDotOrDotDot() to filter it later.
+    if (!(filters & QDir::NoDot) || !(filters & QDir::NoDotDot)) {
+        if (!(flags & F::ExcludeDirs)) // treat '.' and '..' as dirs
+            flags |= F::IncludeDotAndDotDot;
+    }
+
+    return flags;
+}
+
 inline void QDirPrivate::initFileLists(const QDir &dir) const
 {
     QMutexLocker locker(&fileCache.mutex);
     if (!fileCache.fileListsInitialized) {
         QFileInfoList l;
-        for (const auto &dirEntry : QDirListing(dir.path(), dir.nameFilters(),
-                                                dir.filter().toInt())) {
-            l.emplace_back(dirEntry.fileInfo());
-        }
+        QDirListing::IteratorFlags flags = toDirListingFlags(dir.filter());
+        for (const auto &dirEntry : QDirListing(dir.path(), dir.nameFilters(), flags))
+            appendIfMatchesNonDirListingFlags(dirEntry, dir.filter(), l);
 
         sortFileList(sort, l, &fileCache.files, &fileCache.fileInfos);
         fileCache.fileListsInitialized = true;
     }
 }
+#endif // !QT_BOOTSTRAPPED
 
 inline void QDirPrivate::clearCache(MetaDataClearing mode)
 {
@@ -680,9 +791,11 @@ QString QDir::absolutePath() const
     redundant "." or ".." elements.
 
     On systems that do not have symbolic links this function will
-    always return the same string that absolutePath() returns. If the
-    canonical path does not exist (normally due to dangling symbolic
-    links) canonicalPath() returns an empty string.
+    always return the same string that absolutePath() returns. This method
+    returns an empty string if the entry does not exist, is not reachable (for
+    example, the current user does not have access to a directory path), or an
+    error occurs while canonicalizing the path (normally due to dangling
+    symbolic links).
 
     Example:
 
@@ -970,7 +1083,7 @@ QString QDir::fromNativeSeparators(const QString &pathName)
 #endif
 }
 
-static QString qt_cleanPath(const QString &path, bool *ok = nullptr);
+static bool qt_cleanPath(QString *path);
 
 /*!
     Changes the QDir's directory to \a dirName.
@@ -992,7 +1105,8 @@ bool QDir::cd(const QString &dirName)
         return true;
     QString newPath;
     if (isAbsolutePath(dirName)) {
-        newPath = qt_cleanPath(dirName);
+        newPath = dirName;
+        qt_cleanPath(&newPath);
     } else {
         newPath = d->dirEntry.filePath();
         if (!newPath.endsWith(u'/'))
@@ -1001,9 +1115,7 @@ bool QDir::cd(const QString &dirName)
         if (dirName.indexOf(u'/') >= 0
             || dirName == ".."_L1
             || d->dirEntry.filePath() == u'.') {
-            bool ok;
-            newPath = qt_cleanPath(newPath, &ok);
-            if (!ok)
+            if (!qt_cleanPath(&newPath))
                 return false;
             /*
               If newPath starts with .., we convert it to absolute to
@@ -1205,8 +1317,6 @@ QDir::Filters QDir::filter() const
     \value Executable  List files for which the application has
                        execute access. The Executable value needs to be
                        combined with Dirs or Files.
-    \value Modified  Only list files that have been modified (ignored
-                     on Unix).
     \value Hidden  List hidden files (on Unix, files starting with a ".").
     \value System  List system files (on Unix, FIFOs, sockets and
                    device files are included; on Windows, \c {.lnk}
@@ -1216,6 +1326,7 @@ QDir::Filters QDir::filter() const
     \omitvalue TypeMask
     \omitvalue AccessMask
     \omitvalue PermissionMask
+    \omitvalue Modified
     \omitvalue NoFilter
 
     Functions that use Filter enum values to filter lists of files
@@ -1345,6 +1456,14 @@ QString QDir::operator[](qsizetype pos) const
     return d->fileCache.files[pos];
 }
 
+/*
+//! [entrylist_memory_spike]
+    For large directories this function may cause a memory spike because it
+    creates an instance of a \1 per each entry in the directory. Consider
+    using QDirListing if the goal is to iterate over the items one-by-one.
+//! [entrylist_memory_spike]
+*/
+
 /*!
     \overload
 
@@ -1361,6 +1480,8 @@ QString QDir::operator[](qsizetype pos) const
 
     \note To list symlinks that point to non existing files, \l System must be
      passed to the filter.
+
+    \include qdir.cpp {entrylist_memory_spike} {QString}
 
     \sa entryInfoList(), setNameFilters(), setSorting(), setFilter()
 */
@@ -1385,6 +1506,8 @@ QStringList QDir::entryList(Filters filters, SortFlags sort) const
     Returns an empty list if the directory is unreadable, does not
     exist, or if nothing matches the specification.
 
+    \include qdir.cpp {entrylist_memory_spike} {QFileInfo}
+
     \sa entryList(), setNameFilters(), setSorting(), setFilter(), isReadable(), exists()
 */
 QFileInfoList QDir::entryInfoList(Filters filters, SortFlags sort) const
@@ -1406,6 +1529,8 @@ QFileInfoList QDir::entryInfoList(Filters filters, SortFlags sort) const
 
     Returns an empty list if the directory is unreadable, does not
     exist, or if nothing matches the specification.
+
+    \include qdir.cpp {entrylist_memory_spike} {QString}
 
     \sa entryInfoList(), setNameFilters(), setSorting(), setFilter()
 */
@@ -1429,12 +1554,13 @@ QStringList QDir::entryList(const QStringList &nameFilters, Filters filters,
         }
     }
 
-    QDirListing dirList(d->dirEntry.filePath(), nameFilters, filters.toInt());
+    QDirListing::IteratorFlags flags = QDirPrivate::toDirListingFlags(filters);
+    QDirListing dirList(d->dirEntry.filePath(), nameFilters, flags);
     QStringList ret;
     if (needsSorting) {
         QFileInfoList l;
         for (const auto &dirEntry : dirList)
-            l.emplace_back(dirEntry.fileInfo());
+            appendIfMatchesNonDirListingFlags(dirEntry, filters, l);
         d->sortFileList(sort, l, &ret, nullptr);
     } else {
         for (const auto &dirEntry : dirList)
@@ -1457,6 +1583,8 @@ QStringList QDir::entryList(const QStringList &nameFilters, Filters filters,
     Returns an empty list if the directory is unreadable, does not
     exist, or if nothing matches the specification.
 
+    \include qdir.cpp {entrylist_memory_spike} {QFileInfo}
+
     \sa entryList(), setNameFilters(), setSorting(), setFilter(), isReadable(), exists()
 */
 QFileInfoList QDir::entryInfoList(const QStringList &nameFilters, Filters filters,
@@ -1475,8 +1603,9 @@ QFileInfoList QDir::entryInfoList(const QStringList &nameFilters, Filters filter
     }
 
     QFileInfoList l;
-    for (const auto &dirEntry : QDirListing(d->dirEntry.filePath(), nameFilters, filters.toInt()))
-        l.emplace_back(dirEntry.fileInfo());
+    const QDirListing::IteratorFlags flags = QDirPrivate::toDirListingFlags(filters);
+    for (const auto &dirEntry : QDirListing(d->dirEntry.filePath(), nameFilters, flags))
+        appendIfMatchesNonDirListingFlags(dirEntry, filters, l);
     QFileInfoList ret;
     d->sortFileList(sort, l, nullptr, &ret);
     return ret;
@@ -1484,26 +1613,41 @@ QFileInfoList QDir::entryInfoList(const QStringList &nameFilters, Filters filter
 #endif // !QT_BOOTSTRAPPED
 
 /*!
-    Creates a sub-directory called \a dirName.
+    Creates a sub-directory called \a dirName with the given \a permissions.
 
-    Returns \c true on success; otherwise returns \c false.
+    If \a permissions is \c std::nullopt (the default) this function will
+    set the default permissions.
 
-    If the directory already exists when this function is called, it will return \c false.
+    Returns \c true on success; returns \c false if the operation failed or
+    \a dirName already existed.
 
-    The permissions of the created directory are set to \a{permissions}.
+    If \a dirName already existed, this method won't change its permissions.
 
-    On POSIX systems the permissions are influenced by the value of \c umask.
+//! [dir-creation-mode-bits-unix]
+    On POSIX systems \a permissions are modified by the
+    \l{https://pubs.opengroup.org/onlinepubs/9799919799/functions/umask.html}{\c umask}
+    (file creation mask) of the current process, which means some permission
+    bits might be disabled.
+//! [dir-creation-mode-bits-unix]
 
-    On Windows the permissions are emulated using ACLs. These ACLs may be in non-canonical
-    order when the group is granted less permissions than others. Files and directories with
-    such permissions will generate warnings when the Security tab of the Properties dialog
-    is opened. Granting the group all permissions granted to others avoids such warnings.
+//! [windows-permissions-acls]
+    On Windows, by default, a new directory inherits its permissions from its
+    parent directory. \a permissions are emulated using ACLs. These ACLs may
+    be in non-canonical order when the group is granted less permissions than
+    others. Files and directories with such permissions will generate warnings
+    when the Security tab of the Properties dialog is opened. Granting the
+    group all permissions granted to others avoids such warnings.
+//! [windows-permissions-acls]
 
-    \sa rmdir()
+    \note Qt 6.10 added the \a permissions parameter. To get the old behavior
+    (using the default platform-specific permissions) of \c{mkdir(const QString &)}
+    set \a permissions to \c std::nullopt (the default). This new method also
+    transparently replaces the \c {mkdir(const QString &, QFile::Permissions)}
+    overload.
 
-    \since 6.3
+    \sa rmdir(), mkpath(), rmpath()
 */
-bool QDir::mkdir(const QString &dirName, QFile::Permissions permissions) const
+bool QDir::mkdir(const QString &dirName, std::optional<QFile::Permissions> permissions) const
 {
     Q_D(const QDir);
 
@@ -1514,30 +1658,8 @@ bool QDir::mkdir(const QString &dirName, QFile::Permissions permissions) const
 
     QString fn = filePath(dirName);
     if (!d->fileEngine)
-        return QFileSystemEngine::createDirectory(QFileSystemEntry(fn), false, permissions);
+        return QFileSystemEngine::mkdir(QFileSystemEntry(fn), permissions);
     return d->fileEngine->mkdir(fn, false, permissions);
-}
-
-/*!
-    \overload
-    Creates a sub-directory called \a dirName with default permissions.
-
-    On POSIX systems the default is to grant all permissions allowed by \c umask.
-    On Windows, the new directory inherits its permissions from its parent directory.
-*/
-bool QDir::mkdir(const QString &dirName) const
-{
-    Q_D(const QDir);
-
-    if (dirName.isEmpty()) {
-        qWarning("QDir::mkdir: Empty or null file name");
-        return false;
-    }
-
-    QString fn = filePath(dirName);
-    if (!d->fileEngine)
-        return QFileSystemEngine::createDirectory(QFileSystemEntry(fn), false);
-    return d->fileEngine->mkdir(fn, false);
 }
 
 /*!
@@ -1560,24 +1682,37 @@ bool QDir::rmdir(const QString &dirName) const
 
     QString fn = filePath(dirName);
     if (!d->fileEngine)
-        return QFileSystemEngine::removeDirectory(QFileSystemEntry(fn), false);
+        return QFileSystemEngine::rmdir(QFileSystemEntry(fn));
 
     return d->fileEngine->rmdir(fn, false);
 }
 
 /*!
-    Creates the directory path \a dirPath.
+    Creates a directory named \a dirPath.
 
-    The function will create all parent directories necessary to
-    create the directory.
+    If \a dirPath doesn't already exist, this method will create it - along with
+    any nonexistent parent directories - with \a permissions.
 
-    Returns \c true if successful; otherwise returns \c false.
+    If \a dirPath already existed, this method won't change its permissions;
+    the same goes for any already existing parent directories.
 
-    If the path already exists when this function is called, it will return true.
+    If \a permissions is \c std::nullopt (the default value) this function will
+    set the default permissions.
 
-    \sa rmpath()
+    Returns \c true on success or if \a dirPath already existed; otherwise
+    returns \c false.
+
+    \include qdir.cpp dir-creation-mode-bits-unix
+
+    \include qdir.cpp windows-permissions-acls
+
+    \note Qt 6.10 added the \a permissions parameter. To get the old behavior
+    (using the default platform-specific permissions) of \c{mkpath(const QString &)}
+    set \a permissions to \c std::nullopt (the default).
+
+    \sa rmpath(), mkdir(), rmdir()
 */
-bool QDir::mkpath(const QString &dirPath) const
+bool QDir::mkpath(const QString &dirPath, std::optional<QFile::Permissions> permissions) const
 {
     Q_D(const QDir);
 
@@ -1588,8 +1723,8 @@ bool QDir::mkpath(const QString &dirPath) const
 
     QString fn = filePath(dirPath);
     if (!d->fileEngine)
-        return QFileSystemEngine::createDirectory(QFileSystemEntry(fn), true);
-    return d->fileEngine->mkdir(fn, true);
+        return QFileSystemEngine::mkpath(QFileSystemEntry(fn), permissions);
+    return d->fileEngine->mkdir(fn, true, permissions);
 }
 
 /*!
@@ -1614,7 +1749,7 @@ bool QDir::rmpath(const QString &dirPath) const
 
     QString fn = filePath(dirPath);
     if (!d->fileEngine)
-        return QFileSystemEngine::removeDirectory(QFileSystemEntry(fn), true);
+        return QFileSystemEngine::rmpath(QFileSystemEntry(fn));
     return d->fileEngine->rmdir(fn, true);
 }
 
@@ -1644,29 +1779,43 @@ bool QDir::removeRecursively()
     if (!d_ptr->exists())
         return true;
 
-    bool success = true;
-    const QString dirPath = path();
-    // not empty -- we must empty it first
-    for (const auto &dirEntry : QDirListing(dirPath, QDirListing::IteratorFlag::IncludeHidden)) {
-        const QString &filePath = dirEntry.filePath();
-        bool ok;
-        if (dirEntry.isDir() && !dirEntry.isSymLink()) {
-            ok = QDir(filePath).removeRecursively(); // recursive
-        } else {
-            ok = QFile::remove(filePath);
-            if (!ok) { // Read-only files prevent directory deletion on Windows, retry with Write permission.
-                const QFile::Permissions permissions = QFile::permissions(filePath);
-                if (!(permissions & QFile::WriteUser))
-                    ok = QFile::setPermissions(filePath, permissions | QFile::WriteUser)
-                        && QFile::remove(filePath);
-            }
-        }
-        if (!ok)
-            success = false;
-    }
+    struct DirInfo
+    {
+        QString path;
+        bool seen;
+    };
 
-    if (success)
-        success = rmdir(absolutePath());
+    bool success = true;
+
+    std::stack<DirInfo, std::vector<DirInfo>> dirsToRemove;
+    dirsToRemove.push({absolutePath(), false});
+
+    while (!dirsToRemove.empty()) {
+        auto &info = dirsToRemove.top();
+        if (!info.seen) {
+            info.seen = true;
+            for (const auto &dirEntry : QDirListing(info.path, QDirListing::IteratorFlag::IncludeHidden)) {
+                const QString &filePath = dirEntry.filePath();
+                if (dirEntry.isDir() && !dirEntry.isSymLink()) {
+                    dirsToRemove.push({filePath, false});
+                } else {
+                    bool ok = QFile::remove(filePath);
+                    if (!ok) { // Read-only files prevent directory deletion on Windows, retry with Write permission.
+                        const QFile::Permissions permissions = QFile::permissions(filePath);
+                        if (!(permissions & QFile::WriteUser))
+                            ok = QFile::setPermissions(filePath, permissions | QFile::WriteUser)
+                                    && QFile::remove(filePath);
+                    }
+                    if (!ok)
+                        success = false;
+                }
+            }
+        } else {
+            if (!rmdir(info.path))
+                success = false;
+            dirsToRemove.pop();
+        }
+    }
 
     return success;
 }
@@ -1750,7 +1899,7 @@ bool QDir::isRoot() const
 */
 
 /*!
-   \fn bool QDir::isAbsolutePath(const QString &)
+   \fn bool QDir::isAbsolutePath(const QString &path)
 
     Returns \c true if \a path is absolute; returns \c false if it is
     relative.
@@ -1829,7 +1978,12 @@ bool comparesEqual(const QDir &lhs, const QDir &rhs)
         if (d->fileEngine.get() != other->fileEngine.get()) // one is native, the other is a custom file-engine
             return false;
 
-        sensitive = QFileSystemEngine::isCaseSensitive() ? Qt::CaseSensitive : Qt::CaseInsensitive;
+        QOrderedMutexLocker locker(&d->fileCache.mutex, &other->fileCache.mutex);
+        const bool thisCaseSensitive = QFileSystemEngine::isCaseSensitive(d->dirEntry, d->fileCache.metaData);
+        if (thisCaseSensitive != QFileSystemEngine::isCaseSensitive(other->dirEntry, other->fileCache.metaData))
+            return false;
+
+        sensitive = thisCaseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
     } else {
         if (d->fileEngine->caseSensitive() != other->fileEngine->caseSensitive())
             return false;
@@ -1874,9 +2028,7 @@ QDir &QDir::operator=(const QDir &dir)
 /*!
     \fn void QDir::swap(QDir &other)
     \since 5.0
-
-    Swaps this QDir instance with \a other. This function is very fast
-    and never fails.
+    \memberswap{QDir instance}
 */
 
 /*!
@@ -1970,8 +2122,13 @@ bool QDir::exists(const QString &name) const
 bool QDir::isEmpty(Filters filters) const
 {
     Q_D(const QDir);
-    QDirListing dirList(d->dirEntry.filePath(), d->nameFilters, filters.toInt());
-    return dirList.cbegin() == dirList.cend();
+
+    QDirListing::IteratorFlags flags = QDirPrivate::toDirListingFlags(filters);
+    for (const auto &dirEntry : QDirListing(d->dirEntry.filePath(), d->nameFilters, flags)) {
+        if (QDirPrivate::checkNonDirListingFlags(dirEntry, filters))
+            return false;
+    }
+    return true;
 }
 #endif // !QT_BOOTSTRAPPED
 
@@ -2197,181 +2354,189 @@ bool QDir::match(const QString &filter, const QString &fileName)
 }
 #endif // QT_CONFIG(regularexpression)
 
+static qsizetype findStartOfNonNormalizedPath(const QChar *in, qsizetype i, qsizetype n,
+                                              QDirPrivate::PathNormalizations flags) noexcept
+{
+    // Scan the input for a "." or ".." segment. If there isn't any, we may not
+    // need to modify this path at all. Also scan for "//" segments, which
+    // will be normalized if the path is local.
+    const bool isRemote = flags.testAnyFlag(QDirPrivate::RemotePath);
+    for (bool lastWasSlash = true; i < n; ++i) {
+        if (lastWasSlash && in[i] == u'.') {
+            if (i + 1 == n || in[i + 1] == u'/')
+                break;
+            if (in[i + 1] == u'.' && (i + 2 == n || in[i + 2] == u'/'))
+                break;
+        }
+        if (!isRemote && lastWasSlash && in[i] == u'/' && i > 0) {
+            // backtrack one, so the algorithm below gobbles up the remaining
+            // slashes
+            --i;
+            break;
+        }
+        lastWasSlash = in[i] == u'/';
+    }
+    return i;
+}
+
+bool qt_isPathNormalized(const QString &path, QDirPrivate::PathNormalizations flags) noexcept
+{
+    const qsizetype prefixLength = rootLength(path, flags);
+    qsizetype where = findStartOfNonNormalizedPath(path.constBegin(), prefixLength, path.size(), flags);
+    return where == path.size();
+}
+
 /*!
     \internal
-    Returns \a path with redundant directory separators removed,
-    and "."s and ".."s resolved (as far as possible).
+
+    Updates \a path with redundant directory separators removed, and "."s and
+    ".."s resolved (as far as possible). It returns \c false if there were ".."
+    segments left over, attempt to go up past the root (only applies to
+    absolute paths), or \c true otherwise.
 
     This method is shared with QUrl, so it doesn't deal with QDir::separator(),
     nor does it remove the trailing slash, if any.
+
+    When dealing with URLs, we are following the "Remove dot segments"
+    algorithm from https://www.ietf.org/rfc/rfc3986.html#section-5.2.4
+    URL mode differs from local path mode in these ways:
+    1) it can set *path to empty ("." becomes "")
+    2) directory path outputs end in / ("a/.." becomes "a/" instead of "a")
+    3) a sequence of "//" is treated as multiple path levels ("a/b//.." becomes
+       "a/b/" and "a/b//../.." becomes "a/"), which matches the behavior
+       observed in web browsers.
+
+    As a Qt extension, for local URLs we treat multiple slashes as one slash.
 */
-QString qt_normalizePathSegments(const QString &name, QDirPrivate::PathNormalizations flags, bool *ok)
+bool qt_normalizePathSegments(QString *path, QDirPrivate::PathNormalizations flags)
 {
-    const bool allowUncPaths = flags.testAnyFlag(QDirPrivate::AllowUncPaths);
     const bool isRemote = flags.testAnyFlag(QDirPrivate::RemotePath);
-    const qsizetype len = name.size();
+    const qsizetype prefixLength = rootLength(*path, flags);
 
-    if (ok)
-        *ok = false;
+    // RFC 3986 says: "The input buffer is initialized with the now-appended
+    // path components and the output buffer is initialized to the empty
+    // string."
+    const QChar *in = path->constBegin();
 
-    if (len == 0)
-        return name;
+    qsizetype n = path->size();
+    qsizetype i = findStartOfNonNormalizedPath(in, prefixLength, n, flags);
+    if (i == n)
+        return true;
 
-    qsizetype i = len - 1;
-    QVarLengthArray<char16_t> outVector(len);
-    qsizetype used = len;
-    char16_t *out = outVector.data();
-    const char16_t *p = reinterpret_cast<const char16_t *>(name.data());
-    const char16_t *prefix = p;
-    qsizetype up = 0;
+    QChar *out = path->data();  // detaches
+    const QChar *start = out + prefixLength;
+    const QChar *end = out + path->size();
+    out += i;
+    in = out;
 
-    const qsizetype prefixLength = rootLength(name, allowUncPaths);
-    p += prefixLength;
-    i -= prefixLength;
+    // We implement a modified algorithm compared to RFC 3986, for efficiency.
+    bool ok = true;
+    do {
+#if 0   // to see in the debugger
+        QString output = QStringView(path->constBegin(), out).toString();
+        QStringView input(in, end);
+#endif
 
-    // replicate trailing slash (i > 0 checks for emptiness of input string p)
-    // except for remote paths because there can be /../ or /./ ending
-    if (i > 0 && p[i] == '/' && !isRemote) {
-        out[--used] = '/';
-        --i;
-    }
+        // First, copy the preceding slashes, so we can look at the segment's
+        // content. If the path is part of a URL, we copy all slashes, otherwise
+        // just one.
+        if (in[0] == u'/') {
+            *out++ = *in++;
+            while (in < end && in[0] == u'/') {
+                if (isRemote)
+                    *out++ = *in++;
+                else
+                    ++in; // Skip multiple slashes for local URLs
 
-    auto isDot = [](const char16_t *p, qsizetype i) {
-        return i > 1 && p[i - 1] == '.' && p[i - 2] == '/';
-    };
-    auto isDotDot = [](const char16_t *p, qsizetype i) {
-        return i > 2 && p[i - 1] == '.' && p[i - 2] == '.' && p[i - 3] == '/';
-    };
+                // Note: we may exit this loop with in == end, in which case we
+                // *shouldn't* dereference *in. But since we are pointing to a
+                // detached, non-empty QString, we know there's a u'\0' at the
+                // end, so dereferencing is safe.
+            }
+        }
 
-    while (i >= 0) {
-        // copy trailing slashes for remote urls
-        if (p[i] == '/') {
-            if (isRemote && !up) {
-                if (isDot(p, i)) {
-                    i -= 2;
+        // Is this path segment either "." or ".."?
+        enum { Nothing, Dot, DotDot } type = Nothing;
+        if (in[0] == u'.') {
+            if (in + 1 == end || in[1] == u'/')
+                type = Dot;
+            else if (in[1] == u'.' && (in + 2 == end || in[2] == u'/'))
+                type = DotDot;
+        }
+        if (type == Nothing) {
+            // If it is neither, then we copy this segment.
+            while (in < end && in[0] != u'/')
+                *out++ = *in++;
+            continue;
+        }
+
+        // Otherwise, we skip it and remove preceding slashes (if
+        // any, exactly one if part of a URL, all otherwise) from the
+        // output. If it is "..", we remove the segment before that and
+        // preceding slashes too in a similar fashion, if they are there.
+        if (type == DotDot) {
+            if (Q_UNLIKELY(out == start)) {
+                // we can't go further up from here, so we "re-root"
+                // without cleaning this segment
+                ok = false;
+                if (!isRemote) {
+                    *out++ = u'.';
+                    *out++ = u'.';
+                    if (in + 2 != end) {
+                        Q_ASSERT(in[2] == u'/');
+                        *out++ = u'/';
+                        ++in;
+                    }
+                    start = out;
+                    in += 2;
                     continue;
                 }
-                out[--used] = p[i];
             }
 
-            --i;
-            continue;
+            if (out > start)
+                --out; // backtrack the first dot
+            // backtrack the previous path segment
+            while (out > start && out[-1] != u'/')
+                --out;
+            in += 2;    // the two dots
+        } else {
+            ++in;       // the one dot
         }
 
-        // remove current directory
-        if (p[i] == '.' && (i == 0 || p[i-1] == '/')) {
-            --i;
-            continue;
+        // Not at 'end' yet, prepare for the next loop iteration by backtracking one slash.
+        // E.g.: /a/b/../c    >>> /a/b/../c
+        //          ^out            ^out
+        // the next iteration will copy '/c' to the output buffer >>> /a/c
+        if (in != end && out > start && out[-1] == u'/')
+            --out;
+        if (out == start) {
+            // We've reached the root. Make sure we don't turn a relative path
+            // to absolute or, in the case of local paths that are already
+            // absolute, into UNC.
+            // Note: this will turn ".//a" into "a" even for URLs!
+            if (in != end && in[0] == u'/')
+                ++in;
+            while (prefixLength == 0 && in != end && in[0] == u'/')
+                ++in;
         }
+    } while (in < end);
 
-        // detect up dir
-        if (i >= 1 && p[i] == '.' && p[i-1] == '.' && (i < 2 || p[i - 2] == '/')) {
-            ++up;
-            i -= i >= 2 ? 3 : 2;
+    path->truncate(out - path->constBegin());
+    if (!isRemote && path->isEmpty())
+        *path = u"."_s;
 
-            if (isRemote) {
-                // moving up should consider empty path segments too (/path//../ -> /path/)
-                while (i > 0 && up && p[i] == '/') {
-                    --up;
-                    --i;
-                }
-            }
-            continue;
-        }
-
-        // prepend a slash before copying when not empty
-        if (!up && used != len && out[used] != '/')
-            out[--used] = '/';
-
-        // skip or copy
-        while (i >= 0) {
-            if (p[i] == '/') {
-                // copy all slashes as is for remote urls if they are not part of /./ or /../
-                if (isRemote && !up) {
-                    while (i > 0 && p[i] == '/' && !isDotDot(p, i)) {
-
-                        if (isDot(p, i)) {
-                            i -= 2;
-                            continue;
-                        }
-
-                        out[--used] = p[i];
-                        --i;
-                    }
-
-                    // in case of /./, jump over
-                    if (isDot(p, i))
-                        i -= 2;
-
-                    break;
-                }
-
-                --i;
-                break;
-            }
-
-            // actual copy
-            if (!up)
-                out[--used] = p[i];
-            --i;
-        }
-
-        // decrement up after copying/skipping
-        if (up)
-            --up;
-    }
-
-    // Indicate failure when ".." are left over for an absolute path.
-    if (ok)
-        *ok = prefixLength == 0 || up == 0;
-
-    // add remaining '..'
-    while (up && !isRemote) {
-        if (used != len && out[used] != '/') // is not empty and there isn't already a '/'
-            out[--used] = '/';
-        out[--used] = '.';
-        out[--used] = '.';
-        --up;
-    }
-
-    bool isEmpty = used == len;
-
-    if (prefixLength) {
-        if (!isEmpty && out[used] == '/') {
-            // Even though there is a prefix the out string is a slash. This happens, if the input
-            // string only consists of a prefix followed by one or more slashes. Just skip the slash.
-            ++used;
-        }
-        for (qsizetype i = prefixLength - 1; i >= 0; --i)
-            out[--used] = prefix[i];
-    } else {
-        if (isEmpty) {
-            // After resolving the input path, the resulting string is empty (e.g. "foo/.."). Return
-            // a dot in that case.
-            out[--used] = '.';
-        } else if (out[used] == '/') {
-            // After parsing the input string, out only contains a slash. That happens whenever all
-            // parts are resolved and there is a trailing slash ("./" or "foo/../" for example).
-            // Prepend a dot to have the correct return value.
-            out[--used] = '.';
-        }
-    }
-
-    // If path was not modified return the original value
-    if (used == 0)
-        return name;
-    return QStringView(out + used, len - used).toString();
+    // we return false only if the path was absolute
+    return ok || prefixLength == 0;
 }
 
-static QString qt_cleanPath(const QString &path, bool *ok)
+static bool qt_cleanPath(QString *path)
 {
-    if (path.isEmpty()) {
-        Q_ASSERT(!ok); // The only caller passing ok knows its path is non-empty
-        return path;
-    }
+    if (path->isEmpty())
+        return true;
 
-    QString name = QDir::fromNativeSeparators(path);
-    QString ret = qt_normalizePathSegments(name, OSSupportsUncPaths ? QDirPrivate::AllowUncPaths : QDirPrivate::DefaultNormalization, ok);
+    QString &ret = *path;
+    ret = QDir::fromNativeSeparators(ret);
+    bool ok = qt_normalizePathSegments(&ret, QDirPrivate::DefaultNormalization);
 
     // Strip away last slash except for root directories
     if (ret.size() > 1 && ret.endsWith(u'/')) {
@@ -2381,7 +2546,7 @@ static QString qt_cleanPath(const QString &path, bool *ok)
             ret.chop(1);
     }
 
-    return ret;
+    return ok;
 }
 
 /*!
@@ -2398,7 +2563,9 @@ static QString qt_cleanPath(const QString &path, bool *ok)
 */
 QString QDir::cleanPath(const QString &path)
 {
-    return qt_cleanPath(path);
+    QString ret = path;
+    qt_cleanPath(&ret);
+    return ret;
 }
 
 /*!
@@ -2464,7 +2631,6 @@ QDebug operator<<(QDebug debug, QDir::Filters filters)
         if (filters & QDir::Readable) flags << "Readable"_L1;
         if (filters & QDir::Writable) flags << "Writable"_L1;
         if (filters & QDir::Executable) flags << "Executable"_L1;
-        if (filters & QDir::Modified) flags << "Modified"_L1;
         if (filters & QDir::Hidden) flags << "Hidden"_L1;
         if (filters & QDir::System) flags << "System"_L1;
         if (filters & QDir::CaseSensitive) flags << "CaseSensitive"_L1;

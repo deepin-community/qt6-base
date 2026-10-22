@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPROPERTYPRIVATE_H
 #define QPROPERTYPRIVATE_H
@@ -30,8 +31,8 @@ class QBindingStorage;
 template<typename Class, typename T, auto Offset, auto Setter, auto Signal, auto Getter>
 class QObjectCompatProperty;
 
-struct QBindingObserverPtr;
-using PendingBindingObserverList = QVarLengthArray<QBindingObserverPtr>;
+class QPropertyBindingPrivatePtr;
+using PendingBindingObserverList = QVarLengthArray<QPropertyBindingPrivatePtr>;
 
 namespace QtPrivate {
 // QPropertyBindingPrivatePtr operates on a RefCountingMixin solely so that we can inline

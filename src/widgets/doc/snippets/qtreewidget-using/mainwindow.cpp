@@ -3,7 +3,7 @@
 
 #include <QtWidgets>
 
-#include "mainwindow.h"
+#include "../include/mainwindow.h"
 
 MainWindow::MainWindow()
 {
@@ -30,18 +30,20 @@ MainWindow::MainWindow()
     menuBar()->addMenu(itemsMenu);
 
 /*  For convenient quoting:
-//! [0]
+    //! [0]
     QTreeWidget *treeWidget = new QTreeWidget(this);
-//! [0]
+    //! [0]
 */
     treeWidget = new QTreeWidget(this);
-//! [1]
+    //! [1]
     treeWidget->setColumnCount(2);
-//! [1] //! [2]
+    //! [1]
+
+    //! [2]
     QStringList headers;
     headers << tr("Subject") << tr("Default");
     treeWidget->setHeaderLabels(headers);
-//! [2]
+    //! [2]
 
     connect(quitAction, &QAction::triggered, this, &QWidget::close);
     connect(ascendingAction, &QAction::triggered, this, &MainWindow::sortAscending);
@@ -62,23 +64,23 @@ MainWindow::MainWindow()
 
 void MainWindow::setupTreeItems()
 {
-//! [3]
+    //! [3]
     QTreeWidgetItem *cities = new QTreeWidgetItem(treeWidget);
     cities->setText(0, tr("Cities"));
     QTreeWidgetItem *osloItem = new QTreeWidgetItem(cities);
     osloItem->setText(0, tr("Oslo"));
     osloItem->setText(1, tr("Yes"));
-//! [3]
+    //! [3]
 
     (new QTreeWidgetItem(cities))->setText(0, tr("Stockholm"));
     (new QTreeWidgetItem(cities))->setText(0, tr("Helsinki"));
     (new QTreeWidgetItem(cities))->setText(0, tr("Copenhagen"));
 
-//! [4] //! [5]
+    //! [4] //! [5]
     QTreeWidgetItem *planets = new QTreeWidgetItem(treeWidget, cities);
-//! [4]
+    //! [4]
     planets->setText(0, tr("Planets"));
-//! [5]
+    //! [5]
     (new QTreeWidgetItem(planets))->setText(0, tr("Mercury"));
     (new QTreeWidgetItem(planets))->setText(0, tr("Venus"));
 
@@ -106,7 +108,7 @@ void MainWindow::findItems()
     for (QTreeWidgetItem *item : items)
         item->setSelected(false);
 
-//! [7]
+    //! [7]
     const QList<QTreeWidgetItem *> found = treeWidget->findItems(
         itemText, Qt::MatchWildcard);
 
@@ -114,7 +116,7 @@ void MainWindow::findItems()
         item->setSelected(true);
         // Show the item->text(0) for each item.
     }
-//! [7]
+    //! [7]
 }
 
 void MainWindow::insertItem()
@@ -130,15 +132,15 @@ void MainWindow::insertItem()
     if (itemText.isEmpty())
         return;
 
-//! [8]
+    //! [8]
     QTreeWidgetItem *parent = currentItem->parent();
     QTreeWidgetItem *newItem;
     if (parent)
         newItem = new QTreeWidgetItem(parent, treeWidget->currentItem());
     else
-//! [8] //! [9]
+    //! [8] //! [9]
         newItem = new QTreeWidgetItem(treeWidget, treeWidget->currentItem());
-//! [9]
+    //! [9]
 
     newItem->setText(0, itemText);
 }
@@ -150,7 +152,7 @@ void MainWindow::removeItem()
     if (!currentItem)
         return;
 
-//! [10]
+    //! [10]
     QTreeWidgetItem *parent = currentItem->parent();
     int index;
 
@@ -160,9 +162,8 @@ void MainWindow::removeItem()
     } else {
         index = treeWidget->indexOfTopLevelItem(treeWidget->currentItem());
         delete treeWidget->takeTopLevelItem(index);
-//! [10] //! [11]
     }
-//! [11]
+    //! [10]
 }
 
 void MainWindow::sortAscending()

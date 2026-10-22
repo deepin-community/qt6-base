@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdial.h"
 
@@ -40,7 +41,7 @@ public:
     uint wrapping : 1;
     uint doNotEmit : 1;
 
-    int valueFromPoint(const QPoint &) const;
+    int valueFromPoint(const QPointF &) const;
     double angle(const QPoint &, const QPoint &) const;
     void init();
     virtual int bound(int val) const override;
@@ -103,7 +104,7 @@ void QDial::initStyleOption(QStyleOptionSlider *option) const
     option->tickInterval = notchSize();
 }
 
-int QDialPrivate::valueFromPoint(const QPoint &p) const
+int QDialPrivate::valueFromPoint(const QPointF &p) const
 {
     Q_Q(const QDial);
     double yy = q->height()/2.0 - p.y();
@@ -143,7 +144,7 @@ int QDialPrivate::valueFromPoint(const QPoint &p) const
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-dial.png
+    \image fusion-dial.png {Round dial with notches}
 
     QDial is used when the user needs to control a value within a
     program-definable range, and the range either wraps around
@@ -246,7 +247,7 @@ void QDial::mousePressEvent(QMouseEvent *e)
         return;
     }
     e->accept();
-    setSliderPosition(d->valueFromPoint(e->position().toPoint()));
+    setSliderPosition(d->valueFromPoint(e->position()));
     // ### This isn't quite right,
     // we should be doing a hit test and only setting this if it's
     // the actual dial thingie (similar to what QSlider does), but we have no
@@ -268,7 +269,7 @@ void QDial::mouseReleaseEvent(QMouseEvent * e)
         return;
     }
     e->accept();
-    setValue(d->valueFromPoint(e->position().toPoint()));
+    setValue(d->valueFromPoint(e->position()));
     setSliderDown(false);
 }
 
@@ -286,7 +287,7 @@ void QDial::mouseMoveEvent(QMouseEvent * e)
     }
     e->accept();
     d->doNotEmit = true;
-    setSliderPosition(d->valueFromPoint(e->position().toPoint()));
+    setSliderPosition(d->valueFromPoint(e->position()));
     d->doNotEmit = false;
 }
 

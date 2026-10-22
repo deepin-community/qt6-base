@@ -16,7 +16,7 @@
     \title The Animation Framework
     \ingroup qt-gui-concepts
 
-    \brief An overview of the Animation Framework
+    \brief An overview of the Animation Framework.
 
     \ingroup frameworks-technologies
 
@@ -36,7 +36,7 @@
     The following diagram shows the most important classes provided by the
     framework:
 
-    \image animations-architecture.png
+    \image animations-architecture.png "The Animation Framework class hierarchy."
 
     It includes the QAbstractAnimation class, which provides the
     necessary foundation for animations. This class defines the
@@ -47,7 +47,7 @@
     The framework further provides the QVariantAnimation and
     QAnimationGroup classes, which build on their base case, QAbstractAnimation.
     Next in the hierarchy is QPropertyAnimation, which is derived from
-    QVariantAnmiation, and it lets you animate a Qt property of a widget or
+    QVariantAnimation, and it lets you animate a Qt property of a widget or
     QObject. The class performs interpolation on the property value using an
     easing curve. With these in place, you just need a QObject class with a
     Qt property value that you can animate.
@@ -91,7 +91,12 @@
     The following example demonstrates how you can animate a QPushButton
     widget:
 
-    \snippet code/src_corelib_animation_qpropertyanimation.cpp 0
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp includes
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp class_decl
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_impl
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp first_example
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_close
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp main
 
     The example animates the \c pos Qt property of a QPushButton, to move
     it from the top--left corner of the screen to the end position (250, 250),
@@ -100,7 +105,7 @@
     It uses the linear interpolation method to control the speed of
     animation between the start and end values. Try adding another value
     in--between the start and end value to see how they are interpolated.
-    This time use the QPropertyAnimation::setKeyValueAt function to add
+    This time use the QPropertyAnimation::setKeyValueAt() function to add
     these values:
 
     \code
@@ -174,7 +179,9 @@
     path.
 
 
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_impl
     \snippet code/src_corelib_animation_qpropertyanimation.cpp easing-curve
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_close
 
     In this example, the animation follows a curve that makes the
     \c button bounce like a ball. QEasingCurve offers a large collection of curves
@@ -199,13 +206,17 @@
     The two following examples demonstrate the use of both
     QSequentialAnimationGroup and QParallelAnimationGroup:
 
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_impl
     \snippet code/src_corelib_animation_qpropertyanimation.cpp animation-group1
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_close
 
     A parallel group plays more than one animation at the same time.
     Its \l{QAbstractAnimation::}{start()} function starts all
     animations that are part of the group.
 
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_impl
     \snippet code/src_corelib_animation_qpropertyanimation.cpp animation-group2
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_close
 
     As the name suggests, a QSequentialAnimationGroup plays
     its animations in sequence. It starts the next animation in
@@ -225,7 +236,12 @@
     independent QPropertyAnimation has the QApplication instance as its
     parent:
 
-    \snippet code/src_corelib_animation_qpropertyanimation.cpp 0
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp includes
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp class_decl
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_impl
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp first_example
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_close
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp main
 
     \note You can also control the animation's lifespan by choosing a
     \l{QAbstractAnimation::DeletionPolicy}{delete policy} while starting it.

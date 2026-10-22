@@ -1,14 +1,12 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QARRAYDATAPOINTER_H
 #define QARRAYDATAPOINTER_H
 
 #include <QtCore/qarraydataops.h>
 #include <QtCore/qcontainertools_impl.h>
-
-#include <QtCore/q20functional.h>
-#include <QtCore/q20memory.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -21,34 +19,38 @@ private:
 
 public:
     enum {
-        pass_parameter_by_value =
-                std::is_arithmetic<T>::value || std::is_pointer<T>::value || std::is_enum<T>::value
+        pass_parameter_by_value = std::disjunction_v<
+                                    std::is_arithmetic<T>,
+                                    std::is_pointer<T>,
+                                    std::is_enum<T>
+                                  >,
     };
 
     typedef typename std::conditional<pass_parameter_by_value, T, const T &>::type parameter_type;
 
     Q_NODISCARD_CTOR
-    constexpr QArrayDataPointer() noexcept
-        : d(nullptr), ptr(nullptr), size(0)
-    {
-    }
+    constexpr QArrayDataPointer() = default;
 
     Q_NODISCARD_CTOR
     QArrayDataPointer(const QArrayDataPointer &other) noexcept
-        : d(other.d), ptr(other.ptr), size(other.size)
+        : QArrayDataPointer(other.d, other.ptr, other.size)
     {
         ref();
     }
 
     Q_NODISCARD_CTOR
     constexpr QArrayDataPointer(Data *header, T *adata, qsizetype n = 0) noexcept
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
+        : ptr(adata), size(n), d(header)
+#else
         : d(header), ptr(adata), size(n)
+#endif
     {
     }
 
     Q_NODISCARD_CTOR
-    explicit QArrayDataPointer(std::pair<QTypedArrayData<T> *, T *> adata, qsizetype n = 0) noexcept
-        : d(adata.first), ptr(adata.second), size(n)
+    explicit QArrayDataPointer(QTypedArrayAllocationResult<T> adata, qsizetype n = 0) noexcept
+        : QArrayDataPointer(adata.header, adata.ptr, n)
     {
     }
 
@@ -75,49 +77,39 @@ public:
 
     Q_NODISCARD_CTOR
     QArrayDataPointer(QArrayDataPointer &&other) noexcept
-        : d(std::exchange(other.d, nullptr)),
-          ptr(std::exchange(other.ptr, nullptr)),
-          size(std::exchange(other.size, 0))
+        : QArrayDataPointer(std::exchange(other.d, nullptr),
+                            std::exchange(other.ptr, nullptr),
+                            std::exchange(other.size, 0))
     {
     }
 
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QArrayDataPointer)
 
-    DataOps &operator*() noexcept
+    DataOps operator*() noexcept
     {
-        return *static_cast<DataOps *>(this);
+        return DataOps(*this);
     }
 
-    DataOps *operator->() noexcept
+    DataOps operator->() noexcept
     {
-        return static_cast<DataOps *>(this);
-    }
-
-    const DataOps &operator*() const noexcept
-    {
-        return *static_cast<const DataOps *>(this);
-    }
-
-    const DataOps *operator->() const noexcept
-    {
-        return static_cast<const DataOps *>(this);
+        return DataOps(*this);
     }
 
     ~QArrayDataPointer()
     {
         if (!deref()) {
             (*this)->destroyAll();
-            free(d);
+            Data::deallocate(d);
         }
     }
 
-    bool isNull() const noexcept
+    constexpr bool isNull() const noexcept
     {
         return !ptr;
     }
 
-    T *data() noexcept { return ptr; }
-    const T *data() const noexcept { return ptr; }
+    T *data() noexcept { T *p = ptr; if (size) Q_PRESUME(p); return p; }
+    const T *data() const noexcept { T *p = ptr; if (size) Q_PRESUME(p); return p; }
 
     T *begin() noexcept { return data(); }
     T *end() noexcept { return data() + size; }
@@ -320,98 +312,6 @@ public:
         this->ptr = res;
     }
 
-    template <typename InputIterator, typename Projection = q20::identity>
-    void assign(InputIterator first, InputIterator last, Projection proj = {})
-    {
-        // This function only provides the basic exception guarantee.
-        constexpr bool IsFwdIt = std::is_convertible_v<
-                typename std::iterator_traits<InputIterator>::iterator_category,
-                std::forward_iterator_tag>;
-        constexpr bool IsIdentity = std::is_same_v<Projection, q20::identity>;
-
-        if constexpr (IsFwdIt) {
-            const qsizetype n = std::distance(first, last);
-            if (needsDetach() || n > constAllocatedCapacity()) {
-                QArrayDataPointer allocated(detachCapacity(n));
-                swap(allocated);
-            }
-        } else if (needsDetach()) {
-            QArrayDataPointer allocated(allocatedCapacity());
-            swap(allocated);
-            // We don't want to copy data that we know we'll overwrite
-        }
-
-        auto offset = freeSpaceAtBegin();
-        const auto capacityBegin = begin() - offset;
-        const auto prependBufferEnd = begin();
-
-        if constexpr (!std::is_nothrow_constructible_v<T, decltype(std::invoke(proj, *first))>) {
-            // If construction can throw, and we have freeSpaceAtBegin(),
-            // it's easiest to just clear the container and start fresh.
-            // The alternative would be to keep track of two active, disjoint ranges.
-            if (offset) {
-                (*this)->truncate(0);
-                setBegin(capacityBegin);
-                offset = 0;
-            }
-        }
-
-        auto dst = capacityBegin;
-        const auto dend = end();
-        if (offset) { // avoids dead stores
-            setBegin(capacityBegin); // undo prepend optimization
-
-            // By construction, the following loop is nothrow!
-            // (otherwise, we can't reach here)
-            // Assumes InputIterator operations don't throw.
-            // (but we can't statically assert that, as these operations
-            //  have preconditons, so typically aren't noexcept)
-            while (true) {
-                if (dst == prependBufferEnd) {  // ran out of prepend buffer space
-                    size += offset;
-                    // we now have a contiguous buffer, continue with the main loop:
-                    break;
-                }
-                if (first == last) {            // ran out of elements to assign
-                    std::destroy(prependBufferEnd, dend);
-                    size = dst - begin();
-                    return;
-                }
-                // construct element in prepend buffer
-                q20::construct_at(dst, std::invoke(proj, *first));
-                ++dst;
-                ++first;
-            }
-        }
-
-        while (true) {
-            if (first == last) {    // ran out of elements to assign
-                std::destroy(dst, dend);
-                break;
-            }
-            if (dst == dend) {      // ran out of existing elements to overwrite
-                if constexpr (IsFwdIt && IsIdentity) {
-                    dst = std::uninitialized_copy(first, last, dst);
-                    break;
-                } else if constexpr (IsFwdIt && !IsIdentity
-                           && std::is_nothrow_constructible_v<T, decltype(std::invoke(proj, *first))>) {
-                    for (; first != last; ++dst, ++first)   // uninitialized_copy with projection
-                        q20::construct_at(dst, std::invoke(proj, *first));
-                    break;
-                } else {
-                    do {
-                        (*this)->emplace(size, std::invoke(proj, *first));
-                    } while (++first != last);
-                    return;         // size() is already correct (and dst invalidated)!
-                }
-            }
-            *dst = std::invoke(proj, *first);    // overwrite existing element
-            ++dst;
-            ++first;
-        }
-        size = dst - begin();
-    }
-
     QArrayDataPointer sliced(qsizetype pos, qsizetype n) const &
     {
         QArrayDataPointer result(n);
@@ -432,12 +332,25 @@ public:
         return std::move(*this);
     }
 
+    void appendInitialize(qsizetype newSize)
+    {
+        Q_ASSERT(this->isMutable());
+        Q_ASSERT(!this->isShared());
+        Q_ASSERT(newSize > this->size);
+        Q_ASSERT(newSize - this->size <= this->freeSpaceAtEnd());
+
+        T *const b = this->begin() + this->size;
+        T *const e = this->begin() + newSize;
+        q17::uninitialized_value_construct(b, e);
+        this->size = newSize;
+    }
+
     // forwards from QArrayData
     qsizetype allocatedCapacity() noexcept { return d ? d->allocatedCapacity() : 0; }
     qsizetype constAllocatedCapacity() const noexcept { return d ? d->constAllocatedCapacity() : 0; }
     void ref() noexcept { if (d) d->ref(); }
     bool deref() noexcept { return !d || d->deref(); }
-    bool isMutable() const noexcept { return d; }
+    bool isMutable() const noexcept { return d; } // Returns false if this object is fromRawData()
     bool isShared() const noexcept { return !d || d->isShared(); }
     bool isSharedWith(const QArrayDataPointer &other) const noexcept { return d && d == other.d; }
     bool needsDetach() const noexcept { return !d || d->needsDetach(); }
@@ -500,9 +413,14 @@ public:
         return lhs.data() != rhs.data() || lhs.size != rhs.size;
     }
 
-    Data *d;
-    T *ptr;
-    qsizetype size;
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+    Data *d = nullptr;
+#endif
+    T *ptr = nullptr;
+    qsizetype size = 0;
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
+    Data *d = nullptr;
+#endif
 };
 
 template <class T>
@@ -510,6 +428,9 @@ inline void swap(QArrayDataPointer<T> &p1, QArrayDataPointer<T> &p2) noexcept
 {
     p1.swap(p2);
 }
+
+template <class T>
+Q_DECLARE_TYPEINFO_BODY(QArrayDataPointer<T>, Q_RELOCATABLE_TYPE);
 
 ////////////////////////////////////////////////////////////////////////////////
 //  Q_ARRAY_LITERAL

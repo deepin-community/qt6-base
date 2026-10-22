@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtGui>
+#include <QtWidgets>
 
-#include "mainwindow.h"
+#include "include/mainwindow.h"
 
 MainWindow::MainWindow()
 {
@@ -44,11 +45,11 @@ void MainWindow::createDockWidgets()
     QVBoxLayout *layout = new QVBoxLayout(dockWidgetContents);
     layout->addWidget(new QPushButton("My Button."));
 
-//! [0]
+    //! [0]
     QDockWidget *dockWidget = new QDockWidget(tr("Dock Widget"), this);
     dockWidget->setAllowedAreas(Qt::LeftDockWidgetArea |
                                 Qt::RightDockWidgetArea);
     dockWidget->setWidget(dockWidgetContents);
     addDockWidget(Qt::LeftDockWidgetArea, dockWidget);
-//! [0]
+    //! [0]
 }

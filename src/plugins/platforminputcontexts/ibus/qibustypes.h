@@ -1,5 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #ifndef QIBUSTYPES_H
 #define QIBUSTYPES_H
 
@@ -136,7 +138,7 @@ inline const QDBusArgument &operator>>(const QDBusArgument &argument, QIBusEngin
 class QIBusPropTypeClientCommitPreedit
 {
 public:
-    QIBusPropTypeClientCommitPreedit() {};
+    QIBusPropTypeClientCommitPreedit() {}
 
     QIBusPropTypeClientCommitPreedit(bool inClientCommitPreedit);
 
@@ -153,7 +155,7 @@ inline const QDBusArgument &operator>>(const QDBusArgument &argument, QIBusPropT
 class QIBusPropTypeContentType
 {
 public:
-    QIBusPropTypeContentType() {};
+    QIBusPropTypeContentType() {}
 
     QIBusPropTypeContentType(unsigned int inPurpose, unsigned int inHint);
 

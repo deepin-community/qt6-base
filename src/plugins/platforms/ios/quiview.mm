@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "quiview.h"
 
@@ -20,14 +21,18 @@
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qwindow_p.h>
 #include <QtGui/private/qapplekeymapper_p.h>
+#include <QtGui/private/qpointingdevice_p.h>
 #include <qpa/qwindowsysteminterface_p.h>
 
+Q_LOGGING_CATEGORY(lcQpaMouse, "qt.qpa.input.mouse")
 Q_LOGGING_CATEGORY(lcQpaTablet, "qt.qpa.input.tablet")
 Q_LOGGING_CATEGORY(lcQpaInputEvents, "qt.qpa.input.events")
 
 namespace {
 inline ulong getTimeStamp(UIEvent *event)
 {
+    bool useEvent = event != nil;
+
 #if TARGET_OS_SIMULATOR == 1
     // We currently build Qt for simulator using X86_64, even on ARM based macs.
     // This results in the simulator running on ARM, while the app is running
@@ -44,40 +49,30 @@ inline ulong getTimeStamp(UIEvent *event)
 #if defined(Q_PROCESSOR_ARM)
     #warning The timestamp work-around for x86_64 can (probably) be removed when building for ARM
 #endif
-    return ulong(NSProcessInfo.processInfo.systemUptime * 1000);
+    useEvent = false;
 #endif
 
-    return ulong(event.timestamp * 1000);
+    return ulong((useEvent ? event.timestamp : NSProcessInfo.processInfo.systemUptime) * 1000);
 }
 }
+
+#if QT_CONFIG(tabletevent)
+@protocol TabletEventSender
+- (CGPoint)locationInView:(UIView *)view;
+- (CGVector)azimuthUnitVectorInView:(UIView *)view;
+@property (nonatomic, readonly) CGFloat altitudeAngle;
+@property (nonatomic, readonly) CGFloat rollAngle;
+@end
+@interface UIGestureRecognizer (TabletEventSender) <TabletEventSender> @end
+@interface UITouch (TabletEventSender) <TabletEventSender> @end
+#endif
 
 @implementation QUIView {
     QHash<NSUInteger, QWindowSystemInterface::TouchPoint> m_activeTouches;
     UITouch *m_activePencilTouch;
     NSMutableArray<UIAccessibilityElement *> *m_accessibleElements;
-    UIPanGestureRecognizer *m_scrollGestureRecognizer;
     CGPoint m_lastScrollCursorPos;
     CGPoint m_lastScrollDelta;
-}
-
-+ (void)load
-{
-#if !defined(Q_OS_TVOS) && !defined(Q_OS_VISIONOS)
-    if (QOperatingSystemVersion::current() < QOperatingSystemVersion(QOperatingSystemVersion::IOS, 11)) {
-        // iOS 11 handles this though [UIView safeAreaInsetsDidChange], but there's no signal for
-        // the corresponding top and bottom layout guides that we use on earlier versions. Note
-        // that we use the _will_ change version of the notification, because we want to react
-        // to the change as early was possible. But since the top and bottom layout guides have
-        // not been updated at this point we use asynchronous delivery of the event, so that the
-        // event is processed by QtGui just after iOS has updated the layout margins.
-        [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillChangeStatusBarFrameNotification
-            object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *) {
-                for (QWindow *window : QGuiApplication::allWindows())
-                    QWindowSystemInterface::handleSafeAreaMarginsChanged<QWindowSystemInterface::AsynchronousDelivery>(window);
-            }
-        ];
-    }
-#endif
 }
 
 + (Class)layerClass
@@ -102,21 +97,30 @@ inline ulong getTimeStamp(UIEvent *event)
         self.multipleTouchEnabled = YES;
 #endif
 
-        m_scrollGestureRecognizer = [[UIPanGestureRecognizer alloc]
-                                      initWithTarget:self
-                                      action:@selector(handleScroll:)];
+        auto scrollGestureRecognizer = [[UIPanGestureRecognizer alloc]
+            initWithTarget:self action:@selector(handleScroll:)];
         // The gesture recognizer should only care about scroll gestures (for now)
         // Set allowedTouchTypes to empty array here to not interfere with touch events
         // handled by the UIView. Scroll gestures, even those coming from touch devices,
         // such as trackpads will still be received as they are not touch events
-        m_scrollGestureRecognizer.allowedTouchTypes = [NSArray array];
-        if (@available(ios 13.4, *)) {
-            m_scrollGestureRecognizer.allowedScrollTypesMask = UIScrollTypeMaskAll;
-        }
-        m_scrollGestureRecognizer.maximumNumberOfTouches = 0;
+        scrollGestureRecognizer.allowedTouchTypes = @[];
+        scrollGestureRecognizer.allowedScrollTypesMask = UIScrollTypeMaskAll;
+        scrollGestureRecognizer.maximumNumberOfTouches = 0;
         m_lastScrollDelta = CGPointZero;
         m_lastScrollCursorPos = CGPointZero;
-        [self addGestureRecognizer:m_scrollGestureRecognizer];
+        [self addGestureRecognizer:[scrollGestureRecognizer autorelease]];
+
+        auto mouseHoverGestureRecognizer = [[UIHoverGestureRecognizer alloc]
+            initWithTarget:self action:@selector(handleMouseHover:)];
+        mouseHoverGestureRecognizer.allowedTouchTypes = @[ @(UITouchTypeIndirectPointer) ];
+        [self addGestureRecognizer:[mouseHoverGestureRecognizer autorelease]];
+
+#if QT_CONFIG(tabletevent)
+        auto pencilHoverGestureRecognizer = [[UIHoverGestureRecognizer alloc]
+            initWithTarget:self action:@selector(handlePencilHover:)];
+        pencilHoverGestureRecognizer.allowedTouchTypes = @[ @(UITouchTypePencil) ];
+        [self addGestureRecognizer:[pencilHoverGestureRecognizer autorelease]];
+#endif
 
         // Set up layer
         if ([self.layer isKindOfClass:CAMetalLayer.class]) {
@@ -155,7 +159,6 @@ inline ulong getTimeStamp(UIEvent *event)
 - (void)dealloc
 {
     [m_accessibleElements release];
-    [m_scrollGestureRecognizer release];
 
     [super dealloc];
 }
@@ -366,12 +369,12 @@ inline ulong getTimeStamp(UIEvent *event)
     [super traitCollectionDidChange: previousTraitCollection];
 
     QPointingDevice *touchDevice = QIOSIntegration::instance()->touchDevice();
-    QPointingDevice::Capabilities touchCapabilities = touchDevice->capabilities();
+    auto *devicePriv = QPointingDevicePrivate::get(touchDevice);
 
-    touchCapabilities.setFlag(QPointingDevice::Capability::Pressure,
-                              (self.traitCollection.forceTouchCapability == UIForceTouchCapabilityAvailable));
-
-    touchDevice->setCapabilities(touchCapabilities);
+    auto capabilities = touchDevice->capabilities();
+    capabilities.setFlag(QPointingDevice::Capability::Pressure,
+        (self.traitCollection.forceTouchCapability == UIForceTouchCapabilityAvailable));
+    devicePriv->setCapabilities(capabilities);
 }
 
 -(BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event
@@ -381,39 +384,29 @@ inline ulong getTimeStamp(UIEvent *event)
     return [super pointInside:point withEvent:event];
 }
 
-- (void)handleTouches:(NSSet *)touches withEvent:(UIEvent *)event withState:(QEventPoint::State)state withTimestamp:(ulong)timeStamp
+- (void)handleTouches:(NSSet *)touches withEvent:(UIEvent *)event withState:(QEventPoint::State)state
 {
     QIOSIntegration *iosIntegration = QIOSIntegration::instance();
-    bool supportsPressure = QIOSIntegration::instance()->touchDevice()->capabilities() & QPointingDevice::Capability::Pressure;
+    const ulong timeStamp = getTimeStamp(event);
 
 #if QT_CONFIG(tabletevent)
     if (m_activePencilTouch && [touches containsObject:m_activePencilTouch]) {
         NSArray<UITouch *> *cTouches = [event coalescedTouchesForTouch:m_activePencilTouch];
-        int i = 0;
         for (UITouch *cTouch in cTouches) {
-            QPointF localViewPosition = QPointF::fromCGPoint([cTouch preciseLocationInView:self]);
-            QPoint localViewPositionI = localViewPosition.toPoint();
-            QPointF globalScreenPosition = self.platformWindow->mapToGlobal(localViewPositionI) +
-                    (localViewPosition - localViewPositionI);
-            qreal pressure = cTouch.force / cTouch.maximumPossibleForce;
-            // azimuth unit vector: +x to the right, +y going downwards
-            CGVector azimuth = [cTouch azimuthUnitVectorInView: self];
-            // azimuthAngle given in radians, zero when the stylus points towards +x axis; converted to degrees with 0 pointing straight up
-            qreal azimuthAngle = qRadiansToDegrees([cTouch azimuthAngleInView: self]) + 90;
-            // altitudeAngle given in radians, pi / 2 is with the stylus perpendicular to the iPad, smaller values mean more tilted, but never negative.
-            // Convert to degrees with zero being perpendicular.
-            qreal altitudeAngle = 90 - qRadiansToDegrees(cTouch.altitudeAngle);
-            qCDebug(lcQpaTablet) << i << ":" << timeStamp << localViewPosition << pressure << state << "azimuth" << azimuth.dx << azimuth.dy
-                     << "angle" << azimuthAngle << "altitude" << cTouch.altitudeAngle
-                     << "xTilt" << qBound(-60.0, altitudeAngle * azimuth.dx, 60.0) << "yTilt" << qBound(-60.0, altitudeAngle * azimuth.dy, 60.0);
-            QWindowSystemInterface::handleTabletEvent(self.platformWindow->window(), timeStamp, localViewPosition, globalScreenPosition,
-                    // device, pointerType, buttons
-                    int(QInputDevice::DeviceType::Stylus), int(QPointingDevice::PointerType::Pen), state == QEventPoint::State::Released ? Qt::NoButton : Qt::LeftButton,
-                    // pressure, xTilt, yTilt
-                    pressure, qBound(-60.0, altitudeAngle * azimuth.dx, 60.0), qBound(-60.0, altitudeAngle * azimuth.dy, 60.0),
-                    // tangentialPressure, rotation, z, uid, modifiers
-                    0, azimuthAngle, 0, 0, Qt::NoModifier);
-            ++i;
+            QEvent::Type eventType = [&]{
+                switch (cTouch.phase) {
+                case UITouchPhaseBegan:
+                    return QEvent::TabletPress;
+                case UITouchPhaseEnded:
+                    return QEvent::TabletRelease;
+                case UITouchPhaseMoved:
+                case UITouchPhaseStationary:
+                    return QEvent::TabletMove;
+                default:
+                    return QEvent::None;
+                }
+            }();
+            [self handleTabletEvent:eventType withSender:cTouch andTimestamp:timeStamp];
         }
     }
 #endif
@@ -443,23 +436,7 @@ inline ulong getTimeStamp(UIEvent *event)
             QPoint globalScreenPosition = self.platformWindow->mapToGlobal(localViewPosition);
 
             touchPoint.area = QRectF(globalScreenPosition, QSize(0, 0));
-
-            // FIXME: Do we really need to support QPointingDevice::Capability::NormalizedPosition?
-            QSize screenSize = self.platformWindow->screen()->geometry().size();
-            touchPoint.normalPosition = QPointF(globalScreenPosition.x() / screenSize.width(),
-                                                globalScreenPosition.y() / screenSize.height());
-
-            if (supportsPressure) {
-                // Note: iOS  will deliver touchesBegan with a touch force of 0, which
-                // we will reflect/propagate as a 0 pressure, but there is no clear
-                // alternative, as we don't want to wait for a touchedMoved before
-                // sending a touch press event to Qt, just to have a valid pressure.
-                touchPoint.pressure = uiTouch.force / uiTouch.maximumPossibleForce;
-            } else {
-                // We don't claim that our touch device supports QPointingDevice::Capability::Pressure,
-                // but fill in a meaningful value in case clients use it anyway.
-                touchPoint.pressure = (state == QEventPoint::State::Released) ? 0.0 : 1.0;
-            }
+            touchPoint.pressure = [self pressureForTouch:uiTouch];
         }
     }
 
@@ -492,7 +469,7 @@ inline ulong getTimeStamp(UIEvent *event)
     // an id for use by Qt.
     for (UITouch *touch in touches) {
 #if QT_CONFIG(tabletevent)
-        if (touch.type == UITouchTypeStylus) {
+        if (touch.type == UITouchTypePencil) {
             if (Q_UNLIKELY(m_activePencilTouch)) {
                 qWarning("ignoring additional Pencil while first is still active");
                 continue;
@@ -519,23 +496,23 @@ inline ulong getTimeStamp(UIEvent *event)
             topLevel->requestActivateWindow();
     }
 
-    [self handleTouches:touches withEvent:event withState:QEventPoint::State::Pressed withTimestamp:getTimeStamp(event)];
+    [self handleTouches:touches withEvent:event withState:QEventPoint::State::Pressed];
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
 {
-    [self handleTouches:touches withEvent:event withState:QEventPoint::State::Updated withTimestamp:getTimeStamp(event)];
+    [self handleTouches:touches withEvent:event withState:QEventPoint::State::Updated];
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
 {
-    [self handleTouches:touches withEvent:event withState:QEventPoint::State::Released withTimestamp:getTimeStamp(event)];
+    [self handleTouches:touches withEvent:event withState:QEventPoint::State::Released];
 
     // Remove ended touch points from the active set:
 #ifndef Q_OS_TVOS
     for (UITouch *touch in touches) {
 #if QT_CONFIG(tabletevent)
-        if (touch.type == UITouchTypeStylus) {
+        if (touch.type == UITouchTypePencil) {
             m_activePencilTouch = nil;
         } else
 #endif
@@ -581,16 +558,165 @@ inline ulong getTimeStamp(UIEvent *event)
     m_activeTouches.clear();
     m_activePencilTouch = nil;
 
-    ulong timestamp = event ? getTimeStamp(event) : ([[NSProcessInfo processInfo] systemUptime] * 1000);
-
     QIOSIntegration *iosIntegration = static_cast<QIOSIntegration *>(QGuiApplicationPrivate::platformIntegration());
 
     // Send the touch event asynchronously, as the application might spin a recursive
     // event loop in response to the touch event (a dialog e.g.), which will deadlock
     // the UIKit event delivery system (QTBUG-98651).
     QWindowSystemInterface::handleTouchCancelEvent<QWindowSystemInterface::AsynchronousDelivery>(
-        self.platformWindow->window(), timestamp, iosIntegration->touchDevice());
+        self.platformWindow->window(), getTimeStamp(event), iosIntegration->touchDevice());
 }
+
+- (void)handleMouseHover:(UIHoverGestureRecognizer *)recognizer
+{
+    if (!self.platformWindow)
+        return;
+
+    auto *window = self.platformWindow->window();
+    auto localPosition = QPointF::fromCGPoint([recognizer locationInView:self]);
+    auto globalPosition = self.platformWindow->mapToGlobalF(localPosition);
+
+    switch (recognizer.state) {
+    case UIGestureRecognizerStateBegan:
+        qCDebug(lcQpaMouse) << "🖱️ enter" << window << "local =" << localPosition;
+        QWindowSystemInterface::handleEnterEvent(window, localPosition, globalPosition);
+        break;
+    case UIGestureRecognizerStateEnded:
+        qCDebug(lcQpaMouse) << "🖱️ leave" << window;
+        QWindowSystemInterface::handleLeaveEvent(window);
+        break;
+    case UIGestureRecognizerStateChanged:
+        qCDebug(lcQpaMouse) << "🖱️ move" << "local =" << localPosition << "global =" << globalPosition;
+        QWindowSystemInterface::handleMouseEvent(window, localPosition, globalPosition,
+            Qt::NoButton, Qt::NoButton, QEvent::MouseMove);
+        break;
+    default:
+        qCWarning(lcQpaMouse) << "Unknown hover state for" << recognizer;
+    }
+}
+
+/*
+    Computes the normalized axial pressure for a touch point.
+
+    Note that this is not the same as the perpendicular force,
+    which would incorporate the altitudeAngle. Qt does not have
+    an API for this pressure.
+*/
+- (qreal)pressureForTouch:(UITouch*)touch
+{
+    if (!touch)
+        return 0;
+
+    if (touch.maximumPossibleForce) {
+        // Note: iOS  will deliver touchesBegan with a touch force of 0, which
+        // we will reflect/propagate as a 0 pressure, but there is no clear
+        // alternative, as we don't want to wait for a touchedMoved before
+        // sending a touch press event to Qt, just to have a valid pressure.
+        return touch.force / touch.maximumPossibleForce;
+    } else {
+        // We don't claim that our touch device supports QPointingDevice::Capability::Pressure,
+        // but fill in a meaningful value in case clients use it anyway. We match the behavior
+        // from above, not sending pressure for touchesBegan.
+        return (touch.phase == UITouchPhaseMoved || touch.phase == UITouchPhaseStationary) ? 1.0 : 0.0;
+    }
+}
+
+// -------------------------------------------------------------------------
+
+#if QT_CONFIG(tabletevent)
+- (void)handlePencilHover:(UIHoverGestureRecognizer *)recognizer
+{
+    if (!self.platformWindow)
+        return;
+
+    // Just before lifting the pencil we might receive a hover event,
+    // but the event's position wrongly reflects the position where the
+    // pencil was first pressed instead of the current position, and
+    // semantically it doesn't make sense to send hover before release.
+    if (m_activePencilTouch)
+        return;
+
+    QEvent::Type eventType = [&]{
+        switch (recognizer.state) {
+        case UIGestureRecognizerStateBegan: return QEvent::TabletEnterProximity;
+        case UIGestureRecognizerStateEnded: return QEvent::TabletLeaveProximity;
+        case UIGestureRecognizerStateChanged: return QEvent::TabletMove;
+        default: return QEvent::None;
+        }
+    }();
+
+    if (!eventType) {
+        qCWarning(lcQpaTablet) << "Unknown hover state for" << recognizer;
+        return;
+    }
+
+    [self handleTabletEvent:eventType withSender:recognizer andTimestamp:getTimeStamp(nil)];
+}
+
+- (void)handleTabletEvent:(QEvent::Type)eventType withSender:(id<TabletEventSender>)sender andTimestamp:(ulong)timeStamp
+{
+    QWindow *window = self.platformWindow->window();
+
+    auto localViewPosition = QPointF::fromCGPoint([sender locationInView:self]);
+    auto globalScreenPosition = self.platformWindow->mapToGlobalF(localViewPosition);
+
+    // Azimuth unit vector: +x to the right, +y going downwards
+    CGVector azimuth = [sender azimuthUnitVectorInView:self];
+    // Altitude angle given in radians. π/2 is with the pen perpendicular
+    // to the iPad. Smaller values mean more tilted, but never negative.
+    CGFloat altitudeAngleRadians = sender.altitudeAngle;
+    // Convert to degrees with zero being perpendicular
+    qreal altitudeAngleDegrees = 90 - qRadiansToDegrees(altitudeAngleRadians);
+    qreal xTilt = qBound(-60.0, altitudeAngleDegrees * azimuth.dx, 60.0);
+    qreal yTilt = qBound(-60.0, altitudeAngleDegrees * azimuth.dy, 60.0);
+
+    auto zOffset = qt_objc_cast<UIHoverGestureRecognizer*>(sender).zOffset;
+    auto pressure = [self pressureForTouch:qt_objc_cast<UITouch*>(sender)];
+
+    // Apple Pencil models that don’t support barrel-roll angle data will return 0
+    auto rotation = -qRadiansToDegrees(sender.rollAngle);
+
+    // Apple Pencils do not have the concept of tangential pressure, which
+    // is commonly found on Wacom tablet pens with a dedicated finger wheel.
+    static const int tangentialPressure = 0;
+
+    // The semantics of buttons in a QTabletEvent is that the left button is
+    // the tip, so we report it when the pencil is touching the screen.
+    Qt::MouseButtons buttons = qt_objc_cast<UITouch*>(sender) &&
+        eventType != QEvent::TabletRelease ? Qt::LeftButton : Qt::NoButton;
+    static const auto modifiers = Qt::NoModifier;
+
+    QPointingDevice *pencilDevice = QIOSIntegration::instance()->pencilDevice();
+
+    qCDebug(lcQpaTablet) << "✏️" << eventType
+        << "local =" << localViewPosition << "global =" << globalScreenPosition
+        << "z =" << zOffset << "pressure =" << pressure
+        << "rotation =" << rotation << "tilt =" << QPointF(xTilt, yTilt);
+
+    switch (eventType) {
+    case QEvent::TabletEnterProximity:
+    case QEvent::TabletLeaveProximity: {
+        const bool inProximity = eventType == QEvent::TabletEnterProximity;
+        QWindowSystemInterface::handleTabletEnterLeaveProximityEvent(window, timeStamp,
+            pencilDevice, inProximity, localViewPosition, globalScreenPosition,
+            buttons, xTilt, yTilt, tangentialPressure, rotation, zOffset, modifiers);
+        break;
+    }
+    case QEvent::TabletPress:
+    case QEvent::TabletMove:
+    case QEvent::TabletRelease: {
+        QWindowSystemInterface::handleTabletEvent(window, timeStamp,
+            pencilDevice, localViewPosition, globalScreenPosition,
+            buttons, pressure, xTilt, yTilt, tangentialPressure, rotation, zOffset, modifiers);
+        break;
+    }
+    default:
+        qCWarning(lcQpaTablet) << "Unknown tablet event type" << eventType << "for" << sender;
+    }
+}
+#endif // CONFIG(tabletevent)
+
+// -------------------------------------------------------------------------
 
 - (int)mapPressTypeToKey:(UIPress*)press withModifiers:(Qt::KeyboardModifiers)qtModifiers text:(QString &)text
 {
@@ -603,14 +729,17 @@ inline ulong getTimeStamp(UIEvent *event)
     case UIPressTypeMenu: return Qt::Key_Menu;
     case UIPressTypePlayPause: return Qt::Key_MediaTogglePlayPause;
     }
-    if (@available(ios 13.4, *)) {
-        NSString *charactersIgnoringModifiers = press.key.charactersIgnoringModifiers;
-        Qt::Key key = QAppleKeyMapper::fromUIKitKey(charactersIgnoringModifiers);
-        if (key != Qt::Key_unknown)
-            return key;
-        return QAppleKeyMapper::fromNSString(qtModifiers, press.key.characters,
-                                             charactersIgnoringModifiers, text);
-    }
+    Qt::Key key = QAppleKeyMapper::fromUIKitKey(press.key.keyCode);
+    if (key != Qt::Key_unknown)
+        return key;
+    NSString *charactersIgnoringModifiers = press.key.charactersIgnoringModifiers;
+    key = QAppleKeyMapper::fromUIKitKey(charactersIgnoringModifiers);
+    if (key != Qt::Key_unknown)
+        return key;
+    key = QAppleKeyMapper::fromNSString(qtModifiers, press.key.characters,
+                                        charactersIgnoringModifiers, text);
+    if (key != Qt::Key_unknown)
+        return key;
     return Qt::Key_unknown;
 }
 
@@ -642,9 +771,7 @@ inline ulong getTimeStamp(UIEvent *event)
     const bool imEnabled = QIOSInputContext::instance()->inputMethodAccepted();
 
     for (UIPress* press in presses) {
-        Qt::KeyboardModifiers qtModifiers = Qt::NoModifier;
-        if (@available(ios 13.4, *))
-            qtModifiers = QAppleKeyMapper::fromUIKitModifiers(press.key.modifierFlags);
+        Qt::KeyboardModifiers qtModifiers = QAppleKeyMapper::fromUIKitModifiers(press.key.modifierFlags);
         QString text;
         int key = [self mapPressTypeToKey:press withModifiers:qtModifiers text:text];
         if (key == Qt::Key_unknown)
@@ -749,12 +876,8 @@ inline ulong getTimeStamp(UIEvent *event)
     pixelDelta.setX(deltaX);
     pixelDelta.setY(deltaY);
 
-    NSTimeInterval time_stamp = [[NSProcessInfo processInfo] systemUptime];
-    ulong qt_timestamp = time_stamp * 1000;
-
-    Qt::KeyboardModifiers qt_modifierFlags = Qt::NoModifier;
-    if (@available(ios 13.4, *))
-        qt_modifierFlags = QAppleKeyMapper::fromUIKitModifiers(recognizer.modifierFlags);
+    Qt::KeyboardModifiers qt_modifierFlags =
+            QAppleKeyMapper::fromUIKitModifiers(recognizer.modifierFlags);
 
     if (recognizer.state == UIGestureRecognizerStateBegan)
         // locationInView: doesn't return the cursor position at the time of the wheel event,
@@ -775,8 +898,10 @@ inline ulong getTimeStamp(UIEvent *event)
     qCInfo(lcQpaInputEvents).nospace() << "wheel event" << " at " << qt_local
     << " pixelDelta=" << pixelDelta << " angleDelta=" << angleDelta;
 
-    QWindowSystemInterface::handleWheelEvent(self.platformWindow->window(), qt_timestamp, qt_local, qt_global, pixelDelta, angleDelta, qt_modifierFlags);
+    QWindowSystemInterface::handleWheelEvent(self.platformWindow->window(),
+        getTimeStamp(nil), qt_local, qt_global, pixelDelta, angleDelta, qt_modifierFlags);
 }
+
 #endif // QT_CONFIG(wheelevent)
 
 @end

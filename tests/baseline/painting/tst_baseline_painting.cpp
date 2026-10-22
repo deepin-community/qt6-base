@@ -19,6 +19,8 @@
 #include <QOpenGLPaintDevice>
 #endif
 
+#include <QFontDatabase>
+
 #include <algorithm>
 
 #ifndef GL_RGB10
@@ -55,6 +57,7 @@ private:
 private slots:
     void initTestCase();
     void init();
+    void cleanupTestCase();
 
     void testRasterARGB32PM_data();
     void testRasterARGB32PM();
@@ -128,6 +131,14 @@ void tst_Lancelot::initTestCase()
         scriptChecksums.insert(fileName, qChecksum(cont));
     }
 
+    QString underlineTestFont1 = QLatin1String(":/fonts/QtUnderlineTest-Regular.ttf");
+    int id = QFontDatabase::addApplicationFont(underlineTestFont1);
+    QVERIFY(id >= 0);
+
+    QString underlineTestFont2 = QLatin1String(":/fonts/QtUnderlineTest2-Regular.ttf");
+    id = QFontDatabase::addApplicationFont(underlineTestFont2);
+    QVERIFY(id >= 0);
+
 #ifndef QT_NO_OPENGL
     initOpenGL();
 #endif
@@ -137,6 +148,11 @@ void tst_Lancelot::init()
 {
     // This gets called for every row. QSKIP if current item is blacklisted on the baseline server:
     QBASELINE_SKIP_IF_BLACKLISTED;
+}
+
+void tst_Lancelot::cleanupTestCase()
+{
+    QBaselineTest::finalizeAndDisconnect();
 }
 
 void tst_Lancelot::testRasterARGB32PM_data()
@@ -395,6 +411,7 @@ void tst_Lancelot::runTestSuite(GraphicsEngine engine, QImage::Format format, co
 
     if (engine == Raster) {
         QImage img(800, 800, format);
+        img.fill(Qt::transparent);
         paint(&img, engine, format, script, QFileInfo(filePath).absoluteFilePath());
         rendered = img;
 #ifndef QT_NO_OPENGL

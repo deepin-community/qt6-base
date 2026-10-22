@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
+// Qt-Security score:significant reason:default
 
 #ifndef QMIMETYPEPARSER_P_H
 #define QMIMETYPEPARSER_P_H
@@ -47,7 +47,7 @@ class QMimeTypeParserBase
 
 public:
     QMimeTypeParserBase() {}
-    virtual ~QMimeTypeParserBase() {}
+    virtual ~QMimeTypeParserBase();
 
     bool parse(QIODevice *dev, const QString &fileName, QString *errorMessage);
 
@@ -86,6 +86,7 @@ class QMimeTypeParser : public QMimeTypeParserBase
 {
 public:
     explicit QMimeTypeParser(QMimeXMLProvider &provider) : m_provider(provider) {}
+    ~QMimeTypeParser() override;
 
 protected:
     inline bool process(const QMimeTypeXMLData &t, QString *) override

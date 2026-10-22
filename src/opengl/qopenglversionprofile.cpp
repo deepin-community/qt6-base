@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qopenglversionprofile.h"
 
@@ -84,14 +85,14 @@ QOpenGLVersionProfile &QOpenGLVersionProfile::operator=(const QOpenGLVersionProf
 }
 
 /*!
-    Returns a QPair<int,int> where the components represent the major and minor OpenGL
+    Returns a std::pair<int,int> where the components represent the major and minor OpenGL
     version numbers respectively.
 
     \sa setVersion()
 */
-QPair<int, int> QOpenGLVersionProfile::version() const
+std::pair<int, int> QOpenGLVersionProfile::version() const
 {
-    return qMakePair( d->majorVersion, d->minorVersion);
+    return std::pair( d->majorVersion, d->minorVersion);
 }
 
 /*!

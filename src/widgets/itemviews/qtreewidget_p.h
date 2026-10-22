@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTREEWIDGET_P_H
 #define QTREEWIDGET_P_H
@@ -17,7 +18,6 @@
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/qabstractitemmodel.h>
 #include <private/qabstractitemmodel_p.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qbasictimer.h>
 #include <QtWidgets/qtreewidget.h>
 #include <private/qtreeview_p.h>
@@ -77,10 +77,10 @@ public:
     void sort(int column, Qt::SortOrder order) override;
     void ensureSorted(int column, Qt::SortOrder order,
                       int start, int end, const QModelIndex &parent);
-    static bool itemLessThan(const QPair<QTreeWidgetItem*,int> &left,
-                             const QPair<QTreeWidgetItem*,int> &right);
-    static bool itemGreaterThan(const QPair<QTreeWidgetItem*,int> &left,
-                                const QPair<QTreeWidgetItem*,int> &right);
+    static bool itemLessThan(const std::pair<QTreeWidgetItem*,int> &left,
+                             const std::pair<QTreeWidgetItem*,int> &right);
+    static bool itemGreaterThan(const std::pair<QTreeWidgetItem*,int> &left,
+                                const std::pair<QTreeWidgetItem*,int> &right);
     static QList<QTreeWidgetItem*>::iterator sortedInsertionIterator(
         const QList<QTreeWidgetItem*>::iterator &begin,
         const QList<QTreeWidgetItem*>::iterator &end,
@@ -97,6 +97,7 @@ public:
     bool dropMimeData(const QMimeData *data, Qt::DropAction action,
                       int row, int column, const QModelIndex &parent) override;
     Qt::DropActions supportedDropActions() const override;
+    Qt::DropActions supportedDragActions() const override;
 
     QMimeData *internalMimeData() const;
 
@@ -211,6 +212,7 @@ public:
     int explicitSortColumn;
 
     std::array<QMetaObject::Connection, 12> connections;
+    std::optional<Qt::DropActions> supportedDragActions;
 };
 
 QT_END_NAMESPACE

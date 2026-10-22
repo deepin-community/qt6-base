@@ -1,6 +1,7 @@
 // Copyright (C) 2014 Jeremy Lainé <jeremy.laine@m4x.org>
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qtlskey_generic_p.h"
 #include "qasn1element_p.h"
@@ -277,13 +278,11 @@ EncryptionData readPbes2(const QList<QAsn1Element> &element, const QByteArray &p
 
 // Maps OIDs to the hash function it specifies
 const QMap<QByteArray, QCryptographicHash::Algorithm> pbes1OidHashFunctionMap {
-#ifndef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
     // PKCS5
     //{PKCS5_MD2_DES_CBC_OID, QCryptographicHash::Md2}, No MD2
     //{PKCS5_MD2_RC2_CBC_OID, QCryptographicHash::Md2},
     {PKCS5_MD5_DES_CBC_OID, QCryptographicHash::Md5},
     {PKCS5_MD5_RC2_CBC_OID, QCryptographicHash::Md5},
-#endif
     {PKCS5_SHA1_DES_CBC_OID, QCryptographicHash::Sha1},
     {PKCS5_SHA1_RC2_CBC_OID, QCryptographicHash::Sha1},
     // PKCS12 (unimplemented)
@@ -436,7 +435,7 @@ int extractPkcs8KeyLength(const QList<QAsn1Element> &items, TlsKey *that)
         case QSsl::Dsa: return "DSA";
         case QSsl::Dh: return "DH";
         case QSsl::Ec: return "EC";
-        case QSsl::Opaque: return "Opaque";
+        default: return "Opaque";
         }
         Q_UNREACHABLE();
     };

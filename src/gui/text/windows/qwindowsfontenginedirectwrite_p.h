@@ -22,7 +22,8 @@ QT_REQUIRE_CONFIG(directwrite);
 
 #include <QtGui/private/qfontengine_p.h>
 #include <QtCore/QSharedPointer>
-#include <dwrite.h>
+
+#include <dwrite_2.h>
 
 struct IDWriteFont;
 struct IDWriteFontFace;
@@ -31,10 +32,18 @@ struct IDWriteFactory;
 struct IDWriteBitmapRenderTarget;
 struct IDWriteGdiInterop;
 struct IDWriteGlyphRunAnalysis;
+struct IDWriteColorGlyphRunEnumerator;
+
+#if QT_CONFIG(directwritecolrv1)
+struct IDWriteFontFace7;
+struct IDWritePaintReader;
+struct DWRITE_PAINT_ELEMENT;
+#endif
 
 QT_BEGIN_NAMESPACE
 
 class QWindowsFontEngineData;
+class QColrPaintGraphRenderer;
 
 class Q_GUI_EXPORT QWindowsFontEngineDirectWrite : public QFontEngine
 {
@@ -100,9 +109,44 @@ public:
     void initializeHeightMetrics() const override;
 
     Properties properties() const override;
+
+    QPainterPath unscaledGlyph(glyph_t glyph) const;
     void getUnscaledGlyph(glyph_t glyph, QPainterPath *path, glyph_metrics_t *metrics) override;
 
+    QList<QFontVariableAxis> variableAxes() const override;
+
+    bool expectsGammaCorrectedBlending(QFontEngine::GlyphFormat format) const override;
+
 private:
+#if QT_CONFIG(directwritecolrv1)
+    bool traverseColr1(IDWritePaintReader *paintReader,
+                       IDWriteFontFace7 *face7,
+                       const DWRITE_PAINT_ELEMENT *paintElement,
+                       QColrPaintGraphRenderer *graphRenderer) const;
+    bool renderColr1GlyphRun(QImage *image,
+                             const DWRITE_GLYPH_RUN *glyphRun,
+                             const DWRITE_MATRIX &transform,
+                             QColor color) const;
+#endif
+
+    QRect paintGraphBounds(glyph_t glyph, const DWRITE_MATRIX &transform) const;
+    QRect alphaTextureBounds(glyph_t glyph, const DWRITE_MATRIX &transform);
+    QRect colorBitmapBounds(glyph_t glyph, const DWRITE_MATRIX &transform);
+    bool renderColr0GlyphRun(QImage *image,
+                             const DWRITE_COLOR_GLYPH_RUN *colorGlyphRun,
+                             const DWRITE_MATRIX &transform,
+                             DWRITE_RENDERING_MODE renderMode,
+                             DWRITE_MEASURING_MODE measureMode,
+                             DWRITE_GRID_FIT_MODE gridFitMode,
+                             QColor color,
+                             QRect boundingRect) const;
+    QImage renderColorGlyph(DWRITE_GLYPH_RUN *glyphRun,
+                            const DWRITE_MATRIX &transform,
+                            DWRITE_RENDERING_MODE renderMode,
+                            DWRITE_MEASURING_MODE measureMode,
+                            DWRITE_GRID_FIT_MODE gridFitMode,
+                            QColor color,
+                            QRect boundingRect) const;
     QImage imageForGlyph(glyph_t t,
                          const QFixedPoint &subPixelPosition,
                          int margin,
@@ -116,7 +160,7 @@ private:
                         float a,
                         IDWriteGlyphRunAnalysis *glyphAnalysis,
                         const QRect &boundingRect,
-                        DWRITE_RENDERING_MODE renderMode);
+                        DWRITE_RENDERING_MODE renderMode) const;
     static QString filenameFromFontFile(IDWriteFontFile *fontFile);
     DWRITE_RENDERING_MODE hintingPreferenceToRenderingMode(const QFontDef &fontDef) const;
 
@@ -124,6 +168,8 @@ private:
 
     IDWriteFontFace *m_directWriteFontFace;
     IDWriteBitmapRenderTarget *m_directWriteBitmapRenderTarget;
+
+    bool useSymmetricAntialiasing() const;
 
     QFixed m_lineThickness;
     QFixed m_underlinePosition;
@@ -133,6 +179,10 @@ private:
     QFixed m_maxAdvanceWidth;
     FaceId m_faceId;
     QString m_uniqueFamilyName;
+    QList<QFontVariableAxis> m_variableAxes;
+    DWRITE_PIXEL_GEOMETRY m_pixelGeometry = DWRITE_PIXEL_GEOMETRY_RGB;
+
+    mutable int m_useSymmetricAntialiasing = -1;
 };
 
 QT_END_NAMESPACE

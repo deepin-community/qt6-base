@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWASMLOCALFILEACCESS_P_H
 #define QWASMLOCALFILEACCESS_P_H
@@ -16,6 +17,7 @@
 //
 
 #include <private/qglobal_p.h>
+#include <private/qstdweb_p.h>
 #include <cstdint>
 #include <functional>
 
@@ -37,6 +39,12 @@ Q_CORE_EXPORT void openFile(const std::string &accept,
 
 Q_CORE_EXPORT void saveFile(const QByteArray &data, const std::string &fileNameHint);
 Q_CORE_EXPORT void saveFile(const char *content, size_t size, const std::string &fileNameHint);
+
+Q_CORE_EXPORT void showOpenFileDialog(const std::string &accept,
+    const std::function<void (bool accepted, std::vector<qstdweb::File> files)> fileDialogClosed);
+Q_CORE_EXPORT void showSaveFileDialog(const std::string &fileNameHint,
+    const std::function<void (bool accepted, qstdweb::FileSystemFileHandle fileHandle)> fileDialogClosed);
+
 
 } // namespace QWasmLocalFileAccess
 

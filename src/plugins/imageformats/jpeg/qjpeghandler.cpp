@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qjpeghandler_p.h"
 
@@ -8,6 +9,7 @@
 #include <qcolortransform.h>
 #include <qdebug.h>
 #include <qimage.h>
+#include <qimagereader.h>
 #include <qlist.h>
 #include <qloggingcategory.h>
 #include <qmath.h>
@@ -16,6 +18,7 @@
 #include <private/qsimd_p.h>
 #include <private/qimage_p.h>   // for qt_getImageText
 
+#include <limits>
 #include <stdio.h>      // jpeglib needs this to be pre-included
 #include <setjmp.h>
 
@@ -583,6 +586,13 @@ static bool do_write_jpeg_image(struct jpeg_compress_struct &cinfo,
 
         int quality = sourceQuality >= 0 ? qMin(int(sourceQuality),100) : 75;
         jpeg_set_quality(&cinfo, quality, TRUE /* limit to baseline-JPEG values */);
+
+        // If the quality exceeds a certain threshold (such as 90), disable chroma subsampling
+        if (quality > 90) {
+            cinfo.comp_info[0].v_samp_factor = 1;
+            cinfo.comp_info[0].h_samp_factor = 1;
+        }
+
         jpeg_start_compress(&cinfo, TRUE);
 
         set_text(image, &cinfo, description);
@@ -902,8 +912,7 @@ static int getExifOrientation(QByteArray &exifData)
         }
 
         // read offset to next IFD
-        stream >> offset;
-        if (stream.status() != QDataStream::Ok)
+        if (!(stream >> offset))
             return -1;
         if (offset == 0) // this is the last IFD
             return 0;   // No Exif orientation was found
@@ -953,6 +962,10 @@ bool QJpegHandlerPrivate::readJpegHeader(QIODevice *device)
 
         jpeg_create_decompress(&info);
         info.src = iod_src;
+        if (const int mbLimit = QImageReader::allocationLimit()) {
+            const qint64 bMax = 2 * qint64(mbLimit) * 1024 * 1024; // Some overhead for temp alloc
+            info.mem->max_memory_to_use = long(qMin(bMax, qint64(std::numeric_limits<long>::max())));
+        }
 
         if (!setjmp(err.setjmp_buffer)) {
             jpeg_save_markers(&info, JPEG_COM, 0xFFFF);

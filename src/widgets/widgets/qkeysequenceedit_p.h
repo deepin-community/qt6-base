@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2013 Ivan Komissarov.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QKEYSEQUENCEEDIT_P_H
 #define QKEYSEQUENCEEDIT_P_H
@@ -19,6 +20,7 @@
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qkeysequenceedit.h"
 
+#include <QtCore/qbasictimer.h>
 #include <private/qwidget_p.h>
 #include <private/qkeysequence_p.h>
 
@@ -45,7 +47,7 @@ public:
     int maximumSequenceLength = QKeySequencePrivate::MaxKeyCount;
     QKeyCombination key[QKeySequencePrivate::MaxKeyCount];
     int prevKey;
-    int releaseTimer;
+    QBasicTimer releaseTimer;
     QList<QKeyCombination> finishingKeyCombinations;
 };
 

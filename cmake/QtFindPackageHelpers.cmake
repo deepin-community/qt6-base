@@ -10,12 +10,39 @@
 # - Or remove the <builddir>/CMakeCache.txt file and configure from scratch
 # - Or remove the QT_INTERNAL_PREVIOUSLY_FOUND_PACKAGES cache variable (by
 #   editing CMakeCache.txt) and reconfigure.
+#
+# It's possible to annotate the qt_find_package with information on how to
+# generate a vcpkg manifest to satisfy this qt_find_package call.
+#
+#   VCPKG_PORT <name>
+#     Name of the vcpkg port (package) to install.
+#
+#   VCPKG_PLATFORM <expression>
+#     vcpkg platform expression, e.g. "!windows".
+#     See https://learn.microsoft.com/en-us/vcpkg/reference/vcpkg-json#platform-expression
+#
+#   VCPKG_VERSION <version>
+#     The minimum version of the vcpkg port to install
+#     See https://learn.microsoft.com/en-us/vcpkg/reference/vcpkg-json#version
+#
+#   VCPKG_ADD_TO_FEATURE <name>
+#     Add this port to the vcpkg feature with the given name. Create the feature if non-existent.
+#
+#   VCPKG_DEFAULT_FEATURES <ON/OFF>
+#     ON by default. Set this to OFF to avoid that the vcpkg feature is added to
+#     vcpkg.json's default features. Only useful if VCPKG_ADD_TO_FEATURE is set.
 macro(qt_find_package)
     # Get the target names we expect to be provided by the package.
     set(find_package_options CONFIG NO_MODULE MODULE REQUIRED)
     set(options ${find_package_options} MARK_OPTIONAL)
-    set(oneValueArgs MODULE_NAME QMAKE_LIB)
-    set(multiValueArgs PROVIDED_TARGETS COMPONENTS OPTIONAL_COMPONENTS)
+    set(oneValueArgs MODULE_NAME QMAKE_LIB
+        VCPKG_ADD_TO_FEATURE
+        VCPKG_DEFAULT_FEATURES
+        VCPKG_PLATFORM
+        VCPKG_PORT
+        VCPKG_VERSION
+    )
+    set(multiValueArgs PROVIDED_TARGETS COMPONENTS OPTIONAL_COMPONENTS VCPKG_FEATURES)
     cmake_parse_arguments(arg "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     # If some Qt internal project calls qt_find_package(WrapFreeType), but WrapFreeType was already
@@ -136,7 +163,7 @@ macro(qt_find_package)
     # TODO: Handle packages with components where a previous component is already found.
     # E.g. find_package(Qt6 COMPONENTS BuildInternals) followed by
     # qt_find_package(Qt6 COMPONENTS Core) doesn't end up calling find_package(Qt6Core).
-    if (NOT ${ARGV0}_FOUND AND NOT _qt_find_package_skip_find_package)
+    if ((NOT ${ARGV0}_FOUND OR arg_MODULE) AND NOT _qt_find_package_skip_find_package)
         # Call original function without our custom arguments.
         find_package(${arg_UNPARSED_ARGUMENTS})
     endif()
@@ -162,10 +189,7 @@ macro(qt_find_package)
         foreach(qt_find_package_target_name ${arg_PROVIDED_TARGETS})
             if(TARGET ${qt_find_package_target_name})
                 # Allow usage of aliased targets by setting properties on the actual target
-                get_target_property(aliased_target ${qt_find_package_target_name} ALIASED_TARGET)
-                if(aliased_target)
-                    set(qt_find_package_target_name ${aliased_target})
-                endif()
+                _qt_internal_dealias_target(qt_find_package_target_name)
 
                 if("${qt_find_package_target_name}" MATCHES "${QT_CMAKE_EXPORT_NAMESPACE}::"
                     AND QT_FEATURE_developer_build
@@ -237,7 +261,7 @@ macro(qt_find_package)
                 if(NOT "${ARGV0}" STREQUAL "Qt6")
                     _qt_internal_sbom_record_system_library_usage(
                         "${qt_find_package_target_name}"
-                        TYPE SYSTEM_LIBRARY
+                        SBOM_ENTITY_TYPE SYSTEM_LIBRARY
                         FRIENDLY_PACKAGE_NAME "${ARGV0}"
                         ${_qt_find_package_sbom_args}
                     )
@@ -380,21 +404,6 @@ function(qt_record_extra_package_dependency main_target_name dep_package_name de
     endif()
 endfunction()
 
-# This function records a dependency between ${main_target_name} and ${dep_target_name}
-# at the CMake package level.
-# E.g. Qt6CoreConfig.cmake needs to find_package(Qt6EntryPointPrivate).
-# main_target_name = Core
-# dep_target_name = EntryPointPrivate
-# This is just a convenience function that deals with Qt targets and their associated packages
-# instead of raw package names.
-function(qt_record_extra_qt_package_dependency main_target_name dep_target_name
-                                                                dep_package_version)
-    # EntryPointPrivate -> Qt6EntryPointPrivate.
-    qt_internal_qtfy_target(qtfied_target_name "${dep_target_name}")
-    qt_record_extra_package_dependency("${main_target_name}"
-        "${qtfied_target_name_versioned}" "${dep_package_version}")
-endfunction()
-
 # This function records a 'QtFooTools' package dependency for the ${main_target_name} target
 # onto the ${dep_package_name} tools package.
 # E.g. The QtWaylandCompositor package needs to call find_package(QtWaylandScannerTools).
@@ -407,13 +416,13 @@ function(qt_record_extra_main_tools_package_dependency
     endif()
     if (TARGET "${main_target_name}")
         get_target_property(extra_packages "${main_target_name}"
-                            QT_EXTRA_TOOLS_PACKAGE_DEPENDENCIES)
+                            _qt_extra_tools_package_dependencies)
         if(NOT extra_packages)
             set(extra_packages "")
         endif()
 
         list(APPEND extra_packages "${dep_package_name}\;${dep_package_version}")
-        set_target_properties("${main_target_name}" PROPERTIES QT_EXTRA_TOOLS_PACKAGE_DEPENDENCIES
+        set_target_properties("${main_target_name}" PROPERTIES _qt_extra_tools_package_dependencies
                                                                "${extra_packages}")
     endif()
 endfunction()
@@ -458,6 +467,52 @@ function(qt_record_extra_third_party_dependency main_target_name dep_target)
     endif()
 endfunction()
 
+# Record a third party dependency for a standalone tools package.
+#
+# This function records a dependency between the standalone pacakge PACKAGE_BASE_NAME and third
+# party dependency DEPENDENCY_PACKAGE_NAME and DEPENDENCY_PACKAGE_VERSION
+# at the CMake package level.
+#
+# E.g. A Qt6GarageTools package with the PACKAGE_BASE_NAME 'Garage',
+# needs to call find_package(ZLIB 1.2) (non-qt-package).
+function(qt_internal_record_tools_package_extra_third_party_dependency)
+    set(opt_args "")
+    set(single_args
+        PACKAGE_BASE_NAME
+    )
+    set(multi_args
+        DEPENDENCY_PACKAGE_NAME
+        DEPENDENCY_PACKAGE_VERSION
+    )
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_PACKAGE_BASE_NAME)
+        message(FATAL_ERROR "PACKAGE_BASE_NAME is required.")
+    endif()
+    set(id "${arg_PACKAGE_BASE_NAME}")
+
+    if(NOT arg_DEPENDENCY_PACKAGE_NAME)
+        message(FATAL_ERROR "DEPENDENCY_PACKAGE_NAME is required.")
+    endif()
+    set(dep_package_name "${arg_DEPENDENCY_PACKAGE_NAME}")
+
+    if(arg_DEPENDENCY_PACKAGE_VERSION)
+        set(dep_package_version "${arg_DEPENDENCY_PACKAGE_VERSION}")
+    else()
+        set(dep_package_version "")
+    endif()
+
+    get_cmake_property(extra_deps _qt_standalone_tool_package_${id}_third_party_dependencies)
+    if(NOT extra_deps)
+        set(extra_deps "")
+    endif()
+
+    list(APPEND extra_deps "${dep_package_name}\;${dep_package_version}")
+    set_property(GLOBAL PROPERTY _qt_standalone_tool_package_${id}_third_party_dependencies
+        "${extra_deps}")
+endfunction()
+
 # Sets out_var to TRUE if the non-namespaced ${lib} target is exported as part of Qt6Targets.cmake.
 function(qt_internal_is_lib_part_of_qt6_package lib out_var)
     if (lib STREQUAL "Platform"
@@ -465,8 +520,10 @@ function(qt_internal_is_lib_part_of_qt6_package lib out_var)
             OR lib STREQUAL "GlobalConfigPrivate"
             OR lib STREQUAL "PlatformModuleInternal"
             OR lib STREQUAL "PlatformPluginInternal"
+            OR lib STREQUAL "PlatformAppInternal"
             OR lib STREQUAL "PlatformToolInternal"
             OR lib STREQUAL "PlatformCommonInternal"
+            OR lib STREQUAL "PlatformExampleInternal"
     )
         set(${out_var} "TRUE" PARENT_SCOPE)
     else()
@@ -571,23 +628,38 @@ function(qt_internal_get_package_name_of_target target package_name_out_var)
     set(${package_name_out_var} "${package_name}" PARENT_SCOPE)
 endfunction()
 
-# This function stores the list of Qt targets a library depend on,
-# along with their version info, for usage in ${target}Depends.cmake file
-function(qt_register_target_dependencies target public_libs private_libs)
+# This function collects the list of Qt targets a library depend on,
+# along with their version info, for usage in ${target}Dependencies.cmake file
+# Multi-value Arguments:
+#   PUBLIC
+#     public dependencies
+#   PRIVATE
+#     private dependencies
+function(qt_internal_register_target_dependencies target)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "PUBLIC;PRIVATE")
     get_target_property(target_deps "${target}" _qt_target_deps)
     if(NOT target_deps)
         set(target_deps "")
     endif()
 
-    get_target_property(target_type ${target} TYPE)
-    set(lib_list ${public_libs})
+    set(lib_list "")
+    if(arg_PUBLIC)
+        set(lib_list "${arg_PUBLIC}")
+    endif()
 
+    get_target_property(target_type ${target} TYPE)
     set(target_is_shared FALSE)
     set(target_is_static FALSE)
+    set(target_is_module FALSE)
     if(target_type STREQUAL "SHARED_LIBRARY")
         set(target_is_shared TRUE)
     elseif(target_type STREQUAL "STATIC_LIBRARY")
         set(target_is_static TRUE)
+    elseif(target_type STREQUAL "MODULE_LIBRARY" AND ANDROID)
+        # Only Android deployment queries the Qt modules of plugins via CMake targets. Recording
+        # them for other platforms costs every project a find_package() call per plugin at
+        # configure time. See QTBUG-149668.
+        set(target_is_module TRUE)
     endif()
 
     # Record 'Qt::Foo'-like private dependencies of static library targets, this will be used to
@@ -595,8 +667,8 @@ function(qt_register_target_dependencies target public_libs private_libs)
     #
     # Private static library dependencies will become $<LINK_ONLY:> dependencies in
     # INTERFACE_LINK_LIBRARIES.
-    if(target_is_static)
-        list(APPEND lib_list ${private_libs})
+    if(target_is_static AND arg_PRIVATE)
+        list(APPEND lib_list ${arg_PRIVATE})
     endif()
 
     foreach(lib IN LISTS lib_list)
@@ -615,15 +687,21 @@ function(qt_register_target_dependencies target public_libs private_libs)
         endif()
     endforeach()
 
-    # Record 'Qt::Foo'-like shared private dependencies of shared library targets.
+    # Record 'Qt::Foo'-like private dependencies of SHARED and MODULE library targets.
     #
     # Private shared library dependencies are listed in the target's
     # IMPORTED_LINK_DEPENDENT_LIBRARIES and used in rpath-link calculation.
     # See QTBUG-86533 for some details.
+    #
+    # MODULE (i.e. plugin) library dependencies are recorded and will be used to
+    # generate _qt_internal_find_qt_dependencies() calls in the plugin's
+    # ${target}Dependencies.cmake, because we need to query those targets
+    # for Android deployment reasons. target_is_module is only TRUE for Android builds.
+    #
     # We filter out static libraries and common platform targets, but include both SHARED and
     # INTERFACE libraries. INTERFACE libraries in most cases will be FooPrivate libraries.
-    if(target_is_shared AND private_libs)
-        foreach(lib IN LISTS private_libs)
+    if((target_is_shared OR target_is_module) AND arg_PRIVATE)
+        foreach(lib IN LISTS arg_PRIVATE)
             set(lib_namespaced "${lib}")
             if("${lib}" MATCHES "^Qt::(.*)")
                 set(lib "${CMAKE_MATCH_1}")

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -60,18 +61,9 @@ void *QCocoaNativeInterface::nativeResourceForWindow(const QByteArray &resourceS
 QPlatformNativeInterface::NativeResourceForIntegrationFunction QCocoaNativeInterface::nativeResourceFunctionForIntegration(const QByteArray &resource)
 {
     if (resource.toLower() == "registerdraggedtypes")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::registerDraggedTypes);
+        return NativeResourceForIntegrationFunction(QFunctionPointer(QCocoaNativeInterface::registerDraggedTypes));
     if (resource.toLower() == "registertouchwindow")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::registerTouchWindow);
-    if (resource.toLower() == "setembeddedinforeignview")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::setEmbeddedInForeignView);
-    if (resource.toLower() == "registercontentborderarea")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::registerContentBorderArea);
-    if (resource.toLower() == "setcontentborderareaenabled")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::setContentBorderAreaEnabled);
-    if (resource.toLower() == "testcontentborderposition")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::testContentBorderPosition);
-
+        return NativeResourceForIntegrationFunction(QFunctionPointer(QCocoaNativeInterface::registerTouchWindow));
     return nullptr;
 }
 
@@ -80,22 +72,9 @@ void QCocoaNativeInterface::clearCurrentThreadCocoaEventDispatcherInterruptFlag(
     QCocoaEventDispatcher::clearCurrentThreadCocoaEventDispatcherInterruptFlag();
 }
 
-void QCocoaNativeInterface::onAppFocusWindowChanged(QWindow *window)
-{
-    Q_UNUSED(window);
-    QCocoaMenuBar::updateMenuBarImmediately();
-}
-
 void QCocoaNativeInterface::registerDraggedTypes(const QStringList &types)
 {
     QMacMimeRegistry::registerDraggedTypes(types);
-}
-
-void QCocoaNativeInterface::setEmbeddedInForeignView(QPlatformWindow *window, bool embedded)
-{
-    Q_UNUSED(embedded); // "embedded" state is now automatically detected
-    QCocoaWindow *cocoaPlatformWindow = static_cast<QCocoaWindow *>(window);
-    cocoaPlatformWindow->setEmbeddedInForeignView();
 }
 
 void QCocoaNativeInterface::registerTouchWindow(QWindow *window,  bool enable)
@@ -106,37 +85,6 @@ void QCocoaNativeInterface::registerTouchWindow(QWindow *window,  bool enable)
     QCocoaWindow *cocoaWindow = static_cast<QCocoaWindow *>(window->handle());
     if (cocoaWindow)
         cocoaWindow->registerTouch(enable);
-}
-
-void QCocoaNativeInterface::registerContentBorderArea(QWindow *window, quintptr identifier, int upper, int lower)
-{
-    if (!window)
-        return;
-
-    QCocoaWindow *cocoaWindow = static_cast<QCocoaWindow *>(window->handle());
-    if (cocoaWindow)
-        cocoaWindow->registerContentBorderArea(identifier, upper, lower);
-}
-
-void QCocoaNativeInterface::setContentBorderAreaEnabled(QWindow *window, quintptr identifier, bool enable)
-{
-    if (!window)
-        return;
-
-    QCocoaWindow *cocoaWindow = static_cast<QCocoaWindow *>(window->handle());
-    if (cocoaWindow)
-        cocoaWindow->setContentBorderAreaEnabled(identifier, enable);
-}
-
-bool QCocoaNativeInterface::testContentBorderPosition(QWindow *window, int position)
-{
-    if (!window)
-        return false;
-
-    QCocoaWindow *cocoaWindow = static_cast<QCocoaWindow *>(window->handle());
-    if (cocoaWindow)
-        return cocoaWindow->testContentBorderAreaPosition(position);
-    return false;
 }
 
 QT_END_NAMESPACE

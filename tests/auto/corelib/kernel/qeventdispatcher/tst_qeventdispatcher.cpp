@@ -8,6 +8,7 @@
 #endif
 #include <QTest>
 #include <QAbstractEventDispatcher>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QThreadPool>
 
@@ -194,9 +195,9 @@ private:
                 // For precise timers, we expect the fudge factor to be present
                 QAbstractEventDispatcher::Duration interval =
                         fudgeInterval(PreciseTimerInterval, Qt::PreciseTimer);
-#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
-                if (!qobject_cast<QAbstractEventDispatcherV2 *>(m_eventDispatcher))
-                    interval = PreciseTimerInterval;
+#ifdef Q_OS_WIN
+                // Windows does not have a nanosecond-resolution timer
+                interval = PreciseTimerInterval;
 #endif
                 QCOMPARE(timerInfo.interval, interval);
                 QCOMPARE(timerInfo.timerType, Qt::PreciseTimer);
@@ -380,8 +381,17 @@ void tst_QEventDispatcher::postEventFromThread()
     QAtomicInt hadToQuit = false;
     QAtomicInt done = false;
 
+    int threadCount = 500;
+    const int timeout = (1000
+#if defined(QT_GUI_LIB)
+        // Aggressively posting events may on some platforms rate limit us to
+        // the display's refresh rate, so give us enough time if that happens.
+        + ((1000.0 / qGuiApp->primaryScreen()->refreshRate()) * threadCount)
+#endif
+    );
+
     threadPool->start([&]{
-        int loop = 1000 / 10; // give it a second
+        int loop = timeout / 10;
         while (!done && --loop)
             QThread::sleep(std::chrono::milliseconds{10});
         if (done)
@@ -398,8 +408,7 @@ void tst_QEventDispatcher::postEventFromThread()
         }
     } receiver;
 
-    int count = 500;
-    while (!hadToQuit && --count) {
+    while (!hadToQuit && --threadCount) {
         threadPool->start([&receiver]{
             QCoreApplication::postEvent(&receiver, new QEvent(QEvent::User));
         });
@@ -448,13 +457,9 @@ void tst_QEventDispatcher::postEventFromEventHandler()
 
     const QByteArrayView eventDispatcherName(QAbstractEventDispatcher::instance()->metaObject()->className());
     qDebug() << eventDispatcherName;
-    // QXcbUnixEventDispatcher and QEventDispatcherUNIX do not do this correctly on any platform;
-    // both Windows event dispatchers fail as well.
-    const bool knownToFail = eventDispatcherName.contains("UNIX")
-                          || eventDispatcherName.contains("Unix")
-                          || eventDispatcherName.contains("Win32")
-                          || eventDispatcherName.contains("WindowsGui")
-                          || eventDispatcherName.contains("Android");
+    // QEventDispatcherWin32 and QWindowsGuiEventDispatcher do not do this correctly.
+    const bool knownToFail = eventDispatcherName.contains("Win32")
+                          || eventDispatcherName.contains("WindowsGui");
 
     if (knownToFail)
         QEXPECT_FAIL("", eventDispatcherName.constData(), Continue);

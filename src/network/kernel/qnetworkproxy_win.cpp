@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trusted-data
 
 #include "qnetworkproxy.h"
 
@@ -248,7 +249,7 @@ static QList<QNetworkProxy> parseServerList(const QNetworkProxyQuery &query, con
     if (!checkTags || requiredTag != "http"_L1) {
         // if there are different http proxies for http and https, prefer the https one (more likely to be capable of CONNECT)
         QNetworkProxy httpProxy = taggedProxies.value("http"_L1);
-        QNetworkProxy httpsProxy = taggedProxies.value("http"_L1);
+        QNetworkProxy httpsProxy = taggedProxies.value("https"_L1);
         if (httpProxy != httpsProxy && httpProxy.type() == QNetworkProxy::HttpProxy && httpsProxy.type() == QNetworkProxy::HttpProxy) {
             for (int i = 0; i < result.count(); i++) {
                 if (httpProxy == result.at(i))

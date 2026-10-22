@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qrect.h"
 #include "qdatastream.h"
@@ -66,8 +67,15 @@ QT_BEGIN_NAMESPACE
 
     \table
     \row
-    \li \inlineimage qrect-intersect.png
-    \li \inlineimage qrect-unite.png
+    \li \inlineimage qrect-intersect.png {Diagram showing intersection
+                     of two rectangles r and s with the overlapping area
+                     highlighted. It's also showing how the width and
+                     height of the highlighted area is determined with
+                     r.intersect(s).width() and r.intersect(s).height().}
+    \li \inlineimage qrect-unite.webp {Diagram showing two overlapped
+                     rectangles r and s and their united size which is
+                     determined with r.united(s).width() and
+                     r.united(s).height().}
     \row
     \li intersected()
     \li united()
@@ -105,13 +113,17 @@ QT_BEGIN_NAMESPACE
     \table
     \row
         \li \inlineimage qrect-diagram-zero.png
+                         {Rectangle showing width and height dimensions}
         \li \inlineimage qrect-diagram-one.png
+                         {Rectangle with one-pixel pen showing corner coordinates}
     \row
         \li Logical representation
         \li One pixel wide pen
     \row
         \li \inlineimage qrect-diagram-two.png
+                         {Rectangle with two-pixel pen showing corner coordinates}
         \li \inlineimage qrect-diagram-three.png
+                         {Rectangle with three-pixel pen showing corner coordinates}
     \row
         \li Two pixel wide pen
         \li Three pixel wide pen
@@ -132,7 +144,10 @@ QT_BEGIN_NAMESPACE
     horizontally, leaving the rectangle's left edge at the given x
     coordinate and its size unchanged.
 
-    \image qrect-coordinates.png
+    \image qrect-coordinates.png {Diagram of a rectangle showing QRect
+           methods for positions: x(), y(), center(), corners (topLeft(),
+           topRight(), bottomLeft(), bottomRight()), and edges (top(),
+           bottom(), left(), right()).}
 
     Note that for historical reasons the values returned by the
     bottom() and right() functions deviate from the true bottom-right
@@ -788,7 +803,7 @@ QRect QRect::normalized() const noexcept
 
 bool QRect::contains(const QPoint &p, bool proper) const noexcept
 {
-    int l, r;
+    Representation l, r;
     if (x2 < x1 - 1) {
         l = x2 + 1;
         r = x1 - 1;
@@ -803,7 +818,7 @@ bool QRect::contains(const QPoint &p, bool proper) const noexcept
         if (p.x() < l || p.x() > r)
             return false;
     }
-    int t, b;
+    Representation t, b;
     if (y2 < y1 - 1) {
         t = y2 + 1;
         b = y1 - 1;
@@ -855,15 +870,15 @@ bool QRect::contains(const QRect &r, bool proper) const noexcept
     if (isNull() || r.isNull())
         return false;
 
-    int l1 = x1;
-    int r1 = x1 - 1;
+    Representation l1 = x1;
+    Representation r1 = x1 - 1;
     if (x2 < x1 - 1)
         l1 = x2 + 1;
     else
         r1 = x2;
 
-    int l2 = r.x1;
-    int r2 = r.x1 - 1;
+    Representation l2 = r.x1;
+    Representation r2 = r.x1 - 1;
     if (r.x2 < r.x1 - 1)
         l2 = r.x2 + 1;
     else
@@ -877,15 +892,15 @@ bool QRect::contains(const QRect &r, bool proper) const noexcept
             return false;
     }
 
-    int t1 = y1;
-    int b1 = y1 - 1;
+    Representation t1 = y1;
+    Representation b1 = y1 - 1;
     if (y2 < y1 - 1)
         t1 = y2 + 1;
     else
         b1 = y2;
 
-    int t2 = r.y1;
-    int b2 = r.y1 - 1;
+    Representation t2 = r.y1;
+    Representation b2 = r.y1 - 1;
     if (r.y2 < r.y1 - 1)
         t2 = r.y2 + 1;
     else
@@ -935,29 +950,29 @@ QRect QRect::operator|(const QRect &r) const noexcept
     if (r.isNull())
         return *this;
 
-    int l1 = x1;
-    int r1 = x1 - 1;
+    Representation l1 = x1;
+    Representation r1 = x1 - 1;
     if (x2 < x1 - 1)
         l1 = x2 + 1;
     else
         r1 = x2;
 
-    int l2 = r.x1;
-    int r2 = r.x1 - 1;
+    Representation l2 = r.x1;
+    Representation r2 = r.x1 - 1;
     if (r.x2 < r.x1 - 1)
         l2 = r.x2 + 1;
     else
         r2 = r.x2;
 
-    int t1 = y1;
-    int b1 = y1 - 1;
+    Representation t1 = y1;
+    Representation b1 = y1 - 1;
     if (y2 < y1 - 1)
         t1 = y2 + 1;
     else
         b1 = y2;
 
-    int t2 = r.y1;
-    int b2 = r.y1 - 1;
+    Representation t2 = r.y1;
+    Representation b2 = r.y1 - 1;
     if (r.y2 < r.y1 - 1)
         t2 = r.y2 + 1;
     else
@@ -977,7 +992,9 @@ QRect QRect::operator|(const QRect &r) const noexcept
 
     Returns the bounding rectangle of this rectangle and the given \a rectangle.
 
-    \image qrect-unite.png
+    \image qrect-unite.webp {Diagram showing two overlapped rectangles r and s
+           and their united size which is determined with r.united(s).width and
+           r.united(s).height().}
 
     \sa intersected()
 */
@@ -997,15 +1014,15 @@ QRect QRect::operator&(const QRect &r) const noexcept
     if (isNull() || r.isNull())
         return QRect();
 
-    int l1 = x1;
-    int r1 = x2;
+    Representation l1 = x1;
+    Representation r1 = x2;
     if (x2 < x1 - 1) {
         l1 = x2 + 1;
         r1 = x1 - 1;
     }
 
-    int l2 = r.x1;
-    int r2 = r.x2;
+    Representation l2 = r.x1;
+    Representation r2 = r.x2;
     if (r.x2 < r.x1 - 1) {
         l2 = r.x2 + 1;
         r2 = r.x1 - 1;
@@ -1014,15 +1031,15 @@ QRect QRect::operator&(const QRect &r) const noexcept
     if (l1 > r2 || l2 > r1)
         return QRect();
 
-    int t1 = y1;
-    int b1 = y2;
+    Representation t1 = y1;
+    Representation b1 = y2;
     if (y2 < y1 - 1) {
         t1 = y2 + 1;
         b1 = y1 - 1;
     }
 
-    int t2 = r.y1;
-    int b2 = r.y2;
+    Representation t2 = r.y1;
+    Representation b2 = r.y2;
     if (r.y2 < r.y1 - 1) {
         t2 = r.y2 + 1;
         b2 = r.y1 - 1;
@@ -1046,7 +1063,11 @@ QRect QRect::operator&(const QRect &r) const noexcept
     Returns the intersection of this rectangle and the given \a
     rectangle. Note that \c{r.intersected(s)} is equivalent to \c{r & s}.
 
-    \image qrect-intersect.png
+    \image qrect-intersect.png {Diagram showing intersection of two
+           rectangles r and s with the overlapping area highlighted.
+           It also shows how the width and height of the highlighted area
+           is determined with r.intersect(s).width and
+           r.intersect(s).height().}
 
     \sa intersects(), united(), operator&=()
 */
@@ -1069,15 +1090,15 @@ bool QRect::intersects(const QRect &r) const noexcept
     if (isNull() || r.isNull())
         return false;
 
-    int l1 = x1;
-    int r1 = x2;
+    Representation l1 = x1;
+    Representation r1 = x2;
     if (x2 < x1 - 1) {
         l1 = x2 + 1;
         r1 = x1 - 1;
     }
 
-    int l2 = r.x1;
-    int r2 = r.x2;
+    Representation l2 = r.x1;
+    Representation r2 = r.x2;
     if (r.x2 < r.x1 - 1) {
         l2 = r.x2 + 1;
         r2 = r.x1 - 1;
@@ -1086,15 +1107,15 @@ bool QRect::intersects(const QRect &r) const noexcept
     if (l1 > r2 || l2 > r1)
         return false;
 
-    int t1 = y1;
-    int b1 = y2;
+    Representation t1 = y1;
+    Representation b1 = y2;
     if (y2 < y1 - 1) {
         t1 = y2 + 1;
         b1 = y1 - 1;
     }
 
-    int t2 = r.y1;
-    int b2 = r.y2;
+    Representation t2 = r.y1;
+    Representation b2 = r.y2;
     if (r.y2 < r.y1 - 1) {
         t2 = r.y2 + 1;
         b2 = r.y1 - 1;
@@ -1332,8 +1353,15 @@ QDebug operator<<(QDebug dbg, const QRect &r)
 
     \table
     \row
-    \li \inlineimage qrect-intersect.png
-    \li \inlineimage qrect-unite.png
+    \li \inlineimage qrect-intersect.png {Diagram showing intersection
+                     of two rectangles r and s with the overlapping area
+                     highlighted. It's also showing how the width and
+                     height of the highlighted area is determined with
+                     r.intersect(s).width and r.intersect(s).height().}
+    \li \inlineimage qrect-unite.webp {Diagram showing two overlapped
+                     rectangles r and s and their united size which is
+                     determined with r.united(s).width and
+                     r.united(s).height()}
     \row
     \li intersected()
     \li united()
@@ -1371,13 +1399,17 @@ QDebug operator<<(QDebug dbg, const QRect &r)
     \table
     \row
         \li \inlineimage qrect-diagram-zero.png
+                         {Rectangle showing width and height dimensions}
         \li \inlineimage qrectf-diagram-one.png
+                         {Rectangle with one-pixel pen showing corner coordinates}
     \row
         \li Logical representation
         \li One pixel wide pen
     \row
         \li \inlineimage qrectf-diagram-two.png
+                         {Rectangle with two-pixel pen showing corner coordinates}
         \li \inlineimage qrectf-diagram-three.png
+                         {Rectangle with three-pixel pen showing corner coordinates}
     \row
         \li Two pixel wide pen
         \li Three pixel wide pen
@@ -1398,7 +1430,10 @@ QDebug operator<<(QDebug dbg, const QRect &r)
     vertically, leaving the rectangle's bottom edge at the given y
     coordinate and its size unchanged.
 
-    \image qrectf-coordinates.png
+    \image qrectf-coordinates.png {Diagram of a rectangle showing QRect
+           methods for positions: x(), y(), center(), corners (topLeft(),
+           topRight(), bottomLeft(), bottomRight()), and edges (top(),
+           bottom(), left(), right()).}
 
     It is also possible to add offsets to this rectangle's coordinates
     using the adjust() function, as well as retrieve a new rectangle
@@ -2171,7 +2206,9 @@ QRectF QRectF::operator|(const QRectF &r) const noexcept
     Returns the bounding rectangle of this rectangle and the given \a
     rectangle.
 
-    \image qrect-unite.png
+    \image qrect-unite.webp {Diagram showing two overlapped rectangles
+           r and s and their united size which is determined with
+           r.united(s).width and r.united(s).height()}
 
     \sa intersected()
 */
@@ -2246,7 +2283,11 @@ QRectF QRectF::operator&(const QRectF &r) const noexcept
     rectangle. Note that \c {r.intersected(s)} is equivalent to \c
     {r & s}.
 
-    \image qrect-intersect.png
+    \image qrect-intersect.png {Diagram showing intersection of two
+           rectangles r and s with the overlapping area highlighted.
+           It's also showing how the width and height of the
+           highlighted area is determined with r.intersect(s).width
+           and r.intersect(s).height().}
 
     \sa intersects(), united(), operator&=()
 */
@@ -2333,10 +2374,10 @@ bool QRectF::intersects(const QRectF &r) const noexcept
 
 QRect QRectF::toAlignedRect() const noexcept
 {
-    int xmin = int(qFloor(xp));
-    int xmax = int(qCeil(xp + w));
-    int ymin = int(qFloor(yp));
-    int ymax = int(qCeil(yp + h));
+    int xmin = qFloor(xp);
+    int xmax = qCeil(xp + w);
+    int ymin = qFloor(yp);
+    int ymax = qCeil(yp + h);
     return QRect(xmin, ymin, xmax - xmin, ymax - ymin);
 }
 

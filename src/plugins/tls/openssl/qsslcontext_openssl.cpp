@@ -3,6 +3,7 @@
 // Copyright (C) 2014 Governikus GmbH & Co. KG.
 // Copyright (C) 2016 Richard J. Moore <rich@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 #include <QtNetwork/qsslsocket.h>
 #include <QtNetwork/qssldiffiehellmanparameters.h>
@@ -28,12 +29,16 @@ Q_GLOBAL_STATIC(bool, forceSecurityLevel)
 namespace QTlsPrivate
 {
 // These callback functions are defined in qtls_openssl.cpp.
-extern "C" int q_X509Callback(int ok, X509_STORE_CTX *ctx);
-extern "C" int q_X509CallbackDirect(int ok, X509_STORE_CTX *ctx);
+int q_X509Callback(int ok, X509_STORE_CTX *ctx);
+int q_X509CallbackDirect(int ok, X509_STORE_CTX *ctx);
 
 #if QT_CONFIG(ocsp)
-extern "C" int qt_OCSP_status_server_callback(SSL *ssl, void *);
+int qt_OCSP_status_server_callback(SSL *ssl, void *);
 #endif // ocsp
+
+#ifdef TLS1_3_VERSION
+int q_ssl_sess_set_new_cb(SSL *context, SSL_SESSION *session);
+#endif // TLS1_3_VERSION
 
 } // namespace QTlsPrivate
 
@@ -41,17 +46,11 @@ extern "C" int qt_OCSP_status_server_callback(SSL *ssl, void *);
 // defined in qdtls_openssl.cpp:
 namespace dtlscallbacks
 {
-extern "C" int q_X509DtlsCallback(int ok, X509_STORE_CTX *ctx);
-extern "C" int q_generate_cookie_callback(SSL *ssl, unsigned char *dst,
-                                          unsigned *cookieLength);
-extern "C" int q_verify_cookie_callback(SSL *ssl, const unsigned char *cookie,
-                                        unsigned cookieLength);
-}
+int q_X509DtlsCallback(int ok, X509_STORE_CTX *ctx);
+int q_generate_cookie_callback(SSL *ssl, unsigned char *dst, unsigned *cookieLength);
+int q_verify_cookie_callback(SSL *ssl, const unsigned char *cookie, unsigned cookieLength);
+} // namespace dtlscallbacks
 #endif // dtls
-
-#ifdef TLS1_3_VERSION
-extern "C" int q_ssl_sess_set_new_cb(SSL *context, SSL_SESSION *session);
-#endif // TLS1_3_VERSION
 
 static inline QString msgErrorSettingBackendConfig(const QString &why)
 {
@@ -309,6 +308,16 @@ QSslError::SslError QSslContext::error() const
 QString QSslContext::errorString() const
 {
     return errorStr;
+}
+
+void QSslContext::setGenericPrivateKey(QSslContext *sslContext,
+                                       const QSslConfiguration &configuration)
+{
+    auto qtKey = QTlsBackend::backend<QTlsPrivate::TlsKeyOpenSSL>(configuration.d->privateKey);
+    Q_ASSERT(qtKey);
+    sslContext->pkey = qtKey->genericKey;
+    Q_ASSERT(sslContext->pkey);
+    q_EVP_PKEY_up_ref(sslContext->pkey);
 }
 
 void QSslContext::initSslContext(QSslContext *sslContext, QSslSocket::SslMode mode,
@@ -588,33 +597,45 @@ QT_WARNING_POP
             return;
         }
 
-        if (configuration.d->privateKey.algorithm() == QSsl::Opaque) {
+        const auto algorithm = configuration.d->privateKey.algorithm();
+        bool useOpaqueHandle = false;
+
+        if (algorithm == QSsl::Opaque)
+            useOpaqueHandle = true;
+#if OPENSSL_VERSION_NUMBER < 0x3050000fL
+        // ML-DSA is only supported in OpenSSL 3.5+, therefore treat it as Qssl::Opaque so it still
+        // works and loads correctly.
+        if (algorithm == QSsl::MlDsa)
+            useOpaqueHandle = true;
+#endif
+
+        if (useOpaqueHandle) {
             sslContext->pkey = reinterpret_cast<EVP_PKEY *>(configuration.d->privateKey.handle());
+#if OPENSSL_VERSION_NUMBER >= 0x3050000fL
+        } else if (algorithm == QSsl::MlDsa) {
+            setGenericPrivateKey(sslContext, configuration);
+#endif
         } else {
 #ifdef OPENSSL_NO_DEPRECATED_3_0
-            auto qtKey = QTlsBackend::backend<QTlsPrivate::TlsKeyOpenSSL>(configuration.d->privateKey);
-            Q_ASSERT(qtKey);
-            sslContext->pkey = qtKey->genericKey;
-            Q_ASSERT(sslContext->pkey);
-            q_EVP_PKEY_up_ref(sslContext->pkey);
+            setGenericPrivateKey(sslContext, configuration);
 #else
             // Load private key
             sslContext->pkey = q_EVP_PKEY_new();
             // before we were using EVP_PKEY_assign_R* functions and did not use EVP_PKEY_free.
             // this lead to a memory leak. Now we use the *_set1_* functions which do not
             // take ownership of the RSA/DSA key instance because the QSslKey already has ownership.
-            if (configuration.d->privateKey.algorithm() == QSsl::Rsa)
+            if (algorithm == QSsl::Rsa)
                 q_EVP_PKEY_set1_RSA(sslContext->pkey, reinterpret_cast<RSA *>(configuration.d->privateKey.handle()));
-            else if (configuration.d->privateKey.algorithm() == QSsl::Dsa)
+            else if (algorithm == QSsl::Dsa)
                 q_EVP_PKEY_set1_DSA(sslContext->pkey, reinterpret_cast<DSA *>(configuration.d->privateKey.handle()));
 #ifndef OPENSSL_NO_EC
-            else if (configuration.d->privateKey.algorithm() == QSsl::Ec)
+            else if (algorithm == QSsl::Ec)
                 q_EVP_PKEY_set1_EC_KEY(sslContext->pkey, reinterpret_cast<EC_KEY *>(configuration.d->privateKey.handle()));
 #endif // OPENSSL_NO_EC
 #endif // OPENSSL_NO_DEPRECATED_3_0
         }
         auto pkey = sslContext->pkey;
-        if (configuration.d->privateKey.algorithm() == QSsl::Opaque)
+        if (useOpaqueHandle)
             sslContext->pkey = nullptr; // Don't free the private key, it belongs to QSslKey
 
         if (!q_SSL_CTX_use_PrivateKey(sslContext->ctx, pkey)) {
@@ -666,7 +687,7 @@ QT_WARNING_POP
 #ifdef TLS1_3_VERSION
     // NewSessionTicket callback:
     if (mode == QSslSocket::SslClientMode && !isDtls) {
-        q_SSL_CTX_sess_set_new_cb(sslContext->ctx, q_ssl_sess_set_new_cb);
+        q_SSL_CTX_sess_set_new_cb(sslContext->ctx, QTlsPrivate::q_ssl_sess_set_new_cb);
         q_SSL_CTX_set_session_cache_mode(sslContext->ctx, SSL_SESS_CACHE_CLIENT);
     }
 
@@ -772,8 +793,7 @@ void QSslContext::applyBackendConfig(QSslContext *sslContext)
             if (!i.value().canConvert(QMetaType(QMetaType::QByteArray))) {
                 sslContext->errorCode = QSslError::UnspecifiedError;
                 sslContext->errorStr = msgErrorSettingBackendConfig(
-                QSslSocket::tr("Expecting QByteArray for %1").arg(
-                               QString::fromUtf8(i.key())));
+                QSslSocket::tr("Expecting QByteArray for %1").arg(i.key()));
                 return;
             }
 
@@ -786,18 +806,16 @@ void QSslContext::applyBackendConfig(QSslContext *sslContext)
             switch (result) {
             case 0:
                 sslContext->errorStr = msgErrorSettingBackendConfig(
-                    QSslSocket::tr("An error occurred attempting to set %1 to %2").arg(
-                        QString::fromUtf8(i.key()), QString::fromUtf8(value)));
+                    QSslSocket::tr("An error occurred attempting to set %1 to %2")
+                            .arg(i.key(), value));
                 return;
             case 1:
                 sslContext->errorStr = msgErrorSettingBackendConfig(
-                    QSslSocket::tr("Wrong value for %1 (%2)").arg(
-                        QString::fromUtf8(i.key()), QString::fromUtf8(value)));
+                    QSslSocket::tr("Wrong value for %1 (%2)").arg(i.key(), value));
                 return;
             default:
                 sslContext->errorStr = msgErrorSettingBackendConfig(
-                    QSslSocket::tr("Unrecognized command %1 = %2").arg(
-                        QString::fromUtf8(i.key()), QString::fromUtf8(value)));
+                    QSslSocket::tr("Unrecognized command %1 = %2").arg(i.key(), value));
                 return;
             }
         }

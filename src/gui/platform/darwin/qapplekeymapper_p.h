@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QAPPLEKEYMAPPER_H
 #define QAPPLEKEYMAPPER_H
@@ -46,6 +47,7 @@ public:
                             NSString *charactersIgnoringModifiers, QString &text);
 
     static Qt::Key fromUIKitKey(NSString *keyCode);
+    static Qt::Key fromUIKitKey(UIKeyboardHIDUsage usage);
     static Qt::KeyboardModifiers fromUIKitModifiers(ulong uikitModifiers);
     static ulong toUIKitModifiers(Qt::KeyboardModifiers);
 #endif

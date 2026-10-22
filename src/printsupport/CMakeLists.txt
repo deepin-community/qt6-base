@@ -21,7 +21,7 @@ qt_internal_add_module(PrintSupport
         kernel/qtprintsupportglobal.h kernel/qtprintsupportglobal_p.h
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
-        QT_NO_FOREACH
+        QT_NO_URL_CAST_FROM_STRING
         QT_NO_USING_NAMESPACE
         QT_USE_NODISCARD_FILE_OPEN
     INCLUDE_DIRECTORIES
@@ -213,3 +213,9 @@ qt_internal_extend_target(PrintSupport CONDITION QT_FEATURE_printpreviewdialog
 qt_internal_add_docs(PrintSupport
     doc/qtprintsupport.qdocconf
 )
+
+if(OHOS)
+    qt_internal_add_harmonyos_permission(PrintSupport
+        NAME ohos.permission.PRINT
+    )
+endif()

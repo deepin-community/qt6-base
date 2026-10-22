@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Luca Beldi <v.ronin@yahoo.it>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTRANSPOSEPROXYMODEL_P_H
 #define QTRANSPOSEPROXYMODEL_P_H
@@ -16,7 +17,10 @@
 //
 
 #include "qtransposeproxymodel.h"
+
 #include <private/qabstractproxymodel_p.h>
+
+#include <array>
 
 QT_BEGIN_NAMESPACE
 
@@ -25,10 +29,14 @@ class QTransposeProxyModelPrivate : public QAbstractProxyModelPrivate
     Q_DECLARE_PUBLIC(QTransposeProxyModel)
     Q_DISABLE_COPY(QTransposeProxyModelPrivate)
 private:
-    QTransposeProxyModelPrivate() = default;
-    QList<QMetaObject::Connection> sourceConnections;
+    QTransposeProxyModelPrivate();
+    ~QTransposeProxyModelPrivate() override;
+
     QList<QPersistentModelIndex> layoutChangePersistentIndexes;
     QModelIndexList layoutChangeProxyIndexes;
+    std::array<QMetaObject::Connection, 18> sourceConnections;
+
+
     QModelIndex uncheckedMapToSource(const QModelIndex &proxyIndex) const;
     QModelIndex uncheckedMapFromSource(const QModelIndex &sourceIndex) const;
     void onLayoutChanged(const QList<QPersistentModelIndex> &parents, QAbstractItemModel::LayoutChangeHint hint);

@@ -20,18 +20,22 @@ endfunction()
 function(qt_generate_qconfig_cpp in_file out_file)
     set(QT_CONFIG_STRS "")
 
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_DOCDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_INCLUDEDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_LIBDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_LIBEXECDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_BINDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_PLUGINSDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_QMLDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_ARCHDATADIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_DATADIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_TRANSLATIONSDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_EXAMPLESDIR})qconfig\",\n")
-    string(APPEND QT_CONFIG_STRS "    R\"qconfig(${INSTALL_TESTSDIR})qconfig\"")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_DOCDIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_INCLUDEDIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_LIBDIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_LIBEXECDIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_BINDIR})qconfig\",\n")
+    if(OHOS)
+        string(APPEND QT_CONFIG_STRS "    uR\"qconfig(.)qconfig\",\n")
+    else()
+        string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_PLUGINSDIR})qconfig\",\n")
+    endif()
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_QMLDIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_ARCHDATADIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_DATADIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_TRANSLATIONSDIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_EXAMPLESDIR})qconfig\",\n")
+    string(APPEND QT_CONFIG_STRS "    uR\"qconfig(${INSTALL_TESTSDIR})qconfig\"")
 
     # Settings path / sysconf dir.
     set(QT_SYS_CONF_DIR "${INSTALL_SYSCONFDIR}")
@@ -44,31 +48,40 @@ function(qt_generate_qconfig_cpp in_file out_file)
         set(lib_location_absolute_path
             "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}/${INSTALL_LIBDIR}")
     endif()
-    file(RELATIVE_PATH from_lib_location_to_prefix
-         "${lib_location_absolute_path}" "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}")
-    set(QT_CONFIGURE_LIBLOCATION_TO_PREFIX_PATH "${from_lib_location_to_prefix}")
-
-    # Ensure Windows drive letter is prepended to the install prefix hardcoded
-    # into qconfig.cpp, otherwise qmake can't find Qt modules in a static Qt
-    # build if there's no qt.conf. Mostly relevant for CI.
-    # Given input like
-    #    \work/qt/install
-    # or
-    #    \work\qt\install
-    # Expected output is something like
-    #   C:/work/qt/install
-    # so it includes a drive letter and forward slashes.
-    if(QT_FEATURE_relocatable)
-        # A relocatable Qt does not need a hardcoded prefix path.
+    if(OHOS)
+        set(QT_CONFIGURE_LIBLOCATION_TO_PREFIX_PATH ".")
+    else()
+        file(RELATIVE_PATH from_lib_location_to_prefix
+            "${lib_location_absolute_path}" "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}")
+        set(QT_CONFIGURE_LIBLOCATION_TO_PREFIX_PATH "${from_lib_location_to_prefix}")
+    endif()
+    if(QT_FEATURE_relocatable AND (NOT APPLE OR BUILD_SHARED_LIBS))
+        # A relocatable Qt does not need a hardcoded prefix path. Unless
+        # we're on an Apple static Qt build, in which case we need the
+        # prefix as a fallback for non-sandboxed application.
         # This makes reproducible builds a closer reality, because we don't embed a CI path
         # into the binaries.
         set(QT_CONFIGURE_PREFIX_PATH_STR "")
     else()
         set(QT_CONFIGURE_PREFIX_PATH_STR "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}")
+
+        # Ensure a Windows drive letter is prepended to the install prefix hardcoded
+        # in qconfig.cpp, otherwise qmake can't find Qt modules in a static Qt
+        # build if there's no qt.conf. Mostly relevant for Qt's CI.
+        # Given input like
+        #    \work/qt/install
+        # or
+        #    \work\qt\install
+        # Expected output is something like
+        #   C:/work/qt/install
+        # so it includes a drive letter and forward slashes.
         if(CMAKE_HOST_WIN32)
-            get_filename_component(
-                QT_CONFIGURE_PREFIX_PATH_STR
-                "${QT_CONFIGURE_PREFIX_PATH_STR}" REALPATH)
+            file(TO_CMAKE_PATH "${QT_CONFIGURE_PREFIX_PATH_STR}" QT_CONFIGURE_PREFIX_PATH_STR)
+            # Only prepend the drive letter if not present.
+            if(QT_CONFIGURE_PREFIX_PATH_STR MATCHES "^/")
+                _qt_internal_get_current_build_dir_drive_letter_on_windows(drive_letter)
+                string(PREPEND QT_CONFIGURE_PREFIX_PATH_STR "${drive_letter}")
+            endif()
         endif()
     endif()
 
@@ -105,7 +118,7 @@ function(qt_generate_qmake_and_qtpaths_wrapper_for_target)
     # then qmake generates incorrect Qt module include flags (among other things). Do the same for
     # darwin uikit cross-compilation.
     set(sysroot "")
-    if(CMAKE_SYSROOT AND NOT ANDROID AND NOT UIKIT)
+    if(CMAKE_SYSROOT AND NOT ANDROID AND NOT UIKIT AND NOT OHOS)
         set(sysroot "${CMAKE_SYSROOT}")
     endif()
 
@@ -125,6 +138,7 @@ Prefix=${prefix}
         endif()
     endif()
 
+    qt_internal_get_host_info_var_prefix(host_info_var_prefix)
     string(APPEND content
         "[Paths]
 Prefix=${ext_prefix_relative_to_conf_file}
@@ -142,9 +156,9 @@ Examples=${INSTALL_EXAMPLESDIR}
 Tests=${INSTALL_TESTSDIR}
 Settings=${INSTALL_SYSCONFDIR}
 HostPrefix=${host_prefix_relative_to_conf_file}
-HostBinaries=${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_BINDIR}
-HostLibraries=${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_LIBDIR}
-HostLibraryExecutables=${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_LIBEXECDIR}
+HostBinaries=${${host_info_var_prefix}_BINDIR}
+HostLibraries=${${host_info_var_prefix}_LIBDIR}
+HostLibraryExecutables=${${host_info_var_prefix}_LIBEXECDIR}
 HostData=${ext_datadir_relative_to_host_prefix}
 Sysroot=${sysroot}
 SysrootifyPrefix=${sysrootify_prefix}
@@ -169,7 +183,7 @@ HostSpec=${QT_QMAKE_HOST_MKSPEC}
         set(wrapper_prefix "host-")
     endif()
 
-    set(host_qt_bindir "${host_prefix}/${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_BINDIR}")
+    set(host_qt_bindir "${host_prefix}/${${host_info_var_prefix}_BINDIR}")
     file(TO_NATIVE_PATH "${host_qt_bindir}" host_qt_bindir)
 
     if(QT_CREATE_VERSIONED_HARD_LINK AND QT_WILL_INSTALL)
@@ -213,6 +227,7 @@ function(qt_get_qmake_module_name result module)
     string(REGEX REPLACE "Qpa$" "_qpa_lib_private" module "${module}")
     string(REGEX REPLACE "Rhi$" "_rhi_lib_private" module "${module}")
     string(REGEX REPLACE "Ssg$" "_ssg_lib_private" module "${module}")
+    string(REGEX REPLACE "Spi$" "_spi_lib_private" module "${module}")
     string(TOLOWER "${module}" module)
     set(${result} ${module} PARENT_SCOPE)
 endfunction()
@@ -249,3 +264,32 @@ macro(qt_add_qmake_lib_dependency lib dep)
     string(TOUPPER "${dep}" ucdep)
     list(APPEND QT_QMAKE_LIB_DEPS_${lib} ${ucdep})
 endmacro()
+
+# Embeds a relocatable qt.conf into the given host tool target (e.g. qmake, qtpaths)
+# as a Qt resource at ":/qt/etc/qt.conf", so the tool climbs from its bin directory
+# to the prefix instead of reporting the application binary dir as prefix.
+#
+# This is only relevant for static, relocatable builds: there the tool determines its
+# prefix from the executable's location (prefixFromAppDir()), which yields the bin
+# directory. In shared builds the prefix is derived from the QtCore library location
+# instead, so no embedded qt.conf is needed.
+function(qt_internal_embed_relocatable_qt_conf target)
+    if(NOT QT_FEATURE_static OR NOT QT_FEATURE_relocatable OR NOT TARGET "${target}")
+        return()
+    endif()
+
+    file(RELATIVE_PATH prefix "/foo/${INSTALL_BINDIR}" "/foo")
+
+    set(out_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_qt.conf")
+    qt_configure_file(
+        OUTPUT "${out_file}"
+        CONTENT "[Paths]
+Prefix=${prefix}
+"
+    )
+    set_source_files_properties("${out_file}" PROPERTIES QT_RESOURCE_ALIAS "qt.conf")
+    qt_internal_add_resource(${target} "${target}_qtconf"
+        PREFIX "/qt/etc"
+        FILES "${out_file}"
+    )
+endfunction()

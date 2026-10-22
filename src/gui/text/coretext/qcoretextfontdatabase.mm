@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qglobal.h"
 
@@ -98,6 +99,8 @@ CTFontDescriptorRef descriptorForFamily(const QString &familyName)
 }
 void QCoreTextFontDatabase::populateFontDatabase()
 {
+    QMacAutoReleasePool pool;
+
     qCDebug(lcQpaFonts) << "Populating font database...";
     QElapsedTimer elapsed;
     if (lcQpaFonts().isDebugEnabled())
@@ -327,6 +330,7 @@ struct FontDescription {
     QFont::Stretch stretch;
     qreal pointSize;
     bool fixedPitch;
+    bool colorFont;
     QSupportedWritingSystems writingSystems;
 };
 
@@ -359,6 +363,9 @@ static void getFontDescription(CTFontDescriptorRef font, FontDescription *fd)
     fd->style = QFont::StyleNormal;
     fd->stretch = QFont::Unstretched;
     fd->fixedPitch = false;
+    fd->colorFont = false;
+
+
 
     if (QCFType<CTFontRef> tempFont = CTFontCreateWithFontDescriptor(font, 0.0, 0)) {
         uint tag = QFont::Tag("OS/2").value();
@@ -393,6 +400,9 @@ static void getFontDescription(CTFontDescriptorRef font, FontDescription *fd)
         if (CFNumberRef symbolic = (CFNumberRef) CFDictionaryGetValue(styles, kCTFontSymbolicTrait)) {
             int d;
             if (CFNumberGetValue(symbolic, kCFNumberSInt32Type, &d)) {
+                if (d & kCTFontColorGlyphsTrait)
+                    fd->colorFont = true;
+
                 if (d & kCTFontMonoSpaceTrait)
                     fd->fixedPitch = true;
                 if (d & kCTFontExpandedTrait)
@@ -427,7 +437,10 @@ static void getFontDescription(CTFontDescriptorRef font, FontDescription *fd)
     }
 }
 
-void QCoreTextFontDatabase::populateFromDescriptor(CTFontDescriptorRef font, const QString &familyName, QFontDatabasePrivate::ApplicationFont *applicationFont)
+void QCoreTextFontDatabase::populateFromDescriptor(CTFontDescriptorRef font,
+                                                   const QString &familyName,
+                                                   QFontDatabasePrivate::ApplicationFont *applicationFont,
+                                                   PopulateDescriptorFlag flag)
 {
     FontDescription fd;
     getFontDescription(font, &fd);
@@ -448,13 +461,16 @@ void QCoreTextFontDatabase::populateFromDescriptor(CTFontDescriptorRef font, con
         applicationFont->properties.append(properties);
     }
 
+    const bool forceColorFont = flag == PopulateDescriptorFlag::ForceColorFont;
+
     CFRetain(font);
     QPlatformFontDatabase::registerFont(family, fd.styleName, fd.foundryName, fd.weight, fd.style, fd.stretch,
             true /* antialiased */, true /* scalable */, 0 /* pixelSize, ignored as font is scalable */,
-            fd.fixedPitch, fd.writingSystems, (void *)font);
+            fd.fixedPitch, forceColorFont || fd.colorFont, fd.writingSystems, (void *)font);
 }
 
 static NSString * const kQtFontDataAttribute = @"QtFontDataAttribute";
+static NSString * const kQtFontInstanceIndexAttribute = @"QtFontInstanceIndexAttribute";
 
 template <typename T>
 T *descriptorAttribute(CTFontDescriptorRef descriptor, CFStringRef name)
@@ -477,6 +493,8 @@ extern CGAffineTransform qt_transform_from_fontdef(const QFontDef &fontDef);
 template <>
 QFontEngine *QCoreTextFontDatabaseEngineFactory<QCoreTextFontEngine>::fontEngine(const QFontDef &fontDef, void *usrPtr)
 {
+    QMacAutoReleasePool pool;
+
     QCFType<CTFontDescriptorRef> descriptor = QCFType<CTFontDescriptorRef>::constructFromGet(
         static_cast<CTFontDescriptorRef>(usrPtr));
 
@@ -522,14 +540,65 @@ QFontEngine *QCoreTextFontDatabaseEngineFactory<QCoreTextFontEngine>::fontEngine
 
 #ifndef QT_NO_FREETYPE
 template <>
+bool QCoreTextFontDatabaseEngineFactory<QFontEngineFT>::shouldForceColorFont(CTFontDescriptorRef descriptor) const
+{
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 20501
+    FT_Library library = qt_getFreetype();
+    FT_Face face;
+    FT_Error error;
+    if (NSValue *fontDataValue = descriptorAttribute<NSValue>(descriptor, (CFStringRef)kQtFontDataAttribute)) {
+        const QByteArray *fontData = static_cast<const QByteArray *>(fontDataValue.pointerValue);
+        error = FT_New_Memory_Face(library,
+                                   (const FT_Byte *)fontData->constData(),
+                                   fontData->size(),
+                                   0,
+                                   &face);
+    } else if (NSURL *url = descriptorAttribute<NSURL>(descriptor, kCTFontURLAttribute)) {
+        Q_ASSERT(url.fileURL);
+        const QString faceFileName{QString::fromNSString(url.path)};
+        const QString styleName = QCFString(CTFontDescriptorCopyAttribute(descriptor,
+                                                                          kCTFontStyleNameAttribute));
+        int index = QFreetypeFace::getFaceIndexByStyleName(faceFileName, styleName);
+
+        const QByteArray fname = faceFileName.toUtf8();
+        error = FT_New_Face(library, fname.constData(), index, &face);
+    } else {
+        error = FT_Err_Missing_Property;
+    }
+
+    if (error != FT_Err_Ok) {
+        qCWarning(lcQpaFonts) << "Failed to create face for" << descriptor;
+        return false;
+    }
+
+    const bool isColor = FT_HAS_COLOR(face);
+    FT_Done_Face(face);
+
+    return isColor;
+#else
+    Q_UNUSED(descriptor);
+    return false;
+#endif
+}
+
+template <>
 QFontEngine *QCoreTextFontDatabaseEngineFactory<QFontEngineFT>::fontEngine(const QFontDef &fontDef, void *usrPtr)
 {
+    QMacAutoReleasePool pool;
+
     CTFontDescriptorRef descriptor = static_cast<CTFontDescriptorRef>(usrPtr);
+
+    int instanceIndex = 0;
+    if (NSNumber *numberRef = descriptorAttribute<NSNumber>(descriptor, (CFStringRef)kQtFontInstanceIndexAttribute))
+        instanceIndex = numberRef.integerValue;
 
     if (NSValue *fontDataValue = descriptorAttribute<NSValue>(descriptor, (CFStringRef)kQtFontDataAttribute)) {
         QByteArray *fontData = static_cast<QByteArray *>(fontDataValue.pointerValue);
-        return QFontEngineFT::create(*fontData, fontDef.pixelSize,
-            static_cast<QFont::HintingPreference>(fontDef.hintingPreference), fontDef.variableAxisValues);
+        return QFontEngineFT::create(*fontData,
+                                     fontDef.pixelSize,
+                                     static_cast<QFont::HintingPreference>(fontDef.hintingPreference),
+                                     fontDef.variableAxisValues,
+                                     instanceIndex);
     } else if (NSURL *url = descriptorAttribute<NSURL>(descriptor, kCTFontURLAttribute)) {
         QFontEngine::FaceId faceId;
 
@@ -539,7 +608,7 @@ QFontEngine *QCoreTextFontDatabaseEngineFactory<QFontEngineFT>::fontEngine(const
 
         QString styleName = QCFString(CTFontDescriptorCopyAttribute(descriptor, kCTFontStyleNameAttribute));
         faceId.index = QFreetypeFace::getFaceIndexByStyleName(faceFileName, styleName);
-
+        faceId.instanceIndex = instanceIndex;
         faceId.variableAxes = fontDef.variableAxisValues;
 
         return QFontEngineFT::create(fontDef, faceId);
@@ -550,6 +619,13 @@ QFontEngine *QCoreTextFontDatabaseEngineFactory<QFontEngineFT>::fontEngine(const
     return nullptr;
 }
 #endif
+
+template <class T>
+bool QCoreTextFontDatabaseEngineFactory<T>::shouldForceColorFont(CTFontDescriptorRef descriptor) const
+{
+    Q_UNUSED(descriptor);
+    return false;
+}
 
 template <class T>
 QFontEngine *QCoreTextFontDatabaseEngineFactory<T>::fontEngine(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference)
@@ -629,7 +705,18 @@ CTFontDescriptorRef descriptorForStyle(QFont::StyleHint styleHint)
     }
 }
 
-QStringList QCoreTextFontDatabase::fallbacksForFamily(const QString &family, QFont::Style style, QFont::StyleHint styleHint, QChar::Script script) const
+QStringList QCoreTextFontDatabase::fallbacksForScript(QFontDatabasePrivate::ExtendedScript script) const
+{
+    if (script == QFontDatabasePrivate::Script_Emoji)
+        return QStringList{} << QStringLiteral(".Apple Color Emoji UI");
+    else
+        return QStringList{};
+}
+
+QStringList QCoreTextFontDatabase::fallbacksForFamily(const QString &family,
+                                                      QFont::Style style,
+                                                      QFont::StyleHint styleHint,
+                                                      QFontDatabasePrivate::ExtendedScript script) const
 {
     Q_UNUSED(style);
 
@@ -639,7 +726,7 @@ QStringList QCoreTextFontDatabase::fallbacksForFamily(const QString &family, QFo
 
     QMacAutoReleasePool pool;
 
-    QStringList fallbackList;
+    QStringList fallbackList = fallbacksForScript(script);
 
     QCFType<CFArrayRef> fallbackFonts = fallbacksForFamily(family);
     if (!fallbackFonts || !CFArrayGetCount(fallbackFonts)) {
@@ -702,32 +789,34 @@ QStringList QCoreTextFontDatabase::fallbacksForFamily(const QString &family, QFo
         fallbackList.append(QStringLiteral("Apple Symbols"));
     // Some Noto* fonts are not automatically enumerated by system, despite being the main
     // fonts for their writing system.
-    QString hardcodedFont = m_hardcodedFallbackFonts.value(script);
-    if (!hardcodedFont.isEmpty() && !fallbackList.contains(hardcodedFont)) {
-        if (!isFamilyPopulated(hardcodedFont)) {
-            if (!m_privateFamilies.contains(hardcodedFont)) {
-                QCFType<CTFontDescriptorRef> familyDescriptor = descriptorForFamily(hardcodedFont);
-                QCFType<CFArrayRef> matchingFonts = CTFontDescriptorCreateMatchingFontDescriptors(familyDescriptor, nullptr);
-                if (matchingFonts) {
-                    const int numFonts = CFArrayGetCount(matchingFonts);
-                    for (int i = 0; i < numFonts; ++i)
-                        const_cast<QCoreTextFontDatabase *>(this)->populateFromDescriptor(CTFontDescriptorRef(CFArrayGetValueAtIndex(matchingFonts, i)),
-                                                                                          hardcodedFont);
+    if (script < int(QChar::ScriptCount)) {
+      QString hardcodedFont = m_hardcodedFallbackFonts.value(QChar::Script(script));
+      if (!hardcodedFont.isEmpty() && !fallbackList.contains(hardcodedFont)) {
+            if (!isFamilyPopulated(hardcodedFont)) {
+                if (!m_privateFamilies.contains(hardcodedFont)) {
+                    QCFType<CTFontDescriptorRef> familyDescriptor = descriptorForFamily(hardcodedFont);
+                    QCFType<CFArrayRef> matchingFonts = CTFontDescriptorCreateMatchingFontDescriptors(familyDescriptor, nullptr);
+                    if (matchingFonts) {
+                        const int numFonts = CFArrayGetCount(matchingFonts);
+                        for (int i = 0; i < numFonts; ++i)
+                            const_cast<QCoreTextFontDatabase *>(this)->populateFromDescriptor(CTFontDescriptorRef(CFArrayGetValueAtIndex(matchingFonts, i)),
+                                                                                            hardcodedFont);
 
-                    fallbackList.append(hardcodedFont);
+                        fallbackList.append(hardcodedFont);
+                    }
+
+                    // Register as private family even if the font is not found, in order to avoid
+                    // redoing the check later. In later calls, the font will then just be ignored.
+                    m_privateFamilies.insert(hardcodedFont);
                 }
-
-                // Register as private family even if the font is not found, in order to avoid
-                // redoing the check later. In later calls, the font will then just be ignored.
-                m_privateFamilies.insert(hardcodedFont);
+            } else {
+              fallbackList.append(hardcodedFont);
             }
-        } else {
-            fallbackList.append(hardcodedFont);
         }
     }
 #endif
 
-    extern QStringList qt_sort_families_by_writing_system(QChar::Script, const QStringList &);
+    extern QStringList qt_sort_families_by_writing_system(QFontDatabasePrivate::ExtendedScript, const QStringList &);
     fallbackList = qt_sort_families_by_writing_system(script, fallbackList);
 
     qCDebug(lcQpaFonts).nospace() << "Fallback families ordered by script " << script << ": " << fallbackList;
@@ -741,35 +830,47 @@ QStringList QCoreTextFontDatabase::addApplicationFont(const QByteArray &fontData
 
     if (!fontData.isEmpty()) {
         QCFType<CFDataRef> fontDataReference = fontData.toRawCFData();
-        if (QCFType<CFArrayRef> descriptors = CTFontManagerCreateFontDescriptorsFromData(fontDataReference)) {
-            CFMutableArrayRef array = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
-            const int count = CFArrayGetCount(descriptors);
-
-            for (int i = 0; i < count; ++i) {
-                CTFontDescriptorRef descriptor = CTFontDescriptorRef(CFArrayGetValueAtIndex(descriptors, i));
-
-                // There's no way to get the data back out of a font descriptor created with
-                // CTFontManagerCreateFontDescriptorFromData, so we attach the data manually.
-                NSDictionary *attributes = @{ kQtFontDataAttribute : [NSValue valueWithPointer:new QByteArray(fontData)] };
-                descriptor = CTFontDescriptorCreateCopyWithAttributes(descriptor, (CFDictionaryRef)attributes);
-                CFArrayAppendValue(array, descriptor);
-            }
-
-            fonts = array;
-        }
+        fonts = CTFontManagerCreateFontDescriptorsFromData(fontDataReference);
     } else {
         QCFType<CFURLRef> fontURL = QUrl::fromLocalFile(fileName).toCFURL();
         fonts = CTFontManagerCreateFontDescriptorsFromURL(fontURL);
     }
 
-    if (!fonts)
+    if (fonts) {
+        CFMutableArrayRef array = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+        const int count = CFArrayGetCount(fonts);
+
+        for (int i = 0; i < count; ++i) {
+            CTFontDescriptorRef descriptor = CTFontDescriptorRef(CFArrayGetValueAtIndex(fonts, i));
+
+            NSDictionary *attributes = !fontData.isEmpty()
+              ? @{
+                  kQtFontDataAttribute: [NSValue valueWithPointer:new QByteArray(fontData)],
+                  kQtFontInstanceIndexAttribute: @(i)
+                }
+              : @{
+                  kQtFontInstanceIndexAttribute: @(i)
+            };
+
+            QCFType<CTFontDescriptorRef> copiedDescriptor = CTFontDescriptorCreateCopyWithAttributes(descriptor, (CFDictionaryRef)attributes);
+            CFArrayAppendValue(array, copiedDescriptor);
+        }
+
+        fonts = array;
+    } else {
         return QStringList();
+    }
 
     QStringList families;
     const int numFonts = CFArrayGetCount(fonts);
     for (int i = 0; i < numFonts; ++i) {
         CTFontDescriptorRef fontDescriptor = CTFontDescriptorRef(CFArrayGetValueAtIndex(fonts, i));
-        populateFromDescriptor(fontDescriptor, QString(), applicationFont);
+        populateFromDescriptor(fontDescriptor,
+                               QString(),
+                               applicationFont,
+                               shouldForceColorFont(fontDescriptor)
+                                   ? PopulateDescriptorFlag::ForceColorFont
+                                   : PopulateDescriptorFlag::None);
         QCFType<CFStringRef> familyName = CFStringRef(CTFontDescriptorCopyAttribute(fontDescriptor, kCTFontFamilyNameAttribute));
         families.append(QString::fromCFString(familyName));
     }
@@ -1010,6 +1111,11 @@ QList<int> QCoreTextFontDatabase::standardSizes() const
     const unsigned short *sizes = standard;
     while (*sizes) ret << *sizes++;
     return ret;
+}
+
+bool QCoreTextFontDatabase::supportsColrv0Fonts() const
+{
+    return true;
 }
 
 bool QCoreTextFontDatabase::supportsVariableApplicationFonts() const

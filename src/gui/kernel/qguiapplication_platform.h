@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGUIAPPLICATION_PLATFORM_H
 #define QGUIAPPLICATION_PLATFORM_H
@@ -30,6 +31,11 @@ struct wl_seat;
 struct wl_keyboard;
 struct wl_pointer;
 struct wl_touch;
+
+#if QT_CONFIG(xkbcommon)
+struct xkb_context;
+#endif
+
 #endif
 
 #if defined(Q_OS_VISIONOS) || defined(Q_QDOC)
@@ -65,7 +71,7 @@ struct Q_GUI_EXPORT QX11Application
 #if QT_CONFIG(wayland) || defined(Q_QDOC)
 struct Q_GUI_EXPORT QWaylandApplication
 {
-    QT_DECLARE_NATIVE_INTERFACE(QWaylandApplication, 1, QGuiApplication)
+    QT_DECLARE_NATIVE_INTERFACE(QWaylandApplication, 2, QGuiApplication)
     virtual wl_display *display() const = 0;
     virtual wl_compositor *compositor() const = 0;
     virtual wl_seat *seat() const = 0;
@@ -74,6 +80,9 @@ struct Q_GUI_EXPORT QWaylandApplication
     virtual wl_touch *touch() const = 0;
     virtual uint lastInputSerial() const = 0;
     virtual wl_seat *lastInputSeat() const = 0;
+#if QT_CONFIG(xkbcommon)
+    virtual xkb_context *xkbContext() const = 0;
+#endif
 };
 #endif
 

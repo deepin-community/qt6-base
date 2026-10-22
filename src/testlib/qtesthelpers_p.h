@@ -24,11 +24,20 @@
 #ifdef QT_GUI_LIB
 #include <QtGui/QGuiApplication>
 #include <QtGui/QScreen>
+#include <QtGui/QWindow>
 #endif
 
 #ifdef QT_WIDGETS_LIB
 #include <QtWidgets/QWidget>
 #endif
+
+#ifdef QT_NETWORK_LIB
+#if QT_CONFIG(ssl)
+#include <QtCore/qoperatingsystemversion.h>
+#include <QtCore/qsystemdetection.h>
+#include <QtNetwork/qsslsocket.h>
+#endif // QT_CONFIG(ssl)
+#endif // QT_NETWORK_LIB
 
 QT_BEGIN_NAMESPACE
 
@@ -82,6 +91,75 @@ static inline void androidCompatibleShow(QWidget *widget)
 #endif
 }
 #endif // QT_WIDGETS_LIB
+
+#ifdef QT_GUI_LIB
+static inline bool ensurePositionTopLeft(QWindow *window)
+{
+    // Wayland: QQuickWindow::setPos() and QQuickWindow::setFramePosition() doesn't work.
+    if (!QGuiApplication::platformName().compare(QLatin1String("wayland"), Qt::CaseInsensitive))
+        return true;
+
+    const QPoint availableTopLeft = QGuiApplication::primaryScreen()->availableGeometry().topLeft();
+    window->setFramePosition(availableTopLeft);
+#ifdef Q_OS_ANDROID
+    return true; // Android QPA handles the position change synchronously
+#endif
+    bool positionCorrect = true;
+
+    if (!window->flags().testFlag(Qt::FramelessWindowHint))
+        positionCorrect = QTest::qWaitFor([&]{ return window->framePosition() != window->position() ;});
+
+    const bool positionUpdated = QTest::qWaitFor([&]{ return window->framePosition() == availableTopLeft ;});
+    if (!positionUpdated)
+        positionCorrect = false;
+
+    return positionCorrect;
+}
+
+inline static bool moveCursorAway()
+{
+#if !QT_CONFIG(cursor) || defined(Q_OS_ANDROID)
+    // QCursor repositioning is unavailable or unsupported.
+    return true;
+#endif
+    if (QSysInfo::productType() == "rhel" && QSysInfo::productVersion().startsWith(u'1'))
+        return true; //Positioning of QCursor does not currently work on RHEL 10
+
+    QPoint safePos = QGuiApplication::primaryScreen()->availableGeometry().bottomRight();
+    safePos -= QPoint(50, 50);
+    QCursor::setPos(safePos);
+
+    if (QTest::qWaitFor([&]{ return QCursor::pos() == safePos;}))
+        return true;
+
+    return false;
+}
+#endif
+
+#ifdef QT_NETWORK_LIB
+inline bool isSecureTransportBlockingTest()
+{
+#ifdef Q_OS_MACOS
+#if QT_CONFIG(ssl)
+    if (QSslSocket::activeBackend() == QLatin1String("securetransport")) {
+#if QT_APPLE_SDK_EQUAL_OR_ABOVE(MACOS(15), IOS(18))
+        // Starting from macOS 15 our temporary keychain is ignored.
+        // We have to use kSecImportToMemoryOnly/kCFBooleanTrue key/value
+        // instead. This way we don't have to use QT_SSL_USE_TEMPORARY_KEYCHAIN anymore.
+        return false;
+#else
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSSequoia) {
+            // We were built with SDK below 15, and running on/above 15, but file-based
+            // keychains are not working anymore on macOS 15, blocking the test execution.
+            return true;
+        }
+#endif // Platform SDK.
+    }
+#endif // QT_CONFIG(ssl)
+#endif // Q_OS_MACOS
+    return false;
+}
+#endif // QT_NETWORK_LIB
 
 } // namespace QTestPrivate
 

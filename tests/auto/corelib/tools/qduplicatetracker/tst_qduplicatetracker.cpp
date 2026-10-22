@@ -1,7 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 #include <QtCore/private/qduplicatetracker_p.h>
 
@@ -15,7 +15,6 @@ class tst_QDuplicateTracker : public QObject
     Q_OBJECT
 private slots:
     void hasSeen();
-    void clear();
     void appendTo();
     void appendTo_special();
 };
@@ -24,12 +23,17 @@ void tst_QDuplicateTracker::hasSeen()
 {
     {
         QDuplicateTracker<int, 2> tracker;
+        QVERIFY(!tracker.contains(0));
+        QVERIFY(!tracker.contains(0));
         QVERIFY(!tracker.hasSeen(0));
         QVERIFY(tracker.hasSeen(0));
+        QVERIFY(tracker.contains(0));
         QVERIFY(!tracker.hasSeen(1));
         QVERIFY(tracker.hasSeen(1));
         // past the prealloc amount
+        QVERIFY(!tracker.contains(2));
         QVERIFY(!tracker.hasSeen(2));
+        QVERIFY(tracker.contains(2));
         QVERIFY(tracker.hasSeen(2));
     }
 
@@ -41,12 +45,16 @@ void tst_QDuplicateTracker::hasSeen()
         QString string3("string3");
 
         // Move when seen
+        QVERIFY(!tracker.contains(string1));
         QVERIFY(!tracker.hasSeen(string1));
+        QVERIFY(tracker.contains(string1));
         QVERIFY(tracker.hasSeen(std::move(string1)));
 
         // Move when unseen
+        QVERIFY(!tracker.contains(string2));
         QVERIFY(!tracker.hasSeen(std::move(string2)));
         QVERIFY(tracker.hasSeen(string2_2));
+        QVERIFY(tracker.contains(string2_2));
 
         // Past the prealloc amount
         QVERIFY(!tracker.hasSeen(string3));
@@ -62,32 +70,19 @@ void tst_QDuplicateTracker::hasSeen()
 
         // Move when seen
         QVERIFY(!tracker.hasSeen(string1));
+        QVERIFY(tracker.contains(string1));
         QVERIFY(tracker.hasSeen(std::move(string1)));
 
         // Move when unseen
         QVERIFY(!tracker.hasSeen(std::move(string2)));
         QVERIFY(tracker.hasSeen(string2_2));
+        QVERIFY(tracker.contains(string2_2));
 
         // Past the prealloc amount
+        QVERIFY(!tracker.contains(string3));
         QVERIFY(!tracker.hasSeen(string3));
         QVERIFY(tracker.hasSeen(string3));
     }
-
-}
-
-void tst_QDuplicateTracker::clear()
-{
-    QDuplicateTracker<int, 2> tracker;
-    QVERIFY(!tracker.hasSeen(0));
-    QVERIFY(tracker.hasSeen(0));
-    QVERIFY(!tracker.hasSeen(1));
-    QVERIFY(tracker.hasSeen(1));
-
-    tracker.clear();
-    QVERIFY(!tracker.hasSeen(0));
-    QVERIFY(tracker.hasSeen(0));
-    QVERIFY(!tracker.hasSeen(1));
-    QVERIFY(tracker.hasSeen(1));
 }
 
 void tst_QDuplicateTracker::appendTo()
@@ -103,6 +98,11 @@ void tst_QDuplicateTracker::appendTo()
 
     QList<int> b;
     tracker.appendTo(b);
+    // iteration order is append order:
+    QVERIFY(std::equal(b.cbegin(), b.cend(),
+                       tracker.cbegin(), tracker.cend()));
+    QVERIFY(std::equal(b.cbegin(), b.cend(),
+                       tracker.begin(), tracker.end()));
     std::sort(b.begin(), b.end());
     QCOMPARE(b, QList<int>({ 0, 1 }));
 

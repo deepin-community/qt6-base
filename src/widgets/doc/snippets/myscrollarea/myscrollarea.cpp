@@ -41,13 +41,13 @@ void MyScrollArea::setWidget(QWidget *w)
 
 void MyScrollArea::updateWidgetPosition()
 {
-//! [0]
+    //! [0]
     int hvalue = horizontalScrollBar()->value();
     int vvalue = verticalScrollBar()->value();
     QPoint topLeft = viewport()->rect().topLeft();
 
     widget->move(topLeft.x() - hvalue, topLeft.y() - vvalue);
-//! [0]
+    //! [0]
 }
 
 void MyScrollArea::scrollContentsBy(int dx, int dy)
@@ -59,7 +59,7 @@ void MyScrollArea::scrollContentsBy(int dx, int dy)
 
 void MyScrollArea::updateArea()
 {
-//! [1]
+    //! [1]
     QSize areaSize = viewport()->size();
     QSize  widgetSize = widget->size();
 
@@ -68,7 +68,7 @@ void MyScrollArea::updateArea()
     verticalScrollBar()->setRange(0, widgetSize.height() - areaSize.height());
     horizontalScrollBar()->setRange(0, widgetSize.width() - areaSize.width());
     updateWidgetPosition();
-//! [1]
+    //! [1]
 }
 
 void MyScrollArea::resizeEvent(QResizeEvent *event)

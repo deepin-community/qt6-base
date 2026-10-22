@@ -95,7 +95,7 @@ function(qt_internal_add_cmake_library target)
 
     qt_internal_add_common_qt_library_helper(${target} ${library_helper_args})
 
-    qt_skip_warnings_are_errors_when_repo_unclean("${target}")
+    qt_internal_default_warnings_are_errors("${target}")
 
     if (arg_OUTPUT_DIRECTORY)
         set_target_properties(${target} PROPERTIES
@@ -105,27 +105,30 @@ function(qt_internal_add_cmake_library target)
         )
     endif()
 
+    _qt_internal_forward_function_args(
+        FORWARD_PREFIX arg
+        FORWARD_OUT_VAR extend_target_args
+        FORWARD_MULTI
+            SOURCES
+            NO_PCH_SOURCES
+            INCLUDE_DIRECTORIES
+            SYSTEM_INCLUDE_DIRECTORIES
+            PUBLIC_INCLUDE_DIRECTORIES
+            PUBLIC_DEFINES
+            DEFINES
+            PUBLIC_LIBRARIES
+            COMPILE_OPTIONS
+            PUBLIC_COMPILE_OPTIONS
+            LINK_OPTIONS
+            PUBLIC_LINK_OPTIONS
+            MOC_OPTIONS
+            ENABLE_AUTOGEN_TOOLS
+            DISABLE_AUTOGEN_TOOLS
+    )
+
     qt_internal_extend_target("${target}"
-        SOURCES ${arg_SOURCES}
-        INCLUDE_DIRECTORIES
-            ${arg_INCLUDE_DIRECTORIES}
-        SYSTEM_INCLUDE_DIRECTORIES
-            ${arg_SYSTEM_INCLUDE_DIRECTORIES}
-        PUBLIC_INCLUDE_DIRECTORIES
-            ${arg_PUBLIC_INCLUDE_DIRECTORIES}
-        PUBLIC_DEFINES
-            ${arg_PUBLIC_DEFINES}
-        DEFINES
-            ${arg_DEFINES}
-        PUBLIC_LIBRARIES ${arg_PUBLIC_LIBRARIES}
+        ${extend_target_args}
         LIBRARIES ${arg_LIBRARIES} Qt::PlatformCommonInternal
-        COMPILE_OPTIONS ${arg_COMPILE_OPTIONS}
-        PUBLIC_COMPILE_OPTIONS ${arg_PUBLIC_COMPILE_OPTIONS}
-        LINK_OPTIONS ${arg_LINK_OPTIONS}
-        PUBLIC_LINK_OPTIONS ${arg_PUBLIC_LINK_OPTIONS}
-        MOC_OPTIONS ${arg_MOC_OPTIONS}
-        ENABLE_AUTOGEN_TOOLS ${arg_ENABLE_AUTOGEN_TOOLS}
-        DISABLE_AUTOGEN_TOOLS ${arg_DISABLE_AUTOGEN_TOOLS}
         NO_UNITY_BUILD # Disabled by default
     )
 endfunction()
@@ -198,7 +201,7 @@ function(qt_internal_add_3rdparty_library target)
     qt_internal_add_qt_repo_known_module(${target})
     qt_internal_add_target_aliases(${target})
 
-    qt_skip_warnings_are_errors_when_repo_unclean("${target}")
+    qt_internal_default_warnings_are_errors("${target}")
 
     set_target_properties(${target} PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${QT_BUILD_DIR}/${INSTALL_LIBDIR}"
@@ -227,10 +230,10 @@ function(qt_internal_add_3rdparty_library target)
         qt_autogen_tools_initial_setup(${target})
     endif()
 
-    if(NOT arg_EXCEPTIONS AND NOT arg_INTERFACE)
-        qt_internal_set_exceptions_flags("${target}" FALSE)
-    elseif(arg_EXCEPTIONS)
-        qt_internal_set_exceptions_flags("${target}" TRUE)
+    if(NOT arg_EXCEPTIONS)
+        qt_internal_set_exceptions_flags("${target}" "DEFAULT")
+    else()
+        qt_internal_set_exceptions_flags("${target}" "${arg_EXCEPTIONS}")
     endif()
 
     qt_internal_extend_target("${target}"
@@ -260,6 +263,7 @@ function(qt_internal_add_3rdparty_library target)
     else()
         set(will_install FALSE)
     endif()
+    set_target_properties("${target}" PROPERTIES _qt_will_install ${will_install})
 
     if(will_install)
         qt_generate_3rdparty_lib_pri_file("${target}" "${arg_QMAKE_LIB_NAME}" pri_file)
@@ -280,6 +284,17 @@ function(qt_internal_add_3rdparty_library target)
             INSTALL_DESTINATION "${config_install_dir}"
         )
 
+        qt_configure_file(
+            OUTPUT "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}TargetsPrecheck.cmake"
+            CONTENT
+"
+_qt_internal_should_include_targets(
+    TARGETS ${target}
+    NAMESPACE ${INSTALL_CMAKE_NAMESPACE}::
+    OUT_VAR_SHOULD_SKIP __qt_${target}_skip_include_targets_file
+)
+")
+
         write_basic_package_version_file(
             "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}ConfigVersionImpl.cmake"
             VERSION ${PROJECT_VERSION}
@@ -294,6 +309,7 @@ function(qt_internal_add_3rdparty_library target)
             "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}Config.cmake"
             "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}ConfigVersion.cmake"
             "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}ConfigVersionImpl.cmake"
+            "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}TargetsPrecheck.cmake"
             DESTINATION "${config_install_dir}"
             COMPONENT Devel
         )
@@ -339,7 +355,7 @@ function(qt_internal_add_3rdparty_library target)
 
     if(QT_GENERATE_SBOM)
         set(sbom_args "")
-        list(APPEND sbom_args TYPE QT_THIRD_PARTY_MODULE)
+        list(APPEND sbom_args DEFAULT_SBOM_ENTITY_TYPE QT_THIRD_PARTY_MODULE)
 
         if(NOT will_install)
             list(APPEND sbom_args NO_INSTALL)
@@ -379,7 +395,7 @@ function(qt_internal_add_3rdparty_library target)
                 ${__qt_internal_sbom_multi_args}
         )
 
-        _qt_internal_extend_sbom(${target} ${sbom_args})
+        qt_internal_extend_qt_entity_sbom(${target} ${sbom_args})
     endif()
 
     qt_add_list_file_finalizer(qt_internal_finalize_3rdparty_library ${target})
@@ -427,14 +443,21 @@ function(qt_internal_add_3rdparty_header_module target)
     )
     _qt_internal_validate_all_args_are_parsed(arg)
 
+    _qt_internal_forward_function_args(
+        FORWARD_PREFIX arg
+        FORWARD_OUT_VAR add_module_args
+        FORWARD_SINGLE
+            EXTERNAL_HEADERS
+            EXTERNAL_HEADERS_DIR
+    )
+
     qt_internal_add_module(${target}
         IS_QT_3RD_PARTY_HEADER_MODULE
         INTERNAL_MODULE
         HEADER_MODULE
         NO_CONFIG_HEADER_FILE
         NO_GENERATE_CPP_EXPORTS
-        EXTERNAL_HEADERS ${arg_EXTERNAL_HEADERS}
-        EXTERNAL_HEADERS_DIR ${arg_EXTERNAL_HEADERS_DIR}
+        ${add_module_args}
     )
 
     set_target_properties(${target} PROPERTIES

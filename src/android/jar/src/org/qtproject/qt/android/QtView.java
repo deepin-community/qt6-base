@@ -1,13 +1,10 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 package org.qtproject.qt.android;
 
-import android.app.Activity;
 import android.content.Context;
-import android.content.ContextWrapper;
-import android.content.pm.PackageManager.NameNotFoundException;
-import android.content.res.Resources;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -15,11 +12,11 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import java.security.InvalidParameterException;
-import java.util.ArrayList;
+import java.util.Objects;
 
 // Base class for embedding QWindow into native Android view hierarchy. Extend to implement
 // the creation of appropriate window to embed.
-abstract class QtView extends ViewGroup {
+abstract class QtView extends ViewGroup implements QtNative.AppStateDetailsListener {
     private final static String TAG = "QtView";
 
     interface QtWindowListener {
@@ -28,11 +25,11 @@ abstract class QtView extends ViewGroup {
         void onQtWindowLoaded();
     }
 
-    protected QtWindow m_window;
-    protected long m_windowReference;
-    protected long m_parentWindowReference;
-    protected QtWindowListener m_windowListener;
-    protected QtEmbeddedViewInterface m_viewInterface;
+    private QtWindow m_window;
+    private long m_windowReference;
+    private long m_parentWindowReference;
+    private QtWindowListener m_windowListener;
+    private final QtEmbeddedViewInterface m_viewInterface;
     // Implement in subclass to handle the creation of the QWindow and its parent container.
     // TODO could we take care of the parent window creation and parenting outside of the
     // window creation method to simplify things if user would extend this? Preferably without
@@ -52,24 +49,23 @@ abstract class QtView extends ViewGroup {
    **/
     QtView(Context context) {
         super(context);
-
+        QtNative.registerAppStateListener(this);
         m_viewInterface = QtEmbeddedViewInterfaceFactory.create(context);
-        addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
-            @Override
-            public void onLayoutChange(View v, int left, int top, int right, int bottom,
-                                       int oldLeft, int oldTop, int oldRight, int oldBottom)  {
-                if (m_windowReference != 0L) {
-                    final int oldWidth = oldRight - oldLeft;
-                    final int oldHeight = oldBottom - oldTop;
-                    final int newWidth = right - left;
-                    final int newHeight = bottom - top;
-                    if (oldWidth != newWidth || oldHeight != newHeight || left != oldLeft ||
-                        top != oldTop) {
-                            resizeWindow(m_windowReference, left, top, newWidth, newHeight);
-                    }
+        addOnLayoutChangeListener(
+                (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (m_windowReference != 0L) {
+                final int oldWidth = oldRight - oldLeft;
+                final int oldHeight = oldBottom - oldTop;
+                final int newWidth = right - left;
+                final int newHeight = bottom - top;
+                if (oldWidth != newWidth || oldHeight != newHeight || left != oldLeft ||
+                    top != oldTop) {
+                        resizeWindow(m_windowReference, left, top, newWidth, newHeight);
                 }
             }
         });
+        if (getId() == -1)
+            setId(View.generateViewId());
     }
     /**
      * Create a QtView for embedding a QWindow, and load the Qt libraries if they have not already
@@ -90,15 +86,14 @@ abstract class QtView extends ViewGroup {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        m_viewInterface.setView(this);
-        m_viewInterface.queueLoadWindow();
+        m_viewInterface.addView(this);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         destroyWindow();
-        m_viewInterface.setView(null);
+        m_viewInterface.removeView(this);
     }
 
     @Override
@@ -143,24 +138,25 @@ abstract class QtView extends ViewGroup {
     }
 
     void loadQtLibraries(String appLibName) {
-        QtEmbeddedLoader loader = null;
+        QtEmbeddedLoader loader;
         try {
             loader = QtEmbeddedLoader.getEmbeddedLoader(getContext());
         } catch (IllegalArgumentException e) {
-            Log.e(TAG, e.getMessage());
+            Log.e(TAG, Objects.requireNonNull(e.getMessage()));
             QtEmbeddedViewInterfaceFactory.remove(getContext());
             return;
         }
 
         loader.setMainLibraryName(appLibName);
-        if (loader.loadQtLibraries()) {
-            // Start Native Qt application
-            m_viewInterface.startQtApplication(loader.getApplicationParameters(),
-                                               loader.getMainLibraryPath());
-        } else {
+        QtLoader.LoadingResult result = loader.loadQtLibraries();
+        if (result == QtLoader.LoadingResult.Failed) {
             // If we weren't able to load the libraries, remove the delegate from the factory
             // as it's holding a reference to the Context, and we don't want it leaked
             QtEmbeddedViewInterfaceFactory.remove(getContext());
+        } else {
+            // Start Native Qt application
+            m_viewInterface.startQtApplication(loader.getApplicationParameters(),
+                                               loader.getMainLibraryPath());
         }
     }
 
@@ -168,8 +164,41 @@ abstract class QtView extends ViewGroup {
         m_windowReference = windowReference;
     }
 
-    long windowReference() {
+    long getWindowReference() {
         return m_windowReference;
+    }
+
+    void setQtWindow(QtWindow qtWindow) {
+        m_window = qtWindow;
+    }
+
+    QtWindow getQtWindow() {
+        return m_window;
+    }
+
+    long getParentWindowReference()
+    {
+        return m_parentWindowReference;
+    }
+
+    void setParentWindowReference(long reference)
+    {
+        m_parentWindowReference = reference;
+    }
+
+    QtWindowListener getWindowListener()
+    {
+        return m_windowListener;
+    }
+
+    void setWindowListener(QtWindowListener listner)
+    {
+        m_windowListener = listner;
+    }
+
+    QtEmbeddedViewInterface getViewInterface()
+    {
+        return m_viewInterface;
     }
 
     // Set the visibility of the underlying QWindow. If visible is true, showNormal() is called.
@@ -186,19 +215,16 @@ abstract class QtView extends ViewGroup {
         setWindowReference(viewReference);
         m_parentWindowReference = parentWindowRef;
         final Handler handler = new Handler(Looper.getMainLooper());
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                m_window = window;
-                m_window.setLayoutParams(new ViewGroup.LayoutParams(
-                                            ViewGroup.LayoutParams.MATCH_PARENT,
-                                            ViewGroup.LayoutParams.MATCH_PARENT));
-                addView(m_window, 0);
-                // Call show window + parent
-                setWindowVisible(true);
-                if (m_windowListener != null)
-                    m_windowListener.onQtWindowLoaded();
-            }
+        handler.post(() -> {
+            m_window = window;
+            m_window.setLayoutParams(new LayoutParams(
+                                        LayoutParams.MATCH_PARENT,
+                                        LayoutParams.MATCH_PARENT));
+            addView(m_window, 0);
+            // Call show window + parent
+            setWindowVisible(true);
+            if (m_windowListener != null)
+                m_windowListener.onQtWindowLoaded();
         });
     }
 
@@ -207,9 +233,15 @@ abstract class QtView extends ViewGroup {
         if (m_parentWindowReference != 0L)
             deleteWindow(m_parentWindowReference);
         m_parentWindowReference = 0L;
+        setWindowReference(0L);
     }
 
-    QtWindow getQtWindow() {
-        return m_window;
+    @Override
+    public void onAppStateDetailsChanged(QtNative.ApplicationStateDetails details) {
+        if (!details.isStarted) {
+            ViewGroup parent = (ViewGroup)getParent();
+            if (parent != null)
+                parent.removeView(this);
+        }
     }
 }

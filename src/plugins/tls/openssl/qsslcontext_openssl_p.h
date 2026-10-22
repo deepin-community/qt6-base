@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 #ifndef QSSLCONTEXT_OPENSSL_P_H
@@ -74,6 +75,8 @@ private:
     static void initSslContext(QSslContext* sslContext, QSslSocket::SslMode mode, const QSslConfiguration &configuration,
                                bool allowRootCertOnDemandLoading);
     static void applyBackendConfig(QSslContext *sslContext);
+    static void setGenericPrivateKey(QSslContext *sslContext,
+                                     const QSslConfiguration &configuration);
 
 private:
     SSL_CTX* ctx;

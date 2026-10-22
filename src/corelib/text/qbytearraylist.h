@@ -2,6 +2,7 @@
 // Copyright (C) 2016 Intel Corporation.
 // Copyright (C) 2014 by Southwest Research Institute (R)
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qlist.h>
 
@@ -37,7 +38,12 @@ template <> struct QListSpecialMethods<QByteArray> : QListSpecialMethodsBase<QBy
 {
 #ifndef Q_QDOC
 protected:
+    QListSpecialMethods() = default;
     ~QListSpecialMethods() = default;
+    QListSpecialMethods(const QListSpecialMethods &) = default;
+    QListSpecialMethods(QListSpecialMethods &&) = default;
+    QListSpecialMethods &operator=(const QListSpecialMethods &) = default;
+    QListSpecialMethods &operator=(QListSpecialMethods &&) = default;
 #endif
 public:
     using QListSpecialMethodsBase<QByteArray>::indexOf;

@@ -13,6 +13,7 @@
 #include <QTextList>
 #include <QBuffer>
 #include <QUrl>
+#include <QtCore/QXmlStreamWriter>
 
 #include "qtextdocument_p.h"
 #include "qtexttable.h"
@@ -28,7 +29,7 @@ QT_BEGIN_NAMESPACE
 using namespace Qt::StringLiterals;
 
 /// Convert pixels to postscript point units
-static QString pixelToPoint(qreal pixels)
+static inline QString pixelToPoint(qreal pixels)
 {
     // we hardcode 96 DPI, we do the same in the ODF importer to have a perfect roundtrip.
     return QString::number(pixels * 72 / 96) + "pt"_L1;
@@ -126,7 +127,7 @@ private:
     QString manifestNS;
 };
 
-static QStringView bullet_char(QTextListFormat::Style style)
+static inline QStringView bulletChar(QTextListFormat::Style style)
 {
     static_assert(int(QTextListFormat::ListDisc) == -1);
     static_assert(int(QTextListFormat::ListUpperRoman) == -8);
@@ -149,38 +150,33 @@ static QStringView bullet_char(QTextListFormat::Style style)
         return {chars + idx, 1};
 }
 
-static QString bulletChar(QTextListFormat::Style style)
-{
-    return bullet_char(style).toString();
-}
-
-static QString borderStyleName(QTextFrameFormat::BorderStyle style)
+static inline QStringView borderStyleName(QTextFrameFormat::BorderStyle style)
 {
     switch (style) {
     case QTextFrameFormat::BorderStyle_None:
-        return QString::fromLatin1("none");
+        return u"none";
     case QTextFrameFormat::BorderStyle_Dotted:
-        return QString::fromLatin1("dotted");
+        return u"dotted";
     case QTextFrameFormat::BorderStyle_Dashed:
-        return QString::fromLatin1("dashed");
+        return u"dashed";
     case QTextFrameFormat::BorderStyle_Solid:
-        return QString::fromLatin1("solid");
+        return u"solid";
     case QTextFrameFormat::BorderStyle_Double:
-        return QString::fromLatin1("double");
+        return u"double";
     case QTextFrameFormat::BorderStyle_DotDash:
-        return QString::fromLatin1("dashed");
+        return u"dashed";
     case QTextFrameFormat::BorderStyle_DotDotDash:
-        return QString::fromLatin1("dotted");
+        return u"dotted";
     case QTextFrameFormat::BorderStyle_Groove:
-        return QString::fromLatin1("groove");
+        return u"groove";
     case QTextFrameFormat::BorderStyle_Ridge:
-        return QString::fromLatin1("ridge");
+        return u"ridge";
     case QTextFrameFormat::BorderStyle_Inset:
-        return QString::fromLatin1("inset");
+        return u"inset";
     case QTextFrameFormat::BorderStyle_Outset:
-        return QString::fromLatin1("outset");
+        return u"outset";
     }
-    return QString::fromLatin1("");
+    return u"";
 }
 
 void QTextOdfWriter::writeFrame(QXmlStreamWriter &writer, const QTextFrame *frame)
@@ -232,15 +228,8 @@ void QTextOdfWriter::writeFrame(QXmlStreamWriter &writer, const QTextFrame *fram
                 if (cell.rowSpan() > 1)
                     writer.writeAttribute(tableNS, QString::fromLatin1("number-rows-spanned"), QString::number(cell.rowSpan()));
                 if (cell.format().isTableCellFormat()) {
-                    if (m_cellFormatsInTablesWithBorders.contains(cell.tableCellFormatIndex()) ) {
-                        // writing table:style-name tag in <table:table-cell> element
-                        writer.writeAttribute(tableNS, QString::fromLatin1("style-name"),
-                                              QString::fromLatin1("TB%1.%2").arg(table->formatIndex())
-                                              .arg(cell.tableCellFormatIndex()));
-                    } else {
-                        writer.writeAttribute(tableNS, QString::fromLatin1("style-name"),
-                                              QString::fromLatin1("T%1").arg(cell.tableCellFormatIndex()));
-                    }
+                    writer.writeAttribute(tableNS, "style-name"_L1,
+                                          QString::fromLatin1("T%1").arg(cell.tableCellFormatIndex()));
                 }
             }
             writeBlock(writer, block);
@@ -520,7 +509,7 @@ void QTextOdfWriter::writeFormats(QXmlStreamWriter &writer, const QSet<int> &for
     writer.writeEndElement(); // automatic-styles
 }
 
-void QTextOdfWriter::writeBlockFormat(QXmlStreamWriter &writer, QTextBlockFormat format, int formatIndex) const
+void QTextOdfWriter::writeBlockFormat(QXmlStreamWriter &writer, const QTextBlockFormat &format, int formatIndex) const
 {
     writer.writeStartElement(styleNS, QString::fromLatin1("style"));
     writer.writeAttribute(styleNS, QString::fromLatin1("name"), QString::fromLatin1("p%1").arg(formatIndex));
@@ -629,7 +618,7 @@ void QTextOdfWriter::writeBlockFormat(QXmlStreamWriter &writer, QTextBlockFormat
     writer.writeEndElement(); // style
 }
 
-void QTextOdfWriter::writeCharacterFormat(QXmlStreamWriter &writer, QTextCharFormat format, int formatIndex) const
+void QTextOdfWriter::writeCharacterFormat(QXmlStreamWriter &writer, const QTextCharFormat &format, int formatIndex) const
 {
     writer.writeStartElement(styleNS, QString::fromLatin1("style"));
     writer.writeAttribute(styleNS, QString::fromLatin1("name"), QString::fromLatin1("c%1").arg(formatIndex));
@@ -799,7 +788,7 @@ void QTextOdfWriter::writeCharacterFormat(QXmlStreamWriter &writer, QTextCharFor
     writer.writeEndElement(); // style
 }
 
-void QTextOdfWriter::writeListFormat(QXmlStreamWriter &writer, QTextListFormat format, int formatIndex) const
+void QTextOdfWriter::writeListFormat(QXmlStreamWriter &writer, const QTextListFormat &format, int formatIndex) const
 {
     writer.writeStartElement(textNS, QString::fromLatin1("list-style"));
     writer.writeAttribute(styleNS, QString::fromLatin1("name"), QString::fromLatin1("L%1").arg(formatIndex));
@@ -836,7 +825,7 @@ void QTextOdfWriter::writeListFormat(QXmlStreamWriter &writer, QTextListFormat f
     writer.writeEndElement(); // list-style
 }
 
-void QTextOdfWriter::writeFrameFormat(QXmlStreamWriter &writer, QTextFrameFormat format, int formatIndex) const
+void QTextOdfWriter::writeFrameFormat(QXmlStreamWriter &writer, const QTextFrameFormat &format, int formatIndex) const
 {
     writer.writeStartElement(styleNS, QString::fromLatin1("style"));
     writer.writeAttribute(styleNS, QString::fromLatin1("name"), QString::fromLatin1("s%1").arg(formatIndex));
@@ -864,7 +853,7 @@ void QTextOdfWriter::writeFrameFormat(QXmlStreamWriter &writer, QTextFrameFormat
 // PageBreakFlags   pageBreakPolicy () const
 }
 
-void QTextOdfWriter::writeTableFormat(QXmlStreamWriter &writer, QTextTableFormat format, int formatIndex) const
+void QTextOdfWriter::writeTableFormat(QXmlStreamWriter &writer, const QTextTableFormat &format, int formatIndex) const
 {
     // start writing table style element
     writer.writeStartElement(styleNS, QString::fromLatin1("style"));
@@ -873,11 +862,10 @@ void QTextOdfWriter::writeTableFormat(QXmlStreamWriter &writer, QTextTableFormat
     writer.writeAttribute(styleNS, QString::fromLatin1("family"), QString::fromLatin1("table"));
     writer.writeEmptyElement(styleNS, QString::fromLatin1("table-properties"));
 
-    if (m_tableFormatsWithBorders.contains(formatIndex)) {
-        // write border format collapsing to table style
-        writer.writeAttribute(tableNS, QString::fromLatin1("border-model"),
-                              QString::fromLatin1("collapsing"));
-    }
+    if (m_tableFormatsWithBorders.contains(formatIndex))
+        writer.writeAttribute(tableNS, u"border-model",
+                              format.borderCollapse() ? u"collapsing" : u"separating");
+
     const char* align = nullptr;
     switch (format.alignment()) {
     case Qt::AlignLeft:
@@ -928,65 +916,116 @@ void QTextOdfWriter::writeTableFormat(QXmlStreamWriter &writer, QTextTableFormat
     }
 }
 
-void QTextOdfWriter::writeTableCellFormat(QXmlStreamWriter &writer, QTextTableCellFormat format,
-                                          int formatIndex, QList<QTextFormat> &styles) const
+QTextTableCellFormat QTextOdfWriter::mergeFormats(const QTextTableCellFormat &cell,
+                                                  const QTextTableFormat &table)
 {
-    // check for all table cells here if they are in a table with border
+    QTextTableCellFormat ret(cell);
+    const auto tryCopyProperties =
+            [&](const QVariant &value,
+                const std::initializer_list<QTextFormat::Property> &properties) {
+        if (value.isNull())
+            return;
+        for (const auto prop : properties) {
+            if (ret.property(prop).isNull())
+                ret.setProperty(prop, value);
+        }
+    };
+    const auto &paddingVal = table.property(QTextFormat::TableCellPadding);
+    if (!paddingVal.isNull()) {
+        // ### Qt7: why is the padding added and not overriden?
+        ret.setLeftPadding(ret.leftPadding() + table.cellPadding());
+        ret.setRightPadding(ret.rightPadding() + table.cellPadding());
+        ret.setTopPadding(ret.topPadding() + table.cellPadding());
+        ret.setBottomPadding(ret.bottomPadding() + table.cellPadding());
+    }
+
+    tryCopyProperties(table.property(QTextFormat::FrameBorder),
+                      { QTextFormat::TableCellTopBorder, QTextFormat::TableCellBottomBorder,
+                        QTextFormat::TableCellLeftBorder, QTextFormat::TableCellRightBorder });
+
+    tryCopyProperties(table.property(QTextFormat::FrameBorderBrush),
+                     { QTextFormat::TableCellTopBorderBrush, QTextFormat::TableCellBottomBorderBrush,
+                       QTextFormat::TableCellLeftBorderBrush, QTextFormat::TableCellRightBorderBrush });
+
+    tryCopyProperties(table.property(QTextFormat::FrameBorderStyle),
+                     { QTextFormat::TableCellTopBorderStyle, QTextFormat::TableCellBottomBorderStyle,
+                       QTextFormat::TableCellLeftBorderStyle, QTextFormat::TableCellRightBorderStyle });
+
+    return ret;
+}
+
+void QTextOdfWriter::writeTableCellFormat(QXmlStreamWriter &writer,
+                                          const QTextTableCellFormat &format, int formatIndex,
+                                          const QList<QTextFormat> &styles) const
+{
+    // check if cell is in a table with border
     if (m_cellFormatsInTablesWithBorders.contains(formatIndex)) {
         const QList<int> tableIdVector = m_cellFormatsInTablesWithBorders.value(formatIndex);
         for (const auto &tableId : tableIdVector) {
             const auto &tmpStyle = styles.at(tableId);
             if (tmpStyle.isTableFormat()) {
-                QTextTableFormat tableFormatTmp = tmpStyle.toTableFormat();
-                tableCellStyleElement(writer, formatIndex, format, true, tableId, tableFormatTmp);
+                QTextTableFormat tableFormat = tmpStyle.toTableFormat();
+                const auto mergedFormat = mergeFormats(format, tableFormat);
+                tableCellStyleElement(writer, formatIndex, mergedFormat, true);
             } else {
                 qDebug("QTextOdfWriter::writeTableCellFormat: ERROR writing table border format");
             }
         }
+    } else {
+        const auto mergedFormat = mergeFormats(format, QTextTableFormat());
+        tableCellStyleElement(writer, formatIndex, mergedFormat, false);
     }
-    tableCellStyleElement(writer, formatIndex, format, false);
 }
 
-void QTextOdfWriter::tableCellStyleElement(QXmlStreamWriter &writer, const int &formatIndex,
-                                           const QTextTableCellFormat &format,
-                                           bool hasBorder, int tableId,
-                                           const QTextTableFormat tableFormatTmp) const {
+void QTextOdfWriter::tableCellStyleElement(QXmlStreamWriter &writer, int formatIndex,
+                                           const QTextTableCellFormat &format, bool hasBorder) const
+{
     writer.writeStartElement(styleNS, QString::fromLatin1("style"));
-    if (hasBorder) {
-        writer.writeAttribute(styleNS, QString::fromLatin1("name"),
-                              QString::fromLatin1("TB%1.%2").arg(tableId).arg(formatIndex));
-    } else {
-        writer.writeAttribute(styleNS, QString::fromLatin1("name"), QString::fromLatin1("T%1").arg(formatIndex));
-    }
+    writer.writeAttribute(styleNS, QString::fromLatin1("name"), QString::fromLatin1("T%1").arg(formatIndex));
     writer.writeAttribute(styleNS, QString::fromLatin1("family"), QString::fromLatin1("table-cell"));
     writer.writeEmptyElement(styleNS, QString::fromLatin1("table-cell-properties"));
     if (hasBorder) {
-        writer.writeAttribute(foNS, QString::fromLatin1("border"),
-                              pixelToPoint(tableFormatTmp.border()) + " "_L1
-                              + borderStyleName(tableFormatTmp.borderStyle()) + " "_L1
-                              + tableFormatTmp.borderBrush().color().name(QColor::HexRgb));
+        auto writeBorder = [&](QAnyStringView borderName, qreal size, QTextFrameFormat::BorderStyle style, const QBrush &brush)
+        {
+            writer.writeAttribute(foNS, borderName, pixelToPoint(size) + " "_L1
+                                    + borderStyleName(style) + " "_L1 + brush.color().name(QColor::HexRgb));
+        };
+        const auto topBorder = format.topBorder();
+        const auto topBorderStyle = format.topBorderStyle();
+        const auto topBorderBrush = format.topBorderBrush();
+        if (topBorder == format.rightBorder() &&
+            topBorder == format.bottomBorder() &&
+            topBorder == format.leftBorder() &&
+            topBorderStyle == format.rightBorderStyle() &&
+            topBorderStyle == format.bottomBorderStyle() &&
+            topBorderStyle == format.leftBorderStyle() &&
+            topBorderBrush == format.rightBorderBrush() &&
+            topBorderBrush == format.bottomBorderBrush() &&
+            topBorderBrush == format.leftBorderBrush()
+            ) {
+                writeBorder(u"border", topBorder, topBorderStyle, topBorderBrush);
+        } else {
+            writeBorder(u"border-top", topBorder, topBorderStyle, topBorderBrush);
+            writeBorder(u"border-right", format.rightBorder(), format.rightBorderStyle(), format.rightBorderBrush());
+            writeBorder(u"border-bottom", format.bottomBorder(), format.bottomBorderStyle(), format.bottomBorderBrush());
+            writeBorder(u"border-left", format.leftBorder(), format.leftBorderStyle(), format.leftBorderBrush());
+        }
     }
-    qreal topPadding = format.topPadding();
-    qreal padding = topPadding + tableFormatTmp.cellPadding();
-    if (padding > 0 && topPadding == format.bottomPadding()
-        && topPadding == format.leftPadding() && topPadding == format.rightPadding()) {
-        writer.writeAttribute(foNS, QString::fromLatin1("padding"), pixelToPoint(padding));
-    }
-    else {
-        if (padding > 0)
-            writer.writeAttribute(foNS, QString::fromLatin1("padding-top"), pixelToPoint(padding));
-        padding = format.bottomPadding() + tableFormatTmp.cellPadding();
-        if (padding > 0)
-            writer.writeAttribute(foNS, QString::fromLatin1("padding-bottom"),
-                                  pixelToPoint(padding));
-        padding = format.leftPadding() + tableFormatTmp.cellPadding();
-        if (padding > 0)
-            writer.writeAttribute(foNS, QString::fromLatin1("padding-left"),
-                                  pixelToPoint(padding));
-        padding = format.rightPadding() + tableFormatTmp.cellPadding();
-        if (padding > 0)
-            writer.writeAttribute(foNS, QString::fromLatin1("padding-right"),
-                                  pixelToPoint(padding));
+    const qreal topPadding = format.topPadding();
+    if (topPadding != 0 &&
+        topPadding == format.bottomPadding() &&
+        topPadding == format.leftPadding() &&
+        topPadding == format.rightPadding()) {
+        writer.writeAttribute(foNS, u"padding", pixelToPoint(topPadding));
+    } else {
+        const auto writeBorder = [&](qreal padding, QAnyStringView attr) {
+            if (padding > 0)
+                writer.writeAttribute(foNS, attr, pixelToPoint(padding));
+        };
+        writeBorder(topPadding, u"padding-top");
+        writeBorder(format.bottomPadding(), u"padding-bottom");
+        writeBorder(format.leftPadding(), u"padding-left");
+        writeBorder(format.rightPadding(), u"padding-right");
     }
 
     if (format.hasProperty(QTextFormat::TextVerticalAlignment)) {
@@ -1031,6 +1070,11 @@ QTextOdfWriter::QTextOdfWriter(const QTextDocument &document, QIODevice *device)
 
 bool QTextOdfWriter::writeAll()
 {
+    const auto reset = qScopeGuard([this] {
+        delete m_strategy;
+        m_strategy = nullptr;
+    });
+
     if (m_createArchive)
         m_strategy = new QZipStreamStrategy(m_device);
     else
@@ -1114,8 +1158,6 @@ bool QTextOdfWriter::writeAll()
     writer.writeEndElement(); // body
     writer.writeEndElement(); // document-content
     writer.writeEndDocument();
-    delete m_strategy;
-    m_strategy = nullptr;
 
     return true;
 }

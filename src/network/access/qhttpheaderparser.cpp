@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qhttpheaderparser_p.h"
 
@@ -25,8 +26,8 @@ void QHttpHeaderParser::clear()
 
 static bool fieldNameCheck(QByteArrayView name)
 {
-    static constexpr QByteArrayView otherCharacters("!#$%&'*+-.^_`|~");
-    static const auto fieldNameChar = [](char c) {
+    const auto fieldNameChar = [](char c) {
+        constexpr QByteArrayView otherCharacters("!#$%&'*+-.^_`|~");
         return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('0' <= c && c <= '9')
                 || otherCharacters.contains(c);
     };
@@ -122,8 +123,22 @@ bool QHttpHeaderParser::parseStatus(QByteArrayView status)
     bool ok = false;
     statusCode = code.toInt(&ok);
 
-    reasonPhrase = j > i ? QString::fromLatin1(status.sliced(j + 1))
-                         : QString();
+    if (j > i) {
+        const auto phrase = status.sliced(j + 1);
+
+        if (phrase.size() > HeaderConstants::MAX_REASON_PHRASE_SIZE)
+            return false;
+        for (char c : phrase) {
+            // most of the classic control characters are below 0x20
+            // except DEL, which is 0x7f
+            // tab is 0x09, but it is permitted in the reason phrase
+            if (c != '\t' && (uchar(c) < 0x20 || c == 0x7f))
+                return false;
+        }
+        reasonPhrase = QString::fromLatin1(phrase);
+    } else {
+        reasonPhrase = QString();
+    }
 
     return ok && uint(majorVersion) <= 9 && uint(minorVersion) <= 9;
 }

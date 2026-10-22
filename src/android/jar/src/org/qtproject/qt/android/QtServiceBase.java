@@ -9,6 +9,7 @@ import android.os.IBinder;
 import android.util.Log;
 
 import java.lang.IllegalArgumentException;
+import java.util.Objects;
 
 public class QtServiceBase extends Service {
     @Override
@@ -29,16 +30,21 @@ public class QtServiceBase extends Service {
 
         try {
             QtServiceLoader loader = QtServiceLoader.getServiceLoader(this);
-            if (loader.loadQtLibraries()) {
-                QtNative.startApplication(loader.getApplicationParameters(),
-                                          loader.getMainLibraryPath());
-                QtNative.setApplicationState(QtNative.ApplicationState.ApplicationHidden);
-            } else {
+            QtLoader.LoadingResult result = loader.loadQtLibraries();
+
+            if (result == QtLoader.LoadingResult.Failed) {
                 Log.w(QtNative.QtTAG, "QtServiceLoader: failed to load Qt libraries");
                 stopSelf();
+                return;
+            }
+
+            if (result == QtLoader.LoadingResult.Succeeded) {
+                final String params = loader.getApplicationParameters();
+                QtNative.startApplication(params, loader.getMainLibraryPath());
+                QtNative.setApplicationState(QtNative.ApplicationState.ApplicationHidden);
             }
         } catch (IllegalArgumentException e) {
-            Log.w(QtNative.QtTAG, e.getMessage());
+            Log.w(QtNative.QtTAG, Objects.requireNonNull(e.getMessage()));
             stopSelf();
         }
     }
@@ -47,10 +53,9 @@ public class QtServiceBase extends Service {
     public void onDestroy()
     {
         super.onDestroy();
-        QtNative.quitQtCoreApplication();
-        QtNative.terminateQt();
+        if (QtNative.getStateDetails().isStarted)
+            QtNative.terminateQtNativeApplication();
         QtNative.setService(null);
-        QtNative.getQtThread().exit();
         System.exit(0);
     }
 

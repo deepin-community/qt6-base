@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 #ifndef QSSLSOCKET_P_H
@@ -98,7 +99,7 @@ public:
     static std::shared_ptr<QSslContext> sslContext(QSslSocket *socket);
     bool isPaused() const;
     void setPaused(bool p);
-    bool bind(const QHostAddress &address, quint16, QAbstractSocket::BindMode) override;
+    bool bind(const QHostAddress &address, quint16, QAbstractSocket::BindMode, const QNetworkInterface *iface = nullptr) override;
     void _q_connectedSlot();
     void _q_hostFoundSlot();
     void _q_disconnectedSlot();

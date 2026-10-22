@@ -1,7 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#ifndef QXCBGLINTEGRATION_H
+#pragma once
 
 #include "qxcbexport.h"
 #include "qxcbwindow.h"
@@ -14,7 +15,7 @@ class QPlatformOffscreenSurface;
 class QOffscreenSurface;
 class QXcbNativeInterfaceHandler;
 
-Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcQpaGl, Q_XCB_EXPORT)
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaGl, Q_XCB_EXPORT)
 
 class Q_XCB_EXPORT QXcbGlIntegration
 {
@@ -32,10 +33,9 @@ public:
     virtual QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const = 0;
 #endif
     virtual QPlatformOffscreenSurface *createPlatformOffscreenSurface(QOffscreenSurface *surface) const = 0;
+    virtual bool canCreatePlatformOffscreenSurface() const { return false; }
 
     virtual QXcbNativeInterfaceHandler *nativeInterfaceHandler() const  { return nullptr; }
 };
 
 QT_END_NAMESPACE
-
-#endif //QXCBGLINTEGRATION_H

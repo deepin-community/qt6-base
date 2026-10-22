@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformwindow.h"
 #include "qplatformwindow_p.h"
@@ -303,9 +304,28 @@ void QPlatformWindow::setParent(const QPlatformWindow *parent)
   The implementation might want to append the application display name to
   the window title, like Windows and Linux do.
 
+  \l QPlatformWindow::windowTitle() can be used to retrieve the
+  actual window title.
+
   \sa QGuiApplication::applicationDisplayName()
+  \sa QPlatformWindow::windowTitle()
 */
 void QPlatformWindow::setWindowTitle(const QString &title) { Q_UNUSED(title); }
+
+/*!
+  Reimplement to return the actual window title used in the underlying
+  windowing system unless the title set for the QWindow which
+  belongs to this QPlatformWindow (i.e. the window returned by
+  \l QPlatformWindow::window) is always used without modification.
+
+  \sa QPlatformWindow::setWindowTitle()
+
+  \since 6.9
+*/
+QString QPlatformWindow::windowTitle() const
+{
+    return window()->title();
+}
 
 /*!
   Reimplement to set the window file path to \a filePath
@@ -450,8 +470,13 @@ bool QPlatformWindow::windowEvent(QEvent *event)
 
     if (event->type() == QEvent::Timer) {
         if (static_cast<QTimerEvent *>(event)->timerId() == d->updateTimer.timerId()) {
-            d->updateTimer.stop();
             deliverUpdateRequest();
+            // Delivery of the update request may be circumvented temporarily by the
+            // platform window, or the user may request another update during the
+            // delivery, so wait to stop the timer until we know we don't need it
+            // anymore.
+            if (!hasPendingUpdateRequest())
+                d->updateTimer.stop();
             return true;
         }
     }
@@ -675,7 +700,10 @@ QRect QPlatformWindow::initialGeometry(const QWindow *w, const QRect &initialGeo
 {
     if (resultingScreenReturn)
         *resultingScreenReturn = w->screen();
-    if (!w->isTopLevel()) {
+
+    // FIXME: Should QWindow::isTopLevel() reflect Qt::SubWindow directly?
+    const bool isTopLevel = w->isTopLevel() && !isSubWindow(w);
+    if (!isTopLevel) {
         const qreal factor = QHighDpiScaling::factor(w);
         const QSize deviceIndependentSize =
                 fixInitialSize(QHighDpi::fromNative(initialGeometry.size(), factor), w,
@@ -683,10 +711,10 @@ QRect QPlatformWindow::initialGeometry(const QWindow *w, const QRect &initialGeo
         return QRect(initialGeometry.topLeft(), QHighDpi::toNative(deviceIndependentSize, factor));
     }
     const auto *wp = qt_window_private(const_cast<QWindow*>(w));
-    const bool position = wp->positionAutomatic && w->type() != Qt::Popup;
-    if (!position && !wp->resizeAutomatic)
+    const bool positionAutomatic = wp->positionAutomatic && w->type() != Qt::Popup;
+    if (!positionAutomatic && !wp->resizeAutomatic)
         return initialGeometry;
-    const QScreen *screen = wp->positionAutomatic
+    const QScreen *screen = positionAutomatic
         ? effectiveScreen(w)
         : QGuiApplication::screenAt(initialGeometry.center());
     if (!screen)
@@ -698,7 +726,7 @@ QRect QPlatformWindow::initialGeometry(const QWindow *w, const QRect &initialGeo
     if (wp->resizeAutomatic)
         deviceIndependentRect.setSize(
                 fixInitialSize(deviceIndependentRect.size(), w, defaultWidth, defaultHeight));
-    if (position) {
+    if (positionAutomatic) {
         const QRect availableDeviceIndependentGeometry = screen->availableGeometry();
         // Center unless the geometry ( + unknown window frame) is too large for the screen).
         if (deviceIndependentRect.height() < (availableDeviceIndependentGeometry.height() * 8) / 9
@@ -716,6 +744,22 @@ QRect QPlatformWindow::initialGeometry(const QWindow *w, const QRect &initialGeo
         }
     }
     return QHighDpi::toNativePixels(deviceIndependentRect, screen);
+}
+
+
+/*!
+    Checks whether the window has the Qt::SubWindow flag.
+
+    A sub-window is a window without a QWindow::parent(),
+    that should still not be treated as a top level.
+*/
+bool QPlatformWindow::isSubWindow(const QWindow *window)
+{
+    // Explicitly check for the SubWindow bits rather than an exact type match,
+    // because Qt::SubWindow (unlike other Qt::WindowTypes) does not include
+    // the Qt::Window flag, so exact type match will fail when clients call
+    // QWindow::setFlag(Qt::SubWindow) on an existing window.
+    return window->flags().testFlag(Qt::SubWindow);
 }
 
 /*!
@@ -751,7 +795,8 @@ void QPlatformWindow::requestUpdate()
         }
     }
 
-    Q_ASSERT(!d->updateTimer.isActive());
+    // Start or restart the timer (in case we're called during update
+    // request delivery).
     d->updateTimer.start(updateInterval, Qt::PreciseTimer, window());
 }
 
@@ -763,6 +808,20 @@ void QPlatformWindow::requestUpdate()
 bool QPlatformWindow::hasPendingUpdateRequest() const
 {
     return qt_window_private(window())->updateRequestPending;
+}
+
+/*!
+    Returns whether applications can render new frames from any thread
+    without co-ordination with the main thread.
+
+    Platform windows may set this to true during resize events for
+    more control over submitted frames.
+
+    This function may be called from any thread.
+*/
+bool QPlatformWindow::allowsIndependentThreadedRendering() const
+{
+    return true;
 }
 
 /*!

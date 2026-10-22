@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Copyright (C) 2000-2016 by David Turner, Robert Wilhelm, and Werner Lemberg.
+// SPDX-License-Identifier: FTL OR GPL-2.0-only
 
 /***************************************************************************/
 /*                                                                         */
@@ -148,6 +149,7 @@ typedef ptrdiff_t  QT_FT_PtrDist;
 #include <private/qgrayraster_p.h>
 
 #include <qcompilerdetection.h>
+#include <qtconfigmacros.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -297,7 +299,7 @@ QT_FT_END_STMNT
 
   } TRaster, *PRaster;
 
-  int q_gray_rendered_spans(TRaster *raster)
+  int QT_MANGLE_NAMESPACE(q_gray_rendered_spans)(TRaster *raster)
   {
     if ( raster && raster->worker )
       return raster->worker->skip_spans > 0 ? 0 : -raster->worker->skip_spans;
@@ -1792,7 +1794,7 @@ QT_FT_END_STMNT
 
   static int
   gray_raster_render( QT_FT_Raster                  raster,
-                      const QT_FT_Raster_Params*  params )
+                      QT_FT_Raster_Params*  params )
   {
     const QT_FT_Outline*  outline    = (const QT_FT_Outline*)params->source;
     const QT_FT_Bitmap*   target_map = params->target;
@@ -1918,8 +1920,8 @@ QT_FT_END_STMNT
 
   static void
   gray_raster_reset( QT_FT_Raster  raster,
-                     char*      pool_base,
-                     long       pool_size )
+                     unsigned char*      pool_base,
+                     unsigned long       pool_size )
   {
     PRaster  rast = (PRaster)raster;
 
@@ -1935,7 +1937,7 @@ QT_FT_END_STMNT
                               ( ( sizeof ( TWorker ) + sizeof ( TCell ) - 1 ) &
                                 ~( sizeof ( TCell ) - 1 ) );
         rast->buffer_size = (long)( ( pool_base + pool_size ) -
-                                    (char*)rast->buffer ) &
+                                    (unsigned char*)rast->buffer ) &
                                       ~( sizeof ( TCell ) - 1 );
         rast->band_size   = (int)( rast->buffer_size /
                                      ( sizeof ( TCell ) * 8 ) );
@@ -1957,7 +1959,7 @@ QT_FT_END_STMNT
     }
   }
 
-  const QT_FT_Raster_Funcs  qt_ft_grays_raster =
+  const QT_FT_Raster_Funcs  QT_MANGLE_NAMESPACE(qt_ft_grays_raster) =
   {
     QT_FT_GLYPH_FORMAT_OUTLINE,
 

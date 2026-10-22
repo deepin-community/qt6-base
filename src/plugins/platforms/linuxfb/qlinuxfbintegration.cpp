@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlinuxfbintegration.h"
 #include "qlinuxfbscreen.h"
@@ -8,8 +9,8 @@
 #endif
 
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixservices_p.h>
 #include <QtGui/private/qgenericunixeventdispatcher_p.h>
+#include <qpa/qplatformservices.h>
 
 #include <QtFbSupport/private/qfbvthandler_p.h>
 #include <QtFbSupport/private/qfbbackingstore_p.h>
@@ -40,9 +41,7 @@ using namespace Qt::StringLiterals;
 
 QLinuxFbIntegration::QLinuxFbIntegration(const QStringList &paramList)
     : m_primaryScreen(nullptr),
-      m_fontDb(new QGenericUnixFontDatabase),
-      m_services(new QGenericUnixServices),
-      m_kbdMgr(nullptr)
+      m_fontDb(new QGenericUnixFontDatabase)
 {
 #if QT_CONFIG(kms)
     if (qEnvironmentVariableIntValue("QT_QPA_FB_DRM") != 0)
@@ -111,6 +110,9 @@ QPlatformFontDatabase *QLinuxFbIntegration::fontDatabase() const
 
 QPlatformServices *QLinuxFbIntegration::services() const
 {
+    if (m_services.isNull())
+        m_services.reset(new QPlatformServices);
+
     return m_services.data();
 }
 

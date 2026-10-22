@@ -285,7 +285,7 @@ QStringList Parser::findEnumValues(const QString &name, const QStringList &inclu
         }
 
         if (valid) {
-            QRegularExpression macro(QStringLiteral("enum +([A-Za-z0-9_]*)"));
+            QRegularExpression macro(QStringLiteral("enum\\s+(?:struct|class)?\\s*+([A-Za-z0-9_]*)"));
             QRegularExpressionMatchIterator m = macro.globalMatch(data);
             while (m.hasNext()) {
                 QRegularExpressionMatch match = m.next();
@@ -416,9 +416,8 @@ void Parser::parseMetadata(const QString &data, qsizetype offset, const QStringL
             if (values.isEmpty()) {
                 if (flags && name.endsWith(QLatin1Char('s')))
                     values = findEnumValues(name.left(name.length() - 1), includes);
-                if (values.isEmpty()) {
-                    DEBUGPRINTF(printf("Unable to find values for %s\n", qPrintable(name)));
-                }
+                if (values.isEmpty())
+                    panic("Unable to find values for %s\n", qPrintable(name));
             }
             if (!values.isEmpty()) {
                 auto moreValues = enumsToValues(values);
@@ -505,7 +504,7 @@ void Parser::addIncludesRecursive(const QString &filename, QList<QString> &inclu
         data += line + QLatin1Char(QLatin1Char('\n'));
     }
 
-    QRegularExpression includeMacro(QStringLiteral("#include [\"<]([A-Za-z0-9_./]*.h)[\">]"));
+    QRegularExpression includeMacro(QStringLiteral("#include [\"<]([A-Za-z0-9_.:/-]*.h)[\">]"));
     QRegularExpressionMatchIterator i = includeMacro.globalMatch(data);
     while (i.hasNext()) {
         QRegularExpressionMatch match = i.next();
@@ -521,9 +520,8 @@ void Parser::addIncludesRecursive(const QString &filename, QList<QString> &inclu
             rinc = info2.absoluteFilePath();
             filename = info2.fileName();
         }
-
         // only search possible qt headers
-        if (filename.startsWith(QLatin1Char('q'), Qt::CaseInsensitive)) {
+        if (QFileInfo(filename).baseName().startsWith(QLatin1Char('q'), Qt::CaseInsensitive)) {
             QString resolved = resolveInclude(rinc);
             if (!resolved.isEmpty() && !includes.contains(resolved)) {
                 includes.push_back(resolved);
@@ -550,7 +548,7 @@ void Parser::parse(QIODevice &input, const QString &name)
 
     QStringList includes;
 
-    QRegularExpression includeMacro(QStringLiteral("#include [\"<]([A-Za-z0-9_./]*.h)[\">]"));
+    QRegularExpression includeMacro(QStringLiteral("#include [\"<]([A-Za-z0-9_.:/-]*.h)[\">]"));
     QRegularExpressionMatchIterator i = includeMacro.globalMatch(data);
     while (i.hasNext()) {
         QRegularExpressionMatch match = i.next();

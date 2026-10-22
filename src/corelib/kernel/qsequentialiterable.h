@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSEQUENTIALITERABLE_H
 #define QSEQUENTIALITERABLE_H
@@ -9,7 +10,12 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_CORE_EXPORT QSequentialIterator : public QIterator<QMetaSequence>
+#if QT_DEPRECATED_SINCE(6, 15)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+
+// Keep this a single long line, otherwise syncqt doesn't create a class forwarding header
+class Q_CORE_EXPORT QT_DEPRECATED_VERSION_X_6_15("Use QMetaSequence's iterables and iterators instead.") QSequentialIterator : public QIterator<QMetaSequence>
 {
 public:
     using value_type = QVariant;
@@ -24,7 +30,8 @@ public:
     QVariantPointer<QSequentialIterator> operator->() const;
 };
 
-class Q_CORE_EXPORT QSequentialConstIterator : public QConstIterator<QMetaSequence>
+// Keep this a single long line, otherwise syncqt doesn't create a class forwarding header
+class Q_CORE_EXPORT QT_DEPRECATED_VERSION_X_6_15("Use QMetaSequence's iterables and iterators instead.") QSequentialConstIterator : public QConstIterator<QMetaSequence>
 {
 public:
     using value_type = QVariant;
@@ -39,7 +46,8 @@ public:
     QVariantConstPointer operator->() const;
 };
 
-class Q_CORE_EXPORT QSequentialIterable : public QIterable<QMetaSequence>
+// Keep this a single long line, otherwise syncqt doesn't create a class forwarding header
+class Q_CORE_EXPORT QT_DEPRECATED_VERSION_X_6_15("Use QMetaSequence's iterables and iterators instead.") QSequentialIterable : public QIterable<QMetaSequence>
 {
 public:
     using iterator = QTaggedIterator<QSequentialIterator, void>;
@@ -79,14 +87,12 @@ public:
     {
     }
 
-    // ### Qt7: Pass QMetaType as value rather than const ref.
     QSequentialIterable(const QMetaSequence &metaSequence, const QMetaType &metaType,
                         void *iterable)
         : QIterable(metaSequence, metaType.alignOf(), iterable)
     {
     }
 
-    // ### Qt7: Pass QMetaType as value rather than const ref.
     QSequentialIterable(const QMetaSequence &metaSequence, const QMetaType &metaType,
                         const void *iterable)
         : QIterable(metaSequence, metaType.alignOf(), iterable)
@@ -118,6 +124,10 @@ public:
     void removeValue(Position position = Unspecified);
 
     QMetaType valueMetaType() const;
+
+    // Random access iteration is broken on QSequentialIterator.
+    // That's why this class is deprecated after all.
+    constexpr bool canRandomAccessIterate() const { return false; }
 };
 
 template<>
@@ -126,10 +136,13 @@ inline QVariantRef<QSequentialIterator>::operator QVariant() const
     if (m_pointer == nullptr)
         return QVariant();
     const QMetaType metaType(m_pointer->metaContainer().valueMetaType());
+
+    return [&] {
     QVariant v(metaType);
     void *dataPtr = metaType == QMetaType::fromType<QVariant>() ? &v : v.data();
     m_pointer->metaContainer().valueAtIterator(m_pointer->constIterator(), dataPtr);
     return v;
+    }();
 }
 
 template<>
@@ -149,6 +162,9 @@ inline QVariantRef<QSequentialIterator> &QVariantRef<QSequentialIterator>::opera
 Q_DECLARE_TYPEINFO(QSequentialIterable, Q_RELOCATABLE_TYPE);
 Q_DECLARE_TYPEINFO(QSequentialIterable::iterator, Q_RELOCATABLE_TYPE);
 Q_DECLARE_TYPEINFO(QSequentialIterable::const_iterator, Q_RELOCATABLE_TYPE);
+
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 15)
 
 QT_END_NAMESPACE
 

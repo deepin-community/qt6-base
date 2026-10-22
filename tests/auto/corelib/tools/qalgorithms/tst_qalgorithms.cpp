@@ -1,25 +1,40 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include "../../../../../src/corelib/tools/qalgorithms.h"
+#include <QtCore/qalgorithms.h>
 #include <QTest>
 
 QT_WARNING_DISABLE_DEPRECATED
 
-#include <iostream>
-#include <iomanip>
 #include <sstream>
 #include <iterator>
 #include <algorithm>
 #include <qalgorithms.h>
 #include <QList>
+#include <QMap>
 #include <QRandomGenerator>
+#include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QVarLengthArray>
 
 #define Q_TEST_PERFORMANCE 0
 
 using namespace std;
+using namespace Qt::StringLiterals;
+
+template <typename Container, typename T>
+Container make(int size, T factor)
+{
+    Container c;
+    c.reserve(size);
+    using V = typename Container::value_type;
+    int i = 0;
+    std::generate_n(std::inserter(c, c.end()), size, [factor, &i] { return V(++i * factor); });
+    return c;
+}
+
+constexpr auto QString_number = [](auto v) { return QString::number(v); };
 
 class tst_QAlgorithms : public QObject
 {
@@ -56,6 +71,71 @@ private slots:
     void countLeading32()      { countLeading_impl<quint32>(); }
     void countLeading64()      { countLeading_impl<quint64>(); }
 
+    void join_QList_int()
+    { join_impl(make<QList<int>>(3, 10), u" / ", u"10 / 20 / 30"_s, QString_number); }
+    void join_QList_float()
+    { join_impl(make<QList<float>>(3, 10.1f), u" / ", u"10.1 / 20.2 / 30.3"_s, QString_number); }
+    void join_QList_char()
+    { join_impl(make<QList<char>>(3, 33), u" / ", u"! / B / c"_s); }
+    void join_QList_QChar()
+    {
+        join_impl(make<QList<QChar>>(3, 33), " / ", std::string("! / B / c"),
+                  [](auto v) { return v.toLatin1(); });
+    }
+    void join_QList_pair()
+    {
+        join_impl(QList<std::pair<QString, int>>{{u"one"_s, 1}, {u"two"_s, 2}}, u'/' ,
+                  u"one/two"_s, [](const std::pair<QString, int>& p) { return p.first; });
+    }
+
+    void join_QVarLengthArray_int()
+    {
+        join_impl(make<QVarLengthArray<int>>(3, 10), " / ", std::string("10 / 20 / 30"),
+                  [](auto v) { return std::to_string(v); });
+    }
+    void join_QVarLengthArray_float()
+    {
+        join_impl(make<QVarLengthArray<float>>(3, 10.1f), u" / ", u"10.1 / 20.2 / 30.3"_s,
+                  QString_number);
+    }
+
+    void join_std_vector_int()
+    { join_impl(make<std::vector<int>>(3, 10), u" / ", u"10 / 20 / 30"_s, QString_number); }
+    void join_std_vector_float()
+    {
+        join_impl(make<std::vector<float>>(3, 10.1f), u" / ", u"10.1 / 20.2 / 30.3"_s,
+                  QString_number);
+    }
+
+    void join_std_array_int()
+    { join_impl(std::array<int, 3> {10, 20, 30}, u" / ", u"10 / 20 / 30"_s, QString_number); }
+    void join_std_array_float()
+    {
+        join_impl(std::array<float, 3> {10.1f, 20.2f, 30.3f}, u" / ", u"10.1 / 20.2 / 30.3"_s,
+                  QString_number);
+    }
+
+    void join_QMap_int()
+    { join_impl(QMap<QString, int>{{u"one"_s, 1}, {u"two"_s, 2}}, ' ', u"1 2"_s, QString_number); }
+    void join_QMap_float()
+    {
+        join_impl(QMap<QString, float>{{u"one"_s, 1.1f}, {u"two"_s, 2.2f}}, ' ', u"1.1 2.2"_s,
+                  QString_number);
+    }
+
+    void join_QSet_int()
+    { join_impl_qset(make<QSet<int>>(3, 10), u"/"_s,  QString_number); }
+    void join_QSet_float()
+    { join_impl_qset(make<QSet<float>>(3, 10.1f), u" - "_s, QString_number); }
+
+    void join_InputIterator_words()
+    {
+        join_impl_InputIterator<ushort>(std::stringstream("10 20 30"), u" / ", u"10 / 20 / 30"_s,
+                                        QString_number);
+    }
+    void join_InputIterator_single()
+    { join_impl_InputIterator<ushort>(std::stringstream("123"), u'-', u"123"_s, QString_number); }
+
 private:
     void popCount_data_impl(size_t sizeof_T_Int);
     template <typename T_Int>
@@ -68,6 +148,16 @@ private:
     void countLeading_data_impl(size_t sizeof_T_Int);
     template <typename T_Int>
     void countLeading_impl();
+
+    template <typename Container, typename Result, typename Separator,
+              typename Projection = q20::identity>
+    void join_impl(const Container &input, const Separator &sep, const Result &expectedResult,
+                   Projection p = {});
+    template <typename T, typename Separator, typename Projection = q20::identity>
+    void join_impl_qset(const QSet<T> &input, const Separator &sep, Projection p);
+    template <typename T, typename Result, typename Separator, typename Projection = q20::identity>
+    void join_impl_InputIterator(std::stringstream ss, const Separator &sep,
+                                 const Result &expectedResult, Projection p);
 };
 
 template <typename T> struct PrintIfFailed
@@ -286,6 +376,11 @@ void tst_QAlgorithms::popCount_data_impl(size_t sizeof_T_Int)
 template <typename T_Int>
 void tst_QAlgorithms::popCount_impl()
 {
+    // confirm constexprness
+    static_assert(qPopulationCount(T_Int{}) == 0);
+    static_assert(qPopulationCount(T_Int{1}) == 1);
+    static_assert(qPopulationCount(T_Int{127}) == 7);
+
     QFETCH(quint64, input);
     QFETCH(uint, expected);
 
@@ -330,6 +425,14 @@ void tst_QAlgorithms::countTrailing_data_impl(size_t sizeof_T_Int)
 template <typename T_Int>
 void tst_QAlgorithms::countTrailing_impl()
 {
+    // confirm constexprness
+    constexpr uint Digits = std::numeric_limits<T_Int>::digits;
+    static_assert(qCountTrailingZeroBits(T_Int{}) == Digits);
+    static_assert(qCountTrailingZeroBits(T_Int{1}) == 0);
+    static_assert(qCountTrailingZeroBits(T_Int{2}) == 1);
+    static_assert(qCountTrailingZeroBits(T_Int{128}) == 7);
+    static_assert(qCountTrailingZeroBits(T_Int(1ULL << (Digits - 1))) == Digits - 1);
+
     QFETCH(quint64, input);
     QFETCH(uint, expected);
 
@@ -365,12 +468,54 @@ void tst_QAlgorithms::countLeading_data_impl(size_t sizeof_T_Int)
 template <typename T_Int>
 void tst_QAlgorithms::countLeading_impl()
 {
+    // confirm constexprness
+    constexpr uint Digits = std::numeric_limits<T_Int>::digits;
+    static_assert(qCountLeadingZeroBits(T_Int{}) == Digits);
+    static_assert(qCountLeadingZeroBits(T_Int{1}) == Digits - 1);
+    static_assert(qCountLeadingZeroBits(T_Int{2}) == Digits - 2);
+    static_assert(qCountLeadingZeroBits(T_Int{128}) == Digits - 8);
+    static_assert(qCountLeadingZeroBits(T_Int(1ULL << (Digits - 1))) == 0);
+
     QFETCH(quint64, input);
     QFETCH(uint, expected);
 
     const T_Int value = static_cast<T_Int>(input);
     PrintIfFailed pf(value);
     QCOMPARE(qCountLeadingZeroBits(value), expected);
+}
+
+template <typename Container, typename Result, typename Separator, typename Projection>
+void tst_QAlgorithms::join_impl(const Container &input, const Separator &sep,
+                                const Result &expectedResult, Projection p)
+{
+    const Result res = qJoin(input.cbegin(), input.cend(), Result{}, sep, p);
+    QCOMPARE(res, expectedResult);
+}
+
+template <typename T, typename Separator, typename Projection>
+void tst_QAlgorithms::join_impl_qset(const QSet<T> &input, const Separator &sep, Projection p)
+{
+    // Because a set isn't ordered, check againt an alternative implementation of qJoin()
+    QString res = qJoin(input.cbegin(), input.cend(), QString(), sep, p);
+
+    QString expected;
+    for (const auto &e : input) {
+       expected += p(e);
+       expected += sep;
+    }
+
+    if (!expected.isEmpty())
+        expected.chop(sep.size());
+    QCOMPARE(res, expected);
+}
+
+template <typename T, typename Result, typename Separator, typename Projection>
+void tst_QAlgorithms::join_impl_InputIterator(std::stringstream ss, const Separator &sep,
+                                              const Result &expectedResult, Projection p)
+{
+    const Result res = qJoin(std::istream_iterator<T>{ss}, std::istream_iterator<T>{}, Result{},
+                             sep, p);
+    QCOMPARE(res, expectedResult);
 }
 
 QTEST_APPLESS_MAIN(tst_QAlgorithms)

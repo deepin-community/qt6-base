@@ -6,12 +6,15 @@
 #include <QFloat16>
 #include <QMetaType>
 #include <QTextStream>
+#include <QtCompilerDetection>
 
 #include <private/qcomparisontesthelper_p.h>
 
 #include <math.h>
 
 //#define DO_FULL_TEST
+
+using namespace Qt::StringLiterals;
 
 static_assert(sizeof(float) == sizeof(quint32), "Float not 32-bit");
 
@@ -21,7 +24,7 @@ class tst_qfloat16: public QObject
 
 private slots:
     void compareCompiles();
-    void relationalOperatorsAreConstexpr();
+    void operatorsAreConstexpr();
     void ordering_data();
     void ordering();
     void fuzzyCompare_data();
@@ -51,6 +54,12 @@ private slots:
     void mantissaOverflow();
     void dataStream();
     void textStream();
+
+    // std::format support
+    void formatCompileTime();
+    void format_data();
+    void format();
+    void formatMultiArg();
 };
 
 void tst_qfloat16::compareCompiles()
@@ -81,10 +90,58 @@ void tst_qfloat16::compareCompiles()
 #endif
 }
 
-void tst_qfloat16::relationalOperatorsAreConstexpr()
+template <typename RHS> static constexpr bool checkArithmeticCompiles(qfloat16 lhs, RHS rhs)
+{
+    auto assertIsFloat16Ref = [](auto &v) {
+        static_assert(std::is_same_v<std::remove_reference_t<decltype(v)>, qfloat16>);
+    };
+    auto assertType = [](auto v) {
+        // C++23 conversion rules (q.v. P1467):
+        // - FP op integral -> double
+        // - FP op OtherFP -> the one with higher conversion rank
+        //   all other, supported FP types have a higher rank and are a superset
+        using Expected = std::conditional_t<std::is_integral_v<RHS>, double, RHS>;
+        static_assert(std::is_same_v<decltype(v), Expected>);
+    };
+
+    auto ps = +lhs;     // unary +
+    auto ng = -lhs;     // unary -
+    static_assert(std::is_same_v<decltype(ps), qfloat16>);
+    static_assert(std::is_same_v<decltype(ng), qfloat16>);
+
+    assertType(lhs + rhs);
+    assertType(lhs - rhs);
+    assertType(lhs * rhs);
+    assertType(lhs / RHS(1));               // avoid division by zero
+
+    assertType(rhs + lhs);
+    assertType(rhs - lhs);
+    assertType(rhs * lhs);
+    assertType(rhs / qfloat16(1.0f));       // avoid division by zero
+
+    assertIsFloat16Ref(++lhs);
+    assertIsFloat16Ref(--lhs);
+    auto inc = lhs++;
+    auto dec = lhs--;
+    static_assert(std::is_same_v<decltype(inc), qfloat16>);
+    static_assert(std::is_same_v<decltype(dec), qfloat16>);
+
+    // operators op=(integral) are missing
+    if constexpr (!std::is_integral_v<RHS>) {
+        assertIsFloat16Ref(lhs += rhs);
+        assertIsFloat16Ref(lhs -= rhs);
+        assertIsFloat16Ref(lhs *= rhs);
+        assertIsFloat16Ref(lhs /= RHS(1));  // avoid division by zero
+    }
+
+    return true;
+}
+
+void tst_qfloat16::operatorsAreConstexpr()
 {
 #if QFLOAT16_IS_NATIVE
 
+    // relational
 #define CHECK_CONSTEXPR(Type) \
     do { \
         constexpr qfloat16 lhs = qfloat16(0.0f); \
@@ -115,6 +172,26 @@ void tst_qfloat16::relationalOperatorsAreConstexpr()
 
 #undef CHECK_CONSTEXPR
 
+    // arithmetic
+    static_assert(checkArithmeticCompiles({}, qfloat16(1.0f)));
+    static_assert(checkArithmeticCompiles(qfloat16(0.0f), qfloat16(1.0f)));
+#ifdef __STDCPP_FLOAT16_T__
+    static_assert(checkArithmeticCompiles(qfloat16(0.0f), 1.0f16));
+#endif
+    static_assert(checkArithmeticCompiles(qfloat16(0.0f), 1.0f));
+    static_assert(checkArithmeticCompiles(qfloat16(0.0f), 1.0));
+    static_assert(checkArithmeticCompiles(qfloat16(0.0f), 1.0L));
+    static_assert(checkArithmeticCompiles(qfloat16(0.0f), 1));
+
+    // combine
+    static_assert(+ +qfloat16{} == qfloat16{});
+    static_assert(+ +qfloat16{} == qfloat16(0.0f));
+    static_assert(+ +qfloat16(1.0f) == qfloat16(1.0f));
+    static_assert(-+-qfloat16(1.0f) == qfloat16(1.0f));
+    static_assert(qfloat16(1.0f) + qfloat16(0.0f) == qfloat16(1.0f));
+    static_assert(qfloat16(1.0f) - qfloat16(0.0f) == qfloat16(1.0f));
+    static_assert(qfloat16(1.0f) * qfloat16(0.0f) == qfloat16(0.0f));
+    static_assert(qfloat16(1.0f) / qfloat16(1.0f) == qfloat16(1.0f));
 #else
     QSKIP("This check is only relevant for native float16 types");
 #endif // QFLOAT16_IS_NATIVE
@@ -184,11 +261,11 @@ void tst_qfloat16::ordering()
     CHECK_FP(qfloat16);
     CHECK_FP(float);
     CHECK_FP(double);
-    // Qt built for VxWorks x86_64 fails to link due to undefined reference to
+    // Qt built for VxWorks x86_64 and arm64 fails to link due to undefined reference to
     // __extendhfxf2 when below check is enabled.
     // This has been acknowledged by WindRiver as a bug
     // and is being tracked in ticket 00154117
-#if !(defined(Q_OS_VXWORKS) && defined(Q_PROCESSOR_X86_64))
+#if !(defined(Q_OS_VXWORKS) && (defined(Q_PROCESSOR_X86_64) || defined(Q_PROCESSOR_ARM_64)))
     CHECK_FP(long double);
 #endif
 
@@ -515,6 +592,11 @@ void tst_qfloat16::arithOps()
 {
     QFETCH(float, val1);
     QFETCH(float, val2);
+    checkArithmeticCompiles(qfloat16(val1), qfloat16(val2));
+    checkArithmeticCompiles(qfloat16(val1), val2);
+    checkArithmeticCompiles(qfloat16(val1), val2 + 0.0);
+    checkArithmeticCompiles(qfloat16(val1), val2 + 0.0L);
+    checkArithmeticCompiles(qfloat16(val1), int(val2));
 
     QVERIFY(qFuzzyCompare(float(qfloat16(val1) + qfloat16(val2)), val1 + val2));
     QVERIFY(qFuzzyCompare(float(qfloat16(val1) - qfloat16(val2)), val1 - val2));
@@ -530,6 +612,16 @@ void tst_qfloat16::arithOps()
     QVERIFY(qFuzzyCompare(val1 - qfloat16(val2), val1 - val2));
     QVERIFY(qFuzzyCompare(val1 * qfloat16(val2), val1 * val2));
     QVERIFY(qFuzzyCompare(val1 / qfloat16(val2), val1 / val2));
+
+    qfloat16 v{val1};
+    QCOMPARE(float(++v), val1 + 1);
+    QCOMPARE(float(v), val1 + 1);
+    QCOMPARE(float(--v), val1);
+    QCOMPARE(float(v), val1);
+    QCOMPARE(float(v--), val1);
+    QCOMPARE(float(v), val1 - 1);
+    QCOMPARE(float(v++), val1 - 1);
+    QCOMPARE(float(v), val1);
 
     float r1 = 0.f;
     r1 += qfloat16(val2);
@@ -605,6 +697,10 @@ void tst_qfloat16::floatFromFloat16Full()
 }
 #endif
 
+QT_WARNING_PUSH
+// checked stack use and deemed it acceptable
+QT_WARNING_DISABLE_LARGE_STACK_FRAME
+
 void tst_qfloat16::floatToFloat16()
 {
     constexpr int count = 10000;
@@ -623,6 +719,8 @@ void tst_qfloat16::floatToFloat16()
     for (int i = 0; i < count; ++i)
         QVERIFY(out[i] == expected[i]);
 }
+
+QT_WARNING_POP
 
 void tst_qfloat16::floatFromFloat16()
 {
@@ -695,8 +793,9 @@ void tst_qfloat16::finite()
     // comparison, and we need exact here.
     const qfloat16 zero(0), plus(+1), minus(-1);
     const qfloat16 magnitude = (value < zero) ? -value : value;
-    QVERIFY(value.copySign(plus) == magnitude);
-    QVERIFY(value.copySign(minus) == -magnitude);
+    using std::copysign;
+    QCOMPARE_EQ(copysign(value, plus),   magnitude);
+    QCOMPARE_EQ(copysign(value, minus), -magnitude);
 }
 
 void tst_qfloat16::properties()
@@ -815,7 +914,8 @@ void tst_qfloat16::limits() // See also: qNaN() and infinity()
     QVERIFY(Bounds::denorm_min() / two == zero);
     const qfloat16 under = (-Bounds::denorm_min()) / two;
     QVERIFY(under == -zero);
-    QCOMPARE(qfloat16(1).copySign(under), qfloat16(-1));
+    using std::copysign;
+    QCOMPARE_EQ(copysign(qfloat16(1), under), qfloat16(-1));
 }
 
 void tst_qfloat16::mantissaOverflow()
@@ -885,6 +985,138 @@ void tst_qfloat16::textStream()
         QCOMPARE(zero, qfloat16(0));
         QCOMPARE(threehalves, 1.5);
     }
+}
+
+void tst_qfloat16::formatCompileTime()
+{
+#ifdef QT_SUPPORTS_STD_FORMAT
+    // Starting from __cpp_lib_format == 202106L,
+    // std::format requires the format string to be evaluated at compile-time,
+    // so check it here.
+
+    const qfloat16 val{1.234f};
+    std::locale loc{"C"};
+
+    // char
+    std::string buffer;
+    std::format_to(std::back_inserter(buffer), "{}", val);
+    std::format_to(std::back_inserter(buffer), "{:*>15.7f}", val);
+    std::format_to(std::back_inserter(buffer), "{:*^+#15.7g}", val);
+    std::format_to(std::back_inserter(buffer), "{:*<-#15.7A}", val);
+    std::format_to(std::back_inserter(buffer), "{:*^ 15.7e}", val);
+    std::format_to(std::back_inserter(buffer), loc, "{:*^10.3Lf}", val);
+    std::format_to(std::back_inserter(buffer), loc, "{:*< 10.7LE}", val);
+
+    // wchar_t
+    std::wstring wbuffer;
+    std::format_to(std::back_inserter(wbuffer), L"{}", val);
+    std::format_to(std::back_inserter(wbuffer), L"{:*>15.7f}", val);
+    std::format_to(std::back_inserter(wbuffer), L"{:*^+#15.7g}", val);
+    std::format_to(std::back_inserter(wbuffer), L"{:*<-#15.7A}", val);
+    std::format_to(std::back_inserter(wbuffer), L"{:*^ 15.7e}", val);
+    std::format_to(std::back_inserter(wbuffer), loc, L"{:*^10.3Lf}", val);
+    std::format_to(std::back_inserter(wbuffer), loc, L"{:*< 10.7LE}", val);
+#else
+    QSKIP("This test requires std::format support!");
+#endif // QT_SUPPORTS_STD_FORMAT
+}
+
+void tst_qfloat16::format_data()
+{
+#ifdef QT_SUPPORTS_STD_FORMAT
+    QTest::addColumn<QString>("format");
+    QTest::addColumn<qfloat16>("value");
+    QTest::addColumn<std::locale>("locale");
+    QTest::addColumn<QString>("expectedString");
+
+    auto row = [](const QString &format, qfloat16 val, const QString &expected,
+                  const std::locale &loc = std::locale::classic())
+    {
+        QTest::addRow("%s:%s", loc.name().c_str(), qPrintable(format))
+                << format << val << loc << expected;
+    };
+
+    row(u"{}"_s, qfloat16(1.f), u"1"_s);
+    row(u"{:#}"_s, qfloat16(1.f), u"1."_s);
+    row(u"{:f}"_s, qfloat16(1.f), u"1.000000"_s);
+    row(u"{:*>10.2a}"_s, qfloat16(-1.23f), u"**-1.3bp+0"_s);
+
+    try {
+        // check if this locale is a) valid and b) works as expected
+#if defined(Q_CC_MSVC)
+        std::locale loc("de-DE");
+#else
+        std::locale loc("de_DE");
+#endif
+        if (std::format(loc, "{:L}", 1.25) == "1,25") {
+            row(u"{:+Lf}"_s, qfloat16(1.f), u"+1,000000"_s, loc);
+            row(u"{:*^10.3LF}"_s, qfloat16(-0.1234f), u"**-0,123**"_s, loc);
+            row(u"{:*^#10.4Lg}"_s, qfloat16(-1.f), u"**-1,000**"_s, loc);
+            row(u"{:*<14.3LE}"_s, qfloat16(-0.1234f), u"-1,234E-01****"_s, loc);
+        }
+    } catch (const std::runtime_error &) {
+        // locale doesn't exist (std::locale constructor threw)
+    }
+#else
+    QSKIP("This test requires std::format support!");
+#endif // QT_SUPPORTS_STD_FORMAT
+}
+
+void tst_qfloat16::format()
+{
+#ifdef QT_SUPPORTS_STD_FORMAT
+    QFETCH(const QString, format);
+    QFETCH(const qfloat16, value);
+    QFETCH(const std::locale, locale);
+    QFETCH(const QString, expectedString);
+
+    // char
+    {
+        std::string buffer;
+        const auto formatStr = format.toStdString();
+        std::vformat_to(std::back_inserter(buffer), locale, formatStr,
+                        std::make_format_args(value));
+        const QString actualString = QString::fromStdString(buffer);
+        QCOMPARE_EQ(actualString, expectedString);
+    }
+
+    // wchar_t
+    {
+        std::wstring buffer;
+        const auto formatStr = format.toStdWString();
+        std::vformat_to(std::back_inserter(buffer), locale, formatStr,
+                        std::make_wformat_args(value));
+        const QString actualString = QString::fromStdWString(buffer);
+        QCOMPARE_EQ(actualString, expectedString);
+    }
+#else
+    QSKIP("This test requires std::format support!");
+#endif // QT_SUPPORTS_STD_FORMAT
+}
+
+void tst_qfloat16::formatMultiArg()
+{
+#ifdef QT_SUPPORTS_STD_FORMAT
+    const qfloat16 v1{-0.1234f};
+    const qfloat16 v2{5.67f};
+
+    const QString expectedString = u"**+5.67**_*****-1.234E-01"_s;
+    // char
+    {
+        std::string buffer;
+        std::format_to(std::back_inserter(buffer), "{1:*^+9.2f}_{0:*>15.3E}", v1, v2);
+        QCOMPARE_EQ(QString::fromStdString(buffer), expectedString);
+    }
+
+    // wchar_t
+    {
+        std::wstring buffer;
+        std::format_to(std::back_inserter(buffer), L"{1:*^+9.2f}_{0:*>15.3E}", v1, v2);
+        QCOMPARE_EQ(QString::fromStdWString(buffer), expectedString);
+    }
+#else
+    QSKIP("This test requires std::format support!");
+#endif // QT_SUPPORTS_STD_FORMAT
 }
 
 QTEST_APPLESS_MAIN(tst_qfloat16)

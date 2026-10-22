@@ -3,6 +3,7 @@
 
 #include <QtTest/private/qtestresult_p.h>
 #include <QtCore/qglobal.h>
+#include <QtCore/qmutex.h>
 #include <QtCore/qstringview.h>
 
 #include <QtTest/private/qtestlog_p.h>
@@ -43,7 +44,7 @@ namespace QTest
         }();
 
         if (failed && fatalFailure)
-            qTerminate();
+            std::terminate();
         Internal::failed = failed;
     }
 
@@ -66,6 +67,77 @@ namespace QTest
 
     static const char *expectFailComment = nullptr;
     static int expectFailMode = 0;
+
+    // The pointers above belong to the main thread, and the strings they point at don't
+    // outlive the test function: currentTestFunc points into a QByteArray local to
+    // invokeTest(), and the QTestData rows are owned by a QTestTable local to it. Loggers,
+    // however, run on whatever thread called qDebug(), so they must not read them. They get
+    // these copies instead, which testlib owns and only hands out under identifierMutex.
+    // See QTestResult::IdentifierLocker.
+    Q_CONSTINIT static QBasicMutex identifierMutex;
+    static char *identifierObjectName = nullptr;
+    static char *identifierTestFunc = nullptr;
+    static char *identifierDataTag = nullptr;
+    static char *identifierGlobalDataTag = nullptr;
+
+    static void storeIdentifierString(char *&dest, const char *src)
+    {
+        delete[] std::exchange(dest, src ? qstrdup(src) : nullptr);
+    }
+
+    // Call from the main thread after changing any of the above. Must not be called with
+    // identifierMutex held.
+    static void updateIdentifier()
+    {
+        // Read before locking, through the accessors: the data belongs to this thread, and
+        // they are where absent names are turned into whatever the loggers expect.
+        const char *objectName = QTestResult::currentTestObjectName();
+        const char *testFunc = QTestResult::currentTestFunction();
+        const char *dataTag = QTestResult::currentDataTag();
+        const char *globalDataTag = QTestResult::currentGlobalDataTag();
+
+        const QMutexLocker locker(&identifierMutex);
+        storeIdentifierString(identifierObjectName, objectName);
+        storeIdentifierString(identifierTestFunc, testFunc);
+        storeIdentifierString(identifierDataTag, dataTag);
+        storeIdentifierString(identifierGlobalDataTag, globalDataTag);
+    }
+}
+
+/*!
+    \class QTestResult
+    \inmodule QtTest
+    \internal
+*/
+
+QTestResult::IdentifierLocker::IdentifierLocker()
+{
+    QTest::identifierMutex.lock();
+}
+
+QTestResult::IdentifierLocker::~IdentifierLocker()
+{
+    QTest::identifierMutex.unlock();
+}
+
+const char *QTestResult::IdentifierLocker::objectName() const
+{
+    return QTest::identifierObjectName;
+}
+
+const char *QTestResult::IdentifierLocker::testFunction() const
+{
+    return QTest::identifierTestFunc;
+}
+
+const char *QTestResult::IdentifierLocker::dataTag() const
+{
+    return QTest::identifierDataTag;
+}
+
+const char *QTestResult::IdentifierLocker::globalDataTag() const
+{
+    return QTest::identifierGlobalDataTag;
 }
 
 void QTestResult::reset()
@@ -74,6 +146,7 @@ void QTestResult::reset()
     QTest::currentGlobalTestData = nullptr;
     QTest::currentTestFunc = nullptr;
     QTest::currentTestObjectName = nullptr;
+    QTest::updateIdentifier();
     QTest::resetFailed();
 
     QTest::expectFailComment = nullptr;
@@ -106,11 +179,13 @@ QTestData *QTestResult::currentTestData()
 void QTestResult::setCurrentGlobalTestData(QTestData *data)
 {
     QTest::currentGlobalTestData = data;
+    QTest::updateIdentifier();
 }
 
 void QTestResult::setCurrentTestData(QTestData *data)
 {
     QTest::currentTestData = data;
+    QTest::updateIdentifier();
     QTest::resetFailed();
     if (data)
         QTestLog::enterTestData(data);
@@ -119,6 +194,7 @@ void QTestResult::setCurrentTestData(QTestData *data)
 void QTestResult::setCurrentTestFunction(const char *func)
 {
     QTest::currentTestFunc = func;
+    QTest::updateIdentifier();
     QTest::resetFailed();
     if (func)
         QTestLog::enterTestFunction(func);
@@ -193,7 +269,7 @@ void QTestResult::finishedCurrentTestDataCleanup()
     This function is called after completing each test function,
     including test functions that are data-driven.
 
-    For data-driven functions, this is called after after all data rows
+    For data-driven functions, this is called after all data rows
     have been tested, and the data table has been cleared, so both
     currentTestData() and currentGlobalTestData() will be \nullptr.
 */
@@ -302,7 +378,7 @@ bool QTestResult::verify(bool statement, const char *statementStr,
 {
     QTEST_ASSERT(statementStr);
 
-    char msg[maxMsgLen];
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
     msg[0] = '\0';
 
     if (QTestLog::verboseLevel() >= 2) {
@@ -321,12 +397,38 @@ bool QTestResult::verify(bool statement, const char *statementStr,
 
 static const char *leftArgNameForOp(QTest::ComparisonOperation op)
 {
-    return op == QTest::ComparisonOperation::CustomCompare ? "Actual   " : "Computed ";
+    switch (op) {
+    case QTest::ComparisonOperation::CustomCompare:
+        return "Actual   ";
+    case QTest::ComparisonOperation::ThreeWayCompare:
+        return "Left     ";
+    case QTest::ComparisonOperation::Equal:
+    case QTest::ComparisonOperation::NotEqual:
+    case QTest::ComparisonOperation::LessThan:
+    case QTest::ComparisonOperation::LessThanOrEqual:
+    case QTest::ComparisonOperation::GreaterThan:
+    case QTest::ComparisonOperation::GreaterThanOrEqual:
+        return "Computed ";
+    }
+    Q_UNREACHABLE_RETURN("");
 }
 
 static const char *rightArgNameForOp(QTest::ComparisonOperation op)
 {
-    return op == QTest::ComparisonOperation::CustomCompare ? "Expected " : "Baseline ";
+    switch (op) {
+    case QTest::ComparisonOperation::CustomCompare:
+        return "Expected ";
+    case QTest::ComparisonOperation::ThreeWayCompare:
+        return "Right    ";
+    case QTest::ComparisonOperation::Equal:
+    case QTest::ComparisonOperation::NotEqual:
+    case QTest::ComparisonOperation::LessThan:
+    case QTest::ComparisonOperation::LessThanOrEqual:
+    case QTest::ComparisonOperation::GreaterThan:
+    case QTest::ComparisonOperation::GreaterThanOrEqual:
+        return "Baseline ";
+    }
+    Q_UNREACHABLE_RETURN("");
 }
 
 static int approx_wide_len(const char *s)
@@ -337,7 +439,7 @@ static int approx_wide_len(const char *s)
     auto r = std::mbsrtowcs(nullptr, &s, INT_MAX, &state);
     if (r == size_t(-1)) // encoding error, fall back to strlen()
         r = strlen(s); // `s` was not advanced since `dst == nullptr`
-    return q26::saturate_cast<int>(r);
+    return q26::saturating_cast<int>(r);
 }
 
 // Overload to format failures for "const char *" - no need to strdup().
@@ -405,7 +507,7 @@ static bool compareHelper(bool success, const char *failureMsg,
                           const char *file, int line,
                           bool hasValues = true)
 {
-    char msg[maxMsgLen];
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
     msg[0] = '\0';
 
     QTEST_ASSERT(expected);
@@ -447,7 +549,7 @@ static bool compareHelper(bool success, const char *failureMsg,
                           const char *file, int line)
 {
     const size_t maxMsgLen = 1024;
-    char msg[maxMsgLen];
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
     msg[0] = '\0';
 
     QTEST_ASSERT(expected);
@@ -587,6 +689,7 @@ void QTestResult::addSkip(const char *message, const char *file, int line)
 void QTestResult::setCurrentTestObject(const char *name)
 {
     QTest::currentTestObjectName = name;
+    QTest::updateIdentifier();
 }
 
 const char *QTestResult::currentTestObjectName()
@@ -632,6 +735,8 @@ static const char *macroNameForOp(QTest::ComparisonOperation op)
         return "QCOMPARE_GT";
     case ComparisonOperation::GreaterThanOrEqual:
         return "QCOMPARE_GE";
+    case ComparisonOperation::ThreeWayCompare:
+        return "QCOMPARE_3WAY";
     }
     Q_UNREACHABLE_RETURN("");
 }
@@ -642,6 +747,8 @@ static const char *failureMessageForOp(QTest::ComparisonOperation op)
     switch (op) {
     case ComparisonOperation::CustomCompare:
         return "Compared values are not the same"; /* not used */
+    case ComparisonOperation::ThreeWayCompare:
+        return "The result of operator<=>() is not what was expected";
     case ComparisonOperation::Equal:
         return "The computed value is expected to be equal to the baseline, but is not";
     case ComparisonOperation::NotEqual:
@@ -665,7 +772,7 @@ bool QTestResult::reportResult(bool success, const void *lhs, const void *rhs,
                                QTest::ComparisonOperation op, const char *file, int line,
                                const char *failureMessage)
 {
-    char msg[maxMsgLen];
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
     msg[0] = '\0';
 
     QTEST_ASSERT(lhsExpr);
@@ -692,6 +799,65 @@ bool QTestResult::reportResult(bool success, const void *lhs, const void *rhs,
 
     formatFailMessage(msg, maxMsgLen, failureMessage, lhsPtr.get(), rhsPtr.get(),
                       lhsExpr, rhsExpr, op);
+
+    return checkStatement(success, msg, file, line);
+}
+
+bool QTestResult::report3WayResult(bool success,
+                                   const char *failureMessage,
+                                   const void *lhs, const void *rhs,
+                                   const char *(*lhsFormatter)(const void*),
+                                   const char *(*rhsFormatter)(const void*),
+                                   const char *lhsExpression, const char *rhsExpression,
+                                   const char *(*actualOrderFormatter)(const void *),
+                                   const char *(*expectedOrderFormatter)(const void *),
+                                   const void *actualOrder, const void *expectedOrder,
+                                   const char *expectedExpression,
+                                   const char *file, int line)
+{
+    Q_DECL_UNINITIALIZED
+    char msg[maxMsgLen];
+    msg[0] = '\0';
+
+    QTEST_ASSERT(lhsExpression);
+    QTEST_ASSERT(rhsExpression);
+    QTEST_ASSERT(expectedExpression);
+    const char *macroName = macroNameForOp(QTest::ComparisonOperation::ThreeWayCompare);
+    const std::string actualExpression = std::string(lhsExpression) + " <=> " + rhsExpression;
+
+    if (QTestLog::verboseLevel() >= 2) {
+        std::snprintf(msg, maxMsgLen, "%s(%s, %s, %s)",
+                      macroName, lhsExpression, rhsExpression, expectedExpression);
+        QTestLog::info(msg, file, line);
+    }
+
+    if (success) {
+        if (QTest::expectFailMode) {
+            std::snprintf(msg, maxMsgLen, "%s(%s, %s, %s) returned TRUE unexpectedly.",
+                          macroName, lhsExpression, rhsExpression, expectedExpression);
+        }
+        return checkStatement(success, msg, file, line);
+    }
+    const std::unique_ptr<const char[]> lhsStr{lhsFormatter(lhs)};
+    const std::unique_ptr<const char[]> rhsStr{rhsFormatter(rhs)};
+
+    const std::unique_ptr<const char[]> actual{actualOrderFormatter(actualOrder)};
+    const std::unique_ptr<const char[]> expected{expectedOrderFormatter(expectedOrder)};
+
+    if (!failureMessage)
+        failureMessage = failureMessageForOp(QTest::ComparisonOperation::ThreeWayCompare);
+
+    // Left and Right compared parameters of QCOMPARE_3WAY
+    formatFailMessage(msg, maxMsgLen, failureMessage,
+                      lhsStr.get(), rhsStr.get(),
+                      lhsExpression, rhsExpression,
+                      QTest::ComparisonOperation::ThreeWayCompare);
+
+    // Actual and Expected results of comparison
+    formatFailMessage(msg + strlen(msg), maxMsgLen - strlen(msg), "",
+                      actual.get(), expected.get(),
+                      actualExpression.c_str(), expectedExpression,
+                      QTest::ComparisonOperation::CustomCompare);
 
     return checkStatement(success, msg, file, line);
 }

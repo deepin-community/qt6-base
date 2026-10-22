@@ -1,5 +1,6 @@
 // Copyright (C) 2011 - 2012 Research In Motion
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qqnxnavigatoreventnotifier.h"
 
@@ -18,8 +19,6 @@
 #include <sys/stat.h>
 
 QT_BEGIN_NAMESPACE
-
-// Q_LOGGING_CATEGORY(lcQpaQnxNavigatorEvents, "qt.qpa.qnx.navigator.events");
 
 const char *QQnxNavigatorEventNotifier::navigatorControlPath = "/pps/services/navigator/control";
 const size_t QQnxNavigatorEventNotifier::ppsBufferSize = 4096;

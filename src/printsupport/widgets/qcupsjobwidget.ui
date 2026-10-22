@@ -18,11 +18,14 @@
      <property name="title" >
       <string>Job Control</string>
      </property>
-     <layout class="QGridLayout" name="gridLayout" >
-      <item row="0" column="0" >
-       <widget class="QLabel" name="jobHoldLabel" >
-        <property name="text" >
-         <string>Scheduled printing:</string>
+     <layout class="QGridLayout" name="gridLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="jobHoldLabel">
+        <property name="text">
+         <string>Scheduled &amp;printing:</string>
+        </property>
+        <property name="buddy">
+         <cstring>jobHoldComboBox</cstring>
         </property>
        </widget>
       </item>
@@ -32,20 +35,26 @@
       <item row="0" column="3" >
        <widget class="QTimeEdit" name="jobHoldTimeEdit" />
       </item>
-      <item row="1" column="0" >
-       <widget class="QLabel" name="jobBillingLabel" >
-        <property name="text" >
-         <string>Billing information:</string>
+      <item row="1" column="0">
+       <widget class="QLabel" name="jobBillingLabel">
+        <property name="text">
+         <string>&amp;Billing information:</string>
+        </property>
+        <property name="buddy">
+         <cstring>jobBillingLineEdit</cstring>
         </property>
        </widget>
       </item>
       <item row="1" column="1" colspan="3" >
        <widget class="QLineEdit" name="jobBillingLineEdit" />
       </item>
-      <item row="2" column="0" >
-       <widget class="QLabel" name="jobPriorityLabel" >
-        <property name="text" >
-         <string>Job priority:</string>
+      <item row="2" column="0">
+       <widget class="QLabel" name="jobPriorityLabel">
+        <property name="text">
+         <string>Job &amp;priority:</string>
+        </property>
+        <property name="buddy">
+         <cstring>jobPrioritySpinBox</cstring>
         </property>
        </widget>
       </item>
@@ -81,8 +90,15 @@
       <string>Banner Pages</string>
      </property>
      <layout class="QGridLayout" name="gridLayout_3">
-      <item row="1" column="1">
-       <widget class="QComboBox" name="endBannerPageCombo"/>
+      <item row="0" column="0">
+       <widget class="QLabel" name="startBannerLabel">
+        <property name="text">
+         <string comment="Banner page at start">&amp;Start:</string>
+        </property>
+        <property name="buddy">
+         <cstring>startBannerPageCombo</cstring>
+        </property>
+       </widget>
       </item>
       <item row="0" column="1">
        <widget class="QComboBox" name="startBannerPageCombo"/>
@@ -90,16 +106,15 @@
       <item row="1" column="0">
        <widget class="QLabel" name="endBannerLabel">
         <property name="text">
-         <string comment="Banner page at end">End:</string>
+         <string comment="Banner page at end">&amp;End:</string>
+        </property>
+        <property name="buddy">
+         <cstring>endBannerPageCombo</cstring>
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="startBannerLabel">
-        <property name="text">
-         <string comment="Banner page at start">Start:</string>
-        </property>
-       </widget>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="endBannerPageCombo"/>
       </item>
      </layout>
     </widget>

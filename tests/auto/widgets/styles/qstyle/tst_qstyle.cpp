@@ -23,6 +23,7 @@
 
 #include <qimagereader.h>
 #include <qimagewriter.h>
+#include <qiconengine.h>
 #include <qmenu.h>
 #include <qpushbutton.h>
 #include <qspinbox.h>
@@ -44,6 +45,7 @@ class tst_QStyle : public QObject
     Q_OBJECT
 
 private slots:
+    void init();
     void drawItemPixmap();
     void cleanup();
 #ifndef QT_NO_STYLE_FUSION
@@ -52,8 +54,9 @@ private slots:
     void testWindowsStyle();
 #if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSVISTA)
     void testWindowsVistaStyle();
+    void testWindowsVistaMenuIconSize();
 #endif
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     void testMacStyle();
 #endif
     void testStyleFactory();
@@ -87,6 +90,11 @@ public:
 protected:
     void paintEvent(QPaintEvent *) override;
 };
+
+void tst_QStyle::init()
+{
+    QTest::failOnWarning(QRegularExpression("QPainter:.*"));
+}
 
 void tst_QStyle::cleanup()
 {
@@ -303,9 +311,45 @@ void tst_QStyle::testWindowsVistaStyle()
     QVERIFY(!vistastyle.isNull());
     QVERIFY(testAllFunctions(vistastyle.data()));
 }
+
+class RecordingIconEngine : public QIconEngine
+{
+public:
+    mutable QRect lastPaintRect;
+
+    void paint(QPainter *, const QRect &rect, QIcon::Mode, QIcon::State) override
+    {
+        lastPaintRect = rect;
+    }
+
+    QIconEngine *clone() const override { return new RecordingIconEngine(*this); }
+    QString iconName() override { return {}; }
+};
+
+void tst_QStyle::testWindowsVistaMenuIconSize()
+{
+    QScopedPointer<QStyle> style(QStyleFactory::create("WindowsVista"));
+    QVERIFY(!style.isNull());
+
+    QMenu menu;
+    menu.setStyle(style.data());
+
+    auto *engine = new RecordingIconEngine;
+    QIcon icon(engine);
+    menu.addAction(icon, "Test Action");
+
+    menu.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&menu));
+
+    const int expectedSize = style->pixelMetric(QStyle::PM_SmallIconSize, nullptr, &menu);
+    QVERIFY(expectedSize > 0);
+    QVERIFY(!engine->lastPaintRect.isNull());
+    QCOMPARE(engine->lastPaintRect.width(), expectedSize);
+    QCOMPARE(engine->lastPaintRect.height(), expectedSize);
+}
 #endif
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 void tst_QStyle::testMacStyle()
 {
     QStyle *mstyle = QStyleFactory::create("macos");

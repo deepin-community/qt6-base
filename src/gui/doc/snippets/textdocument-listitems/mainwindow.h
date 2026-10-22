@@ -8,6 +8,8 @@
 #include <QMainWindow>
 #include <QString>
 
+QT_BEGIN_NAMESPACE
+
 class QAction;
 class QTextDocument;
 class QTextEdit;
@@ -34,5 +36,7 @@ private:
     QList<QTreeWidgetItem*> previousItems;
     QList<QTreeWidgetItem*> parentItems;
 };
+
+QT_END_NAMESPACE
 
 #endif

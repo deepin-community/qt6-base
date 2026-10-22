@@ -1,12 +1,12 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-#ifndef QXCBBASICCONNECTION_H
-#define QXCBBASICCONNECTION_H
+// Qt-Security score:significant reason:default
+
+#pragma once
 
 #include "qxcbatom.h"
 #include "qxcbexport.h"
 
-#include <QtCore/QPair>
 #include <QtCore/QObject>
 #include <QtCore/QByteArray>
 #include <QtCore/QLoggingCategory>
@@ -52,7 +52,7 @@ public:
     bool hasXKB() const { return m_hasXkb; }
     bool hasXRender(int major = -1, int minor = -1) const {
         if (m_hasXRender && major != -1 && minor != -1)
-            return m_xrenderVersion >= qMakePair(major, minor);
+            return m_xrenderVersion >= std::pair(major, minor);
 
         return m_hasXRender;
     }
@@ -105,7 +105,7 @@ private:
     bool m_hasShmFd = false;
     bool m_hasXSync = false;
 
-    QPair<int, int> m_xrenderVersion;
+    std::pair<int, int> m_xrenderVersion;
 
     bool m_xi2Enabled = false;
     int m_xi2Minor = -1;
@@ -123,20 +123,14 @@ private:
 
 #define Q_XCB_REPLY_CONNECTION_ARG(connection, ...) connection
 
-struct QStdFreeDeleter {
-    void operator()(void *p) const noexcept { return std::free(p); }
-};
-
 #define Q_XCB_REPLY(call, ...) \
-    std::unique_ptr<call##_reply_t, QStdFreeDeleter>( \
+    std::unique_ptr<call##_reply_t, QScopedPointerPodDeleter>( \
         call##_reply(Q_XCB_REPLY_CONNECTION_ARG(__VA_ARGS__), call(__VA_ARGS__), nullptr) \
     )
 
 #define Q_XCB_REPLY_UNCHECKED(call, ...) \
-    std::unique_ptr<call##_reply_t, QStdFreeDeleter>( \
+    std::unique_ptr<call##_reply_t, QScopedPointerPodDeleter>( \
         call##_reply(Q_XCB_REPLY_CONNECTION_ARG(__VA_ARGS__), call##_unchecked(__VA_ARGS__), nullptr) \
     )
 
 QT_END_NAMESPACE
-
-#endif // QXCBBASICCONNECTION_H

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QX509_OPENSSL_P_H
 #define QX509_OPENSSL_P_H
@@ -27,7 +28,6 @@
 
 #include "qopenssl_p.h"
 
-#include <algorithm>
 
 QT_BEGIN_NAMESPACE
 
@@ -72,14 +72,14 @@ public:
     static QSslError openSSLErrorToQSslError(int errorCode, const QSslCertificate &cert);
 private:
     void parseExtensions();
-    static X509CertificateExtension convertExtension(X509_EXTENSION *ext);
+    static X509CertificateExtension convertExtension(QT_OPENSSL4_CONST X509_EXTENSION *ext);
 
     X509 *x509 = nullptr;
 
     Q_DISABLE_COPY_MOVE(X509CertificateOpenSSL)
 };
 
-extern "C" int qt_X509Callback(int ok, X509_STORE_CTX *ctx);
+int qt_X509Callback(int ok, X509_STORE_CTX *ctx);
 
 } // namespace QTlsPrivate
 

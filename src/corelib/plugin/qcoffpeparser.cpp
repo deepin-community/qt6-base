@@ -1,5 +1,6 @@
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qcoffpeparser_p.h"
 
@@ -9,6 +10,9 @@
 
 #include <optional>
 
+// Include minimal set of headers
+#define WIN32_LEAN_AND_MEAN
+#define NOGDI
 #include <qt_windows.h>
 
 QT_BEGIN_NAMESPACE
@@ -27,7 +31,7 @@ static constexpr QLatin1StringView truncatedSectionName =
 #  define QCOFFPEPARSER_DEBUG
 #endif
 #if defined(QCOFFPEPARSER_DEBUG)
-static Q_LOGGING_CATEGORY(lcCoffPeParser, "qt.core.plugin.coffpeparser")
+Q_STATIC_LOGGING_CATEGORY(lcCoffPeParser, "qt.core.plugin.coffpeparser")
 #  define peDebug       qCDebug(lcCoffPeParser) << reinterpret_cast<const char16_t *>(error.errMsg->constData()) << ':'
 #else
 #  define peDebug       if (false) {} else QNoDebug()
@@ -41,6 +45,8 @@ static const WORD ExpectedMachine =
         // nothing, just so everything is #elf
 #elif defined(Q_PROCESSOR_ARM_32)
             IMAGE_FILE_MACHINE_ARMNT
+#elif defined(Q_PROCESSOR_ARM_64_EC)
+            IMAGE_FILE_MACHINE_AMD64
 #elif defined(Q_PROCESSOR_ARM_64)
             IMAGE_FILE_MACHINE_ARM64
 #elif defined(Q_PROCESSOR_IA64)

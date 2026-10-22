@@ -1,14 +1,15 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#ifndef QXCBCLIPBOARD_H
-#define QXCBCLIPBOARD_H
+#pragma once
 
 #include <qpa/qplatformclipboard.h>
 #include <qxcbobject.h>
 #include <xcb/xcb.h>
 #include <xcb/xfixes.h>
 
+#include <QtCore/qbasictimer.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qmap.h>
 
@@ -42,7 +43,7 @@ private:
     xcb_atom_t m_target;
     uint8_t m_format;
     uint m_offset = 0;
-    int m_abortTimerId = 0;
+    QBasicTimer m_abortTimer;
 };
 
 class QXcbClipboard : public QXcbObject, public QPlatformClipboard
@@ -109,5 +110,3 @@ private:
 #endif // QT_NO_CLIPBOARD
 
 QT_END_NAMESPACE
-
-#endif // QXCBCLIPBOARD_H

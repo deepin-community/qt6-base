@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTHREAD_P_H
 #define QTHREAD_P_H
@@ -17,18 +18,19 @@
 //
 //
 
-#include "qplatformdefs.h"
 #include "QtCore/qthread.h"
-#include "QtCore/qmutex.h"
-#include "QtCore/qstack.h"
-#if QT_CONFIG(thread)
-#include "QtCore/qwaitcondition.h"
-#endif
-#include "QtCore/qmap.h"
+
 #include "QtCore/qcoreapplication.h"
 #include "private/qobject_p.h"
+#include "QtCore/qmap.h"
+#include "QtCore/qmutex.h"
+#include "QtCore/qstack.h"
 
-#include <algorithm>
+#if QT_CONFIG(thread)
+#include "private/qthreadstorage_p.h"
+#include "QtCore/qwaitcondition.h"
+#endif
+
 #include <atomic>
 
 QT_BEGIN_NAMESPACE
@@ -58,6 +60,7 @@ inline bool operator<(const QPostEvent &first, const QPostEvent &second)
 
 // This class holds the list of posted events.
 //  The list has to be kept sorted by priority
+// ### Qt7 remove the next line
 // It's used in a virtual in QCoreApplication, so ELFVERSION:ignore-next
 class QPostEventList : public QList<QPostEvent>
 {
@@ -106,6 +109,11 @@ public:
     explicit BindingStatusOrList(QBindingStatus *status) noexcept :
         data(encodeBindingStatus(status)) {}
     explicit BindingStatusOrList(List *list) noexcept : data(encodeList(list)) {}
+    ~BindingStatusOrList()
+    {
+        auto status = bindingStatus();
+        delete status;
+    }
 
     // requires external synchronization:
     QBindingStatus *addObjectUnlessAlreadyStatus(QObject *object);
@@ -184,35 +192,50 @@ public:
     mutable QMutex mutex;
     QAtomicInt quitLockRef;
 
-    bool running;
-    bool finished;
-    bool isInFinish; //when in QThreadPrivate::finish
+    enum State : quint8 {
+        // All state changes are imprecise
+        NotStarted = 0,     // before start() or if failed to start
+        Running = 1,        // in run()
+        Finishing = 2,      // in QThreadPrivate::finish()
+        Finished = 3,       // QThreadPrivate::finish() or cleanup() is done
+                            //    or, if using pthread_join, joining is done
+    };
+
+    State threadState = NotStarted;
+    bool exited = false;
     std::atomic<bool> interruptionRequested = false;
 #ifdef Q_OS_UNIX
     bool terminated = false; // when (the first) terminate has been called
 #endif
 
-    bool exited;
-    int returnCode;
+    int waiters = 0;
+    int returnCode = -1;
 
-    uint stackSize;
-    std::underlying_type_t<QThread::Priority> priority;
+    uint stackSize = 0;
+    std::underlying_type_t<QThread::Priority> priority = QThread::InheritPriority;
+
+    bool wait(QMutexLocker<QMutex> &locker, QDeadlineTimer deadline);
+
+    QThread::QualityOfService serviceLevel = QThread::QualityOfService::Auto;
+    void setQualityOfServiceLevel(QThread::QualityOfService qosLevel);
+#ifdef Q_OS_DARWIN
+    qos_class_t nativeQualityOfServiceClass() const;
+#endif
 
 #ifdef Q_OS_UNIX
     QWaitCondition thread_done;
 
+    void wakeAll();
     static void *start(void *arg);
-    static void finish(void *);
-
+    void finish(bool = false);  // happens early (before thread-local dtors)
+    void cleanup();             // happens late (as a thread-local dtor, if possible)
 #endif // Q_OS_UNIX
 
 #ifdef Q_OS_WIN
     static unsigned int __stdcall start(void *) noexcept;
-    static void finish(void *, bool lockAnyway = true) noexcept;
+    void finish(bool lockAnyway = true) noexcept;
 
     Qt::HANDLE handle;
-    unsigned int id;
-    int waiters;
     bool terminationEnabled, terminatePending;
 #endif // Q_OS_WIN
 #ifdef Q_OS_WASM
@@ -229,15 +252,12 @@ public:
 
     void deref()
     {
-        if (!quitLockRef.deref() && running) {
+        if (!quitLockRef.deref() && threadState == Running) {
             QCoreApplication::instance()->postEvent(q_ptr, new QEvent(QEvent::Quit));
         }
     }
 
-    QBindingStatus *bindingStatus()
-    {
-        return m_statusOrPendingObjects.bindingStatus();
-    }
+    QBindingStatus *bindingStatus();
 
     /* Returns nullptr if the object has been added, or the binding status
        if that one has been set in the meantime
@@ -245,12 +265,16 @@ public:
     QBindingStatus *addObjectWithPendingBindingStatusChange(QObject *obj);
     void removeObjectWithPendingBindingStatusChange(QObject *obj);
 
-    // manipulating m_statusOrPendingObjects requires mutex to be locked
-    QtPrivate::BindingStatusOrList m_statusOrPendingObjects = {};
-#ifndef Q_OS_INTEGRITY
 private:
+#ifdef Q_OS_INTEGRITY
+    // On INTEGRITY we set the thread name before starting it, so just fake a string
+    struct FakeString {
+        bool isEmpty() const { return true; }
+        const char *toLocal8Bit() const { return nullptr; }
+    } objectName;
+#else
     // Used in QThread(Private)::start to avoid racy access to QObject::objectName,
-    // unset afterwards. On INTEGRITY we set the thread name before starting it.
+    // unset afterwards.
     QString objectName;
 #endif
 };
@@ -286,17 +310,40 @@ public:
 class QThreadData
 {
 public:
-    QThreadData(int initialRefCount = 1);
+    QThreadData(int initialRefCount = 1)
+        : _ref(initialRefCount)
+    {
+        // fprintf(stderr, "QThreadData %p created\n", this);
+    }
     ~QThreadData();
 
-    static Q_AUTOTEST_EXPORT QThreadData *current(bool createIfNecessary = true);
+    static QThreadData *current()
+    {
+        if (QThreadData *data = currentThreadData()) Q_LIKELY_BRANCH
+            return data;
+        return createCurrentThreadData();
+    }
+    // non-creating version of current():
+    Q_DECL_PURE_FUNCTION static Q_AUTOTEST_EXPORT QThreadData *currentThreadData() noexcept;
     static void clearCurrentThreadData();
     static QThreadData *get2(QThread *thread)
     { Q_ASSERT_X(thread != nullptr, "QThread", "internal error"); return thread->d_func()->data; }
 
-
-    void ref();
-    void deref();
+#if QT_CONFIG(thread)
+    void ref()
+    {
+        (void) _ref.ref();
+        Q_ASSERT(_ref.loadRelaxed() != 0);
+    }
+    void deref()
+    {
+        if (!_ref.deref())
+            delete this;
+    }
+#else
+    void ref() {}
+    void deref() {}
+#endif
     inline bool hasEventDispatcher() const
     { return eventDispatcher.loadRelaxed() != nullptr; }
     QAbstractEventDispatcher *createEventDispatcher();
@@ -314,12 +361,14 @@ public:
         return canWait;
     }
 
-private:
-    QAtomicInt _ref;
+    void clearEvents();
 
-public:
-    int loopLevel;
-    int scopeLevel;
+    void reuseBindingStatusForNewNativeThread()
+    {
+        auto status = m_statusOrPendingObjects.bindingStatus();
+        if (status)
+            QtPrivate::setBindingStatus(status, {});
+    }
 
     QStack<QEventLoop *> eventLoops;
     QPostEventList postEventList;
@@ -327,19 +376,36 @@ public:
     QAtomicPointer<void> threadId;
     QAtomicPointer<QAbstractEventDispatcher> eventDispatcher;
     QList<void *> tls;
+    // manipulating m_statusOrPendingObjects requires QTreadPrivate's mutex to be locked
+    QtPrivate::BindingStatusOrList m_statusOrPendingObjects = {};
 
-    bool quitNow;
-    bool canWait;
-    bool isAdopted;
-    bool requiresCoreApplication;
+private:
+    QAtomicInt _ref;
+
+public:
+    int loopLevel = 0;
+    int scopeLevel = 0;
+
+    bool quitNow = false;
+    bool canWait = true;
+    bool isAdopted = false;
+    bool requiresCoreApplication = true;
+
+private:
+    friend class QAbstractEventDispatcher;
+    friend class QBasicTimer;
+    static Q_AUTOTEST_EXPORT QThreadData *createCurrentThreadData();
 };
 
 class QScopedScopeLevelCounter
 {
     QThreadData *threadData;
 public:
-    QScopedScopeLevelCounter(QThreadData *threadData);
-    ~QScopedScopeLevelCounter();
+    inline QScopedScopeLevelCounter(QThreadData *threadData)
+        : threadData(threadData)
+    { ++threadData->scopeLevel; }
+    inline ~QScopedScopeLevelCounter()
+    { --threadData->scopeLevel; }
 };
 
 // thread wrapper for the main() thread
@@ -348,7 +414,7 @@ class QAdoptedThread : public QThread
     Q_DECLARE_PRIVATE(QThread)
 
 public:
-    QAdoptedThread(QThreadData *data = nullptr);
+    QAdoptedThread(QThreadData *data);
     ~QAdoptedThread();
     void init();
 
@@ -357,6 +423,13 @@ private:
     void run() override;
 #endif
 };
+
+#if QT_CONFIG(thread)
+inline QBindingStatus *QThreadPrivate::bindingStatus()
+{
+    return data->m_statusOrPendingObjects.bindingStatus();
+}
+#endif
 
 QT_END_NAMESPACE
 

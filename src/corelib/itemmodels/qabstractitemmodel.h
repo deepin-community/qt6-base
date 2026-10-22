@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTITEMMODEL_H
 #define QABSTRACTITEMMODEL_H
@@ -14,6 +15,8 @@
 QT_REQUIRE_CONFIG(itemmodel);
 
 QT_BEGIN_NAMESPACE
+
+class QCollator;
 
 class QModelRoleData
 {
@@ -421,9 +424,24 @@ protected:
     void changePersistentIndexList(const QModelIndexList &from, const QModelIndexList &to);
     QModelIndexList persistentIndexList() const;
 
+
+    static Qt::weak_ordering compareData(const QVariant &left, const QVariant &right)
+    {
+        return compareDataImpl(left, right, nullptr);
+    }
+
+    static Qt::weak_ordering compareData(const QVariant &left, const QVariant &right,
+                                         const QCollator &collator)
+    {
+        return compareDataImpl(left, right, &collator);
+    }
+
 private:
     Q_DECLARE_PRIVATE(QAbstractItemModel)
     Q_DISABLE_COPY(QAbstractItemModel)
+
+    static Qt::weak_ordering compareDataImpl(const QVariant &left, const QVariant &right,
+                                             const QCollator *collator);
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QAbstractItemModel::CheckIndexOptions)
@@ -468,6 +486,7 @@ protected:
     QAbstractTableModel(QAbstractItemModelPrivate &dd, QObject *parent);
 
 private:
+    Q_DECLARE_PRIVATE(QAbstractItemModel) // no own private type
     Q_DISABLE_COPY(QAbstractTableModel)
     QModelIndex parent(const QModelIndex &child) const override;
     bool hasChildren(const QModelIndex &parent) const override;
@@ -494,6 +513,7 @@ protected:
     QAbstractListModel(QAbstractItemModelPrivate &dd, QObject *parent);
 
 private:
+    Q_DECLARE_PRIVATE(QAbstractItemModel) // no own private type
     Q_DISABLE_COPY(QAbstractListModel)
     QModelIndex parent(const QModelIndex &child) const override;
     int columnCount(const QModelIndex &parent) const override;

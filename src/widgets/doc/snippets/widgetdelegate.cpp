@@ -2,8 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtGui>
+#include <QStyledItemDelegate>
+#include <QApplication>
 
-#include "widgetdelegate.h"
+class WidgetDelegate : public QStyledItemDelegate
+{
+    Q_OBJECT
+public:
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override;
+};
 
 //![0]
 void WidgetDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,

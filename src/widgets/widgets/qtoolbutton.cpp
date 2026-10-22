@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtoolbutton.h"
 
@@ -25,6 +26,7 @@
 #include <private/qabstractbutton_p.h>
 #include <private/qaction_p.h>
 #if QT_CONFIG(menu)
+#include <qeventloop.h>
 #include <qmenu.h>
 #include <private/qmenu_p.h>
 #endif
@@ -41,12 +43,14 @@ public:
 #if QT_CONFIG(menu)
     void onButtonPressed();
     void onButtonReleased();
-    void popupTimerDone();
+    QMenu *showMenu();
     void updateButtonDown();
     void onMenuTriggered(QAction *);
+    void onDefaultActionChanged();
 #endif
     bool updateHoverControl(const QPoint &pos);
     void onActionTriggered();
+    QStyle::State styleButtonState(QStyle::State state) const override;
     QStyle::SubControl newHoverControl(const QPoint &pos);
     QStyle::SubControl hoverControl;
     QRect hoverRect;
@@ -56,7 +60,8 @@ public:
     Qt::ArrowType arrowType;
     Qt::ToolButtonStyle toolButtonStyle;
     QToolButton::ToolButtonPopupMode popupMode;
-    enum { NoButtonPressed=0, MenuButtonPressed=1, ToolButtonPressed=2 };
+    uint popupModeSetByUser : 1; // true if popupMode was set through setPopupMode
+    enum { NoButtonPressed = 0, MenuButtonPressed = 1, ToolButtonPressed = 2 };
     uint buttonPressed : 2;
     uint menuButtonDown          : 1;
     uint autoRaise             : 1;
@@ -129,11 +134,10 @@ bool QToolButtonPrivate::hasMenu() const
     of possible pages to jump to. The timeout is style dependent,
     see QStyle::SH_ToolButton_PopupDelay.
 
-    \table 100%
-    \row \li \inlineimage assistant-toolbar.png Qt Assistant's toolbar with tool buttons
-    \row \li Qt Assistant's toolbar contains tool buttons that are associated
+    \image assistant-toolbar.png {Qt Assistant's toolbar with tool buttons}
+    \caption Qt Assistant's toolbar contains tool buttons that are associated
          with actions used in other parts of the main window.
-    \endtable
+
 
     \sa QPushButton, QToolBar, QMainWindow, QAction
 */
@@ -177,6 +181,7 @@ void QToolButtonPrivate::init()
     arrowType = Qt::NoArrow;
     menuButtonDown = false;
     popupMode = QToolButton::DelayedPopup;
+    popupModeSetByUser = false;
     buttonPressed = QToolButtonPrivate::NoButtonPressed;
 
     toolButtonStyle = Qt::ToolButtonIconOnly;
@@ -224,15 +229,7 @@ void QToolButton::initStyleOption(QStyleOptionToolButton *option) const
     option->text = d->text;
     option->icon = d->icon;
     option->arrowType = d->arrowType;
-    if (d->down)
-        option->state |= QStyle::State_Sunken;
-    if (d->checked)
-        option->state |= QStyle::State_On;
-    if (d->autoRaise)
-        option->state |= QStyle::State_AutoRaise;
-    if (!d->checked && !d->down)
-        option->state |= QStyle::State_Raised;
-
+    option->state = d->styleButtonState(option->state);
     option->subControls = QStyle::SC_ToolButton;
     option->activeSubControls = QStyle::SC_None;
 
@@ -490,6 +487,20 @@ void QToolButtonPrivate::onActionTriggered()
         emit q->triggered(action);
 }
 
+QStyle::State QToolButtonPrivate::styleButtonState(QStyle::State state) const
+{
+    state = QAbstractButtonPrivate::styleButtonState(state);
+    if (checked)
+        state |= QStyle::State_On;
+    if (autoRaise)
+        state |= QStyle::State_AutoRaise;
+    if (!checked && !down)
+        state |= QStyle::State_Raised;
+    if (menuButtonDown)
+        state |= QStyle::State_Sunken;
+    return state;
+}
+
 /*!
     \reimp
  */
@@ -525,7 +536,9 @@ void QToolButton::timerEvent(QTimerEvent *e)
 #if QT_CONFIG(menu)
     Q_D(QToolButton);
     if (e->timerId() == d->popupTimer.timerId()) {
-        d->popupTimerDone();
+        d->popupTimer.stop();
+        if (d->menuButtonDown || d->down)
+            d->showMenu();
         return;
     }
 #endif
@@ -544,7 +557,7 @@ void QToolButton::changeEvent(QEvent *e)
         if (qobject_cast<QToolBar*>(parentWidget()))
             d->autoRaise = true;
     } else if (e->type() == QEvent::StyleChange
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
                || e->type() == QEvent::MacSizeChange
 #endif
                ) {
@@ -569,7 +582,7 @@ void QToolButton::mousePressEvent(QMouseEvent *e)
                                                QStyle::SC_ToolButtonMenu, this);
         if (popupr.isValid() && popupr.contains(e->position().toPoint())) {
             d->buttonPressed = QToolButtonPrivate::MenuButtonPressed;
-            showMenu();
+            d->showMenu();
             return;
         }
     }
@@ -657,19 +670,15 @@ QMenu* QToolButton::menu() const
 void QToolButton::showMenu()
 {
     Q_D(QToolButton);
-    if (!d->hasMenu()) {
-        d->menuButtonDown = false;
-        return; // no menu to show
-    }
-    // prevent recursions spinning another event loop
-    if (d->menuButtonDown)
+    QPointer<QMenu> menu = d->showMenu();
+    if (!menu)
         return;
 
-
-    d->menuButtonDown = true;
-    repaint();
-    d->popupTimer.stop();
-    d->popupTimerDone();
+    // Block until the menu closes; quit when the menu is closed or destroyed
+    QEventLoop loop;
+    QObject::connect(menu, &QMenu::aboutToHide, &loop, &QEventLoop::quit);
+    QObject::connect(menu, &QObject::destroyed, &loop, &QEventLoop::quit);
+    loop.exec();
 }
 
 void QToolButtonPrivate::onButtonPressed()
@@ -682,7 +691,7 @@ void QToolButtonPrivate::onButtonPressed()
     else if (delay > 0 && popupMode == QToolButton::DelayedPopup)
         popupTimer.start(delay, q);
     else if (delay == 0 || popupMode == QToolButton::InstantPopup)
-        q->showMenu();
+        showMenu();
 }
 
 void QToolButtonPrivate::onButtonReleased()
@@ -737,14 +746,24 @@ static QPoint positionMenu(const QToolButton *q, bool horizontal,
     return p;
 }
 
-void QToolButtonPrivate::popupTimerDone()
+// Shows the tool button's menu. Returns immediately and does not block or
+// spin a nested event loop.
+QMenu *QToolButtonPrivate::showMenu()
 {
     Q_Q(QToolButton);
-    popupTimer.stop();
-    if (!menuButtonDown && !down)
-        return;
+
+    if (!hasMenu()) {
+        menuButtonDown = false;
+        return nullptr; // no menu to show
+    }
+    // prevent recursions from showing the menu again
+    if (menuButtonDown)
+        return nullptr;
 
     menuButtonDown = true;
+    q->repaint();
+    popupTimer.stop();
+
     QPointer<QMenu> actualMenu;
     bool mustDeleteActualMenu = false;
     if (menuAction) {
@@ -765,7 +784,30 @@ void QToolButtonPrivate::popupTimerDone()
     if (tb && tb->orientation() == Qt::Vertical)
         horizontal = false;
 #endif
-    QPointer<QToolButton> that = q;
+    auto cleanup = [that = QPointer(q), mustDeleteActualMenu, actualMenu] {
+        if (!that)
+            return;
+        QToolButtonPrivate *d = that->d_func();
+
+        if (d->menuButtonDown) {
+            // The menu was empty, it didn't actually show up, so it was never hidden either
+            d->updateButtonDown();
+        }
+
+        if (mustDeleteActualMenu) {
+            actualMenu->deleteLater();
+        } else if (actualMenu) {
+            QObjectPrivate::disconnect(actualMenu, &QMenu::aboutToHide,
+                                       d, &QToolButtonPrivate::updateButtonDown);
+            QObjectPrivate::disconnect(actualMenu, &QMenu::triggered,
+                                       d, &QToolButtonPrivate::onMenuTriggered);
+        }
+
+        d->actionsCopy.clear();
+        if (d->repeat)
+            that->setAutoRepeat(true);
+    };
+
     actualMenu->setNoReplayFor(q);
     if (!mustDeleteActualMenu) { //only if action are not in this widget
         QObjectPrivate::connect(actualMenu, &QMenu::triggered,
@@ -781,24 +823,34 @@ void QToolButtonPrivate::popupTimerDone()
     auto positionFunction = [q, horizontal](const QSize &sizeHint) {
         return positionMenu(q, horizontal, sizeHint); };
     const auto initialPos = positionFunction(actualMenu->sizeHint());
-    actualMenu->d_func()->exec(initialPos, nullptr, positionFunction);
 
-    if (!that)
-        return;
+    // Run cleanup when the menu is done. There are two relevant signals in order
+    //    1. aboutToHide
+    //    2. triggered [optional]
+    // But since aboutToHide is first and triggered is optional there is no
+    // one single place to clean up. (cleanup disconnects from the triggered signal)
+    auto runCleanupWhenDone = [actualMenu, cleanup] {
+        if (actualMenu && actualMenu->d_func()->actionAboutToTrigger) {
+            QObject::connect(actualMenu, &QMenu::triggered, actualMenu, cleanup,
+                             Qt::SingleShotConnection);
+        } else {
+            cleanup();
+        }
+    };
 
-    QObjectPrivate::disconnect(actualMenu, &QMenu::aboutToHide,
-                               this, &QToolButtonPrivate::updateButtonDown);
-    if (mustDeleteActualMenu) {
-        delete actualMenu;
-    } else {
-        QObjectPrivate::disconnect(actualMenu, &QMenu::triggered,
-                                   this, &QToolButtonPrivate::onMenuTriggered);
+    QMetaObject::Connection hideConnection = QObject::connect(
+            actualMenu, &QMenu::aboutToHide, q, runCleanupWhenDone,
+            Qt::SingleShotConnection);
+    actualMenu->d_func()->popup(initialPos, nullptr, positionFunction);
+
+    if (!actualMenu || !actualMenu->isVisible()) {
+        // Nothing was shown (e.g. an empty menu), so aboutToHide will never
+        // fire. Run the cleanup now instead.
+        QObject::disconnect(hideConnection);
+        cleanup();
+        return nullptr;
     }
-
-    actionsCopy.clear();
-
-    if (repeat)
-        q->setAutoRepeat(true);
+    return actualMenu;
 }
 
 void QToolButtonPrivate::updateButtonDown()
@@ -816,6 +868,13 @@ void QToolButtonPrivate::onMenuTriggered(QAction *action)
     Q_Q(QToolButton);
     if (action && !actionsCopy.contains(action))
         emit q->triggered(action);
+}
+
+void QToolButtonPrivate::onDefaultActionChanged()
+{
+    Q_Q(QToolButton);
+    if (defaultAction && defaultAction->menu() && !popupModeSetByUser)
+        q->setPopupMode(QToolButton::MenuButtonPopup);
 }
 
 /*! \enum QToolButton::ToolButtonPopupMode
@@ -851,6 +910,7 @@ void QToolButtonPrivate::onMenuTriggered(QAction *action)
 void QToolButton::setPopupMode(ToolButtonPopupMode mode)
 {
     Q_D(QToolButton);
+    d->popupModeSetByUser = true;
     d->popupMode = mode;
 }
 
@@ -909,8 +969,11 @@ void QToolButton::setDefaultAction(QAction *action)
 {
     Q_D(QToolButton);
 #if QT_CONFIG(menu)
-    bool hadMenu = false;
-    hadMenu = d->hasMenu();
+    if (d->defaultAction && d->defaultAction != action) {
+        QObjectPrivate::disconnect(d->defaultAction, &QAction::changed, d,
+                                   &QToolButtonPrivate::onDefaultActionChanged);
+    }
+    const bool hadMenu = d->hasMenu();
 #endif
     d->defaultAction = action;
     if (!action)
@@ -934,11 +997,18 @@ void QToolButton::setDefaultAction(QAction *action)
     setWhatsThis(action->whatsThis());
 #endif
 #if QT_CONFIG(menu)
-    if (action->menu() && !hadMenu) {
+    if (!hadMenu && !d->popupModeSetByUser) {
+        // ### Qt7 Fixme
         // new 'default' popup mode defined introduced by tool bar. We
         // should have changed QToolButton's default instead. Do that
         // in 4.2.
-        setPopupMode(QToolButton::MenuButtonPopup);
+        if (action->menu()) {
+            setPopupMode(QToolButton::MenuButtonPopup);
+        } else {
+            QObjectPrivate::connect(d->defaultAction, &QAction::changed, d,
+                                    &QToolButtonPrivate::onDefaultActionChanged,
+                                    Qt::UniqueConnection);
+        }
     }
 #endif
     setCheckable(action->isCheckable());

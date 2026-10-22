@@ -2,9 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QTest>
-#include <QtGui>
-#include <QtWidgets>
+#include <QtTest/qtest.h>
+
+#include <QtWidgets/qgraphicslinearlayout.h>
+#include <QtWidgets/qgraphicsview.h>
+#include <QtWidgets/qgraphicswidget.h>
+#include <QtWidgets/qstyleoption.h>
+
+#include <QtCore/qmap.h>
+#include <QtCore/qrect.h>
+#include <QtCore/qset.h>
+#include <QtCore/qtimeline.h>
+
 #include <math.h>
 
 class tst_QGraphicsLayout : public QObject
@@ -145,7 +154,7 @@ void tst_QGraphicsLayout::automaticReparenting()
 
         QGraphicsWidget *ww = new QGraphicsWidget();
         QGraphicsLinearLayout *l1 = new QGraphicsLinearLayout(ww);
-#if !defined(Q_OS_MAC) && defined(QT_DEBUG)
+#if !defined(Q_OS_MACOS) && defined(QT_DEBUG)
         QTest::ignoreMessage(QtWarningMsg, "QGraphicsLayout::addChildLayoutItem: QGraphicsWidget \"\""
                              " in wrong parent; moved to correct parent");
 #endif
@@ -699,16 +708,16 @@ void tst_QGraphicsLayout::alternativeLayoutItems()
     lout->setSpacing(0);
 
     QGraphicsRectItem *item1 = new QGraphicsRectItem;
-    AnimatedLayoutItem *li1 = new AnimatedLayoutItem(item1);
-    lout->addItem(li1);
+    const auto li1 = std::make_unique<AnimatedLayoutItem>(item1);
+    lout->addItem(li1.get());
 
     QGraphicsRectItem *item2 = new QGraphicsRectItem;
-    AnimatedLayoutItem *li2 = new AnimatedLayoutItem(item2);
-    lout->addItem(li2);
+    const auto li2 = std::make_unique<AnimatedLayoutItem>(item2);
+    lout->addItem(li2.get());
 
     QGraphicsRectItem *item3 = new QGraphicsRectItem;
-    AnimatedLayoutItem *li3 = new AnimatedLayoutItem(item3);
-    lout->addItem(li3);
+    const auto li3 = std::make_unique<AnimatedLayoutItem>(item3);
+    lout->addItem(li3.get());
 
     window->setLayout(lout);
 

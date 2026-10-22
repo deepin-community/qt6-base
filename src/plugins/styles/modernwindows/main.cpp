@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtWidgets/qstyleplugin.h>
@@ -19,15 +20,10 @@ public:
 
 QStyle *QModernWindowsStylePlugin::create(const QString &key)
 {
-    bool isWin11OrAbove = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11;
-    if (isWin11OrAbove && key.compare(QLatin1String("windows11"), Qt::CaseInsensitive) == 0) {
+    if (key.compare(QLatin1String("windows11"), Qt::CaseInsensitive) == 0)
         return new QWindows11Style();
-    } else if (!isWin11OrAbove && key.compare(QLatin1String("windows11"), Qt::CaseInsensitive) == 0) {
-        qWarning("QWindows11Style: Style is only supported on Windows11 and above");
+    if (key.compare(QLatin1String("windowsvista"), Qt::CaseInsensitive) == 0)
         return new QWindowsVistaStyle();
-    } else if (key.compare(QLatin1String("windowsvista"), Qt::CaseInsensitive) == 0) {
-        return new QWindowsVistaStyle();
-    }
     return nullptr;
 }
 

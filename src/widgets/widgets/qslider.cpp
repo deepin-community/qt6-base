@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qslider.h"
 #if QT_CONFIG(accessibility)
@@ -43,7 +44,7 @@ void QSliderPrivate::init()
     tickInterval = 0;
     tickPosition = QSlider::NoTicks;
     hoverControl = QStyle::SC_None;
-    q->setFocusPolicy(Qt::FocusPolicy(q->style()->styleHint(QStyle::SH_Button_FocusPolicy)));
+    q->setFocusPolicy(Qt::FocusPolicy(q->style()->styleHint(QStyle::SH_Button_FocusPolicy, nullptr, q)));
     QSizePolicy sp(QSizePolicy::Expanding, QSizePolicy::Fixed, QSizePolicy::Slider);
     if (orientation == Qt::Vertical)
         sp.transpose();
@@ -177,7 +178,7 @@ QStyle::SubControl QSliderPrivate::newHoverControl(const QPoint &pos)
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-slider.png
+    \image fusion-slider.png {Horizontal slider with tick marks}
 
     The slider is the classic widget for controlling a bounded value.
     It lets the user move a slider handle along a horizontal or vertical
@@ -328,12 +329,8 @@ void QSlider::mousePressEvent(QMouseEvent *ev)
         ev->ignore();
         return;
     }
-#ifdef QT_KEYPAD_NAVIGATION
-    if (QApplicationPrivate::keypadNavigationEnabled())
-        setEditFocus(true);
-#endif
     ev->accept();
-    if ((ev->button() & style()->styleHint(QStyle::SH_Slider_AbsoluteSetButtons)) == ev->button()) {
+    if ((ev->button() & style()->styleHint(QStyle::SH_Slider_AbsoluteSetButtons, nullptr, this)) == ev->button()) {
         QStyleOptionSlider opt;
         initStyleOption(&opt);
         const QRect sliderRect = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
@@ -345,7 +342,7 @@ void QSlider::mousePressEvent(QMouseEvent *ev)
         setRepeatAction(SliderNoAction);
         d->pressedControl = QStyle::SC_SliderHandle;
         update();
-    } else if ((ev->button() & style()->styleHint(QStyle::SH_Slider_PageSetButtons)) == ev->button()) {
+    } else if ((ev->button() & style()->styleHint(QStyle::SH_Slider_PageSetButtons, nullptr, this)) == ev->button()) {
         QStyleOptionSlider opt;
         initStyleOption(&opt);
         d->pressedControl = style()->hitTestComplexControl(QStyle::CC_Slider,
@@ -487,10 +484,11 @@ QSlider::TickPosition QSlider::tickPosition() const
     \property QSlider::tickInterval
     \brief the interval between tickmarks
 
-    This is a value interval, not a pixel interval. If it is 0, the
+    This is a value interval, not a pixel interval. If it is \c 0, the
     slider will choose between singleStep and pageStep.
 
-    The default value is 0.
+    The default is \c 0. Negative values are invalid and therefore
+    clamped to \c 0.
 
     \sa tickPosition, singleStep, pageStep
 */

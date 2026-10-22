@@ -25,6 +25,7 @@ namespace QTestPrivate {
     Q_TESTLIB_EXPORT void parseBlackList();
     Q_TESTLIB_EXPORT bool checkBlackLists(const char *slot, const char *data,
                                           const char *global = nullptr);
+    Q_TESTLIB_EXPORT QSet<QByteArray> blacklistKeywords();
 }
 
 QT_END_NAMESPACE

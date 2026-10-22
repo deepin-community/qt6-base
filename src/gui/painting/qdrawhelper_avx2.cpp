@@ -1,6 +1,7 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdrawhelper_p.h"
 #include "qdrawhelper_x86_p.h"
@@ -35,11 +36,10 @@ BYTE_MUL_AVX2(__m256i &pixelVector, __m256i alphaChannel, __m256i colorMask, __m
     pixelVectorAG = _mm256_add_epi16(pixelVectorAG, half);
 
     pixelVectorRB = _mm256_srli_epi16(pixelVectorRB, 8);
-    pixelVectorAG = _mm256_andnot_si256(colorMask, pixelVectorAG);
-
-    pixelVector = _mm256_or_si256(pixelVectorAG, pixelVectorRB);
+    pixelVector = _mm256_blendv_epi8(pixelVectorAG, pixelVectorRB, colorMask);
 }
 
+#if QT_CONFIG(raster_64bit)
 inline static void Q_DECL_VECTORCALL
 BYTE_MUL_RGB64_AVX2(__m256i &pixelVector, __m256i alphaChannel, __m256i colorMask, __m256i half)
 {
@@ -55,10 +55,9 @@ BYTE_MUL_RGB64_AVX2(__m256i &pixelVector, __m256i alphaChannel, __m256i colorMas
     pixelVectorAG = _mm256_add_epi32(pixelVectorAG, half);
 
     pixelVectorRB = _mm256_srli_epi32(pixelVectorRB, 16);
-    pixelVectorAG = _mm256_andnot_si256(colorMask, pixelVectorAG);
-
-    pixelVector = _mm256_or_si256(pixelVectorAG, pixelVectorRB);
+    pixelVector = _mm256_blendv_epi8(pixelVectorAG, pixelVectorRB, colorMask);
 }
+#endif
 
 // See INTERPOLATE_PIXEL_255_SSE2 for details.
 inline static void Q_DECL_VECTORCALL
@@ -78,12 +77,12 @@ INTERPOLATE_PIXEL_255_AVX2(__m256i srcVector, __m256i &dstVector, __m256i alphaC
     finalRB = _mm256_add_epi16(finalRB, _mm256_srli_epi16(finalRB, 8));
     finalAG = _mm256_add_epi16(finalAG, half);
     finalRB = _mm256_add_epi16(finalRB, half);
-    finalAG = _mm256_andnot_si256(colorMask, finalAG);
     finalRB = _mm256_srli_epi16(finalRB, 8);
 
-    dstVector = _mm256_or_si256(finalAG, finalRB);
+    dstVector = _mm256_blendv_epi8(finalAG, finalRB, colorMask);
 }
 
+#if QT_CONFIG(raster_64bit)
 inline static void Q_DECL_VECTORCALL
 INTERPOLATE_PIXEL_RGB64_AVX2(__m256i srcVector, __m256i &dstVector, __m256i alphaChannel, __m256i oneMinusAlphaChannel, __m256i colorMask, __m256i half)
 {
@@ -101,11 +100,10 @@ INTERPOLATE_PIXEL_RGB64_AVX2(__m256i srcVector, __m256i &dstVector, __m256i alph
     finalRB = _mm256_add_epi32(finalRB, _mm256_srli_epi32(finalRB, 16));
     finalAG = _mm256_add_epi32(finalAG, half);
     finalRB = _mm256_add_epi32(finalRB, half);
-    finalAG = _mm256_andnot_si256(colorMask, finalAG);
     finalRB = _mm256_srli_epi32(finalRB, 16);
-
-    dstVector = _mm256_or_si256(finalAG, finalRB);
+    dstVector = _mm256_blendv_epi8(finalAG, finalRB, colorMask);
 }
+#endif
 
 // See BLEND_SOURCE_OVER_ARGB32_SSE2 for details.
 inline static void Q_DECL_VECTORCALL BLEND_SOURCE_OVER_ARGB32_AVX2(quint32 *dst, const quint32 *src, const int length)
@@ -287,7 +285,7 @@ void qt_blend_rgb32_on_rgb32_avx2(uchar *destPixels, int dbpl,
     }
 }
 
-static Q_NEVER_INLINE
+Q_NEVER_INLINE static
 void Q_DECL_VECTORCALL qt_memfillXX_avx2(uchar *dest, __m256i value256, qsizetype bytes)
 {
     __m128i value128 = _mm256_castsi256_si128(value256);
@@ -763,7 +761,7 @@ void QT_FASTCALL fetchTransformedBilinearARGB32PM_simple_scale_helper_avx2(uint 
     const int offset = (fx + adjust) >> 16;
     int x = offset;
 
-    IntermediateBuffer intermediate;
+    Q_DECL_UNINITIALIZED IntermediateBuffer intermediate;
     // count is the size used in the intermediate_buffer.
     int count = (qint64(length) * qAbs(fdx) + FixedScale - 1) / FixedScale + 2;
     // length is supposed to be <= BufferSize either because data->m11 < 1 or
@@ -1532,7 +1530,7 @@ void QT_FASTCALL storeRGBA16FFromARGB32PM_avx2(uchar *dest, const uint *src, int
             const __m128 vsa = _mm_permute_ps(vsf, _MM_SHUFFLE(3, 3, 3, 3));
             __m128 vsr = _mm_rcp_ps(vsa);
             vsr = _mm_sub_ps(_mm_add_ps(vsr, vsr), _mm_mul_ps(vsr, _mm_mul_ps(vsr, vsa)));
-            vsr = _mm_insert_ps(vsr, _mm_set_ss(1.0f), 0x30);
+            vsr = _mm_insert_ps(vsr, vf, 0x30);
             vsf = _mm_mul_ps(vsf, vsr);
         }
         _mm_storel_epi64((__m128i *)(d + i), _mm_cvtps_ph(vsf, 0));

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPOINTER_H
 #define QPOINTER_H
@@ -84,6 +85,7 @@ public:
 
     bool isNull() const noexcept
     { return wp.isNull(); }
+    explicit operator bool() const noexcept { return !isNull(); }
 
     void clear() noexcept
     { wp.clear(); }
@@ -104,7 +106,7 @@ private:
     Q_DECLARE_EQUALITY_COMPARABLE(QPointer, X*, template <typename X>)
 
     friend bool comparesEqual(const QPointer &lhs, std::nullptr_t) noexcept
-    { return lhs.data() == nullptr; }
+    { return lhs.isNull(); }
     Q_DECLARE_EQUALITY_COMPARABLE(QPointer, std::nullptr_t)
 };
 template <class T> Q_DECLARE_TYPEINFO_BODY(QPointer<T>, Q_RELOCATABLE_TYPE);

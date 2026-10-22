@@ -17,11 +17,12 @@
 #include "qspi_struct_marshallers_p.h"
 
 #if QT_CONFIG(accessibility)
-#include "deviceeventcontroller_adaptor.h"
+#include "deviceeventcontroller_adaptor_p.h"
 
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace QtGuiPrivate; // for D-Bus accessibility wrappers
 
 /*!
     \class QSpiAccessibleBridge
@@ -183,6 +184,12 @@ static RoleMapping map[] = {
     //: Role of an accessible object
     { QAccessible::CheckBox, ATSPI_ROLE_CHECK_BOX, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "check box") },
     //: Role of an accessible object
+#if ATSPI_ROLE_COUNT >= 132
+    { QAccessible::Switch, ATSPI_ROLE_SWITCH, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "switch") },
+#else
+    { QAccessible::Switch, ATSPI_ROLE_CHECK_BOX, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "check box") },
+#endif
+    //: Role of an accessible object
     { QAccessible::RadioButton, ATSPI_ROLE_RADIO_BUTTON, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "radio button") },
     //: Role of an accessible object
     { QAccessible::ComboBox, ATSPI_ROLE_COMBO_BOX, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "combo box") },
@@ -246,6 +253,8 @@ static RoleMapping map[] = {
     { QAccessible::Desktop, ATSPI_ROLE_DESKTOP_FRAME, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "desktop") },
     //: Role of an accessible object
     { QAccessible::Notification, ATSPI_ROLE_NOTIFICATION, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "notification") },
+    //: Role of an accessible object
+    { QAccessible::BlockQuote, ATSPI_ROLE_BLOCK_QUOTE, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "block quote") },
     //: Role of an accessible object
     { QAccessible::UserRole, ATSPI_ROLE_UNKNOWN, QT_TRANSLATE_NOOP("QSpiAccessibleBridge", "unknown") }
 };

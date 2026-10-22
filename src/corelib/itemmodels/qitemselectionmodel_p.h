@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QITEMSELECTIONMODEL_P_H
 #define QITEMSELECTIONMODEL_P_H
@@ -31,6 +32,7 @@ public:
     QItemSelectionModelPrivate()
       : currentCommand(QItemSelectionModel::NoUpdate),
         tableSelected(false), tableColCount(0), tableRowCount(0) {}
+    ~QItemSelectionModelPrivate() override;
 
     QItemSelection expandSelection(const QItemSelection &selection,
                                    QItemSelectionModel::SelectionFlags command) const;
@@ -71,7 +73,7 @@ public:
 
     void setModel(QAbstractItemModel *mod) { q_func()->setModel(mod); }
     void disconnectModel();
-    void modelChanged(QAbstractItemModel *mod) { emit q_func()->modelChanged(mod); }
+    void modelChanged(QAbstractItemModel *mod) { Q_EMIT q_func()->modelChanged(mod); }
     Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QItemSelectionModelPrivate, QAbstractItemModel *, model,
                                        &QItemSelectionModelPrivate::setModel,
                                        &QItemSelectionModelPrivate::modelChanged, nullptr)

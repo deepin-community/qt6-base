@@ -7,15 +7,24 @@
 
 #include <QtCore/QtCore>
 
+#include "apphelper.h"
+
 class tst_QCoreApplication: public QObject
 {
     Q_OBJECT
+
 private slots:
     void sendEventsOnProcessEvents(); // this must be the first test
     void getSetCheck();
+    void applicationVersionChangedSignal();
     void qAppName();
     void qAppVersion();
     void argc();
+#if QT_CONFIG(library)
+    void libraryPaths();
+    void libraryPaths_qt_plugin_path();
+    void libraryPaths_qt_plugin_path_2();
+#endif
     void postEvent();
     void removePostedEvents();
 #if QT_CONFIG(thread)
@@ -26,6 +35,7 @@ private slots:
     void globalPostedEventsCount();
 #endif
     void processEventsAlwaysSendsPostedEvents();
+    void queuedConnectionProcessEventsInSlot();
 #ifdef Q_OS_WIN
     void sendPostedEventsInNativeLoop();
 #endif
@@ -40,6 +50,14 @@ private slots:
     void applicationEventFilters_auxThread();
     void threadedEventDelivery_data();
     void threadedEventDelivery();
+
+    // also add to tst_qapplication.cpp
+    void exitFromEventLoop() { QCoreApplicationTestHelper::run(); }
+    void exitFromThread() { QCoreApplicationTestHelper::run(); }
+    void exitFromThreadedEventLoop() { QCoreApplicationTestHelper::run(); }
+    void exitWithPlugins() { QCoreApplicationTestHelper::run(); }
+    void mainAppInAThread() { QCoreApplicationTestHelper::run(); }
+
     void testTrWithPercantegeAtTheEnd();
 #if QT_CONFIG(library)
     void addRemoveLibPaths();

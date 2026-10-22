@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpaintengineex_p.h"
 #include "qpainter_p.h"
@@ -15,9 +16,6 @@
 
 QT_BEGIN_NAMESPACE
 
-#if !defined(QT_MAX_CACHED_GLYPH_SIZE)
-#  define QT_MAX_CACHED_GLYPH_SIZE 64
-#endif
 
 /*******************************************************************************
  *
@@ -1085,13 +1083,9 @@ bool QPaintEngineEx::shouldDrawCachedGlyphs(QFontEngine *fontEngine, const QTran
     if (fontEngine->glyphFormat == QFontEngine::Format_ARGB)
         return true;
 
-    static const int maxCachedGlyphSizeSquared = std::pow([]{
-        if (int env = qEnvironmentVariableIntValue("QT_MAX_CACHED_GLYPH_SIZE"))
-            return env;
-        return QT_MAX_CACHED_GLYPH_SIZE;
-    }(), 2);
-
     qreal pixelSize = fontEngine->fontDef.pixelSize;
+    static const int maxCachedGlyphSize = std::min(0x7fff, QFontEngine::maxCachedGlyphSize());
+    static const int maxCachedGlyphSizeSquared = maxCachedGlyphSize * maxCachedGlyphSize;
     return (pixelSize * pixelSize * qAbs(m.determinant())) <= maxCachedGlyphSizeSquared;
 }
 

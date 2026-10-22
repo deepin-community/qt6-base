@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qgraphicsframecapturemetal_p_p.h"
 #include <QtCore/qurl.h>
@@ -157,7 +158,9 @@ void QGraphicsFrameCaptureMetal::openCapture()
 
 void QGraphicsFrameCaptureMetal::updateCaptureFileName()
 {
-    m_traceURL = QUrl::fromLocalFile(m_capturePath + "/" + m_capturePrefix + "_" + QString::number(frameNumber) + ".gputrace").toNSURL();
+    m_traceURL = QUrl::fromLocalFile(m_capturePath + u"/" + m_capturePrefix + u"_"
+                                     + QString::number(frameNumber) + u".gputrace")
+                         .toNSURL();
     // We need to remove the trace file if it already existed else MTLCaptureManager
     // will fail to.
     if ([NSFileManager.defaultManager fileExistsAtPath:m_traceURL.path])

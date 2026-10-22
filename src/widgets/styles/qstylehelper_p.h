@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/qpoint.h>
@@ -8,6 +9,9 @@
 #include <QtGui/qpolygon.h>
 #include <QtCore/qstringbuilder.h>
 #include <QtGui/qaccessible.h>
+#include <QtGui/qpainter.h>
+#include <QtGui/qguiapplication.h>
+#include <QtWidgets/qwidget.h>
 
 #ifndef QSTYLEHELPER_P_H
 #define QSTYLEHELPER_P_H
@@ -29,17 +33,15 @@ QT_BEGIN_NAMESPACE
 
 class QColor;
 class QObject;
-class QPainter;
 class QPalette;
 class QPixmap;
 class QStyleOptionSlider;
 class QStyleOption;
-class QWidget;
 class QWindow;
 
 namespace QStyleHelper
 {
-    QString uniqueName(const QString &key, const QStyleOption *option, const QSize &size, qreal dpr);
+    Q_WIDGETS_EXPORT QString uniqueName(const QString &key, const QStyleOption *option, const QSize &size, qreal dpr);
 
     Q_WIDGETS_EXPORT qreal dpi(const QStyleOption *option);
 
@@ -65,6 +67,21 @@ namespace QStyleHelper
     enum WidgetSizePolicy { SizeLarge = 0, SizeSmall = 1, SizeMini = 2, SizeDefault = -1 };
 
     Q_WIDGETS_EXPORT WidgetSizePolicy widgetSizePolicy(const QWidget *w, const QStyleOption *opt = nullptr);
+
+    // returns the device pixel ratio of the widget or the global one
+    // if widget is a nullptr
+    static inline qreal getDpr(const QWidget *widget)
+    {
+        return widget ? widget->devicePixelRatio()
+                      : qApp->devicePixelRatio();
+    }
+
+    // returns the device pixel ratio of the painters underlying paint device
+    static inline qreal getDpr(const QPainter *painter)
+    {
+        Q_ASSERT(painter && painter->device());
+        return painter->device()->devicePixelRatio();
+    }
 }
 
 

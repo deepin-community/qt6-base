@@ -172,10 +172,10 @@ void tst_languageChange::retranslatability_data()
                     << "QFileDialog::Back"
                     << "QFileDialog::Create New Folder"
                     << "QFileDialog::Detail View"
-                    << "QFileDialog::Files of type:"
+                    << "QFileDialog::Files of &type:"
                     << "QFileDialog::Forward"
                     << "QFileDialog::List View"
-                    << "QFileDialog::Look in:"
+                    << "QFileDialog::&Look in:"
                     << "QFileDialog::Open"
                     << "QFileDialog::Parent Directory"
                     << "QFileDialog::Show "
@@ -190,7 +190,7 @@ void tst_languageChange::retranslatability_data()
                     << "QFileSystemModel::Computer"
 #endif
                     << "QFileSystemModel::Size"
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
                     << "QFileSystemModel::Kind::Match OS X Finder"
 #else
                     << "QFileSystemModel::Type::All other platforms"
@@ -224,7 +224,7 @@ void tst_languageChange::retranslatability()
         break;
 
     case ColorDialog:
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         QSKIP("The native color dialog is used on Mac OS");
 #else
         stateMachine.start();

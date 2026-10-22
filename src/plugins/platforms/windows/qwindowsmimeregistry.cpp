@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsmimeregistry.h"
 #include "qwindowscontext.h"
@@ -90,6 +91,7 @@ static inline bool readDib(QBuffer &buffer, QImage &img)
     return true;
 }
 
+#if QT_CONFIG(imageformat_bmp)
 static QByteArray writeDib(const QImage &img)
 {
     QByteArray ba;
@@ -188,6 +190,7 @@ static bool qt_write_dibv5(QDataStream &s, QImage image)
     delete[] buf;
     return true;
 }
+#endif //QT_CONFIG(imageformat_bmp)
 
 // helpers for using global memory
 
@@ -207,7 +210,7 @@ static FORMATETC setCf(int cf)
     return formatetc;
 }
 
-static bool setData(const QByteArray &data, STGMEDIUM *pmedium)
+static bool setData(const QByteArray &data, STGMEDIUM *pmedium, DWORD tymed = TYMED_HGLOBAL)
 {
     HGLOBAL hData = GlobalAlloc(0, SIZE_T(data.size()));
     if (!hData)
@@ -216,6 +219,25 @@ static bool setData(const QByteArray &data, STGMEDIUM *pmedium)
     void *out = GlobalLock(hData);
     memcpy(out, data.data(), size_t(data.size()));
     GlobalUnlock(hData);
+
+    // MS Office (and other consumers that prefer streamed delivery for image
+    // payloads) request CF_PNG via TYMED_ISTREAM rather than TYMED_HGLOBAL,
+    // and reject the result if the returned tymed doesn't match. Wrap the
+    // buffer in an IStream only when TYMED_HGLOBAL was not requested, so that
+    // legacy consumers asking for HGLOBAL (or HGLOBAL|ISTREAM) keep getting
+    // it. (QTBUG-126191)
+    if (!(tymed & TYMED_HGLOBAL) && (tymed & TYMED_ISTREAM)) {
+        IStream *stream = nullptr;
+        if (FAILED(::CreateStreamOnHGlobal(hData, /*fDeleteOnRelease*/ TRUE, &stream))) {
+            GlobalFree(hData);
+            return false;
+        }
+        pmedium->tymed = TYMED_ISTREAM;
+        pmedium->pstm = stream;
+        pmedium->pUnkForRelease = nullptr;
+        return true;
+    }
+
     pmedium->tymed = TYMED_HGLOBAL;
     pmedium->hGlobal = hData;
     pmedium->pUnkForRelease = nullptr;
@@ -229,12 +251,20 @@ static QByteArray getData(int cf, IDataObject *pDataObj, int lindex = -1)
     formatetc.lindex = lindex;
     STGMEDIUM s;
     if (pDataObj->GetData(&formatetc, &s) == S_OK) {
-        const void *val = GlobalLock(s.hGlobal);
-        data = QByteArray::fromRawData(reinterpret_cast<const char *>(val), int(GlobalSize(s.hGlobal)));
-        data.detach();
-        GlobalUnlock(s.hGlobal);
+        // Explorer's zipped-folder shell extension returns S_OK with a null
+        // or zero-sized hGlobal for CFSTR_FILECONTENTS (QTBUG-126980); fall
+        // through to the IStream path in that case.
+        if (s.hGlobal && GlobalSize(s.hGlobal) > 0) {
+            if (const void *val = GlobalLock(s.hGlobal)) {
+                data = QByteArray::fromRawData(reinterpret_cast<const char *>(val),
+                                               qsizetype(GlobalSize(s.hGlobal)));
+                data.detach();
+                GlobalUnlock(s.hGlobal);
+            }
+        }
         ReleaseStgMedium(&s);
-    } else  {
+    }
+    if (data.isEmpty()) {
         //Try reading IStream data
         formatetc.tymed = TYMED_ISTREAM;
         if (pDataObj->GetData(&formatetc, &s) == S_OK) {
@@ -326,7 +356,7 @@ QDebug operator<<(QDebug d, IDataObject *dataObj)
             }
         }
     } else {
-        d << '0';
+        d << "0x0";
     }
     d << ')';
     return d;
@@ -616,12 +646,14 @@ QVariant QWindowsMimeURI::convertToMime(const QString &mimeType, LPDATAOBJECT pD
             QList<QVariant> urls;
 
             QByteArray data = getData(CF_HDROP, pDataObj);
-            if (data.isEmpty())
+            if (data.size() < qsizetype(sizeof(DROPFILES)))
                 return QVariant();
 
-            const auto *hdrop = reinterpret_cast<const DROPFILES *>(data.constData());
+            // Don't use constData. It falls back to the one-byte QByteArray::_empty for a null
+            // array, which makes MinGW report the DROPFILES access as out of bounds.
+            const auto *hdrop = reinterpret_cast<const DROPFILES *>(data.cbegin());
             if (hdrop->fWide) {
-                const auto *filesw = reinterpret_cast<const wchar_t *>(data.constData() + hdrop->pFiles);
+                const auto *filesw = reinterpret_cast<const wchar_t *>(data.cbegin() + hdrop->pFiles);
                 int i = 0;
                 while (filesw[i]) {
                     QString fileurl = QString::fromWCharArray(filesw + i);
@@ -629,7 +661,7 @@ QVariant QWindowsMimeURI::convertToMime(const QString &mimeType, LPDATAOBJECT pD
                     i += fileurl.length()+1;
                 }
             } else {
-                const char* files = reinterpret_cast<const char *>(data.constData() + hdrop->pFiles);
+                const char* files = reinterpret_cast<const char *>(data.cbegin() + hdrop->pFiles);
                 int i=0;
                 while (files[i]) {
                     urls += QUrl::fromLocalFile(QString::fromLocal8Bit(files+i));
@@ -793,7 +825,7 @@ bool QWindowsMimeHtml::convertFromMime(const FORMATETC &formatetc, const QMimeDa
 }
 
 
-#ifndef QT_NO_IMAGEFORMAT_BMP
+#if QT_CONFIG(imageformat_bmp)
 class QWindowsMimeImage : public QWindowsMimeConverter
 {
 public:
@@ -821,10 +853,14 @@ QList<FORMATETC> QWindowsMimeImage::formatsForMime(const QString &mimeType, cons
 {
     QList<FORMATETC> formatetcs;
     if (mimeData->hasImage() && mimeType == u"application/x-qt-image") {
-        //add DIBV5 if image has alpha channel. Do not add CF_PNG here as it will confuse MS Office (QTBUG47656).
         auto image = qvariant_cast<QImage>(mimeData->imageData());
-        if (!image.isNull() && image.hasAlphaChannel())
+        if (!image.isNull() && image.hasAlphaChannel()) {
+            // CF_PNG is the only format modern MS Office (and other apps that
+            // deliver image data via TYMED_ISTREAM) reads with alpha
+            // preserved (QTBUG-126191).
+            formatetcs += setCf(CF_PNG);
             formatetcs += setCf(CF_DIBV5);
+        }
         formatetcs += setCf(CF_DIB);
     }
     if (!formatetcs.isEmpty())
@@ -879,7 +915,7 @@ bool QWindowsMimeImage::convertFromMime(const FORMATETC &formatetc, const QMimeD
             const bool written = buffer.open(QIODevice::WriteOnly) && img.save(&buffer, "PNG");
             buffer.close();
             if (written)
-                return setData(ba, pmedium);
+                return setData(ba, pmedium, formatetc.tymed);
         } else {
             QDataStream s(&ba, QIODevice::WriteOnly);
             s.setByteOrder(QDataStream::LittleEndian);// Intel byte order ####
@@ -944,7 +980,7 @@ QVariant QWindowsMimeImage::convertToMime(const QString &mimeType, IDataObject *
     // Failed
     return result;
 }
-#endif
+#endif //QT_CONFIG(imageformat_bmp)
 
 class QBuiltInMimes : public QWindowsMimeConverter
 {
@@ -1341,9 +1377,9 @@ void QWindowsMimeRegistry::ensureInitialized() const
 {
     if (m_internalMimeCount == 0) {
         m_internalMimeCount = -1; // prevent reentrancy when types register themselves
-#ifndef QT_NO_IMAGEFORMAT_BMP
+#if QT_CONFIG(imageformat_bmp)
         (void)new QWindowsMimeImage;
-#endif //QT_NO_IMAGEFORMAT_BMP
+#endif //QT_CONFIG(imageformat_bmp)
         (void)new QLastResortMimes;
         (void)new QWindowsMimeText;
         (void)new QWindowsMimeURI;

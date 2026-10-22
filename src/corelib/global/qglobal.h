@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2019 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGLOBAL_H
 #define QGLOBAL_H
@@ -21,9 +22,7 @@
 #  include <stddef.h>
 #endif
 
-#include <QtCore/qtversionchecks.h>
-#include <QtCore/qtconfigmacros.h>
-#include <QtCore/qtcoreexports.h>
+#include <QtCore/qtcoreglobal.h>
 
 #include <QtCore/qtpreprocessorsupport.h>
 

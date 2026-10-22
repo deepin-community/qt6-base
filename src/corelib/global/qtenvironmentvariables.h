@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTENVIRONMENTVARIABLES_H
 #define QTENVIRONMENTVARIABLES_H
@@ -7,6 +8,9 @@
 #include <QtCore/qtconfigmacros.h>
 #include <QtCore/qtcoreexports.h>
 #include <QtCore/qtdeprecationmarkers.h>
+#include <QtCore/qtypes.h>
+
+#include <optional>
 
 #if 0
 #pragma qt_class(QtEnvironmentVariables)
@@ -32,6 +36,7 @@ Q_CORE_EXPORT bool qunsetenv(const char *varName);
 Q_CORE_EXPORT bool qEnvironmentVariableIsEmpty(const char *varName) noexcept;
 Q_CORE_EXPORT bool qEnvironmentVariableIsSet(const char *varName) noexcept;
 Q_CORE_EXPORT int  qEnvironmentVariableIntValue(const char *varName, bool *ok=nullptr) noexcept;
+Q_CORE_EXPORT std::optional<qint64> qEnvironmentVariableIntegerValue(const char *varName) noexcept;
 
 QT_END_NAMESPACE
 

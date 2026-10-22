@@ -1,5 +1,6 @@
 // Copyright (C) 2011 - 2012 Research In Motion
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QBBSCREEN_H
 #define QBBSCREEN_H
@@ -31,8 +32,6 @@ const int SCREEN_PROPERTY_SYM = SCREEN_PROPERTY_KEY_SYM;
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcQpaScreen);
-Q_DECLARE_LOGGING_CATEGORY(lcQpaScreenEvents);
-Q_DECLARE_LOGGING_CATEGORY(lcQpaScreenBuffer);
 
 class QQnxWindow;
 
@@ -66,6 +65,7 @@ public:
 
     int nativeFormat() const { return (depth() == 32) ? SCREEN_FORMAT_RGBA8888 : SCREEN_FORMAT_RGB565; }
     screen_display_t nativeDisplay() const { return m_display; }
+    int displayId() const { return m_displayId; }
     screen_context_t nativeContext() const { return m_screenContext; }
     const char *windowGroupName() const { return m_rootWindow ? m_rootWindow->groupName().constData() : 0; }
 
@@ -113,6 +113,7 @@ private:
     QQnxWindow *m_rootWindow;
     const bool m_primaryScreen;
 
+    int m_displayId;
     int m_initialRotation;
     int m_currentRotation;
     int m_keyboardHeight;

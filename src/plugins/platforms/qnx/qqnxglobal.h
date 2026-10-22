@@ -1,12 +1,16 @@
 // Copyright (C) 2011 - 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQNXGLOBAL_H
 #define QQNXGLOBAL_H
 
 #include <qglobal.h>
+#include <QtCore/QLoggingCategory>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcQpaQnx);
 
 void qScreenCheckError(int rc, const char *funcInfo, const char *message, bool critical);
 

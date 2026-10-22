@@ -57,7 +57,7 @@ void MainWindow::insertCalendar()
     cursor.movePosition(QTextCursor::Start);
 
     QTextCharFormat format(cursor.charFormat());
-    format.setFontFamily("Courier");
+    format.setFontFamilies({"Courier"});
 
     QTextCharFormat boldFormat = format;
     boldFormat.setFontWeight(QFont::Bold);

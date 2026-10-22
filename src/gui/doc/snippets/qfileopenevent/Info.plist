@@ -9,9 +9,9 @@
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>
-            <key>CFBundleTypeExtensions</key>
+            <key>LSItemContentTypes</key>
             <array>
-                <string>png</string>
+                <string>public.png</string>
             </array>
             <key>CFBundleTypeRole</key>
             <string>Viewer</string>
@@ -20,3 +20,8 @@
 </dict>
 </plist>
 //! [Custom Info.plist]
+
+//! [iOS]
+<key>UISupportsDocumentBrowser</key>
+<true/>
+//! [iOS]

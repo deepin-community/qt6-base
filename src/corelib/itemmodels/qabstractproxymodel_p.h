@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTPROXYMODEL_P_H
 #define QABSTRACTPROXYMODEL_P_H
@@ -28,13 +29,9 @@ class Q_CORE_EXPORT QAbstractProxyModelPrivate : public QAbstractItemModelPrivat
 {
     Q_DECLARE_PUBLIC(QAbstractProxyModel)
 public:
-    QAbstractProxyModelPrivate()
-        : QAbstractItemModelPrivate(),
-        sourceHadZeroRows(false),
-        sourceHadZeroColumns(false),
-        updateVerticalHeader(false),
-        updateHorizontalHeader(false)
-    {}
+    QAbstractProxyModelPrivate();
+    ~QAbstractProxyModelPrivate() override;
+
     void setModelForwarder(QAbstractItemModel *sourceModel)
     {
         q_func()->setSourceModel(sourceModel);

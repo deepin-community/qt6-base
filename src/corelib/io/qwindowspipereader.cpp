@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2021 Alex Trotsenko <alex1973tr@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qwindowspipereader_p.h"
 #include <qcoreapplication.h>
@@ -13,6 +14,11 @@ using namespace Qt::StringLiterals;
 
 static const DWORD minReadBufferSize = 4096;
 
+/*!
+    \class QWindowsPipeReader
+    \inmodule QtCore
+    \internal
+*/
 QWindowsPipeReader::QWindowsPipeReader(QObject *parent)
     : QObject(parent),
       handle(INVALID_HANDLE_VALUE),

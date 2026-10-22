@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDBUSREPLY_H
 #define QDBUSREPLY_H
@@ -24,11 +25,12 @@ class QDBusReply
 {
     typedef T Type;
 public:
+    // Rule Of Zero applies!
+
     inline QDBusReply(const QDBusMessage &reply)
     {
         *this = reply;
     }
-    inline QDBusReply(const QDBusReply &) = default;
     inline QDBusReply& operator=(const QDBusMessage &reply)
     {
         QVariant data(QMetaType::fromType<Type>());
@@ -63,16 +65,8 @@ public:
         return *this;
     }
 
-    inline QDBusReply& operator=(const QDBusReply& other)
-    {
-        m_error = other.m_error;
-        m_data = other.m_data;
-        return *this;
-    }
-
     inline bool isValid() const { return !m_error.isValid(); }
 
-    inline const QDBusError& error() { return m_error; }
     inline const QDBusError& error() const { return m_error; }
 
     inline Type value() const
@@ -106,6 +100,8 @@ template<>
 class QDBusReply<void>
 {
 public:
+    // Rule Of Zero applies!
+
     inline QDBusReply(const QDBusMessage &reply)
         : m_error(reply)
     {
@@ -135,17 +131,8 @@ public:
         return *this;
     }
 
-    inline QDBusReply(const QDBusReply &) = default;
-
-    inline QDBusReply& operator=(const QDBusReply& other)
-    {
-        m_error = other.m_error;
-        return *this;
-    }
-
     inline bool isValid() const { return !m_error.isValid(); }
 
-    inline const QDBusError& error() { return m_error; }
     inline const QDBusError& error() const { return m_error; }
 
 private:

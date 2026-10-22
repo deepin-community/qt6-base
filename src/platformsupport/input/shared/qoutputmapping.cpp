@@ -52,19 +52,19 @@ void QOutputMapping::set(QOutputMapping *mapping)
 
 bool QDefaultOutputMapping::load()
 {
-    static QByteArray configFile = qgetenv("QT_QPA_EGLFS_KMS_CONFIG");
+    static QString configFile = qEnvironmentVariable("QT_QPA_EGLFS_KMS_CONFIG");
     if (configFile.isEmpty())
         return false;
 
-    QFile file(QString::fromUtf8(configFile));
+    QFile file(configFile);
     if (!file.open(QFile::ReadOnly)) {
-        qWarning("touch input support: Failed to open %s", configFile.constData());
+        qWarning("touch input support: Failed to open %ls", qUtf16Printable(configFile));
         return false;
     }
 
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     if (!doc.isObject()) {
-        qWarning("touch input support: Failed to parse %s", configFile.constData());
+        qWarning("touch input support: Failed to parse %ls", qUtf16Printable(configFile));
         return false;
     }
 
@@ -81,7 +81,15 @@ bool QDefaultOutputMapping::load()
         }
         QFileInfo deviceNode(output.value(QStringLiteral("touchDevice")).toString());
         const QString &screenName = output.value(QStringLiteral("name")).toString();
-        m_screenTable.insert(deviceNode.canonicalFilePath(), screenName);
+        // Key on the canonical path so that a symlinked node, e.g. one under
+        // /dev/input/by-id, matches the node the input handler was given.
+        QString key = deviceNode.canonicalFilePath();
+        if (key.isEmpty()) {
+            qWarning("touch input support: Cannot resolve touchDevice %ls of output %ls",
+                     qUtf16Printable(deviceNode.filePath()), qUtf16Printable(screenName));
+            key = deviceNode.filePath();
+        }
+        m_screenTable.insert(key, screenName);
     }
 
     return true;
@@ -89,6 +97,12 @@ bool QDefaultOutputMapping::load()
 
 QString QDefaultOutputMapping::screenNameForDeviceNode(const QString &deviceNode)
 {
+    const QString canonical = QFileInfo(deviceNode).canonicalFilePath();
+    if (!canonical.isEmpty()) {
+        auto it = m_screenTable.constFind(canonical);
+        if (it != m_screenTable.constEnd())
+            return *it;
+    }
     return m_screenTable.value(deviceNode);
 }
 

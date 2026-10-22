@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef QDBUSTHREADDEBUG_P_H
 #define QDBUSTHREADDEBUG_P_H
 
@@ -19,16 +20,16 @@
 
 #ifndef QT_NO_DBUS
 
+QT_BEGIN_NAMESPACE
+
 #if !defined(QDBUS_THREAD_DEBUG) && defined(QT_BUILD_INTERNAL)
 # define QDBUS_THREAD_DEBUG 1
 #endif
 
 #if QDBUS_THREAD_DEBUG
-QT_BEGIN_NAMESPACE
 typedef void (*qdbusThreadDebugFunc)(int, int, QDBusConnectionPrivate *);
 Q_DBUS_EXPORT void qdbusDefaultThreadDebug(int, int, QDBusConnectionPrivate *);
 extern Q_DBUS_EXPORT qdbusThreadDebugFunc qdbusThreadDebug;
-QT_END_NAMESPACE
 #endif
 
 enum ThreadAction {
@@ -129,25 +130,7 @@ struct QDBusWriteLocker: QDBusLockerBase
     }
 };
 
-#if QDBUS_THREAD_DEBUG
-# define SEM_ACQUIRE(action, sem)                                       \
-    do {                                                                \
-    QDBusLockerBase::reportThreadAction(action, QDBusLockerBase::BeforeAcquire, this); \
-    sem.acquire();                                                      \
-    QDBusLockerBase::reportThreadAction(action, QDBusLockerBase::AfterAcquire, this); \
-    } while (false)
-
-# define SEM_RELEASE(action, sem)                                       \
-    do {                                                                \
-    QDBusLockerBase::reportThreadAction(action, QDBusLockerBase::BeforeRelease, that); \
-    sem.release();                                                      \
-    QDBusLockerBase::reportThreadAction(action, QDBusLockerBase::AfterRelease, that); \
-    } while (false)
-
-#else
-# define SEM_ACQUIRE(action, sem)       sem.acquire()
-# define SEM_RELEASE(action, sem)       sem.release()
-#endif
+QT_END_NAMESPACE
 
 #endif // QT_NO_DBUS
 #endif

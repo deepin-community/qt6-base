@@ -12,12 +12,14 @@
 
 #include <algorithm>
 
-using namespace Qt::Literals::StringLiterals;
+using namespace Qt::StringLiterals;
 
 class tst_QTextBoundaryFinder : public QObject
 {
     Q_OBJECT
 private slots:
+    void moveSemantics();
+
 #ifdef QT_BUILD_INTERNAL
     void graphemeBoundariesDefault_data();
     void graphemeBoundariesDefault();
@@ -73,6 +75,38 @@ inline char *toString(const QList<int> &list)
 } // namespace QTest
 QT_END_NAMESPACE
 
+void tst_QTextBoundaryFinder::moveSemantics()
+{
+    const QStringView string = u"Trivial text.";
+
+    // move-construction:
+    QTextBoundaryFinder orig(QTextBoundaryFinder::BoundaryType::Grapheme, string);
+    QTextBoundaryFinder moved = std::move(orig);
+
+    QCOMPARE(moved.string(), string);
+
+    moved.toStart();
+    moved.toNextBoundary();
+    QCOMPARE(moved.position(), 1);
+
+    // Hinnant Criterion:
+    {
+        auto &alias = orig;
+        alias = std::move(orig);
+        alias.swap(orig);
+    }
+
+    // move-assignment:
+
+    orig = std::move(moved);
+
+    QCOMPARE(orig.position(), 1);
+    orig.toNextBoundary();
+    QCOMPARE(orig.position(), 2);
+
+    // moved-from `moved` can be destroyed
+}
+
 #ifdef QT_BUILD_INTERNAL
 static void generateDataFromFile(const QString &fname, const QSet<QString> &skipSet = {})
 {
@@ -112,8 +146,8 @@ static void generateDataFromFile(const QString &fname, const QSet<QString> &skip
                 continue;
             }
             bool ok = true;
-            uint ucs4 = part.toInt(&ok, 16);
-            QVERIFY(ok && ucs4 > 0);
+            uint ucs4 = part.toUInt(&ok, 16);
+            QVERIFY(ok);
             if (QChar::requiresSurrogates(ucs4)) {
                 testString.append(QChar::highSurrogate(ucs4));
                 testString.append(QChar::lowSurrogate(ucs4));
@@ -170,7 +204,10 @@ static void doTestData(const QString &testString, const QList<int> &expectedBrea
             if (boundaryFinder.boundaryReasons() & reasons)
                 actualBreakPositions.append(boundaryFinder.position());
         } while (boundaryFinder.toNextBoundary() != -1);
-        QCOMPARE(actualBreakPositions, expectedBreakPositions);
+        QString comment;
+        QDebug format(&comment);
+        format << actualBreakPositions << "vs" << expectedBreakPositions;
+        QVERIFY2(actualBreakPositions == expectedBreakPositions, qPrintable(comment));
     }
     QCOMPARE(boundaryFinder.position(), -1);
     QVERIFY(!boundaryFinder.isAtBoundary());
@@ -194,10 +231,12 @@ static void doTestData(const QString &testString, const QList<int> &expectedBrea
     QVERIFY(!boundaryFinder.isAtBoundary());
     QVERIFY(boundaryFinder.boundaryReasons() == QTextBoundaryFinder::NotAtBoundary);
 
+    auto moved = std::move(boundaryFinder);
+
     // test boundaryReasons()
     for (int i = 0; i <= testString.size(); ++i) {
-        boundaryFinder.setPosition(i);
-        QCOMPARE(!!(boundaryFinder.boundaryReasons() & reasons), expectedBreakPositions.contains(i));
+        moved.setPosition(i);
+        QCOMPARE(!!(moved.boundaryReasons() & reasons), expectedBreakPositions.contains(i));
     }
 }
 
@@ -211,7 +250,7 @@ void tst_QTextBoundaryFinder::graphemeBoundariesDefault_data()
 {
 
     // QTBUG-121907: We are not using Unicode grapheme segmentation for Indic scripts.
-    QSet<QString> skipSet = {u"ConjunctLinkingScripts_LinkingConsonant"_s};
+    QSet<QString> skipSet = {u"Extend_ConjunctLinker"_s};
     generateDataFromFile("data/GraphemeBreakTest.txt", skipSet);
 }
 
@@ -260,10 +299,7 @@ void tst_QTextBoundaryFinder::sentenceBoundariesDefault()
 
 void tst_QTextBoundaryFinder::lineBoundariesDefault_data()
 {
-    // QTBUG-121907: Indic line breaking is not supported
-    QSet<QString> skipSet = {u"AK"_s, u"AP"_s, u"AS"_s, u"VI"_s, u"VF"_s};
-
-    generateDataFromFile("data/LineBreakTest.txt", skipSet);
+    generateDataFromFile("data/LineBreakTest.txt", {});
 }
 
 void tst_QTextBoundaryFinder::lineBoundariesDefault()

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef ACCESSIBLE_ITEMVIEWS_H
 #define ACCESSIBLE_ITEMVIEWS_H
@@ -31,16 +32,12 @@ QT_BEGIN_NAMESPACE
 class QAccessibleTableCell;
 class QAccessibleTableHeaderCell;
 
-class QAccessibleTable :public QAccessibleTableInterface, public QAccessibleSelectionInterface, public QAccessibleObject
+class QAccessibleTable : public QAccessibleTableInterface,
+                         public QAccessibleSelectionInterface,
+                         public QAccessibleWidgetV2
 {
 public:
-    explicit QAccessibleTable(QWidget *w);
-    bool isValid() const override;
-
-    QAccessible::Role role() const override;
-    QAccessible::State state() const override;
-    QString text(QAccessible::Text t) const override;
-    QRect rect() const override;
+    explicit QAccessibleTable(QWidget *w, QAccessible::Role role = QAccessible::Table);
 
     QAccessibleInterface *childAt(int x, int y) const override;
     QAccessibleInterface *focusChild() const override;
@@ -90,7 +87,7 @@ public:
 
 protected:
     inline QAccessible::Role cellRole() const {
-        switch (m_role) {
+        switch (role()) {
         case QAccessible::List:
             return QAccessible::ListItem;
         case QAccessible::Table:
@@ -115,7 +112,6 @@ protected:
 private:
     // the child index for a model index
     inline int logicalIndex(const QModelIndex &index) const;
-    QAccessible::Role m_role;
 };
 
 #if QT_CONFIG(treeview)
@@ -123,7 +119,7 @@ class QAccessibleTree :public QAccessibleTable
 {
 public:
     explicit QAccessibleTree(QWidget *w)
-        : QAccessibleTable(w)
+        : QAccessibleTable(w, QAccessible::Tree)
     {}
 
 
@@ -152,7 +148,7 @@ class QAccessibleList :public QAccessibleTable
 {
 public:
     explicit QAccessibleList(QWidget *w)
-        : QAccessibleTable(w)
+        : QAccessibleTable(w, QAccessible::List)
     {}
 
     QAccessibleInterface *child(int index) const override;

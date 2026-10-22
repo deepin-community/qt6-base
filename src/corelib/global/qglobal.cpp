@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformdefs.h"
 #include "qstring.h"
@@ -315,7 +316,7 @@ bool QInternal::activateCallbacks(Callback cb, void **parameters)
 /*!
     \macro qMove(x)
     \relates <QtGlobal>
-    \deprecated
+    \deprecated [5.15]
 
     Use \c std::move instead.
 
@@ -351,7 +352,6 @@ bool QInternal::activateCallbacks(Callback cb, void **parameters)
     \table
     \header \li Version \li Disabled APIs
     \row \li 6.0.0 \li \l{foreach-keyword}{foreach} (see \l{QT_NO_FOREACH})
-    \row \li 6.0.0 \li QString constructors from \c{const char *} (see \l{QT_NO_CAST_FROM_ASCII})
     \row \li 6.0.0 \li QString conversions towards \c{const char *} / QByteArray (see \l{QT_NO_CAST_TO_ASCII})
     \row \li 6.0.0 \li QByteArray implicit conversions towards \c{const char *} (see \l{QT_NO_CAST_FROM_BYTEARRAY})
     \row \li 6.0.0 \li QUrl implicit conversions from QString (see \l{QT_NO_URL_CAST_FROM_STRING})
@@ -362,6 +362,12 @@ bool QInternal::activateCallbacks(Callback cb, void **parameters)
     \row \li 6.8.0 \li The qAsConst() function (see \l{QT_NO_QASCONST})
     \row \li 6.8.0 \li File-related I/O classes have their \c{open()} functions marked \c{[[nodiscard]]} (see \l{QT_USE_NODISCARD_FILE_OPEN})
     \row\li  6.9.0 \li The qsnprintf() and qvnprintf() functions (see \l{QT_NO_QSNPRINTF}).
+    \row\li 6.12.0 \li The QPair type-alias and the qMakePair() function template (use \c{std::pair}/\c{std::make_pair}).
+    \row\li 6.12.0 \li Certain transitive includes in public Qt headers (include what you need yourself).
+    \row\li 6.12.0 \li Support for const QMetaObject::Connection arguments in
+                       \l{QObject::disconnect(QMetaObject::Connection&)}{QObject::disconnect()}
+                       (see \l{QT_NO_DISCONNECT_CONST_CONNECTION})
+    \row\li 6.12.0 \li Support for qHash overloads without a seed (see \l{QT_NO_SINGLE_ARGUMENT_QHASH_OVERLOAD}).
     \endtable
 
     Moreover, individual APIs may also get disabled as part of the
@@ -371,8 +377,10 @@ bool QInternal::activateCallbacks(Callback cb, void **parameters)
     \sa QT_DISABLE_DEPRECATED_UP_TO, QT_NO_KEYWORDS, QT_VERSION_CHECK
 */
 
-namespace QtPrivate {
 Q_LOGGING_CATEGORY(lcNativeInterface, "qt.nativeinterface")
-}
 
 QT_END_NAMESPACE
+
+#ifndef QT_NO_QOBJECT
+#include "moc_qnamespace.cpp"
+#endif

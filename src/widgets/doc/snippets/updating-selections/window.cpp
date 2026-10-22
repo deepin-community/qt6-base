@@ -12,9 +12,10 @@
 #include <QItemSelection>
 #include <QItemSelectionModel>
 #include <QStatusBar>
+#include <QTableView>
 
-#include "model.h"
-#include "window.h"
+#include "../include/mainwindow.h"
+#include "../common-table-model/model.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -54,6 +55,7 @@ void MainWindow::updateSelection(const QItemSelection &selected,
 
     for (const QModelIndex &index : std::as_const(items)) {
         model->setData(index, QString());
+    }
 }
 //! [2]
 

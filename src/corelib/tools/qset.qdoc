@@ -5,15 +5,18 @@
     \class QSet
     \inmodule QtCore
     \brief The QSet class is a template class that provides a hash-table-based set.
+    \compares equality
 
     \ingroup tools
     \ingroup shared
+    \ingroup containers
     \reentrant
 
 
-    QSet<T> is one of Qt's generic \l{container classes}. It stores
-    values in an unspecified order and provides very fast lookup of
-    the values. Internally, QSet<T> is implemented as a QHash.
+    QSet<T> is one of Qt's generic \l{container classes}, where \a T
+    specifies the type of values stored in the set. It stores values in
+    an unspecified order and provides very fast lookup of the values.
+    Internally, QSet<T> is implemented as a QHash.
 
     Here's an example QSet with QString values:
 
@@ -99,15 +102,13 @@
 
 /*!
     \fn template <class T> void QSet<T>::swap(QSet<T> &other)
-
-    Swaps set \a other with this set. This operation is very fast and
-    never fails.
+    \memberswap{set}
 */
 
 /*!
-    \fn template <class T> bool QSet<T>::operator==(const QSet<T> &other) const
+    \fn template <class T> bool QSet<T>::operator==(const QSet<T> &lhs, const QSet<T> &rhs)
 
-    Returns \c true if the \a other set is equal to this set; otherwise
+    Returns \c true if the \a lhs set is equal to the \a rhs set; otherwise
     returns \c false.
 
     Two sets are considered equal if they contain the same elements.
@@ -118,9 +119,9 @@
 */
 
 /*!
-    \fn template <class T> bool QSet<T>::operator!=(const QSet<T> &other) const
+    \fn template <class T> bool QSet<T>::operator!=(const QSet<T> &lhs, const QSet<T> &rhs)
 
-    Returns \c true if the \a other set is not equal to this set; otherwise
+    Returns \c true if the \a lhs set is not equal to the \a rhs set; otherwise
     returns \c false.
 
     Two sets are considered equal if they contain the same elements.
@@ -445,7 +446,14 @@
 */
 
 /*!
+    \fn template <class T> QSet<T>::iterator QSet<T>::insert(T &&value)
+    \overload
+    \since 6.1
+*/
+
+/*!
     \fn template <class T> QSet<T> &QSet<T>::unite(const QSet<T> &other)
+    \fn template <class T> QSet<T> &QSet<T>::unite(QSet &&other)
 
     Each item in the \a other set that isn't already in this set is
     inserted into this set. A reference to this set is returned.
@@ -505,6 +513,12 @@
 */
 
 /*!
+    \fn template <class T> QSet<T>::iterator QSet<T>::insert(const_iterator it, T &&value)
+    \overload
+    \since 6.12
+*/
+
+/*!
     \fn template <class T> bool QSet<T>::count() const
 
     Same as size().
@@ -533,7 +547,9 @@
 
 /*!
     \fn template <class T> QSet<T> &QSet<T>::operator|=(const QSet<T> &other)
+    \fn template <class T> QSet<T> &QSet<T>::operator|=(QSet &&other)
     \fn template <class T> QSet<T> &QSet<T>::operator+=(const QSet<T> &other)
+    \fn template <class T> QSet<T> &QSet<T>::operator+=(QSet &&other)
 
     Same as \l {unite()} {unite(\a other)}.
 
@@ -568,9 +584,13 @@
 
 /*!
     \fn template <class T> QSet<T> QSet<T>::operator|(const QSet &lhs, const QSet &rhs)
+    \fn template <class T> QSet<T> QSet<T>::operator|(const QSet &lhs, QSet &&rhs)
     \fn template <class T> QSet<T> QSet<T>::operator|(QSet &&lhs, const QSet &rhs)
+    \fn template <class T> QSet<T> QSet<T>::operator|(QSet &&lhs, QSet &&rhs)
     \fn template <class T> QSet<T> QSet<T>::operator+(const QSet &lhs, const QSet &rhs)
+    \fn template <class T> QSet<T> QSet<T>::operator+(const QSet &lhs, QSet &&rhs)
     \fn template <class T> QSet<T> QSet<T>::operator+(QSet &&lhs, const QSet &rhs)
+    \fn template <class T> QSet<T> QSet<T>::operator+(QSet &&lhs, QSet &&rhs)
 
     Returns a new QSet that is the union of sets \a lhs and \a rhs.
 
@@ -833,7 +853,8 @@
     current item.
 */
 
-/*! \fn template <class T> QList<T> QSet<T>::values() const
+/*!
+    \fn template <class T> QList<T> QSet<T>::values() const &
 
     Returns a new QList containing the elements in the set. The
     order of the elements in the QList is undefined.
@@ -845,6 +866,11 @@
     \l constEnd().
 */
 
+/*!
+    \fn template <class T> QList<T> QSet<T>::values() &&
+    \since 6.12
+    \overload
+*/
 
 /*!
     \fn template <class T> QDataStream &operator<<(QDataStream &out, const QSet<T> &set)
@@ -870,10 +896,8 @@
 
 /*!
     \fn template <class T> size_t qHash(const QSet<T> &key, size_t seed = 0)
-    \relates QHash
+    \qhasholdT{QHash}{T}
     \since 5.5
-
-    Returns the hash value for the \a key, using \a seed to seed the calculation.
 
     The hash value is independent of the order of elements in \a key, that is, sets
     that contain the same elements hash to the same value.

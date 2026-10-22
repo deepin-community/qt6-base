@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsysinfo.h"
 
@@ -20,6 +21,10 @@
 #include <qjniobject.h>
 #endif
 
+#if defined(Q_OS_HARMONY)
+#include <deviceinfo.h>
+#endif
+
 #if defined(Q_OS_SOLARIS)
 #  include <sys/systeminfo.h>
 #endif
@@ -36,11 +41,11 @@
 #  include <sys/sysctl.h>
 #endif
 
-#if defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
+#ifdef Q_OS_WIN
 #  include "qoperatingsystemversion_win_p.h"
 #  include "private/qwinregistry_p.h"
 #  include "qt_windows.h"
-#endif // Q_OS_WIN || Q_OS_CYGWIN
+#endif // Q_OS_WIN
 
 #include "archdetect.cpp"
 
@@ -111,6 +116,8 @@ static const char *osVer_helper(QOperatingSystemVersion version = QOperatingSyst
     case 13: return "Ventura";
     case 14: return "Sonoma";
     case 15: return "Sequoia";
+    case 26: return "Tahoe";
+    case 27: return "Golden Gate";
     default:
         // Unknown, future version
         break;
@@ -121,7 +128,7 @@ static const char *osVer_helper(QOperatingSystemVersion version = QOperatingSyst
     return nullptr;
 }
 
-#elif defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
+#elif defined(Q_OS_WIN)
 
 #  ifndef QT_BOOTSTRAPPED
 class QWindowsSockInit
@@ -135,14 +142,12 @@ public:
 QWindowsSockInit::QWindowsSockInit()
 :   version(0)
 {
-    //### should we try for 2.2 on all platforms ??
     WSAData wsadata;
 
-    // IPv6 requires Winsock v2.0 or better.
-    if (WSAStartup(MAKEWORD(2, 0), &wsadata) != 0) {
-        qWarning("QTcpSocketAPI: WinSock v2.0 initialization failed.");
+    if (WSAStartup(MAKEWORD(2, 2), &wsadata) != 0) {
+        qWarning("QTcpSocketAPI: WinSock v2.2 initialization failed.");
     } else {
-        version = 0x20;
+        version = 0x22;
     }
 }
 
@@ -199,6 +204,8 @@ static const char *osVer_helper(QOperatingSystemVersion version = QOperatingSyst
             return "10";
         }
         // else: Server
+        if (osver.dwBuildNumber >= 26100)
+            return "Server 2025";
         if (osver.dwBuildNumber >= 20348)
             return "Server 2022";
         if (osver.dwBuildNumber >= 17763)
@@ -344,22 +351,12 @@ static bool readEtcLsbRelease(QUnixOSVersion &v)
 }
 
 #if defined(Q_OS_LINUX)
-static QByteArray getEtcFileFirstLine(const char *fileName)
-{
-    QByteArray buffer = getEtcFileContent(fileName);
-    if (buffer.isEmpty())
-        return QByteArray();
-
-    const char *ptr = buffer.constData();
-    return QByteArray(ptr, buffer.indexOf("\n")).trimmed();
-}
-
 static bool readEtcRedHatRelease(QUnixOSVersion &v)
 {
     // /etc/redhat-release analysed should be a one line file
     // the format of its content is <Vendor_ID release Version>
     // i.e. "Red Hat Enterprise Linux Workstation release 6.5 (Santiago)"
-    QByteArray line = getEtcFileFirstLine("/etc/redhat-release");
+    QByteArray line = getEtcFileContent("/etc/redhat-release").trimmed();
     if (line.isEmpty())
         return false;
 
@@ -379,7 +376,7 @@ static bool readEtcDebianVersion(QUnixOSVersion &v)
     // /etc/debian_version analysed should be a one line file
     // the format of its content is <Release_ID/sid>
     // i.e. "jessie/sid"
-    QByteArray line = getEtcFileFirstLine("/etc/debian_version");
+    QByteArray line = getEtcFileContent("/etc/debian_version").trimmed();
     if (line.isEmpty())
         return false;
 
@@ -389,7 +386,7 @@ static bool readEtcDebianVersion(QUnixOSVersion &v)
 }
 #endif
 
-static bool findUnixOsVersion(QUnixOSVersion &v)
+[[maybe_unused]] static bool findUnixOsVersion(QUnixOSVersion &v)
 {
     if (readOsRelease(v))
         return true;
@@ -518,7 +515,7 @@ QString QSysInfo::buildCpuArchitecture()
 
     Values returned by this function are mostly stable: an attempt will be made
     to ensure that they stay constant over time and match the values returned
-    by QSysInfo::builldCpuArchitecture(). However, due to the nature of the
+    by buildCpuArchitecture(). However, due to the nature of the
     operating system functions being used, there may be discrepancies.
 
     Typical returned values are (note: list not exhaustive):
@@ -788,6 +785,8 @@ QString QSysInfo::productType()
 #elif defined(Q_OS_ANDROID)
     return QStringLiteral("android");
 
+#elif defined(Q_OS_HARMONY)
+    return QStringLiteral("harmonyos");
 #elif defined(Q_OS_IOS)
     return QStringLiteral("ios");
 #elif defined(Q_OS_TVOS)
@@ -851,9 +850,14 @@ QString QSysInfo::productType()
 */
 QString QSysInfo::productVersion()
 {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_DARWIN)
+#if defined(Q_OS_ANDROID)
     const auto version = QOperatingSystemVersion::current();
     return QString::asprintf("%d.%d", version.majorVersion(), version.minorVersion());
+#elif defined(Q_OS_DARWIN) || defined(Q_OS_HARMONY)
+    const auto version = QOperatingSystemVersion::current();
+    return QString::asprintf("%d.%d.%d", version.majorVersion(),
+                                         version.minorVersion(),
+                                         version.microVersion());
 #elif defined(Q_OS_WIN)
     const char *version = osVer_helper();
     if (version) {
@@ -897,8 +901,16 @@ QString QSysInfo::prettyProductName()
 {
 #if defined(Q_OS_ANDROID) || defined(Q_OS_DARWIN) || defined(Q_OS_WIN)
     const auto version = QOperatingSystemVersion::current();
-    const int majorVersion = version.majorVersion();
-    const QString versionString = QString::asprintf("%d.%d", majorVersion, version.minorVersion());
+    QString versionString;
+#  if defined(Q_OS_DARWIN)
+    if (const int microVersion = version.microVersion(); microVersion > 0)
+        versionString = QString::asprintf("%d.%d.%d", version.majorVersion(),
+                                                      version.minorVersion(),
+                                                      microVersion);
+    else
+#  endif // Darwin
+        versionString = QString::asprintf("%d.%d", version.majorVersion(),
+                                                   version.minorVersion());
     QString result = version.name() + u' ';
     const char *name = osVer_helper(version);
     if (!name)
@@ -913,6 +925,10 @@ QString QSysInfo::prettyProductName()
         result += " Version "_L1 + displayVersion;
     return result;
 #  endif // Windows
+#elif defined(Q_OS_HARMONY)
+    QString result = QString::asprintf("%s %s", OH_GetOSFullName(),
+                                OH_GetDistributionOSReleaseType());
+    return result;
 #elif defined(Q_OS_HAIKU)
     return "Haiku "_L1 + productVersion();
 #elif defined(Q_OS_UNIX)
@@ -963,11 +979,11 @@ QString QSysInfo::machineHostName()
     hostName.resize(512);
     unsigned long len = hostName.size();
     BOOL res = GetComputerNameEx(ComputerNameDnsHostname,
-            reinterpret_cast<wchar_t *>(const_cast<quint16 *>(hostName.utf16())), &len);
+                                 reinterpret_cast<wchar_t *>(hostName.data()), &len);
     if (!res && len > 512) {
         hostName.resize(len - 1);
-        GetComputerNameEx(ComputerNameDnsHostname,
-                reinterpret_cast<wchar_t *>(const_cast<quint16 *>(hostName.utf16())), &len);
+        GetComputerNameEx(ComputerNameDnsHostname, reinterpret_cast<wchar_t *>(hostName.data()),
+                          &len);
     }
     hostName.truncate(len);
     return hostName;
@@ -1045,7 +1061,7 @@ QByteArray QSysInfo::machineUniqueId()
 #elif defined(Q_OS_WIN)
     // Let's poke at the registry
     const QString machineGuid = QWinRegistryKey(HKEY_LOCAL_MACHINE, LR"(SOFTWARE\Microsoft\Cryptography)")
-                                .stringValue(u"MachineGuid"_s);
+                                .stringValue(L"MachineGuid");
     if (!machineGuid.isEmpty())
         return machineGuid.toLatin1();
 #endif

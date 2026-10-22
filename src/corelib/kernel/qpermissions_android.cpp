@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpermissions.h"
 #include "qpermissions_p.h"
@@ -56,13 +57,11 @@ static QStringList nativeBluetoothPermission(const QBluetoothPermission &permiss
 
     // API Level < 31
     static QString bluetoothGeneral = u"android.permission.BLUETOOTH"_s;
+    static QString fineLocation = u"android.permission.ACCESS_FINE_LOCATION"_s;
     // API Level >= 31
     static QString bluetoothScan = u"android.permission.BLUETOOTH_SCAN"_s;
     static QString bluetoothAdvertise = u"android.permission.BLUETOOTH_ADVERTISE"_s;
     static QString bluetoothConnect = u"android.permission.BLUETOOTH_CONNECT"_s;
-    // Fine location is currently required for ALL API levels, but that is not
-    // strictly necessary for API Level >= 31. See QTBUG-112164.
-    static QString fineLocation = u"android.permission.ACCESS_FINE_LOCATION"_s;
 
     if (QtAndroidPrivate::androidSdkVersion() < 31) {
         return {bluetoothGeneral, fineLocation};
@@ -72,7 +71,7 @@ static QStringList nativeBluetoothPermission(const QBluetoothPermission &permiss
         if (modes & QBluetoothPermission::Advertise)
             permissionList << bluetoothAdvertise;
         if (modes & QBluetoothPermission::Access)
-            permissionList << bluetoothScan << bluetoothConnect << fineLocation;
+            permissionList << bluetoothScan << bluetoothConnect;
         return permissionList;
     }
 }
@@ -98,12 +97,15 @@ static QStringList nativeStringsFromPermission(const QPermission &permission)
         }
         Q_UNREACHABLE_RETURN({});
     } else if (id == qMetaTypeId<QCalendarPermission>()) {
-        const auto readContactsString = u"android.permission.READ_CALENDAR"_s;
+        const auto readCalendarString = u"android.permission.READ_CALENDAR"_s;
+        const auto writeCalendarString = u"android.permission.WRITE_CALENDAR"_s;
         switch (permission.value<QCalendarPermission>()->accessMode()) {
         case QCalendarPermission::AccessMode::ReadOnly:
-            return { readContactsString };
+            return { readCalendarString };
         case QCalendarPermission::AccessMode::ReadWrite:
-            return { readContactsString, u"android.permission.WRITE_CALENDAR"_s };
+            return { readCalendarString, writeCalendarString };
+        case QCalendarPermission::AccessMode::WriteOnly:
+            return { writeCalendarString };
         }
         Q_UNREACHABLE_RETURN({});
     }

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEGLFSDEVICEINTEGRATION_H
 #define QEGLFSDEVICEINTEGRATION_H
@@ -19,10 +20,13 @@
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformscreen.h>
 #include <QtCore/QString>
+#include <QtCore/QLoggingCategory>
 #include <QtGui/QSurfaceFormat>
 #include <QtGui/QImage>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(qLcEglDevDebug)
 
 class QPlatformSurface;
 class QEglFSWindow;

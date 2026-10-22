@@ -95,7 +95,7 @@ function(qt_internal_setup_build_and_install_paths)
         endif()
     endif()
 
-    set(__config_path_part "${INSTALL_LIBDIR}/cmake")
+    set(__config_path_part "${INSTALL_CMAKEDIR}")
     set(QT_CONFIG_BUILD_DIR "${QT_BUILD_DIR}/${__config_path_part}")
     set(QT_CONFIG_INSTALL_DIR "${QT_INSTALL_DIR}")
     if(QT_CONFIG_INSTALL_DIR)
@@ -159,7 +159,12 @@ macro(qt_internal_setup_configure_install_paths)
     qt_configure_process_path(INSTALL_BINDIR "bin" "Executables [PREFIX/bin]")
     qt_configure_process_path(INSTALL_INCLUDEDIR "include" "Header files [PREFIX/include]")
     qt_configure_process_path(INSTALL_LIBDIR "lib" "Libraries [PREFIX/lib]")
+    qt_configure_process_path(INSTALL_CMAKEDIR "${INSTALL_LIBDIR}/cmake"
+        "CMake files [PREFIX/lib/cmake]")
     qt_configure_process_path(INSTALL_MKSPECSDIR "mkspecs" "Mkspecs files [PREFIX/mkspecs]")
+    qt_configure_process_path(INSTALL_SHAREDIR "share" "Share files [PREFIX/share]")
+    qt_configure_process_path(INSTALL_QT_SHAREDIR "${INSTALL_SHAREDIR}/qt6"
+        "Qt namespaced sharedir [SHAREDIR/qt6]")
     qt_configure_process_path(INSTALL_ARCHDATADIR "." "Arch-dependent data [PREFIX]")
     qt_configure_process_path(INSTALL_PLUGINSDIR
                               "${INSTALL_ARCHDATADIR}/plugins"
@@ -202,6 +207,15 @@ macro(qt_internal_setup_configure_install_paths)
                               "Module description files directory")
     qt_configure_process_path(INSTALL_SBOMDIR "${INSTALL_ARCHDATADIR}/sbom"
         "SBOM [PREFIX/sbom]")
+
+    # INSTALL_PUBLICBINDIR is processed only if it is not empty
+    # See usage in qt_internal_generate_user_facing_tools_info
+    if(NOT "${INSTALL_PUBLICBINDIR}" STREQUAL "")
+        # A default value is not needed because it is always manually defined
+        # but as per the documentation it is typically `bin`
+        qt_configure_process_path(INSTALL_PUBLICBINDIR "bin"
+                "Symlinked user-facing executables")
+    endif()
 endmacro()
 
 macro(qt_internal_set_cmake_install_libdir)
@@ -229,6 +243,14 @@ macro(qt_internal_set_qt_apple_support_files_path)
     endif()
 endmacro()
 
+macro(qt_internal_set_qt_windows_support_files_path)
+    # This is analogous to what we have in QtConfig.cmake.in. It's copied here so that
+    # tests can be built in tree.
+    if(WIN32)
+        set(__qt_internal_cmake_windows_support_files_path "${QT_CMAKE_DIR}/windows")
+    endif()
+endmacro()
+
 macro(qt_internal_set_qt_staging_prefix)
     if(NOT "${CMAKE_STAGING_PREFIX}" STREQUAL "")
         set(QT_STAGING_PREFIX "${CMAKE_STAGING_PREFIX}")
@@ -253,4 +275,23 @@ macro(qt_internal_setup_paths_and_prefixes)
     qt_internal_set_qt_cmake_dir()
 
     qt_internal_set_qt_apple_support_files_path()
+
+    qt_internal_set_qt_windows_support_files_path()
 endmacro()
+
+# Returns the prefix for the variables defined by HostInfo package. The prefix
+# is based on version information provided by HostInfo. Falls back to current
+# project version if ${INSTALL_CMAKE_NAMESPACE}HostInfo_VERSION_MAJOR is not
+# defined.
+function(qt_internal_get_host_info_var_prefix out_var)
+    if(${INSTALL_CMAKE_NAMESPACE}HostInfo_VERSION_MAJOR)
+        set(${out_var} "QT${${INSTALL_CMAKE_NAMESPACE}HostInfo_VERSION_MAJOR}_HOST_INFO"
+            PARENT_SCOPE)
+    else()
+        # This is not a valid way to define the host info versioned prefix, but
+        # it's backward compatible with Qt versions older than 6.10.
+        #
+        # TODO: remove once Qt LTS versions older than 6.10 reach end of life.
+        set(${out_var} "QT${PROJECT_VERSION_MAJOR}_HOST_INFO" PARENT_SCOPE)
+    endif()
+endfunction()

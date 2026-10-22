@@ -16,7 +16,9 @@ public:
     void releaseSwapChain();
 
 protected:
+#if QT_CONFIG(vulkan)
     QVulkanInstance instance;
+#endif
     std::unique_ptr<QOffscreenSurface> m_fallbackSurface;
     std::unique_ptr<QRhi> m_rhi;
     std::unique_ptr<QRhiSwapChain> m_sc;

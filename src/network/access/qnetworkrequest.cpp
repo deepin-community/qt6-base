@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkrequest.h"
 #include "qnetworkrequest_p.h"
@@ -20,7 +21,6 @@
 #include "QtCore/private/qduplicatetracker_p.h"
 #include "QtCore/private/qtools_p.h"
 
-#include <ctype.h>
 #if QT_CONFIG(datestring)
 # include <stdio.h>
 #endif
@@ -305,8 +305,16 @@ QT_IMPL_METATYPE_EXTERN_TAGGED(QNetworkRequest::RedirectPolicy, QNetworkRequest_
 
     \value ConnectionCacheExpiryTimeoutSecondsAttribute
         Requests only, type: QMetaType::Int
-        To set when the TCP connections to a server (HTTP1 and HTTP2) should
-        be closed after the last pending request had been processed.
+        Controls when the TCP connections to a server (HTTP1 and HTTP2)
+        should be closed after the last pending request had been processed.
+        If not set, the default timeout of 120 seconds is used.
+        Setting this to a negative value (e.g. -1) disables connection
+        caching for this request: the connection will not be stored in
+        or retrieved from the cache, and will be closed immediately
+        after the request completes.
+        Setting this to 0 means the connection is shared while in use
+        but freed as soon as there is nothing in queue.
+        A positive value specifies a custom expiry timeout in seconds.
         (This value was introduced in 6.3.)
 
     \value Http2CleartextAllowedAttribute
@@ -424,7 +432,7 @@ QT_IMPL_METATYPE_EXTERN_TAGGED(QNetworkRequest::RedirectPolicy, QNetworkRequest_
     timeouts with a preset value.
 
     \value DefaultTransferTimeoutConstant     The transfer timeout in milliseconds.
-                                              Used if setTimeout() is called
+                                              Used if setTransferTimeout() is called
                                               without an argument.
 
     \sa QNetworkRequest::DefaultTransferTimeout
@@ -475,6 +483,9 @@ public:
         decompressedSafetyCheckThreshold = other.decompressedSafetyCheckThreshold;
 #endif
         transferTimeout = other.transferTimeout;
+        idleTimeBeforeProbes = other.idleTimeBeforeProbes;
+        intervalBetweenProbes = other.intervalBetweenProbes;
+        probeCount = other.probeCount;
     }
 
     inline bool operator==(const QNetworkRequestPrivate &other) const
@@ -491,6 +502,9 @@ public:
 #endif
             && transferTimeout == other.transferTimeout
             && QHttpHeadersHelper::compareStrict(httpHeaders, other.httpHeaders)
+            && idleTimeBeforeProbes == other.idleTimeBeforeProbes
+            && intervalBetweenProbes == other.intervalBetweenProbes
+            && probeCount == other.probeCount;
             ;
         // don't compare cookedHeaders
     }
@@ -508,6 +522,9 @@ public:
     qint64 decompressedSafetyCheckThreshold = 10ll * 1024ll * 1024ll;
 #endif
     std::chrono::milliseconds transferTimeout = 0ms;
+    std::chrono::duration<int> idleTimeBeforeProbes{0};
+    std::chrono::duration<int> intervalBetweenProbes{0};
+    int probeCount = 0;
 };
 
 /*!
@@ -591,9 +608,7 @@ QNetworkRequest &QNetworkRequest::operator=(const QNetworkRequest &other)
 /*!
     \fn void QNetworkRequest::swap(QNetworkRequest &other)
     \since 5.0
-
-    Swaps this network request with \a other. This function is very
-    fast and never fails.
+    \memberswap{network request}
 */
 
 /*!
@@ -732,6 +747,9 @@ QList<QByteArray> QNetworkRequest::rawHeaderList() const
     setting. To accomplish the behaviour of multiple HTTP headers of
     the same name, you should concatenate the two values, separating
     them with a comma (",") and set one single raw header.
+
+    \note Since Qt 6.8, the header field names are normalized
+    by converting them to lowercase.
 
     \sa KnownHeaders, setHeader(), hasRawHeader(), rawHeader()
 */
@@ -1026,6 +1044,15 @@ qint64 QNetworkRequest::decompressedSafetyCheckThreshold() const
     ZStandard), the reply will be treated as an error. Setting the threshold
     to \c{-1} disables this check.
 
+    \note This check only detects responses with unusually high compression
+    ratios. It does not impose an absolute limit on the total decompressed
+    output size. A response that maintains a moderate compression ratio (for
+    example, 39:1 for GZip) can decompress to an arbitrarily large size
+    without triggering the check. Applications communicating with untrusted
+    servers should monitor QNetworkReply::bytesAvailable() or
+    QNetworkReply::downloadProgress() and abort transfers that exceed an
+    acceptable size.
+
     \sa decompressedSafetyCheckThreshold()
 */
 void QNetworkRequest::setDecompressedSafetyCheckThreshold(qint64 threshold)
@@ -1033,6 +1060,96 @@ void QNetworkRequest::setDecompressedSafetyCheckThreshold(qint64 threshold)
     d->decompressedSafetyCheckThreshold = threshold;
 }
 #endif // QT_CONFIG(http)
+
+/*!
+    \since 6.11
+
+    Returns the time the connection needs to remain idle before TCP
+    starts sending keepalive probes, if the TCP Keepalive functionality has
+    been turned on.
+
+    \sa setTcpKeepAliveIdleTimeBeforeProbes()
+*/
+
+std::chrono::seconds QNetworkRequest::tcpKeepAliveIdleTimeBeforeProbes() const
+{
+    return d->idleTimeBeforeProbes;
+}
+
+/*!
+    \fn void QNetworkRequest::setTcpKeepAliveIdleTimeBeforeProbes(std::chrono::seconds idle)
+    \since 6.11
+
+    Sets the time the connection needs to remain idle before TCP starts
+    sending keepalive probes to be \a idle, if the TCP Keepalive
+    functionality has been turned on.
+
+    \sa tcpKeepAliveIdleTimeBeforeProbes()
+*/
+
+void QNetworkRequest::doSetIdleTimeBeforeProbes(std::chrono::duration<int> seconds)
+{
+    d->idleTimeBeforeProbes = seconds;
+}
+
+/*!
+    \since 6.11
+
+    Returns the time between individual keepalive probes, if the TCP
+    Keepalive functionality has been turned on.
+
+    \sa setTcpKeepAliveIntervalBetweenProbes()
+*/
+
+std::chrono::seconds QNetworkRequest::tcpKeepAliveIntervalBetweenProbes() const
+{
+    return d->intervalBetweenProbes;
+}
+
+/*!
+    \fn void QNetworkRequest::setTcpKeepAliveIntervalBetweenProbes(std::chrono::seconds interval)
+    \since 6.11
+
+    Sets the time between individual keepalive probes to be \a interval,
+    if the TCP Keepalive functionality has been turned on.
+
+    \sa tcpKeepAliveIntervalBetweenProbes()
+*/
+
+void QNetworkRequest::doSetIntervalBetweenProbes(std::chrono::duration<int> seconds)
+{
+    d->intervalBetweenProbes = seconds;
+}
+
+/*!
+    \since 6.11
+
+    Returns the maximum number of keepalive probes TCP should send before
+    dropping the connection, if the TCP Keepalive functionality has been
+    turned on.
+
+    \sa setTcpKeepAliveProbeCount()
+*/
+
+int QNetworkRequest::tcpKeepAliveProbeCount() const
+{
+    return d->probeCount;
+}
+
+/*!
+    \since 6.11
+
+    Sets the maximum number of keepalive \a probes TCP should send
+    before dropping the connection, if the TCP Keepalive functionality has
+    been turned on.
+
+    \sa tcpKeepAliveProbeCount()
+*/
+
+void QNetworkRequest::setTcpKeepAliveProbeCount(int probes)
+{
+    d->probeCount = probes;
+}
 
 #if QT_CONFIG(http) || defined (Q_OS_WASM)
 /*!

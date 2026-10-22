@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:header-decls-only
 
 #ifndef QIODEVICE_H
 #define QIODEVICE_H
@@ -12,11 +13,14 @@
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qscopedpointer.h>
 #endif
+#include <QtCore/qspan.h>
 #include <QtCore/qstring.h>
 
 #ifdef open
 #error qiodevice.h must be included before any header file that defines open
 #endif
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -78,6 +82,14 @@ public:
     QByteArray readAll();
     qint64 readLine(char *data, qint64 maxlen);
     QByteArray readLine(qint64 maxlen = 0);
+    bool readLineInto(QByteArray *result, qint64 maxlen = 0);
+
+    QByteArrayView readLineInto(QSpan<char> buffer)
+    { return readLineInto(as_writable_bytes(buffer)); }
+    QByteArrayView readLineInto(QSpan<uchar> buffer)
+    { return readLineInto(as_writable_bytes(buffer)); }
+    QByteArrayView readLineInto(QSpan<std::byte> buffer);
+
     virtual bool canReadLine() const;
 
     void startTransaction();
@@ -128,7 +140,7 @@ protected:
     void setErrorString(const QString &errorString);
 
 #ifdef QT_NO_QOBJECT
-    QScopedPointer<QIODevicePrivate> d_ptr;
+    std::unique_ptr<QIODevicePrivate> d_ptr;
 #endif
 
 private:

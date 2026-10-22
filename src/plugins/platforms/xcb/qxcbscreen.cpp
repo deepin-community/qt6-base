@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbscreen.h"
 #include "qxcbwindow.h"
@@ -15,7 +16,6 @@
 
 #include <qpa/qwindowsysteminterface.h>
 #include <private/qmath_p.h>
-#include <QtGui/private/qhighdpiscaling_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -324,7 +324,7 @@ static QFontEngine::HintStyle parseXftHintStyle(const QByteArray& stringValue)
     else if (stringValue == "hintslight")
         return QFontEngine::HintLight;
 
-    return QFontEngine::HintStyle(-1);
+    return QFontEngine::HintUnset;
 }
 
 static QFontEngine::SubpixelAntialiasingType parseXftRgba(const QByteArray& stringValue)
@@ -340,7 +340,7 @@ static QFontEngine::SubpixelAntialiasingType parseXftRgba(const QByteArray& stri
     else if (stringValue == "vbgr")
         return QFontEngine::Subpixel_VBGR;
 
-    return QFontEngine::SubpixelAntialiasingType(-1);
+    return QFontEngine::Subpixel_Unset;
 }
 
 void QXcbVirtualDesktop::readXResources()
@@ -499,7 +499,6 @@ QXcbScreen::QXcbScreen(QXcbConnection *connection, QXcbVirtualDesktop *virtualDe
     , m_cursor(std::make_unique<QXcbCursor>(connection, this))
 {
     if (connection->isAtLeastXRandR12()) {
-        xcb_randr_select_input(xcb_connection(), screen()->root, true);
         auto crtc = Q_XCB_REPLY_UNCHECKED(xcb_randr_get_crtc_info, xcb_connection(),
                                           m_crtc, output ? output->timestamp : 0);
         if (crtc) {
@@ -605,8 +604,6 @@ void QXcbScreen::setMonitor(xcb_randr_monitor_info_t *monitorInfo, xcb_timestamp
         return;
     }
 
-    xcb_randr_select_input(xcb_connection(), screen()->root, true);
-
     m_monitor = monitorInfo;
     qCDebug(lcQpaScreen) << "xcb_randr_monitor_info_t: primary=" << m_monitor->primary << ", x=" << m_monitor->x << ", y=" << m_monitor->y
         << ", width=" << m_monitor->width << ", height=" << m_monitor->height
@@ -654,12 +651,16 @@ void QXcbScreen::setMonitor(xcb_randr_monitor_info_t *monitorInfo, xcb_timestamp
     if (m_crtcs.size() == 1) {
         auto crtc = Q_XCB_REPLY(xcb_randr_get_crtc_info,
                                 xcb_connection(), m_crtcs[0], timestamp);
-        m_singlescreen = (monitorGeometry == (QRect(crtc->x, crtc->y, crtc->width, crtc->height)));
-        if (m_singlescreen) {
-            if (crtc->mode) {
-                updateGeometry(QRect(crtc->x, crtc->y, crtc->width, crtc->height), crtc->rotation);
-                if (mode() != crtc->mode)
-                    updateRefreshRate(crtc->mode);
+        if (crtc == XCB_NONE) {
+            qCDebug(lcQpaScreen, "Didn't get crtc info when m_crtcs.size() == 1");
+        } else {
+            m_singlescreen = (monitorGeometry == (QRect(crtc->x, crtc->y, crtc->width, crtc->height)));
+            if (m_singlescreen) {
+                if (crtc->mode) {
+                    updateGeometry(QRect(crtc->x, crtc->y, crtc->width, crtc->height), crtc->rotation);
+                    if (mode() != crtc->mode)
+                        updateRefreshRate(crtc->mode);
+                }
             }
         }
     }
@@ -887,6 +888,7 @@ void QXcbScreen::setOutput(xcb_randr_output_t outputId,
     m_crtc = outputInfo ? outputInfo->crtc : XCB_NONE;
     m_mode = XCB_NONE;
     m_outputName = getOutputName(outputInfo);
+    m_outputSizeMillimeters = outputInfo ? QSizeF(outputInfo->mm_width, outputInfo->mm_height) : QSizeF();
     // TODO: Send an event to the QScreen instance that the screen changed its name
 }
 

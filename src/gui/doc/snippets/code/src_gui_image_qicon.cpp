@@ -3,6 +3,7 @@
 #include <QIcon>
 #include <QPainter>
 #include <QToolButton>
+#include <QSize>
 
 namespace src_gui_image_qicon {
 
@@ -20,9 +21,11 @@ QToolButton *button = new QToolButton;
 button->setIcon(QIcon("open.png"));
 //! [0]
 
+QSize size(1, 1);
+
 //! [addFile]
 QIcon openIcon("open.png");
-openIcon.addFile("open-disabled.png", QIcon::Disabled);
+openIcon.addFile("open-disabled.png", size ,QIcon::Disabled);
 //! [addFile]
 
 //! [1]
@@ -42,12 +45,18 @@ void MyWidget::drawIcon(QPainter *painter, const QRect &rect)
 }
 //! [2]
 
+using namespace Qt::StringLiterals;
 
 void wrapper1() {
 
 //! [fromTheme]
 QIcon undoicon = QIcon::fromTheme(QIcon::ThemeIcon::EditUndo);
 //! [fromTheme]
+
+//! [iconFont]
+QIcon::setThemeName("Material Symbols Outlined");
+QIcon muteIcon = QIcon::fromTheme(u"volume_off"_s);
+//! [iconFont]
 
 } // wrapper1
 

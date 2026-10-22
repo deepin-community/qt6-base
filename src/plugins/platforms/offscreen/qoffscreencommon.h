@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOFFSCREENCOMMON_H
 #define QOFFSCREENCOMMON_H
@@ -27,6 +28,8 @@ public:
     QOffscreenScreen(const QOffscreenIntegration *integration);
 
     QRect geometry() const override { return m_geometry; }
+    QRect availableGeometry() const override
+    { return m_availableGeometry.isEmpty() ? m_geometry : m_availableGeometry; }
     int depth() const override { return 32; }
     QImage::Format format() const override { return QImage::Format_RGB32; }
     QDpi logicalDpi() const override { return QDpi(m_logicalDpi, m_logicalDpi); }
@@ -43,6 +46,7 @@ public:
 public:
     QString m_name;
     QRect m_geometry;
+    QRect m_availableGeometry;
     int m_logicalDpi = 96;
     int m_logicalBaseDpi= 96;
     qreal m_dpr = 1;
@@ -68,6 +72,7 @@ public:
     void flush(QWindow *window, const QRegion &region, const QPoint &offset) override;
     void resize(const QSize &size, const QRegion &staticContents) override;
     bool scroll(const QRegion &area, int dx, int dy) override;
+    void beginPaint(const QRegion &) override;
 
     QPixmap grabWindow(WId window, const QRect &rect) const;
     QImage toImage() const override { return m_image; }

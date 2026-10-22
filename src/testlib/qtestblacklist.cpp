@@ -129,6 +129,9 @@ static QSet<QByteArray> keywords()
 #ifdef Q_OS_WEBOS
             << "webos"
 #endif
+#ifdef Q_OS_HARMONY
+            << "harmonyos"
+#endif
 
 #if QT_POINTER_SIZE == 8
             << "64bit"
@@ -156,8 +159,10 @@ static QSet<QByteArray> keywords()
             << "msvc-2017"
 #  elif _MSC_VER <= 1929
             << "msvc-2019"
-#  else
+#  elif _MSC_VER <= 1949
             << "msvc-2022"
+#  else
+            << "msvc-2026"
 #  endif
 #endif
 
@@ -238,9 +243,14 @@ static bool checkCondition(const QByteArray &condition)
 }
 
 static bool ignoreAll = false;
-static std::set<QByteArray> *ignoredTests = nullptr;
+static std::unique_ptr<std::set<QByteArray>> ignoredTests;
 
 namespace QTestPrivate {
+
+QSet<QByteArray> blacklistKeywords()
+{
+    return activeConditions();
+}
 
 void parseBlackList()
 {
@@ -252,9 +262,9 @@ void parseBlackList()
         return;
 
     QByteArray function;
+    QByteArray line;
 
-    while (!ignored.atEnd()) {
-        QByteArray line = ignored.readLine();
+    while (ignored.readLineInto(&line)) {
         const int commentPosition = line.indexOf('#');
         if (commentPosition >= 0)
             line.truncate(commentPosition);
@@ -271,7 +281,7 @@ void parseBlackList()
                 ignoreAll = true;
             } else {
                 if (!ignoredTests)
-                    ignoredTests = new std::set<QByteArray>;
+                    ignoredTests = std::make_unique<std::set<QByteArray>>();
                 ignoredTests->insert(function);
             }
         }

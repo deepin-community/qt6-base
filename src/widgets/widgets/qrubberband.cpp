@@ -1,11 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qbitmap.h"
 #include "qevent.h"
 #include "qstylepainter.h"
 #include "qrubberband.h"
-#include "qtimer.h"
 
 #include "qstyle.h"
 #include "qstyleoption.h"
@@ -42,7 +42,7 @@ void QRubberBand::initStyleOption(QStyleOptionRubberBand *option) const
         return;
     option->initFrom(this);
     option->shape = d_func()->shape;
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     option->opaque = true;
 #else
     option->opaque = windowFlags() & RUBBERBAND_WINDOW_TYPE;
@@ -95,7 +95,7 @@ void QRubberBand::initStyleOption(QStyleOptionRubberBand *option) const
     semi-transparent filled selection rectangle.
 */
 QRubberBand::QRubberBand(Shape s, QWidget *p)
-    : QWidget(*new QRubberBandPrivate, p, (p && p->windowType() != Qt::Desktop) ? Qt::Widget : RUBBERBAND_WINDOW_TYPE)
+    : QWidget(*new QRubberBandPrivate, p, Qt::Widget)
 {
     Q_D(QRubberBand);
     d->shape = s;

@@ -1,5 +1,6 @@
 // Copyright (C) 2012 Research In Motion
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQNXBUTTONSEVENTNOTIFIER_H
 #define QQNXBUTTONSEVENTNOTIFIER_H
@@ -16,7 +17,6 @@ class QSocketNotifier;
 class QQnxButtonEventNotifier : public QObject
 {
     Q_OBJECT
-    Q_ENUMS(ButtonId)
 public:
     enum ButtonId {
         bid_minus = 0,
@@ -25,6 +25,7 @@ public:
         bid_power,
         ButtonCount
     };
+    Q_ENUM(ButtonId)
 
     enum ButtonState {
         ButtonUp,

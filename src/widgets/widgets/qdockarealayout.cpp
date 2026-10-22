@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2015 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "QtWidgets/qapplication.h"
 #include "QtWidgets/qwidget.h"
@@ -13,7 +14,6 @@
 #include "qdockarealayout_p.h"
 #include "qdockwidget.h"
 #include "qmainwindow.h"
-#include "qwidgetanimator_p.h"
 #include "qmainwindowlayout_p.h"
 #include "qmenu_p.h"
 #include "qdockwidget_p.h"
@@ -34,7 +34,16 @@ Q_LOGGING_CATEGORY(lcQpaDockWidgets, "qt.widgets.dockwidgets");
 // qmainwindow.cpp
 extern QMainWindowLayout *qt_mainwindow_layout(const QMainWindow *window);
 
-enum { StateFlagVisible = 1, StateFlagFloating = 2 };
+enum class StateFlag
+{
+    Visible = 0x01,
+    Floating = 0x02,
+    FloatingTabs = 0x04,
+    Closed = 0x08,
+};
+Q_DECLARE_FLAGS(StateFlags, StateFlag);
+
+using StateMarkers = QMainWindowLayoutState::StateMarkers;
 
 /******************************************************************************
 ** QPlaceHolderItem
@@ -201,9 +210,30 @@ QDebug operator<<(QDebug dbg, const QDockAreaLayoutItem &item)
     } else if (item.subinfo) {
         dbg << "subInfo(" << item.subinfo << "->(" << item.subinfo->item_list << ")";
     } else if (item.placeHolderItem) {
-        dbg << "placeHolderItem(" << item.placeHolderItem << ")";
+        dbg << "placeHolderItem(" << item.placeHolderItem
+            << "objectName:" << item.placeHolderItem->objectName << "; "
+            << "hidden:" << item.placeHolderItem->hidden << "; "
+            << "window:" << item.placeHolderItem->window << "; "
+            << "topLevelRect:" << item.placeHolderItem->topLevelRect << ")";
     }
     dbg << ")";
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, StateFlags flags)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace().noquote();
+    QStringList f;
+    if (flags.testFlag(StateFlag::Visible))
+        f << QLatin1StringView("Visible");
+    if (flags.testFlag(StateFlag::Floating))
+        f << QLatin1StringView("Floating");
+    if (flags.testFlag(StateFlag::FloatingTabs))
+        f << QLatin1StringView("FloatingTabs");
+    if (flags.testFlag(StateFlag::Closed))
+        f << QLatin1StringView("Closed");
+    dbg << "StateFlags(" << f.join(u'|') << ")";
     return dbg;
 }
 #endif // QT_NO_DEBUG_STREAM
@@ -1474,7 +1504,7 @@ QList<int> QDockAreaLayoutInfo::indexOfPlaceHolder(const QString &objectName) co
     return QList<int>();
 }
 
-QList<int> QDockAreaLayoutInfo::indexOf(QWidget *widget) const
+QList<int> QDockAreaLayoutInfo::indexOf(const QWidget *widget) const
 {
     for (int i = 0; i < item_list.size(); ++i) {
         const QDockAreaLayoutItem &item = item_list.at(i);
@@ -1501,6 +1531,14 @@ QList<int> QDockAreaLayoutInfo::indexOf(QWidget *widget) const
     return QList<int>();
 }
 
+std::unique_ptr<QLayoutItem> QDockAreaLayoutInfo::takeWidgetItem(QWidget *widget)
+{
+    std::unique_ptr<QLayoutItem> widgetItem;
+    if (const auto path = indexOf(widget); !path.isEmpty())
+        widgetItem.reset(item(path).widgetItem);
+    return widgetItem;
+}
+
 QMainWindowLayout *QDockAreaLayoutInfo::mainWindowLayout() const
 {
     QMainWindowLayout *result = qt_mainwindow_layout(mainWindow);
@@ -1516,7 +1554,7 @@ bool QDockAreaLayoutInfo::hasFixedSize() const
 /*! \internal
     Applies the layout and returns the activated QDockWidget or nullptr.
  */
-QDockWidget *QDockAreaLayoutInfo::apply(bool animate)
+QDockWidget *QDockAreaLayoutInfo::apply(QWidgetAnimator::AnimationRule rule)
 {
     QWidgetAnimator &widgetAnimator = mainWindowLayout()->widgetAnimator;
 
@@ -1551,7 +1589,7 @@ QDockWidget *QDockAreaLayoutInfo::apply(bool animate)
             }
         }
 
-        widgetAnimator.animate(tabBar, tab_rect, animate);
+        widgetAnimator.animate(tabBar, tab_rect, rule);
     }
 #endif // QT_CONFIG(tabbar)
 
@@ -1564,7 +1602,7 @@ QDockWidget *QDockAreaLayoutInfo::apply(bool animate)
             continue;
 
         if (item.subinfo != nullptr) {
-            item.subinfo->apply(animate);
+            item.subinfo->apply(rule);
             continue;
         }
 
@@ -1576,7 +1614,7 @@ QDockWidget *QDockAreaLayoutInfo::apply(bool animate)
         QWidget *w = item.widgetItem->widget();
 
         QRect geo = w->geometry();
-        widgetAnimator.animate(w, r, animate);
+        widgetAnimator.animate(w, r, rule);
         if (!w->isHidden() && w->window()->isVisible()) {
             QDockWidget *dw = qobject_cast<QDockWidget*>(w);
             if (!r.isValid() && geo.right() >= 0 && geo.bottom() >= 0) {
@@ -1777,7 +1815,11 @@ QLayoutItem *QDockAreaLayoutInfo::takeAt(int *x, int index)
             }
         } else if (item.widgetItem) {
             if ((*x)++ == index) {
-                item.placeHolderItem = new QPlaceHolderItem(item.widgetItem->widget());
+                QWidget *widget = item.widgetItem->widget();
+                if (widget->isWidgetType())
+                    item.placeHolderItem = new QPlaceHolderItem(widget);
+                else
+                    qCDebug(lcQpaDockWidgets) << widget << "is in destruction. No gap created.";
                 QLayoutItem *ret = item.widgetItem;
                 item.widgetItem = nullptr;
                 if (item.size != -1)
@@ -1824,9 +1866,18 @@ void QDockAreaLayoutInfo::deleteAllLayoutItems()
 
 void QDockAreaLayoutInfo::saveState(QDataStream &stream) const
 {
+    qsizetype cnt = 0;
+    for (qsizetype i = 0; i < item_list.size(); ++i) {
+        const QDockAreaLayoutItem &item = item_list.at(i);
+        if (item.widgetItem && qobject_cast<QDockWidgetGroupWindow *>(item.widgetItem->widget())) {
+            continue;
+        }
+        ++cnt;
+    }
+
 #if QT_CONFIG(tabbar)
     if (tabbed) {
-        stream << (uchar) TabMarker;
+        stream << StateMarkers::Tab;
 
         // write the index in item_list of the widget that's currently on top.
         quintptr id = currentTabId();
@@ -1841,30 +1892,41 @@ void QDockAreaLayoutInfo::saveState(QDataStream &stream) const
     } else
 #endif // QT_CONFIG(tabbar)
     {
-        stream << (uchar) SequenceMarker;
+        stream << StateMarkers::Sequence;
     }
 
-    stream << (uchar) o << int(item_list.size());
+    stream << static_cast<uchar>(o)  << static_cast<int>(cnt);
 
     for (int i = 0; i < item_list.size(); ++i) {
         const QDockAreaLayoutItem &item = item_list.at(i);
         if (item.widgetItem != nullptr) {
-            stream << (uchar) WidgetMarker;
             QWidget *w = item.widgetItem->widget();
+            if (qobject_cast<QDockWidgetGroupWindow *>(w)) {
+                qCDebug(lcQpaDockWidgets) << "Ignoring dock widget group window" << w;
+                continue;
+            }
+            stream << StateMarkers::Widget;
             QString name = w->objectName();
             if (Q_UNLIKELY(name.isEmpty())) {
-                qWarning("QMainWindow::saveState(): 'objectName' not set for QDockWidget %p '%ls;",
-                         w, qUtf16Printable(w->windowTitle()));
+                qWarning() << "QMainWindow::saveState(): 'objectName' not set for"
+                           << w << qUtf16Printable(w->windowTitle());
             }
             stream << name;
 
-            uchar flags = 0;
+            StateFlags flags;
             if (!w->isHidden())
-                flags |= StateFlagVisible;
+                flags.setFlag(StateFlag::Visible);
             if (w->isWindow())
-                flags |= StateFlagFloating;
-            stream << flags;
+                flags.setFlag(StateFlag::Floating);
+            if (qobject_cast<QDockWidgetGroupWindow *>(w->parent()))
+                flags.setFlag(StateFlag::FloatingTabs);
+            if (auto *dw = qobject_cast<QDockWidget *>(w)) {
+                const auto priv = static_cast<QDockWidgetPrivate *>(QObjectPrivate::get(dw));
+                flags.setFlag(StateFlag::Closed, priv->closed);
+            }
+            stream << static_cast<uchar>(flags.toInt());
 
+            qCDebug(lcQpaDockWidgets) << "Saving state for dock widget:" << w->objectName() << flags;
             if (w->isWindow()) {
                 const QRect geometry = w->geometry();
                 stream << geometry.x() << geometry.y() << geometry.width() << geometry.height();
@@ -1873,14 +1935,15 @@ void QDockAreaLayoutInfo::saveState(QDataStream &stream) const
                         << pick(o, item.maximumSize());
             }
         } else if (item.placeHolderItem != nullptr) {
-            stream << (uchar) WidgetMarker;
+            stream << StateMarkers::Widget;
             stream << item.placeHolderItem->objectName;
-            uchar flags = 0;
+            StateFlags flags;
             if (!item.placeHolderItem->hidden)
-                flags |= StateFlagVisible;
+                flags.setFlag(StateFlag::Visible);
             if (item.placeHolderItem->window)
-                flags |= StateFlagFloating;
-            stream << flags;
+                flags.setFlag(StateFlag::Floating);
+            qCDebug(lcQpaDockWidgets) << "Saving state for placeholder item:" << item << flags;
+            stream << static_cast<uchar>(flags.toInt());
             if (item.placeHolderItem->window) {
                 QRect r = item.placeHolderItem->topLevelRect;
                 stream << r.x() << r.y() << r.width() << r.height();
@@ -1888,7 +1951,8 @@ void QDockAreaLayoutInfo::saveState(QDataStream &stream) const
                 stream << item.pos << item.size << (int)0 << (int)0;
             }
         } else if (item.subinfo != nullptr) {
-            stream << (uchar) SequenceMarker << item.pos << item.size << pick(o, item.minimumSize()) << pick(o, item.maximumSize());
+            stream << StateMarkers::Sequence;
+            stream << item.pos << item.size << pick(o, item.minimumSize()) << pick(o, item.maximumSize());
             item.subinfo->saveState(stream);
         }
     }
@@ -1906,15 +1970,18 @@ static Qt::DockWidgetArea toDockWidgetArea(QInternal::DockPosition pos)
     return Qt::NoDockWidgetArea;
 }
 
-bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> &widgets, bool testing)
+bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> &widgets, QInternal::CallMode callMode)
 {
-    uchar marker;
+    const bool testing = callMode == QInternal::Testing;
+    const QLatin1StringView debugCallMode = testing ? QLatin1StringView("(testing)")
+                                                    : QLatin1StringView("(restoring)");
+    QMainWindowLayoutState::StateMarkers marker;
     stream >> marker;
-    if (marker != TabMarker && marker != SequenceMarker)
+    if (marker != StateMarkers::Tab && marker != StateMarkers::Sequence)
         return false;
 
 #if QT_CONFIG(tabbar)
-    tabbed = marker == TabMarker;
+    tabbed = marker == StateMarkers::Tab;
 
     int index = -1;
     if (tabbed)
@@ -1929,12 +1996,13 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
     stream >> cnt;
 
     for (int i = 0; i < cnt; ++i) {
-        uchar nextMarker;
+        QMainWindowLayoutState::StateMarkers nextMarker;
         stream >> nextMarker;
-        if (nextMarker == WidgetMarker) {
+        if (nextMarker == StateMarkers::Widget) {
             QString name;
-            uchar flags;
-            stream >> name >> flags;
+            uchar f;
+            stream >> name >> f;
+            StateFlags flags(f);
             if (name.isEmpty()) {
                 int dummy;
                 stream >> dummy >> dummy >> dummy >> dummy;
@@ -1942,7 +2010,7 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
             }
 
             QDockWidget *widget = nullptr;
-            for (int j = 0; j < widgets.size(); ++j) {
+            for (qsizetype j = 0; j < widgets.size(); ++j) {
                 if (widgets.at(j)->objectName() == name) {
                     widget = widgets.takeAt(j);
                     break;
@@ -1953,9 +2021,8 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
                 QPlaceHolderItem *placeHolder = new QPlaceHolderItem;
                 QDockAreaLayoutItem item(placeHolder);
 
-                placeHolder->objectName = name;
-                placeHolder->window = flags & StateFlagFloating;
-                placeHolder->hidden = !(flags & StateFlagVisible);
+                placeHolder->window = flags.testFlag(StateFlag::Floating);
+                placeHolder->hidden = !flags.testFlag(StateFlag::Visible);
                 if (placeHolder->window) {
                     int x, y, w, h;
                     stream >> x >> y >> w >> h;
@@ -1966,27 +2033,26 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
                 }
                 if (item.size != -1)
                     item.flags |= QDockAreaLayoutItem::KeepSize;
+                placeHolder->objectName = std::move(name);
+                qCDebug(lcQpaDockWidgets) << "Restoring placeholder" << item << debugCallMode << flags;
                 if (!testing)
                     item_list.append(item);
             } else {
+                if (flags.testFlag(StateFlag::FloatingTabs))
+                    qCDebug(lcQpaDockWidgets) << "Found floating tab:" << name << flags << debugCallMode;
                 QDockAreaLayoutItem item(new QDockWidgetItem(widget));
-                if (flags & StateFlagFloating) {
-                    bool drawer = false;
-
+                if (flags.testFlag(StateFlag::Floating)) {
                     if (!testing) {
                         widget->hide();
-                        if (!drawer)
-                            widget->setFloating(true);
+                        widget->setFloating(true);
                     }
 
                     int x, y, w, h;
                     stream >> x >> y >> w >> h;
 
-                    if (!testing)
-                        widget->setGeometry(QDockAreaLayout::constrainedRect(QRect(x, y, w, h), widget));
-
                     if (!testing) {
-                        widget->setVisible(flags & StateFlagVisible);
+                        widget->setGeometry(QDockAreaLayout::constrainedRect(QRect(x, y, w, h), widget));
+                        widget->setVisible(flags.testFlag(StateFlag::Visible));
                         item_list.append(item);
                     }
                 } else {
@@ -1994,18 +2060,23 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
                     stream >> item.pos >> item.size >> dummy >> dummy;
                     if (!testing) {
                         item_list.append(item);
-                        widget->setFloating(false);
-                        widget->setVisible(flags & StateFlagVisible);
+                        if (flags.testFlag(StateFlag::Closed)) {
+                           widget->close();
+                        } else {
+                            widget->setFloating(false);
+                            widget->setVisible(flags.testFlag(StateFlag::Visible));
+                        }
                         emit widget->dockLocationChanged(toDockWidgetArea(dockPos));
                     }
                 }
+                qCDebug(lcQpaDockWidgets) << "Restoring QDockWidget" << item << flags << debugCallMode;
                 if (testing) {
                     //was it is not really added to the layout, we need to delete the object here
                     delete item.widgetItem;
                     item.widgetItem = nullptr;
                 }
             }
-        } else if (nextMarker == SequenceMarker) {
+        } else if (nextMarker == StateMarkers::Sequence) {
             int dummy;
 #if !QT_CONFIG(tabbar)
             const int tabBarShape = 0;
@@ -2013,6 +2084,7 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
             QDockAreaLayoutItem item(new QDockAreaLayoutInfo(sep, dockPos, o,
                                                                 tabBarShape, mainWindow));
             stream >> item.pos >> item.size >> dummy >> dummy;
+            qCDebug(lcQpaDockWidgets) << "Restoring separator item" << item << debugCallMode;
             //we need to make sure the element is in the list so the dock widget can eventually be docked correctly
             if (!testing)
                 item_list.append(item);
@@ -2020,7 +2092,7 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
             //here we need to make sure we change the item in the item_list
             QDockAreaLayoutItem &lastItem = testing ? item : item_list.last();
 
-            if (!lastItem.subinfo->restoreState(stream, widgets, testing))
+            if (!lastItem.subinfo->restoreState(stream, widgets, callMode))
                 return false;
 
         } else {
@@ -2184,8 +2256,10 @@ bool QDockAreaLayoutInfo::updateTabBar() const
         QDockWidget *dw = qobject_cast<QDockWidget*>(item.widgetItem->widget());
         QString title = dw->d_func()->fixedWindowTitle;
         quintptr id = tabId(item);
+        const QIcon windowIcon = dw->testAttribute(Qt::WA_SetWindowIcon) ? dw->windowIcon()
+                                                                         : QIcon();
         if (tab_idx == tabBar->count()) {
-            tabBar->insertTab(tab_idx, title);
+            tabBar->insertTab(tab_idx, windowIcon, title);
 #if QT_CONFIG(tooltip)
             tabBar->setTabToolTip(tab_idx, title);
 #endif
@@ -2195,7 +2269,7 @@ bool QDockAreaLayoutInfo::updateTabBar() const
                     && qvariant_cast<quintptr>(tabBar->tabData(tab_idx + 1)) == id)
                 tabBar->removeTab(tab_idx);
             else {
-                tabBar->insertTab(tab_idx, title);
+                tabBar->insertTab(tab_idx, windowIcon, title);
 #if QT_CONFIG(tooltip)
                 tabBar->setTabToolTip(tab_idx, title);
 #endif
@@ -2384,30 +2458,30 @@ bool QDockAreaLayout::isValid() const
 
 void QDockAreaLayout::saveState(QDataStream &stream) const
 {
-    stream << (uchar) DockWidgetStateMarker;
+    stream << StateMarkers::DockWidget;
     int cnt = 0;
-    for (int i = 0; i < QInternal::DockCount; ++i) {
-        if (!docks[i].item_list.isEmpty())
+    for (const auto &dock : docks) {
+        if (!dock.item_list.isEmpty())
             ++cnt;
     }
     stream << cnt;
-    for (int i = 0; i < QInternal::DockCount; ++i) {
+    for (std::size_t i = 0; i < docks.size(); ++i) {
         if (docks[i].item_list.isEmpty())
             continue;
-        stream << i << docks[i].rect.size();
+        stream << int(i) << docks[i].rect.size();
         docks[i].saveState(stream);
     }
 
     stream << centralWidgetRect.size();
 
-    for (int i = 0; i < 4; ++i)
-        stream << static_cast<int>(corners[i]);
+    for (const auto &corner : corners)
+        stream << static_cast<int>(corner);
 }
 
-bool QDockAreaLayout::restoreState(QDataStream &stream, const QList<QDockWidget*> &_dockwidgets, bool testing)
+bool QDockAreaLayout::restoreState(QDataStream &stream, const QList<QDockWidget*> &_dockwidgets, QInternal::CallMode callMode)
 {
     QList<QDockWidget*> dockwidgets = _dockwidgets;
-
+    const bool testing = callMode == QInternal::Testing;
     int cnt;
     stream >> cnt;
     for (int i = 0; i < cnt; ++i) {
@@ -2418,7 +2492,7 @@ bool QDockAreaLayout::restoreState(QDataStream &stream, const QList<QDockWidget*
         if (!testing) {
             docks[pos].rect = QRect(QPoint(0, 0), size);
         }
-        if (!docks[pos].restoreState(stream, dockwidgets, testing)) {
+        if (!docks[pos].restoreState(stream, dockwidgets, callMode)) {
             stream.setStatus(QDataStream::ReadCorruptData);
             return false;
         }
@@ -2431,13 +2505,12 @@ bool QDockAreaLayout::restoreState(QDataStream &stream, const QList<QDockWidget*
     bool ok = stream.status() == QDataStream::Ok;
 
     if (ok) {
-        int cornerData[4];
-        for (int i = 0; i < 4; ++i)
-            stream >> cornerData[i];
-        if (stream.status() == QDataStream::Ok) {
-            for (int i = 0; i < 4; ++i)
-                corners[i] = static_cast<Qt::DockWidgetArea>(cornerData[i]);
-        }
+        QDockAreaLayoutCorners cornerData;
+        for (auto &val : cornerData)
+            stream >> val;
+
+        if (stream.status() == QDataStream::Ok)
+            corners = std::move(cornerData);
 
         if (!testing)
             fallbackToSizeHints = false;
@@ -2448,22 +2521,22 @@ bool QDockAreaLayout::restoreState(QDataStream &stream, const QList<QDockWidget*
 
 QList<int> QDockAreaLayout::indexOfPlaceHolder(const QString &objectName) const
 {
-    for (int i = 0; i < QInternal::DockCount; ++i) {
+    for (std::size_t i = 0; i < docks.size(); ++i) {
         QList<int> result = docks[i].indexOfPlaceHolder(objectName);
         if (!result.isEmpty()) {
-            result.prepend(i);
+            result.prepend(int(i));
             return result;
         }
     }
     return QList<int>();
 }
 
-QList<int> QDockAreaLayout::indexOf(QWidget *dockWidget) const
+QList<int> QDockAreaLayout::indexOf(const QWidget *dockWidget) const
 {
-    for (int i = 0; i < QInternal::DockCount; ++i) {
+    for (std::size_t i = 0; i < docks.size(); ++i) {
         QList<int> result = docks[i].indexOf(dockWidget);
         if (!result.isEmpty()) {
-            result.prepend(i);
+            result.prepend(int(i));
             return result;
         }
     }
@@ -2488,19 +2561,18 @@ QList<int> QDockAreaLayout::gapIndex(const QPoint &pos, bool disallowTabs) const
 #endif
 
 
-    for (int i = 0; i < QInternal::DockCount; ++i) {
+    for (std::size_t i = 0; i < docks.size(); ++i) {
         const QDockAreaLayoutInfo &info = docks[i];
 
         if (!info.isEmpty() && info.rect.contains(pos)) {
-            QList<int> result
-                = docks[i].gapIndex(pos, nestingEnabled, tabMode);
+            QList<int> result = info.gapIndex(pos, nestingEnabled, tabMode);
             if (!result.isEmpty())
-                result.prepend(i);
+                result.prepend(int(i));
             return result;
         }
     }
 
-    for (int i = 0; i < QInternal::DockCount; ++i) {
+    for (std::size_t i = 0; i < docks.size(); ++i) {
         const QDockAreaLayoutInfo &info = docks[i];
 
         if (info.isEmpty()) {
@@ -2509,9 +2581,9 @@ QList<int> QDockAreaLayout::gapIndex(const QPoint &pos, bool disallowTabs) const
                 if (opts & QMainWindow::ForceTabbedDocks && !info.item_list.isEmpty()) {
                     //in case of ForceTabbedDocks, we pass -1 in order to force the gap to be tabbed
                     //it mustn't be completely empty otherwise it won't work
-                    return QList<int>() << i << -1 << 0;
+                    return {int(i), -1, 0};
                 } else {
-                    return QList<int>() << i << 0;
+                    return {int(i), 0};
                 }
             }
         }
@@ -2560,20 +2632,20 @@ QRect QDockAreaLayout::gapRect(QInternal::DockPosition dockPos) const
 QList<int> QDockAreaLayout::findSeparator(const QPoint &pos) const
 {
     QList<int> result;
-    for (int i = 0; i < QInternal::DockCount; ++i) {
+    for (std::size_t i = 0; i < docks.size(); ++i) {
         const QDockAreaLayoutInfo &info = docks[i];
         if (info.isEmpty())
             continue;
-        QRect rect = separatorRect(i);
+        QRect rect = separatorRect(int(i));
         if (!rect.isNull() && sep == 1)
             rect.adjust(-2, -2, 2, 2);
         if (rect.contains(pos) && !info.hasFixedSize()) {
-            result << i;
+            result << int(i);
             break;
         } else if (info.rect.contains(pos)) {
             result = docks[i].findSeparator(pos);
             if (!result.isEmpty()) {
-                result.prepend(i);
+                result.prepend(int(i));
                 break;
             }
         }
@@ -2584,8 +2656,8 @@ QList<int> QDockAreaLayout::findSeparator(const QPoint &pos) const
 
 QDockAreaLayoutInfo *QDockAreaLayout::info(QWidget *widget)
 {
-    for (int i = 0; i < QInternal::DockCount; ++i) {
-        if (QDockAreaLayoutInfo *result = docks[i].info(widget))
+    for (auto &dock : docks) {
+        if (QDockAreaLayoutInfo *result = dock.info(widget))
             return result;
     }
 
@@ -2596,7 +2668,7 @@ QDockAreaLayoutInfo *QDockAreaLayout::info(const QList<int> &path)
 {
     Q_ASSERT(!path.isEmpty());
     const int index = path.first();
-    Q_ASSERT(index >= 0 && index < QInternal::DockCount);
+    Q_ASSERT(index >= 0 && index < int(docks.size()));
 
     if (path.size() == 1)
         return &docks[index];
@@ -2613,7 +2685,7 @@ QDockAreaLayoutItem &QDockAreaLayout::item(const QList<int> &path)
 {
     Q_ASSERT(!path.isEmpty());
     const int index = path.first();
-    Q_ASSERT(index >= 0 && index < QInternal::DockCount);
+    Q_ASSERT(index >= 0 && index < int(docks.size()));
     return docks[index].item(path.mid(1));
 }
 
@@ -2621,7 +2693,7 @@ QRect QDockAreaLayout::itemRect(const QList<int> &path) const
 {
     Q_ASSERT(!path.isEmpty());
     const int index = path.first();
-    Q_ASSERT(index >= 0 && index < QInternal::DockCount);
+    Q_ASSERT(index >= 0 && index < int(docks.size()));
     return docks[index].itemRect(path.mid(1));
 }
 
@@ -2651,7 +2723,7 @@ QRect QDockAreaLayout::separatorRect(const QList<int> &path) const
     Q_ASSERT(!path.isEmpty());
 
     const int index = path.first();
-    Q_ASSERT(index >= 0 && index < QInternal::DockCount);
+    Q_ASSERT(index >= 0 && index < int(docks.size()));
 
     if (path.size() == 1)
         return separatorRect(index);
@@ -2663,7 +2735,7 @@ bool QDockAreaLayout::insertGap(const QList<int> &path, QLayoutItem *dockWidgetI
 {
     Q_ASSERT(!path.isEmpty());
     const int index = path.first();
-    Q_ASSERT(index >= 0 && index < QInternal::DockCount);
+    Q_ASSERT(index >= 0 && index < int(docks.size()));
     return docks[index].insertGap(path.mid(1), dockWidgetItem);
 }
 
@@ -2672,7 +2744,7 @@ QLayoutItem *QDockAreaLayout::plug(const QList<int> &path)
 #if QT_CONFIG(tabbar)
     Q_ASSERT(!path.isEmpty());
     const int index = path.first();
-    Q_ASSERT(index >= 0 && index < QInternal::DockCount);
+    Q_ASSERT(index >= 0 && index < int(docks.size()));
     QLayoutItem *item = docks[index].plug(path.mid(1));
     docks[index].reparentWidgets(mainWindow);
     return item;
@@ -2685,7 +2757,7 @@ QLayoutItem *QDockAreaLayout::unplug(const QList<int> &path)
 {
     Q_ASSERT(!path.isEmpty());
     const int index = path.first();
-    Q_ASSERT(index >= 0 && index < QInternal::DockCount);
+    Q_ASSERT(index >= 0 && index < int(docks.size()));
     return docks[index].unplug(path.mid(1));
 }
 
@@ -2693,7 +2765,7 @@ void QDockAreaLayout::remove(const QList<int> &path)
 {
     Q_ASSERT(!path.isEmpty());
     const int index = path.first();
-    Q_ASSERT(index >= 0 && index < QInternal::DockCount);
+    Q_ASSERT(index >= 0 && index < int(docks.size()));
     docks[index].remove(path.mid(1));
 }
 
@@ -3003,8 +3075,8 @@ void QDockAreaLayout::fitLayout()
 
 void QDockAreaLayout::clear()
 {
-    for (int i = 0; i < QInternal::DockCount; ++i)
-        docks[i].clear();
+    for (auto &dock : docks)
+        dock.clear();
 
     rect = QRect();
     centralWidgetRect = QRect();
@@ -3136,7 +3208,9 @@ bool QDockAreaLayout::restoreDockWidget(QDockWidget *dockWidget)
 
     if (placeHolder->window) {
         const QRect r = constrainedRect(placeHolder->topLevelRect, dockWidget);
-        dockWidget->d_func()->setWindowState(true, true, r);
+        dockWidget->d_func()->setWindowState(QDockWidgetPrivate::WindowStates(
+                                            {QDockWidgetPrivate::WindowState::Floating,
+                                             QDockWidgetPrivate::WindowState::Unplug}), r);
     }
     dockWidget->setVisible(!placeHolder->hidden);
 
@@ -3150,6 +3224,7 @@ void QDockAreaLayout::addDockWidget(QInternal::DockPosition pos, QDockWidget *do
                                              Qt::Orientation orientation)
 {
     QLayoutItem *dockWidgetItem = new QDockWidgetItem(dockWidget);
+    Q_ASSERT(size_t(pos) < docks.size());
     QDockAreaLayoutInfo &info = docks[pos];
     if (orientation == info.o || info.item_list.size() <= 1) {
         // empty dock areas, or dock areas containing exactly one widget can have their orientation
@@ -3201,7 +3276,7 @@ void QDockAreaLayout::resizeDocks(const QList<QDockWidget *> &docks,
         qWarning("QMainWidget::resizeDocks: size of the lists are not the same");
         return;
     }
-    int count = docks.size();
+    const int count = docks.size();
     fallbackToSizeHints = false;
     for (int i = 0; i < count; ++i) {
         QList<int> path = indexOf(docks[i]);
@@ -3235,7 +3310,8 @@ void QDockAreaLayout::resizeDocks(const QList<QDockWidget *> &docks,
         }
 
         const int dockNum = path.constFirst();
-        Q_ASSERT(dockNum < QInternal::DockCount);
+        const int numberDocks = this->docks.size();
+        Q_ASSERT(dockNum < numberDocks);
         QRect &r = this->docks[dockNum].rect;
         QSize s = r.size();
         rpick(o, s) = size;
@@ -3258,15 +3334,15 @@ void QDockAreaLayout::splitDockWidget(QDockWidget *after,
     removePlaceHolder(dockWidget->objectName());
 }
 
-void QDockAreaLayout::apply(bool animate)
+void QDockAreaLayout::apply(QWidgetAnimator::AnimationRule rule)
 {
     QWidgetAnimator &widgetAnimator = qt_mainwindow_layout(mainWindow)->widgetAnimator;
 
-    for (int i = 0; i < QInternal::DockCount; ++i)
-        docks[i].apply(animate);
+    for (auto &dock : docks)
+        dock.apply(rule);
     if (centralWidgetItem != nullptr && !centralWidgetItem->isEmpty()) {
         widgetAnimator.animate(centralWidgetItem->widget(), centralWidgetRect,
-                                animate);
+                                rule);
     }
 #if QT_CONFIG(tabbar)
     if (sep == 1)
@@ -3312,41 +3388,51 @@ int QDockAreaLayout::separatorMove(const QList<int> &separator, const QPoint &or
                                                 const QPoint &dest)
 {
     int delta = 0;
-    int index = separator.last();
+    const auto dockPosition = static_cast<QInternal::DockPosition>(separator.last());
+    const bool isHorizontal =
+            dockPosition == QInternal::LeftDock || dockPosition == QInternal::RightDock;
+    const bool isLeftOrTop = dockPosition == QInternal::LeftDock || dockPosition == QInternal::TopDock;
+    const bool separatorIsWithinDock = separator.size() > 1;
 
-    if (separator.size() > 1) {
+    if (separatorIsWithinDock) {
+        // The dock area contains more than one dock widget and therefore an internal separator,
+        // which is being moved. The move changes the sizes of the dock widgets docked in the dock area.
+        // The dock area's geometry remains unchanged.
         QDockAreaLayoutInfo *info = this->info(separator);
         delta = pick(info->o, dest - origin);
         if (delta != 0)
-            delta = info->separatorMove(index, delta);
-        info->apply(false);
+            delta = info->separatorMove(dockPosition, delta);
+        info->apply(QWidgetAnimator::AnimationRule::Stop);
         return delta;
     }
 
+    // The dock area's external separator is moved. The move changes the size of the contained
+    // dock widgets, as well as the size of neighbouring dock areas and their docked dock widgets.
+    // If the move shrinks the contained dock widgets to their minimum size,
+    // the entire dock area will attempted to be moved, retaining the minumum size.
+    // If the contained dock widgets have to be shrunk below minimum size, they will be collapsed.
+
     QList<QLayoutStruct> list;
 
-    if (index == QInternal::LeftDock || index == QInternal::RightDock)
+    if (isHorizontal)
         getGrid(nullptr, &list);
     else
         getGrid(&list, nullptr);
 
-    int sep_index = index == QInternal::LeftDock || index == QInternal::TopDock
-                        ? 0 : 1;
-    Qt::Orientation o = index == QInternal::LeftDock || index == QInternal::RightDock
-                        ? Qt::Horizontal
-                        : Qt::Vertical;
+    const int sep_index = isLeftOrTop ? 0 : 1;
+    const Qt::Orientation o = isHorizontal ? Qt::Horizontal : Qt::Vertical;
 
     delta = pick(o, dest - origin);
     delta = separatorMoveHelper(list, sep_index, delta, sep);
 
     fallbackToSizeHints = false;
 
-    if (index == QInternal::LeftDock || index == QInternal::RightDock)
+    if (isHorizontal)
         setGrid(nullptr, &list);
     else
         setGrid(&list, nullptr);
 
-    apply(false);
+    apply(QWidgetAnimator::AnimationRule::Stop);
 
     return delta;
 }
@@ -3360,7 +3446,7 @@ int QDockAreaLayoutInfo::separatorMove(const QList<int> &separator, const QPoint
     delta = pick(info->o, dest - origin);
     if (delta != 0)
         delta = info->separatorMove(index, delta);
-    info->apply(false);
+    info->apply(QWidgetAnimator::AnimationRule::Stop);
     return delta;
 }
 
@@ -3409,8 +3495,7 @@ QLayoutItem *QDockAreaLayout::itemAt(int *x, int index) const
 {
     Q_ASSERT(x != nullptr);
 
-    for (int i = 0; i < QInternal::DockCount; ++i) {
-        const QDockAreaLayoutInfo &dock = docks[i];
+    for (const auto &dock : docks) {
         if (QLayoutItem *ret = dock.itemAt(x, index))
             return ret;
     }
@@ -3425,8 +3510,7 @@ QLayoutItem *QDockAreaLayout::takeAt(int *x, int index)
 {
     Q_ASSERT(x != nullptr);
 
-    for (int i = 0; i < QInternal::DockCount; ++i) {
-        QDockAreaLayoutInfo &dock = docks[i];
+    for (auto &dock : docks) {
         if (QLayoutItem *ret = dock.takeAt(x, index))
             return ret;
     }
@@ -3442,18 +3526,16 @@ QLayoutItem *QDockAreaLayout::takeAt(int *x, int index)
 
 void QDockAreaLayout::deleteAllLayoutItems()
 {
-    for (int i = 0; i < QInternal::DockCount; ++i)
-        docks[i].deleteAllLayoutItems();
+    for (auto &dock : docks)
+        dock.deleteAllLayoutItems();
 }
 
 #if QT_CONFIG(tabbar)
 QSet<QTabBar*> QDockAreaLayout::usedTabBars() const
 {
     QSet<QTabBar*> result;
-    for (int i = 0; i < QInternal::DockCount; ++i) {
-        const QDockAreaLayoutInfo &dock = docks[i];
+    for (const auto &dock : docks)
         result += dock.usedTabBars();
-    }
     return result;
 }
 
@@ -3465,10 +3547,8 @@ QSet<QWidget*> QDockAreaLayout::usedSeparatorWidgets() const
     result.reserve(numSeparators);
     for (int i = 0; i < numSeparators; ++i)
         result << separatorWidgets.at(i);
-    for (int i = 0; i < QInternal::DockCount; ++i) {
-        const QDockAreaLayoutInfo &dock = docks[i];
+    for (const auto &dock : docks)
         result += dock.usedSeparatorWidgets();
-    }
     return result;
 }
 #endif

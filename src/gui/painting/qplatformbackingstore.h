@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMBACKINGSTORE_H
 #define QPLATFORMBACKINGSTORE_H
@@ -23,7 +24,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcQpaBackingStore, Q_GUI_EXPORT)
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaBackingStore, Q_GUI_EXPORT)
 
 class QRegion;
 class QRect;
@@ -151,7 +152,8 @@ public:
                                  const QRegion &region,
                                  const QPoint &offset,
                                  QPlatformTextureList *textures,
-                                 bool translucentBackground);
+                                 bool translucentBackground,
+                                 qreal sourceTransformFactor = 0);
 
     virtual QImage toImage() const;
 

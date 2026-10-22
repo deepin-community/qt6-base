@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 /*!
@@ -232,9 +233,7 @@ QSslCertificate &QSslCertificate::operator=(const QSslCertificate &other)
 /*!
     \fn void QSslCertificate::swap(QSslCertificate &other)
     \since 5.0
-
-    Swaps this certificate instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{certificate instance}
 */
 
 /*!
@@ -632,6 +631,12 @@ QList<QSslCertificate> QSslCertificate::fromPath(const QString &path,
                                                  QSsl::EncodingFormat format,
                                                  PatternSyntax syntax)
 {
+    if (path.isEmpty())
+        return {};
+
+    if (syntax == PatternSyntax::FixedString && QFileInfo(path).isFile())
+        return fromFile(path, format);
+
     // $, (,), *, +, ., ?, [, ,], ^, {, | and }.
 
     // make sure to use the same path separators on Windows and Unix like systems.
@@ -649,9 +654,10 @@ QList<QSslCertificate> QSslCertificate::fromPath(const QString &path,
     else if (syntax == PatternSyntax::RegularExpression)
         pos = sourcePath.indexOf(QRegularExpression("[\\$\\(\\)\\*\\+\\.\\?\\[\\]\\^\\{\\}\\|]"_L1));
 #else
-    if (syntax == PatternSyntax::Wildcard || syntax == PatternSyntax::RegExp)
+    if (syntax == PatternSyntax::Wildcard || syntax == PatternSyntax::RegularExpression) {
         qWarning("Regular expression support is disabled in this build. Only fixed string can be searched");
         return QList<QSslCertificate>();
+    }
 #endif
 
     if (pos != -1) {
@@ -664,15 +670,8 @@ QList<QSslCertificate> QSslCertificate::fromPath(const QString &path,
             pathPrefix = {};
     } else {
         // Check if the path is a file.
-        if (QFileInfo(sourcePath).isFile()) {
-            QFile file(sourcePath);
-            QIODevice::OpenMode openMode = QIODevice::ReadOnly;
-            if (format == QSsl::Pem)
-                openMode |= QIODevice::Text;
-            if (file.open(openMode))
-                return QSslCertificate::fromData(file.readAll(), format);
-            return QList<QSslCertificate>();
-        }
+        if (QFileInfo(sourcePath).isFile())
+            return fromFile(sourcePath, format);
     }
 
     // Special case - if the prefix ends up being nothing, use "." instead.
@@ -709,12 +708,7 @@ QList<QSslCertificate> QSslCertificate::fromPath(const QString &path,
             continue;
 #endif
 
-        QFile file(filePath);
-        QIODevice::OpenMode openMode = QIODevice::ReadOnly;
-        if (format == QSsl::Pem)
-            openMode |= QIODevice::Text;
-        if (file.open(openMode))
-            certs += QSslCertificate::fromData(file.readAll(), format);
+        certs += QSslCertificate::fromFile(filePath, format);
     }
     return certs;
 }
@@ -757,6 +751,30 @@ QList<QSslCertificate> QSslCertificate::fromData(const QByteArray &data, QSsl::E
     }
 
     return reader(data, -1);
+}
+
+/*!
+    \since 6.10
+
+    Reads the data from the file \a filePath and parses all certificates
+    that are encoded in the specified \a format and returns a list of
+    QSslCertificate objects.
+
+    If \a filePath isn't a regular file, this method will return an empty
+    list.
+
+    \sa fromData(), fromPath()
+*/
+QList<QSslCertificate> QSslCertificate::fromFile(const QString &filePath,
+                                                 QSsl::EncodingFormat format)
+{
+    QFile file(filePath);
+    QIODevice::OpenMode openMode = QIODevice::ReadOnly;
+    if (format == QSsl::Pem)
+        openMode |= QIODevice::Text;
+    if (file.open(openMode))
+        return QSslCertificate::fromData(file.readAll(), format);
+    return {};
 }
 
 #ifndef QT_NO_SSL
@@ -973,9 +991,8 @@ QString QSslCertificate::subjectDisplayName() const
 }
 
 /*!
-    Returns the hash value for the \a key, using \a seed to seed the calculation.
     \since 5.4
-    \relates QHash
+    \qhashold{QHash}
 */
 size_t qHash(const QSslCertificate &key, size_t seed) noexcept
 {

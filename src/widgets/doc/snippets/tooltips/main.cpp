@@ -29,7 +29,7 @@ private:
 Window::Window(QWidget *parent)
     : QMainWindow(parent)
 {
-//! [action_tooltip]
+    //! [action_tooltip]
     QAction *openAction = new QAction(tr("&Open..."));
     openAction->setToolTip(tr("Open an existing file"));
 
@@ -38,12 +38,12 @@ Window::Window(QWidget *parent)
 
     fileMenu->addAction(openAction);
     fileToolBar->addAction(openAction);
-//! [action_tooltip]
+    //! [action_tooltip]
 
-//! [static_tooltip]
+    //! [static_tooltip]
     searchBar = new SearchBar;
     searchBar->setToolTip(tr("Search in the current document"));
-//! [static_tooltip]
+    //! [static_tooltip]
 
     fileToolBar->addWidget(searchBar);
 }
@@ -52,9 +52,9 @@ Window::Window(QWidget *parent)
 bool Window::event(QEvent *event)
 {
     if (event->type() == QEvent::ToolTip) {
-        QHelpEvent *helpEvent = static_cast<QHelpEvent *>(event);
+        auto *helpEvent = static_cast<QHelpEvent *>(event);
         if (Element *element = elementAt(helpEvent->pos())) {
-            QToolTip::showText(helpEvent->globalPos(), element->toolTip());
+            QToolTip::showText(helpEvent->globalPos(), element->toolTip(), this);
         } else {
             QToolTip::hideText();
             event->ignore();

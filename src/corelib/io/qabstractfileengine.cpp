@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "private/qabstractfileengine_p.h"
 #include "private/qfsfileengine_p.h"
@@ -31,6 +32,9 @@ static QString appendSlashIfNeeded(const QString &path)
         return QString{path + u'/'};
     return path;
 }
+
+QAbstractFileEnginePrivate::~QAbstractFileEnginePrivate()
+    = default;
 
 /*!
     \class QAbstractFileEngineHandler
@@ -214,7 +218,7 @@ std::unique_ptr<QAbstractFileEngine> QAbstractFileEngine::create(const QString &
     A QAbstractFileEngine refers to one file or one directory. If the referent
     is a file, the setFileName(), rename(), and remove() functions are
     applicable. If the referent is a directory the mkdir(), rmdir(), and
-    entryList() functions are applicable. In all cases the caseSensitive(),
+    beginEntryList() functions are applicable. In all cases the caseSensitive(),
     isRelativePath(), fileFlags(), ownerId(), owner(), and fileTime()
     functions are applicable.
 
@@ -318,9 +322,8 @@ std::unique_ptr<QAbstractFileEngine> QAbstractFileEngine::create(const QString &
 
    \sa setFileName()
  */
-QAbstractFileEngine::QAbstractFileEngine() : d_ptr(new QAbstractFileEnginePrivate)
+QAbstractFileEngine::QAbstractFileEngine() : d_ptr(new QAbstractFileEnginePrivate(this))
 {
-    d_ptr->q_ptr = this;
 }
 
 /*!
@@ -330,7 +333,7 @@ QAbstractFileEngine::QAbstractFileEngine() : d_ptr(new QAbstractFileEnginePrivat
  */
 QAbstractFileEngine::QAbstractFileEngine(QAbstractFileEnginePrivate &dd) : d_ptr(&dd)
 {
-    d_ptr->q_ptr = this;
+    Q_ASSERT(d_ptr->q_ptr == this);
 }
 
 /*!
@@ -579,46 +582,6 @@ bool QAbstractFileEngine::isRelativePath() const
 }
 
 /*!
-    Requests that a list of all the files matching the \a filters
-    list based on the \a filterNames in the file engine's directory
-    are returned.
-
-    Should return an empty list if the file engine refers to a file
-    rather than a directory, or if the directory is unreadable or does
-    not exist or if nothing matches the specifications.
-
-    \sa setFileName()
- */
-QStringList QAbstractFileEngine::entryList(QDir::Filters filters, const QStringList &filterNames) const
-{
-    QStringList ret;
-#ifdef QT_BOOTSTRAPPED
-    Q_UNUSED(filters);
-    Q_UNUSED(filterNames);
-    Q_UNREACHABLE_RETURN(ret);
-#else
-    for (const auto &dirEntry : QDirListing(fileName(), filterNames, filters.toInt()))
-        ret.emplace_back(dirEntry.fileName());
-    return ret;
-#endif
-}
-
-QStringList QAbstractFileEngine::entryList(QDirListing::IteratorFlags filters,
-                                           const QStringList &filterNames) const
-{
-    QStringList ret;
-#ifdef QT_BOOTSTRAPPED
-    Q_UNUSED(filters);
-    Q_UNUSED(filterNames);
-    Q_UNREACHABLE_RETURN(ret);
-#else
-    for (const auto &dirEntry : QDirListing(fileName(), filterNames, filters))
-        ret.emplace_back(dirEntry.fileName());
-    return ret;
-#endif
-}
-
-/*!
     This function should return the set of OR'd flags that are true
     for the file engine's file, and that are in the \a type's OR'd
     members.
@@ -780,7 +743,7 @@ bool QAbstractFileEngine::atEnd() const
     \since 4.4
 
     Maps \a size bytes of the file into memory starting at \a offset.
-    Returns a pointer to the memory if successful; otherwise returns \c false
+    Returns a pointer to the memory if successful; otherwise returns \c nullptr
     if, for example, an error occurs.
 
     This function bases its behavior on calling extension() with
@@ -827,10 +790,10 @@ bool QAbstractFileEngine::unmap(uchar *address)
 
     Returns \c true on success; otherwise, \c false is returned.
  */
-bool QAbstractFileEngine::cloneTo(QAbstractFileEngine *target)
+QAbstractFileEngine::TriStateResult QAbstractFileEngine::cloneTo(QAbstractFileEngine *target)
 {
     Q_UNUSED(target);
-    return false;
+    return TriStateResult::NotSupported;
 }
 
 /*!
@@ -1031,16 +994,6 @@ QFileInfo QAbstractFileEngineIterator::currentFileInfo() const
 
     \sa QDirListing
 */
-QAbstractFileEngine::IteratorUniquePtr
-QAbstractFileEngine::beginEntryList(const QString &path, QDir::Filters filters,
-                                    const QStringList &filterNames)
-{
-    Q_UNUSED(path);
-    Q_UNUSED(filters);
-    Q_UNUSED(filterNames);
-    return {};
-}
-
 QAbstractFileEngine::IteratorUniquePtr
 QAbstractFileEngine::beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
                                     const QStringList &filterNames)

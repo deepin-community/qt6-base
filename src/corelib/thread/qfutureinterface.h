@@ -1,11 +1,13 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFUTUREINTERFACE_H
 #define QFUTUREINTERFACE_H
 
 #include <QtCore/qmutex.h>
 #include <QtCore/qresultstore.h>
+#include <QtCore/qtcoreexports.h>
 #ifndef QT_NO_EXCEPTIONS
 #include <exception>
 #endif
@@ -28,7 +30,7 @@ class QFutureWatcherBasePrivate;
 
 namespace QtPrivate {
 template<typename Function, typename ResultType, typename ParentResultType>
-class Continuation;
+class CompactContinuation;
 
 class ExceptionStore;
 
@@ -40,9 +42,13 @@ template<class Function, class ResultType>
 class FailureHandler;
 #endif
 
+struct UnwrapHandler;
+
+#if QT_CORE_REMOVED_SINCE(6, 10)
 void Q_CORE_EXPORT watchContinuationImpl(const QObject *context,
                                          QtPrivate::QSlotObjectBase *slotObj,
                                          QFutureInterfaceBase &fi);
+#endif // QT_CORE_REMOVED_SINCE(6, 10)
 }
 
 class Q_CORE_EXPORT QFutureInterfaceBase
@@ -124,6 +130,9 @@ public:
 
     void cancel();
     void cancelAndFinish() { cancel(CancelMode::CancelAndFinish); }
+    void cancelChain();
+    void setAddResultsIfCanceledEnabled(bool enable);
+    bool isAddResultsIfCanceledEnabled() const;
 
     void setSuspended(bool suspend);
     void toggleSuspended();
@@ -164,6 +173,7 @@ public:
 #ifndef QFUTURE_TEST
 private:
 #endif
+    friend class QFutureInterfaceBasePrivate;
     QFutureInterfaceBasePrivate *d;
 
 private:
@@ -171,7 +181,7 @@ private:
     friend class QFutureWatcherBasePrivate;
 
     template<typename Function, typename ResultType, typename ParentResultType>
-    friend class QtPrivate::Continuation;
+    friend class QtPrivate::CompactContinuation;
 
     template<class Function, class ResultType>
     friend class QtPrivate::CanceledHandler;
@@ -181,16 +191,34 @@ private:
     friend class QtPrivate::FailureHandler;
 #endif
 
+    friend struct QtPrivate::UnwrapHandler;
+
+#if QT_CORE_REMOVED_SINCE(6, 10)
     friend Q_CORE_EXPORT void QtPrivate::watchContinuationImpl(
             const QObject *context, QtPrivate::QSlotObjectBase *slotObj, QFutureInterfaceBase &fi);
+#endif // QT_CORE_REMOVED_SINCE(6, 10)
 
     template<class T>
     friend class QPromise;
 
 protected:
+    enum class ContinuationType : quint8
+    {
+        Unknown,
+        Then,
+        OnFailed,
+        OnCanceled,
+    };
+
+#if QT_CORE_REMOVED_SINCE(6, 10)
     void setContinuation(std::function<void(const QFutureInterfaceBase &)> func);
     void setContinuation(std::function<void(const QFutureInterfaceBase &)> func,
                          QFutureInterfaceBasePrivate *continuationFutureData);
+#endif // QT_CORE_REMOVED_SINCE(6, 10)
+    void setContinuation(std::function<void(const QFutureInterfaceBase &)> func,
+                         void *continuationFutureData, ContinuationType type);
+    void setContinuation(const QObject *context, std::function<void()> func,
+                         const QVariant &continuationFuture, ContinuationType type);
     void cleanContinuation();
     void runContinuation() const;
 
@@ -201,6 +229,7 @@ protected:
 
     enum class CancelMode { CancelOnly, CancelAndFinish };
     void cancel(CancelMode mode);
+    void cancelChain(CancelMode mode);
 };
 
 inline void swap(QFutureInterfaceBase &lhs, QFutureInterfaceBase &rhs) noexcept
@@ -292,7 +321,7 @@ template <typename T>
 inline bool QFutureInterface<T>::reportResult(const T *result, int index)
 {
     QMutexLocker<QMutex> locker{&mutex()};
-    if (this->queryState(Canceled) || this->queryState(Finished))
+    if ((this->queryState(Canceled) && !this->isAddResultsIfCanceledEnabled()) || this->queryState(Finished))
         return false;
 
     Q_ASSERT(!hasException());
@@ -315,7 +344,7 @@ template<typename...Args, std::enable_if_t<std::is_constructible_v<T, Args...>, 
 bool QFutureInterface<T>::reportAndEmplaceResult(int index, Args&&...args)
 {
     QMutexLocker<QMutex> locker{&mutex()};
-    if (queryState(Canceled) || queryState(Finished))
+    if ((queryState(Canceled) && !isAddResultsIfCanceledEnabled()) || queryState(Finished))
         return false;
 
     Q_ASSERT(!hasException());
@@ -351,7 +380,7 @@ template<typename T>
 inline bool QFutureInterface<T>::reportResults(const QList<T> &_results, int beginIndex, int count)
 {
     QMutexLocker<QMutex> locker{&mutex()};
-    if (this->queryState(Canceled) || this->queryState(Finished))
+    if ((this->queryState(Canceled) && !this->isAddResultsIfCanceledEnabled()) || this->queryState(Finished))
         return false;
 
     Q_ASSERT(!hasException());
@@ -422,12 +451,11 @@ inline QList<T> QFutureInterface<T>::results()
 template<typename T>
 T QFutureInterface<T>::takeResult()
 {
-    Q_ASSERT(isValid());
-
     // Note: we wait for all, this is intentional,
     // not to mess with other unready results.
     waitForResult(-1);
 
+    Q_ASSERT(isValid());
     Q_ASSERT(!hasException());
 
     const QMutexLocker<QMutex> locker{&mutex()};
@@ -443,10 +471,9 @@ T QFutureInterface<T>::takeResult()
 template<typename T>
 std::vector<T> QFutureInterface<T>::takeResults()
 {
-    Q_ASSERT(isValid());
-
     waitForResult(-1);
 
+    Q_ASSERT(isValid());
     Q_ASSERT(!hasException());
 
     std::vector<T> res;

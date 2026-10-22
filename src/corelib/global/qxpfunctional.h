@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef QXPFUNCTIONAL_H
 #define QXPFUNCTIONAL_H
 
@@ -72,7 +73,7 @@ template <bool noex, class Const, class R, class... ArgTypes>
 class function_ref_base
 {
 protected:
-    ~function_ref_base() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(function_ref_base)
 
     using BoundEntityType = detail::BoundEntityType<Const>;
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qkeysequence.h"
 #include "qkeysequence_p.h"
@@ -189,11 +190,8 @@ void Q_GUI_EXPORT qt_set_sequence_auto_mnemonic(bool b) { qt_sequence_no_mnemoni
     When creating key sequences for non-standard shortcuts, you should use
     human-readable strings in preference to hard-coded integer values.
 
-    QKeySequence objects can be cast to a QString to obtain a human-readable
-    translated version of the sequence. Similarly, the toString() function
-    produces human-readable strings for use in menus. On Apple platforms, the
-    appropriate symbols are used to describe keyboard shortcuts using special
-    keys on the Macintosh keyboard.
+    QKeySequence object can be serialized to human-readable strings with the
+    toString() function.
 
     An alternative way to specify hard-coded key codes is to use the Unicode
     code point of the character; for example, 'A' gives the same key sequence
@@ -231,7 +229,7 @@ void Q_GUI_EXPORT qt_set_sequence_auto_mnemonic(bool b) { qt_sequence_no_mnemoni
     \row    \li Cut              \li Ctrl+X, Shift+Del                    \li Ctrl+X, Meta+K           \li Ctrl+X, F20, Shift+Del \li Ctrl+X, F20, Shift+Del
     \row    \li Copy             \li Ctrl+C, Ctrl+Ins                     \li Ctrl+C                   \li Ctrl+C, F16, Ctrl+Ins  \li Ctrl+C, F16, Ctrl+Ins
     \row    \li Paste            \li Ctrl+V, Shift+Ins                    \li Ctrl+V, Meta+Y           \li Ctrl+V, F18, Shift+Ins \li Ctrl+V, F18, Shift+Ins
-    \row    \li Preferences      \li                                      \li Ctrl+,                   \li              \li
+    \row    \li Preferences      \li                                      \li Ctrl+,                   \li Ctrl+Shift+, \li
     \row    \li Undo             \li Ctrl+Z, Alt+Backspace                \li Ctrl+Z                   \li Ctrl+Z, F14  \li Ctrl+Z, F14
     \row    \li Redo             \li Ctrl+Y, Shift+Ctrl+Z, Alt+Shift+Backspace \li Ctrl+Shift+Z        \li Ctrl+Shift+Z \li Ctrl+Shift+Z
     \row    \li Back             \li Alt+Left, Backspace                  \li Ctrl+[                   \li Alt+Left     \li Alt+Left
@@ -576,6 +574,8 @@ static constexpr struct {
 
     { Qt::Key_MicVolumeUp,                QT_TRANSLATE_NOOP("QShortcut", "Microphone Volume Up") },
     { Qt::Key_MicVolumeDown,              QT_TRANSLATE_NOOP("QShortcut", "Microphone Volume Down") },
+
+    { Qt::Key_Keyboard,                   QT_TRANSLATE_NOOP("QShortcut", "Keyboard") },
 
     { Qt::Key_New,                        QT_TRANSLATE_NOOP("QShortcut", "New") },
     { Qt::Key_Open,                       QT_TRANSLATE_NOOP("QShortcut", "Open") },
@@ -1103,10 +1103,16 @@ QKeyCombination QKeySequencePrivate::decodeString(QString accel, QKeySequence::S
         return Qt::Key_unknown;
 #endif
 
+    int singlePlus = -1;
     qsizetype i = 0;
     qsizetype lastI = 0;
     while ((i = sl.indexOf(u'+', i + 1)) != -1) {
-        const QStringView sub = QStringView{sl}.mid(lastI, i - lastI + 1);
+        QStringView sub = QStringView{ sl }.mid(lastI, i - lastI + 1);
+        while (sub.size() > 1 && sub.at(0) == u' ') {
+            sub = sub.mid(1);
+            ++lastI;
+        }
+
         // If we get here the shortcuts contains at least one '+'. We break up
         // along the following strategy:
         //      Meta+Ctrl++   ( "Meta+", "Ctrl+", "+" )
@@ -1118,33 +1124,49 @@ QKeyCombination QKeySequencePrivate::decodeString(QString accel, QKeySequence::S
         // Only '+' can have length 1.
         if (sub.size() == 1) {
             // Make sure we only encounter a single '+' at the end of the accel
-            if (accel.lastIndexOf(u'+') != accel.size()-1)
+            if (singlePlus >= 0)
                 return Qt::Key_unknown;
+            singlePlus = lastI;
         } else {
-            // Identify the modifier
-            bool validModifier = false;
-            for (int j = 0; j < modifs.size(); ++j) {
-                const QModifKeyName &mkf = modifs.at(j);
-                if (sub == mkf.name) {
-                    ret |= mkf.qt_key;
-                    validModifier = true;
-                    break; // Shortcut, since if we find an other it would/should just be a dup
-                }
-            }
 
+            const auto identifyModifier = [&](QStringView sub) {
+                for (int j = 0; j < modifs.size(); ++j) {
+                    const QModifKeyName &mkf = modifs.at(j);
+                    if (sub == mkf.name) {
+                        ret |= mkf.qt_key;
+                        return true; // Shortcut, since if we find another it would/should just be a dup
+                    }
+                }
+                return false;
+            };
+
+            bool validModifier = identifyModifier(sub);
+
+            if (!validModifier) {
+                // Try harder with slower code that trims spaces
+                const QString cleanedSub = sub.toString().remove(u' ');
+                validModifier = identifyModifier(cleanedSub);
+            }
             if (!validModifier)
                 return Qt::Key_unknown;
         }
         lastI = i + 1;
     }
 
-    qsizetype p = accel.lastIndexOf(u'+', accel.size() - 2); // -2 so that Ctrl++ works
+    qsizetype p = accel.lastIndexOf(u'+', singlePlus > 0 ? singlePlus - 1 : accel.size() - 1);
     QStringView accelRef(accel);
     if (p > 0)
         accelRef = accelRef.mid(p + 1);
 
+    while (accelRef.size() > 1 && accelRef.at(0) == u' ')
+        accelRef = accelRef.mid(1);
+    while (accelRef.size() > 1 && accelRef.endsWith(u' '))
+        accelRef.chop(1);
+
     int fnum = 0;
-    if (accelRef.size() == 1) {
+    if (accelRef.isEmpty())
+        return Qt::Key_unknown;
+    else if (accelRef.size() == 1) {
 #if defined(Q_OS_APPLE)
         int qtKey = qtkeyForAppleSymbol(accelRef.at(0));
         if (qtKey != -1) {
@@ -1277,7 +1299,10 @@ QString QKeySequencePrivate::keyName(Qt::Key key, QKeySequence::SequenceFormat f
     bool nativeText = (format == QKeySequence::NativeText);
     QString p;
 
-    if (key && key < Qt::Key_Escape && key != Qt::Key_Space) {
+    if (nativeText && (key > 0x00 && key <= 0x1f)) {
+        // Map C0 control codes to the corresponding Control Pictures
+        p = QChar::fromUcs2(0x2400 + key);
+    } else if (key && key < Qt::Key_Escape && key != Qt::Key_Space) {
         if (!QChar::requiresSurrogates(key)) {
             p = QChar::fromUcs2(key).toUpper();
         } else {
@@ -1385,9 +1410,7 @@ QKeySequence &QKeySequence::operator=(const QKeySequence &other)
 /*!
     \fn void QKeySequence::swap(QKeySequence &other)
     \since 4.8
-
-    Swaps key sequence \a other with this key sequence. This operation is very
-    fast and never fails.
+    \memberswap{key sequence}
 */
 
 /*!
@@ -1412,10 +1435,7 @@ bool QKeySequence::operator==(const QKeySequence &other) const
 
 /*!
     \since 5.6
-    \relates QKeySequence
-
-    Calculates the hash value of \a key, using
-    \a seed to seed the calculation.
+    \qhashold{QKeySequence}
 */
 size_t qHash(const QKeySequence &key, size_t seed) noexcept
 {

@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusmetaobject_p.h"
 
@@ -172,6 +173,7 @@ QDBusMetaObjectGenerator::findType(const QByteArray &signature,
             // type is still unknown or doesn't match back to the signature that it
             // was expected to, so synthesize a fake type
             typeName = "QDBusRawType<0x" + signature.toHex() + ">*";
+            Q_ASSERT(typeName == QMetaObject::normalizedType(typeName));
             type = registerComplexDBusType(typeName);
         }
 
@@ -194,6 +196,7 @@ QDBusMetaObjectGenerator::findType(const QByteArray &signature,
             type = qMetaTypeId<QByteArrayList>();
         } else {
             result.name = "{D-Bus type \"" + signature + "\"}";
+            result.name = QMetaObject::normalizedType(result.name);
             type = registerComplexDBusType(result.name);
         }
     } else {
@@ -382,7 +385,7 @@ void QDBusMetaObjectGenerator::write(QDBusMetaObject *obj)
             - methods.size(); // ditto
 
     QDBusMetaObjectPrivate *header = reinterpret_cast<QDBusMetaObjectPrivate *>(idata.data());
-    static_assert(QMetaObjectPrivate::OutputRevision == 12, "QtDBus meta-object generator should generate the same version as moc");
+    static_assert(QMetaObjectPrivate::OutputRevision == 13, "QtDBus meta-object generator should generate the same version as moc");
     header->revision = QMetaObjectPrivate::OutputRevision;
     header->className = 0;
     header->classInfoCount = 0;
@@ -396,7 +399,7 @@ void QDBusMetaObjectGenerator::write(QDBusMetaObject *obj)
     header->enumeratorData = 0;
     header->constructorCount = 0;
     header->constructorData = 0;
-    header->flags = RequiresVariantMetaObject;
+    header->flags = RequiresVariantMetaObject | AllocatedMetaObject;
     header->signalCount = signals_.size();
     // These are specific to QDBusMetaObject:
     header->propertyDBusData = int(header->propertyData + header->propertyCount

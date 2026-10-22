@@ -98,6 +98,16 @@ QSpiUIntList spiStateSetFromSpiStates(quint64 states)
     return stateList;
 }
 
+quint64 spiStatesFromSpiStateSet(QSpiUIntList stateSet)
+{
+    if (stateSet.size() != 2) {
+        qWarning() << "State set doesn't use expected size of 64 bit";
+        return 0;
+    }
+
+    return stateSet.at(0) | (quint64(stateSet.at(1)) << 32);
+}
+
 AtspiRelationType qAccessibleRelationToAtSpiRelation(QAccessible::Relation relation)
 {
     // direction of the relation is "inversed" in Qt and AT-SPI

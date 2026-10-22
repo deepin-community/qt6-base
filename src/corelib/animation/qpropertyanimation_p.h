@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPROPERTYANIMATION_P_H
 #define QPROPERTYANIMATION_P_H
@@ -29,6 +30,7 @@ class QPropertyAnimationPrivate : public QVariantAnimationPrivate
    Q_DECLARE_PUBLIC(QPropertyAnimation)
 public:
     QPropertyAnimationPrivate() : propertyType(0), propertyIndex(-1) { }
+    ~QPropertyAnimationPrivate() override;
 
     void setTargetObjectForwarder(QObject *target) { q_func()->setTargetObject(target); }
     Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QPropertyAnimationPrivate, QObject *, targetObject,

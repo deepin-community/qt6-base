@@ -25,13 +25,9 @@
 
 QT_BEGIN_NAMESPACE
 
-
 class QObject;
 
-// Use pointers since we subclass QAccessibleEvent
-using EventList = QList<QAccessibleEvent*>;
-
-bool operator==(const QAccessibleEvent &l, const QAccessibleEvent &r)
+inline bool QTestAccessibility_cmpEvent(const QAccessibleEvent &l, const QAccessibleEvent &r)
 {
     if (l.type() != r.type()) {
 //        qDebug() << "QAccessibleEvent with wrong type: " << qAccessibleEventString(l.type()) << " and " << qAccessibleEventString(r.type());
@@ -84,7 +80,11 @@ bool operator==(const QAccessibleEvent &l, const QAccessibleEvent &r)
 
 class QTestAccessibility
 {
+    Q_DISABLE_COPY_MOVE(QTestAccessibility)
 public:
+    // Use pointers since we subclass QAccessibleEvent
+    using EventList = QList<QAccessibleEvent*>;
+
     static void initialize()
     {
         if (!instance()) {
@@ -108,18 +108,39 @@ public:
             qWarning("Timeout waiting for accessibility event.");
             return false;
         }
-        const bool res = *eventList().constFirst() == *ev;
-        if (!res)
-            qWarning("%s", qPrintable(msgAccessibilityEventListMismatch(eventList(), ev)));
-        delete eventList().takeFirst();
-        return res;
+
+        for (qsizetype i = 0; i < eventList().size(); ++i) {
+            if (QTestAccessibility_cmpEvent(*eventList().at(i), *ev)) {
+                if (i != 0) {
+                    qWarning() << " Found event at position " << i;
+                    qWarning("%s", qPrintable(msgAccessibilityEventListMismatch(eventList(), ev)));
+                }
+                delete eventList().takeAt(i);
+                return true;
+            }
+        }
+
+        qWarning("%s", qPrintable(msgAccessibilityEventListMismatch(eventList(), ev)));
+        return false;
     }
     static bool containsEvent(QAccessibleEvent *event) {
         for (const QAccessibleEvent *ev : std::as_const(eventList())) {
-            if (*ev == *event)
+            if (QTestAccessibility_cmpEvent(*ev, *event))
                 return true;
         }
         return false;
+    }
+    static bool containsEventOfType(QAccessible::Event evtype) {
+        for (const QAccessibleEvent *ev : std::as_const(eventList())) {
+            if (ev->type() == evtype)
+                return true;
+        }
+        return false;
+    }
+    static void setUpdateHandler(std::function<void(QAccessibleEvent *event)> updateHandler)
+    {
+        Q_ASSERT_X(updateHandler, __FUNCTION__, "Update handler cannot be nullptr");
+        instance()->m_updateHandler = std::move(updateHandler);
     }
 
 private:
@@ -149,6 +170,8 @@ private:
 
     static void updateHandler(QAccessibleEvent *event)
     {
+        instance()->m_updateHandler(event);
+
         auto ev = copyEvent(event);
         if (auto obj = ev->object()) {
             QObject::connect(obj, &QObject::destroyed, obj, [&, ev](){
@@ -245,21 +268,14 @@ private:
             else
                 ev = new QAccessibleEvent(event->accessibleInterface(), event->type());
         }
-        ev->setChild(event->child());
+
+        if (ev->type() != QAccessible::ObjectDestroyed)
+            ev->setChild(event->child());
         return ev;
     }
 
-    static EventList &eventList()
-    {
-        static EventList list;
-        return list;
-    }
-
-    static QTestAccessibility *&instance()
-    {
-        static QTestAccessibility *ta = nullptr;
-        return ta;
-    }
+    Q_TESTLIB_EXPORT static EventList &eventList();
+    Q_TESTLIB_EXPORT static QTestAccessibility *&instance();
 
 private:
     static QString msgAccessibilityEventListMismatch(const EventList &haystack,
@@ -267,14 +283,28 @@ private:
     {
         QString rc;
         QDebug str = QDebug(&rc).nospace();
-        str << "Event " << *needle
-            <<  " not found at head of event list of size " << haystack.size() << " :";
+        str << "Event " << *needle << "\n"
+            <<  " not found at head of event list of size " << haystack.size() << " :\n";
         for (const QAccessibleEvent *e : haystack)
-            str << ' ' << *e;
+            str << ' ' << *e << "\n";
         return rc;
     }
+    std::function<void(QAccessibleEvent *event)> m_updateHandler = [](QAccessibleEvent *) { ; };
 
 };
+
+#if QT_DEPRECATED_SINCE(6, 11)
+using EventList QT_DEPRECATED_VERSION_X_6_11("Use QTestAccessibility::EventList")
+    = QTestAccessibility::EventList;
+
+QT_DEPRECATED_VERSION_X_6_11("This was an internal function for QTestAccessibility. "
+                             "Only QAccessibleEvent is allowed to define operator== for itself, "
+                             "and it doesn't, so use a named function instead")
+inline bool operator==(const QAccessibleEvent &l, const QAccessibleEvent &r)
+{
+    return QTestAccessibility_cmpEvent(l, r);
+}
+#endif // QT_DEPRECATED_SINCE(6, 11)
 
 QT_END_NAMESPACE
 

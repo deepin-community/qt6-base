@@ -6,6 +6,7 @@
 
 #include <QtCore/QtCore>
 #include <QTest>
+#include <QSignalSpy>
 
 #include <private/qabstracteventdispatcher_p.h> // for qGlobalPostedEventsCount()
 #include <private/qcoreapplication_p.h>
@@ -16,6 +17,8 @@
 #ifdef Q_OS_WIN
 #include <QtCore/qt_windows.h>
 #endif
+
+Q_LOGGING_CATEGORY(lcTests, "qt.tests." QT_STRINGIFY(tst_QCoreApplication))
 
 typedef QCoreApplication TestApplication;
 
@@ -101,6 +104,29 @@ void tst_QCoreApplication::getSetCheck()
     QCOMPARE(QCoreApplication::applicationVersion(), v);
 }
 
+void tst_QCoreApplication::applicationVersionChangedSignal()
+{
+    {
+        int argc = 1;
+        char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+        TestApplication app(argc, argv);
+
+        QSignalSpy spy(&app, &QCoreApplication::applicationVersionChanged);
+
+        QCoreApplication::setApplicationVersion(QLatin1String("1.0"));
+        spy.clear();
+
+        QCoreApplication::setApplicationVersion(QLatin1String("1.0"));
+        QCOMPARE(spy.count(), 0);
+
+        QCoreApplication::setApplicationVersion(QLatin1String("2.0"));
+        QCOMPARE(spy.count(), 1);
+    }
+
+    QCoreApplication::setApplicationVersion(QString());
+    QCOMPARE(QCoreApplication::applicationVersion(), QString());
+}
+
 void tst_QCoreApplication::qAppName()
 {
 #ifdef QT_QGUIAPPLICATIONTEST
@@ -143,6 +169,17 @@ void tst_QCoreApplication::qAppVersion()
     const char appVersion[] = "1.2.3.4";
 #elif defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID)
     const char appVersion[] = "1.2.3";
+#elif defined(Q_OS_HARMONY)
+    // On HarmonyOS all autotests are packaged into a single shared bundle
+    // (org.qtproject.autotests) because the number of app-bundle signings is
+    // limited, so a per-test versionName cannot be injected as on the other
+    // platforms above. This is the versionName the shared bundle inherits
+    // from the app.json5 template (src/harmonyos/templates/AppScope/app.json5).
+    // TODO: once tests can be packaged as individual apps, drop this branch
+    // and set QT_HARMONYOS_APP_VERSION_NAME on the tst_qcoreapplication target
+    // in CMakeLists.txt (like QT_ANDROID_VERSION_NAME) so the test controls
+    // its own version.
+    const char appVersion[] = "1.0.0";
 #else
     const char appVersion[] = "";
 #endif
@@ -210,6 +247,240 @@ void tst_QCoreApplication::argc()
         QCOMPARE(app.arguments().size(), 1);
     }
 }
+
+#if QT_CONFIG(library)
+static char argv0name[] =
+#ifdef QT_GUI_LIB
+        "tst_qguiapplication"
+#else
+        "tst_qcoreapplication"
+#endif
+        ;
+static char *argv0 = argv0name;
+
+static bool isPathListIncluded(const QStringList &l, const QStringList &r)
+{
+    int size = r.size();
+    if (size > l.size())
+        return false;
+#if defined (Q_OS_WIN)
+    Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+    int i = 0, j = 0;
+    for ( ; i < l.size() && j < r.size(); ++i) {
+        if (QDir::toNativeSeparators(l[i]).compare(QDir::toNativeSeparators(r[j]), cs) == 0) {
+            ++j;
+            i = -1;
+        }
+    }
+    return j == r.size();
+}
+
+void tst_QCoreApplication::libraryPaths()
+{
+    const QString testDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+
+    QVERIFY(!testDir.isEmpty());
+    {
+        QCoreApplication::setLibraryPaths(QStringList() << testDir);
+        QCOMPARE(QCoreApplication::libraryPaths(), (QStringList() << testDir));
+
+        // creating QCoreApplication adds the applicationDirPath to the libraryPath
+        int argc = 1;
+        QCoreApplication app(argc, &argv0);
+        QString appDirPath = QDir(QCoreApplication::applicationDirPath()).canonicalPath();
+
+        QStringList actual = QCoreApplication::libraryPaths();
+        actual.sort();
+        QStringList expected;
+        expected << testDir << appDirPath;
+        expected = QSet<QString>(expected.constBegin(), expected.constEnd()).values();
+        expected.sort();
+
+        QVERIFY2(isPathListIncluded(actual, expected),
+                 qPrintable("actual:\n - " + actual.join("\n - ") +
+                            "\nexpected:\n - " + expected.join("\n - ")));
+    }
+    {
+        // creating QCoreApplication adds the applicationDirPath and plugin install path to the libraryPath
+        int argc = 1;
+        QCoreApplication app(argc, &argv0);
+        QStringList actual = QCoreApplication::libraryPaths();
+        actual.sort();
+
+        QStringList expected;
+#ifndef Q_OS_ANDROID
+        //Android doesn't use plugins dir at runtime, see QTBUG-141732
+        for (const QString &path : QLibraryInfo::paths(QLibraryInfo::PluginsPath)) {
+            if (QFile::exists(path))
+                expected << QDir(path).canonicalPath();
+        }
+#endif
+        expected << QDir(QCoreApplication::applicationDirPath()).canonicalPath();
+        expected = QSet<QString>(expected.constBegin(), expected.constEnd()).values();
+        expected.sort();
+
+#if defined(Q_OS_VXWORKS)
+        QEXPECT_FAIL("", "QTBUG-130736: Actual paths on VxWorks differ from expected", Abort);
+#endif
+        QVERIFY2(isPathListIncluded(actual, expected),
+                 qPrintable("actual:\n - " + actual.join("\n - ") +
+                            "\nexpected:\n - " + expected.join("\n - ")));
+
+        // setting the library paths overrides everything
+        QCoreApplication::setLibraryPaths(QStringList() << testDir);
+        QVERIFY2(isPathListIncluded(QCoreApplication::libraryPaths(), (QStringList() << testDir)),
+                 qPrintable("actual:\n - " + QCoreApplication::libraryPaths().join("\n - ") +
+                            "\nexpected:\n - " + testDir));
+    }
+    {
+        qCDebug(lcTests) << "Initial library path:" << QCoreApplication::libraryPaths();
+
+        int count = QCoreApplication::libraryPaths().size();
+#if 0
+        QCOMPARE(count, 1); // before creating QCoreApplication, only the PluginsPath is in the libraryPaths()
+#endif
+        const auto installPathPlugins = QLibraryInfo::paths(QLibraryInfo::PluginsPath);
+        for (QString pluginsPath : installPathPlugins)
+            QCoreApplication::addLibraryPath(pluginsPath);
+        qCDebug(lcTests) << "installPathPlugins" << installPathPlugins;
+        qCDebug(lcTests) << "After adding plugins path:" << QCoreApplication::libraryPaths();
+        QCOMPARE(QCoreApplication::libraryPaths().size(), count);
+        QCoreApplication::addLibraryPath(testDir);
+        QCOMPARE(QCoreApplication::libraryPaths().size(), count + 1);
+
+        // creating QCoreApplication adds the applicationDirPath to the libraryPath
+        int argc = 1;
+        QCoreApplication app(argc, &argv0);
+        QString appDirPath = QCoreApplication::applicationDirPath();
+        qCDebug(lcTests) << QCoreApplication::libraryPaths();
+        // On Windows CE these are identical and might also be the case for other
+        // systems too
+        if (!installPathPlugins.contains(appDirPath))
+            QCOMPARE(QCoreApplication::libraryPaths().size(), count + 2);
+    }
+#if !defined(Q_OS_HARMONY)
+    {
+        int argc = 1;
+        QCoreApplication app(argc, &argv0);
+
+        qCDebug(lcTests) << "Initial library path:" << QCoreApplication::libraryPaths();
+        int count = QCoreApplication::libraryPaths().size();
+        const auto installPathPlugins = QLibraryInfo::paths(QLibraryInfo::PluginsPath);
+        for (QString pluginsPath : installPathPlugins)
+            QCoreApplication::addLibraryPath(pluginsPath);
+        qCDebug(lcTests) << "installPathPlugins" << installPathPlugins;
+        qCDebug(lcTests) << "After adding plugins path:" << QCoreApplication::libraryPaths();
+        QCOMPARE(QCoreApplication::libraryPaths().size(), count);
+
+        QString appDirPath = QCoreApplication::applicationDirPath();
+
+        QCoreApplication::addLibraryPath(appDirPath);
+        QCoreApplication::addLibraryPath(appDirPath + "/..");
+        qCDebug(lcTests) << "appDirPath" << appDirPath;
+        qCDebug(lcTests) << "After adding appDirPath && appDirPath + /..:" << QCoreApplication::libraryPaths();
+        QCOMPARE(QCoreApplication::libraryPaths().size(), count + 1);
+#ifdef Q_OS_MACOS
+        QCoreApplication::addLibraryPath(appDirPath + "/../MacOS");
+#else
+        QCoreApplication::addLibraryPath(appDirPath + "/tmp/..");
+#endif
+        qCDebug(lcTests) << "After adding appDirPath + /tmp/..:" << QCoreApplication::libraryPaths();
+        QCOMPARE(QCoreApplication::libraryPaths().size(), count + 1);
+    }
+#endif
+}
+
+void tst_QCoreApplication::libraryPaths_qt_plugin_path()
+{
+    int argc = 1;
+
+    QCoreApplication app(argc, &argv0);
+    QString appDirPath = QCoreApplication::applicationDirPath();
+
+    // Our hook into libraryPaths() initialization: Set the QT_PLUGIN_PATH environment variable
+    QString installPathPluginsDeCanon = appDirPath + QString::fromLatin1("/tmp/..");
+    QByteArray ascii = QFile::encodeName(installPathPluginsDeCanon);
+    qputenv("QT_PLUGIN_PATH", ascii);
+
+    QVERIFY(!QCoreApplication::libraryPaths().contains(appDirPath + QString::fromLatin1("/tmp/..")));
+}
+
+void tst_QCoreApplication::libraryPaths_qt_plugin_path_2()
+{
+#ifdef Q_OS_UNIX
+    QByteArray validPath = QDir("/tmp").canonicalPath().toLatin1();
+    QByteArray nonExistentPath = "/nonexistent";
+    QByteArray pluginPath = validPath + ':' + nonExistentPath;
+#elif defined(Q_OS_WIN)
+    QByteArray validPath = "C:\\windows";
+    QByteArray nonExistentPath = "Z:\\nonexistent";
+    QByteArray pluginPath = validPath + ';' + nonExistentPath;
+#elif defined(Q_OS_HARMONY)
+    QByteArray pluginPath = "/nonexistent";
+#endif
+
+    {
+        // Our hook into libraryPaths() initialization: Set the QT_PLUGIN_PATH environment variable
+        qputenv("QT_PLUGIN_PATH", pluginPath);
+
+        int argc = 1;
+
+        QCoreApplication app(argc, &argv0);
+
+        // library path list should contain the default plus the one valid path
+        QStringList expected;
+#ifndef Q_OS_ANDROID
+        //Android doesn't use plugins dir at runtime, see QTBUG-141732
+        for (const QString &path : QLibraryInfo::paths(QLibraryInfo::PluginsPath)) {
+            if (QFile::exists(path))
+                expected << QDir(path).canonicalPath();
+        }
+#endif
+        expected << QDir(QCoreApplication::applicationDirPath()).canonicalPath();
+#ifndef Q_OS_HARMONY
+        expected << QDir(QDir::fromNativeSeparators(QString::fromLatin1(validPath))).canonicalPath();
+#endif
+
+#if defined(Q_OS_VXWORKS)
+        QEXPECT_FAIL("", "QTBUG-130736: Actual paths on VxWorks differ from expected", Abort);
+#endif
+        QVERIFY2(isPathListIncluded(QCoreApplication::libraryPaths(), expected),
+                 qPrintable("actual:\n - " + QCoreApplication::libraryPaths().join("\n - ") +
+                            "\nexpected:\n - " + expected.join("\n - ")));
+    }
+
+    {
+        int argc = 1;
+
+        QCoreApplication app(argc, &argv0);
+
+        // library paths are initialized by the QCoreApplication, setting
+        // the environment variable here doesn't work
+        qputenv("QT_PLUGIN_PATH", pluginPath);
+
+        // library path list should contain the default
+        QStringList expected;
+#ifndef Q_OS_ANDROID
+        //Android doesn't use plugins dir at runtime, see QTBUG-141732
+        for (const QString &path : QLibraryInfo::paths(QLibraryInfo::PluginsPath)) {
+            if (QFile::exists(path))
+                expected << QDir(path).canonicalPath();
+        }
+#endif
+        expected << QDir(QCoreApplication::applicationDirPath()).canonicalPath();
+
+        QVERIFY2(isPathListIncluded(QCoreApplication::libraryPaths(), expected),
+                qPrintable("actual:\n - "
+                           + QCoreApplication::libraryPaths().join("\n - ") +
+                           "\nexpected:\n - " + expected.join("\n - ")));
+
+        qputenv("QT_PLUGIN_PATH", nullptr);
+    }
+}
+#endif
 
 class EventGenerator : public QObject
 {
@@ -592,6 +863,43 @@ void tst_QCoreApplication::processEventsAlwaysSendsPostedEvents()
         QCOMPARE(object.counter, i);
         ++i;
     } while (t.elapsed() < 1000);
+}
+
+void tst_QCoreApplication::queuedConnectionProcessEventsInSlot()
+{
+    // Regression test for QTBUG-142807
+
+    int argc = 1;
+    char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+    TestApplication app(argc, argv);
+
+    bool slot1Executed = false;
+    bool slot2Executed = false;
+    bool slot2DuringSlot1 = false;
+
+    QObject signalSource;
+    QObject *receiver1 = new QObject(&app);
+    QObject *receiver2 = new QObject(&app);
+
+    QObject::connect(&signalSource, &QObject::objectNameChanged, receiver1, [&] {
+        slot1Executed = true;
+        for (int i = 0; i < 10 && !slot2Executed; ++i)
+            QCoreApplication::processEvents();
+
+        if (slot2Executed)
+            slot2DuringSlot1 = true;
+    }, Qt::QueuedConnection);
+
+    QObject::connect(&signalSource, &QObject::objectNameChanged, receiver2, [&] {
+        slot2Executed = true;
+    }, Qt::QueuedConnection);
+
+    signalSource.setObjectName("trigger");
+    app.processEvents();
+
+    QVERIFY(slot1Executed);
+    QVERIFY(slot2Executed);
+    QVERIFY(slot2DuringSlot1);
 }
 
 #ifdef Q_OS_WIN
@@ -1047,6 +1355,10 @@ static bool theMainThreadIsSet()
 static bool theMainThreadWasUnset = !theMainThreadIsSet(); // global static
 void tst_QCoreApplication::theMainThread()
 {
+#if defined(Q_OS_HARMONY)
+    QSKIP("Skipped on OHOS: QPA sets theMainThread early to prevent the JS thread from being "
+          "misregistered as Qt's main thread during initialization");
+#endif
     QVERIFY2(theMainThreadWasUnset, "Something set the theMainThread before main()");
     QVERIFY(theMainThreadIsSet()); // we have at LEAST one QObject alive: tst_QCoreApplication
 
@@ -1064,13 +1376,6 @@ static void createQObjectOnDestruction()
     // Make sure that we can create a QObject (and thus have an associated
     // QThread) after the last QObject has been destroyed (especially after
     // QCoreApplication has).
-
-#if !defined(QT_QGUIAPPLICATIONTEST) && !defined(Q_OS_WIN) && !defined(Q_OS_VXWORKS)
-    // QCoreApplicationData's global static destructor has run and cleaned up
-    // the QAdoptedThread.
-    if (theMainThreadIsSet())
-        qFatal("theMainThreadIsSet() returned true; some QObject must have leaked");
-#endif
 
     // Before the fixes, this would cause a dangling pointer dereference. If
     // the problem comes back, it's possible that the following causes no

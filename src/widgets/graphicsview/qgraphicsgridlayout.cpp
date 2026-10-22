@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QGraphicsGridLayout
@@ -637,22 +638,5 @@ QSizeF QGraphicsGridLayout::sizeHint(Qt::SizeHint which, const QSizeF &constrain
     const QSizeF extraMargins(left + right, top + bottom);
     return d->engine.sizeHint(which , constraint - extraMargins, d->styleInfo()) + extraMargins;
 }
-
-
-#if 0
-// ### kill? (implement and kill?)
-QRect QGraphicsGridLayout::cellRect(int row, int column, int rowSpan, int columnSpan) const
-{
-    Q_D(const QGraphicsGridLayout);
-    return QRect();
-//    return d->engine.cellRect(parentLayoutable(), contentsGeometry(), row, column, rowSpan, columnSpan);
-}
-
-QSizePolicy::ControlTypes QGraphicsGridLayout::controlTypes(LayoutSide side) const
-{
-    Q_D(const QGraphicsGridLayout);
-    return d->engine.controlTypes(side);
-}
-#endif
 
 QT_END_NAMESPACE

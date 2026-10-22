@@ -23,6 +23,18 @@ instructions:
   - type: EnvironmentVariable
     variableName: COIN_CMAKE_ARGS
     variableValue: "{{.Env.COMMON_TARGET_EXAMPLES_CMAKE_ARGS}}"
+  - type: AppendToEnvironmentVariable
+    variableName: COIN_CMAKE_ARGS
+    variableValue: " ${{ToUpper .Env.TESTED_MODULE_COIN}}_TARGET_EXAMPLES_CMAKE_ARGS"
+    enable_if:
+      condition: runtime
+      env_var: "{{ToUpper .Env.TESTED_MODULE_COIN}}_TARGET_EXAMPLES_CMAKE_ARGS"
+      not_equals_value: null
+
+  # Examples configured as external projects will find the target platform tools, e.g 'lupdate'.
+  # To ensure the target tools can run on the host, we need to set the QEMU_LD_PREFIX.
+  - !include "{{qt/qtbase}}/coin_module_test_qemu_env_vars.yaml"
+
   - !include "{{qt/qtbase}}/cmake_build_standalone_examples.yaml"
 enable_if:
   condition: property

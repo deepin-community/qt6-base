@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QICON_P_H
 #define QICON_P_H
@@ -33,6 +34,11 @@ public:
     ~QIconPrivate() {
         delete engine;
     }
+
+    static QIconPrivate *get(QIcon *icon) { return icon->d; }
+    static const QIconPrivate *get(const QIcon *icon) { return icon->d; }
+
+    enum IconEngineHook { PlatformIconHook = 1000 };
 
     static qreal pixmapDevicePixelRatio(qreal displayDevicePixelRatio, const QSize &requestedSize, const QSize &actualSize);
 

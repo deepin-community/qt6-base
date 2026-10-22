@@ -1,13 +1,12 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qloggingcategory.h"
+#include "qloggingcategory_p.h"
 #include "qloggingregistry_p.h"
 
 QT_BEGIN_NAMESPACE
-
-const char qtDefaultCategoryName[] = "default";
-Q_GLOBAL_STATIC(QLoggingCategory, qtDefaultCategory, qtDefaultCategoryName)
 
 /*!
     \class QLoggingCategory
@@ -170,23 +169,11 @@ Q_GLOBAL_STATIC(QLoggingCategory, qtDefaultCategory, qtDefaultCategoryName)
     \since 5.4
 */
 QLoggingCategory::QLoggingCategory(const char *category, QtMsgType enableForLevel)
-    : d(nullptr),
-      name(nullptr)
+    : QLoggingCategory(UnregisteredInitialization{},
+                       category ? category : QLoggingRegistry::defaultCategoryName)
 {
-    init(category, enableForLevel);
-}
-
-void QLoggingCategory::init(const char *category, QtMsgType severityLevel)
-{
-    enabled.storeRelaxed(0x01010101);   // enabledDebug = enabledWarning = enabledCritical = true;
-
-    if (category)
-        name = category;
-    else
-        name = qtDefaultCategoryName;
-
-    if (QLoggingRegistry *reg = QLoggingRegistry::instance())
-        reg->registerCategory(this, severityLevel);
+   if (QLoggingRegistry *reg = QLoggingRegistry::instance())
+        reg->registerCategory(this, enableForLevel);
 }
 
 /*!
@@ -194,6 +181,9 @@ void QLoggingCategory::init(const char *category, QtMsgType severityLevel)
 */
 QLoggingCategory::~QLoggingCategory()
 {
+    // Note: this destructor is never called for the defaultCategory(), so it
+    // is always registered. If we ever need to free memory, make
+    // QLoggingRegistry do it.
     if (QLoggingRegistry *reg = QLoggingRegistry::instance())
         reg->unregisterCategory(this);
 }
@@ -314,7 +304,7 @@ void QLoggingCategory::setEnabled(QtMsgType type, bool enable)
  */
 QLoggingCategory *QLoggingCategory::defaultCategory()
 {
-    return qtDefaultCategory();
+    return QLoggingRegistry::defaultCategory();
 }
 
 /*!
@@ -405,7 +395,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     \note Arguments aren't processed if the debug output for that \a category is not
     enabled, so don't rely on any side effects.
 
-    \sa qDebug()
+    \sa QDebug::qDebug()
 */
 
 /*!
@@ -425,7 +415,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     \note Arguments aren't processed if the debug output for that \a category is not
     enabled, so don't rely on any side effects.
 
-    \sa qDebug()
+    \sa qDebug(const char *, ...)
 */
 
 /*!
@@ -448,7 +438,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     \note If the debug output for a particular category isn't enabled, arguments
     won't be processed, so don't rely on any side effects.
 
-    \sa qInfo()
+    \sa QDebug::qInfo()
 */
 
 /*!
@@ -468,7 +458,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     \note If the debug output for a particular category isn't enabled, arguments
     won't be processed, so don't rely on any side effects.
 
-    \sa qInfo()
+    \sa qInfo(const char *, ...)
 */
 
 /*!
@@ -491,7 +481,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     \note If the warning output for a particular category isn't enabled, arguments
     won't be processed, so don't rely on any side effects.
 
-    \sa qWarning()
+    \sa QDebug::qWarning()
 */
 
 /*!
@@ -511,7 +501,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     \note If the warning output for a particular category isn't enabled, arguments
     won't be processed, so don't rely on any side effects.
 
-    \sa qWarning()
+    \sa qWarning(const char *, ...)
 */
 
 /*!
@@ -535,7 +525,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     \note If the critical output for a particular category isn't enabled, arguments
     won't be processed, so don't rely on any side effects.
 
-    \sa qCritical()
+    \sa QDebug::qCritical()
 */
 
 /*!
@@ -555,7 +545,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     \note If the critical output for a particular category isn't enabled, arguments
     won't be processed, so don't rely on any side effects.
 
-    \sa qCritical()
+    \sa qCritical(const char *, ...)
 */
 
 /*!
@@ -574,7 +564,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
 
     \snippet qloggingcategory/main.cpp 16
 
-    \sa qFatal()
+    \sa QDebug::qFatal()
 */
 
 /*!
@@ -594,7 +584,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     to create a core dump. On Windows, for debug builds, this function will
     report a \c _CRT_ERROR enabling you to connect a debugger to the application.
 
-    \sa qFatal()
+    \sa qFatal(const char *, ...)
 */
 
 /*!
@@ -661,6 +651,45 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     Only one translation unit in a library or executable can define a category
     with a specific name. The implicitly-defined QLoggingCategory object is
     created on first use, in a thread-safe manner.
+
+    This macro must be used outside of a class or method.
+*/
+
+/*!
+    \macro Q_STATIC_LOGGING_CATEGORY(name, string)
+    \sa Q_LOGGING_CATEGORY()
+    \relates QLoggingCategory
+    \since 6.9
+
+    Defines a static logging category \a name, and makes it configurable under
+    the \a string identifier. By default, all message types are enabled.
+
+    The logging category is created using the \c static qualifier so that you
+    can only access it in the same translation unit. This avoids accidental
+    symbol clashes.
+
+    The implicitly-defined QLoggingCategory object is created on first use,
+    in a thread-safe manner.
+
+    This macro must be used outside of a class or method.
+*/
+
+/*!
+    \macro Q_STATIC_LOGGING_CATEGORY(name, string, msgType)
+    \sa Q_LOGGING_CATEGORY()
+    \relates QLoggingCategory
+    \since 6.9
+
+    Defines a static logging category \a name, and makes it configurable under
+    the \a string identifier. By default, messages of QtMsgType \a msgType and
+    more severe are enabled, types with a lower severity are disabled.
+
+    The logging category is created using the \c static qualifier so that you
+    can only access it in the same translation unit. This avoids accidental
+    symbol clashes.
+
+    The implicitly-defined QLoggingCategory object is created on first use, in
+    a thread-safe manner.
 
     This macro must be used outside of a class or method.
 */

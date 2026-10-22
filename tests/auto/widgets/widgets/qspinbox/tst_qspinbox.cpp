@@ -30,6 +30,7 @@
 #include <QScreen>
 
 #include <QtWidgets/private/qapplication_p.h>
+#include <QtTest/private/qtesthelpers_p.h>
 
 #if QT_CONFIG(shortcut)
 #  include <QKeySequence>
@@ -168,6 +169,8 @@ private slots:
     void setMinMax();
 
     void editingFinished();
+
+    void returnPressed();
 
     void valueFromTextAndValidate_data();
     void valueFromTextAndValidate();
@@ -348,19 +351,14 @@ void tst_QSpinBox::getSetCheck()
 
 tst_QSpinBox::tst_QSpinBox()
 {
+    QLocale::setDefault(QLocale::c());
 }
 
 void tst_QSpinBox::init()
 {
-    QLocale::setDefault(QLocale(QLocale::C));
-
-#if QT_CONFIG(cursor)
     // Ensure mouse cursor was not left by previous tests where widgets
     // will appear, as it could cause events and interfere with the tests.
-    const QScreen *screen = QGuiApplication::primaryScreen();
-    const QRect availableGeometry = screen->availableGeometry();
-    QCursor::setPos(availableGeometry.topLeft());
-#endif
+    QVERIFY(QTestPrivate::moveCursorAway());
 }
 
 void tst_QSpinBox::setValue_data()
@@ -548,7 +546,7 @@ void tst_QSpinBox::setTracking_data()
     QStringList texts1;
     QStringList texts2;
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     keys.addKeyClick(Qt::Key_Right, Qt::ControlModifier);
 #else
     keys.addKeyClick(Qt::Key_End);
@@ -894,8 +892,9 @@ void tst_QSpinBox::locale()
     QFETCH(QString, text);
     QFETCH(int, valFromText);
 
-    QLocale old;
-
+    const auto restoreDefault = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(loc);
     SpinBox box;
     box.setMaximum(100000);
@@ -912,9 +911,6 @@ void tst_QSpinBox::locale()
 
 void tst_QSpinBox::editingFinished()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QWidget testFocusWidget;
     testFocusWidget.setObjectName(QLatin1String("tst_qspinbox"));
     testFocusWidget.setWindowTitle(objectName());
@@ -991,6 +987,15 @@ void tst_QSpinBox::editingFinished()
     QCOMPARE(editingFinishedSpy1.size(), 1);
 }
 
+void tst_QSpinBox::returnPressed()
+{
+    QSpinBox spinBox;
+    QSignalSpy spyCurrentChanged(&spinBox, &QSpinBox::returnPressed);
+    spinBox.show();
+    QTest::keyClick(&spinBox, Qt::Key_Return);
+    QCOMPARE(spyCurrentChanged.size(), 1);
+}
+
 void tst_QSpinBox::removeAll()
 {
     SpinBox spin(0);
@@ -998,13 +1003,13 @@ void tst_QSpinBox::removeAll()
     spin.setSuffix("bar");
     spin.setValue(2);
     spin.show();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTest::keyClick(&spin, Qt::Key_Left, Qt::ControlModifier);
 #else
     QTest::keyClick(&spin, Qt::Key_Home);
 #endif
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTest::keyClick(&spin, Qt::Key_Right, Qt::ControlModifier|Qt::ShiftModifier);
 #else
     QTest::keyClick(&spin, Qt::Key_End, Qt::ShiftModifier);
@@ -1019,7 +1024,7 @@ void tst_QSpinBox::startWithDash()
 {
     SpinBox spin(0);
     spin.show();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTest::keyClick(&spin, Qt::Key_Left, Qt::ControlModifier);
 #else
     QTest::keyClick(&spin, Qt::Key_Home);
@@ -1087,9 +1092,6 @@ void tst_QSpinBox::undoRedo()
 
 void tst_QSpinBox::specialValue()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QString specialText="foo";
 
     QWidget topWidget;
@@ -1180,9 +1182,6 @@ void tst_QSpinBox::sizeHint()
 
 void tst_QSpinBox::taskQTBUG_5008_textFromValueAndValidate()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     class DecoratedSpinBox : public QSpinBox
     {
     public:
@@ -1260,9 +1259,6 @@ void tst_QSpinBox::lineEditReturnPressed()
 
 void tst_QSpinBox::positiveSign()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QSpinBox spinBox;
     spinBox.setRange(-20, 20);
     spinBox.setValue(-20);
@@ -1278,9 +1274,6 @@ void tst_QSpinBox::positiveSign()
 
 void tst_QSpinBox::interpretOnLosingFocus()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     // QTBUG-55249: When typing an invalid value after QSpinBox::clear(),
     // it should be fixed up on losing focus.
 
@@ -1323,6 +1316,9 @@ void tst_QSpinBox::setGroupSeparatorShown()
     QFETCH(QLocale::Language, lang);
     QFETCH(QLocale::Territory, country);
 
+    const auto restoreDefault = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale loc(lang, country);
     QLocale::setDefault(loc);
     SpinBox spinBox;
@@ -1635,9 +1631,6 @@ void tst_QSpinBox::stepModifierKeys_data()
 
 void tst_QSpinBox::stepModifierKeys()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(int, startValue);
     QFETCH(int, stepModifier);
     QFETCH(QTestEventList, keys);
@@ -1721,9 +1714,6 @@ void tst_QSpinBox::stepModifierButtons_data()
 
 void tst_QSpinBox::stepModifierButtons()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(QStyle::SubControl, subControl);
     QFETCH(int, stepModifier);
     QFETCH(Qt::KeyboardModifiers, modifiers);
@@ -1809,9 +1799,6 @@ void tst_QSpinBox::stepModifierPressAndHold_data()
 
 void tst_QSpinBox::stepModifierPressAndHold()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(QStyle::SubControl, subControl);
     QFETCH(int, stepModifier);
     QFETCH(Qt::KeyboardModifiers, modifiers);

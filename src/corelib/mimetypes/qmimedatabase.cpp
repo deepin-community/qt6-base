@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2015 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qplatformdefs.h> // always first
 
@@ -157,7 +158,7 @@ void QMimeDatabasePrivate::loadProviders()
 
 const QMimeDatabasePrivate::Providers &QMimeDatabasePrivate::providers()
 {
-#ifndef Q_OS_WASM // stub implementation always returns true
+#if QT_CONFIG(thread) // stub implementation always returns true
     Q_ASSERT(!mutex.tryLock()); // caller should have locked mutex
 #endif
     if (m_providers.empty()) {
@@ -267,9 +268,6 @@ QString QMimeDatabasePrivate::icon(const QString &name)
 QString QMimeDatabasePrivate::fallbackParent(const QString &mimeTypeName) const
 {
     const QStringView myGroup = QStringView{mimeTypeName}.left(mimeTypeName.indexOf(u'/'));
-    // All text/* types are subclasses of text/plain.
-    if (myGroup == "text"_L1 && mimeTypeName != plainTextMimeType())
-        return plainTextMimeType();
     // All real-file mimetypes implicitly derive from application/octet-stream
     if (myGroup != "inode"_L1 &&
         // ignore non-file extensions
@@ -288,10 +286,21 @@ QStringList QMimeDatabasePrivate::mimeParents(const QString &mimeName)
 
 QStringList QMimeDatabasePrivate::parents(const QString &mimeName)
 {
+#if QT_CONFIG(thread) // stub implementation always returns true
     Q_ASSERT(!mutex.tryLock());
+#endif
     QStringList result;
     for (const auto &provider : providers())
         provider->addParents(mimeName, result);
+
+    // Implicit rule from the spec: all text/* types are subclasses of text/plain. It holds even
+    // for types that declare other parents, and shared-mime-info >= 2.5 relies on that rather
+    // than listing text/plain (e.g. text/x-shellscript only declares application/x-executable).
+    if (mimeName.startsWith("text/"_L1) && mimeName != plainTextMimeType()
+        && !result.contains(plainTextMimeType())) {
+        result.append(plainTextMimeType());
+    }
+
     if (result.isEmpty()) {
         const QString parent = fallbackParent(mimeName);
         if (!parent.isEmpty())
@@ -394,9 +403,9 @@ QMimeType QMimeDatabasePrivate::mimeTypeForFileNameAndData(const QString &fileNa
             if (candidateByData.isValid() && magicAccuracy > 0) {
                 const QString sniffedMime = candidateByData.name();
                 // If the sniffedMime matches a highest-weight glob match, use it
-                if (candidatesByName.m_matchingMimeTypes.contains(sniffedMime)) {
+                if (candidatesByName.m_matchingMimeTypes.contains(sniffedMime))
                     return candidateByData;
-                }
+
                 for (const QString &m : std::as_const(candidatesByName.m_allMatchingMimeTypes)) {
                     if (inherits(m, sniffedMime)) {
                         // We have magic + pattern pointing to this, so it's a pretty good match

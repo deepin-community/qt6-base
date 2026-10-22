@@ -4,6 +4,7 @@
 
 #include <QTest>
 #include <QSignalSpy>
+
 #include <qapplication.h>
 #include <qmainwindow.h>
 #include <qmenubar.h>
@@ -18,7 +19,9 @@
 #include <QTranslator>
 #include <qscreen.h>
 
-#include <qobject.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qscopeguard.h>
+#include <QtCore/qtimer.h>
 
 #include <QtWidgets/private/qapplication_p.h>
 
@@ -126,6 +129,8 @@ private slots:
     void QTBUG_65488_hiddenActionTriggered();
     void pressDragRelease_data();
     void pressDragRelease();
+
+    void setActiveAction_disablesSloppyTimer();
 
 protected slots:
     void onSimpleActivated( QAction*);
@@ -326,9 +331,6 @@ inline TestMenu tst_QMenuBar::initWindowWithComplexMenuBar(QMainWindow &w)
 #if !defined(Q_OS_DARWIN)
 void tst_QMenuBar::accel()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     // create a popup menu with menu items set the accelerators later...
     QMainWindow w;
     const TestMenu menu = initWindowWithSimpleMenuBar(w);
@@ -346,9 +348,6 @@ void tst_QMenuBar::accel()
 #if !defined(Q_OS_DARWIN)
 void tst_QMenuBar::activatedCount()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     // create a popup menu with menu items set the accelerators later...
     QMainWindow w;
     QFETCH( bool, forceNonNative );
@@ -547,9 +546,6 @@ void tst_QMenuBar::insertItem_QString_QObject()
 #if !defined(Q_OS_DARWIN)
 void tst_QMenuBar::check_accelKeys()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QMainWindow w;
     initWindowWithComplexMenuBar(w);
     w.show();
@@ -850,6 +846,7 @@ void tst_QMenuBar::allowActiveAndDisabled()
     menuBar.addMenu(&activeMenu);
     centerOnScreen(&menuBar);
     menuBar.show();
+    const auto closer = qScopeGuard([&] { menuBar.close(); }); // QTBUG-135151
     QVERIFY(QTest::qWaitForWindowExposed(&menuBar));
 
     // Here we verify that AllowActiveAndDisabled correctly skips
@@ -870,9 +867,6 @@ void tst_QMenuBar::allowActiveAndDisabled()
 
 void tst_QMenuBar::check_altPress()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     if ( !qApp->style()->styleHint(QStyle::SH_MenuBar_AltKeyNavigation) ) {
         QSKIP(QString( "this is not supposed to work in the %1 style. Skipping." ).
               arg(qApp->style()->objectName()).toLatin1());
@@ -892,9 +886,6 @@ void tst_QMenuBar::check_altPress()
 // should close it and QMenuBar::activeAction() should be 0.
 void tst_QMenuBar::check_altClosePress()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     const QStyle *style = QApplication::style();
     if (!style->styleHint(QStyle::SH_MenuBar_AltKeyNavigation) ) {
         QSKIP(("This test is not supposed to work in the " + style->objectName().toLatin1()
@@ -924,9 +915,6 @@ void tst_QMenuBar::check_altClosePress()
 #if !defined(Q_OS_DARWIN)
 void tst_QMenuBar::check_shortcutPress()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QMainWindow w;
     const TestMenu menu = initWindowWithComplexMenuBar(w);
     w.show();
@@ -1002,7 +990,7 @@ void tst_QMenuBar::check_menuPosition()
 
     //the menu should be above the menubar item
     {
-        w.move(0,screenRect.bottom() - screenRect.height()/4); //just leave some place for the menubar
+        w.move(availRect.x(), screenRect.bottom() - screenRect.height()/4); //just leave some place for the menubar
         QRect mbItemRect = w.menuBar()->actionGeometry(menu_action);
         mbItemRect.moveTo(w.menuBar()->mapToGlobal(mbItemRect.topLeft()));
         QTest::keyClick(&w, Qt::Key_M, Qt::AltModifier );
@@ -1013,7 +1001,7 @@ void tst_QMenuBar::check_menuPosition()
 
     //the menu should be on the side of the menubar item and should be "stuck" to the bottom of the screen
     {
-        w.move(0,screenRect.y() + screenRect.height()/2); //put it in the middle
+        w.move(availRect.x(), screenRect.y() + screenRect.height()/2); //put it in the middle
         QRect mbItemRect = w.menuBar()->actionGeometry(menu_action);
         mbItemRect.moveTo(w.menuBar()->mapToGlobal(mbItemRect.topLeft()));
         QTest::keyClick(&w, Qt::Key_M, Qt::AltModifier );
@@ -1090,19 +1078,19 @@ void tst_QMenuBar::task256322_highlight()
     if (!QGuiApplication::platformName().compare(QLatin1String("minimal"), Qt::CaseInsensitive))
         QSKIP("Highlighting does not work correctly for minimal platform");
 
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QMainWindow win;
     win.menuBar()->setNativeMenuBar(false);  //we can't check the geometry of native menubars
     QMenu menu;
+    menu.addAction("New");
     QAction *file = win.menuBar()->addMenu(&menu);
     file->setText("file");
     QMenu menu2;
+    menu2.addAction("Open");
     QAction *file2 = win.menuBar()->addMenu(&menu2);
     file2->setText("file2");
     QAction *nothing = win.menuBar()->addAction("nothing");
 
+    win.resize(500, 200);
     centerOnScreen(&win);
     win.show();
     QVERIFY(QTest::qWaitForWindowActive(&win));
@@ -1231,12 +1219,38 @@ void tst_QMenuBar::taskQTBUG4965_escapeEaten()
 }
 #endif
 
+#ifdef Q_OS_LINUX
+class ResizeCounter : public QObject
+{
+public:
+    explicit ResizeCounter(QMenuBar *bar)
+    {
+        Q_ASSERT(bar);
+        bar->installEventFilter(this);
+    }
+
+    int resizeCount() const { return m_resizeCount; }
+
+protected:
+    bool eventFilter(QObject *o, QEvent *event) override
+    {
+        Q_UNUSED(o);
+        if (event->type() == QEvent::Resize)
+            ++m_resizeCount;
+        return false;
+    }
+
+private:
+    int m_resizeCount = 0;
+};
+#endif
+
 void tst_QMenuBar::taskQTBUG11823_crashwithInvisibleActions()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QMenuBar menubar;
+#ifdef Q_OS_LINUX
+    ResizeCounter counter(&menubar);
+#endif
     menubar.setNativeMenuBar(false); //we can't check the geometry of native menubars
 
     QAction * m = menubar.addAction( "&m" );
@@ -1245,6 +1259,12 @@ void tst_QMenuBar::taskQTBUG11823_crashwithInvisibleActions()
     centerOnScreen(&menubar);
     menubar.show();
     QVERIFY(QTest::qWaitForWindowActive(&menubar));
+
+#ifdef Q_OS_LINUX
+    if (QSysInfo::productType().contains("opensuse"))
+        QVERIFY(QTest::qWaitFor([&]{ return counter.resizeCount() == 2;}));
+#endif
+
     menubar.setActiveAction(m);
     QCOMPARE(menubar.activeAction(), m);
     QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_Right);
@@ -1488,6 +1508,50 @@ void tst_QMenuBar::pressDragRelease()
     QTRY_COMPARE(triggeredSpy.size(), 1);
 }
 
+void tst_QMenuBar::setActiveAction_disablesSloppyTimer()
+{
+    QMenuBar menuBar;
+    QMenu *menu = new QMenu(&menuBar);
+    menuBar.addMenu(menu);
+
+    QAction *item1 = menu->addAction("Item 1");
+    QAction *item2 = menu->addAction("Item 2");
+
+    // Create submenu for first item
+    QMenu *submenu = new QMenu(&menuBar);
+    submenu->addAction("Subitem 1");
+    submenu->addAction("Subitem 2");
+    submenu->addAction("Subitem 3");
+    item1->setMenu(submenu);
+
+    using namespace std::chrono_literals;
+
+    QTimer::singleShot(0, [&]() {
+        menu->show();
+    });
+
+    QTimer::singleShot(100ms, [&]() {
+        menu->setActiveAction(item1);
+        QCOMPARE_EQ(menu->activeAction(), item1);
+    });
+
+    QTimer::singleShot(200ms, [&] {
+        menu->setActiveAction(item2);
+        QCOMPARE_EQ(menu->activeAction(), item2);
+    });
+
+    bool done = false;
+    // QTBUG-138956: sloppy timer should not fire when calling setActiveAction
+    QTimer::singleShot(2s, [&] {
+        QCOMPARE_EQ(menu->activeAction(), item2);
+        done = true;
+    });
+
+    QVERIFY(QTest::qWaitFor([&]{
+        return done;
+    }));
+}
+
 // QTBUG-56526
 void tst_QMenuBar::platformMenu()
 {
@@ -1578,9 +1642,6 @@ void tst_QMenuBar::slotForTaskQTBUG53205()
 #if !defined(Q_OS_DARWIN)
 void tst_QMenuBar::taskQTBUG46812_doNotLeaveMenubarHighlighted()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QMainWindow mainWindow;
     QWidget *centralWidget = new QWidget;
     centralWidget->setFocusPolicy(Qt::StrongFocus);
@@ -1686,9 +1747,6 @@ void tst_QMenuBar::defaultEditMenuItems()
 
 void tst_QMenuBar::taskQTBUG55966_subMenuRemoved()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QMainWindow window;
     QMenuBar *menubar = window.menuBar();
     QMenu *parentMenu = menubar->addMenu("Parent menu");

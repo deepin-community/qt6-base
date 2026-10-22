@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #include "lalr.h"
 #include "dotgraph.h"
@@ -28,6 +29,10 @@ static void help_me ()
        << "  --no-debug\t\tno debug information" << Qt::endl
        << "  --no-lines\t\tno #line directives" << Qt::endl
        << "  --dot\t\t\tgenerate a graph" << Qt::endl
+       << "  --use-pragma-once\tuse #pragma once instead of ifndef/define header guards" << Qt::endl
+       << "  --qt-security={critical,significant,insignificant}[:<reason>]" << Qt::endl
+       << "\t\t\tmark the output files with Qt-Security (QUIP-23) headers" << Qt::endl
+       << "\t\t\twith given score and free-form <reason>" << Qt::endl
        << "  --qt\t\t\tadd the Qt copyright header and Qt-specific types and macros" << Qt::endl
        << "  --exit-on-warn\texit with status code 2 on warning" << Qt::endl
        << Qt::endl;
@@ -42,6 +47,8 @@ int main (int argc, char *argv[])
   bool generate_report = false;
   bool no_lines = false;
   bool debug_info = true;
+  bool use_pragma_once = false;
+  std::optional<CppGenerator::SecurityHeader> security;
   bool qt_copyright = false;
   bool warnings_are_errors = false;
   QString file_name;
@@ -62,6 +69,18 @@ int main (int argc, char *argv[])
 
       else if (arg == "--no-debug"_L1)
         debug_info = false;
+
+      else if (arg == "--use-pragma-once"_L1)
+          use_pragma_once = true;
+
+      else if (constexpr auto qtsec = "--qt-security="_L1; arg.startsWith(qtsec))
+      {
+          auto sh = CppGenerator::SecurityHeader::parse(QStringView{arg}.slice(qtsec.size()));
+          if (!sh)
+              qerr() << "*** Warning. Could not parse `" << arg << "'" << Qt::endl;
+          else
+              security = std::move(sh);
+      }
 
       else if (arg == "--qt"_L1)
         qt_copyright = true;
@@ -108,6 +127,9 @@ int main (int argc, char *argv[])
 
   CppGenerator gen (p, grammar, aut, generate_report);
   gen.setDebugInfo (debug_info);
+  gen.setUsePragmaOnce(use_pragma_once);
+  if (security)
+      gen.setSecurityHeader(std::move(*security));
   gen.setCopyright (qt_copyright);
   gen.setWarningsAreErrors (warnings_are_errors);
   gen ();

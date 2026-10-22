@@ -1,5 +1,6 @@
 // Copyright (C) 2024 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpdfoutputintent.h"
 
@@ -14,6 +15,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 class QPdfOutputIntentPrivate : public QSharedData
 {
 public:
@@ -27,7 +30,7 @@ public:
 
     QString outputConditionIdentifier = QStringLiteral("sRGB_IEC61966-2-1_black_scaled");
     QString outputCondition = QStringLiteral("sRGB IEC61966 v2.1 with black scaling");
-    QUrl registryName = QStringLiteral("http://www.color.org");
+    QUrl registryName = QUrl{u"http://www.color.org"_s};
     QColorSpace outputProfile;
 };
 
@@ -80,9 +83,7 @@ QPdfOutputIntent::~QPdfOutputIntent() = default;
 
 /*!
     \fn void QPdfOutputIntent::swap(QPdfOutputIntent &other) noexcept
-
-    Swaps the output intent \a other with this output intent. This
-    operation is very fast and never fails.
+    \memberswap{output intent}
 */
 
 /*!

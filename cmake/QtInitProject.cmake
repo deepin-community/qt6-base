@@ -21,7 +21,7 @@ set(types "")
 # Option Arguments:
 #     EXPERIMENTAL
 #         Marks that the support of the following files is experimental and the required Qt modules
-#         are in Technical preview state.
+#         are in Technology Preview state.
 #     DEPRECATED
 #         Marks that the support of the following files will be discontinued soon and the required
 #         Qt modules are deprecated.
@@ -93,12 +93,11 @@ handle_type(cpp EXTENSIONS .c .cc .cpp .cxx .h .hh .hxx .hpp MODULES Core TEMPLA
 handle_type(qml EXTENSIONS .qml .js .mjs MODULES Gui Qml Quick TEMPLATE
 "\n\nqt_add_qml_module(${project_name}
     URI ${project_name}
-    OUTPUT_DIRECTORY qml
-    VERSION 1.0
-    RESOURCE_PREFIX /qt/qml
     QML_FILES
         @files@
-)"
+)
+set_property(TARGET ${project_name} PROPERTY RUNTIME_OUTPUT_NAME \"${project_name}app\")
+"
 )
 
 handle_type(ui EXTENSIONS .ui MODULES Gui Widgets DEPENDS cpp TEMPLATE
@@ -138,7 +137,7 @@ foreach(f IN LISTS files)
                 message("We found files with the following extensions in your directory:"
                     " ${${type}_file_extensions}\n"
                     "Note that the modules ${${type}_required_modules} are"
-                    " in the technical preview state.")
+                    " in the Technology Preview state.")
             endif()
             if(${type}_is_deprecated)
                 message("We found files with the following extensions in your directory:"
@@ -162,7 +161,7 @@ set(content
 project(${project_name} LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS ${packages_string})
-qt_standard_project_setup()"
+qt_standard_project_setup(REQUIRES 6.8)"
 )
 
 set(has_useful_sources FALSE)
@@ -210,5 +209,5 @@ message("The project file is successfully generated. To build the project run:"
     "\nmkdir build"
     "\ncd build"
     "\nqt-cmake ${project_abs_dir}"
-    "\ncmake --build ${project_abs_dir}"
+    "\ncmake --build ."
 )

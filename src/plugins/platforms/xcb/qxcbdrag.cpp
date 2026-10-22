@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbdrag.h"
 #include <xcb/xcb.h>
@@ -17,7 +18,6 @@
 #include <qguiapplication.h>
 #include <qrect.h>
 #include <qpainter.h>
-#include <qtimer.h>
 
 #include <qpa/qwindowsysteminterface.h>
 
@@ -28,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt::Literals::StringLiterals;
+using namespace Qt::StringLiterals;
 
 const int xdnd_version = 5;
 
@@ -92,7 +92,6 @@ QXcbDrag::QXcbDrag(QXcbConnection *c) : QXcbObject(c)
     m_dropData = new QXcbDropData(this);
 
     init();
-    cleanup_timer = -1;
 }
 
 QXcbDrag::~QXcbDrag()
@@ -367,8 +366,6 @@ void QXcbDrag::move(const QPoint &globalPos, Qt::MouseButtons b, Qt::KeyboardMod
     QXcbWindow *w = nullptr;
     if (target) {
         w = connection()->platformWindowFromId(target);
-        if (w && (w->window()->type() == Qt::Desktop) /*&& !w->acceptDrops()*/)
-            w = nullptr;
     } else {
         w = nullptr;
         target = current_virtual_desktop->root();
@@ -494,9 +491,6 @@ void QXcbDrag::drop(const QPoint &globalPos, Qt::MouseButtons b, Qt::KeyboardMod
 
     QXcbWindow *w = connection()->platformWindowFromId(current_proxy_target);
 
-    if (w && w->window()->type() == Qt::Desktop) // && !w->acceptDrops()
-        w = nullptr;
-
     Transaction t = {
         connection()->time(),
         current_target,
@@ -509,9 +503,8 @@ void QXcbDrag::drop(const QPoint &globalPos, Qt::MouseButtons b, Qt::KeyboardMod
     transactions.append(t);
 
     // timer is needed only for drops that came from other processes.
-    if (!t.targetWindow && cleanup_timer == -1) {
-        cleanup_timer = startTimer(XdndDropTransactionTimeout);
-    }
+    if (!t.targetWindow && !cleanup_timer.isActive())
+        cleanup_timer.start(XdndDropTransactionTimeout, this);
 
     qCDebug(lcQpaXDnd) << "sending drop to target:" << current_target;
 
@@ -597,6 +590,9 @@ void QXcbDrag::setActionList(Qt::DropAction requestedAction, Qt::DropActions sup
                             XCB_ATOM_ATOM, 32, actions.size(), actions.constData());
         current_actions = actions;
     }
+#else
+    Q_UNUSED(requestedAction)
+    Q_UNUSED(supportedActions)
 #endif
 }
 
@@ -739,7 +735,7 @@ void QXcbDrag::handle_xdnd_position(QPlatformWindow *w, const xcb_client_message
     QRect geometry = w->geometry();
     p -= w->isEmbedded() ? w->mapToGlobal(geometry.topLeft()) : geometry.topLeft();
 
-    if (!w || !w->window() || (w->window()->type() == Qt::Desktop))
+    if (!w || !w->window())
         return;
 
     if (Q_UNLIKELY(e->data.data32[0] != xdnd_dragsource)) {
@@ -860,7 +856,7 @@ void QXcbDrag::handle_xdnd_status(const xcb_client_message_event_t *event)
     if (event->data.data32[0] && event->data.data32[0] != current_target)
         return;
 
-    const bool dropPossible = event->data.data32[1];
+    const bool dropPossible = event->data.data32[1] & 1;
     setCanDrop(dropPossible);
 
     if (dropPossible) {
@@ -946,9 +942,6 @@ void QXcbDrag::send_leave()
 
     QXcbWindow *w = connection()->platformWindowFromId(current_proxy_target);
 
-    if (w && (w->window()->type() == Qt::Desktop) /*&& !w->acceptDrops()*/)
-        w = nullptr;
-
     qCDebug(lcQpaXDnd) << "sending XdndLeave to target:" << current_target;
 
     if (w)
@@ -994,10 +987,12 @@ void QXcbDrag::handleDrop(QPlatformWindow *, const xcb_client_message_event_t *e
         if (dropData && dropData->hasImage())
             dropData = 0;
     }
+
+    const QDrag *currentDragObject = currentDrag();
     // if we can't find it, then use the data in the drag manager
-    if (currentDrag()) {
+    if (currentDragObject) {
         if (!dropData)
-            dropData = currentDrag()->mimeData();
+            dropData = currentDragObject->mimeData();
         supported_drop_actions = Qt::DropActions(l[4]);
     } else {
         if (!dropData)
@@ -1008,8 +1003,8 @@ void QXcbDrag::handleDrop(QPlatformWindow *, const xcb_client_message_event_t *e
     if (!dropData)
         return;
 
-    auto buttons = currentDrag() ? b : connection()->queryMouseButtons();
-    auto modifiers = currentDrag() ? mods : connection()->keyboard()->queryKeyboardModifiers();
+    auto buttons = currentDragObject ? b : connection()->queryMouseButtons();
+    auto modifiers = currentDragObject ? mods : connection()->keyboard()->queryKeyboardModifiers();
 
     QPlatformDropQtResponse response = QWindowSystemInterface::handleDrop(
                 currentWindow.data(), dropData, currentPosition, supported_drop_actions,
@@ -1050,9 +1045,8 @@ void QXcbDrag::handleFinished(const xcb_client_message_event_t *event)
     if (event->window != connection()->qtSelectionOwner())
         return;
 
-    const unsigned long *l = (const unsigned long *)event->data.data32;
-    if (l[0]) {
-        int at = findTransactionByWindow(l[0]);
+    if (xcb_window_t w = event->data.data32[0]) {
+        int at = findTransactionByWindow(w);
         if (at != -1) {
 
             Transaction t = transactions.takeAt(at);
@@ -1090,7 +1084,7 @@ void QXcbDrag::handleFinished(const xcb_client_message_event_t *event)
 
 void QXcbDrag::timerEvent(QTimerEvent* e)
 {
-    if (e->timerId() == cleanup_timer) {
+    if (e->id() == cleanup_timer.id()) {
         bool stopTimer = true;
         for (int i = 0; i < transactions.size(); ++i) {
             const Transaction &t = transactions.at(i);
@@ -1116,10 +1110,8 @@ void QXcbDrag::timerEvent(QTimerEvent* e)
             }
 
         }
-        if (stopTimer && cleanup_timer != -1) {
-            killTimer(cleanup_timer);
-            cleanup_timer = -1;
-        }
+        if (stopTimer)
+            cleanup_timer.stop();
     }
 }
 
@@ -1232,35 +1224,11 @@ void QXcbDrag::handleSelectionRequest(const xcb_selection_request_event_t *event
 }
 
 
-bool QXcbDrag::dndEnable(QXcbWindow *w, bool on)
+bool QXcbDrag::dndEnable(QXcbWindow *window, bool on)
 {
-    qCDebug(lcQpaXDnd) << "dndEnable" << static_cast<QPlatformWindow *>(w) << on;
+    qCDebug(lcQpaXDnd) << "dndEnable" << static_cast<QPlatformWindow *>(window) << on;
     // Windows announce that they support the XDND protocol by creating a window property XdndAware.
     if (on) {
-        QXcbWindow *window = nullptr;
-        if (w->window()->type() == Qt::Desktop) {
-            if (desktop_proxy) // *WE* already have one.
-                return false;
-
-            QXcbConnectionGrabber grabber(connection());
-
-            // As per Xdnd4, use XdndProxy
-            xcb_window_t proxy_id = xdndProxy(connection(), w->xcb_window());
-
-            if (!proxy_id) {
-                desktop_proxy = new QWindow;
-                window = static_cast<QXcbWindow *>(desktop_proxy->handle());
-                proxy_id = window->xcb_window();
-                xcb_atom_t xdnd_proxy = atom(QXcbAtom::AtomXdndProxy);
-                xcb_change_property(xcb_connection(), XCB_PROP_MODE_REPLACE, w->xcb_window(), xdnd_proxy,
-                                    XCB_ATOM_WINDOW, 32, 1, &proxy_id);
-                xcb_change_property(xcb_connection(), XCB_PROP_MODE_REPLACE, proxy_id, xdnd_proxy,
-                                    XCB_ATOM_WINDOW, 32, 1, &proxy_id);
-            }
-
-        } else {
-            window = w;
-        }
         if (window) {
             qCDebug(lcQpaXDnd) << "setting XdndAware for" << window->xcb_window();
             xcb_atom_t atm = xdnd_version;
@@ -1270,16 +1238,10 @@ bool QXcbDrag::dndEnable(QXcbWindow *w, bool on)
         } else {
             return false;
         }
-    } else {
-        if (w->window()->type() == Qt::Desktop) {
-            xcb_delete_property(xcb_connection(), w->xcb_window(), atom(QXcbAtom::AtomXdndProxy));
-            delete desktop_proxy;
-            desktop_proxy = nullptr;
-        } else {
-            qCDebug(lcQpaXDnd) << "not deleting XDndAware";
-        }
-        return true;
     }
+
+    qCDebug(lcQpaXDnd) << "not deleting XDndAware";
+    return true;
 }
 
 bool QXcbDrag::ownsDragObject() const
@@ -1308,7 +1270,7 @@ QVariant QXcbDropData::xdndObtainData(const QByteArray &format, QMetaType reques
 {
     QXcbConnection *c = drag->connection();
     QXcbWindow *xcb_window = c->platformWindowFromId(drag->xdnd_dragsource);
-    if (xcb_window && drag->currentDrag() && xcb_window->window()->type() != Qt::Desktop) {
+    if (xcb_window && drag->currentDrag()) {
         QMimeData *data = drag->currentDrag()->mimeData();
         if (data->hasFormat(QLatin1StringView(format)))
             return data->data(QLatin1StringView(format));

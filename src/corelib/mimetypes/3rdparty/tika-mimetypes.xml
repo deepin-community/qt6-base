@@ -272,7 +272,7 @@
   <mime-type type="application/epub+zip">
     <acronym>EPUB</acronym>
     <comment>Electronic Publication</comment>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="PK\003\004" type="string" offset="0">
         <match value="mimetypeapplication/epub+zip" type="string" offset="30"/>
       </match>
@@ -289,7 +289,7 @@
     <acronym>FITS</acronym>
     <comment>Flexible Image Transport System</comment>
     <tika:link>http://www.digitalpreservation.gov/formats/fdd/fdd000317.shtml</tika:link>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="SIMPLE  =                    T" type="string" offset="0"/>
       <match value="SIMPLE  =                T" type="string" offset="0"/>
     </magic>
@@ -416,7 +416,7 @@
   </mime-type>
 
   <mime-type type="application/json">
-    <sub-class-of type="application/javascript"/>
+    <sub-class-of type="text/javascript"/>
     <glob pattern="*.json"/>
   </mime-type>
 
@@ -430,24 +430,108 @@
     <comment>Java Class File</comment>
     <alias type="application/x-java-vm"/>
     <alias type="application/x-java"/>
-    <magic priority="40">
-      <match value="\xca\xfe\xba\xbe" type="string" offset="0" />
+    <magic priority="50">
+      <match value="\xca\xfe\xba\xbe" type="string" offset="0"/>
     </magic>
     <glob pattern="*.class"/>
   </mime-type>
 
-  <mime-type type="application/x-java-jnilib">
-    <comment>Java Native Library for OSX</comment>
-    <magic priority="50">
-      <match value="\xca\xfe\xba\xbe" type="string" offset="0">
-        <match value="\xfe\xed\xfa\xce" type="string" offset="4096"/>
-        <match value="\xfe\xed\xfa\xcf" type="string" offset="4096"/>
-        <match value="\xce\xfa\xed\xfe" type="string" offset="4096"/>
-        <match value="\xcf\xfa\xed\xfe" type="string" offset="4096"/>
+  <mime-type type="application/x-mach-o-universal">
+    <comment>Mach-O Universal</comment>
+    <magic priority="60">
+      <match value="\xCA\xFE\xBA\xBE" type="string" offset="0">
+        <match value="0x1" type="big32" offset="4"/>
+        <match value="0x2" type="big32" offset="4"/>
+        <match value="0x3" type="big32" offset="4"/>
+        <match value="0x4" type="big32" offset="4"/>
+        <match value="0x5" type="big32" offset="4"/>
+        <match value="0x6" type="big32" offset="4"/>
+        <match value="0x7" type="big32" offset="4"/>
+        <match value="0x8" type="big32" offset="4"/>
+        <match value="0x9" type="big32" offset="4"/>
+        <match value="0xA" type="big32" offset="4"/>
+        <match value="0xB" type="big32" offset="4"/>
+        <match value="0xC" type="big32" offset="4"/>
+        <match value="0xD" type="big32" offset="4"/>
+        <match value="0xE" type="big32" offset="4"/>
+        <match value="0xF" type="big32" offset="4"/>
+        <match value="0x10" type="big32" offset="4"/>
+        <match value="0x11" type="big32" offset="4"/>
+        <match value="0x12" type="big32" offset="4"/>
+        <match value="0x13" type="big32" offset="4"/>
+      </match>
+      <match value="\xBE\xBA\xFE\xCA" type="string" offset="0">
+        <match value="0x1" type="little32" offset="4"/>
+        <match value="0x2" type="little32" offset="4"/>
+        <match value="0x3" type="little32" offset="4"/>
+        <match value="0x4" type="little32" offset="4"/>
+        <match value="0x5" type="little32" offset="4"/>
+        <match value="0x6" type="little32" offset="4"/>
+        <match value="0x7" type="little32" offset="4"/>
+        <match value="0x8" type="little32" offset="4"/>
+        <match value="0x9" type="little32" offset="4"/>
+        <match value="0xA" type="little32" offset="4"/>
+        <match value="0xB" type="little32" offset="4"/>
+        <match value="0xC" type="little32" offset="4"/>
+        <match value="0xD" type="little32" offset="4"/>
+        <match value="0xE" type="little32" offset="4"/>
+        <match value="0xF" type="little32" offset="4"/>
+        <match value="0x10" type="little32" offset="4"/>
+        <match value="0x11" type="little32" offset="4"/>
+        <match value="0x12" type="little32" offset="4"/>
+        <match value="0x13" type="little32" offset="4"/>
+      </match>
+      <match value="\xCA\xFE\xBA\xBF" type="string" offset="0">
+        <match value="0x1" type="big32" offset="4"/>
+        <match value="0x2" type="big32" offset="4"/>
+        <match value="0x3" type="big32" offset="4"/>
+        <match value="0x4" type="big32" offset="4"/>
+        <match value="0x5" type="big32" offset="4"/>
+        <match value="0x6" type="big32" offset="4"/>
+        <match value="0x7" type="big32" offset="4"/>
+        <match value="0x8" type="big32" offset="4"/>
+        <match value="0x9" type="big32" offset="4"/>
+        <match value="0xA" type="big32" offset="4"/>
+        <match value="0xB" type="big32" offset="4"/>
+        <match value="0xC" type="big32" offset="4"/>
+        <match value="0xD" type="big32" offset="4"/>
+        <match value="0xE" type="big32" offset="4"/>
+        <match value="0xF" type="big32" offset="4"/>
+        <match value="0x10" type="big32" offset="4"/>
+        <match value="0x11" type="big32" offset="4"/>
+        <match value="0x12" type="big32" offset="4"/>
+        <match value="0x13" type="big32" offset="4"/>
+      </match>
+      <match value="\xBF\xBA\xFE\xCA" type="string" offset="0">
+        <match value="0x1" type="little32" offset="4"/>
+        <match value="0x2" type="little32" offset="4"/>
+        <match value="0x3" type="little32" offset="4"/>
+        <match value="0x4" type="little32" offset="4"/>
+        <match value="0x5" type="little32" offset="4"/>
+        <match value="0x6" type="little32" offset="4"/>
+        <match value="0x7" type="little32" offset="4"/>
+        <match value="0x8" type="little32" offset="4"/>
+        <match value="0x9" type="little32" offset="4"/>
+        <match value="0xA" type="little32" offset="4"/>
+        <match value="0xB" type="little32" offset="4"/>
+        <match value="0xC" type="little32" offset="4"/>
+        <match value="0xD" type="little32" offset="4"/>
+        <match value="0xE" type="little32" offset="4"/>
+        <match value="0xF" type="little32" offset="4"/>
+        <match value="0x10" type="little32" offset="4"/>
+        <match value="0x11" type="little32" offset="4"/>
+        <match value="0x12" type="little32" offset="4"/>
+        <match value="0x13" type="little32" offset="4"/>
       </match>
     </magic>
-    <glob pattern="*.jnilib"/>
   </mime-type>
+
+  <mime-type type="application/x-java-jnilib">
+    <comment>Java Native Library for OSX</comment>
+    <glob pattern="*.jnilib"/>
+    <sub-class-of type="application/x-mach-o-universal"/>
+  </mime-type>
+
   <mime-type type="application/vnd.java.hprof ">
     <comment>Java hprof text file</comment>
     <magic priority="50">
@@ -491,7 +575,7 @@
     <glob pattern="*.mb"/>
     <!-- Note - there is no Unique Magic for Mathematica files! -->
     <!-- Check for a Mathematica-style opening comment as our best hope... -->
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="(**" type="string" offset="0"/>
       <match value="(* " type="string" offset="0"/>
     </magic>
@@ -3067,7 +3151,7 @@
     <comment>WordPerfect - Corel Word Processing</comment>
     <tika:link>http://en.wikipedia.org/wiki/WordPerfect</tika:link>
     <tika:uti>com.corel.wordperfect.doc</tika:uti>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="application/vnd.wordperfect;" type="string" offset="0"/>
     </magic>
     <magic priority="40">
@@ -3502,7 +3586,7 @@
   </mime-type>
 
   <mime-type type="application/x-bzip">
-    <magic priority="40">
+    <magic priority="39"> <!-- priority lowered by Qt -->
       <match value="BZ0" type="string" offset="0"/>
     </magic>
     <glob pattern="*.bz"/>
@@ -3644,7 +3728,7 @@
   </mime-type>
 
   <mime-type type="application/x-elf">
-    <magic priority="50">
+    <magic priority="48"> <!-- priority lowered by Qt -->
       <match value="\177ELF" type="string" offset="0" />
     </magic>
   </mime-type>
@@ -3722,7 +3806,7 @@
   </mime-type>
   <mime-type type="application/x-executable">
     <sub-class-of type="application/x-elf"/>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="\177ELF" type="string" offset="0">
         <match value="\x02\x00" type="string" offset="16"/>
         <match value="\x00\x02" type="string" offset="16"/>
@@ -3888,7 +3972,12 @@
    <comment>General Regularly-distributed Information in Binary form</comment>
    <tika:link>http://en.wikipedia.org/wiki/GRIB</tika:link>
    <magic priority="50">
-     <match value="GRIB" type="string" offset="0"/>
+     <match value="GRIB" type="string" offset="0">
+       <match value="\x01" type="string" offset="7"/>
+     </match>
+     <match value="GRIB" type="string" offset="0">
+       <match value="\x02" type="string" offset="7"/>
+     </match>
    </magic>
    <glob pattern="*.grb"/>
    <glob pattern="*.grb1"/>
@@ -4012,7 +4101,7 @@
   <mime-type type="application/x-iso9660-image">
     <acronym>ISO</acronym>
     <comment>ISO 9660 CD-ROM filesystem data</comment>
-    <magic priority="50">
+    <magic priority="60">
       <match value="CD001" type="string" offset="32769"/>
       <match value="CD001" type="string" offset="34817"/>
       <match value="CD001" type="string" offset="36865"/>
@@ -4118,10 +4207,200 @@
   </mime-type>
   <mime-type type="application/x-mach-o">
     <comment>Mach-O</comment>
+    <tika:link>https://www.nationalarchives.gov.uk/PRONOM/fmt/692</tika:link>
     <tika:link>https://www.nationalarchives.gov.uk/PRONOM/fmt/693</tika:link>
     <magic priority="50">
-      <match type="string" value="\xFE\xED\xFA\xCF" offset="0"/> <!-- type added by Qt -->
-      <match type="string" value="\xCF\xFA\xED\xFE" offset="0"/> <!-- type added by Qt -->
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0"/>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0"/>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0"/>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0"/>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-object">
+    <comment>Mach-O relocatable object file</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000001" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000001" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000001" type="big32" offset="12"/>
+      </match>
+      <match type="string" value="\xCF\xFA\xED\xFE" offset="0"> <!-- type added by Qt -->
+        <match value="0x00000001" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-executable">
+    <comment>Mach-O executable</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000002" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000002" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000002" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000002" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-fvmlib">
+    <comment>Mach-O fixed VM shared library</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000003" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000003" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000003" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000003" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-core">
+    <comment>Mach-O core file</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000004" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000004" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000004" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000004" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-preload">
+    <comment>Mach-O preloaded executable</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000005" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000005" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000005" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000005" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-dylib">
+    <comment>Mach-O dynamic shared library</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000006" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000006" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000006" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000006" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-dylinker">
+    <comment>Mach-O dynamic link editor</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000007" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000007" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000007" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000007" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-bundle">
+    <comment>Mach-O dynamic bundle</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000008" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000008" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000008" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000008" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-dylib-stub">
+    <comment>Mach-O shared library for static linking</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x00000009" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000009" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x00000009" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x00000009" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-dsym">
+    <comment>Mach-O debug symbols file</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x0000000A" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x0000000A" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x0000000A" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x0000000A" type="little32" offset="12"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="application/x-mach-o-kext-bundle">
+    <comment>Mach-O kext bundle</comment>
+    <magic priority="55">
+      <match value="\xFE\xED\xFA\xCE" type="string" offset="0">
+        <match value="0x0000000B" type="big32" offset="12"/>
+      </match>
+      <match value="\xCE\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x0000000B" type="little32" offset="12"/>
+      </match>
+      <match value="\xFE\xED\xFA\xCF" type="string" offset="0">
+        <match value="0x0000000B" type="big32" offset="12"/>
+      </match>
+      <match value="\xCF\xFA\xED\xFE" type="string" offset="0">
+        <match value="0x0000000B" type="little32" offset="12"/>
+      </match>
     </magic>
   </mime-type>
   <mime-type type="application/x-memgraph">
@@ -4179,6 +4458,7 @@
     <glob pattern="*.xbap"/>
   </mime-type>
   <mime-type type="application/x-msaccess">
+    <glob pattern="*.accdb"/>
     <glob pattern="*.mdb"/>
     <magic priority="60">
       <match value="\x00\x01\x00\x00\x53\x74\x61\x6e" type="string" offset="0"/>
@@ -4808,7 +5088,7 @@
   <mime-type type="application/x-tex">
     <comment>TeX Source</comment>
     <alias type="text/x-tex"/>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="\\input" type="string" offset="0"/>
       <match value="\\section" type="string" offset="0"/>
       <match value="\\setlength" type="string" offset="0"/>
@@ -5035,7 +5315,7 @@
     <tika:uti>public.xml</tika:uti>
     <alias type="text/xml"/>
     <alias type="application/x-xml"/>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="&lt;?xml" type="string" offset="0"/>
       <match value="&lt;?XML" type="string" offset="0"/>
       <!-- UTF-8 BOM -->
@@ -5112,12 +5392,13 @@
     <tika:link>http://en.wikipedia.org/wiki/ZIP_(file_format)</tika:link>
     <tika:uti>com.pkware.zip-archive</tika:uti>
     <alias type="application/x-zip-compressed"/>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="PK\003\004" type="string" offset="0"/>
       <match value="PK\005\006" type="string" offset="0"/>
       <match value="PK\x07\x08" type="string" offset="0"/>
     </magic>
     <glob pattern="*.zip"/>
+    <glob pattern="*.zipx"/>
   </mime-type>
 
   <mime-type type="application/zlib">
@@ -5159,7 +5440,7 @@
       <!-- AC3 Syncword -->
       <match value="\x0b\x77" type="string" offset="0"/>
     </magic>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="\x0b\x77" type="string" offset="0">
          <!-- BSID 0-8 = AC3, BSID=byte5>>3 -->
          <match value="\x00" type="string" mask="0xF8" offset="5"/>
@@ -5304,7 +5585,7 @@
     <glob pattern="*.mp4a"/>
     <glob pattern="*.m4a"/>
     <glob pattern="*.m4b"/>
-    <sub-class-of type="application/quicktime" />
+    <sub-class-of type="video/mp4" />
   </mime-type>
   <mime-type type="audio/mp4a-latm"/>
   <mime-type type="audio/mpa"/>
@@ -5315,7 +5596,7 @@
     <alias type="audio/x-mpeg"/>
     <acronym>MP3</acronym>
     <comment>MPEG-1 Audio Layer 3</comment>
-    <magic priority="20">
+    <magic priority="50">
       <!-- http://mpgedit.org/mpgedit/mpeg_format/MP3Format.html -->
       <!-- Bit pattern for first two bytes: 11111111 111VVLLC    -->
       <!-- VV = MPEG Audio Version ID; 10 = V2, 11 = V1          -->
@@ -5334,11 +5615,20 @@
       <match value="0xffe3" type="string" offset="0"/> <!-- MP3 2.5 from pronom     -->
       <!-- TIKA-417: This is the UTF-16 LE byte order mark! -->
       <!-- match value="0xfffe" type="string" offset="0"/ --> <!-- V1, L1, CRC -->
-      <match value="0xffff" type="string" offset="0"/> <!-- V1, L1      -->
-      <match value="ID3" type="string" offset="0"/>
+      <!-- 0xffff has layer bits 00 which is "reserved" in the MPEG spec, not L1.
+           Removed: caused false positives with binary files. -->
+      <!-- match value="0xffff" type="string" offset="0"/ -->
+      <!-- TIKA-4582: Require MP3 frame sync after ID3 tag to avoid false positives with other ID3-tagged formats -->
+      <match value="ID3" type="string" offset="0">
+<!-- DISABLED FOR QT:          <match type="regex" value="\\xFF[\\xE3\\xF2-\\xF7\\xFA-\\xFD\\xFF]" offset="512:8192" />-->
+      </match>
       <!-- in the wild, 0D0A or quite a few \x00 may precede the magic -->
 <!-- DISABLED FOR QT:       <match value="(?:\\x0D\\x0A|\\x00{1,1024})(?:\\xff[\\xe3\\xf2\\xf3\\xf4\\xf5\\xf6\\xf7\\xf8\\xf9\\xfa\\xfb\\xfc\\xfd\\xfe\\xff]|ID3)"-->
 <!-- DISABLED FOR QT:              type="regex" offset="0"/>-->
+    </magic>
+    <!-- TIKA-4582: Low-priority fallback for ID3-only files (truncated or very large ID3 tags) -->
+    <magic priority="10">
+      <match value="ID3" type="string" offset="0"/>
     </magic>
     <glob pattern="*.mpga"/>
     <glob pattern="*.mp2"/>
@@ -5546,13 +5836,14 @@
     <alias type="audio/aac"/>
     <glob pattern="*.aac"/>
     <magic priority="30">
-      <!-- Without ID3 tags -->
-<!-- DISABLED FOR QT:       <match type="regex" value="\\xFF(\\xF0|\\xF1|\\xF8|\\xF9)(\\x40|\\x41|\\x44|\\x45|\\x48|\\x49|\\x4C|\\x4D|\\x50|\\x51|\\x54|\\x55|\\x58|\\x59|\\x5C|\\x5D|\\x60|\\x61|\\x64|\\x65|\\x68|\\x69|\\x6C|\\x6D|\\x70|\\x71|\\x80|\\x81|\\x84|\\x85|\\x88|\\x89|\\x8C|\\x8D|\\x90|\\x91|\\x94|\\x95|\\x98|\\x99|\\x9C|\\x9D|\\xA0|\\xA1|\\xA4|\\xA5|\\xA8|\\xA9|\\xAC|\\xAD|\\xB0|\\xB1)(\\x00|\\x01|\\x20|\\x40|\\x41|\\x60|\\x80|\\x81|\\x60|\\xA0|\\xC0|\\xC1|\\xE0)" offset="0" />-->
+      <!-- Without ID3 tags - require two consecutive ADTS frame syncs -->
+      <!-- ADTS frames are typically 100-2000 bytes, so look for second sync at that distance -->
+<!-- DISABLED FOR QT:       <match type="regex" value="(?s)\\xFF[\\xF0\\xF1\\xF8\\xF9].{2}.{100,2000}\\xFF[\\xF0\\xF1\\xF8\\xF9]" offset="0" />-->
     </magic>
     <magic priority="40">
-      <!-- With ID3 tags at the start -->
+      <!-- With ID3 tags at the start - require two consecutive ADTS frame syncs -->
       <match value="ID3" type="string" offset="0">
-<!-- DISABLED FOR QT:          <match type="regex" value="\\xFF(\\xF0|\\xF1|\\xF8|\\xF9)(\\x40|\\x41|\\x44|\\x45|\\x48|\\x49|\\x4C|\\x4D|\\x50|\\x51|\\x54|\\x55|\\x58|\\x59|\\x5C|\\x5D|\\x60|\\x61|\\x64|\\x65|\\x68|\\x69|\\x6C|\\x6D|\\x70|\\x71|\\x80|\\x81|\\x84|\\x85|\\x88|\\x89|\\x8C|\\x8D|\\x90|\\x91|\\x94|\\x95|\\x98|\\x99|\\x9C|\\x9D|\\xA0|\\xA1|\\xA4|\\xA5|\\xA8|\\xA9|\\xAC|\\xAD|\\xB0|\\xB1)(\\x00|\\x01|\\x20|\\x40|\\x41|\\x60|\\x80|\\x81|\\x60|\\xA0|\\xC0|\\xC1|\\xE0)" offset="512:2048" />-->
+<!-- DISABLED FOR QT:          <match type="regex" value="(?s)\\xFF[\\xF0\\xF1\\xF8\\xF9].{2}.{100,2000}\\xFF[\\xF0\\xF1\\xF8\\xF9]" offset="512:8192" />-->
       </match>
     </magic>
   </mime-type>
@@ -5767,20 +6058,24 @@
     <magic priority="50">
       <match value="BM" type="string" offset="0">
         <match value="\x01\x00" type="string" offset="26">
-          <match value="\x00\x00" type="string" offset="28"/>
-          <match value="\x01\x00" type="string" offset="28"/>
-          <match value="\x04\x00" type="string" offset="28"/>
-          <match value="\x08\x00" type="string" offset="28"/>
-          <match value="\x10\x00" type="string" offset="28"/>
-          <match value="\x18\x00" type="string" offset="28"/>
-          <match value="\x20\x00" type="string" offset="28"/>
+<!-- DISABLED FOR QT:           <match minShouldMatch="2">-->
+<!-- DISABLED FOR QT:             <match minShouldMatch="1">-->
+<!-- DISABLED FOR QT:               <match value="0x0000" type="string" offset="28"/>-->
+<!-- DISABLED FOR QT:               <match value="0x0100" type="string" offset="28"/>-->
+<!-- DISABLED FOR QT:               <match value="0x0400" type="string" offset="28"/>-->
+<!-- DISABLED FOR QT:               <match value="0x0800" type="string" offset="28"/>-->
+<!-- DISABLED FOR QT:               <match value="0x1000" type="string" offset="28"/>-->
+<!-- DISABLED FOR QT:               <match value="0x1800" type="string" offset="28"/>-->
+<!-- DISABLED FOR QT:               <match value="0x2000" type="string" offset="28"/>-->
+<!-- DISABLED FOR QT:             </match>-->
+<!-- DISABLED FOR QT:             <match value="0x00000000" type="string" offset="30"/>-->
+<!-- DISABLED FOR QT:           </match>-->
         </match>
       </match>
     </magic>
     <glob pattern="*.bmp"/>
     <glob pattern="*.dib"/>
   </mime-type>
-
   <mime-type type="image/x-bpg">
     <acronym>BPG</acronym>
     <comment>Better Portable Graphics</comment>
@@ -5877,7 +6172,7 @@
     <comment>HEIF - High Efficiency Image File</comment>
     <acronym>HEIF</acronym>
     <tika:link>https://en.wikipedia.org/wiki/High_Efficiency_Image_File_Format</tika:link>
-    <magic priority="60">
+    <magic priority="59"> <!-- priority lowered by Qt -->
       <match value="ftypmif1" type="string" offset="4"/>
     </magic>
     <glob pattern="*.heif"/>
@@ -5885,7 +6180,7 @@
   </mime-type>
   <mime-type type="image/heif-sequence">
     <comment>HEIF Sequence - High Efficiency Image Sequence</comment>
-    <magic priority="60">
+    <magic priority="59"> <!-- priority lowered by Qt -->
       <match value="ftypmsf1" type="string" offset="4"/>
     </magic>
     <sub-class-of type="video/quicktime" />
@@ -6015,7 +6310,7 @@
     <root-XML localName="svg" namespaceURI="http://www.w3.org/2000/svg"/>
     <magic priority="50">
       <!-- Version of 0x0001 is PSD -->
-      <match value="&lt;svg" type="string" offset="0">
+      <match value="&lt;svg" type="string" offset="0:100">
         <match value="http://www.w3.org/2000/svg" type="string" offset="5:256"/>
       </match>
     </magic>
@@ -6336,7 +6631,7 @@
 
   <mime-type type="image/x-jp2-container">
     <comment>JPEG 2000 Container Format</comment>
-    <magic priority="50">
+    <magic priority="49"> <!-- priority lowered by Qt -->
       <match value="\x00\x00\x00\x0C\x6A\x50\x20\x20\x0D\x0A\x87\x0A" type="string" offset="0"/>
     </magic>
   </mime-type>
@@ -7050,6 +7345,8 @@
     <root-XML localName="SCRIPT"/>
     <root-XML localName="frameset"/>
     <root-XML localName="FRAMESET"/>
+    <root-XML localName="iframe"/>
+    <root-XML localName="IFRAME"/>
     <magic priority="60">
 <!-- DISABLED FOR QT:       <match value="(?i)&lt;(html|head|body|title|div)[ >]" type="regex" offset="0"/>-->
 <!-- DISABLED FOR QT:       <match value="(?i)&lt;h[123][ >]" type="regex" offset="0"/>-->
@@ -7101,7 +7398,7 @@
   <mime-type type="text/parityfec"/>
 
   <mime-type type="text/plain">
-    <magic priority="20">
+    <magic priority="19"> <!-- priority lowered by Qt -->
       <match value="This is TeX," type="string" offset="0"/>
       <match value="This is METAFONT," type="string" offset="0"/>
       <match value="/*" type="string" offset="0"/>
@@ -7857,8 +8154,10 @@
     <sub-class-of type="text/plain"/>
   </mime-type>
 
-  <mime-type type="text/x-web-markdown">
-    <comment>Markdown source code</comment>
+  <mime-type type="text/markdown">
+    <comment>Markdown document</comment>
+    <alias type="text/x-web-markdown"/>
+    <alias type="text/x-markdown"/>
     <glob pattern="*.md"/>
     <glob pattern="*.mdtext"/>
     <glob pattern="*.mkd"/>
@@ -7952,7 +8251,7 @@
   <mime-type type="video/mp2t"/>
 
   <mime-type type="video/mp4">
-    <magic priority="60">
+    <magic priority="59"> <!-- priority lowered by Qt -->
       <match value="ftypmp41" type="string" offset="4"/>
       <match value="ftypmp42" type="string" offset="4"/>
     </magic>
@@ -8172,7 +8471,7 @@
 
   <mime-type type="video/x-ms-asf">
     <glob pattern="*.asf"/>
-    <magic>
+    <magic priority="49"> <!-- priority lowered by Qt -->
        <match value="0x3026b275" type="big32" offset="0" />
     </magic>
   </mime-type>

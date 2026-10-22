@@ -1,16 +1,15 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QApplication>
-#include <QtGui>
+#include <QtCore>
 
 int main(int argc, char *argv[])
 {
-    QApplication app(argc, argv);
+    Q_UNUSED(argc)
+    Q_UNUSED(argv)
 //! [0]
-    QObject *parent;
+    QObject *parent = new QObject;
 //! [0]
-    parent = &app;
 
 //! [1]
     QString program = "./path/to/Qt/examples/widgets/analogclock";
@@ -24,6 +23,4 @@ int main(int argc, char *argv[])
     QProcess *myProcess = new QProcess(parent);
     myProcess->start(program, arguments);
 //! [2]
-
-    return app.exec();
 }

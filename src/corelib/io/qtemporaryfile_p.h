@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTEMPORARYFILE_P_H
 #define QTEMPORARYFILE_P_H
@@ -56,6 +57,8 @@ public:
     explicit QTemporaryFilePrivate(const QString &templateNameIn);
     ~QTemporaryFilePrivate();
 
+    bool rename(const QString &newName, bool overwrite);
+
     QAbstractFileEngine *engine() const override;
     void resetFileEngine() const;
     void materializeUnnamedFile();
@@ -92,6 +95,12 @@ public:
         }
     }
     ~QTemporaryFileEngine();
+
+#ifdef Q_OS_WIN
+    static constexpr bool CreatesWithFileMode = false;
+#else
+    static constexpr bool CreatesWithFileMode = true;
+#endif
 
     bool isReallyOpen() const;
     void setFileName(const QString &file) override;

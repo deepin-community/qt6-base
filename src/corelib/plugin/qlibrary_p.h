@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLIBRARY_P_H
 #define QLIBRARY_P_H
@@ -18,7 +19,7 @@
 
 #include "QtCore/qlibrary.h"
 
-#include "QtCore/private/qfactoryloader_p.h"
+#include "QtCore/private/qplugin_p.h"
 #include "QtCore/qloggingcategory.h"
 #include "QtCore/qmutex.h"
 #include "QtCore/qplugin.h"
@@ -67,7 +68,7 @@ public:
 
     bool load();
     QtPluginInstanceFunction loadPlugin(); // loads and resolves instance
-    bool unload(UnloadFlag flag = UnloadSys);
+    Q_AUTOTEST_EXPORT bool unload(UnloadFlag flag = UnloadSys);
     void release();
     QFunctionPointer resolve(const char *);
 
@@ -79,7 +80,16 @@ public:
     static QLibraryPrivate *findOrCreate(const QString &fileName, const QString &version = QString(),
                                          QLibrary::LoadHints loadHints = { });
     static QStringList suffixes_sys(const QString &fullVersion);
-    static QStringList prefixes_sys();
+    static constexpr QStringView prefix_sys()
+    {
+#ifdef Q_OS_WIN
+        return {};
+#elif defined(Q_OS_CYGWIN)
+        return u"cyg";
+#else
+        return u"lib";
+#endif
+    }
 
     QAtomicPointer<std::remove_pointer<QtPluginInstanceFunction>::type> instanceFactory;
     QAtomicPointer<std::remove_pointer<Handle>::type> pHnd;
@@ -93,6 +103,11 @@ public:
 
     void updatePluginState();
     bool isPlugin();
+
+    static QLibraryPrivate* get(QLibrary* lib)
+    {
+        return lib->d.data();
+    }
 
 private:
     explicit QLibraryPrivate(const QString &canonicalFileName, const QString &version, QLibrary::LoadHints loadHints);

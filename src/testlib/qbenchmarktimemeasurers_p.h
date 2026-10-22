@@ -17,7 +17,7 @@
 
 #include <QtTest/private/qbenchmarkmeasurement_p.h>
 #include <QtCore/qelapsedtimer.h>
-#include <QtTest/private/cycle_p.h>
+#include <QtTest/private/cycle_include_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -25,6 +25,7 @@ class QBenchmarkTimeMeasurer : public QBenchmarkMeasurerBase
 {
 public:
     void start() override;
+    void updateMeasurement() override;
     QList<Measurement> stop() override;
     bool isMeasurementAccepted(Measurement measurement) override;
     int adjustIterationCount(int sugestion) override;
@@ -40,6 +41,7 @@ class QBenchmarkTickMeasurer : public QBenchmarkMeasurerBase
 {
 public:
     void start() override;
+    void updateMeasurement() override;
     QList<Measurement> stop() override;
     bool isMeasurementAccepted(Measurement measurement) override;
     int adjustIterationCount(int) override;

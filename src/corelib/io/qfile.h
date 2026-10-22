@@ -1,24 +1,16 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILE_H
 #define QFILE_H
 
 #include <QtCore/qfiledevice.h>
 #include <QtCore/qstring.h>
-#include <stdio.h>
 
-#if QT_CONFIG(cxx17_filesystem)
-#include <filesystem>
-#elif defined(Q_QDOC)
-namespace std {
-    namespace filesystem {
-        class path {
-        };
-    };
-};
-#endif
+#include <stdio.h>
+#include <optional>
 
 #ifdef open
 #error qfile.h must be included before any header file that defines open
@@ -56,24 +48,10 @@ public:
 
 #if QT_CONFIG(cxx17_filesystem)
 namespace QtPrivate {
-inline QString fromFilesystemPath(const std::filesystem::path &path)
-{
-#ifdef Q_OS_WIN
-    return QString::fromStdWString(path.native());
-#else
-    return QString::fromStdString(path.native());
-#endif
-}
-
-inline std::filesystem::path toFilesystemPath(const QString &path)
-{
-    return std::filesystem::path(reinterpret_cast<const char16_t *>(path.cbegin()),
-                                 reinterpret_cast<const char16_t *>(path.cend()));
-}
-
 // Both std::filesystem::path and QString (without QT_NO_CAST_FROM_ASCII) can be implicitly
 // constructed from string literals so we force the std::fs::path parameter to only
 // accept std::fs::path with no implicit conversions.
+// ### Qt7: use Q_WEAK_OVERLOAD
 template<typename T>
 using ForceFilesystemPath = typename std::enable_if_t<std::is_same_v<std::filesystem::path, T>, int>;
 }
@@ -210,6 +188,7 @@ public:
     }
 #endif // QT_CONFIG(cxx17_filesystem)
 
+    Q_DECL_PURE_FUNCTION static bool supportsMoveToTrash();
     bool moveToTrash();
     static bool moveToTrash(const QString &fileName, QString *pathInTrash = nullptr);
 #ifdef Q_QDOC
@@ -262,13 +241,20 @@ public:
     }
 #endif // QT_CONFIG(cxx17_filesystem)
 
+#if QT_CONFIG(temporaryfile)
+    bool copy(const QString &newName, std::optional<QFileDevice::Permissions> perm = std::nullopt);
+    static bool copy(const QString &fileName, const QString &newName,
+                     std::optional<QFileDevice::Permissions> perm = std::nullopt);
+#  if QT_CORE_REMOVED_SINCE(6, 12)
     bool copy(const QString &newName);
     static bool copy(const QString &fileName, const QString &newName);
+#  endif
+#endif
 #ifdef Q_QDOC
     bool copy(const std::filesystem::path &newName);
     static bool copy(const std::filesystem::path &fileName,
                      const std::filesystem::path &newName);
-#elif QT_CONFIG(cxx17_filesystem)
+#elif QT_CONFIG(cxx17_filesystem) && QT_CONFIG(temporaryfile)
     template<typename T, QtPrivate::ForceFilesystemPath<T> = 0>
     bool copy(const T &newName)
     {

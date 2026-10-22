@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDOCKAREALAYOUT_P_H
 #define QDOCKAREALAYOUT_P_H
@@ -16,13 +17,19 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include <QtWidgets/private/qwidgetanimator_p.h>
 #include "QtWidgets/qlayout.h"
 #include "QtCore/qlist.h"
+#include "QtCore/qloggingcategory.h"
 #include "QtCore/qrect.h"
+
+#include <array>
 
 QT_REQUIRE_CONFIG(dockwidget);
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcQpaDockWidgets);
 
 class QLayoutItem;
 class QWidget;
@@ -44,7 +51,7 @@ class QTabBar;
 // which then has one QDockAreaLayoutInfo as a child. (QDockAreaLayoutItem::subInfo) or
 // a widgetItem if this is a node of the tree (QDockAreaLayoutItem::widgetItem)
 //
-// A path indetifies uniquely one object in this tree, the first number being the side and all the following
+// A path identifies uniquely one object in this tree, the first number being the side and all the following
 // indexes into the QDockAreaLayoutInfo::item_list.
 
 struct Q_AUTOTEST_EXPORT QDockAreaLayoutItem
@@ -118,13 +125,8 @@ public:
     QDockAreaLayoutInfo *info(const QList<int> &path);
     QDockAreaLayoutInfo *info(QWidget *widget);
 
-    enum { // sentinel values used to validate state data
-        SequenceMarker = 0xfc,
-        TabMarker = 0xfa,
-        WidgetMarker = 0xfb
-    };
     void saveState(QDataStream &stream) const;
-    bool restoreState(QDataStream &stream, QList<QDockWidget*> &widgets, bool testing);
+    bool restoreState(QDataStream &stream, QList<QDockWidget*> &widgets, QInternal::CallMode);
 
     void fitItems();
     bool expansive(Qt::Orientation o) const;
@@ -143,10 +145,11 @@ public:
     int next(int idx) const;
     int prev(int idx) const;
 
-    QList<int> indexOf(QWidget *widget) const;
+    QList<int> indexOf(const QWidget *widget) const;
     QList<int> indexOfPlaceHolder(const QString &objectName) const;
+    std::unique_ptr<QLayoutItem> takeWidgetItem(QWidget *widget);
 
-    QDockWidget *apply(bool animate);
+    QDockWidget *apply(QWidgetAnimator::AnimationRule rule);
 
     void paintSeparators(QPainter *p, QWidget *widget, const QRegion &clip,
                             const QPoint &mouse) const;
@@ -193,31 +196,32 @@ public:
 #endif // QT_CONFIG(tabbar)
 };
 
+using QDockAreaLayoutCorners = std::array<Qt::DockWidgetArea, 4>;
+
 class Q_AUTOTEST_EXPORT QDockAreaLayout
 {
 public:
     enum { EmptyDropAreaSize = 80 }; // when a dock area is empty, how "wide" is it?
 
-    Qt::DockWidgetArea corners[4]; // use a Qt::Corner for indexing
+    QDockAreaLayoutCorners corners; // use a Qt::Corner for indexing
     QRect rect;
     QLayoutItem *centralWidgetItem;
     QMainWindow *mainWindow;
     QRect centralWidgetRect;
     QDockAreaLayout(QMainWindow *win);
-    QDockAreaLayoutInfo docks[4];
+    std::array<QDockAreaLayoutInfo, 4> docks;
     int sep; // margin between a dock widget and its frame
     bool fallbackToSizeHints; //determines if we should use the sizehint for the dock areas (true until the layout is restored or the separator is moved by user)
     mutable QList<QWidget *> separatorWidgets;
 
     bool isValid() const;
 
-    enum { DockWidgetStateMarker = 0xfd, FloatingDockWidgetTabMarker = 0xf9 };
     static QRect constrainedRect(QRect rect, QWidget *widget);
     void saveState(QDataStream &stream) const;
-    bool restoreState(QDataStream &stream, const QList<QDockWidget*> &widgets, bool testing = false);
+    bool restoreState(QDataStream &stream, const QList<QDockWidget*> &_dockWidgets, QInternal::CallMode callMode);
 
     QList<int> indexOfPlaceHolder(const QString &objectName) const;
-    QList<int> indexOf(QWidget *dockWidget) const;
+    QList<int> indexOf(const QWidget *dockWidget) const;
     QList<int> gapIndex(const QPoint &pos, bool disallowTabs) const;
     QList<int> findSeparator(const QPoint &pos) const;
 
@@ -254,7 +258,7 @@ public:
 #endif
     void resizeDocks(const QList<QDockWidget *> &docks, const QList<int> &sizes, Qt::Orientation o);
 
-    void apply(bool animate);
+    void apply(QWidgetAnimator::AnimationRule rule);
 
     void paintSeparators(QPainter *p, QWidget *widget, const QRegion &clip,
                             const QPoint &mouse) const;

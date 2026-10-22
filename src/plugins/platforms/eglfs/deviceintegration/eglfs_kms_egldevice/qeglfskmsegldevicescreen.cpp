@@ -1,15 +1,17 @@
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeglfskmsegldevicescreen.h"
 #include "qeglfskmsegldevice.h"
+
+#include <private/qeglfskmsintegration_p.h>
+
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <errno.h>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(qLcEglfsKmsDebug)
 
 QEglFSKmsEglDeviceScreen::QEglFSKmsEglDeviceScreen(QEglFSKmsDevice *device, const QKmsOutput &output)
     : QEglFSKmsScreen(device, output)
@@ -70,7 +72,7 @@ QEglFSKmsEglDeviceScreen::~QEglFSKmsEglDeviceScreen()
     }
 
     const int remainingScreenCount = qGuiApp->screens().size();
-    qCDebug(qLcEglfsKmsDebug, "Screen dtor. Remaining screens: %d", remainingScreenCount);
+    qCDebug(qLcEglfsKmsDebug, "Screen dtor. %p Remaining screens: %d", this, remainingScreenCount);
     if (!remainingScreenCount && !device()->screenConfig()->separateScreens())
         static_cast<QEglFSKmsEglDevice *>(device())->destroyGlobalCursor();
 }

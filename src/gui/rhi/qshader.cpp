@@ -1,15 +1,21 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qshader_p.h"
 #include <QDataStream>
 #include <QBuffer>
+
+#ifndef QT_NO_DEBUG_STREAM
+#include <QtCore/qdebug.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
 /*!
     \class QShader
     \ingroup painting-3D
+    \ingroup shared
     \inmodule QtGui
     \since 6.6
 
@@ -211,6 +217,9 @@ QT_BEGIN_NAMESPACE
     translated to a compute shader that may be dependent on the index buffer
     usage in the draw calls (e.g. if the shader is using gl_VertexIndex), hence
     the need for three dedicated variants.
+
+    \value [since 6.10] HdrCapableFragmentShader A fragment shader rewritten to support high
+    dynamic range rendering in a Qt Quick scenegraph.
  */
 
 /*!
@@ -332,9 +341,7 @@ QShader::~QShader()
 /*!
     \fn void QShader::swap(QShader &other)
     \since 6.7
-
-    Swaps shader \a other with this shader. This operation is very fast and
-    never fails.
+    \memberswap{shader}
 */
 
 /*!
@@ -514,6 +521,36 @@ QByteArray QShader::serialized(SerializedFormatVersion version) const
     return qCompress(buf.buffer());
 }
 
+bool QShaderPrivate::readCount(QDataStream *stream, int *count)
+{
+    // Returns false if the stream is not in the Ok state, or if the count
+    // cannot be valid because it is negative or exceeds the number of elements
+    // the remaining data could possibly hold. In the latter case the stream is
+    // switched to ReadCorruptData. This keeps a truncated or corrupt .qsb blob
+    // from leading to a huge allocation or a long spin over a count that the
+    // data cannot back. Every element of every list in the serialized format
+    // takes at least one 32-bit value, hence the bytesAvailable() / 4 bound.
+    // (also, QDataStream turns all subsequent reads into no-ops once its status
+    // is not Ok)
+    //
+    // On failure the stream is never left in the Ok state and *count is set to
+    // 0, so a caller that checks the stream status once at the end can ignore
+    // the return value: the loop it guards just runs zero times.
+
+    *count = 0;
+    int n = 0;
+    (*stream) >> n;
+    if (stream->status() != QDataStream::Ok)
+        return false;
+    const QIODevice *dev = stream->device();
+    if (n < 0 || !dev || n > dev->bytesAvailable() / 4) {
+        stream->setStatus(QDataStream::ReadCorruptData);
+        return false;
+    }
+    *count = n;
+    return true;
+}
+
 static void readShaderKey(QDataStream *ds, QShaderKey *k)
 {
     int intVal;
@@ -534,6 +571,11 @@ static void readShaderKey(QDataStream *ds, QShaderKey *k)
 
     If \a data cannot be deserialized successfully, the result is a default
     constructed QShader for which isValid() returns \c false.
+
+    \warning Shader packages, including \c{.qsb} files in the filesystem, are
+    assumed to be trusted content. Application developers are advised to
+    carefully consider the potential implications before allowing the loading of
+    user-provided content that is not part of the application.
 
     \sa serialized()
   */
@@ -579,7 +621,7 @@ QShader QShader::fromSerialized(const QByteArray &data)
         d->desc = QShaderDescription();
     }
     int count;
-    ds >> count;
+    QShaderPrivate::readCount(&ds, &count);
     for (int i = 0; i < count; ++i) {
         QShaderKey k;
         readShaderKey(&ds, &k);
@@ -593,13 +635,14 @@ QShader QShader::fromSerialized(const QByteArray &data)
     }
 
     if (d->qsbVersion > QShaderPrivate::QSB_VERSION_WITHOUT_BINDINGS) {
-        ds >> count;
+        QShaderPrivate::readCount(&ds, &count);
         for (int i = 0; i < count; ++i) {
             QShaderKey k;
             readShaderKey(&ds, &k);
             NativeResourceBindingMap map;
             int mapSize;
-            ds >> mapSize;
+            if (!QShaderPrivate::readCount(&ds, &mapSize))
+                break;
             for (int b = 0; b < mapSize; ++b) {
                 int binding;
                 ds >> binding;
@@ -614,13 +657,14 @@ QShader QShader::fromSerialized(const QByteArray &data)
     }
 
     if (d->qsbVersion > QShaderPrivate::QSB_VERSION_WITHOUT_SEPARATE_IMAGES_AND_SAMPLERS) {
-        ds >> count;
+        QShaderPrivate::readCount(&ds, &count);
         for (int i = 0; i < count; ++i) {
             QShaderKey k;
             readShaderKey(&ds, &k);
             SeparateToCombinedImageSamplerMappingList list;
             int listSize;
-            ds >> listSize;
+            if (!QShaderPrivate::readCount(&ds, &listSize))
+                break;
             for (int b = 0; b < listSize; ++b) {
                 QByteArray combinedSamplerName;
                 ds >> combinedSamplerName;
@@ -635,7 +679,7 @@ QShader QShader::fromSerialized(const QByteArray &data)
     }
 
     if (d->qsbVersion > QShaderPrivate::QSB_VERSION_WITHOUT_NATIVE_SHADER_INFO) {
-        ds >> count;
+        QShaderPrivate::readCount(&ds, &count);
         for (int i = 0; i < count; ++i) {
             QShaderKey k;
             readShaderKey(&ds, &k);
@@ -643,7 +687,8 @@ QShader QShader::fromSerialized(const QByteArray &data)
             ds >> flags;
             QMap<int, int> extraBufferBindings;
             int mapSize;
-            ds >> mapSize;
+            if (!QShaderPrivate::readCount(&ds, &mapSize))
+                break;
             for (int b = 0; b < mapSize; ++b) {
                 int k, v;
                 ds >> k;
@@ -652,6 +697,11 @@ QShader QShader::fromSerialized(const QByteArray &data)
             }
             d->nativeShaderInfoMap.insert(k, { flags, extraBufferBindings });
         }
+    }
+
+    if (ds.status() != QDataStream::Ok) {
+        qWarning("Failed to deserialize QShader: QDataStream status %d.", int(ds.status()));
+        return QShader();
     }
 
     return bs;
@@ -796,14 +846,13 @@ bool operator==(const QShader &lhs, const QShader &rhs) noexcept
  */
 
 /*!
-    Returns the hash value for \a s, using \a seed to seed the calculation.
-
-    \relates QShader
+    \fn size_t qHash(const QShader &key, size_t seed)
+    \qhashold{QShader}
  */
 size_t qHash(const QShader &s, size_t seed) noexcept
 {
     if (s.d) {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombineWithSeed hash(seed);
         seed = hash(seed, s.stage());
         if (!s.d->shaders.isEmpty()) {
             seed = hash(seed, s.d->shaders.firstKey());
@@ -824,12 +873,17 @@ bool operator==(const QShaderVersion &lhs, const QShaderVersion &rhs) noexcept
     return lhs.version() == rhs.version() && lhs.flags() == rhs.flags();
 }
 
-#ifdef Q_OS_INTEGRITY
-size_t qHash(const QShaderVersion &s, size_t seed) noexcept
+/*!
+    \fn size_t QShaderVersion::qHash(QShaderVersion key, size_t seed)
+    \since 6.12
+    \qhash{QShaderVersion}
+
+    \note On INTEGRITY, this function has been available since 6.2.
+*/
+size_t qHash(QShaderVersion s, size_t seed) noexcept
 {
     return qHashMulti(seed, s.version(), s.flags());
 }
-#endif
 
 /*!
     \return true if \a lhs is smaller than \a rhs.
@@ -903,9 +957,8 @@ bool operator<(const QShaderKey &lhs, const QShaderKey &rhs) noexcept
  */
 
 /*!
-    Returns the hash value for \a k, using \a seed to seed the calculation.
-
-    \relates QShaderKey
+    \fn size_t qHash(const QShaderKey &key, size_t seed)
+    \qhashold{QShaderKey}
  */
 size_t qHash(const QShaderKey &k, size_t seed) noexcept
 {
@@ -936,9 +989,8 @@ bool operator==(const QShaderCode &lhs, const QShaderCode &rhs) noexcept
  */
 
 /*!
-    Returns the hash value for \a k, using \a seed to seed the calculation.
-
-    \relates QShaderCode
+    \fn size_t qHash(const QShaderCode &key, size_t seed)
+    \qhashold{QShaderCode}
  */
 size_t qHash(const QShaderCode &k, size_t seed) noexcept
 {
@@ -984,7 +1036,7 @@ QDebug operator<<(QDebug dbg, const QShaderVersion &v)
 /*!
     \typedef QShader::NativeResourceBindingMap
 
-    Synonym for QMap<int, QPair<int, int>>.
+    Synonym for QMap<int, std::pair<int, int>>.
 
     The resource binding model QRhi assumes is based on SPIR-V. This means that
     uniform buffers, storage buffers, combined image samplers, and storage

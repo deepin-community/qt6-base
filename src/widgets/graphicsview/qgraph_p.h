@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGRAPH_P_H
 #define QGRAPH_P_H
@@ -19,7 +20,6 @@
 #include <QtCore/QHash>
 #include <QtCore/QQueue>
 #include <QtCore/QString>
-#include <QtCore/QDebug>
 #include <QtCore/QSet>
 
 #include <functional> // for std::less
@@ -179,15 +179,15 @@ public:
         return setOfVertices;
     }
 
-    QList<QPair<Vertex *, Vertex *>> connections() const
+    QList<std::pair<Vertex *, Vertex *>> connections() const
     {
-        QList<QPair<Vertex *, Vertex *>> conns;
+        QList<std::pair<Vertex *, Vertex *>> conns;
         for (const_iterator it = constBegin(); it != constEnd(); ++it) {
             Vertex *from = it.from();
             Vertex *to = it.to();
             // do not return (from,to) *and* (to,from)
             if (std::less<Vertex*>()(from, to))
-                conns.append(qMakePair(from, to));
+                conns.emplace_back(from, to);
         }
         return conns;
     }

@@ -1,5 +1,6 @@
 // Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:docs-only
 
 #include "qstringview.h"
 
@@ -67,7 +68,7 @@ QT_BEGIN_NAMESPACE
     allowed in \c constexpr functions). You can use an indexed loop and/or utf16() in
     \c constexpr contexts instead.
 
-    \sa QString
+    \sa {Which string class to use?}, QString
 */
 
 /*!
@@ -163,6 +164,12 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \fn size_t qHash(QStringView key, size_t seed)
+    \since 5.10
+    \qhashold{QStringView}
+*/
+
+/*!
     \fn QStringView::QStringView()
 
     Constructs a null string view.
@@ -189,9 +196,11 @@ QT_BEGIN_NAMESPACE
 
     The behavior is undefined if \a len is negative or, when positive, if \a str is \nullptr.
 
-    This constructor only participates in overload resolution if \c Char is a compatible
+//! [compatible-char-types]
+    \constraints \c Char is a compatible
     character type. The compatible character types are: \c QChar, \c ushort, \c char16_t and
     (on platforms, such as Windows, where it is a 16-bit type) \c wchar_t.
+//! [compatible-char-types]
 */
 
 /*!
@@ -208,10 +217,7 @@ QT_BEGIN_NAMESPACE
     The behavior is undefined if \a last precedes \a first, or \a first
     is \nullptr and \a last is not.
 
-    This constructor only participates in overload resolution if \c Char
-    is a compatible character type. The compatible character types
-    are: \c QChar, \c ushort, \c char16_t and (on platforms, such as
-    Windows, where it is a 16-bit type) \c wchar_t.
+    \include qstringview.cpp compatible-char-types
 */
 
 /*!
@@ -224,11 +230,7 @@ QT_BEGIN_NAMESPACE
 
     Passing \nullptr as \a str is safe and results in a null string view.
 
-    This constructor only participates in overload resolution if \a
-    str is not an array and if \c Char is a compatible character
-    type. The compatible character types are: \c QChar, \c ushort, \c
-    char16_t and (on platforms, such as Windows, where it is a 16-bit
-    type) \c wchar_t.
+    \include qstringview.cpp compatible-char-types
 */
 
 /*!
@@ -242,11 +244,7 @@ QT_BEGIN_NAMESPACE
     \a string must remain valid for the lifetime of this string view
     object.
 
-    This constructor only participates in overload resolution if \a
-    string is an actual array and \c Char is a compatible character
-    type. The compatible character types are: \c QChar, \c ushort, \c
-    char16_t and (on platforms, such as Windows, where it is a 16-bit
-    type) \c wchar_t.
+    \include qstringview.cpp compatible-char-types
 
     \sa fromArray
 */
@@ -268,14 +266,14 @@ QT_BEGIN_NAMESPACE
 
     \c{std::data(str)} must remain valid for the lifetime of this string view object.
 
-    This constructor only participates in overload resolution if \c Container is a
-    container with a compatible character type as \c{value_type}. The
-    compatible character types are: \c QChar, \c ushort, \c char16_t and
-    (on platforms, such as Windows, where it is a 16-bit type) \c wchar_t.
-
     The string view will be empty if and only if \c{std::size(str) == 0}. It is unspecified
     whether this constructor can result in a null string view (\c{std::data(str)} would
     have to return \nullptr for this).
+
+    \constraints \c Container is a
+    container with a compatible character type as \c{value_type}. The
+    compatible character types are: \c QChar, \c ushort, \c char16_t and
+    (on platforms, such as Windows, where it is a 16-bit type) \c wchar_t.
 
     \sa isNull(), isEmpty()
 */
@@ -283,9 +281,9 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn template <typename Char, size_t Size, QStringView::if_compatible_char<Char> = true> static QStringView QStringView::fromArray(const Char (&string)[Size]) noexcept
 
-    Constructs a string view on the full character string literal \a string,
-    including any trailing \c{Char(0)}. If you don't want the
-    null-terminator included in the view then you can chop() it off
+    Constructs a string view on the full character string literal \a string
+    of \a Size elements, including any trailing \c{Char(0)}. If you don't want
+    the null-terminator included in the view then you can chop() it off
     when you are certain it is at the end. Alternatively you can use
     the constructor overload taking an array literal which will create
     a view up to, but not including, the first null-terminator in the data.
@@ -514,15 +512,18 @@ QT_BEGIN_NAMESPACE
     \fn template <typename...Args> QString QString::arg(Args &&...args) const
     \since 5.14
 
+//![qstring-multi-arg]
     Replaces occurrences of \c{%N} in this string with the corresponding
     argument from \a args. The arguments are not positional: the first of
     the \a args replaces the \c{%N} with the lowest \c{N} (all of them), the
     second of the \a args the \c{%N} with the next-lowest \c{N} etc.
 
-    \c Args can consist of anything that implicitly converts to QString,
-    QStringView or QLatin1StringView.
+    \c Args can consist of anything that implicitly converts to QAnyStringView.
+//![qstring-multi-arg]
 
-    In addition, the following types are also supported: QChar, QLatin1Char.
+    \note In Qt versions prior to 6.9, QAnyStringView and UTF-8 strings
+    (QUtf8StringView, QByteArray, QByteArrayView, \c{const char8_t*}, etc) were
+    not supported as \a args.
 
     \sa QString::arg()
 */
@@ -584,7 +585,7 @@ QT_BEGIN_NAMESPACE
     Returns the substring of length \a length starting at position
     \a start in this object.
 
-    \deprecated Use sliced() instead in new code.
+    \deprecated [6.0] Use sliced() instead in new code.
 
     Returns an empty string view if \a start exceeds the
     length of the string view. If there are less than \a length characters
@@ -598,7 +599,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn QStringView QStringView::left(qsizetype length) const
 
-    \deprecated Use first() instead in new code.
+    \deprecated [6.0] Use first() instead in new code.
 
     Returns the substring of length \a length starting at position
     0 in this object.
@@ -612,7 +613,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn QStringView QStringView::right(qsizetype length) const
 
-    \deprecated Use last() instead in new code.
+    \deprecated [6.0] Use last() instead in new code.
 
     Returns the substring of length \a length starting at position
     size() - \a length in this object.
@@ -712,7 +713,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a length < 0 or \a length > size().
 
-    \sa mid(), left(), right(), chop(), truncate(), slice()
+    \sa sliced(), left(), right(), chop(), truncate(), slice()
 */
 
 /*!
@@ -724,7 +725,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a length < 0 or \a length > size().
 
-    \sa mid(), left(), right(), chopped(), chop()
+    \sa sliced(), left(), right(), chopped(), chop()
 */
 
 /*!
@@ -736,7 +737,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a length < 0 or \a length > size().
 
-    \sa mid(), left(), right(), chopped(), truncate(), slice()
+    \sa sliced(), left(), right(), chopped(), truncate(), slice()
 */
 
 /*!
@@ -858,7 +859,7 @@ or the character \a ch
 /*!
     \fn qsizetype QStringView::indexOf(QStringView str, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
     \fn qsizetype QStringView::indexOf(QLatin1StringView l1, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
-    \fn qsizetype QStringView::indexOf(QChar c, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
+    \fn qsizetype QStringView::indexOf(QChar ch, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
     \since 5.14
 
     Returns the index position of the first occurrence of
@@ -876,7 +877,7 @@ or the character \a ch
 /*!
     \fn bool QStringView::contains(QStringView str, Qt::CaseSensitivity cs) const
     \fn bool QStringView::contains(QLatin1StringView l1, Qt::CaseSensitivity cs) const
-    \fn bool QStringView::contains(QChar c, Qt::CaseSensitivity cs) const
+    \fn bool QStringView::contains(QChar ch, Qt::CaseSensitivity cs) const
     \since 5.14
 
     Returns \c true if this string view contains an occurrence of
@@ -891,7 +892,7 @@ or the character \a ch
 /*!
     \fn qsizetype QStringView::lastIndexOf(QStringView str, qsizetype from, Qt::CaseSensitivity cs) const
     \fn qsizetype QStringView::lastIndexOf(QLatin1StringView l1, qsizetype from, Qt::CaseSensitivity cs) const
-    \fn qsizetype QStringView::lastIndexOf(QChar c, qsizetype from, Qt::CaseSensitivity cs) const
+    \fn qsizetype QStringView::lastIndexOf(QChar ch, qsizetype from, Qt::CaseSensitivity cs) const
     \since 5.14
 
     Returns the index position of the last occurrence of
@@ -901,7 +902,7 @@ or the character \a ch
 
     \include qstring.qdocinc negative-index-start-search-from-end
 
-    Returns -1 if \a str, \a l1 or \a c is not found, respectively.
+    Returns -1 if \a str, \a l1 or \a ch is not found, respectively.
 
     \include qstring.qdocinc {search-comparison-case-sensitivity} {search}
 
@@ -933,7 +934,7 @@ or the character \a ch
 */
 
 /*!
-    \fn QStringView::lastIndexOf(QChar c, Qt::CaseSensitivity cs) const
+    \fn QStringView::lastIndexOf(QChar ch, Qt::CaseSensitivity cs) const
     \since 6.3
     \overload lastIndexOf()
 */
@@ -1471,6 +1472,7 @@ or the character \a ch
 
 /*!
     \fn QStringView::operator std::u16string_view() const
+    \target qstringview-operator-std-u16string_view
     \since 6.7
 
     Converts this QStringView object to a \c{std::u16string_view} object.
@@ -1494,6 +1496,46 @@ or the character \a ch
     This function is provided for STL compatibility.
 
     Returns maxSize().
+*/
+
+/*!
+    \fn Qt::Literals::StringLiterals::operator""_sv(const char16_t *str, size_t size)
+
+    \internal
+    \relates QStringView
+
+    Literal operator that creates a QStringView out of the first
+    \a size characters in the char16_t string literal \a str.
+
+    There is rarely need to explicitly construct a QStringView from a
+    char16_t string literal, as QStringView is implicitly constructible
+    from one:
+
+    \code
+    QStringView greeting = u"hello"; // OK even without _sv
+
+    void print(QStringView s);
+    print(u"world"); // OK even without _sv
+    \endcode
+
+    To use this operator, you need to be using the corresponding
+    namespace(s):
+
+    \code
+    using namespace Qt::StringLiterals;
+    auto sv = u"peace"_sv;
+    \endcode
+
+    Note that the returned QStringView will span over any NUL embedded
+    in the string literal. This is different from passing the string
+    literal to QStringView's constructor (explicitly or implicitly):
+
+    \code
+    QStringView sv1 = u"abc\0def";    // sv1 == "abc"
+    QStringView sv2 = u"abc\0def"_sv; // sv2 == "abc\0def"
+    \endcode
+
+    \sa Qt::Literals::StringLiterals
 */
 
 QT_END_NAMESPACE

@@ -15,7 +15,6 @@
 #if QT_CONFIG(accessibility)
 
 #include <QtCore/qcoreapplication.h>
-#include <QtCore/qdebug.h>
 #include <QtCore/qglobal.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qobject.h>
@@ -28,6 +27,7 @@
 
 QT_BEGIN_NAMESPACE
 
+class QDebug;
 class QAccessibleInterface;
 class QAccessibleEvent;
 class QWindow;
@@ -45,10 +45,13 @@ class QAccessibleHyperlinkInterface;
 class QAccessibleSelectionInterface;
 class QAccessibleAttributesInterface;
 class QAccessibleTableModelChangeEvent;
+class QAccessibleViewportInterface;
 
 class Q_GUI_EXPORT QAccessibleInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleInterface)
 protected:
+    QAccessibleInterface() = default;
     virtual ~QAccessibleInterface();
 
 public:
@@ -58,7 +61,7 @@ public:
     virtual QWindow *window() const;
 
     // relations
-    virtual QList<QPair<QAccessibleInterface *, QAccessible::Relation>>
+    virtual QList<std::pair<QAccessibleInterface *, QAccessible::Relation>>
     relations(QAccessible::Relation match = QAccessible::AllRelations) const;
     virtual QAccessibleInterface *focusChild() const;
 
@@ -110,6 +113,9 @@ public:
     inline QAccessibleAttributesInterface *attributesInterface()
     { return reinterpret_cast<QAccessibleAttributesInterface *>(interface_cast(QAccessible::AttributesInterface)); }
 
+    inline QAccessibleViewportInterface *viewportInterface()
+    { return reinterpret_cast<QAccessibleViewportInterface *>(interface_cast(QAccessible::ViewportInterface)); }
+
     virtual void virtual_hook(int id, void *data);
 
     virtual void *interface_cast(QAccessible::InterfaceType)
@@ -121,8 +127,11 @@ protected:
 
 class Q_GUI_EXPORT QAccessibleTextInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleTextInterface)
 public:
+    QAccessibleTextInterface() = default;
     virtual ~QAccessibleTextInterface();
+
     // selection
     virtual void selection(int selectionIndex, int *startOffset, int *endOffset) const = 0;
     virtual int selectionCount() const = 0;
@@ -154,7 +163,9 @@ public:
 
 class Q_GUI_EXPORT QAccessibleEditableTextInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleEditableTextInterface)
 public:
+    QAccessibleEditableTextInterface() = default;
     virtual ~QAccessibleEditableTextInterface();
 
     virtual void deleteText(int startOffset, int endOffset) = 0;
@@ -164,7 +175,9 @@ public:
 
 class Q_GUI_EXPORT QAccessibleValueInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleValueInterface)
 public:
+    QAccessibleValueInterface() = default;
     virtual ~QAccessibleValueInterface();
 
     virtual QVariant currentValue() const = 0;
@@ -176,7 +189,9 @@ public:
 
 class Q_GUI_EXPORT QAccessibleTableCellInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleTableCellInterface)
 public:
+    QAccessibleTableCellInterface() = default;
     virtual ~QAccessibleTableCellInterface();
 
     virtual bool isSelected() const = 0;
@@ -193,7 +208,9 @@ public:
 
 class Q_GUI_EXPORT QAccessibleTableInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleTableInterface)
 public:
+    QAccessibleTableInterface() = default;
     virtual ~QAccessibleTableInterface();
 
     virtual QAccessibleInterface *caption() const = 0;
@@ -227,8 +244,10 @@ friend class QAbstractItemViewPrivate;
 
 class Q_GUI_EXPORT QAccessibleActionInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleActionInterface)
     Q_DECLARE_TR_FUNCTIONS(QAccessibleActionInterface)
 public:
+    QAccessibleActionInterface() = default;
     virtual ~QAccessibleActionInterface();
 
     virtual QStringList actionNames() const = 0;
@@ -242,6 +261,7 @@ public:
     static const QString &decreaseAction();
     static const QString &showMenuAction();
     static const QString &setFocusAction();
+    static const QString &showOnScreenAction();
     static const QString &toggleAction();
     static QString scrollLeftAction();
     static QString scrollRightAction();
@@ -253,7 +273,9 @@ public:
 
 class Q_GUI_EXPORT QAccessibleImageInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleImageInterface)
 public:
+    QAccessibleImageInterface() = default;
     virtual ~QAccessibleImageInterface();
 
     virtual QString imageDescription() const = 0;
@@ -263,7 +285,9 @@ public:
 
 class Q_GUI_EXPORT QAccessibleHyperlinkInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleHyperlinkInterface)
 public:
+    QAccessibleHyperlinkInterface() = default;
     virtual ~QAccessibleHyperlinkInterface();
 
     virtual QString anchor() const = 0;
@@ -275,7 +299,9 @@ public:
 
 class Q_GUI_EXPORT QAccessibleSelectionInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleSelectionInterface)
 public:
+    QAccessibleSelectionInterface() = default;
     virtual ~QAccessibleSelectionInterface();
 
     virtual int selectedItemCount() const = 0;
@@ -290,10 +316,27 @@ public:
 
 class Q_GUI_EXPORT QAccessibleAttributesInterface
 {
+    Q_DISABLE_COPY_MOVE(QAccessibleAttributesInterface)
 public:
+    QAccessibleAttributesInterface() = default;
     virtual ~QAccessibleAttributesInterface();
+
     virtual QList<QAccessible::Attribute> attributeKeys() const = 0;
     virtual QVariant attributeValue(QAccessible::Attribute key) const = 0;
+};
+
+class Q_GUI_EXPORT QAccessibleViewportInterface
+{
+    Q_DISABLE_COPY_MOVE(QAccessibleViewportInterface)
+public:
+    QAccessibleViewportInterface() = default;
+    virtual ~QAccessibleViewportInterface();
+
+    virtual QSizeF contentSize() const = 0;
+    virtual QPointF position() const = 0;
+    virtual QSizeF viewportSize() const = 0;
+    virtual bool isIndexed() const = 0;
+    virtual void setPosition(QPointF position) = 0;
 };
 
 
@@ -305,7 +348,8 @@ public:
     inline QAccessibleEvent(QObject *obj, QAccessible::Event typ)
         : m_type(typ), m_object(obj), m_child(-1)
     {
-        Q_ASSERT(obj);
+        if (m_type != QAccessible::ObjectDestroyed)
+            Q_ASSERT(obj);
         // All events below have a subclass of QAccessibleEvent.
         // Use the subclass, since it's expected that it's possible to cast to that.
         Q_ASSERT(m_type != QAccessible::ValueChanged);
@@ -342,7 +386,7 @@ public:
     QObject *object() const { return m_object; }
     QAccessible::Id uniqueId() const;
 
-    void setChild(int chld) { m_child = chld; }
+    void setChild(int chld);
     int child() const { return m_child; }
 
     virtual QAccessibleInterface *accessibleInterface() const;
@@ -630,7 +674,8 @@ public:
 
     QString message() const { return m_message; }
     QAccessible::AnnouncementPoliteness politeness() const { return m_politeness; }
-    void setPoliteness(QAccessible::AnnouncementPoliteness politeness) { m_politeness = politeness; };
+    void setPoliteness(QAccessible::AnnouncementPoliteness politeness)
+    { m_politeness = politeness; }
 
 protected:
     QString m_message;

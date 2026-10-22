@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #ifndef WRITEINCLUDES_BASE_H
 #define WRITEINCLUDES_BASE_H
@@ -62,6 +63,8 @@ protected:
 
     const Uic *uic() const { return m_uic; }
     Uic *uic() { return m_uic; }
+
+    static bool extractHeader(QLatin1StringView languageMarker, QString *headerSpec);
 
 private:
     QSet<QString> m_knownClasses;

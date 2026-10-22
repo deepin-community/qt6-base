@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILEDEVICE_P_H
 #define QFILEDEVICE_P_H
@@ -45,14 +46,19 @@ protected:
     QFileDevicePrivate();
     ~QFileDevicePrivate();
 
+public:
     virtual QAbstractFileEngine *engine() const;
 
+    virtual QFileDevice::Permissions permissions() const;
+    virtual bool setPermissions(QFileDevice::Permissions perms);
+
+protected:
     inline bool ensureFlushed() const;
 
     bool putCharHelper(char c) override;
 
     void setError(QFileDevice::FileError err);
-    void setError(QFileDevice::FileError err, const QString &errorString);
+    void setError(QFileDevice::FileError err, QString errorString);
     void setError(QFileDevice::FileError err, int errNum);
 
     mutable std::unique_ptr<QAbstractFileEngine> fileEngine;

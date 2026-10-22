@@ -20,6 +20,10 @@
 #include <qelapsedtimer.h>
 #include <qproperty.h>
 
+#if defined(Q_OS_WIN32)
+#include <qt_windows.h>
+#endif
+
 #if defined Q_OS_UNIX
 #include <unistd.h>
 #endif
@@ -57,6 +61,7 @@ private slots:
     void recurringTimer();
     void deleteLaterOnQChronoTimer(); // long name, don't want to shadow QObject::deleteLater()
     void moveToThread();
+    void newTimerFiresTooSoon();
     void restartedTimerFiresTooSoon();
     void timerFiresOnlyOncePerProcessEvents_data();
     void timerFiresOnlyOncePerProcessEvents();
@@ -247,10 +252,14 @@ void tst_QChronoTimer::remainingTimeInitial_data()
     QTest::addRow("precisetiemr-0ns") << 0ns << Qt::PreciseTimer;
     QTest::addRow("precisetimer-1ms") << nanoseconds{1ms} << Qt::PreciseTimer;
     QTest::addRow("precisetimer-10ms") <<nanoseconds{10ms} << Qt::PreciseTimer;
+    QTest::addRow("precisetimer-25days") << nanoseconds{25 * 24h} << Qt::PreciseTimer;
+    QTest::addRow("precisetimer-50days") << nanoseconds{50 * 24h} << Qt::PreciseTimer;
 
     QTest::addRow("coarsetimer-0ns") << 0ns << Qt::CoarseTimer;
     QTest::addRow("coarsetimer-1ms") << nanoseconds{1ms} << Qt::CoarseTimer;
     QTest::addRow("coarsetimer-10ms") << nanoseconds{10ms} << Qt::CoarseTimer;
+    QTest::addRow("coarsetimer-25days") << nanoseconds{25 * 24h} << Qt::CoarseTimer;
+    QTest::addRow("coarsetimer-50days") << nanoseconds{50 * 24h} << Qt::CoarseTimer;
 }
 
 void tst_QChronoTimer::remainingTimeInitial()
@@ -267,7 +276,22 @@ void tst_QChronoTimer::remainingTimeInitial()
 
     const std::chrono::nanoseconds rt = timer.remainingTime();
     QCOMPARE_GE(rt, 0ns);
-    QCOMPARE_LE(rt, startTimeNs);
+    if (timerType != Qt::PreciseTimer) {
+        // For coarse timers the calculated interval might be up to 5% larger
+        // then specified
+        auto largerStartTime = std::chrono::nanoseconds{startTimeNs + startTimeNs / 20};
+        QCOMPARE_LE(rt, largerStartTime);
+    } else {
+        QCOMPARE_LE(rt, startTimeNs);
+    }
+
+    if (startTimeNs > 1min) {
+        // The test will surely take less than 1 minute
+        auto startMinusOneMinute = std::chrono::nanoseconds{startTimeNs - 1min};
+        // If the remaining time is less than startMinusOneMinute, then
+        // something is terribly wrong with the internal interval calculations
+        QCOMPARE_GE(rt, startMinusOneMinute);
+    }
 }
 
 void tst_QChronoTimer::remainingTimeDuringActivation_data()
@@ -302,7 +326,7 @@ void tst_QChronoTimer::remainingTimeDuringActivation()
 
     if (!singleShot) {
         // do it again - see QTBUG-46940
-        remainingTime = std::chrono::milliseconds::min();
+        remainingTime = std::chrono::nanoseconds::min();
         QVERIFY(timeoutSpy.wait());
         QCOMPARE_LE(remainingTime, timeout);
         QCOMPARE_GT(remainingTime, 0ns);
@@ -386,9 +410,9 @@ public:
     LiveLockTester(std::chrono::nanoseconds i)
         : interval(i)
     {
-        firstTimerId = startTimer(interval);
-        extraTimerId = startTimer(interval + 80ms);
-        secondTimerId = -1; // started later
+        firstTimerId = Qt::TimerId{startTimer(interval)};
+        extraTimerId = Qt::TimerId{startTimer(interval + 80ms)};
+        secondTimerId = Qt::TimerId::Invalid; // started later
     }
 
     bool event(QEvent *e) override
@@ -404,28 +428,28 @@ public:
 
     void timerEvent(QTimerEvent *te) override
     {
-        if (te->timerId() == firstTimerId) {
+        if (te->id() == firstTimerId) {
             if (++timeoutsForFirst == 1) {
                 killTimer(extraTimerId);
-                extraTimerId = -1;
+                extraTimerId = Qt::TimerId::Invalid;
                 QCoreApplication::postEvent(this, new QEvent(PostEventType));
-                secondTimerId = startTimer(interval);
+                secondTimerId = Qt::TimerId{startTimer(interval)};
             }
-        } else if (te->timerId() == secondTimerId) {
+        } else if (te->id() == secondTimerId) {
             ++timeoutsForSecond;
-        } else if (te->timerId() == extraTimerId) {
+        } else if (te->id() == extraTimerId) {
             ++timeoutsForExtra;
         }
 
         // sleep for 2ms
         QTest::qSleep(2);
-        killTimer(te->timerId());
+        killTimer(te->id());
     }
 
     const std::chrono::nanoseconds interval;
-    int firstTimerId = -1;
-    int secondTimerId = -1;
-    int extraTimerId = -1;
+    Qt::TimerId firstTimerId = Qt::TimerId::Invalid;
+    Qt::TimerId secondTimerId = Qt::TimerId::Invalid;
+    Qt::TimerId extraTimerId = Qt::TimerId::Invalid;
     int timeoutsForFirst = 0;
     int timeoutsForExtra = 0;
     int timeoutsForSecond = 0;
@@ -619,6 +643,50 @@ void tst_QChronoTimer::moveToThread()
     QVERIFY((ti3.id() & 0xffffff) != (timer1.id() & 0xffffff));
 }
 
+class TimerListener : public QObject
+{
+    Q_OBJECT
+public:
+    void timerEvent(QTimerEvent *) override
+    {
+        m_timerElapsed = true;
+    }
+
+    bool m_timerElapsed = false;
+};
+
+void tst_QChronoTimer::newTimerFiresTooSoon()
+{
+#ifndef Q_OS_WIN32
+    QSKIP("Only relevant on Windows");
+#else
+    // Arrange - Create timer and make sure it ticked
+    {
+        QTest::qWait(0 /*ms*/); // Clean up event queue from previous tests
+
+        TimerListener listener;
+        const auto timerId = Qt::TimerId{listener.startTimer(50ms, Qt::CoarseTimer)};
+        QThread::sleep(100ms);
+
+        // Force WM_TIMER events on Windows event queue
+        MSG msg{};
+        PeekMessage(&msg, nullptr, WM_TIMER, WM_TIMER, PM_NOREMOVE);
+
+        listener.killTimer(timerId);
+    }
+
+    // Act - Create new timer with long interval and make sure it does not immediately tick
+    TimerListener listener;
+    const auto timerId = Qt::TimerId{listener.startTimer(60s, Qt::CoarseTimer)};
+
+    QTest::qWait(0 /*ms*/); // Process event queue - Should not call timerEvent
+    listener.killTimer(timerId);
+
+    // Assert
+    QVERIFY(!listener.m_timerElapsed);
+#endif
+}
+
 class RestartedTimerFiresTooSoonObject : public QObject
 {
     Q_OBJECT
@@ -646,7 +714,7 @@ public:
 
     void timerEvent(QTimerEvent* ev) override
     {
-        if (ev->timerId() != m_timer.timerId())
+        if (!ev->matches(m_timer))
             return;
 
         m_timer.stop();
@@ -756,7 +824,7 @@ void tst_QChronoTimer::timerIdPersistsAfterThreadExit()
     // even though the thread has exited, and the event dispatcher destroyed, the timer is still
     // "active", meaning the timer id should NOT be reused (i.e. the event dispatcher should not
     // have unregistered it)
-    int timerId = thread.startTimer(100ms);
+    Qt::TimerId timerId = Qt::TimerId{thread.startTimer(100ms)};
     QVERIFY((timerId & 0xffffff) != (thread.timerId & 0xffffff));
 }
 
@@ -887,7 +955,7 @@ DontBlockEvents::DontBlockEvents()
 
 void DontBlockEvents::timerEvent(QTimerEvent* event)
 {
-    if (event->timerId() == m_timer.timerId()) {
+    if (event->id() == m_timer.id()) {
         QMetaObject::invokeMethod(this, &DontBlockEvents::paintEvent, Qt::QueuedConnection);
         m_timer.start(0ms, this);
         count++;
@@ -1022,14 +1090,15 @@ void tst_QChronoTimer::bindToTimer()
 
     auto ignoreMsg = [] {
         QTest::ignoreMessage(QtWarningMsg,
-                             "QObject::startTimer: Timers cannot have negative intervals");
+                             "QChronoTimer::setInterval: negative intervals aren't allowed; the "
+                             "interval will be set to 1ms.");
     };
 
     ignoreMsg();
     timer.setInterval(-100ms);
-    ignoreMsg();
     timer.start();
-    QVERIFY(!active);
+    QVERIFY(active);
+    QCOMPARE(timer.interval(), 1ms);
 
     timer.setInterval(100ms);
     timer.start();
@@ -1037,9 +1106,9 @@ void tst_QChronoTimer::bindToTimer()
 
     ignoreMsg();
     timer.setInterval(-100ms);
-    ignoreMsg();
     timer.start();
-    QVERIFY(!active);
+    QVERIFY(active);
+    QCOMPARE(timer.interval(), 1ms);
 }
 
 void tst_QChronoTimer::bindTimer()
@@ -1128,30 +1197,24 @@ void tst_QChronoTimer::negativeInterval()
 
     auto ignoreMsg = [] {
         QTest::ignoreMessage(QtWarningMsg,
-                             "QObject::startTimer: Timers cannot have negative intervals");
+                             "QChronoTimer::setInterval: negative intervals aren't allowed; the "
+                             "interval will be set to 1ms.");
     };
 
     ignoreMsg();
-    // Setting a negative interval does not change the active state.
     timer.setInterval(-100ms);
-    ignoreMsg();
     timer.start();
-    QVERIFY(!timer.isActive());
+    QVERIFY(timer.isActive());
+    QCOMPARE(timer.interval(), 1ms);
 
-    // Starting a timer that has a positive interval, the active state is changed
     timer.setInterval(100ms);
     timer.start();
     QVERIFY(timer.isActive());
 
     ignoreMsg();
-    // Setting a negative interval on an already running timer...
     timer.setInterval(-100ms);
-    // ... the timer is stopped and the active state is changed
-    QVERIFY(!timer.isActive());
-
-    // Calling start on a timer that has a negative interval, does not change the active state
-    timer.start();
-    QVERIFY(!timer.isActive());
+    QVERIFY(timer.isActive());
+    QCOMPARE(timer.interval(), 1ms);
 }
 
 class OrderHelper : public QObject

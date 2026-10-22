@@ -1,6 +1,7 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOBJECT_P_P_H
 #define QOBJECT_P_P_H
@@ -20,6 +21,7 @@
 // code lives here is that some special apps/libraries for e.g., QtJambi,
 // Gammaray need access to the structs in this file.
 
+#include <QtCore/qalloc.h>
 #include <QtCore/qobject.h>
 #include <QtCore/private/qobject_p.h>
 
@@ -64,7 +66,7 @@ struct QObjectPrivate::ConnectionOrSignalVector
         Connection *next;
     };
 };
-static_assert(std::is_trivial_v<QObjectPrivate::ConnectionOrSignalVector>);
+static_assert(std::is_trivially_copyable_v<QObjectPrivate::ConnectionOrSignalVector>);
 
 struct QObjectPrivate::Connection : public ConnectionOrSignalVector
 {
@@ -85,7 +87,7 @@ struct QObjectPrivate::Connection : public ConnectionOrSignalVector
     QAtomicInt ref_{
         2
     }; // ref_ is 2 for the use in the internal lists, and for the use in QMetaObject::Connection
-    uint id = 0;
+    QAtomicInteger<uint> id{0};
     ushort method_offset;
     ushort method_relative;
     signed int signal_index : 27; // In signal range (see QObjectPrivate::signalIndex())
@@ -130,8 +132,8 @@ struct QObjectPrivate::SignalVector : public ConnectionOrSignalVector
     }
     int count() const { return static_cast<int>(allocated); }
 };
-static_assert(
-        std::is_trivial_v<QObjectPrivate::SignalVector>); // it doesn't need to be, but it helps
+// it doesn't need to be, but it helps
+static_assert(std::is_trivially_copyable_v<QObjectPrivate::SignalVector>);
 
 struct QObjectPrivate::ConnectionData
 {
@@ -142,7 +144,7 @@ struct QObjectPrivate::ConnectionData
     QAtomicPointer<SignalVector> signalVector;
     Connection *senders = nullptr;
     Sender *currentSender = nullptr; // object currently activating the object
-    std::atomic<TaggedSignalVector> orphaned = {};
+    std::atomic<TaggedSignalVector> orphaned = {nullptr};
 
     ~ConnectionData()
     {
@@ -152,8 +154,9 @@ struct QObjectPrivate::ConnectionData
             deleteOrphaned(c);
         SignalVector *v = signalVector.loadRelaxed();
         if (v) {
+            const size_t allocSize = sizeof(SignalVector) + (v->allocated + 1) * sizeof(ConnectionList);
             v->~SignalVector();
-            free(v);
+            QtPrivate::sizedFree(v, allocSize);
         }
     }
 
@@ -179,13 +182,13 @@ struct QObjectPrivate::ConnectionData
         return signalVector.loadRelaxed()->at(signal);
     }
 
-    void resizeSignalVector(uint size)
+    void resizeSignalVector(size_t size)
     {
         SignalVector *vector = this->signalVector.loadRelaxed();
         if (vector && vector->allocated > size)
             return;
         size = (size + 7) & ~7;
-        void *ptr = malloc(sizeof(SignalVector) + (size + 1) * sizeof(ConnectionList));
+        void *ptr = QtPrivate::fittedMalloc(sizeof(SignalVector), &size, sizeof(ConnectionList), 1);
         auto newVector = new (ptr) SignalVector;
 
         int start = -1;
@@ -202,7 +205,7 @@ struct QObjectPrivate::ConnectionData
         newVector->next = nullptr;
         newVector->allocated = size;
 
-        signalVector.storeRelaxed(newVector);
+        signalVector.storeRelease(newVector);
         if (vector) {
             TaggedSignalVector o = nullptr;
             /* No ABA issue here: When adding a node, we only care about the list head, it doesn't
@@ -216,7 +219,8 @@ struct QObjectPrivate::ConnectionData
     }
     int signalVectorCount() const
     {
-        return signalVector.loadAcquire() ? signalVector.loadRelaxed()->count() : -1;
+        SignalVector *v = signalVector.loadAcquire();
+        return v ? v->count() : -1;
     }
 
     static void deleteOrphaned(TaggedSignalVector o);

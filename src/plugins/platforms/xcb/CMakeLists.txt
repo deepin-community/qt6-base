@@ -43,7 +43,6 @@ qt_internal_add_module(XcbQpaPrivate
         qxcbxsettings.cpp qxcbxsettings.h
     DEFINES
         QT_BUILD_XCB_PLUGIN
-        QT_NO_FOREACH
     INCLUDE_DIRECTORIES
         gl_integrations
     PUBLIC_LIBRARIES
@@ -52,6 +51,7 @@ qt_internal_add_module(XcbQpaPrivate
         Qt::GuiPrivate
         XCB::CURSOR
         XCB::ICCCM
+        XCB::UTIL
         XCB::IMAGE
         XCB::KEYSYMS
         XCB::RANDR
@@ -84,7 +84,7 @@ qt_internal_extend_target(XcbQpaPrivate CONDITION QT_FEATURE_draganddrop
 
 qt_internal_extend_target(XcbQpaPrivate CONDITION QT_FEATURE_xcb_xlib
     SOURCES
-        qt_xlib_wrapper.c qt_xlib_wrapper.h
+        qt_xlib_wrapper.cpp qt_xlib_wrapper.h
     PUBLIC_LIBRARIES
         X11::XCB
         X11::X11
@@ -119,30 +119,6 @@ qt_internal_extend_target(XcbQpaPrivate CONDITION CLANG
         -ftemplate-depth=1024
 )
 
-qt_internal_extend_target(XcbQpaPrivate CONDITION QT_FEATURE_xcb_native_painting
-    SOURCES
-        nativepainting/qbackingstore_x11.cpp nativepainting/qbackingstore_x11_p.h
-        nativepainting/qcolormap_x11.cpp nativepainting/qcolormap_x11_p.h
-        nativepainting/qpaintengine_x11.cpp nativepainting/qpaintengine_x11_p.h
-        nativepainting/qpixmap_x11.cpp nativepainting/qpixmap_x11_p.h
-        nativepainting/qpolygonclipper_p.h
-        nativepainting/qt_x11_p.h
-        nativepainting/qtessellator.cpp nativepainting/qtessellator_p.h
-        nativepainting/qxcbnativepainting.cpp nativepainting/qxcbnativepainting.h
-    INCLUDE_DIRECTORIES
-        nativepainting
-)
-
-qt_internal_extend_target(XcbQpaPrivate CONDITION QT_FEATURE_xcb_native_painting AND QT_FEATURE_xrender
-    PUBLIC_LIBRARIES
-        PkgConfig::XRender
-)
-
-qt_internal_extend_target(XcbQpaPrivate CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_xcb_native_painting
-    LIBRARIES
-        WrapFreetype::WrapFreetype
-)
-
 if(QT_FEATURE_system_xcb_xinput)
     qt_internal_extend_target(XcbQpaPrivate LIBRARIES XCB::XINPUT)
 else()
@@ -171,8 +147,6 @@ qt_internal_add_plugin(QXcbIntegrationPlugin
     DEFAULT_IF "xcb" IN_LIST QT_QPA_PLATFORMS
     SOURCES
         qxcbmain.cpp
-    DEFINES
-        QT_NO_FOREACH
     LIBRARIES
         Qt::CorePrivate
         Qt::GuiPrivate

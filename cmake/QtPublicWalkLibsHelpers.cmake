@@ -1,6 +1,8 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+__qt_internal_cmake_include_guard(GLOBAL GUARD_KEY "QtPublicWalkLibsHelpers")
+
 # Add libraries to variable ${out_libs_var} in a way that duplicates
 # are added at the end. This ensures the library order needed for the
 # linker.
@@ -76,6 +78,12 @@ endfunction()
 #                           Used for prl file generation.
 #            'promote_3rd_party_global' promotes walked 3rd party imported targets to global scope.
 #            'collect_targets' collects all target names (discards framework or link flags)
+#            'collect_targets_runtime' like 'collect_targets', but additionally follows the
+#                             load-time shared library dependencies that CMake records in
+#                             IMPORTED_LINK_DEPENDENT_LIBRARIES[_<CONFIG>]. These are private
+#                             dependencies of shared libraries that don't appear in
+#                             INTERFACE_LINK_LIBRARIES but are still needed at runtime. Used when
+#                             embedding all runtime dependencies into an application bundle.
 #            'direct_targets' collects only the direct target names (discards framework or link
 #                             flags)
 #
@@ -125,6 +133,46 @@ function(__qt_internal_walk_libs
             endif()
         endif()
 
+        # In the runtime-dependency collection mode, also follow the shared
+        # libraries CMake records as load-time dependencies of imported targets.
+        # These are private dependencies of shared libraries that don't appear
+        # in INTERFACE_LINK_LIBRARIES but are still loaded by dyld at runtime
+        # (e.g. QtQuick -> QtQmlMeta), and so must be embedded into app bundles.
+        # The property is stored per-configuration, so union across all the
+        # imported configurations as well as the config-less variant.
+        if(operation STREQUAL "collect_targets_runtime")
+            get_target_property(link_dependent_libs
+                ${target} IMPORTED_LINK_DEPENDENT_LIBRARIES)
+            if(link_dependent_libs)
+                list(APPEND target_libs ${link_dependent_libs})
+            endif()
+            get_target_property(imported_configs ${target} IMPORTED_CONFIGURATIONS)
+            if(imported_configs)
+                foreach(config ${imported_configs})
+                    get_target_property(config_link_dependent_libs
+                        ${target} IMPORTED_LINK_DEPENDENT_LIBRARIES_${config})
+                    if(config_link_dependent_libs)
+                        list(APPEND target_libs ${config_link_dependent_libs})
+                    endif()
+                endforeach()
+            endif()
+        endif()
+
+        # When collecting libs for prl generation, pull in the target's
+        # INTERFACE_LINK_DIRECTORIES as -L<dir> entries. FindFFmpeg.cmake
+        # uses target_link_directories + bare lib names; without this,
+        # the resulting PRL has bare "libavformat.so" entries that the
+        # linker treats as literal file paths and fails to find. See
+        # QTBUG-144316.
+        if(operation STREQUAL "collect_libs")
+            get_target_property(target_link_dirs ${target} INTERFACE_LINK_DIRECTORIES)
+            if(target_link_dirs)
+                foreach(_dir IN LISTS target_link_dirs)
+                    __qt_internal_merge_libs(libs "-L${_dir}")
+                endforeach()
+            endif()
+        endif()
+
         # Need to record the rcc object file info not only for dependencies, but also for
         # the current target too. Otherwise the saved information is incomplete for prl static
         # build purposes.
@@ -153,9 +201,16 @@ function(__qt_internal_walk_libs
                     lib "${lib}")
             endwhile()
 
-            # Skip static plugins.
+            # Skip processing static plugins.
+            # There are some abuses of this genex marker, because the more generic one below did
+            # not exist yet.
             set(_is_plugin_marker_genex "\\$<BOOL:QT_IS_PLUGIN_GENEX>")
-            if(lib MATCHES "${_is_plugin_marker_genex}")
+
+            # Skip any genex expressions that contain the marker. Useful in cases like processing
+            # link expressions for prl file generation, where some link expressions should be
+            # skipped either because they don't make sense or they are handled differently.
+            set(_is_skip_marker_genex "\\$<BOOL:QT_SKIP_WALK_LIBS_PROCESSING>")
+            if(lib MATCHES "${_is_plugin_marker_genex}" OR lib MATCHES "${_is_skip_marker_genex}")
                 continue()
             endif()
 
@@ -172,10 +227,24 @@ function(__qt_internal_walk_libs
             if(lib MATCHES "^\\$<TARGET_OBJECTS:")
                 # Skip object files.
                 continue()
-            elseif(lib MATCHES "^\\$<LINK_ONLY:(.*)>$")
-                set(lib_target ${CMAKE_MATCH_1})
-            else()
-                set(lib_target ${lib})
+            endif()
+
+            set(lib_target "${lib}")
+
+            # Unwrap targets like $<LINK_ONLY:$<BUILD_INTERFACE:Qt6::CorePrivate>>
+            while(lib_target
+                    MATCHES "^\\$<(LINK_ONLY|BUILD_INTERFACE|BUILD_LOCAL_INTERFACE):(.*)>$")
+                set(lib_target "${CMAKE_MATCH_2}")
+            endwhile()
+
+            # If one of the values is "$<LINK_ONLY:$<BUILD_LOCAL_INTERFACE:Foo>>", this will be
+            # exported by cmake as "$<LINK_ONLY:>", which will become an empty value after the
+            # unwrapping above.
+            # In that case, skip the processing. Otherwise in some weird unknown conditions,
+            # CMake might consider the empty name to be a valid target, and cause errors further
+            # down.
+            if("${lib_target}" STREQUAL "")
+                continue()
             endif()
 
             # Skip CMAKE_DIRECTORY_ID_SEP. If a target_link_libraries is applied to a target
@@ -213,7 +282,7 @@ function(__qt_internal_walk_libs
                     endif()
                 elseif(NOT lib_target_type STREQUAL "OBJECT_LIBRARY")
 
-                    if(operation MATCHES "^(collect|direct)_targets$")
+                    if(operation MATCHES "^(collect|direct)_targets(_runtime)?$")
                         __qt_internal_merge_libs(libs ${lib_target})
                     else()
                         __qt_internal_merge_libs(libs "$<TARGET_LINKER_FILE:${lib_target}>")
@@ -240,10 +309,7 @@ function(__qt_internal_walk_libs
                 endif()
                 if(operation STREQUAL "promote_3rd_party_global")
                     set(lib_target_unaliased "${lib_target}")
-                    get_target_property(aliased_target ${lib_target} ALIASED_TARGET)
-                    if(aliased_target)
-                        set(lib_target_unaliased ${aliased_target})
-                    endif()
+                    _qt_internal_dealias_target(lib_target_unaliased)
 
                     get_property(is_imported TARGET ${lib_target_unaliased} PROPERTY IMPORTED)
 
@@ -267,7 +333,7 @@ function(__qt_internal_walk_libs
                 message(${message_type} "The ${CMAKE_MATCH_2} target is mentioned as a dependency"
                         " for ${target}, but not declared.${message_addition}")
             else()
-                if(NOT operation MATCHES "^(collect|direct)_targets$")
+                if(NOT operation MATCHES "^(collect|direct)_targets(_runtime)?$")
                     set(final_lib_name_to_merge "${lib_target}")
                     if(lib_target MATCHES "/([^/]+).framework$")
                         set(final_lib_name_to_merge "-framework ${CMAKE_MATCH_1}")
@@ -304,7 +370,24 @@ endfunction()
 # Does nothing when given an interface library.
 #
 # To be used to extract the full list of target dependencies of a library or executable.
+#
+# By default only the link-interface dependency graph is followed. Pass
+# INCLUDE_LINK_DEPENDENT_LIBRARIES to additionally follow the load-time shared
+# library dependencies recorded in IMPORTED_LINK_DEPENDENT_LIBRARIES[_<CONFIG>]
+# (private dependencies of shared libraries that are absent from the link
+# interface but still needed at runtime). Used when collecting everything that
+# must be embedded into an application bundle.
 function(__qt_internal_collect_all_target_dependencies target out_var)
+    cmake_parse_arguments(PARSE_ARGV 2 arg "INCLUDE_LINK_DEPENDENT_LIBRARIES" "" "")
+
+    if(arg_INCLUDE_LINK_DEPENDENT_LIBRARIES)
+        set(walk_operation "collect_targets_runtime")
+        set(walk_dict_name "qt_runtime_library_targets")
+    else()
+        set(walk_operation "collect_targets")
+        set(walk_dict_name "qt_private_link_library_targets")
+    endif()
+
     set(dep_targets "")
 
     get_target_property(target_type ${target} TYPE)
@@ -320,8 +403,8 @@ function(__qt_internal_collect_all_target_dependencies target out_var)
                         "${lib}"
                         lib_walked_targets
                         _discarded_out_var
-                        "qt_private_link_library_targets"
-                        "collect_targets")
+                        "${walk_dict_name}"
+                        "${walk_operation}")
 
                     foreach(lib_target IN LISTS lib_walked_targets)
                         if(NOT TARGET "${lib_target}")

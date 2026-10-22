@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMSCREEN_P_H
 #define QPLATFORMSCREEN_P_H
@@ -65,6 +66,14 @@ struct Q_GUI_EXPORT QWebOSScreen
     virtual void setLayerAlpha(int id, qreal alpha) = 0;
     virtual bool removeLayer(int id) = 0;
     virtual void addFlipListener(void (*callback)()) = 0;
+};
+#endif
+
+#if defined(Q_OS_HARMONY)
+struct Q_GUI_EXPORT QOhosScreen
+{
+    QT_DECLARE_NATIVE_INTERFACE(QOhosScreen, 1, QScreen)
+    virtual double displayId() const = 0;
 };
 #endif
 } // QNativeInterface::Private

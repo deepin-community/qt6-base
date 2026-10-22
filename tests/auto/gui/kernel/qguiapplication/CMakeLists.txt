@@ -43,6 +43,49 @@ if (ANDROID)
     set_property(TARGET tst_qguiapplication PROPERTY QT_ANDROID_VERSION_NAME ${target_version})
 endif()
 if (APPLE)
-    set_property(TARGET tst_qguiapplication PROPERTY MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist")
-    set_property(TARGET tst_qguiapplication PROPERTY PROPERTY MACOSX_BUNDLE TRUE)
+    set_target_properties(tst_qguiapplication PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_VERSION "${target_version}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.2"
+    )
+endif()
+
+qt_internal_add_test(tst_static_qguiapplication
+    SOURCES
+        ../../../corelib/kernel/qcoreapplication/tst_static_qcoreapplication.cpp
+        ../../../corelib/kernel/qcoreapplication/maybeshow.h
+    LIBRARIES
+        Qt::CorePrivate
+        Qt::Gui
+)
+
+if(QT_FEATURE_process)
+    qt_internal_add_executable(apphelper_gui
+        OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/"
+        SOURCES
+            ../../../corelib/kernel/qcoreapplication/apphelper.cpp
+            ../../../corelib/kernel/qcoreapplication/maybeshow.h
+        LIBRARIES
+            Qt::CorePrivate
+            Qt::Gui
+    )
+    set_target_properties(apphelper_gui PROPERTIES OUTPUT_NAME apphelper)
+
+    add_dependencies(tst_qguiapplication
+        apphelper_gui
+    )
+
+    if(QT_FEATURE_library)
+        qt_internal_add_cmake_library(apphelper_gui_plugin
+            MODULE
+            SOURCES
+                ../../../corelib/kernel/qcoreapplication/apphelper_plugin.cpp
+            NO_PCH_SOURCES
+                ../../../corelib/kernel/qcoreapplication/apphelper_plugin.cpp
+            LIBRARIES
+                Qt::Gui
+        )
+        qt_autogen_tools_initial_setup(apphelper_gui_plugin)
+        add_dependencies(apphelper_gui apphelper_gui_plugin)
+    endif()
 endif()

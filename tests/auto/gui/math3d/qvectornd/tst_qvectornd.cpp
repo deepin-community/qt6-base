@@ -4,6 +4,9 @@
 #include <QVector2D>
 #include <QVector3D>
 #include <QVector4D>
+
+#include <QtCore/qdatastream.h>
+
 #ifdef QVARIANT_H
 # error "This test requires qvector{2,3,4}d.h to not include qvariant.h"
 #endif
@@ -35,6 +38,8 @@ CHECK(const &&);
 #undef CHECK
 
 #include <QTest>
+#include <QtTest/private/qcomparisontesthelper_p.h>
+
 #include <QtCore/qmath.h>
 #include <QtGui/qvector2d.h>
 #include <QtGui/qvector3d.h>
@@ -78,8 +83,11 @@ private slots:
     void normalize4_data();
     void normalize4();
 
+    void compare2_data();
     void compare2();
+    void compare3_data();
     void compare3();
+    void compare4_data();
     void compare4();
 
     void add2_data();
@@ -162,6 +170,8 @@ private slots:
     void metaTypes();
 
     void structuredBinding();
+    void nonFiniteValuesStreamingRoundTrip_data();
+    void nonFiniteValuesStreamingRoundTrip();
 };
 
 // Test the creation of QVector2D objects in various ways:
@@ -882,37 +892,116 @@ void tst_QVectorND::normalize4()
         QVERIFY(qFuzzyCompare(v.length(), 1.0f));
 }
 
-// Test the comparison operators for 2D vectors.
-void tst_QVectorND::compare2()
+void tst_QVectorND::compare2_data()
 {
+    QTest::addColumn<QVector2D>("lhs");
+    QTest::addColumn<QVector2D>("rhs");
+    QTest::addColumn<bool>("expected");
+
     QVector2D v1(1, 2);
     QVector2D v2(1, 2);
     QVector2D v3(3, 2);
     QVector2D v4(1, 3);
 
-    QCOMPARE(v1, v2);
-    QVERIFY(v1 != v3);
-    QVERIFY(v1 != v4);
+    auto row = [](QVector2D lhs, QVector2D rhs, bool expected) {
+        QTest::addRow("%f-%f_%f-%f",
+                      lhs.x(), lhs.y(),
+                      rhs.x(), rhs.y())
+                << lhs << rhs << expected;
+    };
+
+    row(v1, v2, true);
+    row(v1, v3, false);
+    row(v1, v4, false);
+
+    // tests with negative vs. positive zero:
+    row({1, 0.0f}, {1, -0.0f}, true);
+    row({0.0f, 1}, {-0.0f, 1}, true);
+
+    // tests with ±ε (ensuring that op== isn't fuzzy):
+    constexpr auto eps = 1e-6f;
+    QCOMPARE_NE(1.0f, 1 + eps);
+    QVERIFY(qFuzzyCompare(1, 1 + eps));
+    row({1, 1}, {1, 1 + eps}, false);
+    row({1, 1}, {1 + eps, 1}, false);
 }
 
-// Test the comparison operators for 3D vectors.
-void tst_QVectorND::compare3()
+template <typename T>
+static void check_hashing(const T &lhs, const T &rhs)
 {
+    constexpr size_t max = -1;
+    QCOMPARE_EQ(qHash(lhs), qHash(rhs, 0)); // sic! testing 1/2-arg consistency!
+    QCOMPARE_EQ(qHash(lhs, max), qHash(rhs, max));
+}
+
+void tst_QVectorND::compare2()
+{
+    QFETCH(const QVector2D, lhs);
+    QFETCH(const QVector2D, rhs);
+    QFETCH(const bool, expected);
+
+    QT_TEST_EQUALITY_OPS(lhs, rhs, expected);
+
+    if (expected)
+        check_hashing(lhs, rhs);
+}
+
+void tst_QVectorND::compare3_data()
+{
+    QTest::addColumn<QVector3D>("lhs");
+    QTest::addColumn<QVector3D>("rhs");
+    QTest::addColumn<bool>("expected");
+
     QVector3D v1(1, 2, 4);
     QVector3D v2(1, 2, 4);
     QVector3D v3(3, 2, 4);
     QVector3D v4(1, 3, 4);
     QVector3D v5(1, 2, 3);
 
-    QCOMPARE(v1, v2);
-    QVERIFY(v1 != v3);
-    QVERIFY(v1 != v4);
-    QVERIFY(v1 != v5);
+    auto row = [](QVector3D lhs, QVector3D rhs, bool expected) {
+        QTest::addRow("%f-%f-%f_%f-%f-%f",
+                      lhs.x(), lhs.y(), lhs.z(),
+                      rhs.x(), rhs.y(), rhs.z())
+                << lhs << rhs << expected;
+    };
+
+    row(v1, v2, true);
+    row(v1, v3, false);
+    row(v1, v4, false);
+    row(v1, v5, false);
+
+    // tests with negative vs. positive zero:
+    row({1, 1, 0.0f}, {1, 1, -0.0f}, true);
+    row({1, 0.0f, 1}, {1, -0.0f, 1}, true);
+    row({0.0f, 1, 1}, {-0.0f, 1, 1}, true);
+
+    // tests with ±ε (ensuring that op== isn't fuzzy):
+    constexpr auto eps = 1e-6f;
+    QCOMPARE_NE(1.0f, 1 + eps);
+    QVERIFY(qFuzzyCompare(1, 1 + eps));
+    row({1, 1, 1}, {1, 1, 1 + eps}, false);
+    row({1, 1, 1}, {1, 1 + eps, 1}, false);
+    row({1, 1, 1}, {1 + eps, 1, 1}, false);
 }
 
-// Test the comparison operators for 4D vectors.
-void tst_QVectorND::compare4()
+void tst_QVectorND::compare3()
 {
+    QFETCH(const QVector3D, lhs);
+    QFETCH(const QVector3D, rhs);
+    QFETCH(const bool, expected);
+
+    QT_TEST_EQUALITY_OPS(lhs, rhs, expected);
+
+    if (expected)
+        check_hashing(lhs, rhs);
+}
+
+void tst_QVectorND::compare4_data()
+{
+    QTest::addColumn<QVector4D>("lhs");
+    QTest::addColumn<QVector4D>("rhs");
+    QTest::addColumn<bool>("expected");
+
     QVector4D v1(1, 2, 4, 8);
     QVector4D v2(1, 2, 4, 8);
     QVector4D v3(3, 2, 4, 8);
@@ -920,11 +1009,45 @@ void tst_QVectorND::compare4()
     QVector4D v5(1, 2, 3, 8);
     QVector4D v6(1, 2, 4, 3);
 
-    QCOMPARE(v1, v2);
-    QVERIFY(v1 != v3);
-    QVERIFY(v1 != v4);
-    QVERIFY(v1 != v5);
-    QVERIFY(v1 != v6);
+    auto row = [](QVector4D lhs, QVector4D rhs, bool expected) {
+        QTest::addRow("%f-%f-%f-%f_%f-%f-%f-%f",
+                      lhs.x(), lhs.y(), lhs.z(), lhs.w(),
+                      rhs.x(), rhs.y(), rhs.z(), rhs.w())
+                << lhs << rhs << expected;
+    };
+
+    row(v1, v2, true);
+    row(v1, v3, false);
+    row(v1, v4, false);
+    row(v1, v5, false);
+    row(v1, v6, false);
+
+    // tests with negative vs. positive zero:
+    row({1, 1, 1, 0.0f}, {1, 1, 1, -0.0f}, true);
+    row({1, 1, 0.0f, 1}, {1, 1, -0.0f, 1}, true);
+    row({1, 0.0f, 1, 1}, {1, -0.0f, 1, 1}, true);
+    row({0.0f, 1, 1, 1}, {-0.0f, 1, 1, 1}, true);
+
+    // tests with ±ε (ensuring that op== isn't fuzzy):
+    constexpr auto eps = 1e-6f;
+    QCOMPARE_NE(1.0f, 1 + eps);
+    QVERIFY(qFuzzyCompare(1, 1 + eps));
+    row({1, 1, 1, 1}, {1, 1, 1, 1 + eps}, false);
+    row({1, 1, 1, 1}, {1, 1, 1 + eps, 1}, false);
+    row({1, 1, 1, 1}, {1, 1 + eps, 1, 1}, false);
+    row({1, 1, 1, 1}, {1 + eps, 1, 1, 1}, false);
+}
+
+void tst_QVectorND::compare4()
+{
+    QFETCH(const QVector4D, lhs);
+    QFETCH(const QVector4D, rhs);
+    QFETCH(const bool, expected);
+
+    QT_TEST_EQUALITY_OPS(lhs, rhs, expected);
+
+    if (expected)
+        check_hashing(lhs, rhs);
 }
 
 // Test vector addition for 2D vectors.
@@ -2756,6 +2879,78 @@ void tst_QVectorND::structuredBinding()
         QCOMPARE(v.y(), 20.0f);
         QCOMPARE(v.z(), 30.0f);
         QCOMPARE(v.w(), 40.0f);
+    }
+}
+
+void tst_QVectorND::nonFiniteValuesStreamingRoundTrip_data()
+{
+    QTest::addColumn<float>("value");
+
+    constexpr auto inf = std::numeric_limits<float>::infinity();
+    constexpr auto NaN = std::numeric_limits<float>::quiet_NaN();
+
+    QTest::addRow("+∞") << +inf;
+    QTest::addRow("-∞") << -inf;
+    QTest::addRow("NaN") << NaN;
+
+}
+
+void tst_QVectorND::nonFiniteValuesStreamingRoundTrip()
+{
+    QFETCH(const float, value);
+
+    const QVector2D i2{value, value};
+    const QVector3D i3{value, value, value};
+    const QVector4D i4{value, value, value, value};
+
+    QByteArray buffer;
+
+    {
+        QDataStream s(&buffer, QIODevice::WriteOnly);
+        s << i2 << i3 << i4;
+        QCOMPARE(s.status(), QDataStream::Status::Ok);
+    }
+
+    {
+        QVector2D o2 = {0, 0};
+        QVector3D o3 = {1, 0, -1};
+        QVector4D o4 = {0, 1, 2, 3};
+
+        QDataStream s(&buffer, QIODevice::ReadOnly);
+        s >> o2;
+        QCOMPARE(s.status(), QDataStream::Status::Ok);
+        s >> o3;
+        QCOMPARE(s.status(), QDataStream::Status::Ok);
+        s >> o4;
+        QCOMPARE(s.status(), QDataStream::Status::Ok);
+
+        constexpr auto convert_to_binary = [](float v) {
+            uint r;
+            static_assert(sizeof v == sizeof r);
+            memcpy(&r, &v, sizeof v);
+            return r;
+        };
+
+        #define CHECK(n, what) \
+            do { \
+                const auto i ## n ## what = convert_to_binary(i ## n . what ()); \
+                const auto o ## n ## what = convert_to_binary(o ## n . what ()); \
+                QCOMPARE(i ## n ## what, o ## n ## what); \
+            } while (false)
+
+        CHECK(2, x);
+        CHECK(2, y);
+
+        CHECK(3, x);
+        CHECK(3, y);
+        CHECK(3, z);
+
+        CHECK(4, x);
+        CHECK(4, y);
+        CHECK(4, z);
+        CHECK(4, w);
+
+        #undef CHECK
     }
 }
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLOGGING_P_H
 #define QLOGGING_P_H
@@ -17,7 +18,7 @@
 
 #include <QtCore/private/qglobal_p.h>
 #include "qlogging.h"
-#include "qloggingcategory.h"
+#include <QtCore/qloggingcategory.h>
 
 #if !defined(QT_BOOTSTRAPPED) && QT_CONFIG(regularexpression)
 #  if __has_include(<cxxabi.h>) && QT_CONFIG(backtrace)
@@ -45,6 +46,7 @@ class QInternalMessageLogContext : public QMessageLogContext
 {
 public:
     static constexpr int DefaultBacktraceDepth = 32;
+    static constexpr int MaxBacktraceDepth = 16384;
 
 #if defined(QLOGGING_USE_EXECINFO_BACKTRACE)
     using BacktraceStorage = QVarLengthArray<void *, DefaultBacktraceDepth>;

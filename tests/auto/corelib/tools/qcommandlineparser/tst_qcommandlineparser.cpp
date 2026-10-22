@@ -17,6 +17,7 @@ class tst_QCommandLineParser : public QObject
 
 public slots:
     void initTestCase();
+    void cleanupTestCase();
 
 private slots:
     void parsingModes_data();
@@ -59,6 +60,7 @@ private slots:
     void testHelpAll_data();
     void testHelpAll();
     void testVeryLongOptionNames();
+    void testIgnoringOptions();
 };
 
 static char *empty_argv[] = { 0 };
@@ -68,6 +70,11 @@ void tst_QCommandLineParser::initTestCase()
 {
     Q_ASSERT(!empty_argv[0]);
     empty_argv[0] = const_cast<char*>(QTest::currentAppName());
+}
+
+void tst_QCommandLineParser::cleanupTestCase()
+{
+    empty_argv[0] = nullptr;
 }
 
 Q_DECLARE_METATYPE(QCommandLineParser::SingleDashWordOptionMode)
@@ -93,7 +100,7 @@ void tst_QCommandLineParser::testDuplicateOption()
     QCoreApplication app(empty_argc, empty_argv);
     QCommandLineParser parser;
     QVERIFY(parser.addOption(QCommandLineOption(QStringLiteral("h"), QStringLiteral("Hostname."), QStringLiteral("hostname"))));
-    QTest::ignoreMessage(QtWarningMsg, "QCommandLineParser: already having an option named \"h\"");
+    QTest::ignoreMessage(QtWarningMsg, "QCommandLineParser: option already added: \"h\"");
     parser.addHelpOption();
 }
 
@@ -101,8 +108,21 @@ void tst_QCommandLineParser::testPositionalArguments()
 {
     QCoreApplication app(empty_argc, empty_argv);
     QCommandLineParser parser;
+    const QString exeName = QCoreApplication::instance()->arguments().first(); // e.g. debug\tst_qcommandlineparser.exe on Windows
+    QString expectedNoPositional =
+            "Usage: " + exeName + "\n"
+            "\n";
+
+    QCOMPARE(parser.helpText(), expectedNoPositional);
     QVERIFY(parser.parse(QStringList() << "tst_qcommandlineparser" << "file.txt"));
     QCOMPARE(parser.positionalArguments(), QStringList() << QStringLiteral("file.txt"));
+
+    parser.addPositionalArgument("file", "File names", "<foobar>");
+    QString expected =
+            "Usage: " + exeName + " <foobar>\n"
+            "\n"
+            "Arguments:\n"
+            "  file File names\n";
 }
 
 void tst_QCommandLineParser::testBooleanOption_data()
@@ -159,7 +179,18 @@ void tst_QCommandLineParser::testOptionsAndPositional()
 
     QCoreApplication app(empty_argc, empty_argv);
     QCommandLineParser parser;
+    const QString exeName = QCoreApplication::instance()->arguments().first(); // e.g. debug\tst_qcommandlineparser.exe on Windows
+    const QString expectedHelpText =
+            "Usage: " + exeName + " [options] input\n"
+            "\n"
+            "Options:\n"
+            "  -b     a boolean option\n"
+            "\n"
+            "Arguments:\n"
+            "  input  File names\n";
+
     parser.setOptionsAfterPositionalArgumentsMode(parsingMode);
+    parser.addPositionalArgument("input", "File names");
     QVERIFY(parser.addOption(QCommandLineOption(QStringLiteral("b"), QStringLiteral("a boolean option"))));
     QVERIFY(parser.parse(args));
     QCOMPARE(parser.optionNames(), expectedOptionNames);
@@ -167,6 +198,7 @@ void tst_QCommandLineParser::testOptionsAndPositional()
     QTest::ignoreMessage(QtWarningMsg, "QCommandLineParser: option not expecting values: \"b\"");
     QCOMPARE(parser.values("b"), QStringList());
     QCOMPARE(parser.positionalArguments(), expectedPositionalArguments);
+    QCOMPARE(parser.helpText(), expectedHelpText);
 }
 
 void tst_QCommandLineParser::testMultipleNames_data()
@@ -542,8 +574,8 @@ void tst_QCommandLineParser::testVersionOption()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#elif defined(Q_OS_ANDROID)
-    QSKIP("Deploying executable applications to file system on Android not supported.");
+#elif defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Deploying executable applications to file system is not supported on this platform.");
 #else
 
     QCoreApplication app(empty_argc, empty_argv);
@@ -609,8 +641,8 @@ void tst_QCommandLineParser::testHelpOption()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#elif defined(Q_OS_ANDROID)
-    QSKIP("Deploying executable applications to file system on Android not supported.");
+#elif defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Deploying executable applications to file system is not supported on this platform.");
 #else
 
     QFETCH(QCommandLineParser::SingleDashWordOptionMode, parsingMode);
@@ -656,8 +688,8 @@ void tst_QCommandLineParser::testQuoteEscaping()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#elif defined(Q_OS_ANDROID)
-    QSKIP("Deploying executable applications to file system on Android not supported.");
+#elif defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Deploying executable applications to file system is not supported on this platform.");
 #else
     QCoreApplication app(empty_argc, empty_argv);
     QProcess process;
@@ -682,8 +714,8 @@ void tst_QCommandLineParser::testUnknownOption()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#elif defined(Q_OS_ANDROID)
-    QSKIP("Deploying executable applications to file system on Android not supported.");
+#elif defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Deploying executable applications to file system is not supported on this platform.");
 #else
     QCoreApplication app(empty_argc, empty_argv);
     QProcess process;
@@ -733,8 +765,8 @@ void tst_QCommandLineParser::testHelpAll()
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
 #else
-#ifdef Q_OS_ANDROID
-    QSKIP("Deploying executable applications to file system on Android not supported.");
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Deploying executable applications to file system is not supported on this platform.");
 #endif
 
     QFETCH(QCommandLineParser::SingleDashWordOptionMode, parsingMode);
@@ -757,8 +789,8 @@ void tst_QCommandLineParser::testVeryLongOptionNames()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#elif defined(Q_OS_ANDROID)
-    QSKIP("Deploying executable applications to file system on Android not supported.");
+#elif defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Deploying executable applications to file system is not supported on this platform.");
 #else
 
     QCoreApplication app(empty_argc, empty_argv);
@@ -784,6 +816,21 @@ void tst_QCommandLineParser::testVeryLongOptionNames()
 #endif // QT_CONFIG(process)
 }
 
+void tst_QCommandLineParser::testIgnoringOptions()
+{
+    QCommandLineParser parser;
+    QCommandLineOption ignoreAfterOption(QStringLiteral("ignoreAfterOption"));
+    ignoreAfterOption.setFlags(QCommandLineOption::IgnoreOptionsAfter);
+    ignoreAfterOption.setValueName(QStringLiteral("ignoreAfterValue"));
+    parser.addOption(ignoreAfterOption);
+    QCommandLineOption normalOption(QStringLiteral("normalOption"));
+    parser.addOption(QCommandLineOption(QStringLiteral("normalOption")));
+    QVERIFY(parser.parse({"executableName", "--normalOption", "--ignoreAfterOption=value", "--badOption", "notAnOption"}));
+    QVERIFY(parser.isSet(normalOption));
+    QVERIFY(parser.isSet(ignoreAfterOption)); // The ignore option is not ignored itself
+    QVERIFY(parser.value(ignoreAfterOption).isEmpty()); // Values passed to the ignore option should be ignored
+    QVERIFY(!parser.isSet("badOption"));
+}
+
 QTEST_APPLESS_MAIN(tst_QCommandLineParser)
 #include "tst_qcommandlineparser.moc"
-

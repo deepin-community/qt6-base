@@ -1,14 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QCoreApplication>
 #include <QProcess>
-#include <qt_windows.h>
+#include <QtCore/qglobal.h>
+
+#ifdef Q_OS_WIN
+#include <QtCore/qt_windows.h>
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication app(argc, argv);
-
 //! [0]
     QProcess process;
     process.setCreateProcessArgumentsModifier([] (QProcess::CreateProcessArguments *args)
@@ -21,6 +21,5 @@ int main(int argc, char *argv[])
     });
     process.start("C:\\Windows\\System32\\cmd.exe", QStringList() << "/k" << "title" << "The Child Process");
 //! [0]
-
-    return app.exec();
 }
+#endif

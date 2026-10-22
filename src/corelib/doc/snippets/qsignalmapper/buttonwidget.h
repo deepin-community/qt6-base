@@ -4,10 +4,8 @@
 #ifndef BUTTONWIDGET_H
 #define BUTTONWIDGET_H
 
-#include <QWidget>
+#include <QtWidgets>
 
-class QSignalMapper;
-class QString;
 
 //! [0]
 class ButtonWidget : public QWidget

@@ -1,9 +1,10 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // This file is included from qnsview.mm, and only used to organize the code
 
-Q_LOGGING_CATEGORY(lcQpaTouch, "qt.qpa.input.touch")
+Q_STATIC_LOGGING_CATEGORY(lcQpaTouch, "qt.qpa.input.touch")
 
 @implementation QNSView (Touch)
 
@@ -37,6 +38,10 @@ Q_LOGGING_CATEGORY(lcQpaTouch, "qt.qpa.input.touch")
         return;
 
     const NSTimeInterval timestamp = [event timestamp];
+
+    QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
+    nativeDrag->setLastInputEvent(event, self);
+
     const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, [self shouldSendSingleTouch]);
     qCDebug(lcQpaTouch) << "touchesMovedWithEvent" << points << "from device" << Qt::hex << [event deviceID];
     QWindowSystemInterface::handleTouchEvent<QWindowSystemInterface::SynchronousDelivery>(
@@ -51,6 +56,10 @@ Q_LOGGING_CATEGORY(lcQpaTouch, "qt.qpa.input.touch")
         return;
 
     const NSTimeInterval timestamp = [event timestamp];
+
+    QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
+    nativeDrag->setLastInputEvent(event, self);
+
     const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, [self shouldSendSingleTouch]);
     qCDebug(lcQpaTouch) << "touchesEndedWithEvent" << points << "from device" << Qt::hex << [event deviceID];
     QWindowSystemInterface::handleTouchEvent<QWindowSystemInterface::SynchronousDelivery>(
@@ -65,6 +74,10 @@ Q_LOGGING_CATEGORY(lcQpaTouch, "qt.qpa.input.touch")
         return;
 
     const NSTimeInterval timestamp = [event timestamp];
+
+    QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
+    nativeDrag->setLastInputEvent(event, self);
+
     const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, [self shouldSendSingleTouch]);
     qCDebug(lcQpaTouch) << "touchesCancelledWithEvent" << points << "from device" << Qt::hex << [event deviceID];
     QWindowSystemInterface::handleTouchEvent<QWindowSystemInterface::SynchronousDelivery>(

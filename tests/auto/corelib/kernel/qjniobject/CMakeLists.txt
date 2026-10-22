@@ -14,7 +14,15 @@ endif()
 qt_internal_add_test(tst_qjniobject
     SOURCES
         tst_qjniobject.cpp
+    LIBRARIES
+        Qt::CorePrivate
 )
+
+# if we can, enable C++23 so that we can use std::expected in the test
+# otherwise the test will use our own tl::expected copy from qexpected_p.h
+if ("${CMAKE_CXX_COMPILE_FEATURES}" MATCHES "cxx_std_23")
+    set_property(TARGET tst_qjniobject PROPERTY CXX_STANDARD 23)
+endif()
 
 if(ANDROID)
     set_property(TARGET tst_qjniobject APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR

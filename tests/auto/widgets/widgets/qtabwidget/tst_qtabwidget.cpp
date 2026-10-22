@@ -594,7 +594,7 @@ void tst_QTabWidget::paintEventCount()
     static const int MaxInitialPaintCount =
 #if defined(Q_OS_WIN)
         2;
-#elif defined(Q_OS_MAC)
+#elif defined(Q_OS_MACOS)
         5;
 #else
         2;
@@ -606,17 +606,13 @@ void tst_QTabWidget::paintEventCount()
 
     tw->setCurrentIndex(1);
 
-    QTest::qWait(100);
-
-    QCOMPARE(tab1->count, initalPaintCount);
-    QCOMPARE(tab2->count, 1);
+    QTRY_COMPARE(tab1->count, initalPaintCount);
+    QTRY_COMPARE(tab2->count, 1);
 
     tw->setCurrentIndex(0);
 
-    QTest::qWait(100);
-
-    QCOMPARE(tab1->count, initalPaintCount + 1);
-    QCOMPARE(tab2->count, 1);
+    QTRY_COMPARE(tab1->count, initalPaintCount + 1);
+    QTRY_COMPARE(tab2->count, 1);
 }
 
 void tst_QTabWidget::minimumSizeHint()
@@ -644,16 +640,16 @@ void tst_QTabWidget::minimumSizeHint()
 
 void tst_QTabWidget::heightForWidth_data()
 {
-    QTest::addColumn<int>("tabPosition");
-    QTest::newRow("West") << int(QTabWidget::West);
-    QTest::newRow("North") << int(QTabWidget::North);
-    QTest::newRow("East") << int(QTabWidget::East);
-    QTest::newRow("South") << int(QTabWidget::South);
+    QTest::addColumn<QTabWidget::TabPosition>("tabPosition");
+    QTest::newRow("West") << QTabWidget::West;
+    QTest::newRow("North") << QTabWidget::North;
+    QTest::newRow("East") << QTabWidget::East;
+    QTest::newRow("South") << QTabWidget::South;
 }
 
 void tst_QTabWidget::heightForWidth()
 {
-    QFETCH(int, tabPosition);
+    QFETCH(QTabWidget::TabPosition, tabPosition);
 
     QWidget *window = new QWidget;
     QVBoxLayout *lay = new QVBoxLayout(window);
@@ -662,7 +658,7 @@ void tst_QTabWidget::heightForWidth()
     QTabWidget *tabWid = new QTabWidget(window);
     QWidget *w = new QWidget;
     tabWid->addTab(w, QLatin1String("HFW page"));
-    tabWid->setTabPosition(QTabWidget::TabPosition(tabPosition));
+    tabWid->setTabPosition(tabPosition);
     QVBoxLayout *lay2 = new QVBoxLayout(w);
     QLabel *label = new QLabel("Label with wordwrap turned on makes it trade height for width."
                                " Make it a really long text so that it spans on several lines"
@@ -810,8 +806,6 @@ void tst_QTabWidget::setCurrentBeforeShow()
 
     QCOMPARE_GE(tabWidget.tabBar()->tabRect(0).x(), 0);
     QCOMPARE_GE(tabWidget.tabBar()->tabRect(0).y(), 0);
-
-    QTest::qWait(2000);
 }
 
 QTEST_MAIN(tst_QTabWidget)

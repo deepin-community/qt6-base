@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qvariant.h"
 
@@ -11,18 +12,16 @@
 QT_BEGIN_NAMESPACE
 
 namespace {
-
-// NOLINTNEXTLINE(cppcoreguidelines-virtual-class-destructor): this is not a base class
-static constexpr struct : QMetaTypeModuleHelper
+struct QVariantWidgetsHelper : QMetaTypeModuleHelper
 {
-    const QtPrivate::QMetaTypeInterface *interfaceForType(int type) const override {
+    static const QtPrivate::QMetaTypeInterface *interfaceForType(int type)
+    {
         switch (type) {
             QT_FOR_EACH_STATIC_WIDGETS_CLASS(QT_METATYPE_CONVERT_ID_TO_TYPE)
             default: return nullptr;
         }
     }
-}  qVariantWidgetsHelper;
-
+};
 
 #undef QT_IMPL_METATYPEINTERFACE_WIDGETS_TYPES
 
@@ -30,7 +29,9 @@ static constexpr struct : QMetaTypeModuleHelper
 
 void qRegisterWidgetsVariant()
 {
-    qMetaTypeWidgetsHelper = &qVariantWidgetsHelper;
+    qMetaTypeWidgetsHelper = QMetaTypeModuleHelper{
+        &QVariantWidgetsHelper::interfaceForType,
+    };
 }
 Q_CONSTRUCTOR_FUNCTION(qRegisterWidgetsVariant)
 

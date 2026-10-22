@@ -1,55 +1,73 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-//! [0]
-beginInsertRows(parent, 2, 4);
-//! [0]
+#include <QSortFilterProxyModel>
+#include <QVariant>
+#include <QModelIndex>
+#include <QModelRoleDataSpan>
+#include <QAbstractItemModel>
+
+class MyModel : public QAbstractItemModel
+{
+public:
+    void multiData(const QModelIndex &index, QModelRoleDataSpan roleDataSpan) const override;
+
+    QVariant data(const QModelIndex &index, int role) const override;
+
+    void methods_calls(QModelIndex &parent,
+        QModelIndex &sourceParent,
+        QModelIndex &destinationParent)
+    {
+        //! [0]
+        beginInsertRows(parent, 2, 4);
+        //! [0]
 
 
-//! [1]
-beginInsertRows(parent, 4, 5);
-//! [1]
+        //! [1]
+        beginInsertRows(parent, 4, 5);
+        //! [1]
 
 
-//! [2]
-beginRemoveRows(parent, 2, 3);
-//! [2]
+        //! [2]
+        beginRemoveRows(parent, 2, 3);
+        //! [2]
 
 
-//! [3]
-beginInsertColumns(parent, 4, 6);
-//! [3]
+        //! [3]
+        beginInsertColumns(parent, 4, 6);
+        //! [3]
 
 
-//! [4]
-beginInsertColumns(parent, 6, 8);
-//! [4]
+        //! [4]
+        beginInsertColumns(parent, 6, 8);
+        //! [4]
 
 
-//! [5]
-beginRemoveColumns(parent, 4, 6);
-//! [5]
+        //! [5]
+        beginRemoveColumns(parent, 4, 6);
+        //! [5]
 
 
-//! [6]
-beginMoveRows(sourceParent, 2, 4, destinationParent, 2);
-//! [6]
+        //! [6]
+        beginMoveRows(sourceParent, 2, 4, destinationParent, 2);
+        //! [6]
 
 
-//! [7]
-beginMoveRows(sourceParent, 2, 4, destinationParent, 6);
-//! [7]
+        //! [7]
+        beginMoveRows(sourceParent, 2, 4, destinationParent, 6);
+        //! [7]
 
 
-//! [8]
-beginMoveRows(parent, 2, 2, parent, 0);
-//! [8]
+        //! [8]
+        beginMoveRows(parent, 2, 2, parent, 0);
+        //! [8]
 
 
-//! [9]
-beginMoveRows(parent, 2, 2, parent, 4);
-//! [9]
-
+        //! [9]
+        beginMoveRows(parent, 2, 2, parent, 4);
+        //! [9]
+    }
+};
 
 //! [12]
 class CustomDataProxy : public QSortFilterProxyModel
@@ -61,9 +79,9 @@ public:
     {
     }
 
-    ...
+    //...
 
-    QVariant data(const QModelIndex &index, int role) override
+    QVariant data(const QModelIndex &index, int role) const override
     {
         if (role != Qt::BackgroundRole)
             return QSortFilterProxyModel::data(index, role);
@@ -84,29 +102,34 @@ private:
 };
 //! [12]
 
-//! [13]
-QVariant text = model->data(index, Qt::DisplayRole);
-QVariant decoration = model->data(index, Qt::DecorationRole);
-QVariant checkState = model->data(index, Qt::CheckStateRole);
-// etc.
-//! [13]
+void example(CustomDataProxy *model, const QModelIndex &index)
+{
+    //! [13]
+    QVariant text = model->data(index, Qt::DisplayRole);
+    QVariant decoration = model->data(index, Qt::DecorationRole);
+    QVariant checkState = model->data(index, Qt::CheckStateRole);
+    // etc.
+    //! [13]
 
-//! [14]
-std::array<QModelRoleData, 3> roleData = { {
-    QModelRoleData(Qt::DisplayRole),
-    QModelRoleData(Qt::DecorationRole),
-    QModelRoleData(Qt::CheckStateRole)
-} };
+    //! [14]
+    std::array<QModelRoleData, 3> roleData = { {
+        QModelRoleData(Qt::DisplayRole),
+        QModelRoleData(Qt::DecorationRole),
+        QModelRoleData(Qt::CheckStateRole)
+    } };
 
-// Usually, this is not necessary: A QModelRoleDataSpan
-// will be built automatically for you when passing an array-like
-// container to multiData().
-QModelRoleDataSpan span(roleData);
+    // Usually, this is not necessary: A QModelRoleDataSpan
+    // will be built automatically for you when passing an array-like
+    // container to multiData().
+    QModelRoleDataSpan span(roleData);
 
-model->multiData(index, span);
+    model->multiData(index, span);
 
-// Use roleData[0].data(), roleData[1].data(), etc.
-//! [14]
+    // Use roleData[0].data(), roleData[1].data(), etc.
+    //! [14]
+}
+
+char result = 0;
 
 //! [15]
 void MyModel::multiData(const QModelIndex &index, QModelRoleDataSpan roleDataSpan) const

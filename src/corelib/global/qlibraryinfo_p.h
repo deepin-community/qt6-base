@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLIBRARYINFO_P_H
 #define QLIBRARYINFO_P_H
@@ -31,9 +32,13 @@ class Q_CORE_EXPORT QLibraryInfoPrivate final
 public:
 #if QT_CONFIG(settings)
     static QSettings *configuration();
-    static void reload();
     static void setQtconfManualPath(const QString *qtconfManualPath);
+    // Expands $(VAR) placeholders with the value of the VAR environment
+    // variable, and converts native separators to '/'.
+    static QString expandEnvVariables(QString path);
 #endif
+
+    static void reload();
 
     struct LocationInfo
     {
@@ -43,14 +48,13 @@ public:
     };
 
     static LocationInfo locationInfo(QLibraryInfo::LibraryPath loc);
+    static QString path(QLibraryInfo::LibraryPath p);
+    static QStringList paths(QLibraryInfo::LibraryPath p);
 
-    enum UsageMode {
-        RegularUsage,
-        UsedFromQtBinDir
-    };
-
-    static QString path(QLibraryInfo::LibraryPath p, UsageMode usageMode = RegularUsage);
-    static QList<QString> paths(QLibraryInfo::LibraryPath p, UsageMode usageMode = RegularUsage);
+private:
+    static QStringList qtConfPaths(QLibraryInfo::LibraryPath location);
+    static QStringList appPaths(QLibraryInfo::LibraryPath location);
+    static QStringList qtPaths(QLibraryInfo::LibraryPath location);
 };
 
 QT_END_NAMESPACE

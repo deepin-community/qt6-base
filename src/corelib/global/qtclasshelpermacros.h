@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTCLASSHELPERMACROS_H
 #define QTCLASSHELPERMACROS_H
@@ -28,6 +29,15 @@ QT_BEGIN_NAMESPACE
     Q_DISABLE_COPY(Class) \
     Class(Class &&) = delete; \
     Class &operator=(Class &&) = delete;
+
+#define Q_DISABLE_COPY_X(Class, reason) \
+    Class(const Class &) Q_DECL_EQ_DELETE_X(reason);\
+    Class &operator=(const Class &) Q_DECL_EQ_DELETE_X(reason);
+
+#define Q_DISABLE_COPY_MOVE_X(Class, reason) \
+    Q_DISABLE_COPY_X(Class, reason) \
+    Class(Class &&) Q_DECL_EQ_DELETE_X(reason); \
+    Class &operator=(Class &&) Q_DECL_EQ_DELETE_X(reason);
 
 /*
     Implementing a move assignment operator using an established
@@ -73,6 +83,31 @@ QT_BEGIN_NAMESPACE
         swap(other); \
         return *this; \
     }
+
+/*
+    This macro defines the RO5 special member functions (destructor,
+    copy+move constructors and assignment operators) as defaulted.
+
+    Normally we don't use this macro if we're fine with these functions
+    to be public; we instead leave a comment in the class declaration,
+    something like:
+
+    // compiler-generated special member functions are fine!
+
+    In some cases a class may need to redeclare these functions, for
+    instance if it wants to change their accessibility. Since
+    defaulting all five is boilerplate, use this macro instead.
+
+    Note that the default constructor is not covered, and this macro
+    will prevent its automatic generation.
+*/
+
+#define QT_DECLARE_RO5_SMF_AS_DEFAULTED(Class) \
+    ~Class() = default; \
+    Class(const Class &) = default; \
+    Class(Class &&) = default; \
+    Class &operator=(const Class &) = default; \
+    Class &operator=(Class &&) = default;
 
 /*
     These macros can be used to define tag structs in the preferred way (ie.

@@ -12,7 +12,7 @@ class CustomStyle : public QProxyStyle
     Q_OBJECT
 
 public:
-    CustomStyle(const QWidget *widget);
+    explicit CustomStyle(const QWidget *widget = nullptr);
     ~CustomStyle() {}
 
     void drawPrimitive(PrimitiveElement element, const QStyleOption *option,

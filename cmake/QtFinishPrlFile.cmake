@@ -3,7 +3,7 @@
 
 # Finish a preliminary .prl file.
 #
-# - Replaces occurrences of the build libdir with $$[QT_INSTALL_LIBDIR].
+# - For Qt modules, replaces occurrences of the build libdir with $$[QT_INSTALL_LIBS].
 # - Strips version number suffixes from absolute paths, because qmake's lflag
 #   merging does not handle them correctly.
 # - Transforms absolute library paths into link flags
@@ -13,11 +13,10 @@
 # - Prepends '-l' to values that are not absolute paths, and don't start with a dash
 #   aka, '-lfoo', '-framework', '-pthread'.
 #
-# The path to the final .prl file is stored in the input file as assignment to FINAL_PRL_FILE_PATH.
-#
 # This file is to be used in CMake script mode with the following variables set:
 # IN_FILE: path to the step 1 preliminary .prl file
 # OUT_FILE: path to the step 2 preliminary .prl file that is going to be created
+# FINAL_PRL_FILE_PATH: path where the final .prl file should be placed
 # QT_LIB_DIRS: list of paths where Qt libraries are located.
 #              This includes the install prefix and the current repo build dir.
 #              These paths get replaced with relocatable paths or linker / framework flags.
@@ -42,6 +41,16 @@ foreach(line ${lines})
         unset(adjusted_libs)
         foreach(lib ${CMAKE_MATCH_1})
             if("${lib}" STREQUAL "")
+                continue()
+            endif()
+
+            # A bare "-L" with no path arises when a target's
+            # INTERFACE_LINK_DIRECTORIES contains a generator expression
+            # that file(GENERATE) resolves to empty (for example
+            # $<INSTALL_INTERFACE:/path> in a non-export context). Skip
+            # such tokens; the linker would otherwise consume the next
+            # argument as the path. See QTBUG-144316.
+            if(lib STREQUAL "-L")
                 continue()
             endif()
 
@@ -78,7 +87,12 @@ foreach(line ${lines})
                 # Not absolute path, most likely a library name or a linker flag.
                 # If linker flag (like -framework, -lfoo, -pthread, keep it as-is).
                 if(NOT lib MATCHES "^-")
-                    string(PREPEND lib "-l")
+                    qt_extract_library_name(lib_name "${lib}")
+                    if(lib_name)
+                        set(lib "${LINK_LIBRARY_FLAG}${lib_name}")
+                    else()
+                        string(PREPEND lib "${LINK_LIBRARY_FLAG}")
+                    endif()
                 endif()
                 list(APPEND adjusted_libs "${lib}")
             endif()
@@ -137,17 +151,5 @@ foreach(line ${lines})
 endforeach()
 file(WRITE "${OUT_FILE}" "${content}")
 
-# Read the prl meta file to find out where should the final prl file be placed,
-# Copy it there, if the contents hasn't changed.
-file(STRINGS "${IN_META_FILE}" lines)
-
-foreach(line ${lines})
-    if(line MATCHES "^FINAL_PRL_FILE_PATH = (.*)")
-        set(final_prl_file_path "${CMAKE_MATCH_1}")
-        configure_file(
-            "${OUT_FILE}"
-            "${final_prl_file_path}"
-            COPYONLY
-            )
-    endif()
-endforeach()
+# Copy the result to its final location, if the contents have changed.
+configure_file("${OUT_FILE}" "${FINAL_PRL_FILE_PATH}" COPYONLY)

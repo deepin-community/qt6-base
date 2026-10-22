@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #if 0
 #pragma qt_class(QtCompilerDetection)
@@ -78,7 +79,9 @@
 #  if _MSC_VER < 1938 // stdext is deprecated since VS 2022 17.8
 #    define QT_MAKE_CHECKED_ARRAY_ITERATOR(x, N) stdext::make_checked_array_iterator(x, size_t(N)) // Since _MSC_VER >= 1500
 #  endif
-#  define Q_COMPILER_COMPLAINS_ABOUT_RETURN_AFTER_UNREACHABLE
+#  ifdef Q_CC_MSVC_ONLY
+#    define Q_COMPILER_COMPLAINS_ABOUT_RETURN_AFTER_UNREACHABLE
+#  endif
 
 #elif defined(__BORLANDC__) || defined(__TURBOC__)
 #  define Q_CC_BOR
@@ -122,7 +125,15 @@
       // define to verify the Clang version we hard-code the versions
       // based on the best available info we have about the actual
       // version: http://en.wikipedia.org/wiki/Xcode#Toolchain_Versions
-#      if __apple_build_version__   >= 14030022 // Xcode 14.3
+#      if __apple_build_version__   >= 17000319 // Xcode 26.0
+#        define Q_CC_CLANG 1915
+#      elif __apple_build_version__ >= 17000013 // Xcode 16.3
+#        define Q_CC_CLANG 1914
+#      elif __apple_build_version__ >= 16000026 // Xcode 16.0
+#        define Q_CC_CLANG 1706
+#      elif __apple_build_version__ >= 15000040 // Xcode 15.0
+#        define Q_CC_CLANG 1600
+#      elif __apple_build_version__ >= 14030022 // Xcode 14.3
 #        define Q_CC_CLANG 1500
 #      elif __apple_build_version__ >= 14000029 // Xcode 14.0
 #        define Q_CC_CLANG 1400
@@ -201,11 +212,9 @@
 #  define Q_DECL_PURE_FUNCTION __attribute__((pure))
 #  define Q_DECL_CONST_FUNCTION __attribute__((const))
 #  define Q_DECL_COLD_FUNCTION __attribute__((cold))
-#  if !defined(QT_MOC_CPP)
-#    define Q_PACKED __attribute__ ((__packed__))
-#    ifndef __ARM_EABI__
-#      define QT_NO_ARM_EABI
-#    endif
+#  define Q_PACKED __attribute__ ((__packed__))
+#  ifndef __ARM_EABI__
+#    define QT_NO_ARM_EABI
 #  endif
 #  if Q_CC_GNU >= 403 && !defined(Q_CC_CLANG)
 #      define Q_ALLOC_SIZE(x) __attribute__((alloc_size(x)))
@@ -440,6 +449,9 @@
 #ifndef __has_attribute
 #  define __has_attribute(x)           0
 #endif
+#ifndef __has_c_attribute
+#  define __has_c_attribute(x)         0
+#endif
 #ifndef __has_cpp_attribute
 #  define __has_cpp_attribute(x)       0
 #endif
@@ -458,12 +470,6 @@
  */
 #if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
 #  define QT_ASAN_ENABLED
-#endif
-
-#ifdef __cplusplus
-# if __has_include(<version>) /* remove this check once Integrity, QNX have caught up */
-#  include <version>
-# endif
 #endif
 
 /*
@@ -514,6 +520,10 @@
  *
  * For a full listing of feature test macros, see
  *  https://en.cppreference.com/w/cpp/feature_test
+ * Exceptions:
+ *  Q_DECL_CONSTEXPR_DTOR           constexpr in C++20 for explicit destructors __cpp_constexpr >= 201907L
+ *  Q_CONSTEXPR_DTOR                constexpr in C++20 for variables __cpp_constexpr >= 201907L otherwise const
+ *  Q_DECL_EQ_DELETE_X(message)     = delete("reason"), __cpp_deleted_function >= 202403L
  *
  * C++ extensions:
  *  Q_COMPILER_RESTRICTED_VLA       variable-length arrays, prior to __cpp_runtime_arrays
@@ -959,18 +969,19 @@
 # endif
 #endif
 
-#if __has_cpp_attribute(nodiscard) && (!defined(Q_CC_CLANG) || __cplusplus > 201402L) // P0188R1
-// Can't use [[nodiscard]] with Clang and C++11/14, see https://bugs.llvm.org/show_bug.cgi?id=33518
+#if (defined(__cplusplus) && __has_cpp_attribute(nodiscard) /* P0188R1 */) || \
+    (!defined(__cplusplus) && __has_c_attribute(nodiscard) /* N2267 */)
 #  undef Q_REQUIRED_RESULT
 #  define Q_REQUIRED_RESULT [[nodiscard]]
 #endif
 
-#if __has_cpp_attribute(nodiscard) >= 201907L /* used for both P1771 and P1301... */
+#if (defined(__cplusplus) && __has_cpp_attribute(nodiscard) >= 201907L /* used for both P1771 and P1301... */) \
+    || (!defined(__cplusplus) && __has_c_attribute(nodiscard) /* N2448 */)
 // [[nodiscard]] constructor (P1771)
 #  ifndef Q_NODISCARD_CTOR
 #    define Q_NODISCARD_CTOR [[nodiscard]]
 #  endif
-// [[nodiscard("reason")]] (P1301)
+// [[nodiscard("reason")]] (P1301, N2448 for C)
 #  ifndef Q_NODISCARD_X
 #    define Q_NODISCARD_X(message) [[nodiscard(message)]]
 #  endif
@@ -979,17 +990,24 @@
 #  endif
 #endif
 
-#if __has_cpp_attribute(maybe_unused)
+#if (defined(__cplusplus) && __has_cpp_attribute(maybe_unused)) || \
+    (!defined(__cplusplus) && __has_c_attribute(maybe_unused))
 #  undef Q_DECL_UNUSED
 #  define Q_DECL_UNUSED [[maybe_unused]]
 #endif
 
-#if __has_cpp_attribute(noreturn)
+#if (defined(__cplusplus) && __has_cpp_attribute(noreturn)) || \
+    (!defined(__cplusplus) && __has_c_attribute(noreturn))
 #  undef Q_NORETURN
 #  define Q_NORETURN [[noreturn]]
 #endif
 
-#if __has_cpp_attribute(deprecated)
+#if defined(Q_CC_GNU_ONLY) && Q_CC_GNU < 1300
+// Leave Q_DECL_DEPRECATED defined with __attribute__ because
+// GCC 12 and earlier has issues combining __attribute__ and [[]] syntax.
+// We phrase the deprecation macros as __attribute__ so that they can be combined with visibility.
+#elif (defined(__cplusplus) && __has_cpp_attribute(deprecated)) || \
+    (!defined(__cplusplus) && __has_c_attribute(deprecated))
 #  ifdef Q_DECL_DEPRECATED
 #    undef Q_DECL_DEPRECATED
 #  endif
@@ -1002,6 +1020,74 @@
 
 #define Q_DECL_ENUMERATOR_DEPRECATED Q_DECL_DEPRECATED
 #define Q_DECL_ENUMERATOR_DEPRECATED_X(x) Q_DECL_DEPRECATED_X(x)
+
+#ifdef Q_CC_CLANG /* preferred, since Clang's supports `text` and MSVC's doesn't */
+#  define Q_DECL_DEPRECATED_MACRO(macro, text) QT_DO_PRAGMA(clang deprecated(macro, text))
+#elif defined(Q_CC_MSVC)
+#  define Q_DECL_DEPRECATED_MACRO(macro, text) __pragma(deprecated(#macro))
+#endif
+
+#ifndef Q_DECL_CONSTEXPR_DTOR
+#  if __cpp_constexpr >= 201907L
+#    define Q_DECL_CONSTEXPR_DTOR constexpr
+#  else
+#    define Q_DECL_CONSTEXPR_DTOR inline
+#  endif
+#endif
+
+#ifndef Q_CONSTEXPR_DTOR
+#  if __cpp_constexpr >= 201907L
+#    define Q_CONSTEXPR_DTOR constexpr
+#  else
+#    define Q_CONSTEXPR_DTOR const
+#  endif
+#endif
+
+#ifndef Q_DECL_EQ_DELETE_X
+// Clang < 20 advertises the feature-testing macro but issues a warning
+// if one isn't also using C++26,
+// https://github.com/llvm/llvm-project/issues/109311
+#  if defined(__cpp_deleted_function) && __cpp_deleted_function >= 202403L \
+    && (!defined(Q_CC_CLANG_ONLY) || Q_CC_CLANG_ONLY >= 2010 || __cplusplus > 202302L) // C++26
+#    define Q_DECL_EQ_DELETE_X(reason) = delete(reason)
+#  else
+#    define Q_DECL_EQ_DELETE_X(reason) = delete
+#  endif
+#endif
+
+#ifndef Q_LIKELY_BRANCH
+#  if __has_cpp_attribute(likely)
+#    define Q_LIKELY_BRANCH [[likely]]
+#    define Q_UNLIKELY_BRANCH [[unlikely]]
+#  else
+#    define Q_LIKELY_BRANCH
+#    define Q_UNLIKELY_BRANCH
+#  endif
+#endif
+
+#ifndef Q_DECL_NONBLOCKING_FUNCTION
+#  if defined(__cplusplus)
+#    if __has_cpp_attribute(clang::nonblocking)
+#      define Q_DECL_NONBLOCKING_FUNCTION [[clang::nonblocking]]
+#    else
+#      define Q_DECL_NONBLOCKING_FUNCTION
+#    endif
+#  else
+#    define Q_DECL_NONBLOCKING_FUNCTION
+#  endif
+#endif
+
+#ifndef Q_DECL_NONALLOCATING_FUNCTION
+#  if defined(__cplusplus)
+#    if __has_cpp_attribute(clang::nonallocating)
+#      define Q_DECL_NONALLOCATING_FUNCTION [[clang::nonallocating]]
+#    else
+#      define Q_DECL_NONALLOCATING_FUNCTION
+#    endif
+#  else
+#    define Q_DECL_NONALLOCATING_FUNCTION
+#  endif
+#endif
 
 /*
  * Fallback macros to certain compiler features
@@ -1045,6 +1131,9 @@
 #endif
 #ifndef Q_DECL_DEPRECATED_X
 #  define Q_DECL_DEPRECATED_X(text) Q_DECL_DEPRECATED
+#endif
+#ifndef Q_DECL_DEPRECATED_MACRO
+#  define Q_DECL_DEPRECATED_MACRO(macro, text)
 #endif
 #ifndef Q_DECL_EXPORT
 #  define Q_DECL_EXPORT
@@ -1140,7 +1229,8 @@
 #  define QT_WARNING_DISABLE_INTEL(number)
 #  define QT_WARNING_DISABLE_CLANG(text)
 #  define QT_WARNING_DISABLE_GCC(text)
-#  define QT_WARNING_DISABLE_DEPRECATED         QT_WARNING_DISABLE_MSVC(4996)
+#  define QT_WARNING_DISABLE_DEPRECATED         QT_WARNING_DISABLE_MSVC(4996) \
+                                                QT_WARNING_DISABLE_MSVC(4995)
 #  define QT_WARNING_DISABLE_FLOAT_COMPARE
 #  define QT_WARNING_DISABLE_INVALID_OFFSETOF
 #elif defined(Q_CC_CLANG)
@@ -1150,7 +1240,13 @@
 #  define QT_WARNING_DISABLE_GCC(text)
 #  define QT_WARNING_DISABLE_INTEL(number)
 #  define QT_WARNING_DISABLE_MSVC(number)
-#  define QT_WARNING_DISABLE_DEPRECATED         QT_WARNING_DISABLE_CLANG("-Wdeprecated-declarations")
+# if defined(__has_warning) && __has_warning("-Wdeprecated-pragma")
+#  define QT_WARNING_DISABLE_DEPRECATED_MACRO  QT_WARNING_DISABLE_CLANG("-Wdeprecated-pragma")
+# else
+#  define QT_WARNING_DISABLE_DEPRECATED_MACRO
+# endif
+#  define QT_WARNING_DISABLE_DEPRECATED         QT_WARNING_DISABLE_CLANG("-Wdeprecated-declarations") \
+                                                QT_WARNING_DISABLE_DEPRECATED_MACRO
 #  define QT_WARNING_DISABLE_FLOAT_COMPARE      QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
 #  define QT_WARNING_DISABLE_INVALID_OFFSETOF   QT_WARNING_DISABLE_CLANG("-Winvalid-offsetof")
 #elif defined(Q_CC_GNU) && (__GNUC__ * 100 + __GNUC_MINOR__ >= 406)
@@ -1175,6 +1271,11 @@
 #  define QT_WARNING_DISABLE_FLOAT_COMPARE
 #  define QT_WARNING_DISABLE_INVALID_OFFSETOF
 #endif
+/* GCC and (older) Clang differ in the name of frame-larger-than: */
+#define QT_WARNING_DISABLE_LARGE_STACK_FRAME \
+    QT_WARNING_DISABLE_CLANG("-Wframe-larger-than") \
+    QT_WARNING_DISABLE_GCC("-Wframe-larger-than=") \
+    /* end */
 
 #ifndef QT_IGNORE_DEPRECATIONS
 #define QT_IGNORE_DEPRECATIONS(statement) \
@@ -1221,13 +1322,23 @@
 #elif __has_cpp_attribute(fallthrough)
 #  define Q_FALLTHROUGH() [[fallthrough]]
 #endif
-#endif
+#else // !defined(__cplusplus)
+#  if __has_c_attribute(fallthrough)
+#    define Q_FALLTHROUGH() [[fallthrough]]
+#  endif
+#endif // !defined(__cplusplus)
 #ifndef Q_FALLTHROUGH
 #  ifdef Q_CC_GNU
 #    define Q_FALLTHROUGH() __attribute__((fallthrough))
 #  else
 #    define Q_FALLTHROUGH() (void)0
 #  endif
+#endif
+
+#if defined(__has_attribute) && __has_attribute(uninitialized)
+#  define Q_DECL_UNINITIALIZED __attribute__((uninitialized))
+#else
+#  define Q_DECL_UNINITIALIZED
 #endif
 
 
@@ -1262,9 +1373,8 @@
 #endif // __cplusplus
 
 #if defined(__cplusplus) && defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
-#  if Q_CC_MSVC < 1927
-     // Check below only works with 16.7 or newer
-#    error "Qt requires at least Visual Studio 2019 version 16.7 (VC++ version 14.27). Please upgrade."
+#  if Q_CC_MSVC < 1930
+#    error "Qt requires at least Visual Studio 2022 (MSVC version 19.30 or newer). Please upgrade."
 #  endif
 
 // On MSVC we require /permissive- set by user code. Check that we are
@@ -1277,9 +1387,14 @@ static_assert(!std::is_convertible_v<std::nullptr_t, bool>,
 
 #if defined(QT_BOOTSTRAPPED) || defined(QT_USE_PROTECTED_VISIBILITY) || !defined(__ELF__) || defined(__PIC__)
 // this is fine
+#elif defined(__PIE__)
+#  error "-fPIE is not sufficient if Qt was configured with the -DFEATURE_reduce_relocations=ON "\
+         "CMake option. Compile your code with -fPIC and without -fPIE or compile Qt with "\
+         "-DFEATURE_no_direct_extern_access=ON."
 #elif defined(QT_REDUCE_RELOCATIONS)
-#  error "You must build your code with position independent code if Qt was configured with -reduce-relocations. "\
-         "Compile your code with -fPIC (and not with -fPIE)."
+#  error "You must build your code with position independent code if Qt was configured with the "\
+         "-DFEATURE_reduce_relocations=ON CMake option. Compile your code with -fPIC and "\
+         "without -fPIE or compile Qt with -DFEATURE_no_direct_extern_access=ON."
 #endif
 
 #ifdef Q_PROCESSOR_X86_32
@@ -1338,7 +1453,7 @@ static_assert(!std::is_convertible_v<std::nullptr_t, bool>,
 #if defined(__cplusplus)
 
 #ifdef __cpp_constinit
-# if defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
+# if defined(Q_CC_MSVC) && _MSC_VER < 1940 && !defined(Q_CC_CLANG)
    // https://developercommunity.visualstudio.com/t/C:-constinit-for-an-optional-fails-if-/1406069
 #  define Q_CONSTINIT
 # else
@@ -1379,6 +1494,10 @@ QT_WARNING_DISABLE_MSVC(4706) /* assignment within conditional expression */
 QT_WARNING_DISABLE_MSVC(4355) /* 'this' : used in base member initializer list */
 QT_WARNING_DISABLE_MSVC(4710) /* function not inlined */
 QT_WARNING_DISABLE_MSVC(4530) /* C++ exception handler used, but unwind semantics are not enabled. Specify /EHsc */
+#  elif defined(Q_CC_CLANG_ONLY)
+#    if __has_warning("-Wcharacter-conversion")
+        QT_WARNING_DISABLE_CLANG("-Wcharacter-conversion") /* until https://github.com/llvm/llvm-project/issues/163719 is fixed */
+#    endif
 #  elif defined(Q_CC_BOR)
 #    pragma option -w-inl
 #    pragma option -w-aus

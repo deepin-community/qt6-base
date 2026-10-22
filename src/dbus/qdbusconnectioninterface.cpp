@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusconnectioninterface.h"
 
@@ -203,6 +204,21 @@ QDBusReply<uint> QDBusConnectionInterface::servicePid(const QString &serviceName
 QDBusReply<uint> QDBusConnectionInterface::serviceUid(const QString &serviceName) const
 {
     return internalConstCall(QDBus::AutoDetect, "GetConnectionUnixUser"_L1,
+                             QList<QVariant>() << serviceName);
+}
+
+/*!
+    \since 6.10
+
+    Returns the connection credentials for the process currently holding
+    the bus service \a serviceName.
+
+    See <https://dbus.freedesktop.org/doc/dbus-specification.html>
+    section: 'Method: org.freedesktop.DBus.GetConnectionCredentials' for more information.
+*/
+QDBusReply<QVariantMap> QDBusConnectionInterface::serviceCredentials(const QString &serviceName) const
+{
+    return internalConstCall(QDBus::AutoDetect, "GetConnectionCredentials"_L1,
                              QList<QVariant>() << serviceName);
 }
 

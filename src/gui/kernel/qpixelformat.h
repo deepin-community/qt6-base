@@ -1,15 +1,20 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPIXELFORMAT_H
 #define QPIXELFORMAT_H
 
 #include <QtGui/qtguiglobal.h>
 
+#include <QtCore/qobjectdefs.h>
+
 QT_BEGIN_NAMESPACE
 
 class QPixelFormat
 {
+    Q_GADGET_EXPORT(Q_GUI_EXPORT)
+
     // QPixelFormat basically is a glorified quint64, split into several fields.
     // We could use bit-fields, but GCC at least generates horrible, horrible code for them,
     // so we do the bit-twiddling ourselves.
@@ -76,21 +81,25 @@ public:
         YUV,
         Alpha
     };
+    Q_ENUM(ColorModel)
 
     enum AlphaUsage {
         UsesAlpha,
         IgnoresAlpha
     };
+    Q_ENUM(AlphaUsage)
 
     enum AlphaPosition {
         AtBeginning,
         AtEnd
     };
+    Q_ENUM(AlphaPosition)
 
     enum AlphaPremultiplied {
         NotPremultiplied,
         Premultiplied
     };
+    Q_ENUM(AlphaPremultiplied)
 
     enum TypeInterpretation {
         UnsignedInteger,
@@ -98,6 +107,7 @@ public:
         UnsignedByte,
         FloatingPoint
     };
+    Q_ENUM(TypeInterpretation)
 
     enum YUVLayout {
         YUV444,
@@ -117,12 +127,14 @@ public:
         Y8,
         Y16
     };
+    Q_ENUM(YUVLayout)
 
     enum ByteOrder {
         LittleEndian,
         BigEndian,
         CurrentSystemEndian
     };
+    Q_ENUM(ByteOrder)
 
     constexpr inline QPixelFormat() noexcept : data(0) {}
     constexpr inline QPixelFormat(ColorModel colorModel,
@@ -180,8 +192,9 @@ public:
     constexpr inline uchar subEnum() const noexcept { return get(SubEnumField, SubEnumFieldWidth); }
 
 private:
-    constexpr static inline ByteOrder resolveByteOrder(ByteOrder bo)
-    { return bo == CurrentSystemEndian ? Q_BYTE_ORDER == Q_LITTLE_ENDIAN ? LittleEndian : BigEndian : bo ; }
+    constexpr static inline ByteOrder resolveByteOrder(ByteOrder bo) { return resolveByteOrder(bo, UnsignedInteger ); }
+    constexpr static inline ByteOrder resolveByteOrder(ByteOrder bo, TypeInterpretation ti)
+    { return bo == CurrentSystemEndian ? ti == UnsignedByte || Q_BYTE_ORDER == Q_BIG_ENDIAN ? BigEndian : LittleEndian : bo ; }
 
 private:
     quint64 data;
@@ -191,6 +204,10 @@ private:
 
     friend Q_DECL_CONST_FUNCTION constexpr inline bool operator!=(QPixelFormat fmt1, QPixelFormat fmt2)
     { return !(fmt1 == fmt2); }
+
+#ifndef QT_NO_DEBUG_STREAM
+    friend Q_GUI_EXPORT QDebug operator<<(QDebug debug, const QPixelFormat &format);
+#endif
 };
 static_assert(sizeof(QPixelFormat) == sizeof(quint64));
 Q_DECLARE_TYPEINFO(QPixelFormat, Q_PRIMITIVE_TYPE);
@@ -230,7 +247,7 @@ constexpr QPixelFormat::QPixelFormat(ColorModel mdl,
            set(AlphaPositionField, AlphaPositionFieldWidth, uchar(position)) |
            set(PremulField, PremulFieldWidth, uchar(premult)) |
            set(TypeInterpretationField, TypeInterpretationFieldWidth, uchar(typeInterp)) |
-           set(ByteOrderField, ByteOrderFieldWidth, uchar(resolveByteOrder(b_order))) |
+           set(ByteOrderField, ByteOrderFieldWidth, uchar(resolveByteOrder(b_order, typeInterp))) |
            set(SubEnumField, SubEnumFieldWidth, s_enum) |
            set(UnusedField, UnusedFieldWidth, 0))
 {
@@ -353,7 +370,7 @@ inline QPixelFormat qPixelFormatYuv(QPixelFormat::YUVLayout layout,
                                     QPixelFormat::AlphaPosition position=QPixelFormat::AtBeginning,
                                     QPixelFormat::AlphaPremultiplied p_mul=QPixelFormat::NotPremultiplied,
                                     QPixelFormat::TypeInterpretation typeInt=QPixelFormat::UnsignedByte,
-                                    QPixelFormat::ByteOrder b_order=QPixelFormat::LittleEndian)
+                                    QPixelFormat::ByteOrder b_order=QPixelFormat::BigEndian)
 {
     return QtPrivate::QPixelFormat_createYUV(layout,
                                              alfa,

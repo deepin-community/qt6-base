@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOCOASCREEN_H
 #define QCOCOASCREEN_H
@@ -12,14 +13,14 @@
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreVideo/CoreVideo.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(NSScreen);
-Q_FORWARD_DECLARE_OBJC_CLASS(NSArray);
+#import <AppKit/NSScreen.h>
+#import <Foundation/NSArray.h>
 
 QT_BEGIN_NAMESPACE
 
 class QCocoaIntegration;
 
-class QCocoaScreen : public QPlatformScreen
+class QCocoaScreen : public QPlatformScreen, public QNativeInterface::QCocoaScreen
 {
 public:
     ~QCocoaScreen();
@@ -46,11 +47,12 @@ public:
     // ----------------------------------------------------
 
     static NSScreen *nativeScreenForDisplayId(CGDirectDisplayID displayId);
-    NSScreen *nativeScreen() const;
+    NSScreen *nativeScreen() const override;
+
+    bool isOnline() const;
 
     bool requestUpdate();
     void deliverUpdateRequests();
-    bool isRunningDisplayLink() const;
 
     static QCocoaScreen *primaryScreen();
     static QCocoaScreen *get(NSScreen *nsScreen);
@@ -67,6 +69,8 @@ private:
     static void updateScreens();
     static void cleanupScreens();
 
+    static void updateHdrWindows();
+
     static QMacNotificationObserver s_screenParameterObserver;
     static CGDisplayReconfigurationCallBack s_displayReconfigurationCallBack;
 
@@ -75,7 +79,6 @@ private:
     void update(CGDirectDisplayID displayId);
     void remove();
 
-    bool isOnline() const;
     bool isMirroring() const;
 
     CGDirectDisplayID m_displayId = kCGNullDirectDisplay;
@@ -95,7 +98,10 @@ private:
 
     CVDisplayLinkRef m_displayLink = nullptr;
     dispatch_source_t m_displayLinkSource = nullptr;
-    QAtomicInt m_pendingUpdates;
+    QAtomicInt m_pendingUpdateRequests;
+    QAtomicInt m_pendingDisplayLinkUpdates;
+
+    void maybeStopDisplayLink();
 
     friend class QCocoaIntegration;
     friend class QCocoaWindow;

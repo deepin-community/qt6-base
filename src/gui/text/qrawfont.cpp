@@ -171,9 +171,7 @@ QRawFont &QRawFont::operator=(const QRawFont &other)
 /*!
   \fn void QRawFont::swap(QRawFont &other)
   \since 5.0
-
-  Swaps this raw font with \a other. This function is very fast and
-  never fails.
+    \memberswap{raw font}
 */
 
 /*!
@@ -219,6 +217,29 @@ void QRawFont::loadFromData(const QByteArray &fontData,
     d->cleanUp();
     d->hintingPreference = hintingPreference;
     d->loadFromData(fontData, pixelSize, hintingPreference);
+}
+
+/*!
+   Returns the number of glyphs in this QRawFont.
+
+   \since 6.11
+*/
+quint32 QRawFont::glyphCount() const
+{
+    return d->isValid() ? d->fontEngine->glyphCount() : 0;
+}
+
+/*!
+   Returns the name of the given \a glyphIndex.
+
+   If the glyph does not have an explicit name in the font
+   a name is synthesized based on its glyph index.
+
+   \since 6.11
+*/
+QString QRawFont::glyphName(quint32 glyphIndex) const
+{
+    return d->isValid() ? d->fontEngine->glyphName(glyphIndex) : QString();
 }
 
 /*!
@@ -281,10 +302,8 @@ bool QRawFont::operator==(const QRawFont &other) const
 }
 
 /*!
-    Returns the hash value for \a font. If specified, \a seed is used
-    to initialize the hash.
-
-    \relates QRawFont
+    \fn size_t qHash(const QRawFont &key, size_t seed)
+    \qhashold{QRawFont}
     \since 5.8
 */
 size_t qHash(const QRawFont &font, size_t seed) noexcept
@@ -440,7 +459,7 @@ qreal QRawFont::underlinePosition() const
 */
 QString QRawFont::familyName() const
 {
-    return d->isValid() ? d->fontEngine->fontDef.families.constFirst() : QString();
+    return d->isValid() ? d->fontEngine->fontDef.family() : QString();
 }
 
 /*!
@@ -535,7 +554,6 @@ bool QRawFont::glyphIndexesForChars(const QChar *chars, int numChars, quint32 *g
 }
 
 /*!
-   \fn QList<QPointF> QRawFont::advancesForGlyphIndexes(const QList<quint32> &glyphIndexes, LayoutFlags layoutFlags) const
    \since 5.1
 
    Returns the QRawFont's advances for each of the \a glyphIndexes in pixel units. The advances
@@ -550,6 +568,14 @@ bool QRawFont::glyphIndexesForChars(const QChar *chars, int numChars, quint32 *g
 
    \sa QTextLine::horizontalAdvance(), QFontMetricsF::horizontalAdvance(), QTextLayout::glyphRuns()
 */
+
+QList<QPointF> QRawFont::advancesForGlyphIndexes(const QList<quint32> &glyphIndexes, QRawFont::LayoutFlags layoutFlags) const
+{
+    QList<QPointF> advances(glyphIndexes.size());
+    if (advancesForGlyphIndexes(glyphIndexes.constData(), advances.data(), int(glyphIndexes.size()), layoutFlags))
+        return advances;
+    return QList<QPointF>();
+}
 
 /*!
    \fn QList<QPointF> QRawFont::advancesForGlyphIndexes(const QList<quint32> &glyphIndexes) const

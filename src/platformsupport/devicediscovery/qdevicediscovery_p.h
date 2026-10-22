@@ -58,6 +58,7 @@ public:
 signals:
     void deviceDetected(const QString &deviceNode);
     void deviceRemoved(const QString &deviceNode);
+    void deviceChanged(const QString &deviceNode);
 
 protected:
     QDeviceDiscovery(QDeviceTypes types, QObject *parent) : QObject(parent), m_types(types) { }

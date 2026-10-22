@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDATETIME_H
 #define QDATETIME_H
@@ -12,7 +13,7 @@
 #include <QtCore/qshareddata.h>
 #include <QtCore/qstring.h>
 
-#include <limits>
+#include <climits>
 #include <chrono>
 
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
@@ -29,10 +30,13 @@ class Q_CORE_EXPORT QDate
 {
     explicit constexpr QDate(qint64 julianDay) : jd(julianDay) {}
 public:
+    using difference_type = qint64;
+
     constexpr QDate() : jd(nullJd()) {}
     QDate(int y, int m, int d);
     QDate(int y, int m, int d, QCalendar cal);
-#if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if (__cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)) || defined(Q_QDOC)
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
     Q_IMPLICIT constexpr QDate(std::chrono::year_month_day date) noexcept
         : jd(date.ok() ? stdSysDaysToJulianDay(date) : nullJd())
@@ -114,7 +118,8 @@ public:
     void getDate(int *year, int *month, int *day) const;
 
     [[nodiscard]] QDate addDays(qint64 days) const;
-#if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if (__cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)) || defined(Q_QDOC)
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
     [[nodiscard]] QDate addDuration(std::chrono::days days) const
     {
@@ -176,7 +181,8 @@ private:
     static constexpr inline qint64 maxJd() { return Q_INT64_C( 784354017364); }
     static constexpr inline qint64 unixEpochJd() { return Q_INT64_C(2440588); }
 
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
 #if !QT_CORE_REMOVED_SINCE(6, 7)
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
 #endif
@@ -207,6 +213,32 @@ private:
     compareThreeWay(const QDate &lhs, const QDate &rhs) noexcept
     { return Qt::compareThreeWay(lhs.jd, rhs.jd); }
     Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(QDate)
+
+    friend QDate &operator++(QDate &date)
+    {
+        date = date.addDays(1);
+        return date;
+    }
+
+    friend QDate &operator--(QDate &date)
+    {
+        date = date.addDays(-1);
+        return date;
+    }
+
+    friend QDate operator++(QDate &date, int)
+    {
+        QDate old = date;
+        ++date;
+        return old;
+    }
+
+    friend QDate operator--(QDate &date, int)
+    {
+        QDate old = date;
+        --date;
+        return old;
+    }
 
 #ifndef QT_NO_DATASTREAM
     friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, QDate);
@@ -338,6 +370,8 @@ class Q_CORE_EXPORT QDateTime
         QDateTimePrivate *d;
         ShortData data;
     };
+
+    friend class QTypeInfo<Data>;
 
 public:
     QDateTime() noexcept;
@@ -510,7 +544,8 @@ public:
         > time
     );
 
-#if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if (__cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)) || defined(Q_QDOC)
 #if __cpp_concepts >= 201907L || defined(Q_QDOC)
 private:
     // The duration type of the result of a clock_cast<system_clock>.
@@ -580,7 +615,7 @@ public:
         const std::chrono::seconds duration(toSecsSinceEpoch());
         return std::chrono::sys_seconds(duration);
     }
-#endif // __cpp_lib_chrono >= 201907L
+#endif // __cpp_lib_chrono >= 201907L && !Q_OS_INTEGRITY
 
     friend std::chrono::milliseconds operator-(const QDateTime &lhs, const QDateTime &rhs)
     {
@@ -642,6 +677,7 @@ private:
     friend Q_CORE_EXPORT QDebug operator<<(QDebug, const QDateTime &);
 #endif
 };
+Q_DECLARE_TYPEINFO(QDateTime::Data, Q_RELOCATABLE_TYPE);
 Q_DECLARE_SHARED(QDateTime)
 
 #ifndef QT_NO_DATASTREAM

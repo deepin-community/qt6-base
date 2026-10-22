@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcontiguouscache.h"
 #ifdef QT_QCONTIGUOUSCACHE_DEBUG
@@ -22,7 +23,8 @@ void QContiguousCacheData::dump() const
 
 QContiguousCacheData *QContiguousCacheData::allocateData(qsizetype size, qsizetype alignment)
 {
-    return static_cast<QContiguousCacheData *>(qMallocAligned(size_t(size), size_t(alignment)));
+    void *mem = qMallocAligned(size_t(size), size_t(alignment));
+    return new (mem) QContiguousCacheData{/*ref=*/1, 0, 0, 0, 0};
 }
 
 void QContiguousCacheData::freeData(QContiguousCacheData *data)
@@ -38,9 +40,9 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \reentrant
     \since 4.6
 
-    The QContiguousCache class provides an efficient way of caching items for
-    display in a user interface view.  Unlike QCache, it adds a restriction
-    that elements within the cache are contiguous.  This has the advantage
+    The QContiguousCache class provides an efficient way of caching items
+    of type \a T for display in a user interface view. Unlike QCache, it
+    adds a restriction that elements within the cache are contiguous.  This has the advantage
     of matching how user interface views most commonly request data, as
     a set of rows localized around the current scrolled position.  This
     restriction allows the cache to consume less memory and processor
@@ -164,9 +166,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
 
 /*! \fn template<typename T> void QContiguousCache<T>::swap(QContiguousCache<T> &other)
     \since 4.8
-
-    Swaps cache \a other with this cache. This operation is very
-    fast and never fails.
+    \memberswap{cache}
 */
 
 /*! \fn template<typename T> bool QContiguousCache<T>::operator==(const QContiguousCache<T> &other) const

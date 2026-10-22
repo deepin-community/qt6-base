@@ -1,4 +1,5 @@
 version: 2
+tags: [git]
 accept_configuration:
   condition: property
   property: features
@@ -11,7 +12,11 @@ machine_type:
     cores: 4
 
 instructions:
+
   Build:
+    - type: EnvironmentVariable
+      variableName: VERIFY_SOURCE_SBOM
+      variableValue: "ON"
     - !include "{{qt/qtbase}}/coin_qtbase_build_template_v2.yaml"
 
   Test:

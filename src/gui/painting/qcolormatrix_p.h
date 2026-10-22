@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOLORMATRIX_H
 #define QCOLORMATRIX_H
@@ -175,7 +176,7 @@ public:
         return QColorVector(xr, yr, zr);
     }
     friend inline bool comparesEqual(const QColorVector &lhs, const QColorVector &rhs) noexcept;
-    Q_DECLARE_EQUALITY_COMPARABLE(QColorVector);
+    Q_DECLARE_EQUALITY_COMPARABLE(QColorVector)
 
 private:
     static float fastCbrt(float x)
@@ -343,7 +344,7 @@ public:
                               { 0.125092f, 0.0456238f, 0.797134f   } };
     }
     friend inline bool comparesEqual(const QColorMatrix &lhs, const QColorMatrix &rhs) noexcept;
-    Q_DECLARE_EQUALITY_COMPARABLE(QColorMatrix);
+    Q_DECLARE_EQUALITY_COMPARABLE(QColorMatrix)
 };
 
 inline bool comparesEqual(const QColorMatrix &m1, const QColorMatrix &m2) noexcept

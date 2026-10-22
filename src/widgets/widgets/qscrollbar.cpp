@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qapplication.h"
 #include "qcursor.h"
@@ -9,21 +10,27 @@
 #include "qstyle.h"
 #include "qstyleoption.h"
 #include "qstylepainter.h"
-#if QT_CONFIG(menu)
-#include "qmenu.h"
-#endif
 
 #include <QtCore/qelapsedtimer.h>
 #include <QtCore/qpointer.h>
 
-
 #if QT_CONFIG(accessibility)
 #include "qaccessible.h"
 #endif
+
+#if QT_CONFIG(menu)
+#include "qmenu.h"
+#include "private/qmenu_p.h"
+#endif
+
 #include <limits.h>
 #include "qscrollbar_p.h"
 
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QScrollBar
@@ -50,6 +57,8 @@ QT_BEGIN_NAMESPACE
 
     \table
     \row \li \image qscrollbar-picture.png
+             {The parts of the scroll bar such as slider, scroll arrows,
+             and page control}
     \li Scroll bars typically include four separate controls: a slider,
     scroll arrows, and a page control.
 
@@ -102,6 +111,8 @@ QT_BEGIN_NAMESPACE
 
     \table
     \row \li \inlineimage qscrollbar-values.png
+                          {The document length, scrolling range, and page step
+                          of a scroll bar}
     \li The relationship between a document length, the range of values used
     in a scroll bar, and the page step is simple in many common situations.
     The scroll bar's range of values is determined by subtracting a
@@ -120,8 +131,8 @@ QT_BEGIN_NAMESPACE
     ScrollBar inherits a comprehensive set of signals from QAbstractSlider:
     \list
     \li \l{QAbstractSlider::valueChanged()}{valueChanged()} is emitted when the
-       scroll bar's value has changed. The tracking() determines whether this
-       signal is emitted during user interaction.
+       scroll bar's value has changed. The \l{QAbstractSlider::}{tracking} property
+       determines whether this signal is emitted during user interaction.
     \li \l{QAbstractSlider::rangeChanged()}{rangeChanged()} is emitted when the
        scroll bar's range of values has changed.
     \li \l{QAbstractSlider::sliderPressed()}{sliderPressed()} is emitted when
@@ -214,8 +225,8 @@ void QScrollBarPrivate::flash()
         else
             q->update();
     }
-    if (!flashTimer)
-        flashTimer = q->startTimer(0);
+    if (!flashTimer.isActive())
+        flashTimer.start(0ns, q);
 }
 
 void QScrollBarPrivate::activateControl(uint control, int threshold)
@@ -352,7 +363,6 @@ void QScrollBarPrivate::init()
     opt.initFrom(q);
     transient = q->style()->styleHint(QStyle::SH_ScrollBar_Transient, &opt, q);
     flashed = false;
-    flashTimer = 0;
     q->setFocusPolicy(Qt::NoFocus);
     QSizePolicy sp(QSizePolicy::Minimum, QSizePolicy::Fixed, QSizePolicy::Slider);
     if (orientation == Qt::Vertical)
@@ -363,49 +373,95 @@ void QScrollBarPrivate::init()
 }
 
 #ifndef QT_NO_CONTEXTMENU
-/*! \reimp */
+/*!
+    \since 6.10
+
+    Creates the standard context menu, which is shown
+    when the user clicks on the scroll bar with the right mouse
+    button. It is called from the default contextMenuEvent() handler
+    and takes the \a position where the mouse click was in
+    this widget's local coordinates.
+    The popup menu's ownership is transferred to the caller.
+*/
+QMenu *QScrollBar::createStandardContextMenu(QPoint position)
+{
+#if QT_CONFIG(menu)
+    const bool horiz = HORIZONTAL;
+    QMenu *menu = new QMenu(this);
+    menu->setObjectName("qt_scrollbar_menu"_L1);
+
+    if (window() && window()->windowHandle()) {
+        if (auto *menuTopData = QMenuPrivate::get(menu)->topData())
+            menuTopData->initialScreen = window()->windowHandle()->screen();
+    }
+
+    menu->addAction(tr("Scroll here"), this, [this, horiz, position] {
+        setValue(d_func()->pixelPosToRangeValue(horiz ? position.x() : position.y()));
+    });
+    menu->addSeparator();
+    menu->addAction(horiz ? tr("Left edge") : tr("Top"), this, [this] {
+        triggerAction(QAbstractSlider::SliderToMinimum);
+    });
+    menu->addAction(horiz ? tr("Right edge") : tr("Bottom"), this, [this] {
+        triggerAction(QAbstractSlider::SliderToMaximum);
+    });
+    menu->addSeparator();
+    menu->addAction(horiz ? tr("Page left") : tr("Page up"), this, [this] {
+        triggerAction(QAbstractSlider::SliderPageStepSub);
+    });
+    menu->addAction(horiz ? tr("Page right") : tr("Page down"), this, [this] {
+        triggerAction(QAbstractSlider::SliderPageStepAdd);
+    });
+    menu->addSeparator();
+    menu->addAction(horiz ? tr("Scroll left") : tr("Scroll up"), this, [this] {
+        triggerAction(QAbstractSlider::SliderSingleStepSub);
+    });
+    menu->addAction(horiz ? tr("Scroll right") : tr("Scroll down"), this, [this] {
+        triggerAction(QAbstractSlider::SliderSingleStepAdd);
+    });
+    return menu;
+#else
+    Q_UNUSED(position);
+    return nullptr;
+#endif // QT_CONFIG(menu)
+}
+
+/*!
+    \reimp
+    \fn void QScrollBar::contextMenuEvent(QContextMenuEvent *event)
+
+    Shows the standard context menu created with createStandardContextMenu().
+
+    If you do not want the scroll bar to have a context menu, you can set
+    its \l contextMenuPolicy to Qt::NoContextMenu. A style can also control
+    this behavior using the SH_ScrollBar_ContextMenu hint.
+
+    If you want to customize the context menu, reimplement this function.
+    If you want to extend the standard context menu, reimplement this function,
+    call createStandardContextMenu() and extend the menu returned. Either store
+    the returned QMenu for later re-use or set the WA_DeleteOnClose attribute.
+
+    Information about the event is passed in the \a event object.
+*/
 void QScrollBar::contextMenuEvent(QContextMenuEvent *event)
 {
     if (!style()->styleHint(QStyle::SH_ScrollBar_ContextMenu, nullptr, this)) {
         QAbstractSlider::contextMenuEvent(event);
-        return ;
+        return;
     }
 
 #if QT_CONFIG(menu)
-    bool horiz = HORIZONTAL;
-    QPointer<QMenu> menu = new QMenu(this);
-    QAction *actScrollHere = menu->addAction(tr("Scroll here"));
-    menu->addSeparator();
-    QAction *actScrollTop =  menu->addAction(horiz ? tr("Left edge") : tr("Top"));
-    QAction *actScrollBottom = menu->addAction(horiz ? tr("Right edge") : tr("Bottom"));
-    menu->addSeparator();
-    QAction *actPageUp = menu->addAction(horiz ? tr("Page left") : tr("Page up"));
-    QAction *actPageDn = menu->addAction(horiz ? tr("Page right") : tr("Page down"));
-    menu->addSeparator();
-    QAction *actScrollUp = menu->addAction(horiz ? tr("Scroll left") : tr("Scroll up"));
-    QAction *actScrollDn = menu->addAction(horiz ? tr("Scroll right") : tr("Scroll down"));
-    QAction *actionSelected = menu->exec(event->globalPos());
-    delete menu;
-    if (actionSelected == nullptr)
-        /* do nothing */ ;
-    else if (actionSelected == actScrollHere)
-        setValue(d_func()->pixelPosToRangeValue(horiz ? event->pos().x() : event->pos().y()));
-    else if (actionSelected == actScrollTop)
-        triggerAction(QAbstractSlider::SliderToMinimum);
-    else if (actionSelected == actScrollBottom)
-        triggerAction(QAbstractSlider::SliderToMaximum);
-    else if (actionSelected == actPageUp)
-        triggerAction(QAbstractSlider::SliderPageStepSub);
-    else if (actionSelected == actPageDn)
-        triggerAction(QAbstractSlider::SliderPageStepAdd);
-    else if (actionSelected == actScrollUp)
-        triggerAction(QAbstractSlider::SliderSingleStepSub);
-    else if (actionSelected == actScrollDn)
-        triggerAction(QAbstractSlider::SliderSingleStepAdd);
-#endif // QT_CONFIG(menu)
+    QMenu *menu = createStandardContextMenu(event->pos());
+    if (!menu)
+        return;
+
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->popup(event->globalPos());
+#else
+    Q_UNUSED(pos)
+#endif
 }
 #endif // QT_NO_CONTEXTMENU
-
 
 /*! \reimp */
 QSize QScrollBar::sizeHint() const
@@ -451,15 +507,14 @@ bool QScrollBar::event(QEvent *event)
         break;
     }
     case QEvent::Timer:
-        if (static_cast<QTimerEvent *>(event)->timerId() == d->flashTimer) {
+        if (static_cast<QTimerEvent *>(event)->id() == d->flashTimer.id()) {
             QStyleOptionSlider opt;
             initStyleOption(&opt);
             if (d->flashed && style()->styleHint(QStyle::SH_ScrollBar_Transient, &opt, this)) {
                 d->flashed = false;
                 update();
             }
-            killTimer(d->flashTimer);
-            d->flashTimer = 0;
+            d->flashTimer.stop();
         }
         break;
     default:
@@ -536,8 +591,10 @@ void QScrollBar::mousePressEvent(QMouseEvent *e)
 
     if (d->maximum == d->minimum // no range
         || (e->buttons() & (~e->button())) // another button was clicked before
-        || !(e->button() == Qt::LeftButton || (midButtonAbsPos && e->button() == Qt::MiddleButton)))
+        || !(e->button() == Qt::LeftButton || (midButtonAbsPos && e->button() == Qt::MiddleButton))) {
+        e->ignore();
         return;
+    }
 
     d->pressedControl = style()->hitTestComplexControl(QStyle::CC_ScrollBar, &opt, e->position().toPoint(), this);
     d->pointerOutsidePressedControl = false;

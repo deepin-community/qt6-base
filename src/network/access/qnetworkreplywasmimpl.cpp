@@ -1,15 +1,15 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qnetworkreplywasmimpl_p.h"
 #include "qnetworkrequest.h"
 
-#include <QtCore/qtimer.h>
 #include <QtCore/qdatetime.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qthread.h>
-#include <QtCore/private/qeventdispatcher_wasm_p.h>
+#include <QtCore/private/qwasmglobal_p.h>
 #include <QtCore/private/qoffsetstringarray_p.h>
 #include <QtCore/private/qtools_p.h>
 
@@ -82,6 +82,7 @@ QNetworkReplyWasmImplPrivate::~QNetworkReplyWasmImplPrivate()
         } else if (m_fetchContext->state == FetchContext::State::FINISHED) {
             lock.unlock();
             delete m_fetchContext;
+            m_fetchContext = nullptr;
         }
     }
 
@@ -127,14 +128,17 @@ void QNetworkReplyWasmImpl::close()
 {
     Q_D(QNetworkReplyWasmImpl);
 
+    if (!d->m_fetch)
+        return;
+    emscripten_fetch_close(d->m_fetch);
     if (d->state != QNetworkReplyPrivate::Aborted &&
         d->state != QNetworkReplyPrivate::Finished &&
         d->state != QNetworkReplyPrivate::Idle) {
             d->state = QNetworkReplyPrivate::Finished;
             d->setCanceled();
     }
-    emscripten_fetch_close(d->m_fetch);
     QNetworkReply::close();
+    d->m_fetch = nullptr;
 }
 
 void QNetworkReplyWasmImpl::abort()
@@ -264,11 +268,6 @@ void QNetworkReplyWasmImplPrivate::doSendRequest()
          attr.attributes += EMSCRIPTEN_FETCH_APPEND;
     }
 
-    if (CacheLoadControlAttribute == QNetworkRequest::AlwaysNetwork ||
-            request.attribute(QNetworkRequest::CacheSaveControlAttribute, false).toBool()) {
-        attr.attributes -= EMSCRIPTEN_FETCH_PERSIST_FILE;
-    }
-
     attr.withCredentials = request.attribute(QNetworkRequest::UseCredentialsAttribute, false).toBool();
     attr.onsuccess = QNetworkReplyWasmImplPrivate::downloadSucceeded;
     attr.onerror = QNetworkReplyWasmImplPrivate::downloadFailed;
@@ -286,7 +285,7 @@ void QNetworkReplyWasmImplPrivate::doSendRequest()
         }
     }
 
-    QEventDispatcherWasm::runOnMainThread([attr, fetchContext = m_fetchContext]() mutable {
+    qwasmglobal::runOnMainThread([attr, fetchContext = m_fetchContext]() mutable {
         std::unique_lock lock{ fetchContext->mutex };
         if (fetchContext->state == FetchContext::State::CANCELED) {
             fetchContext->state = FetchContext::State::FINISHED;
@@ -431,20 +430,23 @@ void QNetworkReplyWasmImplPrivate::headersReceived(const QByteArray &buffer)
     if (!buffer.isEmpty()) {
         QList<QByteArray> headers = buffer.split('\n');
 
-        for (int i = 0; i < headers.size(); i++) {
-            if (headers.at(i).contains(':')) { // headers include final \x00, so skip
-                QByteArray headerName = headers.at(i).split(':').at(0).trimmed();
-                QByteArray headersValue = headers.at(i).split(':').at(1).trimmed();
+        for (auto &&header : headers) {
+            if (auto splitPos = header.indexOf(':');
+                splitPos != -1) { // headers include final \x00, so skip
+                auto headerName = header.first(splitPos).trimmed();
+                auto headerValue = header.sliced(splitPos + 1).trimmed();
+                headerValue = headerValue.replace('\x00', "").trimmed();
 
-                if (headerName.isEmpty() || headersValue.isEmpty())
+                if (headerName.isEmpty() || headerValue.isEmpty())
                     continue;
 
                 int headerIndex = parseHeaderName(headerName);
 
                 if (headerIndex == -1)
-                    q->setRawHeader(headerName, headersValue);
+                    q->setRawHeader(headerName, headerValue);
                 else
-                    q->setHeader(static_cast<QNetworkRequest::KnownHeaders>(headerIndex), (QVariant)headersValue);
+                    q->setHeader(static_cast<QNetworkRequest::KnownHeaders>(headerIndex),
+                                 (QVariant)headerValue);
             }
         }
     }

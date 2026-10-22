@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qipaddress_p.h"
 #include "private/qlocale_tools_p.h"
@@ -114,6 +115,10 @@ void toString(QString &appendTo, IPv4Address address)
 const QChar *parseIp6(IPv6Address &address, const QChar *begin, const QChar *end)
 {
     Q_ASSERT(begin != end);
+
+    if (end - begin < 2)
+        return end;
+
     Buffer buffer;
     const QChar *ret = checkedToAscii(buffer, begin, end);
     if (ret)

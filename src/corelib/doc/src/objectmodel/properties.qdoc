@@ -128,10 +128,18 @@
     constant value may be different for different instances of the object.  A
     constant property cannot have a WRITE method or a NOTIFY signal.
 
-    \li The presence of the \c FINAL attribute indicates that the property
-    will not be overridden by a derived class.  This can be used for performance
-    optimizations in some cases, but is not enforced by moc.  Care must be taken
-    never to override a \c FINAL property.
+    \li \c FINAL, \c VIRTUAL, \c OVERRIDE modifiers mirror the semantics of their C++ and
+    \l {Override Semantics}{QML counterparts}, allowing to make property overriding explicit at the
+    meta-object level.
+
+    \note At present, these modifiers are not enforced by moc.
+    They are recognized syntactically and are primarily used for QML runtime enforcement and tooling
+    diagnostics. Future versions may introduce stricter compile-time validation and warnings for
+    invalid overrides across modules.
+
+    \note If you want to change accessing behaviour for a property, use the
+    polymorphism provided by C++.
+
 
     \li The presence of the \c REQUIRED attribute indicates that the property
     should be set by a user of the class. This is not enforced by moc, and is

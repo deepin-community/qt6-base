@@ -15,7 +15,8 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
 
     QFile file(":/default.txt"_L1);
-    file.open(QIODevice::ReadOnly | QIODevice::Text);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        qFatal("simpletreemodel: Cannot read embedded default text file.");
     TreeModel model(QString::fromUtf8(file.readAll()));
     file.close();
 
@@ -28,5 +29,5 @@ int main(int argc, char *argv[])
     const auto screenSize = view.screen()->availableSize();
     view.resize({screenSize.width() / 2, screenSize.height() * 2 / 3});
     view.show();
-    return QCoreApplication::exec();
+    return QApplication::exec();
 }

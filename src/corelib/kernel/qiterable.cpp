@@ -1,15 +1,20 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qiterable.h>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_STATIC_LOGGING_CATEGORY(lcSynthesizedIterableAccess, "qt.iterable.synthesized", QtWarningMsg);
 
 /*!
     \class QBaseIterator
     \inmodule QtCore
-    QBaseIterator forms the common base class for all iterators operating on
-    subclasses of QIterable.
+    QBaseIterator\<Container\> forms the common base class for all iterators
+    operating on subclasses of QIterable, where \a Container is the meta-type
+    descriptor.
 */
 
 /*!
@@ -116,10 +121,14 @@ QT_BEGIN_NAMESPACE
     \inmodule QtCore
     \brief The QIterator is a template class that allows iteration over a container in a QVariant.
 
+    QIterator\<Container\> provides mutable iteration over a container, where
+    \a Container is the meta-type descriptor (either QMetaSequence or
+    QMetaAssociation) that defines the container's iteration capabilities.
+
     A QIterator can only be created by a QIterable instance, and can be used
     in a way similar to other stl-style iterators. Generally, QIterator should
     not be used directly, but through its derived classes provided by
-    QSequentialIterable and QAssociativeIterable.
+    QMetaSequence::Iterable and QMetaAssociation::Iterable.
 
     \sa QIterable
 */
@@ -155,7 +164,7 @@ QT_BEGIN_NAMESPACE
     next item in the container and returns an iterator to the new current
     item.
 
-    Calling this function on QSequentialIterable::end() leads to undefined results.
+    Calling this function on QMetaSequence::Iterable::constEnd() leads to undefined results.
 
     \sa operator--()
 */
@@ -176,7 +185,7 @@ QT_BEGIN_NAMESPACE
     The prefix \c{--} operator (\c{--it}) makes the preceding item
     current and returns an iterator to the new current item.
 
-    Calling this function on QSequentialIterable::begin() leads to undefined results.
+    Calling this function on QMetaSequence::Iterable::constBegin() leads to undefined results.
 
     If the container in the QVariant does not support bi-directional iteration, calling this function
     leads to undefined results.
@@ -258,6 +267,11 @@ QT_BEGIN_NAMESPACE
     \since 6.0
     \inmodule QtCore
     \brief The QConstIterator allows iteration over a container in a QVariant.
+
+    QConstIterator\<Container\> provides const iteration over a container, where
+    \a Container is the meta-type descriptor (either QMetaSequence or
+    QMetaAssociation) that defines the container's iteration capabilities.
+
     \sa QIterator, QIterable
 */
 
@@ -389,7 +403,12 @@ QT_BEGIN_NAMESPACE
     \class QIterable
     \inmodule QtCore
     \since 6.0
-    \brief QIterable is a template class that is the base class for QSequentialIterable and QAssociativeIterable.
+    \brief QIterable is a template class that is the base class for QMetaSequence::Iterable and QMetaAssociation::Iterable.
+
+    QIterable\<Container\> provides a common interface for iterating over
+    containers through QVariant, where \a Container is the meta-type descriptor
+    (either QMetaSequence or QMetaAssociation) that defines the container's
+    iteration capabilities.
 */
 
 /*!
@@ -454,7 +473,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn template<class Container> QIterator<Container> QIterable<Container>::mutableEnd()
 
-    Returns a QSequentialIterable::iterator for the end of the container. This
+    Returns a QMetaSequence::Iterable::iterator for the end of the container. This
     can be used in stl-style iteration.
 
     \sa mutableBegin(), constEnd()
@@ -464,6 +483,17 @@ QT_BEGIN_NAMESPACE
     \fn template<class Container> qsizetype QIterable<Container>::size() const
 
     Returns the number of values in the container.
+
+    \note If the underlying container does not provide a native way to query
+          the size, this method will synthesize the access using iterators.
+          This behavior is deprecated and will be removed in a future version
+          of Qt.
+*/
+
+/*!
+    \fn template<class Container> void QIterable<Container>::clear()
+
+    Clears the container.
 */
 
 /*!
@@ -472,8 +502,13 @@ QT_BEGIN_NAMESPACE
     \inmodule QtCore
     \brief QTaggedIterator is a template class that wraps an iterator and exposes standard iterator traits.
 
+    QTaggedIterator\<Iterator, IteratorCategory\> wraps an iterator, where
+    \a Iterator is the underlying iterator type (such as QIterator or
+    QConstIterator) and \a IteratorCategory is a standard iterator category tag
+    (such as std::forward_iterator_tag or std::random_access_iterator_tag).
+
     In order to use an iterator any of the standard algorithms, its iterator
-    traits need to be known. As QSequentialIterable can work with many different
+    traits need to be known. As QMetaSequence::Iterable can work with many different
     kinds of containers, we cannot declare the traits in the iterator classes
     themselves. A QTaggedIterator gives you a way to explicitly declare a trait for
     a concrete instance of an iterator or QConstIterator.
@@ -512,7 +547,7 @@ QT_BEGIN_NAMESPACE
     next item in the container and returns an iterator to the new current
     item.
 
-    Calling this function on QSequentialIterable::end() leads to undefined results.
+    Calling this function on QMetaSequence::Iterable::constEnd() leads to undefined results.
 
     \sa operator--()
 */
@@ -533,7 +568,7 @@ QT_BEGIN_NAMESPACE
     The prefix \c{--} operator (\c{--it}) makes the preceding item
     current and returns an iterator to the new current item.
 
-    Calling this function on QSequentialIterable::begin() leads to undefined results.
+    Calling this function on QMetaSequence::Iterable::constBegin() leads to undefined results.
 
     If the container in the QVariant does not support bi-directional iteration, calling this function
     leads to undefined results.
@@ -608,5 +643,22 @@ QT_BEGIN_NAMESPACE
 
     \sa operator+(), operator-=(), QIterable::canReverseIterate()
 */
+
+/*!
+    \internal
+ */
+void QtPrivate::warnSynthesizedIterableAccess(QtPrivate::SynthesizedAccessFunction function)
+{
+    switch (function) {
+    case QtPrivate::SynthesizedAccessFunction::IterableSize:
+        qCWarning(lcSynthesizedIterableAccess,
+                  "size() called on an iterable without native size accessor. This is slow");
+        break;
+    case QtPrivate::SynthesizedAccessFunction::SequenceAt:
+        qCWarning(lcSynthesizedIterableAccess,
+                  "at() called on an iterable without native indexed accessors. This is slow");
+        break;
+    }
+}
 
 QT_END_NAMESPACE

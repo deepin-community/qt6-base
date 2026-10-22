@@ -30,37 +30,36 @@ class tst_LargeFile
 {
     Q_OBJECT
 
+    // Member constants:
+    static constexpr int blockSize = 1 << 12;
+#if defined(Q_OS_DARWIN)
+    // HFS+ does not support sparse files, so we limit file size for the test on Mac OS.
+    static constexpr int maxAllowedSizeBits = 24; // 16 MiB
+#elif defined(Q_OS_QNX)
+    // Many of the filesystems that QNX supports use a 32-bit format.
+    // This means that files are limited to 2 GiB − 1 bytes.
+    // Limit max size to 256MiB
+    static constexpr int maxAllowedSizeBits = 28; // 256 MiB
+#elif defined(Q_OS_VXWORKS)
+    // VxWorks doesn't support sparse files, also, default /tmp directory is a RAM-disk which
+    // limits its capacity.
+    static constexpr int maxAllowedSizeBits = 28; // 256 MiB
+#elif defined (Q_OS_WASM)
+    static constexpr int maxAllowedSizeBits = 28; // 256 MiB
+#elif defined(QT_LARGEFILE_SUPPORT)
+    static constexpr int maxAllowedSizeBits = 36; // 64 GiB
+#  define MUST_SET_MAX_SIZE_BITS
+#else
+    static constexpr int maxAllowedSizeBits = 24; // 16 MiB
+#endif
+
 public:
     tst_LargeFile()
-        : blockSize(1 << 12)
-        , maxSizeBits()
-        , fd_(-1)
-        , stream_(0)
+#ifdef MUST_SET_MAX_SIZE_BITS
+        // QEMU only supports < 4GiB files (and maxSizeBits must be a multiple of 4)
+        : maxSizeBits(QTestPrivate::isRunningArmOnX86() ? 28 : maxAllowedSizeBits)
+#endif
     {
-    #if defined(Q_OS_DARWIN)
-        // HFS+ does not support sparse files, so we limit file size for the test
-        // on Mac OS.
-        maxSizeBits = 24; // 16 MiB
-    #elif defined(Q_OS_QNX)
-        // Many of the filesystems that QNX supports use a 32-bit format.
-        // This means that files are limited to 2 GB − 1 bytes.
-        // Limit max size to 256MB
-        maxSizeBits = 28; // 256 MiB
-    #elif defined(Q_OS_VXWORKS)
-        // VxWorks doesn't support sparse files, also, default /tmp directory is a RAM-disk which
-        // limits its capacity.
-        maxSizeBits = 28; // 256 MiB
-    #elif defined (Q_OS_WASM)
-        maxSizeBits = 28; // 256 MiB
-    #elif defined(QT_LARGEFILE_SUPPORT)
-        maxSizeBits = 36; // 64 GiB
-    #else
-        maxSizeBits = 24; // 16 MiB
-    #endif
-
-        // QEMU only supports < 4GB files
-        if (QTestPrivate::isRunningArmOnX86())
-            maxSizeBits = qMin(maxSizeBits, 28);
     }
 
 private:
@@ -108,15 +107,16 @@ private slots:
     void mapFile_data() { sparseFileData(); }
 
 private:
-    const int blockSize;
-    int maxSizeBits;
+    // Member variables:
 
+    // May be revised down by tests (implying order-dependencies among tests):
+    int maxSizeBits = maxAllowedSizeBits;
     QFile largeFile;
 
     QByteArrayList generatedBlocks;
 
-    int fd_;
-    FILE *stream_;
+    int fd_ = -1;
+    FILE *stream_ = nullptr;
 
     QSharedPointer<QTemporaryDir> m_tempDir;
     QString m_previousCurrent;
@@ -480,10 +480,15 @@ void tst_LargeFile::mapFile()
         uchar *address = largeFile.map(position + offset, blockSize - offset);
 
         QVERIFY( address );
-        if ( !std::equal(block.begin() + offset, block.end(), reinterpret_cast<char*>(address)) ) {
-            qDebug() << "Expected:" << block.toHex();
-            qDebug() << "Actual  :" << QByteArray(reinterpret_cast<char*>(address), blockSize).toHex();
-            QVERIFY(false);
+        {
+            auto report = qScopeGuard([block, address, blkSz = blockSize]() {
+                qDebug() << "Expected:" << block.toHex();
+                qDebug() << "Actual  :"
+                         << QByteArray(reinterpret_cast<char *>(address), blkSz).toHex();
+            });
+            QVERIFY(std::equal(block.begin() + offset, block.end(),
+                               reinterpret_cast<char *>(address)));
+            report.dismiss();
         }
 
         QVERIFY( largeFile.unmap( address ) );
@@ -499,26 +504,26 @@ void tst_LargeFile::mapFile()
 //Windows: memory-mapping beyond EOF is not allowed
 //wasm: as for linux
 //VxWorks: memory-mapping beyond EOF is not allowed
+//QNX: 7.x permits mapping beyond EOF (access faults with SIGBUS);
+//     8.0 rejects it with ENXIO at mmap() time
 void tst_LargeFile::mapOffsetOverflow()
 {
-    enum {
 #if defined(Q_OS_WIN)
-        Succeeds = false,
-        MaxOffset = 63
+    constexpr bool Succeeds = false;
+    constexpr int MaxOffset = 63;
 #elif defined(Q_OS_WASM)
-        Succeeds = true,
-        MaxOffset = sizeof(QT_OFF_T) > 4 ? 43 : 30
+    constexpr bool Succeeds = true;
+    constexpr int MaxOffset = sizeof(QT_OFF_T) > 4 ? 43 : 30;
 #elif (defined(Q_OS_LINUX) || defined(Q_OS_ANDROID)) && (Q_PROCESSOR_WORDSIZE == 4)
-        Succeeds = true,
-        MaxOffset = sizeof(QT_OFF_T) > 4 ? 43 : 30
-#elif defined(Q_OS_VXWORKS)
-        Succeeds = false,
-        MaxOffset = 8 * sizeof(QT_OFF_T) - 1
+    constexpr bool Succeeds = true;
+    constexpr int MaxOffset = sizeof(QT_OFF_T) > 4 ? 43 : 30;
+#elif defined(Q_OS_VXWORKS) || (defined(__QNX__) && __QNX__ >= 800)
+    constexpr bool Succeeds = false;
+    constexpr int MaxOffset = 8 * sizeof(QT_OFF_T) - 1;
 #else
-        Succeeds = true,
-        MaxOffset = 8 * sizeof(QT_OFF_T) - 1
+    constexpr bool Succeeds = true;
+    constexpr int MaxOffset = 8 * sizeof(QT_OFF_T) - 1;
 #endif
-    };
 
     QByteArray zeroPage(blockSize, '\0');
     for (int i = maxSizeBits + 1; i < 63; ++i) {
@@ -526,13 +531,17 @@ void tst_LargeFile::mapOffsetOverflow()
         uchar *address = 0;
         qint64 offset = Q_INT64_C(1) << i;
 
-        if (succeeds)
-            QTest::ignoreMessage(QtWarningMsg, "QFSFileEngine::map: Mapping a file beyond its size is not portable");
+        if (succeeds) {
+            QTest::ignoreMessage(QtWarningMsg, "QFSFileEngine::map: "
+                                 "Mapping a file beyond its size is not portable");
+        }
         address = largeFile.map(offset, blockSize);
         QCOMPARE(!!address, succeeds);
 
-        if (succeeds)
-            QTest::ignoreMessage(QtWarningMsg, "QFSFileEngine::map: Mapping a file beyond its size is not portable");
+        if (succeeds) {
+            QTest::ignoreMessage(QtWarningMsg, "QFSFileEngine::map: "
+                                 "Mapping a file beyond its size is not portable");
+        }
         address = largeFile.map(offset + blockSize, blockSize);
         QCOMPARE(!!address, succeeds);
     }
@@ -540,4 +549,3 @@ void tst_LargeFile::mapOffsetOverflow()
 
 QTEST_APPLESS_MAIN(tst_LargeFile)
 #include "tst_largefile.moc"
-

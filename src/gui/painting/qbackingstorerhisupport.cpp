@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qbackingstorerhisupport_p.h"
 #include <qpa/qplatformintegration.h>
@@ -15,8 +16,6 @@
 #endif
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcQpaBackingStore)
 
 QBackingStoreRhiSupport::~QBackingStoreRhiSupport()
 {
@@ -76,7 +75,7 @@ bool QBackingStoreRhiSupport::create()
         params.fallbackSurface = surface;
         params.window = m_window;
         params.format = m_format;
-        params.shareContext = qt_gl_global_share_context();
+        params.shareContext = QOpenGLContext::globalShareContext();
         rhi = QRhi::create(QRhi::OpenGLES2, &params, flags);
     }
 #endif

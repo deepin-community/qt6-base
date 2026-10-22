@@ -8,6 +8,7 @@
 qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
     OUTPUT_NAME qdirect2d
     PLUGIN_TYPE platforms
+    EXCEPTIONS
     SOURCES
         ../windows/qtwindowsglobal.h
         ../windows/qwin10helpers.cpp ../windows/qwin10helpers.h
@@ -32,6 +33,8 @@ qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
         ../windows/qwindowstheme.cpp ../windows/qwindowstheme.h
         ../windows/qwindowsthreadpoolrunner.h
         ../windows/qwindowswindow.cpp ../windows/qwindowswindow.h
+        ../windows/qwindowswindowclassdescription.cpp ../windows/qwindowswindowclassdescription.h
+        ../windows/qwindowswindowclassregistry.cpp ../windows/qwindowswindowclassregistry.h
         qwindowsdirect2dbackingstore.cpp qwindowsdirect2dbackingstore.h
         qwindowsdirect2dbitmap.cpp qwindowsdirect2dbitmap.h
         qwindowsdirect2dcontext.cpp qwindowsdirect2dcontext.h
@@ -48,7 +51,6 @@ qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
         ../windows/qwindowspointerhandler.cpp
     DEFINES
         QT_NO_CAST_FROM_ASCII
-        QT_NO_FOREACH
     INCLUDE_DIRECTORIES
         ../windows
     LIBRARIES
@@ -64,6 +66,7 @@ qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
         dxgi
         dxguid
         gdi32
+        uxtheme
         imm32
         ole32
         oleaut32
@@ -79,6 +82,7 @@ qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
         comdlg32
         d3d9
         runtimeobject
+        mscms
 )
 
 # Resources:
@@ -209,15 +213,13 @@ qt_internal_extend_target(QWindowsDirect2DIntegrationPlugin CONDITION QT_FEATURE
         ../windows/uiautomation/qwindowsuiawindowprovider.cpp ../windows/uiautomation/qwindowsuiawindowprovider.h
 )
 
-if(QT_FEATURE_accessibility)
-    find_library(UI_AUTOMATION_LIBRARY uiautomationcore)
-    if(UI_AUTOMATION_LIBRARY)
-        qt_internal_extend_target(QWindowsDirect2DIntegrationPlugin
-            LIBRARIES
-                ${UI_AUTOMATION_LIBRARY}
-        )
-    endif()
-endif()
+# This is loaded dynamically when using MINGW as its import library is incomplete
+qt_internal_extend_target(
+    QWindowsDirect2DIntegrationPlugin
+        CONDITION (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC") AND QT_FEATURE_accessibility
+    LIBRARIES
+        uiautomationcore
+)
 
 qt_internal_extend_target(QWindowsDirect2DIntegrationPlugin CONDITION MINGW AND QT_FEATURE_accessibility
     LIBRARIES

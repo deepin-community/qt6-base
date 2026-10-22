@@ -55,6 +55,11 @@ usr/share/qt6/doc/qttestlib/*.index
 usr/share/qt6/doc/qttestlib/*.qhp
 usr/share/qt6/doc/qttestlib/images/
 usr/share/qt6/doc/qttestlib/style/
+usr/share/qt6/doc/qtwaylandclient/*.html
+usr/share/qt6/doc/qtwaylandclient/*.index
+usr/share/qt6/doc/qtwaylandclient/*.qhp
+usr/share/qt6/doc/qtwaylandclient/images/
+usr/share/qt6/doc/qtwaylandclient/style/
 usr/share/qt6/doc/qtwidgets/*.html
 usr/share/qt6/doc/qtwidgets/*.index
 usr/share/qt6/doc/qtwidgets/*.qhp

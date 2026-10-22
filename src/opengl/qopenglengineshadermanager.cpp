@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qopenglengineshadermanager_p.h"
 #include "qopenglengineshadersource_p.h"
@@ -95,7 +96,7 @@ QOpenGLEngineSharedShaders::QOpenGLEngineSharedShaders(QOpenGLContext* context)
     // Check if the user has requested an OpenGL 3.2 Core Profile or higher
     // and if so use GLSL 1.50 core shaders instead of legacy ones.
     const QSurfaceFormat &fmt = context->format();
-    const bool isCoreProfile = fmt.profile() == QSurfaceFormat::CoreProfile && fmt.version() >= qMakePair(3,2);
+    const bool isCoreProfile = fmt.profile() == QSurfaceFormat::CoreProfile && fmt.version() >= std::pair(3,2);
 
     const char** code = qShaderSnippets; // shortcut
 

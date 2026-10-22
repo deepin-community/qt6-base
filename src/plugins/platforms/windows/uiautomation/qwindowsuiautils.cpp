@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtGui/qtguiglobal.h>
 #if QT_CONFIG(accessibility)
@@ -10,6 +11,8 @@
 
 #include <QtGui/qwindow.h>
 #include <QtGui/private/qhighdpiscaling_p.h>
+#include <qpa/qplatforminputcontextfactory_p.h>
+
 #include <cmath>
 
 QT_BEGIN_NAMESPACE
@@ -130,6 +133,7 @@ long roleToControlTypeId(QAccessible::Role role)
         {QAccessible::EditableText, UIA_EditControlTypeId},
         {QAccessible::Button, UIA_ButtonControlTypeId},
         {QAccessible::CheckBox, UIA_CheckBoxControlTypeId},
+        {QAccessible::Switch, UIA_ButtonControlTypeId},
         {QAccessible::RadioButton, UIA_RadioButtonControlTypeId},
         {QAccessible::ComboBox, UIA_ComboBoxControlTypeId},
         {QAccessible::ProgressBar, UIA_ProgressBarControlTypeId},
@@ -150,9 +154,23 @@ long roleToControlTypeId(QAccessible::Role role)
         {QAccessible::Paragraph, UIA_TextControlTypeId},
         {QAccessible::WebDocument, UIA_DocumentControlTypeId},
         {QAccessible::Heading, UIA_TextControlTypeId},
+        {QAccessible::BlockQuote, UIA_GroupControlTypeId},
+        {QAccessible::LayeredPane, UIA_PaneControlTypeId},
     };
 
-    return mapping.value(role, UIA_CustomControlTypeId);
+    long controlType = mapping.value(role, UIA_CustomControlTypeId);
+
+    // The native OSK should be disabled if the Qt OSK is in use,
+    // or if disabled via application attribute.
+    static bool imModuleEmpty = QPlatformInputContextFactory::requested().isEmpty();
+    bool nativeVKDisabled = QCoreApplication::testAttribute(Qt::AA_DisableNativeVirtualKeyboard);
+
+    // If we want to disable the native OSK auto-showing
+    // we have to report text fields as non-editable.
+    if (controlType == UIA_EditControlTypeId && (!imModuleEmpty || nativeVKDisabled))
+        controlType = UIA_TextControlTypeId;
+
+    return controlType;
 }
 
 // True if a character can be a separator for a text unit.

@@ -1,5 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
+
 #include <QtCore/qtextboundaryfinder.h>
 #include <QtCore/qvarlengtharray.h>
 
@@ -101,7 +103,6 @@ static void init(QTextBoundaryFinder::BoundaryType type, QStringView str, QCharA
   Constructs an invalid QTextBoundaryFinder object.
 */
 QTextBoundaryFinder::QTextBoundaryFinder()
-    : freeBuffer(true)
 {
 }
 
@@ -109,12 +110,9 @@ QTextBoundaryFinder::QTextBoundaryFinder()
   Copies the QTextBoundaryFinder object, \a other.
 */
 QTextBoundaryFinder::QTextBoundaryFinder(const QTextBoundaryFinder &other)
-    : t(other.t)
-    , s(other.s)
-    , sv(other.sv)
-    , pos(other.pos)
-    , freeBuffer(true)
+    : s(other.s), sv(other.sv), pos(other.pos)
 {
+    t = other.t;
     if (other.attributes) {
         Q_ASSERT(sv.size() > 0);
         attributes = (QCharAttributes *) malloc((sv.size() + 1) * sizeof(QCharAttributes));
@@ -122,6 +120,17 @@ QTextBoundaryFinder::QTextBoundaryFinder(const QTextBoundaryFinder &other)
         memcpy(attributes, other.attributes, (sv.size() + 1) * sizeof(QCharAttributes));
     }
 }
+
+/*!
+    \since 6.11
+    \fn QTextBoundaryFinder::QTextBoundaryFinder(QTextBoundaryFinder &&other)
+
+    Move-constructs a new QTextBoundaryFinder from \a other.
+
+    \note The moved-from object other is placed in a partially-formed state, in
+    which the only valid operations are destruction and assignment of a new
+    value.
+*/
 
 /*!
   Assigns the object, \a other, to another QTextBoundaryFinder object.
@@ -157,24 +166,38 @@ QTextBoundaryFinder &QTextBoundaryFinder::operator=(const QTextBoundaryFinder &o
 }
 
 /*!
+    \since 6.11
+    \fn QTextBoundaryFinder::operator=(QTextBoundaryFinder &&other)
+
+    Move-assigns \a other to this QTextBoundaryFinder instance.
+
+    \note The moved-from object other is placed in a partially-formed state, in
+    which the only valid operations are destruction and assignment of a new
+    value.
+*/
+
+/*!
   Destructs the QTextBoundaryFinder object.
 */
 QTextBoundaryFinder::~QTextBoundaryFinder()
 {
-    Q_UNUSED(unused);
     if (freeBuffer)
         free(attributes);
 }
 
 /*!
+    \since 6.11
+    \fn void QTextBoundaryFinder::swap(QTextBoundaryFinder &other)
+    \memberswap{text boundary finder}
+*/
+
+/*!
   Creates a QTextBoundaryFinder object of \a type operating on \a string.
 */
 QTextBoundaryFinder::QTextBoundaryFinder(BoundaryType type, const QString &string)
-    : t(type)
-    , s(string)
-    , sv(s)
-    , freeBuffer(true)
+    : s(string), sv(s)
 {
+    t = type;
     if (sv.size() > 0) {
         attributes = (QCharAttributes *) malloc((sv.size() + 1) * sizeof(QCharAttributes));
         Q_CHECK_PTR(attributes);
@@ -204,10 +227,9 @@ QTextBoundaryFinder::QTextBoundaryFinder(BoundaryType type, const QString &strin
   \a buffer.
 */
 QTextBoundaryFinder::QTextBoundaryFinder(BoundaryType type, QStringView string, unsigned char *buffer, qsizetype bufferSize)
-    : t(type)
-    , sv(string)
-    , freeBuffer(true)
+    : sv(string)
 {
+    t = type;
     if (!sv.isEmpty()) {
         if (buffer && bufferSize / int(sizeof(QCharAttributes)) >= sv.size() + 1) {
             attributes = reinterpret_cast<QCharAttributes *>(buffer);

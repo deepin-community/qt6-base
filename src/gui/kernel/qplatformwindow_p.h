@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMWINDOW_P_H
 #define QPLATFORMWINDOW_P_H
@@ -28,6 +29,20 @@
 struct wl_surface;
 #endif
 
+#if defined(Q_OS_MACOS)
+Q_FORWARD_DECLARE_OBJC_CLASS(CALayer);
+typedef long NSInteger;
+enum NSVisualEffectMaterial : NSInteger;
+enum NSVisualEffectBlendingMode : NSInteger;
+enum NSVisualEffectState: NSInteger;
+#endif
+
+#if defined(Q_OS_HARMONY)
+#include <optional>
+
+typedef struct ArkUI_Node *ArkUI_NodeHandle;
+#endif
+
 QT_BEGIN_NAMESPACE
 
 class QMargins;
@@ -49,17 +64,19 @@ struct Q_GUI_EXPORT QWasmWindow
     QT_DECLARE_NATIVE_INTERFACE(QWasmWindow, 1, QWindow)
     virtual emscripten::val document() const = 0;
     virtual emscripten::val clientArea() const = 0;
+    virtual emscripten::val canvas() const = 0;
 };
 #endif
 
 #if defined(Q_OS_MACOS) || defined(Q_QDOC)
 struct Q_GUI_EXPORT QCocoaWindow
 {
-    QT_DECLARE_NATIVE_INTERFACE(QCocoaWindow, 1, QWindow)
-    virtual void setContentBorderEnabled(bool enable) = 0;
+    QT_DECLARE_NATIVE_INTERFACE(QCocoaWindow, 3, QWindow)
     virtual QPoint bottomLeftClippedByNSWindowOffset() const = 0;
-
-    virtual bool inLiveResize() const = 0;
+    virtual CALayer *contentLayer() const = 0;
+    virtual void manageVisualEffectArea(quintptr identifier, const QRect &rect,
+        NSVisualEffectMaterial material, NSVisualEffectBlendingMode blendMode,
+        NSVisualEffectState activationState) = 0;
 };
 #endif
 
@@ -115,6 +132,14 @@ struct Q_GUI_EXPORT QWaylandWindow : public QObject
 public:
     QT_DECLARE_NATIVE_INTERFACE(QWaylandWindow, 1, QWindow)
 
+    enum WindowType {
+        Default,
+        ToolTip,
+        ComboBox,
+        Menu,
+        SubMenu,
+    };
+
     virtual wl_surface *surface() const = 0;
     virtual void setCustomMargins(const QMargins &margins) = 0;
     virtual void requestXdgActivationToken(uint serial) = 0;
@@ -125,6 +150,11 @@ public:
         auto role = std::any_cast<T *>(&anyRole);
         return role ? *role : nullptr;
     }
+    virtual void setSessionRestoreId(const QString &role) = 0;
+
+    virtual void setExtendedWindowType(WindowType windowType) = 0;
+    virtual void setParentControlGeometry(const QRect &parentAnchor) = 0;
+
 Q_SIGNALS:
     void surfaceCreated();
     void surfaceDestroyed();
@@ -136,6 +166,22 @@ protected:
     virtual std::any _surfaceRole() const = 0;
 };
 #endif
+
+#if defined(Q_OS_HARMONY)
+struct Q_GUI_EXPORT QOhosWindow
+{
+    QT_DECLARE_NATIVE_INTERFACE(QOhosWindow, 1, QWindow)
+    static QWindow *fromNative(ArkUI_NodeHandle content);
+    virtual std::optional<double> windowId() const = 0;
+};
+
+struct Q_GUI_EXPORT QOhosIntegration
+{
+    QT_DECLARE_NATIVE_INTERFACE(QOhosIntegration)
+    virtual WId windowHandle(ArkUI_NodeHandle content) = 0;
+    virtual void setMainWindowGeometryPersistenceEnabled(std::optional<bool> enabled) = 0;
+};
+#endif // defined(Q_OS_HARMONY)
 
 } // QNativeInterface::Private
 

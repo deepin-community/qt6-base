@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
-    \page java-style-iterators.html
+    \group java-style-iterators
+    \noautolist
     \title Java-style Iterators in Qt
     \ingroup groups
     \ingroup qt-basic-concepts
@@ -42,7 +43,7 @@
     diagram below shows the valid iterator positions as red arrows for a list
     containing four items:
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     Here's a typical loop for iterating through all the elements of a
     QList<QString> in order:
@@ -70,7 +71,7 @@
     \l{QListIterator::next()}{next()} and
     \l{QListIterator::previous()}{previous()} on an iterator:
 
-    \image javaiterators2.png
+    \image javaiterators2.svg Iterating to the next and previous items
 
     The following table summarizes the QListIterator API:
 

@@ -1,8 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#ifndef QXCBEGLINTEGRATION_H
-#define QXCBEGLINTEGRATION_H
+#pragma once
 
 #include "qxcbglintegration.h"
 
@@ -34,6 +34,7 @@ public:
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
     QOpenGLContext *createOpenGLContext(EGLContext context, EGLDisplay display, QOpenGLContext *shareContext) const override;
     QPlatformOffscreenSurface *createPlatformOffscreenSurface(QOffscreenSurface *surface) const override;
+    bool canCreatePlatformOffscreenSurface() const override;
 
     bool supportsThreadedOpenGL() const override { return true; }
 
@@ -51,4 +52,3 @@ private:
 };
 
 QT_END_NAMESPACE
-#endif //QXCBEGLINTEGRATION_H

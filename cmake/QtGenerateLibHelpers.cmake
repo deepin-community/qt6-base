@@ -10,7 +10,8 @@ function(qt_get_library_name_without_prefix_and_suffix out_var file_path)
     if(NOT file_path MATCHES "^-") # not a linker flag
         get_filename_component(basename "${file_path}" NAME_WE)
         get_filename_component(ext "${file_path}" EXT)
-        if(NOT ext) # seems like a library name without prefix and suffix
+        if(NOT ext AND NOT IS_ABSOLUTE "${file_path}")
+            # seems like a library name without prefix and suffix
             set(${out_var} "${file_path}" PARENT_SCOPE)
             return()
         endif()
@@ -132,4 +133,35 @@ function(qt_internal_path_is_relative_to_qt_lib_path
     endforeach()
     set(${out_var_is_relative} "${is_relative}" PARENT_SCOPE)
     set(${out_var_relative_path} "${relative_path_value}" PARENT_SCOPE)
+endfunction()
+
+# Extracts the bare logical library name from a file path that looks like a
+# library file. Sets out_var to NOTFOUND if the input is not a library file.
+#
+#   "libavformat.so"           -> "avformat"
+#   "libavformat.so.60.16.100" -> "avformat"
+#   "/p/libfoo.a"              -> "foo"
+#   "Threads::Threads"         -> NOTFOUND
+function(qt_extract_library_name out_var file_path)
+    qt_strip_library_version_suffix(name "${file_path}")
+    get_filename_component(name "${name}" NAME)
+    set(is_library FALSE)
+    foreach(suffix ${LIBRARY_SUFFIXES})
+        if(name MATCHES "(.+)${suffix}$")
+            set(name "${CMAKE_MATCH_1}")
+            set(is_library TRUE)
+            break()
+        endif()
+    endforeach()
+    if(is_library)
+        foreach(prefix ${LIBRARY_PREFIXES})
+            if(prefix AND name MATCHES "^${prefix}(.+)$")
+                set(name "${CMAKE_MATCH_1}")
+                break()
+            endif()
+        endforeach()
+        set(${out_var} "${name}" PARENT_SCOPE)
+    else()
+        set(${out_var} "NOTFOUND" PARENT_SCOPE)
+    endif()
 endfunction()

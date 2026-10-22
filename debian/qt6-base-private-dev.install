@@ -2,6 +2,9 @@
 [linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtEglFsKmsGbmSupport/6.*/*
 [linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtEglFsKmsSupport/6.*/*
 [linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtKmsSupport/6.*/*
+[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtWaylandClient/6.*/*
+[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtWaylandGlobal/6.*/*
+[linux-any] usr/include/${DEB_HOST_MULTIARCH}/qt6/QtWlShellIntegration/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtCore/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtDBus/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtDeviceDiscoverySupport/6.*/*
@@ -15,5 +18,4 @@ usr/include/${DEB_HOST_MULTIARCH}/qt6/QtPrintSupport/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtSql/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtTest/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtWidgets/6.*/*
-usr/include/${DEB_HOST_MULTIARCH}/qt6/QtXcb/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtXml/6.*/*

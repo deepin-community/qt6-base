@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qjsonobject.h>
 #include <qjsonvalue.h>
@@ -171,8 +172,7 @@ QJsonArray &QJsonArray::operator =(const QJsonArray &other) noexcept = default;
 /*!
     \fn void QJsonArray::swap(QJsonArray &other)
     \since 5.10
-
-    Swaps the array \a other with this. This operation is very fast and never fails.
+    \memberswap{array}
 */
 
 /*! \fn QJsonArray &QJsonArray::operator+=(const QJsonValue &value)
@@ -407,7 +407,7 @@ void QJsonArray::insert(qsizetype i, const QJsonValue &value)
     Inserts \a value before the position pointed to by \a before, and returns an iterator
     pointing to the newly inserted item.
 
-    \sa erase(), insert()
+    \sa erase(), insert(qsizetype, const QJsonValue &)
 */
 
 /*!
@@ -1074,7 +1074,7 @@ size_t qHash(const QJsonArray &array, size_t seed)
     return qHashRange(array.begin(), array.end(), seed);
 }
 
-#if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
+#if !defined(QT_NO_DEBUG_STREAM)
 QDebug operator<<(QDebug dbg, const QJsonArray &a)
 {
     QDebugStateSaver saver(dbg);

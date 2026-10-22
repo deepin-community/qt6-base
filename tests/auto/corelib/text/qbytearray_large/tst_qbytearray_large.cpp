@@ -10,6 +10,8 @@
 #include <stdexcept>
 #include <string_view>
 
+using namespace Qt::StringLiterals;
+
 class tst_QByteArrayLarge : public QObject
 {
     Q_OBJECT
@@ -84,6 +86,16 @@ void tst_QByteArrayLarge::qUncompressCorruptedData_data()
     QTest::newRow("0xcfffffff") << QByteArray("\xcf\xff\xff\xff", 4);
     QTest::newRow("0xffffff00") << QByteArray("\xff\xff\xff\x00", 4);
     QTest::newRow("0xffffffff") << QByteArray("\xff\xff\xff\xff", 4);
+
+    // buffer hint for 4096 followed by garbage
+    QTest::newRow("z_data_error") << "\x00\x00\x10\x00"_ba + QByteArray(64, '\1');
+
+    // truncated stream
+    QByteArray compressed = ::qCompress(QByteArray(4096, 'x'));
+    QTest::newRow("z_buf_error") << compressed.first(compressed.size() / 2);
+
+    // same as above, but hardcoded (in case zlib changes compression)
+    QTest::newRow("z_buf_error-hardcoded") << QByteArray::fromHex("00001000789cedc1010d000000c2a0");
 }
 
 // This test is expected to produce some warning messages in the test output.
@@ -183,8 +195,8 @@ void tst_QByteArrayLarge::qCompressionZeroTermination()
 
 void tst_QByteArrayLarge::base64_2GiB()
 {
-#ifdef Q_OS_ANDROID
-    QSKIP("Android kills the test when using too much memory");
+#if defined Q_OS_ANDROID || defined Q_OS_WEBOS
+    QSKIP("Android and webOS device will kill the test when using too much memory");
 #endif
     if constexpr (sizeof(qsizetype) > sizeof(int)) {
         try {

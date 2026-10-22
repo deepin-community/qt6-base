@@ -1,8 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#ifndef QXCBCONNECTION_H
-#define QXCBCONNECTION_H
+#pragma once
 
 #include <xcb/xcb.h>
 #include <xcb/randr.h>
@@ -27,7 +27,6 @@
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcQpaXInput)
-Q_DECLARE_LOGGING_CATEGORY(lcQpaXInputDevices)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaXInputEvents)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaScreen)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaEvents)
@@ -227,9 +226,6 @@ private:
     void initializeScreensWithoutXRandR(xcb_screen_iterator_t *it, int screenNumber, QXcbScreen **primaryScreen);
     void initializeScreensFromOutput(xcb_screen_iterator_t *it, int screenNumber, QXcbScreen **primaryScreen);
 
-    void updateScreen_monitor(QXcbScreen *screen, xcb_randr_monitor_info_t *monitorInfo, xcb_timestamp_t timestamp = XCB_NONE);
-    QXcbScreen *createScreen_monitor(QXcbVirtualDesktop *virtualDesktop,
-                                     xcb_randr_monitor_info_t *monitorInfo, xcb_timestamp_t timestamp = XCB_NONE);
     QXcbVirtualDesktop* virtualDesktopForNumber(int n) const;
     QXcbScreen* findScreenForMonitorInfo(const QList<QPlatformScreen *> &screens, xcb_randr_monitor_info_t *monitorInfo);
     void initializeScreensFromMonitor(xcb_screen_iterator_t *it, int screenNumber, QXcbScreen **primaryScreen, bool initialized);
@@ -238,7 +234,7 @@ private:
     inline bool timeGreaterThan(xcb_timestamp_t a, xcb_timestamp_t b) const
     { return static_cast<int32_t>(a - b) > 0 || b == XCB_CURRENT_TIME; }
 
-    void xi2SetupSlavePointerDevice(void *info, bool removeExisting = true, QPointingDevice *master = nullptr);
+    void xi2SetupSlavePointerDevice(void *info, QPointingDevice *master = nullptr);
     void xi2SetupDevices();
     // TODO get rid of this: store minimal necessary info in a subclass of QPointingDevicePrivate
     struct TouchDeviceData {
@@ -380,5 +376,3 @@ template <typename T>
 struct alignas(32) q_padded_xcb_event : T { };
 
 QT_END_NAMESPACE
-
-#endif

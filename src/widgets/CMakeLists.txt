@@ -43,8 +43,6 @@ qt_internal_add_module(Widgets
         styles/qstyleoption.cpp styles/qstyleoption.h
         styles/qstylepainter.cpp styles/qstylepainter.h
         styles/qstyleplugin.cpp styles/qstyleplugin.h
-        styles/qstylesheetstyle.cpp styles/qstylesheetstyle_p.h
-        styles/qstylesheetstyle_default.cpp
         util/qcolormap.cpp util/qcolormap.h
         util/qsystemtrayicon.cpp util/qsystemtrayicon.h util/qsystemtrayicon_p.h
         widgets/qabstractscrollarea.cpp widgets/qabstractscrollarea.h widgets/qabstractscrollarea_p.h
@@ -54,7 +52,7 @@ qt_internal_add_module(Widgets
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
         QT_NO_USING_NAMESPACE
-        QT_NO_FOREACH
+        QT_NO_URL_CAST_FROM_STRING
         QT_USE_NODISCARD_FILE_OPEN
     INCLUDE_DIRECTORIES
         dialogs
@@ -71,6 +69,8 @@ qt_internal_add_module(Widgets
         "kernel/qt_widgets_pch.h"
     NO_PCH_SOURCES
         compat/removed_api.cpp
+    ELF_LINKER_DYNAMIC_LIST
+        QtWidgets.dynlist.in
 )
 
 qt_internal_extend_target(Widgets CONDITION APPLE
@@ -80,6 +80,18 @@ qt_internal_extend_target(Widgets CONDITION APPLE
 
 # Resources:
 set(qstyle_resource_files
+    "styles/images/arrow-down-128.png"
+    "styles/images/arrow-down-16.png"
+    "styles/images/arrow-down-32.png"
+    "styles/images/arrow-left-128.png"
+    "styles/images/arrow-left-16.png"
+    "styles/images/arrow-left-32.png"
+    "styles/images/arrow-right-128.png"
+    "styles/images/arrow-right-16.png"
+    "styles/images/arrow-right-32.png"
+    "styles/images/arrow-up-128.png"
+    "styles/images/arrow-up-16.png"
+    "styles/images/arrow-up-32.png"
     "styles/images/cdr-128.png"
     "styles/images/cdr-16.png"
     "styles/images/cdr-32.png"
@@ -108,9 +120,6 @@ set(qstyle_resource_files
     "styles/images/diropen-128.png"
     "styles/images/diropen-16.png"
     "styles/images/diropen-32.png"
-    "styles/images/down-128.png"
-    "styles/images/down-16.png"
-    "styles/images/down-32.png"
     "styles/images/dvd-128.png"
     "styles/images/dvd-16.png"
     "styles/images/dvd-32.png"
@@ -144,9 +153,6 @@ set(qstyle_resource_files
     "styles/images/information-128.png"
     "styles/images/information-16.png"
     "styles/images/information-32.png"
-    "styles/images/left-128.png"
-    "styles/images/left-16.png"
-    "styles/images/left-32.png"
     "styles/images/media-pause-128.png"
     "styles/images/media-pause-16.png"
     "styles/images/media-pause-32.png"
@@ -169,7 +175,11 @@ set(qstyle_resource_files
     "styles/images/media-stop-16.png"
     "styles/images/media-stop-32.png"
     "styles/images/media-volume-16.png"
+    "styles/images/media-volume-32.png"
+    "styles/images/media-volume-128.png"
     "styles/images/media-volume-muted-16.png"
+    "styles/images/media-volume-muted-32.png"
+    "styles/images/media-volume-muted-128.png"
     "styles/images/networkdrive-128.png"
     "styles/images/networkdrive-16.png"
     "styles/images/networkdrive-32.png"
@@ -190,9 +200,6 @@ set(qstyle_resource_files
     "styles/images/question-32.png"
     "styles/images/refresh-24.png"
     "styles/images/refresh-32.png"
-    "styles/images/right-128.png"
-    "styles/images/right-16.png"
-    "styles/images/right-32.png"
     "styles/images/standardbutton-apply-128.png"
     "styles/images/standardbutton-apply-16.png"
     "styles/images/standardbutton-apply-32.png"
@@ -267,9 +274,6 @@ set(qstyle_resource_files
     "styles/images/trash-128.png"
     "styles/images/trash-16.png"
     "styles/images/trash-32.png"
-    "styles/images/up-128.png"
-    "styles/images/up-16.png"
-    "styles/images/up-32.png"
     "styles/images/viewdetailed-128.png"
     "styles/images/viewdetailed-16.png"
     "styles/images/viewdetailed-32.png"
@@ -334,12 +338,12 @@ set(qstyle_resource_fusion_files
     "styles/images/fusion_closedock-32.png"
     "styles/images/fusion_closedock-48.png"
     "styles/images/fusion_closedock-64.png"
-    "styles/images/fusion_normalizedockup_10.png"
+    "styles/images/fusion_normalizedockup-10.png"
     "styles/images/fusion_normalizedockup-16.png"
-    "styles/images/fusion_normalizedockup_20.png"
+    "styles/images/fusion_normalizedockup-20.png"
     "styles/images/fusion_normalizedockup-32.png"
-    "styles/images/fusion_normalizedockup_48.png"
-    "styles/images/fusion_normalizedockup_64.png"
+    "styles/images/fusion_normalizedockup-48.png"
+    "styles/images/fusion_normalizedockup-64.png"
     "styles/images/fusion_titlebar-min-10.png"
     "styles/images/fusion_titlebar-min-16.png"
     "styles/images/fusion_titlebar-min-20.png"
@@ -357,11 +361,6 @@ qt_internal_add_resource(Widgets "qstyle_fusion"
         ${qstyle_resource_fusion_files}
 )
 
-if(QT_FEATURE_reduce_relocations AND UNIX AND GCC)
-    target_link_options(Widgets PRIVATE
-                        "LINKER:--dynamic-list=${CMAKE_CURRENT_LIST_DIR}/QtWidgets.dynlist")
-endif()
-
 ## Scopes:
 #####################################################################
 
@@ -376,6 +375,11 @@ qt_internal_extend_target(Widgets CONDITION MACOS
     LIBRARIES
         ${FWAppKit}
         z
+)
+
+qt_internal_extend_target(Widgets CONDITION OHOS
+    SOURCES
+        kernel/qohosgesturerecognizer.cpp kernel/qohosgesturerecognizer_p.h
 )
 
 qt_internal_extend_target(Widgets CONDITION WIN32
@@ -412,7 +416,7 @@ qt_internal_extend_target(Widgets CONDITION QT_FEATURE_shortcut
 
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_tooltip
     SOURCES
-        kernel/qtooltip.cpp kernel/qtooltip.h
+        kernel/qtooltip.cpp kernel/qtooltip.h kernel/qtooltip_p.h
 )
 
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_whatsthis
@@ -423,6 +427,12 @@ qt_internal_extend_target(Widgets CONDITION QT_FEATURE_whatsthis
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_animation
     SOURCES
         styles/qstyleanimation.cpp styles/qstyleanimation_p.h
+)
+
+qt_internal_extend_target(Widgets CONDITION QT_FEATURE_style_stylesheet
+    SOURCES
+        styles/qstylesheetstyle.cpp styles/qstylesheetstyle_p.h
+        styles/qstylesheetstyle_default.cpp
 )
 
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_style_windows
@@ -676,6 +686,7 @@ qt_internal_extend_target(Widgets CONDITION MACOS AND (QT_FEATURE_menu OR QT_FEA
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_colordialog
     SOURCES
         dialogs/qcolordialog.cpp dialogs/qcolordialog.h
+        dialogs/qcolorwell_p.h
 )
 
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_dialog
@@ -767,6 +778,7 @@ endif()
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_accessibility
     SOURCES
         accessible/complexwidgets.cpp accessible/complexwidgets_p.h
+        accessible/qaccessiblecolorwell.cpp accessible/qaccessiblecolorwell_p.h
         accessible/qaccessiblemenu.cpp accessible/qaccessiblemenu_p.h
         accessible/qaccessiblewidget.cpp accessible/qaccessiblewidget.h
         accessible/qaccessiblewidgetfactory.cpp accessible/qaccessiblewidgetfactory_p.h
@@ -901,6 +913,12 @@ qt_internal_extend_target(Widgets CONDITION NOT QT_FEATURE_xcb
         util/qsystemtrayicon_qpa.cpp
 )
 
+qt_internal_extend_target(Widgets CONDITION QT_FEATURE_style_stylesheet
+    SOURCES
+        styles/qstylesheetstyle.cpp styles/qstylesheetstyle_p.h
+        styles/qstylesheetstyle_default.cpp
+
+)
 
 qt_internal_generate_tracepoints(Widgets widgets
     SOURCES
@@ -916,14 +934,6 @@ if(IOS)
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/ios/PrivacyInfo.xcprivacy")
 endif()
 
-# include the snippet projects for developer-builds
-if(QT_FEATURE_private_tests)
-    add_subdirectory(doc/snippets/customviewstyle)
-    add_subdirectory(doc/snippets/filedialogurls)
-    add_subdirectory(doc/snippets/graphicssceneadditem)
-    if(QT_FEATURE_opengl AND QT_FEATURE_printdialog)
-        add_subdirectory(doc/snippets/graphicsview)
-    endif()
-    add_subdirectory(doc/snippets/mdiarea)
-    add_subdirectory(doc/snippets/myscrollarea)
+if(QT_FEATURE_doc_snippets)
+    add_subdirectory(doc/snippets)
 endif()

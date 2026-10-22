@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qmacgesturerecognizer_p.h"
 #include "qgesture.h"
@@ -69,7 +70,7 @@ QMacPinchGestureRecognizer::recognize(QGesture *gesture, QObject *obj, QEvent *e
         switch (ev->gestureType()) {
         case Qt::BeginNativeGesture:
             reset(gesture);
-            g->setStartCenterPoint(static_cast<QWidget*>(obj)->mapFromGlobal(ev->globalPosition().toPoint()));
+            g->setStartCenterPoint(static_cast<QWidget*>(obj)->mapFromGlobal(ev->globalPosition()));
             g->setCenterPoint(g->startCenterPoint());
             g->setChangeFlags(QPinchGesture::CenterPointChanged);
             g->setTotalChangeFlags(g->totalChangeFlags() | g->changeFlags());

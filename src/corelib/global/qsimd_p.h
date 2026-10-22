@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSIMD_P_H
 #define QSIMD_P_H
@@ -97,18 +98,22 @@ QT_WARNING_DISABLE_INTEL(103)
 #include <intrin.h>
 #endif
 
-#define QT_COMPILER_SUPPORTS(x)     (QT_COMPILER_SUPPORTS_ ## x - 0)
+#define QT_COMPILER_SUPPORTS(x)     (defined QT_COMPILER_SUPPORTS_##x && QT_COMPILER_SUPPORTS_##x)
 
-#if defined(Q_PROCESSOR_ARM)
-#  define QT_COMPILER_SUPPORTS_HERE(x)    ((__ARM_FEATURE_ ## x) || (__ ## x ## __) || QT_COMPILER_SUPPORTS(x))
-#  if defined(Q_CC_GNU)
+#if defined(Q_PROCESSOR_ARM_64)
+#  define QT_COMPILER_SUPPORTS_HERE(x)    ((defined __ARM_FEATURE_##x && __ARM_FEATURE_##x) || (defined __##x##__ && __##x##__) || QT_COMPILER_SUPPORTS(x))
+#  if defined(Q_CC_GNU) || defined(Q_CC_CLANG)
      /* GCC requires attributes for a function */
 #    define QT_FUNCTION_TARGET(x)  __attribute__((__target__(QT_FUNCTION_TARGET_STRING_ ## x)))
 #  else
 #    define QT_FUNCTION_TARGET(x)
 #  endif
+#elif defined(Q_PROCESSOR_ARM_32)
+   /* We do not support for runtime CPU feature switching on ARM32 */
+#  define QT_COMPILER_SUPPORTS_HERE(x)    ((defined __ARM_FEATURE_##x && __ARM_FEATURE_##x) || (defined __##x##__ && __##x##__))
+#  define QT_FUNCTION_TARGET(x)
 #elif defined(Q_PROCESSOR_MIPS)
-#  define QT_COMPILER_SUPPORTS_HERE(x)    (__ ## x ## __)
+#  define QT_COMPILER_SUPPORTS_HERE(x)    (defined __##x##__ && __##x##__)
 #  define QT_FUNCTION_TARGET(x)
 #  if !defined(__MIPS_DSP__) && defined(__mips_dsp) && defined(Q_PROCESSOR_MIPS_32)
 #    define __MIPS_DSP__
@@ -116,20 +121,23 @@ QT_WARNING_DISABLE_INTEL(103)
 #  if !defined(__MIPS_DSPR2__) && defined(__mips_dspr2) && defined(Q_PROCESSOR_MIPS_32)
 #    define __MIPS_DSPR2__
 #  endif
+#elif defined(Q_PROCESSOR_LOONGARCH)
+#  define QT_COMPILER_SUPPORTS_HERE(x)    QT_COMPILER_SUPPORTS(x)
+#  define QT_FUNCTION_TARGET(x)
 #elif defined(Q_PROCESSOR_X86)
-#  if defined(Q_CC_CLANG) && defined(Q_CC_MSVC)
-#    define QT_COMPILER_SUPPORTS_HERE(x)    (__ ## x ## __)
+#  if defined(Q_CC_CLANG) && defined(Q_CC_MSVC) && (Q_CC_CLANG < 1900)
+#    define QT_COMPILER_SUPPORTS_HERE(x)    (defined __##x##__ && __##x##__)
 #  else
-#    define QT_COMPILER_SUPPORTS_HERE(x)    ((__ ## x ## __) || QT_COMPILER_SUPPORTS(x))
+#    define QT_COMPILER_SUPPORTS_HERE(x)    ((defined __##x##__ && __##x##__) || QT_COMPILER_SUPPORTS(x))
 #  endif
-#  if defined(Q_CC_GNU)
+#  if defined(Q_CC_GNU) || defined(Q_CC_CLANG)
      /* GCC requires attributes for a function */
 #    define QT_FUNCTION_TARGET(x)  __attribute__((__target__(QT_FUNCTION_TARGET_STRING_ ## x)))
 #  else
 #    define QT_FUNCTION_TARGET(x)
 #  endif
 #else
-#  define QT_COMPILER_SUPPORTS_HERE(x)    (__ ## x ## __)
+#  define QT_COMPILER_SUPPORTS_HERE(x)    (defined __##x##__ && __##x##__)
 #  define QT_FUNCTION_TARGET(x)
 #endif
 
@@ -269,33 +277,96 @@ static_assert(ARCH_SKX_MACROS, "Undeclared identifiers indicate which features a
 #endif
 
 #ifndef Q_PROCESSOR_ARM_64 // vaddv is only available on Aarch64
-inline uint16_t vaddvq_u16(uint16x8_t v8)
+static inline uint16_t vaddvq_u16(uint16x8_t v8)
 {
     const uint64x2_t v2 = vpaddlq_u32(vpaddlq_u16(v8));
     const uint64x1_t v1 = vadd_u64(vget_low_u64(v2), vget_high_u64(v2));
     return vget_lane_u16(vreinterpret_u16_u64(v1), 0);
 }
 
-inline uint8_t vaddv_u8(uint8x8_t v8)
+static inline uint8_t vaddv_u8(uint8x8_t v8)
 {
     const uint64x1_t v1 = vpaddl_u32(vpaddl_u16(vpaddl_u8(v8)));
     return vget_lane_u8(vreinterpret_u8_u64(v1), 0);
 }
 #endif
 
+// Missing NEON intrinsics, needed due different type definitions:
+static inline uint16x8_t qvsetq_n_u16(uint16_t v1, uint16_t v2, uint16_t v3, uint16_t v4,
+                                      uint16_t v5, uint16_t v6, uint16_t v7, uint16_t v8)
+{
+#if defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
+    using u64 = uint64_t;
+    const uint16x8_t vmask = {
+        v1 | (v2 << 16) | (u64(v3) << 32) | (u64(v4) << 48),
+        v5 | (v6 << 16) | (u64(v7) << 32) | (u64(v8) << 48)
+    };
+#else
+    const uint16x8_t vmask = { v1, v2, v3, v4, v5, v6, v7, v8 };
+#endif
+    return vmask;
+}
+static inline uint8x8_t qvset_n_u8(uint8_t v1, uint8_t v2, uint8_t v3, uint8_t v4, uint8_t v5,
+                                   uint8_t v6, uint8_t v7, uint8_t v8)
+{
+#if defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
+    using u64 = uint64_t;
+    const uint8x8_t vmask = {
+        v1 | (v2 << 8) | (v3 << 16) | (v4 << 24) |
+        (u64(v5) << 32) | (u64(v6) << 40) | (u64(v7) << 48) | (u64(v8) << 56)
+    };
+#else
+    const uint8x8_t vmask = { v1, v2, v3, v4, v5, v6, v7, v8 };
+#endif
+    return vmask;
+}
+static inline uint8x16_t qvsetq_n_u8(uint8_t v1, uint8_t v2, uint8_t v3, uint8_t v4, uint8_t v5,
+                                     uint8_t v6, uint8_t v7, uint8_t v8, uint8_t v9, uint8_t v10,
+                                     uint8_t v11, uint8_t v12, uint8_t v13, uint8_t v14,
+                                     uint8_t v15, uint8_t v16)
+{
+#if defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
+    using u64 = uint64_t;
+    const uint8x16_t vmask = {
+        v1 | (v2 << 8) | (v3 << 16) | (v4 << 24) |
+        (u64(v5) << 32) | (u64(v6) << 40) | (u64(v7) << 48) | (u64(v8) << 56),
+        v9 | (v10 << 8) | (v11 << 16) | (v12 << 24) |
+        (u64(v13) << 32) | (u64(v14) << 40) | (u64(v15) << 48) | (u64(v16) << 56)
+    };
+#else
+    const uint8x16_t vmask = { v1, v2,  v3,  v4,  v5,  v6,  v7,  v8,
+                               v9, v10, v11, v12, v13, v14, v15, v16};
+#endif
+    return vmask;
+}
+static inline uint32x4_t qvsetq_n_u32(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
+{
+#if defined(Q_CC_MSVC) && !defined(Q_CC_CLANG)
+    return uint32x4_t{ (uint64_t(b) << 32) | a, (uint64_t(d) << 32) | c };
+#else
+    return uint32x4_t{ a, b, c, d };
+#endif
+}
 #endif
 
-#if defined(Q_PROCESSOR_ARM) && defined(__ARM_FEATURE_CRC32)
-#  include <arm_acle.h>
+#if defined(_M_ARM64) && __ARM_ARCH >= 800
+#define __ARM_FEATURE_CRYPTO 1
+#define __ARM_FEATURE_CRC32 1
 #endif
 
 #if defined(Q_PROCESSOR_ARM_64)
 #if defined(Q_CC_CLANG)
-#define QT_FUNCTION_TARGET_STRING_AES        "crypto"
+#define QT_FUNCTION_TARGET_STRING_AES        "aes"
 #define QT_FUNCTION_TARGET_STRING_CRC32      "crc"
+#define QT_FUNCTION_TARGET_STRING_SVE        "sve"
 #elif defined(Q_CC_GNU)
 #define QT_FUNCTION_TARGET_STRING_AES        "+crypto"
 #define QT_FUNCTION_TARGET_STRING_CRC32      "+crc"
+#define QT_FUNCTION_TARGET_STRING_SVE        "+sve"
+#elif defined(Q_CC_MSVC)
+#define QT_FUNCTION_TARGET_STRING_AES
+#define QT_FUNCTION_TARGET_STRING_CRC32
+#define QT_FUNCTION_TARGET_STRING_SVE
 #endif
 #elif defined(Q_PROCESSOR_ARM_32)
 #if defined(Q_CC_CLANG)
@@ -315,9 +386,13 @@ enum CPUFeatures {
     CpuFeatureCRC32         = 4,
     CpuFeatureAES           = 8,
     CpuFeatureARM_CRYPTO    = CpuFeatureAES,
+    CpuFeatureSVE           = 16,
 #elif defined(Q_PROCESSOR_MIPS)
     CpuFeatureDSP           = 2,
     CpuFeatureDSPR2         = 4,
+#elif defined(Q_PROCESSOR_LOONGARCH)
+    CpuFeatureLSX           = 2,
+    CpuFeatureLASX          = 4,
 #endif
 };
 
@@ -334,15 +409,24 @@ static const uint64_t qCompilerCpuFeatures = 0
 #if defined __ARM_FEATURE_CRC32
         | CpuFeatureCRC32
 #endif
-#if defined __ARM_FEATURE_CRYPTO
+#if defined (__ARM_FEATURE_CRYPTO) || defined(__ARM_FEATURE_AES)
         | CpuFeatureAES
 #endif
 #endif // Q_OS_LINUX && Q_PROCESSOR_ARM64
+#if defined(__ARM_FEATURE_SVE) && defined(Q_PROCESSOR_ARM_64)
+        | CpuFeatureSVE
+#endif
 #if defined __mips_dsp
         | CpuFeatureDSP
 #endif
 #if defined __mips_dspr2
         | CpuFeatureDSPR2
+#endif
+#if defined __loongarch_sx
+        | CpuFeatureLSX
+#endif
+#if defined __loongarch_asx
+        | CpuFeatureLASX
 #endif
         ;
 #endif
@@ -389,24 +473,6 @@ static inline uint64_t qCpuFeatures()
 
 #ifdef __cplusplus
 } // extern "C"
-
-#  if defined(Q_PROCESSOR_X86) && QT_COMPILER_SUPPORTS_HERE(RDRND) && !defined(QT_BOOTSTRAPPED)
-Q_CORE_EXPORT qsizetype qRandomCpu(void *, qsizetype) noexcept;
-
-static inline bool qHasHwrng()
-{
-    return qCpuHasFeature(RDRND);
-}
-#  else
-static inline qsizetype qRandomCpu(void *, qsizetype) noexcept
-{
-    return 0;
-}
-static inline bool qHasHwrng()
-{
-    return false;
-}
-#  endif
 
 QT_END_NAMESPACE
 

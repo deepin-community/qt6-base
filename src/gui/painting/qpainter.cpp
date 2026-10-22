@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // QtCore
+// Qt-Security score:significant reason:default
 #include <memory>
 #include <qdebug.h>
 #include <qmath.h>
@@ -41,6 +42,8 @@
 #include <private/qrawfont_p.h>
 #include <private/qfont_p.h>
 
+#include <QtCore/private/qtclasshelper_p.h>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
@@ -53,7 +56,7 @@ static_assert(sizeof(QScopedPointer<QPainterPrivate>) == sizeof(std::unique_ptr<
 
 // #define QT_DEBUG_DRAW
 #ifdef QT_DEBUG_DRAW
-bool qt_show_painter_debug_output = true;
+constexpr bool qt_show_painter_debug_output = true;
 #endif
 
 extern QPixmap qt_pixmapForBrush(int style, bool invert);
@@ -247,8 +250,7 @@ bool QPainterPrivate::attachPainterPrivate(QPainter *q, QPaintDevice *pdev)
     // the current d_ptr to the shared painter's d_ptr.
     sp->save();
     ++sp->d_ptr->refcount;
-    sp->d_ptr->d_ptrs.push_back(q->d_ptr.get());
-    Q_UNUSED(q->d_ptr.release());
+    sp->d_ptr->d_ptrs.push_back(std::move(q->d_ptr));
     q->d_ptr.reset(sp->d_ptr.get());
 
     Q_ASSERT(q->d_ptr->state);
@@ -293,19 +295,19 @@ void QPainterPrivate::detachPainterPrivate(QPainter *q)
     Q_ASSERT(q);
 
     --refcount;
-    QPainterPrivate *original = d_ptrs.back();
+    auto original = std::move(d_ptrs.back());
     d_ptrs.pop_back();
     if (inDestructor) {
         inDestructor = false;
         if (original)
             original->inDestructor = true;
     } else if (!original) {
-        original = new QPainterPrivate(q);
+        original = std::make_unique<QPainterPrivate>(q);
     }
 
     q->restore();
     Q_UNUSED(q->d_ptr.release());
-    q->d_ptr.reset(original);
+    q->d_ptr = std::move(original);
 
     if (emulationEngine) {
         extended = emulationEngine->real_engine;
@@ -317,7 +319,7 @@ void QPainterPrivate::detachPainterPrivate(QPainter *q)
 void QPainterPrivate::draw_helper(const QPainterPath &originalPath, DrawOperation op)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output) {
+    if constexpr (qt_show_painter_debug_output) {
         printf("QPainter::drawHelper\n");
     }
 #endif
@@ -899,7 +901,6 @@ void QPainterPrivate::updateState(QPainterState *newState)
     }
 }
 
-
 /*!
     \class QPainter
     \brief The QPainter class performs low-level painting on widgets and
@@ -1030,6 +1031,7 @@ void QPainterPrivate::updateState(QPainterState *newState)
     \table 100%
     \row
     \li \inlineimage qpainter-basicdrawing.png
+                     {Basic Drawing application with shape and pen options}
     \li
     \b {Basic Drawing Example}
 
@@ -1056,6 +1058,7 @@ void QPainterPrivate::updateState(QPainterState *newState)
     painter paths can be used to build complex shapes for rendering.
 
     \li \inlineimage qpainter-painterpaths.png
+                     {Painter Paths application with various shapes}
     \endtable
 
     QPainter also provides the fillPath() function which fills the
@@ -1078,8 +1081,9 @@ void QPainterPrivate::updateState(QPainterState *newState)
     \li \l {painting/pathstroke}{Path Stroking}
     \row
     \li \inlineimage qpainter-vectordeformation.png
-    \li \inlineimage qpainter-gradients.png
-    \li \inlineimage qpainter-pathstroking.png
+                     {Vector Deformation application with lens effect}
+    \li \inlineimage qpainter-gradients.png {Gradients application}
+    \li \inlineimage qpainter-pathstroking.png {Path Stroking application}
     \endtable
 
     Text drawing is done using drawText(). When you need
@@ -1139,6 +1143,7 @@ void QPainterPrivate::updateState(QPainterState *newState)
         produces evenly spaced rings. Anti-aliased rendering results in
         smooth circles.
     \li \inlineimage qpainter-concentriccircles.png
+                     {Concentric circles comparing aliased and antialiased}
     \endtable
 
     The RenderHint enum specifies flags to QPainter that may or may
@@ -1165,10 +1170,10 @@ void QPainterPrivate::updateState(QPainterState *newState)
     \header
     \li  nop \li rotate() \li scale() \li translate()
     \row
-    \li \inlineimage qpainter-clock.png
-    \li \inlineimage qpainter-rotation.png
-    \li \inlineimage qpainter-scale.png
-    \li \inlineimage qpainter-translation.png
+    \li \inlineimage qpainter-clock.png {Clock without transformation}
+    \li \inlineimage qpainter-rotation.png {Clock with rotation applied}
+    \li \inlineimage qpainter-scale.png {Clock with scale applied}
+    \li \inlineimage qpainter-translation.png {Clock with translation applied}
     \endtable
 
     The most commonly used transformations are scaling, rotation,
@@ -1196,6 +1201,7 @@ void QPainterPrivate::updateState(QPainterState *newState)
     transformation operations and see the results immediately.
 
     \li \inlineimage qpainter-affinetransformations.png
+        {Affine Transformations example with penguin graphic}
     \endtable
 
     All the transformation operations operate on the transformation
@@ -1270,6 +1276,7 @@ void QPainterPrivate::updateState(QPainterState *newState)
     \table 100%
     \row
     \li \inlineimage qpainter-compositiondemo.png
+        {Composition Modes example with blended images}
 
     \li
     \b {Composition Modes Example}
@@ -1299,6 +1306,14 @@ void QPainterPrivate::updateState(QPainterState *newState)
     setCurveThreshold member function which let's the user specify the error tolerance.
     Another workaround is to convert the paths to polygons first and then draw the
     polygons instead.
+
+    Qt likewise approximates arcs and ellipses with cubic Bezier curves instead
+    of evaluating them trigonometrically, so points on an arc are slightly off
+    their true positions. Related to this, the angles that \l{drawArc()},
+    \l{drawPie()}, and \l{drawChord()} take are eccentric angles: they measure
+    the direction from the center of the bounding rectangle only when that
+    rectangle is square. See \l{QPainterPath#Arcs and Ellipses}{Arcs and
+    Ellipses} for details on both.
 
     \section1 Performance
 
@@ -1485,6 +1500,7 @@ QPainter::~QPainter()
         Q_ASSERT(d_ptr->inDestructor);
         d_ptr->inDestructor = false;
         Q_ASSERT(d_ptr->refcount == 1);
+        Q_ASSERT(d_ptr->d_ptrs.empty());
     }
 }
 
@@ -1525,14 +1541,14 @@ void QPainterPrivate::initFrom(const QPaintDevice *device)
 
     Q_Q(QPainter);
     device->initPainter(q);
+}
 
-    if (extended) {
-        extended->penChanged();
-    } else if (engine) {
-        engine->setDirty(QPaintEngine::DirtyPen);
-        engine->setDirty(QPaintEngine::DirtyBrush);
-        engine->setDirty(QPaintEngine::DirtyFont);
-    }
+void QPainterPrivate::setEngineDirtyFlags(QSpan<const QPaintEngine::DirtyFlags> flags)
+{
+    if (!engine)
+        return;
+    for (const QPaintEngine::DirtyFlags f : flags)
+        engine->setDirty(f);
 }
 
 /*!
@@ -1546,7 +1562,7 @@ void QPainterPrivate::initFrom(const QPaintDevice *device)
 void QPainter::save()
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::save()\n");
 #endif
     Q_D(QPainter);
@@ -1580,7 +1596,7 @@ void QPainter::save()
 void QPainter::restore()
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::restore()\n");
 #endif
     Q_D(QPainter);
@@ -1702,7 +1718,7 @@ bool QPainter::begin(QPaintDevice *pd)
         pd = rpd;
 
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::begin(), device=%p, type=%d\n", pd, pd->devType());
 #endif
 
@@ -1799,14 +1815,16 @@ bool QPainter::begin(QPaintDevice *pd)
         d->engine->setActive(begun);
     }
 
-    // Copy painter properties from original paint device,
-    // required for QPixmap::grabWidget()
-    if (d->original_device->devType() == QInternal::Widget) {
+    switch (d->original_device->devType()) {
+    case QInternal::Widget:
         d->initFrom(d->original_device);
-    } else {
+        break;
+
+    default:
         d->state->layoutDirection = Qt::LayoutDirectionAuto;
         // make sure we have a font compatible with the paintdevice
         d->state->deviceFont = d->state->font = QFont(d->state->deviceFont, device());
+        break;
     }
 
     QRect systemRect = d->engine->systemRect();
@@ -1832,6 +1850,15 @@ bool QPainter::begin(QPaintDevice *pd)
 
     d->state->emulationSpecifier = 0;
 
+    switch (d->original_device->devType()) {
+    case QInternal::Widget:
+        // for widgets we've aleady initialized the painter above
+        break;
+    default:
+        d->initFrom(d->original_device);
+        break;
+    }
+
     return true;
 }
 
@@ -1848,7 +1875,7 @@ bool QPainter::begin(QPaintDevice *pd)
 bool QPainter::end()
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::end()\n");
 #endif
     Q_D(QPainter);
@@ -2029,8 +2056,9 @@ qreal QPainter::opacity() const
     be in the range 0.0 to 1.0, where 0.0 is fully transparent and
     1.0 is fully opaque.
 
-    Opacity set on the painter will apply to all drawing operations
-    individually.
+    The opacity set on the painter applies to each drawing operation
+    separately. Filling a shape and drawing its outline are treated
+    as separate drawing operations.
 */
 
 void QPainter::setOpacity(qreal opacity)
@@ -2057,7 +2085,8 @@ void QPainter::setOpacity(qreal opacity)
 
 
 /*!
-    Returns the currently set brush origin.
+    Returns the current brush origin.
+    Prefer using QPainter::brushOriginF() to get the precise origin.
 
     \sa setBrushOrigin(), {QPainter#Settings}{Settings}
 */
@@ -2070,6 +2099,23 @@ QPoint QPainter::brushOrigin() const
         return QPoint();
     }
     return QPointF(d->state->brushOrigin).toPoint();
+}
+
+/*!
+    Returns the current brush origin.
+
+    \sa setBrushOrigin(), {QPainter#Settings}{Settings}
+    \since 6.11
+*/
+
+QPointF QPainter::brushOriginF() const
+{
+    Q_D(const QPainter);
+    if (!d->engine) {
+        qWarning("QPainter::brushOrigin: Painter not active");
+        return QPointF();
+    }
+    return d->state->brushOrigin;
 }
 
 /*!
@@ -2094,7 +2140,7 @@ void QPainter::setBrushOrigin(const QPointF &p)
 {
     Q_D(QPainter);
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setBrushOrigin(), (%.2f,%.2f)\n", p.x(), p.y());
 #endif
 
@@ -2145,8 +2191,12 @@ void QPainter::setBrushOrigin(const QPointF &p)
     hint will effectively disable the RasterOp modes.
 
 
-     \image qpainter-compositionmode1.png
-     \image qpainter-compositionmode2.png
+     \image qpainter-compositionmode1.png {Illustration showing Source,
+            Destination, SourceOver, DestinationOver, SourceIn,
+            DestinationIn composition modes}
+     \image qpainter-compositionmode2.png {Illustration showing SourceOut,
+            DestinationOut, SourceAtop, DestinationAtop, Clear and Xor
+            composition modes}
 
     The most common type is SourceOver (often referred to as just
     alpha blending) where the source pixel is blended on top of the
@@ -2308,6 +2358,8 @@ void QPainter::setBrushOrigin(const QPointF &p)
     where the source is OR'ed with the inverted destination pixels
     (src OR (NOT dst)).
 
+    \omitvalue NCompositionModes
+
     \sa compositionMode(), setCompositionMode(), {QPainter#Composition
     Modes}{Composition Modes}, {Image Composition Example}
 */
@@ -2326,6 +2378,10 @@ void QPainter::setCompositionMode(CompositionMode mode)
     Q_D(QPainter);
     if (!d->engine) {
         qWarning("QPainter::setCompositionMode: Painter not active");
+        return;
+    }
+    if (mode < 0 || mode >= CompositionMode::NCompositionModes) {
+        qWarning("QPainter::setCompositionMode: Invalid mode");
         return;
     }
     if (d->state->composition_mode == mode)
@@ -2420,7 +2476,7 @@ void QPainter::setClipping(bool enable)
 {
     Q_D(QPainter);
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setClipping(), enable=%s, was=%s\n",
                enable ? "on" : "off",
                hasClipping() ? "on" : "off");
@@ -2566,7 +2622,7 @@ QRegion QPainter::clipRegion() const
     return region;
 }
 
-extern QPainterPath qt_regionToPath(const QRegion &region);
+Q_GUI_EXPORT extern QPainterPath qt_regionToPath(const QRegion &region);
 
 /*!
     Returns the current clip path in logical coordinates.
@@ -2799,7 +2855,7 @@ void QPainter::setClipRegion(const QRegion &r, Qt::ClipOperation op)
     Q_D(QPainter);
 #ifdef QT_DEBUG_DRAW
     QRect rect = r.boundingRect();
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setClipRegion(), size=%d, [%d,%d,%d,%d]\n",
            r.rectCount(), rect.x(), rect.y(), rect.width(), rect.height());
 #endif
@@ -2850,7 +2906,7 @@ void QPainter::setWorldMatrixEnabled(bool enable)
 {
     Q_D(QPainter);
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setMatrixEnabled(), enable=%d\n", enable);
 #endif
 
@@ -2893,7 +2949,7 @@ bool QPainter::worldMatrixEnabled() const
 void QPainter::scale(qreal sx, qreal sy)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::scale(), sx=%f, sy=%f\n", sx, sy);
 #endif
     Q_D(QPainter);
@@ -2916,7 +2972,7 @@ void QPainter::scale(qreal sx, qreal sy)
 void QPainter::shear(qreal sh, qreal sv)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::shear(), sh=%f, sv=%f\n", sh, sv);
 #endif
     Q_D(QPainter);
@@ -2941,7 +2997,7 @@ void QPainter::shear(qreal sh, qreal sv)
 void QPainter::rotate(qreal a)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::rotate(), angle=%f\n", a);
 #endif
     Q_D(QPainter);
@@ -2966,7 +3022,7 @@ void QPainter::translate(const QPointF &offset)
     qreal dx = offset.x();
     qreal dy = offset.y();
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::translate(), dx=%f, dy=%f\n", dx, dy);
 #endif
     Q_D(QPainter);
@@ -3009,7 +3065,7 @@ void QPainter::translate(const QPointF &offset)
 void QPainter::setClipPath(const QPainterPath &path, Qt::ClipOperation op)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output) {
+    if constexpr (qt_show_painter_debug_output) {
         QRectF b = path.boundingRect();
         printf("QPainter::setClipPath(), size=%d, op=%d, bounds=[%.2f,%.2f,%.2f,%.2f]\n",
                path.elementCount(), op, b.x(), b.y(), b.width(), b.height());
@@ -3131,7 +3187,7 @@ void QPainter::fillPath(const QPainterPath &path, const QBrush &brush)
 
     \table 100%
     \row
-    \li \inlineimage qpainter-path.png
+    \li \inlineimage qpainter-path.png {Bezier curve path}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 5
     \endtable
@@ -3143,7 +3199,7 @@ void QPainter::drawPath(const QPainterPath &path)
 {
 #ifdef QT_DEBUG_DRAW
     QRectF pathBounds = path.boundingRect();
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPath(), size=%d, [%.2f,%.2f,%.2f,%.2f]\n",
                path.elementCount(),
                pathBounds.x(), pathBounds.y(), pathBounds.width(), pathBounds.height());
@@ -3176,7 +3232,7 @@ void QPainter::drawPath(const QPainterPath &path)
 
     \table 100%
     \row
-    \li \inlineimage qpainter-line.png
+    \li \inlineimage qpainter-line.png {Diagonal line}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 6
     \endtable
@@ -3222,7 +3278,7 @@ void QPainter::drawPath(const QPainterPath &path)
 
     \table 100%
     \row
-    \li \inlineimage qpainter-rectangle.png
+    \li \inlineimage qpainter-rectangle.png {Rectangle outline}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 7
     \endtable
@@ -3258,7 +3314,7 @@ void QPainter::drawPath(const QPainterPath &path)
 void QPainter::drawRects(const QRectF *rects, int rectCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawRects(), count=%d\n", rectCount);
 #endif
     Q_D(QPainter);
@@ -3318,7 +3374,7 @@ void QPainter::drawRects(const QRectF *rects, int rectCount)
 void QPainter::drawRects(const QRect *rects, int rectCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawRects(), count=%d\n", rectCount);
 #endif
     Q_D(QPainter);
@@ -3418,7 +3474,7 @@ void QPainter::drawRects(const QRect *rects, int rectCount)
 void QPainter::drawPoints(const QPointF *points, int pointCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPoints(), count=%d\n", pointCount);
 #endif
     Q_D(QPainter);
@@ -3480,7 +3536,7 @@ void QPainter::drawPoints(const QPointF *points, int pointCount)
 void QPainter::drawPoints(const QPoint *points, int pointCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPoints(), count=%d\n", pointCount);
 #endif
     Q_D(QPainter);
@@ -3565,7 +3621,7 @@ void QPainter::drawPoints(const QPoint *points, int pointCount)
 void QPainter::setBackgroundMode(Qt::BGMode mode)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setBackgroundMode(), mode=%d\n", mode);
 #endif
 
@@ -3611,7 +3667,7 @@ Qt::BGMode QPainter::backgroundMode() const
 void QPainter::setPen(const QColor &color)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setPen(), color=%04x\n", color.rgb());
 #endif
     Q_D(QPainter);
@@ -3620,12 +3676,11 @@ void QPainter::setPen(const QColor &color)
         return;
     }
 
-    QPen pen(color.isValid() ? color : QColor(Qt::black));
-
-    if (d->state->pen == pen)
+    const QColor actualColor = color.isValid() ? color : QColor(Qt::black);
+    if (d->state->pen == actualColor)
         return;
 
-    d->state->pen = pen;
+    d->state->pen = actualColor;
     if (d->extended)
         d->extended->penChanged();
     else
@@ -3633,6 +3688,8 @@ void QPainter::setPen(const QColor &color)
 }
 
 /*!
+    \fn void QPainter::setPen(const QPen &pen)
+
     Sets the painter's pen to be the given \a pen.
 
     The \a pen defines how to draw lines and outlines, and it also
@@ -3641,11 +3698,17 @@ void QPainter::setPen(const QColor &color)
     \sa pen(), {QPainter#Settings}{Settings}
 */
 
-void QPainter::setPen(const QPen &pen)
+/*!
+    \fn void QPainter::setPen(QPen &&pen)
+    \since 6.11
+    \overload
+*/
+
+void QPainter::doSetPen(const QPen &pen, QPen *rvalue)
 {
 
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setPen(), color=%04x, (brushStyle=%d) style=%d, cap=%d, join=%d\n",
            pen.color().rgb(), pen.brush().style(), pen.style(), pen.capStyle(), pen.joinStyle());
 #endif
@@ -3658,7 +3721,7 @@ void QPainter::setPen(const QPen &pen)
     if (d->state->pen == pen)
         return;
 
-    d->state->pen = pen;
+    q_choose_assign(d->state->pen, pen, rvalue);
 
     if (d->extended) {
         d->checkEmulation();
@@ -3684,12 +3747,10 @@ void QPainter::setPen(Qt::PenStyle style)
         return;
     }
 
-    QPen pen = QPen(style);
-
-    if (d->state->pen == pen)
+    if (d->state->pen == style)
         return;
 
-    d->state->pen = pen;
+    d->state->pen = style;
 
     if (d->extended)
         d->extended->penChanged();
@@ -3716,6 +3777,8 @@ const QPen &QPainter::pen() const
 
 
 /*!
+    \fn void QPainter::setBrush(const QBrush &brush)
+
     Sets the painter's brush to the given \a brush.
 
     The painter's brush defines how shapes are filled.
@@ -3723,10 +3786,16 @@ const QPen &QPainter::pen() const
     \sa brush(), {QPainter#Settings}{Settings}
 */
 
-void QPainter::setBrush(const QBrush &brush)
+/*!
+    \fn void QPainter::setBrush(QBrush &&brush)
+    \since 6.11
+    \overload
+*/
+
+void QPainter::doSetBrush(const QBrush &brush, QBrush *rvalue)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setBrush(), color=%04x, style=%d\n", brush.color().rgb(), brush.style());
 #endif
     Q_D(QPainter);
@@ -3739,13 +3808,13 @@ void QPainter::setBrush(const QBrush &brush)
         return;
 
     if (d->extended) {
-        d->state->brush = brush;
+        q_choose_assign(d->state->brush, brush, rvalue);
         d->checkEmulation();
         d->extended->brushChanged();
         return;
     }
 
-    d->state->brush = brush;
+    q_choose_assign(d->state->brush, brush, rvalue);
     d->state->dirtyFlags |= QPaintEngine::DirtyBrush;
 }
 
@@ -3764,9 +3833,7 @@ void QPainter::setBrush(Qt::BrushStyle style)
         qWarning("QPainter::setBrush: Painter not active");
         return;
     }
-    if (d->state->brush.style() == style &&
-        (style == Qt::NoBrush
-         || (style == Qt::SolidPattern && d->state->brush.color() == QColor(0, 0, 0))))
+    if (d->state->brush == style)
         return;
     d->state->brush = QBrush(Qt::black, style);
     if (d->extended)
@@ -3774,6 +3841,42 @@ void QPainter::setBrush(Qt::BrushStyle style)
     else
         d->state->dirtyFlags |= QPaintEngine::DirtyBrush;
 }
+
+/*!
+    \overload
+    \since 6.9
+
+    Sets the painter's brush to a solid brush with the specified
+    \a color.
+*/
+
+void QPainter::setBrush(QColor color)
+{
+    Q_D(QPainter);
+    if (!d->engine) {
+        qWarning("QPainter::setBrush: Painter not active");
+        return;
+    }
+
+    const QColor actualColor = color.isValid() ? color : QColor(Qt::black);
+    if (d->state->brush == actualColor)
+        return;
+    d->state->brush = actualColor;
+    if (d->extended)
+        d->extended->brushChanged();
+    else
+        d->state->dirtyFlags |= QPaintEngine::DirtyBrush;
+}
+
+/*!
+    \fn void QPainter::setBrush(Qt::GlobalColor color)
+    \overload
+    \since 6.9
+
+    Sets the painter's brush to a solid brush with the specified
+    \a color.
+*/
+
 
 /*!
     Returns the painter's current brush.
@@ -3807,7 +3910,7 @@ const QBrush &QPainter::brush() const
 void QPainter::setBackground(const QBrush &bg)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setBackground(), color=%04x, style=%d\n", bg.color().rgb(), bg.style());
 #endif
 
@@ -3839,8 +3942,8 @@ void QPainter::setFont(const QFont &font)
     Q_D(QPainter);
 
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
-        printf("QPainter::setFont(), family=%s, pointSize=%d\n", font.families().first().toLatin1().constData(), font.pointSize());
+    if constexpr (qt_show_painter_debug_output)
+        printf("QPainter::setFont(), family=%s, pointSize=%d\n", font.family().toLatin1().constData(), font.pointSize());
 #endif
 
     if (!d->engine) {
@@ -3885,7 +3988,7 @@ const QFont &QPainter::font() const
 
     \table 100%
     \row
-    \li \inlineimage qpainter-roundrect.png
+    \li \inlineimage qpainter-roundrect.png {Rounded rectangle outline}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 8
     \endtable
@@ -3895,7 +3998,7 @@ const QFont &QPainter::font() const
 void QPainter::drawRoundedRect(const QRectF &rect, qreal xRadius, qreal yRadius, Qt::SizeMode mode)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawRoundedRect(), [%.2f,%.2f,%.2f,%.2f]\n", rect.x(), rect.y(), rect.width(), rect.height());
 #endif
     Q_D(QPainter);
@@ -3949,7 +4052,7 @@ void QPainter::drawRoundedRect(const QRectF &rect, qreal xRadius, qreal yRadius,
 
     \table 100%
     \row
-    \li \inlineimage qpainter-ellipse.png
+    \li \inlineimage qpainter-ellipse.png {Ellipse outline}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 9
     \endtable
@@ -3959,7 +4062,7 @@ void QPainter::drawRoundedRect(const QRectF &rect, qreal xRadius, qreal yRadius,
 void QPainter::drawEllipse(const QRectF &r)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawEllipse(), [%.2f,%.2f,%.2f,%.2f]\n", r.x(), r.y(), r.width(), r.height());
 #endif
     Q_D(QPainter);
@@ -4002,7 +4105,7 @@ void QPainter::drawEllipse(const QRectF &r)
 void QPainter::drawEllipse(const QRect &r)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawEllipse(), [%d,%d,%d,%d]\n", r.x(), r.y(), r.width(), r.height());
 #endif
     Q_D(QPainter);
@@ -4075,11 +4178,14 @@ void QPainter::drawEllipse(const QRect &r)
     a degree, i.e. a full circle equals 5760 (16 * 360). Positive
     values for the angles mean counter-clockwise while negative values
     mean the clockwise direction. Zero degrees is at the 3 o'clock
-    position.
+    position. If \a rectangle is not square, the angles are eccentric
+    angles and do not measure the direction from the center of the
+    rectangle, as described in \l{QPainterPath#Arcs and Ellipses}{Arcs
+    and Ellipses}.
 
     \table 100%
     \row
-    \li \inlineimage qpainter-arc.png
+    \li \inlineimage qpainter-arc.png {Arc curve}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 10
     \endtable
@@ -4090,7 +4196,7 @@ void QPainter::drawEllipse(const QRect &r)
 void QPainter::drawArc(const QRectF &r, int a, int alen)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawArc(), [%.2f,%.2f,%.2f,%.2f], angle=%d, sweep=%d\n",
            r.x(), r.y(), r.width(), r.height(), a/16, alen/16);
 #endif
@@ -4140,11 +4246,14 @@ void QPainter::drawArc(const QRectF &r, int a, int alen)
     degree, i.e. a full circle equals 5760 (16 * 360). Positive values
     for the angles mean counter-clockwise while negative values mean
     the clockwise direction. Zero degrees is at the 3 o'clock
-    position.
+    position. If \a rectangle is not square, the angles are eccentric
+    angles and do not measure the direction from the center of the
+    rectangle, as described in \l{QPainterPath#Arcs and Ellipses}{Arcs
+    and Ellipses}.
 
     \table 100%
     \row
-    \li \inlineimage qpainter-pie.png
+    \li \inlineimage qpainter-pie.png {Pie slice shape}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 11
     \endtable
@@ -4154,7 +4263,7 @@ void QPainter::drawArc(const QRectF &r, int a, int alen)
 void QPainter::drawPie(const QRectF &r, int a, int alen)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPie(), [%.2f,%.2f,%.2f,%.2f], angle=%d, sweep=%d\n",
            r.x(), r.y(), r.width(), r.height(), a/16, alen/16);
 #endif
@@ -4211,11 +4320,14 @@ void QPainter::drawPie(const QRectF &r, int a, int alen)
     degree, i.e. a full circle equals 5760 (16 * 360). Positive values
     for the angles mean counter-clockwise while negative values mean
     the clockwise direction. Zero degrees is at the 3 o'clock
-    position.
+    position. If \a rectangle is not square, the angles are eccentric
+    angles and do not measure the direction from the center of the
+    rectangle, as described in \l{QPainterPath#Arcs and Ellipses}{Arcs
+    and Ellipses}.
 
     \table 100%
     \row
-    \li \inlineimage qpainter-chord.png
+    \li \inlineimage qpainter-chord.png {Chord shape}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 12
     \endtable
@@ -4225,7 +4337,7 @@ void QPainter::drawPie(const QRectF &r, int a, int alen)
 void QPainter::drawChord(const QRectF &r, int a, int alen)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawChord(), [%.2f,%.2f,%.2f,%.2f], angle=%d, sweep=%d\n",
            r.x(), r.y(), r.width(), r.height(), a/16, alen/16);
 #endif
@@ -4274,7 +4386,7 @@ void QPainter::drawChord(const QRectF &r, int a, int alen)
 void QPainter::drawLines(const QLineF *lines, int lineCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawLines(), line count=%d\n", lineCount);
 #endif
 
@@ -4323,7 +4435,7 @@ void QPainter::drawLines(const QLineF *lines, int lineCount)
 void QPainter::drawLines(const QLine *lines, int lineCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawLine(), line count=%d\n", lineCount);
 #endif
 
@@ -4442,7 +4554,7 @@ void QPainter::drawLines(const QPoint *pointPairs, int lineCount)
 void QPainter::drawPolyline(const QPointF *points, int pointCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPolyline(), count=%d\n", pointCount);
 #endif
     Q_D(QPainter);
@@ -4483,7 +4595,7 @@ void QPainter::drawPolyline(const QPointF *points, int pointCount)
 void QPainter::drawPolyline(const QPoint *points, int pointCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPolyline(), count=%d\n", pointCount);
 #endif
     Q_D(QPainter);
@@ -4539,7 +4651,7 @@ void QPainter::drawPolyline(const QPoint *points, int pointCount)
 
     \table 100%
     \row
-    \li \inlineimage qpainter-polygon.png
+    \li \inlineimage qpainter-polygon.png {Four-sided polygon}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 14
     \endtable
@@ -4558,7 +4670,7 @@ void QPainter::drawPolyline(const QPoint *points, int pointCount)
 void QPainter::drawPolygon(const QPointF *points, int pointCount, Qt::FillRule fillRule)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPolygon(), count=%d\n", pointCount);
 #endif
 
@@ -4597,7 +4709,7 @@ void QPainter::drawPolygon(const QPointF *points, int pointCount, Qt::FillRule f
 void QPainter::drawPolygon(const QPoint *points, int pointCount, Qt::FillRule fillRule)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPolygon(), count=%d\n", pointCount);
 #endif
 
@@ -4652,7 +4764,7 @@ void QPainter::drawPolygon(const QPoint *points, int pointCount, Qt::FillRule fi
 
     \table 100%
     \row
-    \li \inlineimage qpainter-polygon.png
+    \li \inlineimage qpainter-polygon.png {Four-sided polygon}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 15
     \endtable
@@ -4696,7 +4808,7 @@ void QPainter::drawPolygon(const QPoint *points, int pointCount, Qt::FillRule fi
 void QPainter::drawConvexPolygon(const QPoint *points, int pointCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawConvexPolygon(), count=%d\n", pointCount);
 #endif
 
@@ -4730,7 +4842,7 @@ void QPainter::drawConvexPolygon(const QPoint *points, int pointCount)
 void QPainter::drawConvexPolygon(const QPointF *points, int pointCount)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawConvexPolygon(), count=%d\n", pointCount);
 #endif
 
@@ -4794,7 +4906,7 @@ static inline QPointF roundInDeviceCoordinates(const QPointF &p, const QTransfor
 void QPainter::drawPixmap(const QPointF &p, const QPixmap &pm)
 {
 #if defined QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPixmap(), p=[%.2f,%.2f], pix=[%d,%d]\n",
                p.x(), p.y(),
                pm.width(), pm.height());
@@ -4866,7 +4978,7 @@ void QPainter::drawPixmap(const QPointF &p, const QPixmap &pm)
 void QPainter::drawPixmap(const QRectF &r, const QPixmap &pm, const QRectF &sr)
 {
 #if defined QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawPixmap(), target=[%.2f,%.2f,%.2f,%.2f], pix=[%d,%d], source=[%.2f,%.2f,%.2f,%.2f]\n",
                r.x(), r.y(), r.width(), r.height(),
                pm.width(), pm.height(),
@@ -5586,7 +5698,7 @@ void QPainter::drawStaticText(const QPointF &topLeftPosition, const QStaticText 
 void QPainter::drawText(const QPointF &p, const QString &str, int tf, int justificationPadding)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawText(), pos=[%.2f,%.2f], str='%s'\n", p.x(), p.y(), str.toLatin1().constData());
 #endif
 
@@ -5595,7 +5707,7 @@ void QPainter::drawText(const QPointF &p, const QString &str, int tf, int justif
     if (!d->engine || str.isEmpty() || pen().style() == Qt::NoPen)
         return;
 
-    QStackTextEngine engine(str, d->state->font);
+    Q_DECL_UNINITIALIZED QStackTextEngine engine(str, d->state->font);
     engine.option.setTextDirection(d->state->layoutDirection);
     if (tf & (Qt::TextForceLeftToRight|Qt::TextForceRightToLeft)) {
         engine.ignoreBidi = true;
@@ -5651,7 +5763,7 @@ void QPainter::drawText(const QPointF &p, const QString &str, int tf, int justif
 void QPainter::drawText(const QRect &r, int flags, const QString &str, QRect *br)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawText(), r=[%d,%d,%d,%d], flags=%d, str='%s'\n",
            r.x(), r.y(), r.width(), r.height(), flags, str.toLatin1().constData());
 #endif
@@ -5694,7 +5806,7 @@ void QPainter::drawText(const QRect &r, int flags, const QString &str, QRect *br
 
     \table 100%
     \row
-    \li \inlineimage qpainter-text.png
+    \li \inlineimage qpainter-text.png {Text showing Qt Project}
     \li
     \snippet code/src_gui_painting_qpainter.cpp 17
     \endtable
@@ -5706,7 +5818,7 @@ void QPainter::drawText(const QRect &r, int flags, const QString &str, QRect *br
 
     \table 100%
     \row
-    \li \inlineimage qpainter-text-bounds.png
+    \li \inlineimage qpainter-text-bounds.png {Text with bounding rectangles}
     \li \snippet code/src_gui_painting_qpainter.cpp drawText
     \endtable
 
@@ -5738,7 +5850,7 @@ void QPainter::drawText(const QRect &r, int flags, const QString &str, QRect *br
 void QPainter::drawText(const QRectF &r, int flags, const QString &str, QRectF *br)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawText(), r=[%.2f,%.2f,%.2f,%.2f], flags=%d, str='%s'\n",
            r.x(), r.y(), r.width(), r.height(), flags, str.toLatin1().constData());
 #endif
@@ -5768,7 +5880,7 @@ void QPainter::drawText(const QRectF &r, int flags, const QString &str, QRectF *
 
     \table 100%
     \row
-    \li \inlineimage qpainter-text-bounds.png
+    \li \inlineimage qpainter-text-bounds.png {Text with bounding rectangles}
     \li \snippet code/src_gui_painting_qpainter.cpp drawText
     \endtable
 
@@ -5811,7 +5923,7 @@ void QPainter::drawText(const QRectF &r, int flags, const QString &str, QRectF *
 
     \table 100%
     \row
-    \li \inlineimage qpainter-text-bounds.png
+    \li \inlineimage qpainter-text-bounds.png {Text with bounding rectangles}
     \li \snippet code/src_gui_painting_qpainter.cpp drawText
     \endtable
 
@@ -5857,7 +5969,7 @@ void QPainter::drawText(const QRectF &r, int flags, const QString &str, QRectF *
 void QPainter::drawText(const QRectF &r, const QString &text, const QTextOption &o)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawText(), r=[%.2f,%.2f,%.2f,%.2f], str='%s'\n",
            r.x(), r.y(), r.width(), r.height(), text.toLatin1().constData());
 #endif
@@ -6006,11 +6118,16 @@ static void drawTextItemDecoration(QPainter *painter, const QPointF &pos, const 
         painter->fillRect(pos.x(), 0, qCeil(width), qMin(wave.height(), descent), wave);
         painter->restore();
     } else if (underlineStyle != QTextCharFormat::NoUnderline) {
+        const bool isAntialiasing = painter->renderHints().testFlag(QPainter::Antialiasing);
+        if (!isAntialiasing)
+            pen.setWidthF(qMax(fe->lineThickness().round(), QFixed(1)).toReal());
+        const qreal lineThicknessOffset = pen.widthF() / 2.0;
+
         // Deliberately ceil the offset to avoid the underline coming too close to
         // the text above it, but limit it to stay within descent.
-        qreal adjustedUnderlineOffset = std::ceil(underlineOffset) + 0.5;
+        qreal adjustedUnderlineOffset = std::ceil(underlineOffset) + lineThicknessOffset;
         if (underlineOffset <= fe->descent().toReal())
-            adjustedUnderlineOffset = qMin(adjustedUnderlineOffset, fe->descent().toReal() - qreal(0.5));
+            adjustedUnderlineOffset = qMin(adjustedUnderlineOffset, fe->descent().toReal() - lineThicknessOffset);
         const qreal underlinePos = pos.y() + adjustedUnderlineOffset;
         QColor uc = charFormat.underlineColor();
         if (uc.isValid())
@@ -6023,6 +6140,9 @@ static void drawTextItemDecoration(QPainter *painter, const QPointF &pos, const 
             textEngine->addUnderline(painter, underline);
         else
             painter->drawLine(underline);
+
+        if (!isAntialiasing)
+            pen.setWidthF(fe->lineThickness().toReal());
     }
 
     pen.setStyle(Qt::SolidLine);
@@ -6108,7 +6228,7 @@ void QPainter::drawTextItem(const QPointF &p, const QTextItem &ti)
 void QPainterPrivate::drawTextItem(const QPointF &p, const QTextItem &_ti, QTextEngine *textEngine)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawTextItem(), pos=[%.f,%.f], str='%s'\n",
                p.x(), p.y(), qPrintable(_ti.text()));
 #endif
@@ -6381,15 +6501,16 @@ QRectF QPainter::boundingRect(const QRectF &r, const QString &text, const QTextO
     and height (on both 1x and 2x displays), and produces high-resolution
     output on 2x displays.
 
-    The \a position offset is always in the painter coordinate system,
-    indepentent of display devicePixelRatio.
+    The \a position offset is provided in the device independent pixels
+    relative to the top-left corner of the \a rectangle. The \a position
+    can be used to align the repeating pattern inside the \a rectangle.
 
     \sa drawPixmap()
 */
 void QPainter::drawTiledPixmap(const QRectF &r, const QPixmap &pixmap, const QPointF &sp)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::drawTiledPixmap(), target=[%.2f,%.2f,%.2f,%.2f], pix=[%d,%d], offset=[%.2f,%.2f]\n",
                r.x(), r.y(), r.width(), r.height(),
                pixmap.width(), pixmap.height(),
@@ -6404,8 +6525,8 @@ void QPainter::drawTiledPixmap(const QRectF &r, const QPixmap &pixmap, const QPo
     qt_painter_thread_test(d->device->devType(), d->engine->type(), "drawTiledPixmap()");
 #endif
 
-    qreal sw = pixmap.width();
-    qreal sh = pixmap.height();
+    const qreal sw = pixmap.width() / pixmap.devicePixelRatio();
+    const qreal sh = pixmap.height() / pixmap.devicePixelRatio();
     qreal sx = sp.x();
     qreal sy = sp.y();
     if (sx < 0)
@@ -6486,8 +6607,12 @@ void QPainter::drawTiledPixmap(const QRectF &r, const QPixmap &pixmap, const QPo
 
     (\a{x}, \a{y}) specifies the top-left point in the paint device
     that is to be drawn onto; with the given \a width and \a
-    height. (\a{sx}, \a{sy}) specifies the top-left point in the \a
-    pixmap that is to be drawn; this defaults to (0, 0).
+    height.
+
+    (\a{sx}, \a{sy}) specifies the origin inside the specified rectangle
+    where the pixmap will be drawn. The origin position is specified in
+    the device independent pixels relative to (\a{x}, \a{y}). This defaults
+    to (0, 0).
 */
 
 #ifndef QT_NO_PICTURE
@@ -6840,7 +6965,7 @@ void QPainter::fillRect(const QRectF &r, const QColor &color)
 void QPainter::setRenderHint(RenderHint hint, bool on)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setRenderHint: hint=%x, %s\n", hint, on ? "on" : "off");
 #endif
 
@@ -6953,7 +7078,7 @@ bool QPainter::viewTransformEnabled() const
 void QPainter::setWindow(const QRect &r)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setWindow(), [%d,%d,%d,%d]\n", r.x(), r.y(), r.width(), r.height());
 #endif
 
@@ -7017,7 +7142,7 @@ QRect QPainter::window() const
 void QPainter::setViewport(const QRect &r)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setViewport(), [%d,%d,%d,%d]\n", r.x(), r.y(), r.width(), r.height());
 #endif
 
@@ -7064,7 +7189,7 @@ QRect QPainter::viewport() const
 void QPainter::setViewTransformEnabled(bool enable)
 {
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::setViewTransformEnabled(), enable=%d\n", enable);
 #endif
 
@@ -7082,25 +7207,21 @@ void QPainter::setViewTransformEnabled(bool enable)
     d->updateMatrix();
 }
 
-void qt_format_text(const QFont &fnt, const QRectF &_r,
-                    int tf, const QString& str, QRectF *brect,
-                    int tabstops, int *ta, int tabarraylen,
+void qt_format_text(const QFont &fnt,
+                    const QRectF &_r,
+                    int tf,
+                    int alignment,
+                    const QTextOption *option,
+                    const QString& str,
+                    QRectF *brect,
+                    int tabstops,
+                    int *ta,
+                    int tabarraylen,
                     QPainter *painter)
 {
-    qt_format_text(fnt, _r,
-                    tf, nullptr, str, brect,
-                    tabstops, ta, tabarraylen,
-                    painter);
-}
-void qt_format_text(const QFont &fnt, const QRectF &_r,
-                    int tf, const QTextOption *option, const QString& str, QRectF *brect,
-                    int tabstops, int *ta, int tabarraylen,
-                    QPainter *painter)
-{
-
     Q_ASSERT( !((tf & ~Qt::TextDontPrint)!=0 && option!=nullptr) ); // we either have an option or flags
 
-    if (_r.isEmpty()) {
+    if (_r.isEmpty() && !(tf & Qt::TextDontClip)) {
         if (!brect)
             return;
         else
@@ -7108,7 +7229,7 @@ void qt_format_text(const QFont &fnt, const QRectF &_r,
     }
 
     if (option) {
-        tf |= option->alignment();
+        alignment |= option->alignment();
         if (option->wrapMode() != QTextOption::NoWrap)
             tf |= Qt::TextWordWrap;
 
@@ -7140,12 +7261,12 @@ void qt_format_text(const QFont &fnt, const QRectF &_r,
     else
         layout_direction = Qt::LeftToRight;
 
-    tf = QGuiApplicationPrivate::visualAlignment(layout_direction, QFlag(tf));
+    alignment = QGuiApplicationPrivate::visualAlignment(layout_direction, QFlag(alignment));
 
     bool isRightToLeft = layout_direction == Qt::RightToLeft;
     bool expandtabs = ((tf & Qt::TextExpandTabs) &&
-                        (((tf & Qt::AlignLeft) && !isRightToLeft) ||
-                          ((tf & Qt::AlignRight) && isRightToLeft)));
+                        (((alignment & Qt::AlignLeft) && !isRightToLeft) ||
+                          ((alignment & Qt::AlignRight) && isRightToLeft)));
 
     if (!painter)
         tf |= Qt::TextDontPrint;
@@ -7202,7 +7323,7 @@ start_lengthVariant:
                     range.format.setFontUnderline(true);
                     underlineFormats.append(range);
                 }
-#ifdef Q_OS_MAC
+#ifdef Q_OS_APPLE
             } else if (hidemnmemonic && *cin == u'(' && l >= 4 &&
                        cin[1] == u'&' && cin[2] != u'&' &&
                        cin[3] == u')') {
@@ -7214,7 +7335,7 @@ start_lengthVariant:
                 length -= n + 4;
                 l -= 4;
                 continue;
-#endif //Q_OS_MAC
+#endif //Q_OS_APPLE
             }
             *cout = *cin;
             ++cout;
@@ -7227,7 +7348,7 @@ start_lengthVariant:
     qreal width = 0;
 
     QString finalText = text.mid(old_offset, length);
-    QStackTextEngine engine(finalText, fnt);
+    Q_DECL_UNINITIALIZED QStackTextEngine engine(finalText, fnt);
     if (option) {
         engine.option = *option;
     }
@@ -7244,7 +7365,7 @@ start_lengthVariant:
     }
 
     engine.option.setTextDirection(layout_direction);
-    if (tf & Qt::AlignJustify)
+    if (alignment & Qt::AlignJustify)
         engine.option.setAlignment(Qt::AlignJustify);
     else
         engine.option.setAlignment(Qt::AlignLeft); // do not do alignment twice
@@ -7283,6 +7404,10 @@ start_lengthVariant:
 
             // Make sure lines are positioned on whole pixels
             height = qCeil(height);
+
+            if (alignment & Qt::AlignBaseline && l.lineNumber() == 0)
+                height -= l.ascent();
+
             l.setPosition(QPointF(0., height));
             height += textLayout.engine()->lines[l.lineNumber()].height().toReal();
             width = qMax(width, l.naturalTextWidth());
@@ -7294,14 +7419,14 @@ start_lengthVariant:
 
     qreal yoff = 0;
     qreal xoff = 0;
-    if (tf & Qt::AlignBottom)
+    if (alignment & Qt::AlignBottom)
         yoff = r.height() - height;
-    else if (tf & Qt::AlignVCenter)
+    else if (alignment & Qt::AlignVCenter)
         yoff = (r.height() - height)/2;
 
-    if (tf & Qt::AlignRight)
+    if (alignment & Qt::AlignRight)
         xoff = r.width() - width;
-    else if (tf & Qt::AlignHCenter)
+    else if (alignment & Qt::AlignHCenter)
         xoff = (r.width() - width)/2;
 
     QRectF bounds = QRectF(r.x() + xoff, r.y() + yoff, width, height);
@@ -7328,12 +7453,12 @@ start_lengthVariant:
 
             qreal advance = line.horizontalAdvance();
             xoff = 0;
-            if (tf & Qt::AlignRight) {
+            if (alignment & Qt::AlignRight) {
                 xoff = r.width() - advance -
                     eng->leadingSpaceWidth(eng->lines[line.lineNumber()]).toReal();
-            }
-            else if (tf & Qt::AlignHCenter)
+            } else if (alignment & Qt::AlignHCenter) {
                 xoff = (r.width() - advance) / 2;
+            }
 
             line.draw(painter, QPointF(r.x() + xoff, r.y() + yoff));
             eng->drawDecorations(painter);
@@ -7343,6 +7468,48 @@ start_lengthVariant:
             painter->restore();
         }
     }
+}
+
+void qt_format_text(const QFont &fnt, const QRectF &_r,
+                    int tf, const QString& str, QRectF *brect,
+                    int tabstops, int *ta, int tabarraylen,
+                    QPainter *painter)
+{
+    qt_format_text(fnt,
+                   _r,
+                   tf,
+                   tf & ~Qt::AlignBaseline, // Qt::AlignBaseline conflicts with Qt::TextSingleLine
+                   nullptr,
+                   str,
+                   brect,
+                   tabstops,
+                   ta,
+                   tabarraylen,
+                   painter);
+}
+
+void qt_format_text(const QFont &fnt,
+                    const QRectF &_r,
+                    int tf,
+                    const QTextOption *option,
+                    const QString& str,
+                    QRectF *brect,
+                    int tabstops,
+                    int *ta,
+                    int tabarraylen,
+                    QPainter *painter)
+{
+    qt_format_text(fnt,
+                   _r,
+                   tf,
+                   tf & ~Qt::AlignBaseline, // Qt::AlignBaseline conflicts with Qt::TextSingleLine
+                   option,
+                   str,
+                   brect,
+                   tabstops,
+                   ta,
+                   tabarraylen,
+                   painter);
 }
 
 /*!
@@ -7916,7 +8083,7 @@ void QPainter::resetTransform()
 {
      Q_D(QPainter);
 #ifdef QT_DEBUG_DRAW
-    if (qt_show_painter_debug_output)
+    if constexpr (qt_show_painter_debug_output)
         printf("QPainter::resetMatrix()\n");
 #endif
     if (!d->engine) {

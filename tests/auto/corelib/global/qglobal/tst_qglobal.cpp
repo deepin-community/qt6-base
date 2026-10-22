@@ -9,8 +9,10 @@
 #include <QPair>
 #include <QSysInfo>
 #include <QLatin1String>
+#include <QtCore/qscopeguard.h>
 #include <QString>
 #include <QtVersion>
+#include <QtCore/qttypetraits.h>
 
 #include <cmath>
 #include <limits>
@@ -22,6 +24,8 @@
 static_assert(std::is_signed_v<qint128>);
 static_assert(std::is_integral_v<qint128>);
 static_assert(std::is_integral_v<quint128>);
+static_assert(QtPrivate::is_standard_or_extended_integer_type_v<qint128>);
+static_assert(QtPrivate::is_standard_or_extended_integer_type_v<quint128>);
 static_assert(std::numeric_limits<qint128>::is_signed);
 static_assert(std::numeric_limits<qint128>::is_specialized);
 static_assert(std::numeric_limits<quint128>::is_specialized);
@@ -43,9 +47,9 @@ QT_BEGIN_NAMESPACE
 #define MAKE_CLASS(C) \
     struct C \
     { \
-        std::string s; \
-        explicit C(std::string s = {}) : s{std::move(s)} {} \
-        void swap(C &other) noexcept { std::swap(s, other.s); } \
+        QString s; \
+        explicit C(QString s = {}) : s{std::move(s)} {} \
+        void swap(C &other) noexcept { qSwap(s, other.s); } \
     } \
     /* end */
 
@@ -85,10 +89,13 @@ class tst_QGlobal: public QObject
     Q_OBJECT
 
 private slots:
+    void accessibleStateBC();
     void cMode();
+    void warnings() { extern void warnings_linker_hook(); warnings_linker_hook(); }
     void qIsNull();
     void for_each();
     void qassert();
+    void qpresume();
     void qtry();
     void checkptr();
     void qstaticassert();
@@ -110,6 +117,8 @@ private slots:
     void testqToUnderlying();
     void nodiscard();
     void tagStructDefinitions();
+    void CXX20_constexpr_dtor();
+    void declFunctionMacros();
 };
 
 extern "C" {        // functions in qglobal.c
@@ -122,6 +131,111 @@ qint128 tst_qint128_max();
 quint128 tst_quint128_max();
 #endif
 
+}
+
+void tst_QGlobal::accessibleStateBC()
+{
+    // Check BC of QAccessible::State from 6.10 → 6.11
+
+    // We do the check here because it is of general interest.
+
+    #define MAKE_STATE(State, ...) \
+        struct State { \
+            State() { std::memset(this, 0, sizeof(*this)); } \
+            \
+            quint64 e01 : 1; \
+            quint64 e02 : 1; \
+            quint64 e03 : 1; \
+            quint64 e04 : 1; \
+            quint64 e05 : 1; \
+            quint64 e06 : 1; \
+            quint64 e07 : 1; \
+            quint64 e08 : 1; \
+            quint64 e09 : 1; \
+            quint64 e10 : 1; \
+            quint64 e11 : 1; \
+            quint64 e12 : 1; \
+            quint64 e13 : 1; \
+            quint64 e14 : 1; \
+            quint64 e15 : 1; \
+            quint64 e16 : 1; \
+            quint64 e17 : 1; \
+            quint64 e18 : 1; \
+            quint64 e19 : 1; \
+            quint64 e20 : 1; \
+            quint64 e21 : 1; \
+            quint64 e22 : 1; \
+            quint64 e23 : 1; \
+            quint64 e24 : 1; \
+            quint64 e25 : 1; \
+            quint64 e26 : 1; \
+            quint64 e27 : 1; \
+            quint64 e28 : 1; \
+            quint64 e29 : 1; \
+            quint64 e30 : 1; \
+            quint64 e31 : 1; \
+            quint64 e32 : 1; \
+            quint64 e33 : 1; \
+            quint64 e34 : 1; \
+            quint64 e35 : 1; \
+            quint64 e36 : 1; \
+            quint64 e37 : 1; \
+            \
+            __VA_ARGS__ \
+        } \
+        /* end */
+
+    //
+    // GIVEN: The QAcessible::State of Qt 6.10:
+    //        only 37 allocated elements, compiler-allocated padding:
+    //
+
+    MAKE_STATE(StateQt6_10, /* no reserved fields */);
+#if !defined(Q_OS_VXWORKS) // ¯\_(ツ)_/¯
+    static_assert(!std::has_unique_object_representations_v<StateQt6_10>); // why we wanna change
+#endif
+
+    //
+    // WHEN: making the paddding explicit so we can use memcmp() to implement op==:
+    //
+    MAKE_STATE(StateQt6_11, Q_DECL_UNUSED_MEMBER quint64 qt_reserved : 27;);
+    static_assert(std::has_unique_object_representations_v<StateQt6_11>); // precondition
+    #undef MAKE_STATE
+
+    //
+    // THEN: size of object and location of the data members doesn't change:
+    //
+
+    static_assert(sizeof(StateQt6_10) == sizeof(StateQt6_11));
+
+    #define CHECK(nn) \
+        { \
+            StateQt6_10 oldS; \
+            StateQt6_11 newS; \
+        \
+            oldS.e ## nn = true; \
+            newS.e ## nn = true; \
+        \
+            auto printOnFailure = qScopeGuard([&] { \
+                    qDebug() << reinterpret_cast<quint64&>(oldS) << "vs" \
+                             << reinterpret_cast<quint64&>(newS); \
+                }); \
+            QVERIFY2(std::memcmp(&oldS, &newS, sizeof oldS) == 0, \
+                     "Failed for e" #nn); \
+            printOnFailure.dismiss(); \
+        } \
+        /* end */
+
+    CHECK(01); // first element
+    CHECK(05); // compilers may not support 64-bit bit-fields:
+    CHECK(06); //  check both sides of border of 32-bit range (counting from old back)
+    CHECK(07); // first byte boundary
+    CHECK(08); //  ditto
+    CHECK(32); // 32-bit-boundary
+    CHECK(33); //  (counting from front)
+    CHECK(37); // last allocated element
+
+    #undef CHECK
 }
 
 void tst_QGlobal::cMode()
@@ -260,6 +374,18 @@ void tst_QGlobal::qassert()
     else
         passed = true;
     QVERIFY(passed);
+}
+
+/*non-static*/ Q_NEVER_INLINE char presumedValue(const char *str)
+{
+    Q_PRESUME(str);
+    // an optimizing compiler should delete the str? check
+    return str ? str[0] : '\0';
+}
+
+void tst_QGlobal::qpresume()
+{
+    QCOMPARE(presumedValue("Hello World"), 'H');
 }
 
 void tst_QGlobal::qtry()
@@ -447,7 +573,7 @@ Q_COREAPP_STARTUP_FUNCTION(myStartupFunc)
 
 void tst_QGlobal::qCoreAppStartupFunction()
 {
-    QCOMPARE(qStartupFunctionValue, 0);
+    qStartupFunctionValue = 0;
     int argc = 1;
     char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
     QCoreApplication app(argc, argv);
@@ -1030,6 +1156,37 @@ void tst_QGlobal::tagStructDefinitions()
     }
 }
 
+class DestructorTest {
+public:
+    explicit constexpr DestructorTest(int *arr) : m_arr(arr) {}
+    Q_DECL_CONSTEXPR_DTOR ~DestructorTest() { delete[] m_arr; }
+private:
+    int *m_arr;
+};
+
+void tst_QGlobal::CXX20_constexpr_dtor()
+{
+    [[maybe_unused]] Q_CONSTEXPR_DTOR DestructorTest tmp0(nullptr);
+#if __cpp_constexpr >= 201907L
+    [[maybe_unused]] constexpr DestructorTest tmp(nullptr);
+#endif
+}
+
+static Q_DECL_PURE_FUNCTION int pureFunc() { return 42; }
+static Q_DECL_CONST_FUNCTION int constFunc() { return 42; }
+static Q_DECL_COLD_FUNCTION int coldFunc() { return 42; }
+static int nonblockingFunc() noexcept Q_DECL_NONBLOCKING_FUNCTION { return 42; }
+static int nonallocatingFunc() noexcept Q_DECL_NONALLOCATING_FUNCTION { return 42; }
+
+void tst_QGlobal::declFunctionMacros()
+{
+    std::ignore = pureFunc();
+    std::ignore = constFunc();
+    std::ignore = coldFunc();
+    std::ignore = nonblockingFunc();
+    std::ignore = nonallocatingFunc();
+}
+
 QT_BEGIN_NAMESPACE
 
 // Compile-time typeinfo tests
@@ -1080,4 +1237,5 @@ static_assert(QTypeInfo<Trivial1>::isRelocatable);
 QT_END_NAMESPACE
 
 QTEST_APPLESS_MAIN(tst_QGlobal)
+#include "expansion_to_defined_check.h"
 #include "tst_qglobal.moc"

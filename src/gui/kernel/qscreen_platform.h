@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSCREEN_PLATFORM_H
 #define QSCREEN_PLATFORM_H
@@ -24,6 +25,10 @@
 
 #if QT_CONFIG(wayland)
 struct wl_output;
+#endif
+
+#if defined(Q_OS_MACOS)
+Q_FORWARD_DECLARE_OBJC_CLASS(NSScreen);
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -51,6 +56,14 @@ struct Q_GUI_EXPORT QAndroidScreen
 {
     QT_DECLARE_NATIVE_INTERFACE(QAndroidScreen, 1, QScreen)
     virtual int displayId() const = 0;
+};
+#endif
+
+#if defined(Q_OS_MACOS) || defined(Q_QDOC)
+struct Q_GUI_EXPORT QCocoaScreen
+{
+    QT_DECLARE_NATIVE_INTERFACE(QCocoaScreen, 1, QScreen)
+    virtual NSScreen *nativeScreen() const = 0;
 };
 #endif
 

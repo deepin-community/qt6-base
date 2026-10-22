@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qminimalintegration.h"
 #include "qminimalbackingstore.h"
@@ -12,7 +13,7 @@
 #include <qpa/qwindowsysteminterface.h>
 
 #if defined(Q_OS_WIN)
-#  include <QtGui/private/qwindowsfontdatabase_p.h>
+#  include <QtGui/private/qwindowsdirectwritefontdatabase_p.h>
 #  if QT_CONFIG(freetype)
 #    include <QtGui/private/qwindowsfontdatabase_ft_p.h>
 #  endif
@@ -109,7 +110,7 @@ QPlatformFontDatabase *QMinimalIntegration::fontDatabase() const
             m_fontDatabase = new QWindowsFontDatabaseFT;
 #  endif // freetype
         } else {
-            m_fontDatabase = new QWindowsFontDatabase;
+            m_fontDatabase = new QWindowsDirectWriteFontDatabase;
         }
 #elif defined(Q_OS_DARWIN)
         if (!(m_options & FontconfigDatabase)) {

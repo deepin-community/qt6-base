@@ -78,7 +78,7 @@ public:
             HelpDialog->setObjectName("HelpDialog");
         HelpDialog->resize(274, 417);
         vboxLayout = new QVBoxLayout(HelpDialog);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
         vboxLayout->setContentsMargins(0, 0, 0, 0);
@@ -88,14 +88,14 @@ public:
         contentPage = new QWidget();
         contentPage->setObjectName("contentPage");
         vboxLayout1 = new QVBoxLayout(contentPage);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout1->setSpacing(6);
 #endif
         vboxLayout1->setContentsMargins(5, 5, 5, 5);
         vboxLayout1->setObjectName("vboxLayout1");
         listContents = new QTreeWidget(contentPage);
         listContents->setObjectName("listContents");
-        listContents->setContextMenuPolicy(Qt::CustomContextMenu);
+        listContents->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
         listContents->setRootIsDecorated(true);
         listContents->setUniformRowHeights(true);
 
@@ -106,7 +106,7 @@ public:
         indexPage = new QWidget();
         indexPage->setObjectName("indexPage");
         vboxLayout2 = new QVBoxLayout(indexPage);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout2->setSpacing(6);
 #endif
         vboxLayout2->setContentsMargins(5, 5, 5, 5);
@@ -123,7 +123,7 @@ public:
 
         listIndex = new QListView(indexPage);
         listIndex->setObjectName("listIndex");
-        listIndex->setContextMenuPolicy(Qt::CustomContextMenu);
+        listIndex->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
 
         vboxLayout2->addWidget(listIndex);
 
@@ -131,20 +131,20 @@ public:
         bookmarkPage = new QWidget();
         bookmarkPage->setObjectName("bookmarkPage");
         vboxLayout3 = new QVBoxLayout(bookmarkPage);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout3->setSpacing(6);
 #endif
         vboxLayout3->setContentsMargins(5, 5, 5, 5);
         vboxLayout3->setObjectName("vboxLayout3");
         listBookmarks = new QTreeWidget(bookmarkPage);
         listBookmarks->setObjectName("listBookmarks");
-        listBookmarks->setContextMenuPolicy(Qt::CustomContextMenu);
+        listBookmarks->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
         listBookmarks->setUniformRowHeights(true);
 
         vboxLayout3->addWidget(listBookmarks);
 
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);
@@ -170,7 +170,7 @@ public:
         searchPage = new QWidget();
         searchPage->setObjectName("searchPage");
         gridLayout = new QGridLayout(searchPage);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
         gridLayout->setContentsMargins(5, 5, 5, 5);
@@ -191,7 +191,7 @@ public:
 
         resultBox = new QListWidget(searchPage);
         resultBox->setObjectName("resultBox");
-        resultBox->setContextMenuPolicy(Qt::CustomContextMenu);
+        resultBox->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
 
         gridLayout->addWidget(resultBox, 5, 0, 1, 1);
 
@@ -201,7 +201,7 @@ public:
         gridLayout->addWidget(TextLabel2, 4, 0, 1, 1);
 
         hboxLayout1 = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout1->setSpacing(6);
 #endif
         hboxLayout1->setContentsMargins(1, 1, 1, 1);
@@ -230,10 +230,10 @@ public:
 
         framePrepare = new QFrame(HelpDialog);
         framePrepare->setObjectName("framePrepare");
-        framePrepare->setFrameShape(QFrame::StyledPanel);
-        framePrepare->setFrameShadow(QFrame::Raised);
+        framePrepare->setFrameShape(QFrame::Shape::StyledPanel);
+        framePrepare->setFrameShadow(QFrame::Shadow::Raised);
         hboxLayout2 = new QHBoxLayout(framePrepare);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout2->setSpacing(6);
 #endif
         hboxLayout2->setContentsMargins(3, 3, 3, 3);

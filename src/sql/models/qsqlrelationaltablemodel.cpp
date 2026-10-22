@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsqlrelationaltablemodel.h"
 
@@ -67,8 +68,7 @@ using SqlrTm = QSqlRelationalTableModelSql;
 
 /*!
   \fn void QSqlRelation::swap(QSqlRelation &other)
-
-  Swaps \c this with \a other.
+    \memberswap{relation}
  */
 
 /*!
@@ -310,7 +310,9 @@ void QSqlRelationalTableModelPrivate::clearCache()
 
     \table
     \row \li \inlineimage noforeignkeys.png
+              {Table showing city and country as numeric foreign key values}
          \li \inlineimage foreignkeys.png
+              {Table showing city and country resolved to text strings}
     \endtable
 
     The screenshot on the left shows a plain QSqlTableModel in a
@@ -348,7 +350,7 @@ void QSqlRelationalTableModelPrivate::clearCache()
     QSqlRelationalDelegate to provide tables with foreign key
     support.
 
-    \image relationaltable.png
+    \image relationaltable.png {The user is able to edit a foreign key in a relational table}
 
     Notes:
 
@@ -443,8 +445,9 @@ QVariant QSqlRelationalTableModel::data(const QModelIndex &index, int role) cons
     example, if \a index is out of bounds).
 
     For relational columns, \a value must be the index, not the
-    display value. The index must also exist in the referenced
-    table, otherwise the function returns \c false.
+    display value. If an index is given, it must also exist in the
+    referenced table, otherwise the function returns \c false.
+    If a QVariant() is passed instead of an index, the index is cleared.
 
     \sa editStrategy(), data(), submit(), revertRow()
 */
@@ -457,7 +460,7 @@ bool QSqlRelationalTableModel::setData(const QModelIndex &index, const QVariant 
         auto relation = d->relations.at(index.column());
         if (!relation->isDictionaryInitialized())
             relation->populateDictionary();
-        if (!relation->dictionary.contains(value.toString()))
+        if (value.isValid() && !relation->dictionary.contains(value.toString()))
             return false;
     }
     return QSqlTableModel::setData(index, value, role);

@@ -1,8 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qthreadstorage.h"
+#include "qthreadstorage_p.h"
 
+#include "private/qcoreapplication_p.h"
 #include "qthread.h"
 #include "qthread_p.h"
 #include "qmutex.h"
@@ -78,10 +81,6 @@ QThreadStorageData::~QThreadStorageData()
 void **QThreadStorageData::get() const
 {
     QThreadData *data = QThreadData::current();
-    if (!data) {
-        qWarning("QThreadStorage::get: QThreadStorage can only be used with threads started with QThread");
-        return nullptr;
-    }
     QList<void *> &tls = data->tls;
     if (tls.size() <= id)
         tls.resize(id + 1);
@@ -98,20 +97,19 @@ void **QThreadStorageData::get() const
 void **QThreadStorageData::set(void *p)
 {
     QThreadData *data = QThreadData::current();
-    if (!data) {
-        qWarning("QThreadStorage::set: QThreadStorage can only be used with threads started with QThread");
-        return nullptr;
-    }
     QList<void *> &tls = data->tls;
     if (tls.size() <= id)
         tls.resize(id + 1);
 
-    void *&value = tls[id];
+    void* *ptr = &tls[id];
+    if (*ptr == p) // pointer-based setLocalData(localData()) → must be no-op
+        return ptr;
+
     // delete any previous data
-    if (value != nullptr) {
+    if (*ptr != nullptr) {
         DEBUG_MSG("QThreadStorageData: Deleting previous storage %d, data %p, for thread %p",
                 id,
-                value,
+                *ptr,
                 data->thread.loadRelaxed());
 
         QMutexLocker locker(&destructorsMutex);
@@ -119,24 +117,33 @@ void **QThreadStorageData::set(void *p)
         void (*destructor)(void *) = destr ? destr->value(id) : nullptr;
         locker.unlock();
 
-        void *q = value;
-        value = nullptr;
-
-        if (destructor)
+        if (destructor) {
+            void *q = std::exchange(*ptr, nullptr);
             destructor(q);
+            // `destructor` may have re-entered and grown `tls`; re-seat `ptr`:
+            ptr = &tls[id];
+        }
     }
 
     // store new data
-    value = p;
+    *ptr = p;
     DEBUG_MSG("QThreadStorageData: Set storage %d for thread %p to %p", id, data->thread.loadRelaxed(), p);
-    return &value;
+    return ptr;
 }
 
-void QThreadStorageData::finish(void **p)
+void QThreadStoragePrivate::init()
 {
-    QList<void *> *tls = reinterpret_cast<QList<void *> *>(p);
-    if (!tls || tls->isEmpty() || !destructors())
+    // Make sure the Q_GLOBAL_STATIC is initialized, ensuring consistent
+    // destruction order.
+    destructors();
+}
+
+void QThreadStoragePrivate::finish(QList<void *> *tls, bool suppressWarnings)
+{
+    if (tls->isEmpty() || !destructors())
         return; // nothing to do
+    if (!QCoreApplication::instanceExists())
+        suppressWarnings = true;
 
     DEBUG_MSG("QThreadStorageData: Destroying storage for thread %p", QThread::currentThread());
     while (!tls->isEmpty()) {
@@ -156,9 +163,9 @@ void QThreadStorageData::finish(void **p)
         locker.unlock();
 
         if (!destructor) {
-            if (QThread::currentThread())
-                qWarning("QThreadStorage: Thread %p exited after QThreadStorage %d destroyed",
-                         QThread::currentThread(), i);
+            if (!suppressWarnings)
+                qWarning("QThreadStorage: entry %d destroyed before end of thread %p",
+                         i, QThread::currentThread());
             continue;
         }
         destructor(q); //crash here might mean the thread exited after qthreadstorage was destroyed
@@ -180,8 +187,8 @@ void QThreadStorageData::finish(void **p)
 
     \ingroup thread
 
-    QThreadStorage is a template class that provides per-thread data
-    storage.
+    QThreadStorage is a template class where the template parameter \a T
+    specifies the type of data stored per-thread.
 
     The setLocalData() function stores a single thread-specific value
     for the calling thread. The data can be accessed later using
@@ -207,6 +214,10 @@ void QThreadStorageData::finish(void **p)
     \section1 Caveats
 
     \list
+
+    \li Calling hasLocalData(), localData() or setLocalData() during thread or
+    program shutdown may re-create the thread-local storage for the current
+    thread with nothing left to destroy it afterwards.
 
     \li The QThreadStorage destructor does not delete per-thread data.
     QThreadStorage only deletes per-thread data when the thread exits

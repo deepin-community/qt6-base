@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qexception.h"
 #include "QtCore/qshareddata.h"
@@ -82,9 +83,36 @@ QT_BEGIN_NAMESPACE
     \internal
 */
 
+/*!
+    Destroys this QException object.
+*/
 QException::~QException() noexcept
 {
 }
+
+/*!
+    \fn QException::QException()
+
+    Constructs a QException object.
+*/
+
+/*!
+    \fn QException::QException(const QException &other)
+
+    Creates a copy of \a other.
+
+    \note Be careful when using this function, as you risk slicing.
+
+    \sa clone()
+*/
+
+/*!
+    \fn QException &QException::operator=(const QException &other)
+
+    Copy-assigns \a other over this object.
+
+    \note Be careful when using this function, as you risk slicing.
+*/
 
 void QException::raise() const
 {
@@ -148,9 +176,7 @@ QUnhandledException &QUnhandledException::operator=(const QUnhandledException &o
 /*!
     \fn void QUnhandledException::swap(QUnhandledException &other)
     \since 6.0
-
-    Swaps this QUnhandledException with \a other. This function is very fast and
-    never fails.
+    \memberswap{unhandled exception object}
 */
 
 /*!

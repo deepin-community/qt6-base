@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORSTREAMREADER_H
 #define QCBORSTREAMREADER_H
@@ -10,6 +11,11 @@
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringview.h>
+
+#ifdef __cpp_lib_bit_cast
+#include <bit>
+#endif
+#include <memory>
 
 QT_REQUIRE_CONFIG(cborstreamreader);
 
@@ -88,7 +94,7 @@ public:
 
     int containerDepth() const;
     QCborStreamReader::Type parentContainerType() const;
-    bool hasNext() const noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION bool hasNext() const noexcept;
     bool next(int maxRecursion = 10000);
 
     Type type() const               { return QCborStreamReader::Type(type_); }
@@ -113,7 +119,7 @@ public:
     bool isNull() const             { return isSimpleType(QCborSimpleType::Null); }
     bool isUndefined() const        { return isSimpleType(QCborSimpleType::Undefined); }
 
-    bool isLengthKnown() const noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION bool isLengthKnown() const noexcept;
     quint64 length() const;
 
     bool isContainer() const            { return isMap() || isArray(); }
@@ -186,24 +192,23 @@ private:
     {
         using UIntFP = typename QIntegerForSizeof<FP>::Unsigned;
         UIntFP u = UIntFP(value64);
+#ifdef __cpp_lib_bit_cast
+        return std::bit_cast<FP>(u);
+#else
         FP f;
         memcpy(static_cast<void *>(&f), &u, sizeof(f));
         return f;
+#endif
     }
 
     friend QCborStreamReaderPrivate;
     friend class QCborContainerPrivate;
     quint64 value64;
-    QScopedPointer<QCborStreamReaderPrivate> d;
+    std::unique_ptr<QCborStreamReaderPrivate> d;
     quint8 type_;
     quint8 reserved[3] = {};
 };
 
 QT_END_NAMESPACE
-
-#if defined(QT_X11_DEFINES_FOUND)
-#  define True  1
-#  define False 0
-#endif
 
 #endif // QCBORSTREAMREADER_H

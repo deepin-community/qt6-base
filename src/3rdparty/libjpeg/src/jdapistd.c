@@ -4,7 +4,7 @@
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1994-1996, Thomas G. Lane.
  * libjpeg-turbo Modifications:
- * Copyright (C) 2010, 2015-2020, 2022-2024, D. R. Commander.
+ * Copyright (C) 2010, 2015-2020, 2022-2026, D. R. Commander.
  * Copyright (C) 2015, Google, Inc.
  * For conditions of distribution and use, see the accompanying README.ijg
  * file.
@@ -30,6 +30,9 @@
 #include "jdmerge.h"
 #include "jdsample.h"
 #include "jmemsys.h"
+#ifdef WITH_PROFILE
+#include "tjutil.h"
+#endif
 
 #if BITS_IN_JSAMPLE == 8
 
@@ -128,20 +131,28 @@ output_pass_setup(j_decompress_ptr cinfo)
       }
       /* Process some data */
       last_scanline = cinfo->output_scanline;
-#ifdef D_LOSSLESS_SUPPORTED
-      if (cinfo->data_precision == 16)
-        (*cinfo->main->process_data_16) (cinfo, (J16SAMPARRAY)NULL,
-                                         &cinfo->output_scanline,
-                                         (JDIMENSION)0);
-      else
-#endif
-      if (cinfo->data_precision == 12)
+      if (cinfo->data_precision <= 8) {
+        if (cinfo->main->process_data == NULL)
+          ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
+        (*cinfo->main->process_data) (cinfo, (JSAMPARRAY)NULL,
+                                      &cinfo->output_scanline, (JDIMENSION)0);
+      } else if (cinfo->data_precision <= 12) {
+        if (cinfo->main->process_data_12 == NULL)
+          ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
         (*cinfo->main->process_data_12) (cinfo, (J12SAMPARRAY)NULL,
                                          &cinfo->output_scanline,
                                          (JDIMENSION)0);
-      else
-        (*cinfo->main->process_data) (cinfo, (JSAMPARRAY)NULL,
-                                      &cinfo->output_scanline, (JDIMENSION)0);
+      } else {
+#ifdef D_LOSSLESS_SUPPORTED
+        if (cinfo->main->process_data_16 == NULL)
+          ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
+        (*cinfo->main->process_data_16) (cinfo, (J16SAMPARRAY)NULL,
+                                         &cinfo->output_scanline,
+                                         (JDIMENSION)0);
+#else
+        ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
+#endif
+      }
       if (cinfo->output_scanline == last_scanline)
         return FALSE;           /* No progress made, must suspend */
     }
@@ -189,7 +200,7 @@ _jpeg_crop_scanline(j_decompress_ptr cinfo, JDIMENSION *xoffset,
   if (cinfo->data_precision != BITS_IN_JSAMPLE)
     ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
 
-  if (cinfo->master->lossless)
+  if (cinfo->master->lossless || cinfo->raw_data_out)
     ERREXIT(cinfo, JERR_NOTIMPL);
 
   if ((cinfo->global_state != DSTATE_SCANNING &&
@@ -314,8 +325,21 @@ _jpeg_read_scanlines(j_decompress_ptr cinfo, _JSAMPARRAY scanlines,
 #if BITS_IN_JSAMPLE != 16 || defined(D_LOSSLESS_SUPPORTED)
   JDIMENSION row_ctr;
 
-  if (cinfo->data_precision != BITS_IN_JSAMPLE)
-    ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
+#ifdef D_LOSSLESS_SUPPORTED
+  if (cinfo->master->lossless) {
+#if BITS_IN_JSAMPLE == 8
+    if (cinfo->data_precision > BITS_IN_JSAMPLE || cinfo->data_precision < 2)
+#else
+    if (cinfo->data_precision > BITS_IN_JSAMPLE ||
+        cinfo->data_precision < BITS_IN_JSAMPLE - 3)
+#endif
+      ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
+  } else
+#endif
+  {
+    if (cinfo->data_precision != BITS_IN_JSAMPLE)
+      ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
+  }
 
   if (cinfo->global_state != DSTATE_SCANNING)
     ERREXIT1(cinfo, JERR_BAD_STATE, cinfo->global_state);
@@ -333,6 +357,8 @@ _jpeg_read_scanlines(j_decompress_ptr cinfo, _JSAMPARRAY scanlines,
 
   /* Process some data */
   row_ctr = 0;
+  if (cinfo->main->_process_data == NULL)
+    ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
   (*cinfo->main->_process_data) (cinfo, scanlines, &row_ctr, max_lines);
   cinfo->output_scanline += row_ctr;
   return row_ctr;
@@ -385,7 +411,11 @@ read_and_discard_scanlines(j_decompress_ptr cinfo, JDIMENSION num_lines)
   void (*color_quantize) (j_decompress_ptr cinfo, _JSAMPARRAY input_buf,
                           _JSAMPARRAY output_buf, int num_rows) = NULL;
 
-  if (cinfo->cconvert && cinfo->cconvert->_color_convert) {
+  if (cinfo->cconvert &&
+#ifdef UPSAMPLE_MERGING_SUPPORTED
+      !master->using_merged_upsample &&
+#endif
+      cinfo->cconvert->_color_convert) {
     color_convert = cinfo->cconvert->_color_convert;
     cinfo->cconvert->_color_convert = noop_convert;
     /* This just prevents UBSan from complaining about adding 0 to a NULL
@@ -394,7 +424,8 @@ read_and_discard_scanlines(j_decompress_ptr cinfo, JDIMENSION num_lines)
     scanlines = &dummy_row;
   }
 
-  if (cinfo->cquantize && cinfo->cquantize->_color_quantize) {
+  if (cinfo->quantize_colors && cinfo->cquantize &&
+      cinfo->cquantize->_color_quantize) {
     color_quantize = cinfo->cquantize->_color_quantize;
     cinfo->cquantize->_color_quantize = noop_quantize;
   }
@@ -606,7 +637,15 @@ _jpeg_skip_scanlines(j_decompress_ptr cinfo, JDIMENSION num_lines)
          */
         if (!cinfo->entropy->insufficient_data)
           cinfo->master->last_good_iMCU_row = cinfo->input_iMCU_row;
+#ifdef WITH_PROFILE
+        cinfo->master->start = getTime();
+#endif
         (*cinfo->entropy->decode_mcu) (cinfo, NULL);
+#ifdef WITH_PROFILE
+        cinfo->master->entropy_elapsed += getTime() - cinfo->master->start;
+        cinfo->master->entropy_mcoeffs +=
+          (double)cinfo->blocks_in_MCU * DCTSIZE2 / 1000000.;
+#endif
       }
     }
     cinfo->input_iMCU_row++;
@@ -679,6 +718,8 @@ _jpeg_read_raw_data(j_decompress_ptr cinfo, _JSAMPIMAGE data,
     ERREXIT(cinfo, JERR_BUFFER_SIZE);
 
   /* Decompress directly into user's buffer. */
+  if (cinfo->coef->_decompress_data == NULL)
+    ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
   if (!(*cinfo->coef->_decompress_data) (cinfo, data))
     return 0;                   /* suspension forced, can do nothing more */
 

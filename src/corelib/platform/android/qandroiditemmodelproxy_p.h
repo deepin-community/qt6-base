@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QANDROIDITEMMODELPROXY_P_H
 #define QANDROIDITEMMODELPROXY_P_H
@@ -22,6 +23,7 @@
 #include <QtCore/qjnienvironment.h>
 #include <QtCore/qjnitypes.h>
 #include <QtCore/qthread.h>
+#include <QtCore/qmutex.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -52,6 +54,8 @@ public:
     bool hasChildrenDefault(const QModelIndex &parent) const;
     QModelIndex sibling(int row, int column, const QModelIndex &parent) const override;
     QModelIndex siblingDefault(int row, int column, const QModelIndex &parent);
+    bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
+    bool setDataDefault(const QModelIndex &index, const QVariant &value, int role);
 
     Q_REQUIRED_RESULT static QAbstractItemModel *
     nativeInstance(QtJniTypes::JQtAbstractItemModel itemModel);
@@ -65,7 +69,8 @@ public:
         Q_ASSERT(jvmObject);
         auto model = qobject_cast<QAndroidItemModelProxy *>(nativeInstance(jvmObject));
         Q_ASSERT(model);
-        return safeCall(model, std::forward<Func>(func), std::forward<Args>(args)...);
+        const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(model);
+        return std::invoke(std::forward<Func>(func), model, std::forward<Args>(args)...);
     }
 
     template <typename Func, typename... Args>
@@ -74,7 +79,8 @@ public:
         Q_ASSERT(jvmObject);
         auto model = nativeInstance(jvmObject);
         Q_ASSERT(model);
-        return safeCall(model, std::forward<Func>(func), std::forward<Args>(args)...);
+        const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(model);
+        return std::invoke(std::forward<Func>(func), model, std::forward<Args>(args)...);
     }
 
     template <typename Func1, typename Func2, typename... Args>
@@ -84,33 +90,13 @@ public:
         Q_ASSERT(jvmObject);
         auto nativeModel = nativeInstance(jvmObject);
         auto nativeProxyModel = qobject_cast<QAndroidItemModelProxy *>(nativeModel);
+        const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(nativeModel);
         if (nativeProxyModel)
-            return safeCall(nativeProxyModel, std::forward<Func1>(defaultFunc),
-                            std::forward<Args>(args)...);
+            return std::invoke(std::forward<Func1>(defaultFunc), nativeProxyModel,
+                               std::forward<Args>(args)...);
         else
-            return safeCall(nativeModel, std::forward<Func2>(func), std::forward<Args>(args)...);
-    }
 
-    template <typename Object, typename Func, typename... Args>
-    static auto safeCall(Object *object, Func &&func, Args &&...args)
-    {
-        using ReturnType = decltype(std::invoke(std::forward<Func>(func), object,
-                                                std::forward<Args>(args)...));
-
-        if constexpr (std::is_void_v<ReturnType>) {
-            QMetaObject::invokeMethod(object, std::forward<Func>(func), Qt::AutoConnection,
-                                      std::forward<Args>(args)...);
-        } else {
-            ReturnType returnValue;
-
-            const auto connectionType = object->thread() == QThread::currentThread()
-                    ? Qt::DirectConnection
-                    : Qt::BlockingQueuedConnection;
-
-            QMetaObject::invokeMethod(object, std::forward<Func>(func), connectionType,
-                                      qReturnArg(returnValue), std::forward<Args>(args)...);
-            return returnValue;
-        }
+            return std::invoke(std::forward<Func2>(func), nativeModel, std::forward<Args>(args)...);
     }
 
     static jint jni_columnCount(JNIEnv *env, jobject object, JQtModelIndex parent);
@@ -202,10 +188,31 @@ public:
                                  JQtModelIndex parent);
     Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(jni_sibling)
 
+    static void jni_dataChanged(JNIEnv *env, jobject object, JQtModelIndex topLeft,
+                                JQtModelIndex bottomRight, QJniArray<jint> roles);
+    Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(jni_dataChanged)
+
+    static jboolean jni_setData(JNIEnv *env, jobject object, JQtModelIndex index, jobject value,
+                                jint role);
+    Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(jni_setData)
+
     static bool registerAbstractNatives(QJniEnvironment &env);
     static bool registerProxyNatives(QJniEnvironment &env);
 
 private:
+    static std::map<const QAbstractItemModel *, QRecursiveMutex> s_mutexes;
+
+    Q_REQUIRED_RESULT static QMutexLocker<QRecursiveMutex>
+    getMutexLocker(const QAbstractItemModel *model)
+    {
+        auto [iter, inserted] = s_mutexes.try_emplace(model);
+        if (inserted)
+            QObject::connect(model, &QAbstractItemModel::destroyed, model, [](QObject *model) {
+                s_mutexes.erase(reinterpret_cast<QAbstractItemModel *>(model));
+            });
+        return QMutexLocker(&iter->second);
+    }
+
     QJniObject jInstance;
     friend class QAndroidModelIndexProxy;
 };

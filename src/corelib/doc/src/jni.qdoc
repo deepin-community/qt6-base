@@ -65,10 +65,10 @@
     \endcode
 
     The C++ classes \c{QtJniTypes::File} and \c{QtJniTypes::FileWriter} are
-    then QJniObject-like types that can be used to instantiate the
-    corresponding Java class, to call methods, and to pass such instances
-    through QJniObject variadic template methods with automatic, compile-time
-    signature deduction.
+    then QJniObject-like types (specializations of QtJniTypes::JObject, to be
+    precise) that can be used to instantiate the corresponding Java class, to
+    call methods, and to pass such instances through QJniObject variadic
+    template methods with automatic, compile-time signature deduction.
 
     \code
     using namespace QtJniTypes;
@@ -89,7 +89,7 @@
     });
     \endcode
 
-    \sa Q_DECLARE_JNI_NATIVE_METHOD, Q_JNI_NATIVE_METHOD
+    \sa Q_DECLARE_JNI_NATIVE_METHOD, Q_JNI_NATIVE_METHOD, QtJniTypes::JObject
 */
 
 /*!

@@ -1,6 +1,7 @@
 // Copyright (C) 2011 Richard J. Moore <rich@kde.org>
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qocspresponse_p.h"
 #include "qocspresponse.h"
@@ -126,8 +127,7 @@ QOcspResponse &QOcspResponse::operator=(QOcspResponse &&) noexcept = default;
 /*!
     \fn void QOcspResponse::swap(QOcspResponse &other)
     \since 5.13
-
-    Swaps this response with \a other.
+    \memberswap{response}
 */
 
 /*!
@@ -201,17 +201,16 @@ bool QOcspResponse::isEqual(const QOcspResponse &other) const
 }
 
 /*!
-    Returns the hash value for the \a response, using \a seed to seed the calculation.
-
+    \fn size_t qHash(const QOcspResponse &key, size_t seed)
     \since 5.13
-    \relates QHash
+    \qhashold{QHash}
 */
 size_t qHash(const QOcspResponse &response, size_t seed) noexcept
 {
     const QOcspResponsePrivate *d = response.d.data();
     Q_ASSERT(d);
 
-    QtPrivate::QHashCombine hasher;
+    QtPrivate::QHashCombine hasher(seed);
     size_t hash = hasher(seed, int(d->certificateStatus));
     hash = hasher(hash, int(d->revocationReason));
     if (!d->signerCert.isNull())

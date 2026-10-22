@@ -29,6 +29,7 @@ set(java_sources
     src/org/qtproject/qt/android/extras/QtAndroidServiceConnection.java
     src/org/qtproject/qt/android/extras/QtNative.java
     src/org/qtproject/qt/android/QtClipboardManager.java
+    src/org/qtproject/qt/android/QtDragManager.java
     src/org/qtproject/qt/android/QtDisplayManager.java
     src/org/qtproject/qt/android/UsedFromNativeCode.java
     src/org/qtproject/qt/android/QtRootLayout.java
@@ -50,10 +51,13 @@ set(java_sources
     src/org/qtproject/qt/android/QtModelIndex.java
     src/org/qtproject/qt/android/QtAbstractListModel.java
     src/org/qtproject/qt/android/QtSignalListener.java
+    src/org/qtproject/qt/android/BackgroundActionsTracker.java
+    src/org/qtproject/qt/android/QtApkFileEngine.java
+    src/org/qtproject/qt/android/QtContentFileEngine.java
+    src/org/qtproject/qt/android/QtWindowInsetsController.java
 )
 
 qt_internal_add_jar(Qt${QtBase_VERSION_MAJOR}Android
-    INCLUDE_JARS ${QT_ANDROID_JAR}
     SOURCES ${java_sources}
     OUTPUT_DIR "${QT_BUILD_DIR}/jar"
 )

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGLOBALSTATIC_H
 #define QGLOBALSTATIC_H
@@ -43,6 +44,7 @@ template <typename QGS> union Holder
         // TSAN does not support atomic_thread_fence and GCC complains:
         // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=97868
         // https://github.com/google/sanitizers/issues/1352
+        // QTBUG-134415
 QT_WARNING_PUSH
 #if defined(Q_CC_GNU_ONLY) && Q_CC_GNU >= 1100
 QT_WARNING_DISABLE_GCC("-Wtsan")

@@ -1,18 +1,109 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPHEADERS_H
 #define QHTTPHEADERS_H
 
 #include <QtNetwork/qtnetworkglobal.h>
 
+#include <QtCore/qdatetime.h>
+#include <QtCore/qhashfunctions.h>
+#include <QtCore/qmetaobject.h>
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qshareddata.h>
 #include <QtCore/qcontainerfwd.h>
+#include <QtCore/qspan.h>
+#include <QtCore/qcomparehelpers.h>
+
+#include <initializer_list>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
+class QDataStream;
 class QDebug;
+
+struct QT_TECH_PREVIEW_API QHttpHeaderRangeSpec // ### TP: what about non-integral ranges?
+{
+    std::optional<qint64> start;
+    std::optional<qint64> end;
+
+    constexpr bool isValid() const noexcept
+    {
+        if (!start && !end)
+            return false;
+        if (start && start < 0)
+            return false;
+        if (end && end < 0)
+            return false;
+        if (start && end && *start > *end)
+            return false;
+        return true;
+    }
+
+#ifndef QT_NO_DEBUG_STREAM
+    friend Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, const QHttpHeaderRangeSpec &range);
+#endif
+
+private:
+    friend constexpr bool comparesEqual(const QHttpHeaderRangeSpec &lhs,
+                                        const QHttpHeaderRangeSpec &rhs) noexcept
+    {
+        return lhs.start == rhs.start && lhs.end == rhs.end;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE(QHttpHeaderRangeSpec)
+
+    friend size_t qHash(QHttpHeaderRangeSpec range, size_t seed = 0) noexcept
+    {
+        return qHashMulti(seed, range.start, range.end);
+    }
+};
+
+class QHttpHeaderRangeSetPrivate;
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR(QHttpHeaderRangeSetPrivate)
+class QT_TECH_PREVIEW_API QHttpHeaderRangeSet // ### TP: only does bytes=, but sounds like it could also do seconds=
+{
+    QExplicitlySharedDataPointer<QHttpHeaderRangeSetPrivate> d_ptr;
+    Q_DECLARE_PRIVATE(QHttpHeaderRangeSet)
+public:
+    Q_NETWORK_EXPORT QHttpHeaderRangeSet();
+    Q_NETWORK_EXPORT QHttpHeaderRangeSet(const QHttpHeaderRangeSet &other);
+    QHttpHeaderRangeSet(QHttpHeaderRangeSet &&) = default;
+    Q_NETWORK_EXPORT Q_IMPLICIT QHttpHeaderRangeSet(QSpan<const QHttpHeaderRangeSpec> r);
+    Q_IMPLICIT QHttpHeaderRangeSet(std::initializer_list<QHttpHeaderRangeSpec> r)
+        : QHttpHeaderRangeSet(QSpan<const QHttpHeaderRangeSpec>{r}) {}
+    Q_NETWORK_EXPORT QHttpHeaderRangeSet &operator=(const QHttpHeaderRangeSet &other);
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QHttpHeaderRangeSet)
+    Q_NETWORK_EXPORT ~QHttpHeaderRangeSet();
+
+    void swap(QHttpHeaderRangeSet &other) noexcept { d_ptr.swap(other.d_ptr); }
+
+    Q_NETWORK_EXPORT QSpan<const QHttpHeaderRangeSpec> ranges() const noexcept;
+    Q_NETWORK_EXPORT void setRanges(QSpan<const QHttpHeaderRangeSpec> r);
+
+    // ### normalization (a canonical form of sorted, non-overlapping ranges)
+    // and the set functions on top of it to be added in 6.13:
+    // - normalize/normalized/isNormalized
+    // - contains
+    // - unite
+    // - intersect
+    // ...
+
+private:
+#ifndef QT_NO_DEBUG_STREAM
+    friend Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, const QHttpHeaderRangeSet &ranges);
+#endif
+
+    Q_NETWORK_EXPORT friend bool comparesEqual(const QHttpHeaderRangeSet &lhs,
+                                               const QHttpHeaderRangeSet &rhs) noexcept;
+    Q_DECLARE_EQUALITY_COMPARABLE(QHttpHeaderRangeSet)
+
+    Q_NETWORK_EXPORT friend size_t qHash(const QHttpHeaderRangeSet &key, size_t seed) noexcept;
+    friend size_t qHash(const QHttpHeaderRangeSet &key) noexcept { return qHash(key, size_t{0}); }
+};
+
+Q_DECLARE_SHARED(QHttpHeaderRangeSet)
 
 class QHttpHeadersPrivate;
 QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QHttpHeadersPrivate, Q_NETWORK_EXPORT)
@@ -244,6 +335,28 @@ public:
     Q_NETWORK_EXPORT QByteArray combinedValue(QAnyStringView name) const;
     Q_NETWORK_EXPORT QByteArray combinedValue(WellKnownHeader name) const;
 
+    Q_NETWORK_EXPORT std::optional<qint64> intValue(QAnyStringView name) const noexcept;
+    Q_NETWORK_EXPORT std::optional<qint64> intValue(WellKnownHeader name) const noexcept;
+
+    Q_NETWORK_EXPORT std::optional<QList<qint64>> intValues(QAnyStringView name) const;
+    Q_NETWORK_EXPORT std::optional<QList<qint64>> intValues(WellKnownHeader name) const;
+
+    Q_NETWORK_EXPORT std::optional<qint64> intValueAt(qsizetype i) const noexcept;
+
+    Q_NETWORK_EXPORT std::optional<QDateTime> dateTimeValue(QAnyStringView name) const;
+    Q_NETWORK_EXPORT std::optional<QDateTime> dateTimeValue(WellKnownHeader name) const;
+
+    Q_NETWORK_EXPORT std::optional<QList<QDateTime>> dateTimeValues(QAnyStringView name) const;
+    Q_NETWORK_EXPORT std::optional<QList<QDateTime>> dateTimeValues(WellKnownHeader name) const;
+
+    Q_NETWORK_EXPORT std::optional<QDateTime> dateTimeValueAt(qsizetype i) const;
+
+    Q_NETWORK_EXPORT void setDateTimeValue(QAnyStringView name, const QDateTime &dateTime);
+    Q_NETWORK_EXPORT void setDateTimeValue(WellKnownHeader name, const QDateTime &dateTime);
+
+    Q_NETWORK_EXPORT std::optional<QHttpHeaderRangeSet> rangeValues() const;
+    Q_NETWORK_EXPORT void setRangeValues(const QHttpHeaderRangeSet &ranges);
+
     Q_NETWORK_EXPORT qsizetype size() const noexcept;
     Q_NETWORK_EXPORT void reserve(qsizetype size);
     bool isEmpty() const noexcept { return size() == 0; }
@@ -265,6 +378,12 @@ private:
 #ifndef QT_NO_DEBUG_STREAM
     friend Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, const QHttpHeaders &headers);
 #endif
+
+#ifndef QT_NO_DATASTREAM
+    friend Q_NETWORK_EXPORT QDataStream &operator<<(QDataStream &stream, const QHttpHeaders &headers);
+    friend Q_NETWORK_EXPORT QDataStream &operator>>(QDataStream &stream, QHttpHeaders &headers);
+#endif
+
     Q_ALWAYS_INLINE void verify([[maybe_unused]] qsizetype pos = 0,
                                 [[maybe_unused]] qsizetype n = 1) const
     {

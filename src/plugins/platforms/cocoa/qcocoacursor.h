@@ -1,11 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSCURSOR_H
 #define QWINDOWSCURSOR_H
 
-#include <QtCore>
 #include <qpa/qplatformcursor.h>
+
+#include <QtCore/qhash.h>
 
 Q_FORWARD_DECLARE_OBJC_CLASS(NSCursor);
 

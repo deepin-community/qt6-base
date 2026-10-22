@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPDF_P_H
 #define QPDF_P_H
@@ -265,6 +266,7 @@ public:
     QString outputFileName;
     QString title;
     QString creator;
+    QString author;
     QUuid documentId = QUuid::createUuid();
     bool embedFonts;
     int resolution;
@@ -323,7 +325,7 @@ private:
 
     int addXrefEntry(int object, bool printostr = true);
     void printString(QStringView string);
-    void xprintf(const char* fmt, ...);
+    void xprintf(const char* fmt, ...) Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
     inline void write(QByteArrayView data) {
         stream->writeRawData(data.constData(), data.size());
         streampos += data.size();
@@ -357,7 +359,7 @@ private:
     int patternColorSpaceCMYK;
     QList<uint> pages;
     QHash<qint64, uint> imageCache;
-    QHash<QPair<uint, uint>, uint > alphaCache;
+    QHash<std::pair<uint, uint>, uint > alphaCache;
     QList<DestInfo> destCache;
     QList<AttachmentInfo> fileCache;
     QByteArray xmpDocumentMetadata;

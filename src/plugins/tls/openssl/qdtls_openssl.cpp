@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 #include <QtNetwork/private/qnativesocketengine_p_p.h>
 
@@ -151,8 +152,7 @@ enum class MtuGuess : long
 namespace dtlscallbacks
 {
 
-extern "C" int q_generate_cookie_callback(SSL *ssl, unsigned char *dst,
-                                          unsigned *cookieLength)
+int q_generate_cookie_callback(SSL *ssl, unsigned char *dst, unsigned *cookieLength)
 {
     if (!ssl || !dst || !cookieLength) {
         qCWarning(lcTlsBackend,
@@ -187,8 +187,7 @@ extern "C" int q_generate_cookie_callback(SSL *ssl, unsigned char *dst,
     return 1;
 }
 
-extern "C" int q_verify_cookie_callback(SSL *ssl, const unsigned char *cookie,
-                                        unsigned cookieLength)
+int q_verify_cookie_callback(SSL *ssl, const unsigned char *cookie, unsigned cookieLength)
 {
     if (!ssl || !cookie || !cookieLength) {
         qCWarning(lcTlsBackend, "Could not verify cookie, invalid (nullptr or zero) parameters");
@@ -204,7 +203,7 @@ extern "C" int q_verify_cookie_callback(SSL *ssl, const unsigned char *cookie,
            && !q_CRYPTO_memcmp(cookie, newCookie, size_t(cookieLength));
 }
 
-extern "C" int q_X509DtlsCallback(int ok, X509_STORE_CTX *ctx)
+int q_X509DtlsCallback(int ok, X509_STORE_CTX *ctx)
 {
     if (!ok) {
         // Store the error and at which depth the error was detected.
@@ -230,9 +229,8 @@ extern "C" int q_X509DtlsCallback(int ok, X509_STORE_CTX *ctx)
     return 1;
 }
 
-extern "C" unsigned q_PSK_client_callback(SSL *ssl, const char *hint, char *identity,
-                                          unsigned max_identity_len, unsigned char *psk,
-                                          unsigned max_psk_len)
+unsigned q_PSK_client_callback(SSL *ssl, const char *hint, char *identity,
+                               unsigned max_identity_len, unsigned char *psk, unsigned max_psk_len)
 {
     auto *dtls = static_cast<dtlsopenssl::DtlsState *>(q_SSL_get_ex_data(ssl,
                                                        QTlsBackendOpenSSL::s_indexForSSLExtraData));
@@ -243,8 +241,8 @@ extern "C" unsigned q_PSK_client_callback(SSL *ssl, const char *hint, char *iden
     return dtls->dtlsPrivate->pskClientCallback(hint, identity, max_identity_len, psk, max_psk_len);
 }
 
-extern "C" unsigned q_PSK_server_callback(SSL *ssl, const char *identity, unsigned char *psk,
-                                          unsigned max_psk_len)
+unsigned q_PSK_server_callback(SSL *ssl, const char *identity, unsigned char *psk,
+                               unsigned max_psk_len)
 {
     auto *dtls = static_cast<dtlsopenssl::DtlsState *>(q_SSL_get_ex_data(ssl,
                                                        QTlsBackendOpenSSL::s_indexForSSLExtraData));
@@ -260,7 +258,7 @@ extern "C" unsigned q_PSK_server_callback(SSL *ssl, const char *identity, unsign
 namespace dtlsbio
 {
 
-extern "C" int q_dgram_read(BIO *bio, char *dst, int bytesToRead)
+int q_dgram_read(BIO *bio, char *dst, int bytesToRead)
 {
     if (!bio || !dst || bytesToRead <= 0) {
         qCWarning(lcTlsBackend, "invalid input parameter(s)");
@@ -290,7 +288,7 @@ extern "C" int q_dgram_read(BIO *bio, char *dst, int bytesToRead)
     return bytesRead;
 }
 
-extern "C" int q_dgram_write(BIO *bio, const char *src, int bytesToWrite)
+int q_dgram_write(BIO *bio, const char *src, int bytesToWrite)
 {
     if (!bio || !src || bytesToWrite <= 0) {
         qCWarning(lcTlsBackend, "invalid input parameter(s)");
@@ -325,7 +323,7 @@ extern "C" int q_dgram_write(BIO *bio, const char *src, int bytesToWrite)
     return int(bytesWritten);
 }
 
-extern "C" int q_dgram_puts(BIO *bio, const char *src)
+int q_dgram_puts(BIO *bio, const char *src)
 {
     if (!bio || !src) {
         qCWarning(lcTlsBackend, "invalid input parameter(s)");
@@ -335,7 +333,7 @@ extern "C" int q_dgram_puts(BIO *bio, const char *src)
     return q_dgram_write(bio, src, int(std::strlen(src)));
 }
 
-extern "C" long q_dgram_ctrl(BIO *bio, int cmd, long num, void *ptr)
+long q_dgram_ctrl(BIO *bio, int cmd, long num, void *ptr)
 {
     // This is our custom BIO_ctrl. bio.h defines a lot of BIO_CTRL_*
     // and BIO_* constants and BIO_somename macros that expands to BIO_ctrl
@@ -535,7 +533,7 @@ extern "C" long q_dgram_ctrl(BIO *bio, int cmd, long num, void *ptr)
     return 0;
 }
 
-extern "C" int q_dgram_create(BIO *bio)
+int q_dgram_create(BIO *bio)
 {
 
     q_BIO_set_init(bio, 1);
@@ -545,7 +543,7 @@ extern "C" int q_dgram_create(BIO *bio)
     return 1;
 }
 
-extern "C" int q_dgram_destroy(BIO *bio)
+int q_dgram_destroy(BIO *bio)
 {
     Q_UNUSED(bio);
     return 1;
@@ -791,8 +789,8 @@ QByteArray QDtlsClientVerifierOpenSSL::verifiedHello() const
 
 void QDtlsPrivateOpenSSL::TimeoutHandler::start(int hintMs)
 {
-    Q_ASSERT(timerId == -1);
-    timerId = startTimer(hintMs > 0 ? hintMs : timeoutMs, Qt::PreciseTimer);
+    Q_ASSERT(!timer.isActive());
+    timer.start(hintMs > 0 ? hintMs : timeoutMs, Qt::PreciseTimer, this);
 }
 
 void QDtlsPrivateOpenSSL::TimeoutHandler::doubleTimeout()
@@ -805,19 +803,15 @@ void QDtlsPrivateOpenSSL::TimeoutHandler::doubleTimeout()
 
 void QDtlsPrivateOpenSSL::TimeoutHandler::stop()
 {
-    if (timerId != -1) {
-        killTimer(timerId);
-        timerId = -1;
-    }
+    timer.stop();
 }
 
 void QDtlsPrivateOpenSSL::TimeoutHandler::timerEvent(QTimerEvent *event)
 {
     Q_UNUSED(event);
-    Q_ASSERT(timerId != -1);
+    Q_ASSERT(timer.isActive());
 
-    killTimer(timerId);
-    timerId = -1;
+    timer.stop();
 
     Q_ASSERT(dtlsConnection);
     dtlsConnection->reportTimeout();

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSQLDRIVER_H
 #define QSQLDRIVER_H
@@ -25,6 +26,7 @@ class QVariant;
 class Q_SQL_EXPORT QSqlDriver : public QObject
 {
     friend class QSqlDatabase;
+    friend class QSqlDatabasePrivate;
     friend class QSqlResultPrivate;
     Q_OBJECT
     Q_PROPERTY(QSql::NumericalPrecisionPolicy numericalPrecisionPolicy READ numericalPrecisionPolicy WRITE setNumericalPrecisionPolicy)
@@ -98,6 +100,9 @@ public:
 
     DbmsType dbmsType() const;
     virtual int maximumIdentifierLength(IdentifierType type) const;
+
+    QString connectionName() const;
+
 public Q_SLOTS:
     virtual bool cancelQuery();
 

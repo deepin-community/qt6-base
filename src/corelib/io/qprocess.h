@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2023 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #ifndef QPROCESS_H
 #define QPROCESS_H
@@ -191,6 +192,7 @@ public:
         CreateNewSession                    = 0x0040, // like POSIX_SPAWN_SETSID
         DisconnectControllingTerminal       = 0x0080,
         ResetIds                            = 0x0100, // like POSIX_SPAWN_RESETIDS
+        DisableCoreDumps                    = 0x0200,
     };
     Q_DECLARE_FLAGS(UnixProcessFlags, UnixProcessFlag)
     struct UnixProcessParameters
@@ -276,19 +278,23 @@ private:
     QT_DEPRECATED_X("Use setChildProcessModifier() instead")
     virtual Use_setChildProcessModifier_Instead setupChildProcess();
 #endif
-
-    Q_PRIVATE_SLOT(d_func(), bool _q_canReadStandardOutput())
-    Q_PRIVATE_SLOT(d_func(), bool _q_canReadStandardError())
-#ifdef Q_OS_UNIX
-    Q_PRIVATE_SLOT(d_func(), bool _q_canWrite())
-#endif
-    Q_PRIVATE_SLOT(d_func(), bool _q_startupNotification())
-    Q_PRIVATE_SLOT(d_func(), void _q_processDied())
 };
 
 #ifdef Q_OS_UNIX
 Q_DECLARE_OPERATORS_FOR_FLAGS(QProcess::UnixProcessFlags)
 #endif
+
+#else // !QT_CONFIG(process)
+
+class QProcess
+{
+public:
+    Q_CORE_EXPORT static QStringList splitCommand(QStringView command);
+
+private:
+    QProcess() = delete;
+    Q_DISABLE_COPY_MOVE(QProcess)
+};
 
 #endif // QT_CONFIG(process)
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEXCEPTIONHANDLING_H
 #define QEXCEPTIONHANDLING_H
@@ -22,7 +23,6 @@ QT_BEGIN_NAMESPACE
    If you can't live with those constraints, don't use these macros.
    Use the QT_NO_EXCEPTIONS macro to protect your code instead.
 */
-Q_NORETURN Q_DECL_COLD_FUNCTION Q_CORE_EXPORT void qTerminate() noexcept;
 #ifdef QT_NO_EXCEPTIONS
 #  define QT_TRY if (true)
 #  define QT_CATCH(A) else
@@ -33,6 +33,10 @@ Q_NORETURN Q_DECL_COLD_FUNCTION Q_CORE_EXPORT void qTerminate() noexcept;
 #  define QT_CATCH(A) catch (A)
 #  define QT_THROW(A) throw A
 #  define QT_RETHROW throw
+#endif
+
+#if QT_CORE_REMOVED_SINCE(6, 9)
+Q_NORETURN Q_DECL_COLD_FUNCTION Q_CORE_EXPORT void qTerminate() noexcept;
 #endif
 
 QT_END_NAMESPACE

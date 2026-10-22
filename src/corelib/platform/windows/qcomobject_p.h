@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOMOBJECT_P_H
 #define QCOMOBJECT_P_H
@@ -48,6 +49,15 @@ struct QComObjectTraits
 // ...
 // };
 //
+// If the object is a QObject that needs to go through deleteLater(), inherit from
+//  QComObjectWithDeleteLater instead of QComObject:
+// class SinkCallback : public QObject,
+//                      public QComObjectWithDeleteLater<SinkCallback, IMFSampleGrabberSinkCallback>
+// {
+// ...
+// };
+//
+//
 // namespace QtPrivate {
 //
 // template <>
@@ -80,11 +90,14 @@ public:
         return tryQueryInterface<TFirstInterface, TAdditionalInterfaces...>(riid, ppvObject);
     }
 
-    STDMETHODIMP_(ULONG) AddRef() override { return ++m_referenceCount; }
+    STDMETHODIMP_(ULONG) AddRef() override
+    {
+        return m_referenceCount.fetch_add(1, std::memory_order_relaxed) + 1;
+    }
 
     STDMETHODIMP_(ULONG) Release() override
     {
-        const LONG referenceCount = --m_referenceCount;
+        const LONG referenceCount = unref();
         if (referenceCount == 0)
             delete this;
 
@@ -97,6 +110,21 @@ protected:
     // Destructor is not public. Caller should call Release.
     // Derived class should make its destructor private to force this behavior.
     virtual ~QComObject() = default;
+
+    // allow derived classes to access the reference count
+    std::atomic<LONG> m_referenceCount = 1;
+
+    [[nodiscard]] LONG unref()
+    {
+        const LONG referenceCount = m_referenceCount.fetch_sub(1, std::memory_order_release) - 1;
+        if (referenceCount == 0) {
+            // This acquire fence synchronizes with the release operation in other threads.
+            // It ensures that all memory writes made to this object by other threads
+            // are visible to this thread before we proceed to delete it.
+            std::atomic_thread_fence(std::memory_order_acquire);
+        }
+        return referenceCount;
+    }
 
 private:
     template <typename TInterface, typename... TRest>
@@ -116,8 +144,20 @@ private:
 
         return E_NOINTERFACE;
     }
+};
 
-    std::atomic<LONG> m_referenceCount = 1;
+template <typename Self, typename... Interfaces>
+class QComObjectWithDeleteLater : public QComObject<Interfaces...>
+{
+public:
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        const LONG referenceCount = QComObject<Interfaces...>::unref();
+        if (referenceCount == 0)
+            static_cast<Self *>(this)->deleteLater();
+
+        return referenceCount;
+    }
 };
 
 QT_END_NAMESPACE

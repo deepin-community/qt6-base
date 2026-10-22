@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
+    \headerfile <QForeach>
+    \inmodule QtCore
+    \ingroup funclists
+    \brief Helper macros for performing for-loops.
+*/
+
+/*!
     \macro forever
     \relates <QForeach>
 
@@ -50,7 +57,7 @@
     If you're worried about namespace pollution, you can disable this
     macro by adding the following line to your \c .pro file:
 
-    \snippet code/src_corelib_global_qglobal.cpp 33
+    \snippet code/src_corelib_global_qglobal.cpp 32
 
     \note Since Qt 5.7, the use of this macro is discouraged.
     Use C++11 range-based \c for, possibly with \c {std::as_const()},

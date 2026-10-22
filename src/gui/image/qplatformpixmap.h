@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMPIXMAP_H
 #define QPLATFORMPIXMAP_H
@@ -22,7 +23,7 @@ QT_BEGIN_NAMESPACE
 
 class QImageReader;
 
-class Q_GUI_EXPORT QPlatformPixmap
+class Q_GUI_EXPORT QPlatformPixmap : public QSharedData
 {
 public:
     enum PixelType {
@@ -33,7 +34,7 @@ public:
 
     enum ClassId { RasterClass, DirectFBClass,
                    BlitterClass, Direct2DClass,
-                   X11Class, CustomClass = 1024 };
+                   CustomClass = 1024 };
 
     QPlatformPixmap(PixelType pixelType, int classId);
     virtual ~QPlatformPixmap();
@@ -104,6 +105,7 @@ protected:
 
     void setSerialNumber(int serNo);
     void setDetachNumber(int detNo);
+    void callDestructionHooks();
     int w;
     int h;
     int d;
@@ -111,12 +113,8 @@ protected:
 
 private:
     friend class QPixmap;
-    friend class QX11PlatformPixmap;
     friend class QImagePixmapCleanupHooks; // Needs to set is_cached
-    friend class QOpenGLTextureCache; //Needs to check the reference count
-    friend class QExplicitlySharedDataPointer<QPlatformPixmap>;
 
-    QAtomicInt ref;
     int detach_no;
 
     PixelType type;
@@ -124,10 +122,6 @@ private:
     int ser_no;
     uint is_cached;
 };
-
-#  define QT_XFORM_TYPE_MSBFIRST 0
-#  define QT_XFORM_TYPE_LSBFIRST 1
-Q_GUI_EXPORT bool qt_xForm_helper(const QTransform&, int, int, int, uchar*, qsizetype, int, int, const uchar*, qsizetype, int, int);
 
 QT_END_NAMESPACE
 

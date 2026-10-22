@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qt_windows.h>
 
@@ -8,6 +9,7 @@
 #include "qwindowstheme.h"
 #include "qwindowsmenu.h"
 #include "qwindowsscreen.h"
+#include "qwindowswindowclassregistry.h"
 
 #include <QtGui/qguiapplication.h>
 #include <QtGui/qpixmap.h>
@@ -17,6 +19,8 @@
 #include <QtCore/qsettings.h>
 #include <qpa/qwindowsysteminterface.h>
 
+#include <QtGui/private/qguiapplication_p.h>
+
 #include <commctrl.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -24,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt::Literals::StringLiterals;
+using namespace Qt::StringLiterals;
 
 static const UINT q_uNOTIFYICONID = 0;
 
@@ -86,8 +90,7 @@ static int indexOfHwnd(HWND hwnd)
     return -1;
 }
 
-extern "C" LRESULT QT_WIN_CALLBACK qWindowsTrayIconWndProc(HWND hwnd, UINT message,
-                                                           WPARAM wParam, LPARAM lParam)
+LRESULT QT_WIN_CALLBACK qWindowsTrayIconWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     if (message == MYWM_TASKBARCREATED || message == MYWM_NOTIFYICON
         || message == WM_INITMENU || message == WM_INITMENUPOPUP
@@ -113,13 +116,13 @@ extern "C" LRESULT QT_WIN_CALLBACK qWindowsTrayIconWndProc(HWND hwnd, UINT messa
 // will not receive the "TaskbarCreated" message.
 static inline HWND createTrayIconMessageWindow()
 {
-    QWindowsContext *ctx = QWindowsContext::instance();
+    QWindowsWindowClassRegistry *ctx = QWindowsWindowClassRegistry::instance();
     if (!ctx)
         return nullptr;
     // Register window class in the platform plugin.
-    const QString className =
-        ctx->registerWindowClass(QWindowsContext::classNamePrefix() + "TrayIconMessageWindowClass"_L1,
-                                 qWindowsTrayIconWndProc);
+    const QString className = ctx->registerWindowClass(
+        "TrayIconMessageWindowClass"_L1,
+        qWindowsTrayIconWndProc);
     const wchar_t windowName[] = L"QTrayIconMessageWindow";
     return CreateWindowEx(0, reinterpret_cast<const wchar_t *>(className.utf16()),
                           windowName, WS_OVERLAPPED,
@@ -388,6 +391,10 @@ bool QWindowsSystemTrayIcon::winEvent(const MSG &message, long *result)
             // since hi-res coordinates are delivered in this case (Windows issue).
             // Default to primary screen with check to prevent a crash.
             const QPoint globalPos = QPoint(GET_X_LPARAM(message.wParam), GET_Y_LPARAM(message.wParam));
+            // QTBUG-130832: QMenu relies on lastCursorPosition being up to date. When this code
+            // is called it still holds the last known mouse position inside a Qt window. Do a
+            // forced update of this position.
+            QGuiApplicationPrivate::lastCursorPosition = QCursor::pos().toPointF();
             const auto &screenManager = QWindowsContext::instance()->screenManager();
             const QPlatformScreen *screen = screenManager.screenAtDp(globalPos);
             if (!screen)
@@ -458,7 +465,7 @@ QDebug operator<<(QDebug d, const QWindowsSystemTrayIcon *t)
     if (t)
         t->formatDebug(d);
     else
-        d << '0';
+        d << "0x0";
     d << ')';
     return d;
 }

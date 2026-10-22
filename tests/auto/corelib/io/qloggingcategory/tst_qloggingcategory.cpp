@@ -911,6 +911,21 @@ private slots:
         }
     }
 
+    void debugLoggingCategories()
+    {
+        _config->clear();
+        _config->addKey("_logging_categories", true);
+        QLoggingCategory *pcategorybject = nullptr;
+        QLoggingCategory::setFilterRules(_config->array());
+        {
+            logMessage = "no change";
+            QLoggingCategory mycategoryobject("LoggingCategoryObject");
+            pcategorybject = &mycategoryobject;
+            QVERIFY(logMessage.contains("CATEGORY:LoggingCategoryObject"));
+        }
+        Q_UNUSED(pcategorybject);
+    }
+
     void cleanupTestCase()
     {
         delete _config;

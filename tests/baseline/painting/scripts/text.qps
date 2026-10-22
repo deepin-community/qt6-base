@@ -196,4 +196,71 @@ save
     drawText 0 20 "All the effects text drawing"
 restore
 
+translate 0 35
+save
+    setPen black
+    setFont "QtUnderlineTest" 20 normal normal default underline
+    drawText 0 20 "1234"
+restore
 
+translate 0 35.5
+save
+    setPen black
+    setFont "QtUnderlineTest2" 18 normal normal default underline
+    drawText 0 20 "1234"
+restore
+
+translate 0 35.5
+save
+    setPen black
+    setFont "QtUnderlineTest2" 12 normal normal default underline
+    drawText 0 20 "1234"
+restore
+
+translate 0 35.5
+save
+    setPen black
+    setFont "QtUnderlineTest2" 12 normal normal default underline
+    drawText 0 20 "1234"
+restore
+
+translate 0 35.5
+save
+    setPen black
+    setFont "sansserif" 12 normal
+    drawAlignedText 0 0 1000 1000 2048 "&Hello"
+restore
+
+translate 0 35.5
+save
+    setPen black
+    setFont "sansserif" 12 normal
+    drawAlignedText 0 0 1000 1000 2048 "&مرحبًا"
+restore
+
+translate 0 35.5
+save
+    setPen black
+    setFont "Arial Black" 12 normal
+    drawText 0 20 "Foobar"
+restore
+
+translate 0 35.5
+save
+    setPen black
+    drawText 0 20 "ᠪᠠᠷᠠᠳᠢ ꡏꡡꡃ ꡢ"
+restore
+
+translate 0 35.5
+save
+    setPen black
+    setFont "Annai MN" 12 normal
+    drawText 0 20 "Foobar"
+restore
+
+translate 0 35.5
+save
+    setPen black
+    setFont "Annai MN" 12 italic
+    drawText 0 20 "Foobar"
+restore

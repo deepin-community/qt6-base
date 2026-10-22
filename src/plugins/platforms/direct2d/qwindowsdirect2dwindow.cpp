@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsdirect2dcontext.h"
 #include "qwindowsdirect2dbitmap.h"
@@ -20,9 +21,6 @@ QWindowsDirect2DWindow::QWindowsDirect2DWindow(QWindow *window, const QWindowsWi
     : QWindowsWindow(window, data)
     , m_directRendering(!(data.flags & Qt::FramelessWindowHint && window->format().hasAlpha()))
 {
-    if (window->type() == Qt::Desktop)
-        return; // No further handling for Qt::Desktop
-
     if (m_directRendering)
         setupSwapChain();
 

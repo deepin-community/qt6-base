@@ -2,20 +2,21 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeglfskmsgbmdevice_p.h"
 #include "qeglfskmsgbmscreen_p.h"
 
 #include <private/qeglfsintegration_p.h>
+#include <private/qeglfskmsintegration_p.h>
 
 #include <QtCore/QLoggingCategory>
+#include <QtCore/qtimer.h>
 #include <QtCore/private/qcore_unix_p.h>
 
 #define ARRAY_LENGTH(a) (sizeof (a) / sizeof (a)[0])
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(qLcEglfsKmsDebug)
 
 QEglFSKmsGbmDevice::QEglFSKmsGbmDevice(QKmsScreenConfig *screenConfig, const QString &path)
     : QEglFSKmsDevice(screenConfig, path)
@@ -114,13 +115,27 @@ QPlatformScreen *QEglFSKmsGbmDevice::createScreen(const QKmsOutput &output)
 {
     QEglFSKmsGbmScreen *screen = new QEglFSKmsGbmScreen(this, output, false);
 
-    createGlobalCursor(screen);
+
+    // On some platforms (e.g. rpi4), you'll get a kernel warning/error
+    // if the cursor is created 'at the same time' as the screen is created.
+    // (drmModeMoveCursor is the specific call that causes the issue)
+    // When this issue is triggered, the screen's connector is unusable until reboot
+    //
+    // Below is a work-around (without negative implications for other platforms).
+    //
+    // interval of 0 and QMetaObject::invokeMethod (w/o Qt::QueuedConnection)
+    // do no help / will still trigger issue
+    QTimer::singleShot(1, [screen, this](){
+        createGlobalCursor(screen);
+    });
 
     return screen;
 }
 
 QPlatformScreen *QEglFSKmsGbmDevice::createHeadlessScreen()
 {
+    destroyGlobalCursor();
+
     return new QEglFSKmsGbmScreen(this, QKmsOutput(), true);
 }
 
@@ -128,9 +143,6 @@ void QEglFSKmsGbmDevice::registerScreenCloning(QPlatformScreen *screen,
                                                QPlatformScreen *screenThisScreenClones,
                                                const QList<QPlatformScreen *> &screensCloningThisScreen)
 {
-    if (!screenThisScreenClones && screensCloningThisScreen.isEmpty())
-        return;
-
     QEglFSKmsGbmScreen *gbmScreen = static_cast<QEglFSKmsGbmScreen *>(screen);
     gbmScreen->initCloning(screenThisScreenClones, screensCloningThisScreen);
 }
@@ -143,6 +155,32 @@ void QEglFSKmsGbmDevice::registerScreen(QPlatformScreen *screen,
     QEglFSKmsDevice::registerScreen(screen, isPrimary, virtualPos, virtualSiblings);
     if (screenConfig()->hwCursor() && m_globalCursor)
         m_globalCursor->reevaluateVisibilityForScreens();
+}
+
+void QEglFSKmsGbmDevice::unregisterScreen(QPlatformScreen *screen)
+{
+    // The global cursor holds a pointer to a QEglFSKmsGbmScreen.
+    // If that screen is being unregistered,
+    // this will recreate the global cursor with the first sibling screen.
+    if (m_globalCursor && screen == m_globalCursor->screen()) {
+        qCDebug(qLcEglfsKmsDebug) << "Destroying global GBM mouse cursor due to unregistering"
+                                  << "it's screen - will probably be recreated right away";
+        delete m_globalCursor;
+        m_globalCursor = nullptr;
+
+        QList<QPlatformScreen *> siblings = screen->virtualSiblings();
+        siblings.removeOne(screen);
+        if (siblings.count() > 0) {
+            QEglFSKmsGbmScreen *kmsScreen = static_cast<QEglFSKmsGbmScreen *>(siblings.first());
+            m_globalCursor = new QEglFSKmsGbmCursor(kmsScreen);
+            qCDebug(qLcEglfsKmsDebug) << "Creating new global GBM mouse cursor on sibling screen";
+        } else {
+            qCWarning(qLcEglfsKmsDebug) << "Couldn't find a sibling to recreate"
+                                        << "the GBM mouse cursor - it might vanish";
+        }
+    }
+
+    QEglFSKmsDevice::unregisterScreen(screen);
 }
 
 bool QEglFSKmsGbmDevice::usesEventReader() const

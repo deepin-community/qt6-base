@@ -42,9 +42,12 @@ private slots:
     void widget();
     void features();
     void setFloating();
+    void setFloatingReparenting();
     void allowedAreas();
     void toggleViewAction();
     void visibilityChanged();
+    void eventsOnDestruction_data();
+    void eventsOnDestruction();
     void updateTabBarOnVisibilityChanged();
     void dockLocationChanged();
     void setTitleBarWidget();
@@ -53,6 +56,7 @@ private slots:
     void restoreDockWidget();
     void restoreStateWhileStillFloating();
     void setWindowTitle();
+    void windowIcon();
 
     // task specific tests:
     void task165177_deleteFocusWidget();
@@ -96,7 +100,7 @@ private:
                             QPointer<QDockWidget> &d1, QPointer<QDockWidget> &d2,
                             QList<int> &path1, QList<int> &path2) const;
 
-#if defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID) || defined(Q_OS_QNX)
+#if defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID) || defined(Q_OS_QNX) || defined(Q_OS_HARMONY)
 #define qCreateFloatingTabs(mainWindow, centralWidget, d1, d2, path1, path2)\
     mainWindow = nullptr;\
     Q_UNUSED(path1);\
@@ -104,6 +108,8 @@ private:
     QSKIP("Platform not supported");
 #else
 #define qCreateFloatingTabs(mainWindow, centralWidget, d1, d2, path1, path2)\
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))\
+        QSKIP("Test skipped on Wayland.");\
     createFloatingTabs(mainWindow, centralWidget, d1, d2, path1, path2);\
     std::unique_ptr<QMainWindow> up_mainWindow(mainWindow);\
     if (!platformSupportingRaise)\
@@ -461,8 +467,14 @@ void tst_QDockWidget::setFloating()
     dw.setFloating(dw.isFloating());
     QCOMPARE(spy.size(), 0);
     spy.clear();
+}
 
-#if defined(QT_BUILD_INTERNAL) && !defined(Q_OS_WIN)
+void tst_QDockWidget::setFloatingReparenting()
+{
+#ifdef Q_OS_WIN
+    QSKIP("Test skipped on Windows platforms");
+#endif // Q_OS_WIN
+#ifdef QT_BUILD_INTERNAL
     // Check that setFloating() reparents the dock widget to the main window,
     // in case it has a QDockWidgetGroupWindow parent
     QPointer<QDockWidget> d1;
@@ -477,7 +489,9 @@ void tst_QDockWidget::setFloating()
     d1->setFloating(true);
     QTRY_COMPARE(mainWindow, d1->parentWidget());
     QTRY_COMPARE(mainWindow, d2->parentWidget());
-#endif // defined(QT_BUILD_INTERNAL) && !defined(Q_OS_WIN)
+#else
+    QSKIP("test requires -developer-build option");
+#endif // defined(QT_BUILD_INTERNAL)
 }
 
 void tst_QDockWidget::allowedAreas()
@@ -641,6 +655,7 @@ void tst_QDockWidget::visibilityChanged()
     QDockWidget dw;
     QSignalSpy spy(&dw, SIGNAL(visibilityChanged(bool)));
 
+    mw.setWindowFlag(Qt::FramelessWindowHint);
     mw.addDockWidget(Qt::LeftDockWidgetArea, &dw);
     mw.show();
 
@@ -706,6 +721,86 @@ void tst_QDockWidget::visibilityChanged()
     QCOMPARE(spy.at(0).at(0).toBool(), true);
 }
 
+/* Before 6.9.0, when getting destroyed, QDockWidget didn't
+   - emit visibilityChanged (QTBUG-136485)
+   - consume QEvent::StyleChange (QTBUG-143119).
+
+   It did in 6.9.0, causing regressions in applications. */
+void tst_QDockWidget::eventsOnDestruction_data()
+{
+    QTest::addColumn<bool>("explicitDestroy");
+    QTest::addColumn<bool>("floating");
+    QTest::addColumn<int>("visibilityCount");
+    QTest::addColumn<int>("styleCount");
+
+    QTest::addRow("Explicit, docked") << true << false << 0;
+    QTest::addRow("Explicit, floating") << true << true << 0;
+    QTest::addRow("Implicit, docked") << false << false << 1;
+    QTest::addRow("Implicit, floating") << false << true << 0;
+}
+
+class Filter : public QObject
+{
+    Q_OBJECT
+
+public:
+    Filter(QObject *filterObject)
+    {
+        filterObject->installEventFilter(this);
+    }
+
+    bool eventFilter(QObject *o, QEvent *e) override
+    {
+        if (e->type() == QEvent::StyleChange) {
+            auto *d = QObjectPrivate::get(o);
+            emit styleChanged(d->wasDeleted);
+        }
+        return false;
+    }
+
+signals:
+    void styleChanged(bool wasDeleted);
+};
+
+void tst_QDockWidget::eventsOnDestruction()
+{
+    QFETCH(const bool, explicitDestroy);
+    QFETCH(const bool, floating);
+    QFETCH(const int, visibilityCount);
+
+    qApp->setStyleSheet("QWidget {}" );
+    std::unique_ptr<QMainWindow> mw(new QMainWindow);
+    QDockWidget *dw = new QDockWidget;
+    dw->setWidget(new QWidget);
+    mw->addDockWidget(Qt::LeftDockWidgetArea, dw);
+    if (floating)
+        dw->setFloating(true);
+    mw->show();
+    QVERIFY(QTest::qWaitForWindowExposed(mw.get()));
+
+    Filter filter(dw);
+    QSignalSpy visibilitySpy(dw, &QDockWidget::visibilityChanged);
+    QSignalSpy styleSpy(&filter, &Filter::styleChanged);
+    if (explicitDestroy)
+        delete dw;
+    else
+        mw.reset();
+
+    if (visibilitySpy.count() != visibilityCount || styleSpy.count() > 0) {
+        const QString wasDeleted = styleSpy.count() == 0 || styleSpy.constFirst().constFirst().toBool()
+                                       ? "True" : "False";
+        const QString error = QString("Visibility changes: %1 (expected %2). Style changes: %3 (expected 0). UB: %4.")
+                                  .arg(visibilitySpy.count())
+                                  .arg(visibilityCount)
+                                  .arg(styleSpy.count())
+                                  .arg(wasDeleted);
+        qCritical() << error;
+    }
+    QCOMPARE(visibilitySpy.count(), visibilityCount);
+    QCOMPARE(styleSpy.count(), 0);
+
+}
+
 void tst_QDockWidget::updateTabBarOnVisibilityChanged()
 {
     // QTBUG49045: Populate tabified dock area with 4 widgets, set the tab
@@ -754,6 +849,12 @@ void tst_QDockWidget::updateTabBarOnVisibilityChanged()
 
 Q_DECLARE_METATYPE(Qt::DockWidgetArea)
 
+Qt::DockWidgetArea dockLocation(const QSignalSpy *spy)
+{
+    Q_ASSERT(spy);
+    return qvariant_cast<Qt::DockWidgetArea>(spy->at(0).at(0));
+}
+
 void tst_QDockWidget::dockLocationChanged()
 {
     qRegisterMetaType<Qt::DockWidgetArea>("Qt::DockWidgetArea");
@@ -761,61 +862,74 @@ void tst_QDockWidget::dockLocationChanged()
     QMainWindow mw;
     QDockWidget dw;
     dw.setObjectName("dock1");
-    QSignalSpy spy(&dw, SIGNAL(dockLocationChanged(Qt::DockWidgetArea)));
-
-    mw.addDockWidget(Qt::LeftDockWidgetArea, &dw);
-    QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::LeftDockWidgetArea);
-    spy.clear();
-
-    mw.addDockWidget(Qt::LeftDockWidgetArea, &dw);
-    QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::LeftDockWidgetArea);
-    spy.clear();
-
-    mw.addDockWidget(Qt::RightDockWidgetArea, &dw);
-    QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::RightDockWidgetArea);
-    spy.clear();
-
-    mw.removeDockWidget(&dw);
-    QCOMPARE(spy.size(), 0);
-
     QDockWidget dw2;
     dw2.setObjectName("dock2");
+
+    {
+        // Ensure tabify is a no-op before QMainWindow::addDockWidget()
+        QSignalSpy noopSpy(&dw2, &QDockWidget::dockLocationChanged);
+        QTest::ignoreMessage(QtCriticalMsg, QRegularExpression("^Coding error: QDockWidget.*"));
+        mw.tabifyDockWidget(&dw, &dw2);
+        QCOMPARE(noopSpy.size(), 0);
+    }
+
+    QSignalSpy spy(&dw, &QDockWidget::dockLocationChanged);
+
+    mw.addDockWidget(Qt::LeftDockWidgetArea, &dw);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(dockLocation(&spy), Qt::LeftDockWidgetArea);
+
+    constexpr std::array<Qt::DockWidgetArea, 5> areas{Qt::LeftDockWidgetArea,
+                                                      Qt::TopDockWidgetArea,
+                                                      Qt::RightDockWidgetArea,
+                                                      Qt::BottomDockWidgetArea,
+                                                      Qt::NoDockWidgetArea};
+
+    for (const auto area : areas) {
+        spy.clear();
+        const int expectedCount = dw.dockLocation() == area ? 0 : 1;
+        dw.setDockLocation(area);
+
+        // Ensure signal is only fired on changes
+        QCOMPARE(spy.count(), expectedCount);
+        if (expectedCount)
+            QCOMPARE(dockLocation(&spy), area);
+
+        // Ensure getter reports correctly
+        QTRY_COMPARE(dw.dockLocation(), area);
+
+        // Ensure setting NoDockWidgetArea floats the dock widget
+        if (area == Qt::NoDockWidgetArea) {
+            QCOMPARE(dw.isFloating(), true);
+            dw.setFloating(false);
+        }
+    }
+
+    // Dock area doesn't change => no signal emission
+    spy.clear();
     mw.addDockWidget(Qt::TopDockWidgetArea, &dw2);
     mw.tabifyDockWidget(&dw2, &dw);
-    QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::TopDockWidgetArea);
-    spy.clear();
+    QCOMPARE(spy.size(), 0);
 
     mw.splitDockWidget(&dw2, &dw, Qt::Horizontal);
     QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::TopDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::TopDockWidgetArea);
     spy.clear();
 
     dw.setFloating(true);
     QTRY_COMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-             Qt::NoDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::NoDockWidgetArea);
     spy.clear();
 
     dw.setFloating(false);
     QTRY_COMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-             Qt::TopDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::TopDockWidgetArea);
     spy.clear();
 
-    QByteArray ba = mw.saveState();
+    const QByteArray &ba = mw.saveState();
     mw.restoreState(ba);
     QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-             Qt::TopDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::TopDockWidgetArea);
 }
 
 void tst_QDockWidget::setTitleBarWidget()
@@ -852,7 +966,8 @@ void tst_QDockWidget::titleBarDoubleClick()
     win.show();
     dock.setFloating(true);
 
-    QEvent e(QEvent::NonClientAreaMouseButtonDblClick);
+    QMouseEvent e(QEvent::NonClientAreaMouseButtonDblClick, {}, {}, {}, {}, {}, {}, {},
+                  QPointingDevice::primaryPointingDevice());
     QApplication::sendEvent(&dock, &e);
     QVERIFY(dock.isFloating());
     QCOMPARE(win.dockWidgetArea(&dock), Qt::NoDockWidgetArea);
@@ -878,6 +993,8 @@ void tst_QDockWidget::restoreStateOfFloating()
     QMainWindow mw;
     QDockWidget *dock = createTestDock(mw);
     mw.addDockWidget(Qt::TopDockWidgetArea, dock);
+    mw.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&mw));
     QVERIFY(!dock->isFloating());
     QByteArray ba = mw.saveState();
     dock->setFloating(true);
@@ -914,8 +1031,7 @@ void tst_QDockWidget::restoreStateWhileStillFloating()
 void tst_QDockWidget::restoreDockWidget()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Fails on Wayland: QTBUG-91483");
-
+        QSKIP("Test skipped on Wayland.");
     QByteArray geometry;
     QByteArray state;
 
@@ -1073,11 +1189,9 @@ void tst_QDockWidget::task248604_infiniteResize()
 
 void tst_QDockWidget::task258459_visibilityChanged()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QMainWindow win;
     QDockWidget dock1, dock2;
+    win.setWindowFlag(Qt::FramelessWindowHint);
     win.addDockWidget(Qt::RightDockWidgetArea, &dock1);
     win.tabifyDockWidget(&dock1, &dock2);
     QSignalSpy spy1(&dock1, SIGNAL(visibilityChanged(bool)));
@@ -1110,9 +1224,6 @@ void tst_QDockWidget::taskQTBUG_1665_closableChanged()
 
 void tst_QDockWidget::taskQTBUG_9758_undockedGeometry()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Fails on Wayland: QTBUG-91483");
-
     QMainWindow window;
     QDockWidget dock1(&window);
     QDockWidget dock2(&window);
@@ -1192,6 +1303,28 @@ void tst_QDockWidget::setWindowTitle()
     QCOMPARE(dock2.windowTitle(), closedDock2);
 }
 
+void tst_QDockWidget::windowIcon()
+{
+    QPixmap pm(5, 5);
+    pm.fill(Qt::red);
+    const QIcon icon(pm);
+    pm.fill(Qt::green);
+    const QIcon appIcon(pm);
+    qApp->setWindowIcon(appIcon);
+    QMainWindow mainWindow;
+    mainWindow.setCentralWidget(new QWidget);
+    auto *d1 = new QDockWidget;
+    auto *d2 = new QDockWidget;
+    d2->setWindowIcon(icon);
+    mainWindow.addDockWidget(Qt::TopDockWidgetArea, d1);
+    mainWindow.addDockWidget(Qt::TopDockWidgetArea, d2);
+    mainWindow.tabifyDockWidget(d1, d2);
+    auto *bar = mainWindow.findChild<QTabBar *>();
+    Q_ASSERT(bar->count() == 2);
+    QCOMPARE(bar->tabIcon(0), QIcon());
+    QCOMPARE(bar->tabIcon(1), icon);
+}
+
 // helpers for dockPermissions, hideAndShow, closeAndDelete
 #ifdef QT_BUILD_INTERNAL
 void tst_QDockWidget::createTestWidgets(QMainWindow* &mainWindow, QPointer<QWidget> &cent, QPointer<QDockWidget> &d1, QPointer<QDockWidget> &d2) const
@@ -1237,7 +1370,7 @@ void tst_QDockWidget::createTestWidgets(QMainWindow* &mainWindow, QPointer<QWidg
     d1->show();
     d2->show();
     mainWindow->show();
-    QApplicationPrivate::setActiveWindow(mainWindow);
+    QVERIFY(QTest::qWaitForWindowExposed(mainWindow));
 
 }
 
@@ -1329,7 +1462,7 @@ void tst_QDockWidget::unplugAndResize(QMainWindow* mainWindow, QDockWidget* dw, 
     QPoint pos1 = dw->mapToGlobal(dw->rect().center());
     pos1.rx() += mx;
     pos1.ry() += my;
-    moveDockWidget(dw, pos1, dw->mapToGlobal(dw->rect().center()), MoveDockWidgetRule::Drop);
+    moveDockWidget(dw, pos1, QPoint(), MoveDockWidgetRule::Drop);
     QTRY_VERIFY(dw->isFloating());
 
     // Unplugged object's size may differ max. by 2x frame size
@@ -1461,8 +1594,6 @@ void tst_QDockWidget::createFloatingTabs(QMainWindow* &mainWindow, QPointer<QWid
 // test floating tabs and item_tree consistency
 void tst_QDockWidget::floatingTabs()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Test skipped on Wayland.");
 #ifdef Q_OS_WIN
     QSKIP("Test skipped on Windows platforms");
 #endif // Q_OS_WIN
@@ -1580,8 +1711,6 @@ void tst_QDockWidget::deleteFloatingTabWithSingleDockWidget_data()
 
 void tst_QDockWidget::deleteFloatingTabWithSingleDockWidget()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Test skipped on Wayland.");
 #ifdef Q_OS_WIN
     QSKIP("Test skipped on Windows platforms");
 #endif // Q_OS_WIN
@@ -1635,8 +1764,10 @@ void tst_QDockWidget::hoverWithoutDrop()
     // unplug and resize both dock widgets
     unplugAndResize(mainWindow, d1, home1(mainWindow), size1(mainWindow));
     unplugAndResize(mainWindow, d2, home2(mainWindow), size2(mainWindow));
+    const QSize sizeD1 = d1->size();
+    const QSize sizeD2 = d2->size();
 
-    // Test plugging
+    // hover over each other
     qCDebug(lcTestDockWidget) << "*** move d1 dock over d2 dock ***";
     qCDebug(lcTestDockWidget) << "*******(test hovering)***********";
     qCDebug(lcTestDockWidget) << "Move d1 over d2, wait and return to origin";
@@ -1644,7 +1775,21 @@ void tst_QDockWidget::hoverWithoutDrop()
     const QPoint target = d2->mapToGlobal(d2->rect().center());
     moveDockWidget(d1, target, source, MoveDockWidgetRule::Abort);
     auto *groupWindow = mainWindow->findChild<QDockWidgetGroupWindow *>();
+
+    // No dropping => no groupWindow exists
     QCOMPARE(groupWindow, nullptr);
+
+    // Check whether sizes are unchanged after hover
+    QCOMPARE(d1->size(), sizeD1);
+    QCOMPARE(d2->size(), sizeD2);
+
+    qCDebug(lcTestDockWidget) << "*** tabify d1 and d2 programmatically ***";
+    mainWindow->tabifyDockWidget(d1, d2);
+    QCOMPARE(mainWindow->tabifiedDockWidgets(d1), {d2});
+    QCOMPARE(mainWindow->tabifiedDockWidgets(d2), {d1});
+    groupWindow = mainWindow->findChild<QDockWidgetGroupWindow *>();
+    QVERIFY(groupWindow);
+
 #else
     QSKIP("test requires -developer-build option");
 #endif // QT_BUILD_INTERNAL
@@ -1957,6 +2102,48 @@ void tst_QDockWidget::saveAndRestore()
         isFloating2 = d2->isFloating();
     }
 
+    // Test save / restore consistency (QTBUG-142797)
+    {
+        constexpr auto compare = [](const QList<QDockWidget *> actual, std::initializer_list<QDockWidget *> expected) {
+            const auto expectedSize = static_cast<int>(expected.size());
+            if (actual.size() != expectedSize) {
+                qCDebug(lcTestDockWidget) << "expected size:" << expectedSize << "actual size:" << actual.size();
+                return false;
+            }
+            for (auto *widget : expected) {
+                if (!actual.contains(widget)) {
+                    qCDebug(lcTestDockWidget) << "expected:" << expected << "actual:" << actual;
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        QPointer<QDockWidget> d1;
+        QPointer<QDockWidget> d2;
+        QPointer<QWidget> cent;
+        QMainWindow* mainWindow;
+        QList<int> path1;
+        QList<int> path2;
+        qCreateFloatingTabs(mainWindow, cent, d1, d2, path1, path2);
+        auto *d3 = new QDockWidget;
+        d3->setObjectName("D3");
+        mainWindow->addDockWidget(Qt::LeftDockWidgetArea, d3);
+        d3->setFloating(true);
+        QTRY_VERIFY(d3->isFloating());
+        QPointer<QDockWidgetGroupWindow> groupWindow = mainWindow->findChild<QDockWidgetGroupWindow *>();
+        QVERIFY(groupWindow);
+        QVERIFY(compare(groupWindow->dockWidgets(), {d1, d2}));
+        d3->close();
+        QVERIFY(!d3->toggleViewAction()->isChecked());
+        const auto &ba = mainWindow->saveState();
+        mainWindow->restoreState(ba);
+        QTRY_VERIFY(!groupWindow);
+        groupWindow = mainWindow->findChild<QDockWidgetGroupWindow *>();
+        QVERIFY(compare(groupWindow->dockWidgets(), {d1, d2}));
+        QVERIFY(!d3->toggleViewAction()->isChecked()); // d3 must still be closed after restore
+    }
+
     // Create a mainwindow with a central widget and two dock widgets.
     // Assign different properties to each dock widgets.
     // Write properties to a byte array.
@@ -1990,6 +2177,35 @@ void tst_QDockWidget::saveAndRestore()
         QCOMPARE(d2->isFloating(), isFloating2);
     }
 
+    // MainWindow is child of another toplevel window
+    {
+        QWidget topLevel;
+        auto *layout = new QVBoxLayout(&topLevel);
+
+        auto *tabs = new QTabWidget(&topLevel);
+        layout->addWidget(tabs);
+
+        // Tab 1: Save Settings button
+        auto *tab1 = new QWidget;
+        tabs->addTab(tab1, "Front");
+
+        // Tab 2: QMainWindow with a left dock widget
+        auto *tab2 = new QMainWindow;
+        auto *dock = new QDockWidget("Dock1", tab2);
+        dock->setObjectName("dock1");
+        tab2->addDockWidget(Qt::LeftDockWidgetArea, dock);
+        tab2->setCentralWidget(new QWidget);
+        tabs->addTab(tab2, "Main");
+
+        topLevel.resize(400, 400);
+        topLevel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+        tab2->restoreState(tab2->saveState());
+        tabs->setCurrentIndex(1);
+        QTRY_VERIFY(dock->isVisible());
+        QVERIFY(!dock->isFloating());
+    }
+
     // Create a new main window, central window and two dock widgets.
     QPointer<QDockWidget> d1;
     QPointer<QDockWidget> d2;
@@ -2010,8 +2226,8 @@ void tst_QDockWidget::saveAndRestore()
     // Compare positions, sizes and floating status
     // If the test fails in the following 12 lines,
     // the de-serialization format/sequence have changed
-    QCOMPARE(topLeft1, d1->pos());
-    QCOMPARE(topLeft2, d2->pos());
+    QTRY_COMPARE(topLeft1, d1->pos());
+    QTRY_COMPARE(topLeft2, d2->pos());
     QCOMPARE(widgetSize1, d1->size());
     QCOMPARE(widgetSize2, d2->size());
     QVERIFY(d1->isFloating());

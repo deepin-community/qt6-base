@@ -1,3 +1,5 @@
+# Copyright (C) 2024 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 #####################################################################
 ## BundledLibpng Generic Library:
 #####################################################################
@@ -52,7 +54,7 @@ qt_internal_extend_target(BundledLibpng CONDITION NOT QT_FEATURE_system_zlib
         ../zlib/src
 )
 
-qt_internal_extend_target(BundledLibpng CONDITION NOT QT_FEATURE_system_zlib AND NOT no_core_dep
+qt_internal_extend_target(BundledLibpng CONDITION NOT QT_FEATURE_system_zlib
     LIBRARIES
         Qt::Core
 )

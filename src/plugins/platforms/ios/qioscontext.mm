@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -99,7 +100,7 @@ static QString fboStatusString(GLenum status)
 }
 
 #define Q_ASSERT_IS_GL_SURFACE(surface) \
-    Q_ASSERT(surface && (surface->surface()->surfaceType() & (QSurface::OpenGLSurface | QSurface::RasterGLSurface)))
+    Q_ASSERT(surface && (surface->surface()->surfaceType() == QSurface::OpenGLSurface))
 
 bool QIOSContext::makeCurrent(QPlatformSurface *surface)
 {
@@ -193,7 +194,11 @@ void QIOSContext::swapBuffers(QPlatformSurface *surface)
         return; // Nothing to do
 
     FramebufferObject &framebufferObject = backingFramebufferObjectFor(surface);
-    Q_ASSERT_X(framebufferObject.isComplete, "QIOSContext", "swapBuffers on incomplete FBO");
+    if (!framebufferObject.isComplete) {
+        qCWarning(lcQpaGLContext, "swapBuffers on incomplete framebuffer object (%s). Skipping flush",
+            qPrintable(fboStatusString(glCheckFramebufferStatus(GL_FRAMEBUFFER))));
+        return;
+    }
 
     if (needsRenderbufferResize(surface)) {
         qCWarning(lcQpaGLContext, "CAEAGLLayer was resized between makeCurrent and swapBuffers, skipping flush");

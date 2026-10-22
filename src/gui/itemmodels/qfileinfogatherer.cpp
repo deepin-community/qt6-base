@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfileinfogatherer_p.h"
 #include <qcoreapplication.h>
@@ -43,6 +44,12 @@ static QString translateDriveName(const QFileInfo &drive)
 #endif // Q_OS_WIN
     return driveName;
 }
+
+/*!
+    \class QFileInfoGatherer
+    \inmodule QtGui
+    \internal
+*/
 
 /*!
     Creates thread
@@ -149,6 +156,8 @@ void QFileInfoGatherer::fetchExtendedInformation(const QString &path, const QStr
     while ((loc = this->path.lastIndexOf(path, loc - 1)) != -1) {
         if (this->files.at(loc) == files)
             return;
+        if (loc == 0)
+            break;
     }
 
 #if QT_CONFIG(thread)
@@ -419,10 +428,10 @@ void QFileInfoGatherer::getFileInfos(const QString &path, const QStringList &fil
 
     QStringList allFiles;
     if (files.isEmpty()) {
-        // Use QDirListing::IteratorFlags when QFileSystemModel is
-        // changed to use them too
-        constexpr auto dirFilters = QDir::AllEntries | QDir::System | QDir::Hidden;
-        for (const auto &dirEntry : QDirListing(path, {}, dirFilters.toInt())) {
+        using F = QDirListing::IteratorFlag;
+        constexpr auto flags = F::ResolveSymlinks | F::IncludeHidden | F::IncludeDotAndDotDot
+                               | F::IncludeBrokenSymlinks;
+        for (const auto &dirEntry : QDirListing(path, flags)) {
             if (isInterruptionRequested())
                 break;
             fileInfo = dirEntry.fileInfo();

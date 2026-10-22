@@ -1,6 +1,7 @@
 // Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowscontext.h"
 #include "qwindowsintegration.h"
@@ -26,6 +27,7 @@
 #endif
 #include "qwindowsscreen.h"
 #include "qwindowstheme.h"
+#include "qwindowswindowclassregistry.h"
 
 #include <QtGui/qwindow.h>
 #include <qpa/qwindowsysteminterface.h>
@@ -35,19 +37,18 @@
 #include <QtGui/qopenglcontext.h>
 #include <QtGui/qpointingdevice.h>
 
-#include <QtCore/qset.h>
 #include <QtCore/qhash.h>
-#include <QtCore/qlibraryinfo.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qsysinfo.h>
 #include <QtCore/qscopedpointer.h>
-#include <QtCore/quuid.h>
+#include <QtCore/qscopeguard.h>
 #include <QtCore/private/qwinregistry_p.h>
 #if QT_CONFIG(cpp_winrt)
 #  include <QtCore/private/qfactorycacheregistration_p.h>
 #endif
 #include <QtCore/private/qsystemerror_p.h>
+#include <QtCore/private/quniquehandle_types_windows_p.h>
 
 #include <QtGui/private/qwindowsguieventdispatcher_p.h>
 #include <QtGui/private/qwindowsthemecache_p.h>
@@ -75,6 +76,7 @@ Q_LOGGING_CATEGORY(lcQpaAccessibility, "qt.qpa.accessibility")
 Q_LOGGING_CATEGORY(lcQpaUiAutomation, "qt.qpa.uiautomation")
 Q_LOGGING_CATEGORY(lcQpaTrayIcon, "qt.qpa.trayicon")
 Q_LOGGING_CATEGORY(lcQpaScreen, "qt.qpa.screen")
+Q_LOGGING_CATEGORY(lcQpaTheme, "qt.qpa.theme")
 
 int QWindowsContext::verbose = 0;
 
@@ -135,9 +137,9 @@ struct QWindowsContextPrivate {
     QWindowsContextPrivate();
 
     unsigned m_systemInfo = 0;
-    QSet<QString> m_registeredWindowClassNames;
+    QWindowsWindowClassRegistry m_windowClassRegistry{ qWindowsWndProc };
     QWindowsContext::HandleBaseWindowHash m_windows;
-    HDC m_displayContext = nullptr;
+    QUniqueHDCHandle m_displayContext;
     int m_defaultDPI = 96;
     QWindowsKeyMapper m_keyMapper;
     QWindowsPointerHandler m_pointerHandler;
@@ -162,8 +164,8 @@ QWindowsContextPrivate::QWindowsContextPrivate()
 {
     if (m_pointerHandler.touchDevice())
         m_systemInfo |= QWindowsContext::SI_SupportsTouch;
-    m_displayContext = GetDC(nullptr);
-    m_defaultDPI = GetDeviceCaps(m_displayContext, LOGPIXELSY);
+    m_displayContext.reset(GetDC(nullptr));
+    m_defaultDPI = GetDeviceCaps(m_displayContext.get(), LOGPIXELSY);
     if (useRTL_Extensions()) {
         m_systemInfo |= QWindowsContext::SI_RTL_Extensions;
         m_keyMapper.setUseRTLExtensions(true);
@@ -177,14 +179,7 @@ QWindowsContextPrivate::QWindowsContextPrivate()
 QWindowsContext::QWindowsContext() :
     d(new QWindowsContextPrivate)
 {
-#ifdef Q_CC_MSVC
-#    pragma warning( disable : 4996 )
-#endif
     m_instance = this;
-    // ### FIXME: Remove this once the logging system has other options of configurations.
-    const QByteArray bv = qgetenv("QT_QPA_VERBOSE");
-    if (!bv.isEmpty())
-        QLoggingCategory::setFilterRules(QString::fromLocal8Bit(bv));
 }
 
 QWindowsContext::~QWindowsContext()
@@ -199,9 +194,11 @@ QWindowsContext::~QWindowsContext()
     if (d->m_powerDummyWindow)
         DestroyWindow(d->m_powerDummyWindow);
 
+    if (QWindowsTheme *theme = QWindowsTheme::instance())
+        theme->destroyThemeChangeWindow();
+
     d->m_screenManager.destroyWindow();
 
-    unregisterWindowClasses();
     if (d->m_oleInitializeResult == S_OK || d->m_oleInitializeResult == S_FALSE) {
 #ifdef QT_USE_FACTORY_CACHE_REGISTRATION
         detail::QWinRTFactoryCacheRegistration::clearAllCaches();
@@ -210,8 +207,6 @@ QWindowsContext::~QWindowsContext()
     }
 
     d->m_screenManager.clearScreens(); // Order: Potentially calls back to the windows.
-    if (d->m_displayContext)
-        ReleaseDC(nullptr, d->m_displayContext);
     m_instance = nullptr;
 }
 
@@ -272,7 +267,7 @@ bool QWindowsContext::disposeTablet()
 #endif
 }
 
-extern "C" LRESULT QT_WIN_CALLBACK qWindowsPowerWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT QT_WIN_CALLBACK qWindowsPowerWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     if (message != WM_POWERBROADCAST || wParam != PBT_POWERSETTINGCHANGE)
         return DefWindowProc(hwnd, message, wParam, lParam);
@@ -428,6 +423,10 @@ QDebug operator<<(QDebug d, QtWindows::DpiAwareness dpiAwareness)
 bool QWindowsContext::setProcessDpiAwareness(QtWindows::DpiAwareness dpiAwareness)
 {
     qCDebug(lcQpaWindow) << __FUNCTION__ << dpiAwareness;
+    [[maybe_unused]] const auto updatePMv2Status = qScopeGuard([](){
+        QWindowsContextPrivate::m_v2DpiAware =
+            processDpiAwareness() == QtWindows::DpiAwareness::PerMonitorVersion2;
+    });
     if (processDpiAwareness() == dpiAwareness)
         return true;
     const auto context = qtDpiAwarenessToDpiAwarenessContext(dpiAwareness);
@@ -445,8 +444,6 @@ bool QWindowsContext::setProcessDpiAwareness(QtWindows::DpiAwareness dpiAwarenes
             << "(https://doc.qt.io/qt-6/highdpi.html#configuring-windows).";
         return false;
     }
-    QWindowsContextPrivate::m_v2DpiAware
-        = processDpiAwareness() == QtWindows::DpiAwareness::PerMonitorVersion2;
     return true;
 }
 
@@ -494,7 +491,7 @@ int QWindowsContext::defaultDPI() const
 
 HDC QWindowsContext::displayContext() const
 {
-    return d->m_displayContext;
+    return d->m_displayContext.get();
 }
 
 QWindow *QWindowsContext::keyGrabber() const
@@ -507,159 +504,9 @@ void QWindowsContext::setKeyGrabber(QWindow *w)
     d->m_keyMapper.setKeyGrabber(w);
 }
 
-QString QWindowsContext::classNamePrefix()
-{
-    static QString result;
-    if (result.isEmpty()) {
-        QTextStream str(&result);
-        str << "Qt" << QT_VERSION_MAJOR << QT_VERSION_MINOR << QT_VERSION_PATCH;
-        if (QLibraryInfo::isDebugBuild())
-            str << 'd';
-#ifdef QT_NAMESPACE
-#  define xstr(s) str(s)
-#  define str(s) #s
-        str << xstr(QT_NAMESPACE);
-#  undef str
-#  undef xstr
-#endif
-    }
-    return result;
-}
-
-// Window class registering code (from qapplication_win.cpp)
-
-QString QWindowsContext::registerWindowClass(const QWindow *w)
-{
-    Q_ASSERT(w);
-    const Qt::WindowFlags flags = w->flags();
-    const Qt::WindowFlags type = flags & Qt::WindowType_Mask;
-    // Determine style and icon.
-    uint style = CS_DBLCLKS;
-    bool icon = true;
-    // The following will not set CS_OWNDC for any widget window, even if it contains a
-    // QOpenGLWidget or QQuickWidget later on. That cannot be detected at this stage.
-    if (w->surfaceType() == QSurface::OpenGLSurface || (flags & Qt::MSWindowsOwnDC))
-        style |= CS_OWNDC;
-    if (!(flags & Qt::NoDropShadowWindowHint)
-        && (type == Qt::Popup || w->property("_q_windowsDropShadow").toBool())) {
-        style |= CS_DROPSHADOW;
-    }
-    switch (type) {
-    case Qt::Tool:
-    case Qt::ToolTip:
-    case Qt::Popup:
-        style |= CS_SAVEBITS; // Save/restore background
-        icon = false;
-        break;
-    case Qt::Dialog:
-        if (!(flags & Qt::WindowSystemMenuHint))
-            icon = false; // QTBUG-2027, dialogs without system menu.
-        break;
-    }
-    // Create a unique name for the flag combination
-    QString cname = classNamePrefix();
-    cname += "QWindow"_L1;
-    switch (type) {
-    case Qt::Tool:
-        cname += "Tool"_L1;
-        break;
-    case Qt::ToolTip:
-        cname += "ToolTip"_L1;
-        break;
-    case Qt::Popup:
-        cname += "Popup"_L1;
-        break;
-    default:
-        break;
-    }
-    if (style & CS_DROPSHADOW)
-        cname += "DropShadow"_L1;
-    if (style & CS_SAVEBITS)
-        cname += "SaveBits"_L1;
-    if (style & CS_OWNDC)
-        cname += "OwnDC"_L1;
-    if (icon)
-        cname += "Icon"_L1;
-
-    return registerWindowClass(cname, qWindowsWndProc, style, nullptr, icon);
-}
-
-QString QWindowsContext::registerWindowClass(QString cname,
-                                             WNDPROC proc,
-                                             unsigned style,
-                                             HBRUSH brush,
-                                             bool icon)
-{
-    // since multiple Qt versions can be used in one process
-    // each one has to have window class names with a unique name
-    // The first instance gets the unmodified name; if the class
-    // has already been registered by another instance of Qt then
-    // add a UUID. The check needs to be performed for each name
-    // in case new message windows are added (QTBUG-81347).
-    // Note: GetClassInfo() returns != 0 when a class exists.
-    const auto appInstance = static_cast<HINSTANCE>(GetModuleHandle(nullptr));
-    WNDCLASS wcinfo;
-    const bool classExists = GetClassInfo(appInstance, reinterpret_cast<LPCWSTR>(cname.utf16()), &wcinfo) != FALSE
-        && wcinfo.lpfnWndProc != proc;
-
-    if (classExists)
-        cname += QUuid::createUuid().toString();
-
-    if (d->m_registeredWindowClassNames.contains(cname))        // already registered in our list
-        return cname;
-
-    WNDCLASSEX wc;
-    wc.cbSize       = sizeof(WNDCLASSEX);
-    wc.style        = style;
-    wc.lpfnWndProc  = proc;
-    wc.cbClsExtra   = 0;
-    wc.cbWndExtra   = 0;
-    wc.hInstance    = appInstance;
-    wc.hCursor      = nullptr;
-    wc.hbrBackground = brush;
-    if (icon) {
-        wc.hIcon = static_cast<HICON>(LoadImage(appInstance, L"IDI_ICON1", IMAGE_ICON, 0, 0, LR_DEFAULTSIZE));
-        if (wc.hIcon) {
-            int sw = GetSystemMetrics(SM_CXSMICON);
-            int sh = GetSystemMetrics(SM_CYSMICON);
-            wc.hIconSm = static_cast<HICON>(LoadImage(appInstance, L"IDI_ICON1", IMAGE_ICON, sw, sh, 0));
-        } else {
-            wc.hIcon = static_cast<HICON>(LoadImage(nullptr, IDI_APPLICATION, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED));
-            wc.hIconSm = nullptr;
-        }
-    } else {
-        wc.hIcon    = nullptr;
-        wc.hIconSm  = nullptr;
-    }
-
-    wc.lpszMenuName  = nullptr;
-    wc.lpszClassName = reinterpret_cast<LPCWSTR>(cname.utf16());
-    ATOM atom = RegisterClassEx(&wc);
-    if (!atom)
-        qErrnoWarning("QApplication::regClass: Registering window class '%s' failed.",
-                      qPrintable(cname));
-
-    d->m_registeredWindowClassNames.insert(cname);
-    qCDebug(lcQpaWindow).nospace() << __FUNCTION__ << ' ' << cname
-        << " style=0x" << Qt::hex << style << Qt::dec
-        << " brush=" << brush << " icon=" << icon << " atom=" << atom;
-    return cname;
-}
-
-void QWindowsContext::unregisterWindowClasses()
-{
-    const auto appInstance = static_cast<HINSTANCE>(GetModuleHandle(nullptr));
-
-    for (const QString &name : std::as_const(d->m_registeredWindowClassNames)) {
-        if (!UnregisterClass(reinterpret_cast<LPCWSTR>(name.utf16()), appInstance) && QWindowsContext::verbose)
-            qErrnoWarning("UnregisterClass failed for '%s'", qPrintable(name));
-    }
-    d->m_registeredWindowClassNames.clear();
-}
-
 int QWindowsContext::screenDepth() const
 {
-    return GetDeviceCaps(d->m_displayContext, BITSPIXEL);
+    return GetDeviceCaps(d->m_displayContext.get(), BITSPIXEL);
 }
 
 void QWindowsContext::addWindow(HWND hwnd, QWindowsWindow *w)
@@ -850,7 +697,7 @@ HWND QWindowsContext::createDummyWindow(const QString &classNameIn,
 {
     if (!wndProc)
         wndProc = DefWindowProc;
-    QString className = registerWindowClass(classNamePrefix() + classNameIn, wndProc);
+    QString className = d->m_windowClassRegistry.registerWindowClass(classNameIn, wndProc);
     return CreateWindowEx(0, reinterpret_cast<LPCWSTR>(className.utf16()),
                           windowName, style,
                           CW_USEDEFAULT, CW_USEDEFAULT,
@@ -1066,11 +913,6 @@ bool QWindowsContext::windowsProc(HWND hwnd, UINT message,
 #endif
     case QtWindows::SettingChangedEvent: {
         QWindowsWindow::settingsChanged();
-        // Only refresh the window theme if the user changes the personalize settings.
-        if ((wParam == 0) && (lParam != 0) // lParam sometimes may be NULL.
-            && (wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0)) {
-            QWindowsTheme::handleSettingsChanged();
-        }
         return d->m_screenManager.handleScreenChanges();
     }
     default:
@@ -1100,7 +942,7 @@ bool QWindowsContext::windowsProc(HWND hwnd, UINT message,
                 }
             return false;
         case QtWindows::CalculateSize:
-            return QWindowsGeometryHint::handleCalculateSize(d->m_creationContext->customMargins, msg, result);
+            return QWindowsGeometryHint::handleCalculateSize(d->m_creationContext->window, d->m_creationContext->customMargins, msg, result);
         case QtWindows::GeometryChangingEvent:
             return QWindowsWindow::handleGeometryChangingMessage(&msg, d->m_creationContext->window,
                                                                  d->m_creationContext->margins + d->m_creationContext->customMargins);
@@ -1158,20 +1000,34 @@ bool QWindowsContext::windowsProc(HWND hwnd, UINT message,
     case QtWindows::MoveEvent:
         platformWindow->handleMoved();
         return true;
-    case QtWindows::ResizeEvent:
+    case QtWindows::ResizeEvent: {
+        QWindow *window = platformWindow->window();
         platformWindow->handleResized(static_cast<int>(wParam), lParam);
+        if (window->flags().testFlags(Qt::ExpandedClientAreaHint))
+            platformWindow->updateCustomTitlebar();
         return true;
+    }
     case QtWindows::QuerySizeHints:
         platformWindow->getSizeHints(reinterpret_cast<MINMAXINFO *>(lParam));
         return true;// maybe available on some SDKs revisit WM_NCCALCSIZE
     case QtWindows::CalculateSize:
-        return QWindowsGeometryHint::handleCalculateSize(platformWindow->customMargins(), msg, result);
-    case QtWindows::NonClientHitTest:
+        return QWindowsGeometryHint::handleCalculateSize(platformWindow->window(), platformWindow->customMargins(), msg, result);
+    case QtWindows::NonClientHitTest: {
+        QWindow *window = platformWindow->window();
+        if (window->flags().testFlags(Qt::ExpandedClientAreaHint))
+            platformWindow->updateCustomTitlebar();
         return platformWindow->handleNonClientHitTest(QPoint(msg.pt.x, msg.pt.y), result);
+    }
+    case QtWindows::NonClientActivate:
+        return platformWindow->handleNonClientActivate(result);
     case QtWindows::GeometryChangingEvent:
         return platformWindow->handleGeometryChanging(&msg);
-    case QtWindows::ExposeEvent:
+    case QtWindows::ExposeEvent: {
+        QWindow *window = platformWindow->window();
+        if (window->flags().testFlags(Qt::ExpandedClientAreaHint))
+            platformWindow->updateCustomTitlebar();
         return platformWindow->handleWmPaint(hwnd, message, wParam, lParam, result);
+    }
     case QtWindows::NonClientMouseEvent:
         if (!platformWindow->frameStrutEventsEnabled())
             break;
@@ -1213,6 +1069,9 @@ bool QWindowsContext::windowsProc(HWND hwnd, UINT message,
     case QtWindows::PointerEvent:
         return sessionManagerInteractionBlocked() || d->m_pointerHandler.translatePointerEvent(platformWindow->window(), hwnd, et, msg, result);
     case QtWindows::FocusInEvent: // see QWindowsWindow::requestActivateWindow().
+        if (platformWindow->window()->flags() & Qt::WindowDoesNotAcceptFocus)
+            return false;
+        [[fallthrough]];
     case QtWindows::FocusOutEvent:
         handleFocusEvent(et, platformWindow);
         return true;
@@ -1229,10 +1088,6 @@ bool QWindowsContext::windowsProc(HWND hwnd, UINT message,
         QWindowSystemInterface::handleCloseEvent(platformWindow->window());
         return true;
     case QtWindows::ThemeChanged: {
-        QWindowsThemeCache::clearThemeCache(platformWindow->handle());
-        // Switch from Aero to Classic changes margins.
-        if (QWindowsTheme *theme = QWindowsTheme::instance())
-            theme->windowsThemeChanged(platformWindow->window());
         return true;
     }
     case QtWindows::CompositionSettingsChanged:
@@ -1446,11 +1301,9 @@ void QWindowsContext::setAsyncExpose(bool value)
 
 DWORD QWindowsContext::readAdvancedExplorerSettings(const wchar_t *subKey, DWORD defaultValue)
 {
-    const auto value =
-        QWinRegistryKey(HKEY_CURRENT_USER,
-                        LR"(Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced)")
-                       .dwordValue(subKey);
-    return value.second ? value.first : defaultValue;
+    const auto advancedSettings = QWinRegistryKey(
+            HKEY_CURRENT_USER, LR"(Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced)");
+    return advancedSettings.value<DWORD>(subKey).value_or(defaultValue);
 }
 
 static inline bool isEmptyRect(const RECT &rect)
@@ -1492,7 +1345,7 @@ static inline bool isTopLevel(HWND hwnd)
 
 */
 
-extern "C" LRESULT QT_WIN_CALLBACK qWindowsWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT QT_WIN_CALLBACK qWindowsWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     LRESULT result;
     const QtWindows::WindowsEventType et = windowsEventType(message, wParam, lParam);

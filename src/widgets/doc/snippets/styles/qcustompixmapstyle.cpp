@@ -1,22 +1,30 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include "qcustompixmapstyle.h"
-
 #include <QtGui>
+#include <QPixmapStyle>
+
 
 using namespace Qt::StringLiterals;
+
+class QCustomPixmapStyle : public QPixmapStyle
+{
+    Q_OBJECT
+public:
+    QCustomPixmapStyle();
+    ~QCustomPixmapStyle() override;
+};
 
 //! [0]
 QCustomPixmapStyle::QCustomPixmapStyle() :
     QPixmapStyle()
 {
-//! [1]
+    //! [1]
     addDescriptor(PB_Enabled,
                   "://button/core_button_inactive.png"_L1,
                   QMargins(13, 13, 13, 13),
                   QTileRules(Qt::RepeatTile, Qt::StretchTile));
-//! [1]
+    //! [1]
     addDescriptor(PB_Checked,
                   "://button/core_button_enabled_selected.png"_L1,
                   QMargins(13, 13, 13, 13),
@@ -34,7 +42,7 @@ QCustomPixmapStyle::QCustomPixmapStyle() :
                   QMargins(13, 13, 13, 13),
                   QTileRules(Qt::RepeatTile, Qt::StretchTile));
 
-//! [2]
+    //! [2]
     addDescriptor(LE_Enabled,
                   "://lineedit/core_textinput_bg.png"_L1,
                   QMargins(8, 8, 8, 8));
@@ -48,7 +56,7 @@ QCustomPixmapStyle::QCustomPixmapStyle() :
     copyDescriptor(LE_Enabled, TE_Enabled);
     copyDescriptor(LE_Disabled, TE_Disabled);
     copyDescriptor(LE_Focused, TE_Focused);
-//! [2]
+    //! [2]
 }
 //! [0]
 

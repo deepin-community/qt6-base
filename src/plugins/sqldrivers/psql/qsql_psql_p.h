@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSQL_PSQL_H
 #define QSQL_PSQL_H
@@ -83,6 +84,9 @@ public:
 
     QString escapeIdentifier(const QString &identifier, IdentifierType type) const override;
     QString formatValue(const QSqlField &field, bool trimStrings) const override;
+
+    template <bool forPreparedStatement>
+    QString formatValue(const QSqlField &field, bool trimStrings = false) const;
 
     bool subscribeToNotification(const QString &name) override;
     bool unsubscribeFromNotification(const QString &name) override;

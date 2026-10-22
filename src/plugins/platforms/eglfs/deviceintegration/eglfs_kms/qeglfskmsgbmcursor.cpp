@@ -2,10 +2,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeglfskmsgbmcursor_p.h"
 #include "qeglfskmsgbmscreen_p.h"
 #include "qeglfskmsgbmdevice_p.h"
+
+#include <private/qeglfskmsintegration_p.h>
 
 #include <QtCore/QFile>
 #include <QtCore/QJsonDocument>
@@ -29,8 +32,6 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
-
-Q_DECLARE_LOGGING_CATEGORY(qLcEglfsKmsDebug)
 
 QEglFSKmsGbmCursor::QEglFSKmsGbmCursor(QEglFSKmsGbmScreen *screen)
     : m_screen(screen)
@@ -241,35 +242,53 @@ void QEglFSKmsGbmCursor::initCursorAtlas()
 
     qCDebug(qLcEglfsKmsDebug) << "Initializing cursor atlas from" << json;
 
-    QFile file(QString::fromUtf8(json));
-    if (!file.open(QFile::ReadOnly)) {
+    auto disableCursor = [this] {
         for (QPlatformScreen *screen : m_screen->virtualSiblings()) {
             QEglFSKmsScreen *kmsScreen = static_cast<QEglFSKmsScreen *>(screen);
             drmModeSetCursor(kmsScreen->device()->fd(), kmsScreen->output().crtc_id, 0, 0, 0);
             drmModeMoveCursor(kmsScreen->device()->fd(), kmsScreen->output().crtc_id, 0, 0);
         }
         m_state = CursorDisabled;
+    };
+
+    QFile file(QString::fromUtf8(json));
+    if (!file.open(QFile::ReadOnly)) {
+        disableCursor();
         return;
     }
 
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     QJsonObject object = doc.object();
 
-    QString atlas = object.value("image"_L1).toString();
-    Q_ASSERT(!atlas.isEmpty());
+    const QString atlas = object.value("image"_L1).toString();
+    const int cursorsPerRow = object.value("cursorsPerRow"_L1).toInt();
+    const QJsonArray hotSpots = object.value("hotSpots"_L1).toArray();
 
-    const int cursorsPerRow = object.value("cursorsPerRow"_L1).toDouble();
-    Q_ASSERT(cursorsPerRow);
+    if (atlas.isEmpty() || cursorsPerRow <= 0 || cursorsPerRow > Qt::LastCursor + 1
+        || hotSpots.count() != Qt::LastCursor + 1)
+    {
+        qWarning("Invalid cursor atlas '%s', disabling the cursor. Expected a non-empty "
+                 "'image', a 'cursorsPerRow' between 1 and %d, and %d 'hotSpots' entries.",
+                 json.constData(), Qt::LastCursor + 1, Qt::LastCursor + 1);
+        disableCursor();
+        return;
+    }
+
     m_cursorAtlas.cursorsPerRow = cursorsPerRow;
 
-    const QJsonArray hotSpots = object.value("hotSpots"_L1).toArray();
-    Q_ASSERT(hotSpots.count() == Qt::LastCursor + 1);
     for (int i = 0; i < hotSpots.count(); i++) {
         QPoint hotSpot(hotSpots[i].toArray()[0].toDouble(), hotSpots[i].toArray()[1].toDouble());
         m_cursorAtlas.hotSpots << hotSpot;
     }
 
     QImage image = QImage(atlas).convertToFormat(QImage::Format_ARGB32);
+    if (image.isNull()) {
+        qWarning("Failed to load cursor atlas image '%s', disabling the cursor",
+                 qPrintable(atlas));
+        disableCursor();
+        return;
+    }
+
     m_cursorAtlas.cursorWidth = image.width() / m_cursorAtlas.cursorsPerRow;
     m_cursorAtlas.cursorHeight = image.height() / ((Qt::LastCursor + cursorsPerRow) / cursorsPerRow);
     m_cursorAtlas.width = image.width();

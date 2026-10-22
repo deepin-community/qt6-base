@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFREELIST_P_H
 #define QFREELIST_P_H
@@ -16,7 +17,8 @@
 //
 
 #include <QtCore/private/qglobal_p.h>
-#include <QtCore/qatomic.h>
+
+#include <QtCore/q20atomic.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -35,7 +37,7 @@ struct QFreeListElement
     typedef T &ReferenceType;
 
     T _t;
-    QAtomicInt next;
+    q20::atomic<int> next;
 
     inline ConstReferenceType t() const { return _t; }
     inline ReferenceType t() { return _t; }
@@ -52,7 +54,7 @@ struct QFreeListElement<void>
     typedef void ConstReferenceType;
     typedef void ReferenceType;
 
-    QAtomicInt next;
+    q20::atomic<int> next;
 
     inline void t() const { }
     inline void t() { }
@@ -118,6 +120,7 @@ class QFreeList
     // return which block the index \a x falls in, and modify \a x to be the index into that block
     static inline int blockfor(int &x)
     {
+        x = x & ConstantsType::IndexMask;
         for (int i = 0; i < ConstantsType::BlockCount; ++i) {
             int size = ConstantsType::Sizes[i];
             if (x < size)
@@ -133,7 +136,7 @@ class QFreeList
         // qDebug("QFreeList: allocating %d elements (%ld bytes) with offset %d", size, size * sizeof(ElementType), offset);
         ElementType *v = new ElementType[size];
         for (int i = 0; i < size; ++i)
-            v[i].next.storeRelaxed(offset + i + 1);
+            v[i].next.store(offset + i + 1, std::memory_order_relaxed);
         return v;
     }
 
@@ -144,9 +147,9 @@ class QFreeList
     }
 
     // the blocks
-    QAtomicPointer<ElementType> _v[ConstantsType::BlockCount];
+    q20::atomic<ElementType *> _v[ConstantsType::BlockCount];
     // the next free id
-    QAtomicInt _next;
+    q20::atomic<int> _next;
 
     // QFreeList is not copyable
     Q_DISABLE_COPY_MOVE(QFreeList)
@@ -178,52 +181,52 @@ template <typename T, typename ConstantsType>
 inline QFreeList<T, ConstantsType>::~QFreeList()
 {
     for (int i = 0; i < ConstantsType::BlockCount; ++i)
-        delete [] _v[i].loadAcquire();
+        delete [] _v[i].load(std::memory_order_acquire);
 }
 
 template <typename T, typename ConstantsType>
 inline typename QFreeList<T, ConstantsType>::ConstReferenceType QFreeList<T, ConstantsType>::at(int x) const
 {
     const int block = blockfor(x);
-    return (_v[block].loadRelaxed())[x].t();
+    return (_v[block].load(std::memory_order_relaxed))[x].t();
 }
 
 template <typename T, typename ConstantsType>
 inline typename QFreeList<T, ConstantsType>::ReferenceType QFreeList<T, ConstantsType>::operator[](int x)
 {
     const int block = blockfor(x);
-    return (_v[block].loadRelaxed())[x].t();
+    return (_v[block].load(std::memory_order_relaxed))[x].t();
 }
 
 template <typename T, typename ConstantsType>
 inline int QFreeList<T, ConstantsType>::next()
 {
-    int id, newid, at;
-    ElementType *v;
+    int newid;
+    int id = _next.load(std::memory_order_acquire);
     do {
-        id = _next.loadAcquire();
-
-        at = id & ConstantsType::IndexMask;
+        int at = id & ConstantsType::IndexMask;
         const int block = blockfor(at);
-        v = _v[block].loadAcquire();
+        ElementType *v = _v[block].load(std::memory_order_acquire);
 
         if (!v) {
-            v = allocate((id & ConstantsType::IndexMask) - at, ConstantsType::Sizes[block]);
-            if (!_v[block].testAndSetRelease(nullptr, v)) {
+            ElementType* const alloced = allocate((id & ConstantsType::IndexMask) - at,
+                                                  ConstantsType::Sizes[block]);
+            if (_v[block].compare_exchange_strong(v, alloced, std::memory_order_release, std::memory_order_acquire)) {
+                v = alloced;
+            } else {
                 // race with another thread lost
-                delete[] v;
-                v = _v[block].loadAcquire();
+                delete[] alloced;
                 Q_ASSERT(v != nullptr);
             }
         }
 
-        newid = v[at].next.loadRelaxed() | (id & ~ConstantsType::IndexMask);
-    } while (!_next.testAndSetRelease(id, newid));
+        newid = v[at].next.load(std::memory_order_relaxed) | (id & ~ConstantsType::IndexMask);
+    } while (!_next.compare_exchange_strong(id, newid, std::memory_order_release, std::memory_order_acquire));
     // qDebug("QFreeList::next(): returning %d (_next now %d, serial %d)",
     //        id & ConstantsType::IndexMask,
     //        newid & ConstantsType::IndexMask,
     //        (newid & ~ConstantsType::IndexMask) >> 24);
-    return id & ConstantsType::IndexMask;
+    return id;
 }
 
 template <typename T, typename ConstantsType>
@@ -231,15 +234,15 @@ inline void QFreeList<T, ConstantsType>::release(int id)
 {
     int at = id & ConstantsType::IndexMask;
     const int block = blockfor(at);
-    ElementType *v = _v[block].loadRelaxed();
+    ElementType *v = _v[block].load(std::memory_order_acquire);
 
     int x, newid;
     do {
-        x = _next.loadAcquire();
-        v[at].next.storeRelaxed(x & ConstantsType::IndexMask);
+        x = _next.load(std::memory_order_acquire);
+        v[at].next.store(x & ConstantsType::IndexMask, std::memory_order_relaxed);
 
         newid = incrementserial(x, id);
-    } while (!_next.testAndSetRelease(x, newid));
+    } while (!_next.compare_exchange_weak(x, newid, std::memory_order_release));
     // qDebug("QFreeList::release(%d): _next now %d (was %d), serial %d",
     //        id & ConstantsType::IndexMask,
     //        newid & ConstantsType::IndexMask,

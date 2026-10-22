@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlistwidget.h"
 
@@ -69,7 +70,7 @@ void QListModel::insert(int row, QListWidgetItem *item)
     if (!item)
         return;
 
-    item->view = qobject_cast<QListWidget*>(QObject::parent());
+    item->view = this->view();
     if (item->view && item->view->isSortingEnabled()) {
         // sorted insertion
         QList<QListWidgetItem*>::iterator it;
@@ -93,7 +94,7 @@ void QListModel::insert(int row, const QStringList &labels)
     const int count = labels.size();
     if (count <= 0)
         return;
-    QListWidget *view = qobject_cast<QListWidget*>(QObject::parent());
+    QListWidget *view = this->view();
     if (view && view->isSortingEnabled()) {
         // sorted insertion
         for (int i = 0; i < count; ++i) {
@@ -109,7 +110,7 @@ void QListModel::insert(int row, const QStringList &labels)
         for (int i = 0; i < count; ++i) {
             QListWidgetItem *item = new QListWidgetItem(labels.at(i));
             item->d->theid = row;
-            item->view = qobject_cast<QListWidget*>(QObject::parent());
+            item->view = this->view();
             items.insert(row++, item);
         }
         endInsertRows();
@@ -223,7 +224,7 @@ bool QListModel::insertRows(int row, int count, const QModelIndex &parent)
         return false;
 
     beginInsertRows(QModelIndex(), row, row + count - 1);
-    QListWidget *view = qobject_cast<QListWidget*>(QObject::parent());
+    QListWidget *view = this->view();
     QListWidgetItem *itm = nullptr;
 
     for (int r = row; r < row + count; ++r) {
@@ -253,6 +254,12 @@ bool QListModel::removeRows(int row, int count, const QModelIndex &parent)
     endRemoveRows();
     return true;
 }
+
+/*!
+    \class QListModel
+    \inmodule QtWidgets
+    \internal
+*/
 
 /*!
     \since 5.13
@@ -299,7 +306,7 @@ void QListModel::sort(int column, Qt::SortOrder order)
 
     emit layoutAboutToBeChanged({}, QAbstractItemModel::VerticalSortHint);
 
-    QList<QPair<QListWidgetItem *, int>> sorting(items.size());
+    QList<std::pair<QListWidgetItem *, int>> sorting(items.size());
     for (int i = 0; i < items.size(); ++i) {
         QListWidgetItem *item = items.at(i);
         sorting[i].first = item;
@@ -357,14 +364,14 @@ void QListModel::ensureSorted(int column, Qt::SortOrder order, int start, int en
         sort(column, order);
 }
 
-bool QListModel::itemLessThan(const QPair<QListWidgetItem*,int> &left,
-                              const QPair<QListWidgetItem*,int> &right)
+bool QListModel::itemLessThan(const std::pair<QListWidgetItem*,int> &left,
+                              const std::pair<QListWidgetItem*,int> &right)
 {
     return (*left.first) < (*right.first);
 }
 
-bool QListModel::itemGreaterThan(const QPair<QListWidgetItem*,int> &left,
-                                 const QPair<QListWidgetItem*,int> &right)
+bool QListModel::itemGreaterThan(const std::pair<QListWidgetItem*,int> &left,
+                                 const std::pair<QListWidgetItem*,int> &right)
 {
     return (*right.first) < (*left.first);
 }
@@ -387,7 +394,7 @@ void QListModel::itemChanged(QListWidgetItem *item, const QList<int> &roles)
 
 QStringList QListModel::mimeTypes() const
 {
-    const QListWidget *view = qobject_cast<const QListWidget*>(QObject::parent());
+    const QListWidget *view = this->view();
     if (view)
         return view->mimeTypes();
     return {};
@@ -405,10 +412,9 @@ QMimeData *QListModel::mimeData(const QModelIndexList &indexes) const
     itemlist.reserve(indexesCount);
     for (int i = 0; i < indexesCount; ++i)
         itemlist << at(indexes.at(i).row());
-    const QListWidget *view = qobject_cast<const QListWidget*>(QObject::parent());
 
     cachedIndexes = indexes;
-    QMimeData *mimeData = view->mimeData(itemlist);
+    QMimeData *mimeData = view()->mimeData(itemlist);
     cachedIndexes.clear();
     return mimeData;
 }
@@ -418,20 +424,24 @@ bool QListModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
                               int row, int column, const QModelIndex &index)
 {
     Q_UNUSED(column);
-    QListWidget *view = qobject_cast<QListWidget*>(QObject::parent());
     if (index.isValid())
         row = index.row();
     else if (row == -1)
         row = items.size();
 
-    return view->dropMimeData(row, data, action);
+    return view()->dropMimeData(row, data, action);
 }
 
 Qt::DropActions QListModel::supportedDropActions() const
 {
-    const QListWidget *view = qobject_cast<const QListWidget*>(QObject::parent());
-    return view->supportedDropActions();
+    return view()->supportedDropActions();
 }
+
+Qt::DropActions QListModel::supportedDragActions() const
+{
+    return view()->supportedDragActions();
+}
+
 #endif // QT_CONFIG(draganddrop)
 
 /*!
@@ -516,7 +526,6 @@ Qt::DropActions QListModel::supportedDropActions() const
 
 /*!
     \fn void QListWidgetItem::setHidden(bool hide)
-    \since 4.2
 
     Hides the item if \a hide is true; otherwise shows the item.
 
@@ -525,7 +534,6 @@ Qt::DropActions QListModel::supportedDropActions() const
 
 /*!
     \fn bool QListWidgetItem::isHidden() const
-    \since 4.2
 
     Returns \c true if the item is hidden; otherwise returns \c false.
 
@@ -727,8 +735,6 @@ void QListWidgetItem::write(QDataStream &out) const
 #endif // QT_NO_DATASTREAM
 
 /*!
-    \since 4.1
-
     Constructs a copy of \a other. Note that type() and listWidget() are not
     copied.
 
@@ -877,7 +883,6 @@ QDataStream &operator>>(QDataStream &in, QListWidgetItem &item)
 
 /*!
     \fn QBrush QListWidgetItem::background() const
-    \since 4.2
 
     Returns the brush used to display the list item's background.
 
@@ -886,7 +891,6 @@ QDataStream &operator>>(QDataStream &in, QListWidgetItem &item)
 
 /*!
     \fn QBrush QListWidgetItem::foreground() const
-    \since 4.2
 
     Returns the brush used to display the list item's foreground (e.g. text).
 
@@ -903,14 +907,12 @@ QDataStream &operator>>(QDataStream &in, QListWidgetItem &item)
 
 /*!
     \fn QSize QListWidgetItem::sizeHint() const
-    \since 4.1
 
     Returns the size hint set for the list item.
 */
 
 /*!
     \fn void QListWidgetItem::setSizeHint(const QSize &size)
-    \since 4.1
 
     Sets the size hint for the list item to be \a size.
     If no size hint is set or \a size is invalid, the item
@@ -919,7 +921,6 @@ QDataStream &operator>>(QDataStream &in, QListWidgetItem &item)
 
 /*!
     \fn void QListWidgetItem::setSelected(bool select)
-    \since 4.2
 
     Sets the selected state of the item to \a select.
 
@@ -946,7 +947,6 @@ void QListWidgetItem::setSelected(bool select)
 
 /*!
     \fn bool QListWidgetItem::isSelected() const
-    \since 4.2
 
     Returns \c true if the item is selected; otherwise returns \c false.
 
@@ -1050,7 +1050,6 @@ void QListWidgetItem::setFlags(Qt::ItemFlags aflags)
 
 /*!
     \fn void QListWidgetItem::setBackground(const QBrush &brush)
-    \since 4.2
 
     Sets the background brush of the list item to the given \a brush.
     Setting a default-constructed brush will let the view use the
@@ -1061,7 +1060,6 @@ void QListWidgetItem::setFlags(Qt::ItemFlags aflags)
 
 /*!
     \fn void QListWidgetItem::setForeground(const QBrush &brush)
-    \since 4.2
 
     Sets the foreground brush of the list item to the given \a brush.
     Setting a default-constructed brush will let the view use the
@@ -1105,9 +1103,9 @@ void QListWidgetPrivate::setup()
 
 void QListWidgetPrivate::clearConnections()
 {
-    for (const QMetaObject::Connection &connection : connections)
+    for (QMetaObject::Connection &connection : connections)
         QObject::disconnect(connection);
-    for (const QMetaObject::Connection &connection : selectionModelConnections)
+    for (QMetaObject::Connection &connection : selectionModelConnections)
         QObject::disconnect(connection);
 }
 
@@ -1186,7 +1184,7 @@ void QListWidgetPrivate::dataChanged(const QModelIndex &topLeft,
     \ingroup model-view
     \inmodule QtWidgets
 
-    \image windows-listview.png
+    \image fusion-listview.png {List of weather icons}
 
     QListWidget is a convenience class that provides a list view similar to the
     one supplied by QListView, but with a classic item-based interface for
@@ -1349,8 +1347,6 @@ void QListWidgetPrivate::dataChanged(const QModelIndex &topLeft,
 */
 
 /*!
-    \since 4.3
-
     \fn void QListWidget::removeItemWidget(QListWidgetItem *item)
 
     Removes the widget set on the given \a item.
@@ -1390,7 +1386,7 @@ void QListWidget::setSelectionModel(QItemSelectionModel *selectionModel)
 {
     Q_D(QListWidget);
 
-    for (const QMetaObject::Connection &connection : d->selectionModelConnections)
+    for (QMetaObject::Connection &connection : d->selectionModelConnections)
         disconnect(connection);
 
     QListView::setSelectionModel(selectionModel);
@@ -1523,7 +1519,6 @@ void QListWidget::setCurrentItem(QListWidgetItem *item)
 }
 
 /*!
-    \since 4.4
     Set the current item to \a item, using the given \a command.
 */
 void QListWidget::setCurrentItem(QListWidgetItem *item, QItemSelectionModel::SelectionFlags command)
@@ -1556,8 +1551,6 @@ void QListWidget::setCurrentRow(int row)
 }
 
 /*!
-    \since 4.4
-
     Sets the current row to be the given \a row, using the given \a command,
 */
 void QListWidget::setCurrentRow(int row, QItemSelectionModel::SelectionFlags command)
@@ -1610,7 +1603,6 @@ void QListWidget::sortItems(Qt::SortOrder order)
 }
 
 /*!
-    \since 4.2
     \property QListWidget::sortingEnabled
     \brief whether sorting is enabled
 
@@ -1690,8 +1682,6 @@ bool QListWidget::isPersistentEditorOpen(QListWidgetItem *item) const
 }
 
 /*!
-    \since 4.1
-
     Returns the widget displayed in the given \a item.
 
     \sa setItemWidget(), removeItemWidget()
@@ -1704,8 +1694,6 @@ QWidget *QListWidget::itemWidget(QListWidgetItem *item) const
 }
 
 /*!
-    \since 4.1
-
     Sets the \a widget to be displayed in the given \a item.
 
     This function should only be used to display static content in the place of
@@ -1824,12 +1812,13 @@ QMimeData *QListWidget::mimeData(const QList<QListWidgetItem *> &items) const
 }
 
 #if QT_CONFIG(draganddrop)
+
 /*!
     Handles \a data supplied by an external drag and drop operation that ended
     with the given \a action in the given \a index. Returns \c true if \a data and
     \a action can be handled by the model; otherwise returns \c false.
 
-    \sa supportedDropActions()
+    \sa supportedDropActions(), supportedDragActions
 */
 bool QListWidget::dropMimeData(int index, const QMimeData *data, Qt::DropAction action)
 {
@@ -1854,13 +1843,33 @@ void QListWidget::dropEvent(QDropEvent *event)
 /*!
     Returns the drop actions supported by this view.
 
-    \sa Qt::DropActions
+    \sa Qt::DropActions, supportedDragActions, dropMimeData()
 */
 Qt::DropActions QListWidget::supportedDropActions() const
 {
     Q_D(const QListWidget);
     return d->listModel()->QAbstractListModel::supportedDropActions() | Qt::MoveAction;
 }
+
+/*!
+    \property QListWidget::supportedDragActions
+    \brief the drag actions supported by this view
+
+    \since 6.10
+    \sa Qt::DropActions, supportedDropActions()
+*/
+Qt::DropActions QListWidget::supportedDragActions() const
+{
+    Q_D(const QListWidget);
+    return d->supportedDragActions.value_or(supportedDropActions());
+}
+
+void QListWidget::setSupportedDragActions(Qt::DropActions actions)
+{
+    Q_D(QListWidget);
+    d->supportedDragActions = actions;
+}
+
 #endif // QT_CONFIG(draganddrop)
 
 /*!

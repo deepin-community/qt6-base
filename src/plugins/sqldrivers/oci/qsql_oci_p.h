@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSQL_OCI_H
 #define QSQL_OCI_H
@@ -16,6 +17,7 @@
 //
 
 #include <QtSql/qsqldriver.h>
+#include <QtSql/private/qsqlcachedresult_p.h>
 
 #ifdef QT_PLUGIN
 #define Q_EXPORT_SQLDRIVER_OCI
@@ -30,6 +32,7 @@ QT_BEGIN_NAMESPACE
 
 class QSqlResult;
 class QOCIDriverPrivate;
+class QOCIResultPrivate;
 
 class Q_EXPORT_SQLDRIVER_OCI QOCIDriver : public QSqlDriver
 {
@@ -64,6 +67,34 @@ protected:
     bool                beginTransaction() override;
     bool                commitTransaction() override;
     bool                rollbackTransaction() override;
+};
+
+class Q_EXPORT_SQLDRIVER_OCI QOCIResult : public QSqlCachedResult
+{
+    friend class QOCICols;
+public:
+    explicit QOCIResult(const QOCIDriver * db);
+    ~QOCIResult() override;
+    bool prepare(const QString& query) override;
+    bool exec() override;
+    QVariant handle() const override;
+
+protected:
+    bool isCursor;
+
+    bool gotoNext(ValueCache &values, int index) override;
+    bool reset(const QString& query) override;
+    int size() override;
+    int numRowsAffected() override;
+    QSqlRecord record() const override;
+    QVariant lastInsertId() const override;
+    bool execBatch(bool arrayBind = false) override;
+    void virtual_hook(int id, void *data) override;
+    bool fetchNext() override;
+    bool internal_prepare();
+
+private:
+    Q_DECLARE_PRIVATE(QOCIResult)
 };
 
 QT_END_NAMESPACE

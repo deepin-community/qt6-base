@@ -1,11 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHOSTINFO_H
 #define QHOSTINFO_H
 
 #include <QtNetwork/qtnetworkglobal.h>
+
 #include <QtCore/qlist.h>
+#include <QtCore/qmetatype.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtNetwork/qhostaddress.h>
 
@@ -58,6 +61,7 @@ public:
     static QHostInfo fromName(const QString &name);
     static QString localHostName();
     static QString localDomainName();
+    static void clearCache();
 
 #ifdef Q_QDOC
     template<typename Functor>

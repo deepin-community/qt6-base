@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QURL_P_H
 #define QURL_P_H
@@ -25,6 +26,8 @@ QT_BEGIN_NAMESPACE
 extern Q_AUTOTEST_EXPORT qsizetype qt_urlRecode(QString &appendTo, QStringView url,
                                                 QUrl::ComponentFormattingOptions encoding,
                                                 const ushort *tableModifications = nullptr);
+qsizetype qt_encodeFromUser(QString &appendTo, const QString &input,
+                            const ushort *tableModifications);
 
 // in qurlidna.cpp
 enum AceLeadingDot { AllowLeadingDot, ForbidLeadingDot };

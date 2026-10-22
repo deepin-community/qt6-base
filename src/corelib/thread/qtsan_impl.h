@@ -1,6 +1,7 @@
 // Copyright (C) 2017 Intel Corporation.
 // Copyright (C) 2022 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTSAN_IMPL_H
 #define QTSAN_IMPL_H
@@ -16,6 +17,8 @@ QT_BEGIN_NAMESPACE
 
 namespace QtTsan {
 #ifdef QT_BUILDING_UNDER_TSAN
+constexpr inline bool IsEnabled = true;
+
 inline void futexAcquire(void *addr, void *addr2 = nullptr)
 {
     // A futex call ensures total ordering on the futex words
@@ -30,6 +33,16 @@ inline void futexRelease(void *addr, void *addr2 = nullptr)
 {
     if (addr2)
         ::__tsan_release(addr2);
+    ::__tsan_release(addr);
+}
+
+inline void latchWait(const void *addr)
+{
+    ::__tsan_acquire(const_cast<void *>(addr));
+}
+
+inline void latchCountDown(void *addr)
+{
     ::__tsan_release(addr);
 }
 
@@ -57,15 +70,21 @@ enum : unsigned {
     MutexWriteReentrant = ::__tsan_mutex_write_reentrant,
     TryLock = ::__tsan_mutex_try_lock,
     TryLockFailed = ::__tsan_mutex_try_lock_failed,
+    ReadLock = ::__tsan_mutex_read_lock,
 };
 #else
+constexpr inline bool IsEnabled = false;
+
 inline void futexAcquire(void *, void * = nullptr) {}
 inline void futexRelease(void *, void * = nullptr) {}
+inline void latchCountDown(void *) {}
+inline void latchWait(const void *) {}
 
 enum : unsigned {
     MutexWriteReentrant,
     TryLock,
     TryLockFailed,
+    ReadLock,
 };
 inline void mutexPreLock(void *, unsigned) {}
 inline void mutexPostLock(void *, unsigned, int) {}

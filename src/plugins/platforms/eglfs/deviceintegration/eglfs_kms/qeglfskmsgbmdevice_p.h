@@ -2,6 +2,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEGLFSKMSGBMDEVICE_H
 #define QEGLFSKMSGBMDEVICE_H
@@ -51,6 +52,7 @@ public:
                         bool isPrimary,
                         const QPoint &virtualPos,
                         const QList<QPlatformScreen *> &virtualSiblings) override;
+    void unregisterScreen(QPlatformScreen *screen) override;
 
     bool usesEventReader() const;
     QEglFSKmsEventReader *eventReader() { return &m_eventReader; }

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcolor.h"
 #include "qcolor_p.h"
@@ -12,7 +13,9 @@
 #include "private/qtools_p.h"
 
 #include <algorithm>
+#include <QtCore/q26numeric.h>
 #include <optional>
+#include <QtCore/q20utility.h>
 
 #include <stdio.h>
 #include <limits.h>
@@ -341,6 +344,201 @@ static QStringList get_colornames()
     return lst;
 }
 
+enum class QColorRgbFValidity : quint8
+{
+    Rgb,
+    ExtendedRgb,
+    Invalid,
+};
+
+// ### Qt7: Decide on whether the hue limit should be 360 or whether we calculate everything
+//          related to hue in modulo 360. Then drop this.
+enum class QColorHueLimit : bool
+{
+    None,
+    Degrees,
+};
+
+static constexpr bool qColorComponentIsInIntRange(int value) noexcept
+{
+    return value >= 0 && value < 256;
+}
+
+static constexpr bool qColorHueIsInIntRange(int hue, QColorHueLimit upperLimit) noexcept
+{
+    return hue >= -1 && (upperLimit != QColorHueLimit::Degrees || hue < 360);
+}
+
+static constexpr bool qColorComponentIsInFloatRange(float value) noexcept
+{
+    // NB: This returns false for NaN because any comparison with NaN is false.
+    return value >= 0.0f && value <= 1.0f;
+}
+
+static constexpr bool qColorHueIsInFloatRange(float hue) noexcept
+{
+    return qColorComponentIsInFloatRange(hue) || hue == -1.0f;
+}
+
+// TODO: Remove this once we can rely on std::isnan to be constexpr
+static constexpr bool qColorIsFloatNaN(float value) noexcept
+{
+    return value != value;
+}
+
+Q_DECL_COLD_FUNCTION void qColorWarnInvalidInt(int value, const char *fn)
+{
+    qWarning("QColor::%s: invalid value %d", fn, value);
+}
+
+Q_DECL_COLD_FUNCTION void qColorWarnInvalidFloat(float value, const char *fn)
+{
+    qWarning("QColor::%s: invalid value %g", fn, double(value));
+}
+
+Q_DECL_COLD_FUNCTION void qColorWarnParametersOutOfRange(const char *name, const char *fn)
+{
+    qWarning("QColor::%s: %s parameters out of range", fn, name);
+}
+
+static auto qColorClampToIntRange(int value, const char *fn)
+{
+    const auto v = q26::saturate_cast<quint8>(value);
+    if (!q20::cmp_equal(v, value))
+        qColorWarnInvalidInt(value, fn);
+    return int{v};
+}
+
+static auto qColorClampToFloatRange(float value, const char *fn)
+{
+    const auto v = qColorIsFloatNaN(value) ? 0.0f : qBound(0.0f, value, 1.0f);
+    if (!qColorComponentIsInFloatRange(value))
+        qColorWarnInvalidFloat(value, fn);
+    return float{v};
+}
+
+static auto qColorClampNaNToNull(float value, const char *fn)
+{
+    const auto v = qColorIsFloatNaN(value) ? 0.0f : value;
+    if (qColorIsFloatNaN(value))
+        qColorWarnInvalidFloat(value, fn);
+    return float{v};
+}
+
+static bool qColorCheckRgbValidity(int r, int g, int b, int a, const char *fn)
+{
+    if (qColorComponentIsInIntRange(r)
+        && qColorComponentIsInIntRange(g)
+        && qColorComponentIsInIntRange(b)
+        && qColorComponentIsInIntRange(a)) {
+        return true;
+    }
+
+    qColorWarnParametersOutOfRange("RGB", fn);
+    return false;
+}
+
+static bool qColorCheckHsxValidity(int h, int s, int x, int a, const char *fn, const char *name,
+                                   QColorHueLimit hLimit)
+{
+    if (qColorHueIsInIntRange(h, hLimit)
+        && qColorComponentIsInIntRange(s)
+        && qColorComponentIsInIntRange(x)
+        && qColorComponentIsInIntRange(a)) {
+        return true;
+    }
+
+    qColorWarnParametersOutOfRange(name, fn);
+    return false;
+}
+
+static bool qColorCheckHslValidity(int h, int s, int l, int a, const char *fn,
+                                   QColorHueLimit hLimit)
+{
+    return qColorCheckHsxValidity(h, s, l, a, fn, "HSL", hLimit);
+}
+
+static bool qColorCheckHsvValidity(int h, int s, int v, int a, const char *fn,
+                                   QColorHueLimit hLimit)
+{
+    return qColorCheckHsxValidity(h, s, v, a, fn, "HSV", hLimit);
+}
+
+static bool qColorCheckCmykValidity(int c, int m, int y, int k, int a, const char *fn)
+{
+    if (qColorComponentIsInIntRange(c)
+        && qColorComponentIsInIntRange(m)
+        && qColorComponentIsInIntRange(y)
+        && qColorComponentIsInIntRange(k)
+        && qColorComponentIsInIntRange(a)) {
+        return true;
+    }
+
+    qColorWarnParametersOutOfRange("CMYK", fn);
+    return false;
+}
+
+static QColorRgbFValidity qColorCheckRgbFValidity(float r, float g, float b, float a,
+                                                  QColor::Spec cspec, const char *fn)
+{
+    if (!qColorComponentIsInFloatRange(a)) {
+        qColorWarnInvalidFloat(a, fn);
+        return QColorRgbFValidity::Invalid;
+    }
+
+    if (cspec != QColor::ExtendedRgb
+        && qColorComponentIsInFloatRange(r)
+        && qColorComponentIsInFloatRange(g)
+        && qColorComponentIsInFloatRange(b)) {
+        return QColorRgbFValidity::Rgb;
+    }
+
+    if (qColorIsFloatNaN(r) || qColorIsFloatNaN(g) || qColorIsFloatNaN(b)) {
+        qColorWarnParametersOutOfRange("RGB", fn);
+        return QColorRgbFValidity::Invalid;
+    }
+
+    return QColorRgbFValidity::ExtendedRgb;
+}
+
+static bool qColorCheckHsxFValidity(float h, float s, float x, float a, const char *fn,
+                                    const char *name)
+{
+    if ((qColorHueIsInFloatRange(h))
+        && qColorComponentIsInFloatRange(s)
+        && qColorComponentIsInFloatRange(x)
+        && qColorComponentIsInFloatRange(a)) {
+        return true;
+    }
+
+    qColorWarnParametersOutOfRange(name, fn);
+    return false;
+}
+
+static bool qColorCheckHslFValidity(float h, float s, float l, float a, const char *fn)
+{
+    return qColorCheckHsxFValidity(h, s, l, a, fn, "HSL");
+}
+
+static bool qColorCheckHsvFValidity(float h, float s, float v, float a, const char *fn)
+{
+    return qColorCheckHsxFValidity(h, s, v, a, fn, "HSV");
+}
+
+static bool qColorCheckCmykFValidity(float c, float m, float y, float k, float a, const char *fn)
+{
+    if (qColorComponentIsInFloatRange(c)
+        && qColorComponentIsInFloatRange(m)
+        && qColorComponentIsInFloatRange(y)
+        && qColorComponentIsInFloatRange(k)
+        && qColorComponentIsInFloatRange(a)) {
+        return true;
+    }
+
+    qColorWarnParametersOutOfRange("CMYK", fn);
+    return false;
+}
+
 /*!
     \class QColor
     \brief The QColor class provides colors based on RGB, HSV or CMYK values.
@@ -361,9 +559,9 @@ static QStringList get_colornames()
     \header
     \li RGB \li HSV \li CMYK
     \row
-    \li \inlineimage qcolor-rgb.png
-    \li \inlineimage qcolor-hsv.png
-    \li \inlineimage qcolor-cmyk.png
+    \li \inlineimage qcolor-rgb.png {Color wheel with RGB values}
+    \li \inlineimage qcolor-hsv.png {Color wheel with HSV values}
+    \li \inlineimage qcolor-cmyk.png {Color wheel with CMYK values}
     \endtable
 
     The QColor constructor creates the color based on RGB values.  To
@@ -411,8 +609,7 @@ static QStringList get_colornames()
     of the provided QRgb, and the qGray() function calculates and
     return a gray value based on the given value.
 
-    QColor is platform and device independent. The QColormap class
-    maps the color to the hardware.
+    QColor is platform and device independent.
 
     For more information about painting in general, see the \l{Paint
     System} documentation.
@@ -441,7 +638,8 @@ static QStringList get_colornames()
 
     The code above produces the following output:
 
-    \image alphafill.png
+    \image alphafill.png {An image that contains four square sections,
+           with the colors purple, blue, red and white}
 
     The alpha channel of a color can be retrieved and set using the
     alpha() and setAlpha() functions if its value is an integer, and
@@ -506,19 +704,19 @@ static QStringList get_colornames()
     color wheel familiar to most people. Red is 0 (degrees), green is
     120, and blue is 240.
 
-    \inlineimage qcolor-hue.png
+    \inlineimage qcolor-hue.png {Color wheel showing hue values from 0 to 300}
 
     \li S, for saturation, is in the range 0 to 255, and the bigger it is,
     the stronger the color is. Grayish colors have saturation near 0; very
     strong colors have saturation near 255.
 
-    \inlineimage qcolor-saturation.png
+    \inlineimage qcolor-saturation.png {Saturation gradient from gray to blue}
 
     \li V, for value, is in the range 0 to 255 and represents lightness or
     brightness of the color. 0 is black; 255 is as far from black as
     possible.
 
-    \inlineimage qcolor-value.png
+    \inlineimage qcolor-value.png {Value gradient from black to white}
     \endlist
 
     Here are some examples: pure red is H=0, S=255, V=255; a dark red,
@@ -575,22 +773,6 @@ static QStringList get_colornames()
 
     \sa QPalette, QBrush, QColorConstants
 */
-
-#define QCOLOR_INT_RANGE_CHECK(fn, var) \
-    do { \
-        if (var < 0 || var > 255) { \
-            qWarning(#fn": invalid value %d", var); \
-            var = qMax(0, qMin(var, 255)); \
-        } \
-    } while (0)
-
-#define QCOLOR_REAL_RANGE_CHECK(fn, var) \
-    do { \
-        if (var < 0.0f || var > 1.0f) { \
-            qWarning(#fn": invalid value %g", var); \
-            var = qMax(0.0f, qMin(var, 1.0f));      \
-        } \
-    } while (0)
 
 /*****************************************************************************
   QColor member functions
@@ -652,16 +834,11 @@ static QStringList get_colornames()
  */
 QColor::QColor(Qt::GlobalColor color) noexcept
 {
-#define QRGB(r, g, b) \
-    QRgb(((0xffu << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff)))
-#define QRGBA(r, g, b, a) \
-    QRgb(((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff))
-
-    static const QRgb global_colors[] = {
-        QRGB(255, 255, 255), // Qt::color0
-        QRGB(  0,   0,   0), // Qt::color1
-        QRGB(  0,   0,   0), // black
-        QRGB(255, 255, 255), // white
+    static constexpr QRgb global_colors[] = {
+        qRgb(255, 255, 255), // Qt::color0
+        qRgb(  0,   0,   0), // Qt::color1
+        qRgb(  0,   0,   0), // black
+        qRgb(255, 255, 255), // white
         /*
          * From the "The Palette Manager: How and Why" by Ron Gery,
          * March 23, 1992, archived on MSDN:
@@ -681,25 +858,23 @@ QColor::QColor(Qt::GlobalColor color) noexcept
          * The 20 reserved entries have indices in [0,9] and
          * [246,255]. We reuse 17 of them.
          */
-        QRGB(128, 128, 128), // index 248   medium gray
-        QRGB(160, 160, 164), // index 247   light gray
-        QRGB(192, 192, 192), // index 7     light gray
-        QRGB(255,   0,   0), // index 249   red
-        QRGB(  0, 255,   0), // index 250   green
-        QRGB(  0,   0, 255), // index 252   blue
-        QRGB(  0, 255, 255), // index 254   cyan
-        QRGB(255,   0, 255), // index 253   magenta
-        QRGB(255, 255,   0), // index 251   yellow
-        QRGB(128,   0,   0), // index 1     dark red
-        QRGB(  0, 128,   0), // index 2     dark green
-        QRGB(  0,   0, 128), // index 4     dark blue
-        QRGB(  0, 128, 128), // index 6     dark cyan
-        QRGB(128,   0, 128), // index 5     dark magenta
-        QRGB(128, 128,   0), // index 3     dark yellow
-        QRGBA(0, 0, 0, 0)    //             transparent
+        qRgb(128, 128, 128), // index 248   medium gray
+        qRgb(160, 160, 164), // index 247   light gray
+        qRgb(192, 192, 192), // index 7     light gray
+        qRgb(255,   0,   0), // index 249   red
+        qRgb(  0, 255,   0), // index 250   green
+        qRgb(  0,   0, 255), // index 252   blue
+        qRgb(  0, 255, 255), // index 254   cyan
+        qRgb(255,   0, 255), // index 253   magenta
+        qRgb(255, 255,   0), // index 251   yellow
+        qRgb(128,   0,   0), // index 1     dark red
+        qRgb(  0, 128,   0), // index 2     dark green
+        qRgb(  0,   0, 128), // index 4     dark blue
+        qRgb(  0, 128, 128), // index 6     dark cyan
+        qRgb(128,   0, 128), // index 5     dark magenta
+        qRgb(128, 128,   0), // index 3     dark yellow
+        qRgba(0, 0, 0, 0)    //             transparent
     };
-#undef QRGB
-#undef QRGBA
 
     setRgb(qRed(global_colors[color]),
            qGreen(global_colors[color]),
@@ -786,33 +961,33 @@ QColor::QColor(Spec spec) noexcept
 /*!
     \fn QColor::QColor(const QString &name)
 
-    Constructs a named color in the same way as setNamedColor() using
+    Constructs a named color in the same way as fromString() using
     the given \a name.
 
     The color is left invalid if the \a name cannot be parsed.
 
-    \sa setNamedColor(), name(), isValid()
+    \sa fromString(), name(), isValid()
 */
 
 /*!
     \fn QColor::QColor(const char *name)
 
-    Constructs a named color in the same way as setNamedColor() using
+    Constructs a named color in the same way as fromString() using
     the given \a name.
 
     \overload
-    \sa setNamedColor(), name(), isValid()
+    \sa fromString(), name(), isValid()
 */
 
 /*!
     \fn QColor::QColor(QLatin1StringView name)
 
-    Constructs a named color in the same way as setNamedColor() using
+    Constructs a named color in the same way as fromString() using
     the given \a name.
 
     \overload
     \since 5.8
-    \sa setNamedColor(), name(), isValid()
+    \sa fromString(), name(), isValid()
 */
 
 /*!
@@ -904,9 +1079,9 @@ void QColor::setNamedColor(QLatin1StringView name)
    be used to construct a valid QColor object, otherwise returns
    false.
 
-   It uses the same algorithm used in setNamedColor().
+   It uses the same algorithm used in fromString().
 
-   \sa setNamedColor()
+   \sa fromString()
 */
 bool QColor::isValidColor(const QString &name)
 {
@@ -1068,11 +1243,7 @@ void QColor::getHsv(int *h, int *s, int *v, int *a) const
 */
 void QColor::setHsvF(float h, float s, float v, float a)
 {
-    if (((h < 0.0f || h > 1.0f) && h != -1.0f)
-        || (s < 0.0f || s > 1.0f)
-        || (v < 0.0f || v > 1.0f)
-        || (a < 0.0f || a > 1.0f)) {
-        qWarning("QColor::setHsvF: HSV parameters out of range");
+    if (!qColorCheckHsvFValidity(h, s, v, a, __func__)) {
         invalidate();
         return;
     }
@@ -1096,8 +1267,7 @@ void QColor::setHsvF(float h, float s, float v, float a)
 */
 void QColor::setHsv(int h, int s, int v, int a)
 {
-    if (h < -1 || (uint)s > 255 || (uint)v > 255 || (uint)a > 255) {
-        qWarning("QColor::setHsv: HSV parameters out of range");
+    if (!qColorCheckHsvValidity(h, s, v, a, __func__, QColorHueLimit::None)) {
         invalidate();
         return;
     }
@@ -1124,7 +1294,7 @@ void QColor::setHsv(int h, int s, int v, int a)
 */
 void QColor::getHslF(float *h, float *s, float *l, float *a) const
 {
-        if (!h || !s || !l)
+    if (!h || !s || !l)
         return;
 
     if (cspec != Invalid && cspec != Hsl) {
@@ -1182,11 +1352,7 @@ void QColor::getHsl(int *h, int *s, int *l, int *a) const
 */
 void QColor::setHslF(float h, float s, float l, float a)
 {
-    if (((h < 0.0f || h > 1.0f) && h != -1.0f)
-        || (s < 0.0f || s > 1.0f)
-        || (l < 0.0f || l > 1.0f)
-        || (a < 0.0f || a > 1.0f)) {
-        qWarning("QColor::setHslF: HSL parameters out of range");
+    if (!qColorCheckHslFValidity(h, s, l, a, __func__)) {
         invalidate();
         return;
     }
@@ -1212,8 +1378,7 @@ void QColor::setHslF(float h, float s, float l, float a)
 */
 void QColor::setHsl(int h, int s, int l, int a)
 {
-    if (h < -1 || (uint)s > 255 || (uint)l > 255 || (uint)a > 255) {
-        qWarning("QColor::setHsl: HSL parameters out of range");
+    if (!qColorCheckHslValidity(h, s, l, a, __func__, QColorHueLimit::None)) {
         invalidate();
         return;
     }
@@ -1314,14 +1479,11 @@ void QColor::getRgb(int *r, int *g, int *b, int *a) const
 */
 void QColor::setRgbF(float r, float g, float b, float a)
 {
-    if (a < 0.0f || a > 1.0f) {
-        qWarning("QColor::setRgbF: Alpha parameter is out of range");
+    switch (qColorCheckRgbFValidity(r, g, b, a, cspec, __func__)) {
+    case QColorRgbFValidity::Invalid:
         invalidate();
         return;
-    }
-    if (r < 0.0f || r > 1.0f ||
-        g < 0.0f || g > 1.0f ||
-        b < 0.0f || b > 1.0f || cspec == ExtendedRgb) {
+    case QColorRgbFValidity::ExtendedRgb:
         cspec = ExtendedRgb;
         castF16(ct.argbExtended.redF16)   = qfloat16(r);
         castF16(ct.argbExtended.greenF16) = qfloat16(g);
@@ -1329,13 +1491,15 @@ void QColor::setRgbF(float r, float g, float b, float a)
         castF16(ct.argbExtended.alphaF16) = qfloat16(a);
         ct.argbExtended.pad   = 0;
         return;
+    case QColorRgbFValidity::Rgb:
+        cspec = Rgb;
+        ct.argb.red   = qRound(r * USHRT_MAX);
+        ct.argb.green = qRound(g * USHRT_MAX);
+        ct.argb.blue  = qRound(b * USHRT_MAX);
+        ct.argb.alpha = qRound(a * USHRT_MAX);
+        ct.argb.pad   = 0;
+        return;
     }
-    cspec = Rgb;
-    ct.argb.red   = qRound(r * USHRT_MAX);
-    ct.argb.green = qRound(g * USHRT_MAX);
-    ct.argb.blue  = qRound(b * USHRT_MAX);
-    ct.argb.alpha = qRound(a * USHRT_MAX);
-    ct.argb.pad   = 0;
 }
 
 /*!
@@ -1347,8 +1511,7 @@ void QColor::setRgbF(float r, float g, float b, float a)
 */
 void QColor::setRgb(int r, int g, int b, int a)
 {
-    if (!isRgbaValid(r, g, b, a)) {
-        qWarning("QColor::setRgb: RGB parameters out of range");
+    if (!qColorCheckRgbValidity(r, g, b, a, __func__)) {
         invalidate();
         return;
     }
@@ -1478,7 +1641,8 @@ int QColor::alpha() const noexcept
 
 void QColor::setAlpha(int alpha)
 {
-    QCOLOR_INT_RANGE_CHECK("QColor::setAlpha", alpha);
+    alpha = qColorClampToIntRange(alpha, __func__);
+
     if (cspec == ExtendedRgb) {
         constexpr float f = 1.0f / 255;
         castF16(ct.argbExtended.alphaF16) = qfloat16(alpha * f);
@@ -1508,7 +1672,8 @@ float QColor::alphaF() const noexcept
 */
 void QColor::setAlphaF(float alpha)
 {
-    QCOLOR_REAL_RANGE_CHECK("QColor::setAlphaF", alpha);
+    alpha = qColorClampToFloatRange(alpha, __func__);
+
     if (cspec == ExtendedRgb) {
         castF16(ct.argbExtended.alphaF16) = qfloat16(alpha);
         return;
@@ -1538,7 +1703,8 @@ int QColor::red() const noexcept
 */
 void QColor::setRed(int red)
 {
-    QCOLOR_INT_RANGE_CHECK("QColor::setRed", red);
+    red = qColorClampToIntRange(red, __func__);
+
     if (cspec != Rgb)
         setRgb(red, green(), blue(), alpha());
     else
@@ -1565,7 +1731,8 @@ int QColor::green() const noexcept
 */
 void QColor::setGreen(int green)
 {
-    QCOLOR_INT_RANGE_CHECK("QColor::setGreen", green);
+    green = qColorClampToIntRange(green, __func__);
+
     if (cspec != Rgb)
         setRgb(red(), green, blue(), alpha());
     else
@@ -1594,7 +1761,8 @@ int QColor::blue() const noexcept
 */
 void QColor::setBlue(int blue)
 {
-    QCOLOR_INT_RANGE_CHECK("QColor::setBlue", blue);
+    blue = qColorClampToIntRange(blue, __func__);
+
     if (cspec != Rgb)
         setRgb(red(), green(), blue, alpha());
     else
@@ -1625,9 +1793,14 @@ float QColor::redF() const noexcept
 */
 void QColor::setRedF(float red)
 {
-    if (cspec == Rgb && red >= 0.0f && red <= 1.0f)
+    if (cspec == Rgb && qColorComponentIsInFloatRange(red)) {
         ct.argb.red = qRound(red * USHRT_MAX);
-    else if (cspec == ExtendedRgb)
+        return;
+    }
+
+    red = qColorClampNaNToNull(red, __func__);
+
+    if (cspec == ExtendedRgb)
         castF16(ct.argbExtended.redF16) = qfloat16(red);
     else
         setRgbF(red, greenF(), blueF(), alphaF());
@@ -1657,9 +1830,14 @@ float QColor::greenF() const noexcept
 */
 void QColor::setGreenF(float green)
 {
-    if (cspec == Rgb && green >= 0.0f && green <= 1.0f)
+    if (cspec == Rgb && qColorComponentIsInFloatRange(green)) {
         ct.argb.green = qRound(green * USHRT_MAX);
-    else if (cspec == ExtendedRgb)
+        return;
+    }
+
+    green = qColorClampNaNToNull(green, __func__);
+
+    if (cspec == ExtendedRgb)
         castF16(ct.argbExtended.greenF16) = qfloat16(green);
     else
         setRgbF(redF(), green, blueF(), alphaF());
@@ -1687,9 +1865,14 @@ float QColor::blueF() const noexcept
 */
 void QColor::setBlueF(float blue)
 {
-    if (cspec == Rgb && blue >= 0.0f && blue <= 1.0f)
+    if (cspec == Rgb && qColorComponentIsInFloatRange(blue)) {
         ct.argb.blue = qRound(blue * USHRT_MAX);
-    else if (cspec == ExtendedRgb)
+        return;
+    }
+
+    blue = qColorClampNaNToNull(blue, __func__);
+
+    if (cspec == ExtendedRgb)
         castF16(ct.argbExtended.blueF16) = qfloat16(blue);
     else
         setRgbF(redF(), greenF(), blue, alphaF());
@@ -2173,11 +2356,6 @@ QColor QColor::toRgb() const noexcept
     return color;
 }
 
-
-#define Q_MAX_3(a, b, c) ( ( a > b && a > c) ? a : (b > c ? b : c) )
-#define Q_MIN_3(a, b, c) ( ( a < b && a < c) ? a : (b < c ? b : c) )
-
-
 /*!
     Creates and returns an HSV QColor based on this color.
 
@@ -2196,34 +2374,35 @@ QColor QColor::toHsv() const noexcept
     color.ct.ahsv.alpha = ct.argb.alpha;
     color.ct.ahsv.pad = 0;
 
-    const float r = ct.argb.red   / float(USHRT_MAX);
-    const float g = ct.argb.green / float(USHRT_MAX);
-    const float b = ct.argb.blue  / float(USHRT_MAX);
-    const float max = Q_MAX_3(r, g, b);
-    const float min = Q_MIN_3(r, g, b);
-    const float delta = max - min;
-    color.ct.ahsv.value = qRound(max * USHRT_MAX);
-    if (qFuzzyIsNull(delta)) {
+    const ushort r = ct.argb.red;
+    const ushort g = ct.argb.green;
+    const ushort b = ct.argb.blue;
+
+    // cf. https://en.wikipedia.org/wiki/HSL_and_HSV#From_RGB
+    const auto [min, max] = std::minmax({r, g, b});
+    const auto value = max;
+    color.ct.ahsv.value = value;
+    if (max == min) {
         // achromatic case, hue is undefined
         color.ct.ahsv.hue = USHRT_MAX;
         color.ct.ahsv.saturation = 0;
     } else {
         // chromatic case
-        float hue = 0;
-        color.ct.ahsv.saturation = qRound((delta / max) * USHRT_MAX);
-        if (qFuzzyCompare(r, max)) {
-            hue = ((g - b) /delta);
-        } else if (qFuzzyCompare(g, max)) {
-            hue = (2.0f + (b - r) / delta);
-        } else if (qFuzzyCompare(b, max)) {
-            hue = (4.0f + (r - g) / delta);
+        const float chroma = max - min; // cannot overflow
+        float hue;
+        color.ct.ahsv.saturation = qRound((chroma / value) * USHRT_MAX);
+        if (value == r) {
+            hue = 0 + (g - b) / chroma;
+            // hue = hue mod 6:
+            if (hue < 0)
+                hue += 6;
+        } else if (value == g) {
+            hue = 2 + (b - r) / chroma;
         } else {
-            Q_ASSERT_X(false, "QColor::toHsv", "internal error");
+            Q_ASSERT(value == b); // by construction, `value` is one of r, g, and b!
+            hue = 4 + (r - g) / chroma;
         }
-        hue *= 60.0f;
-        if (hue < 0.0f)
-            hue += 360.0f;
-        color.ct.ahsv.hue = qRound(hue * 100.0f);
+        color.ct.ahsv.hue = qRound(hue * (60 * 100));
     }
 
     return color;
@@ -2247,39 +2426,38 @@ QColor QColor::toHsl() const noexcept
     color.ct.ahsl.alpha = ct.argb.alpha;
     color.ct.ahsl.pad = 0;
 
-    const float r = ct.argb.red   / float(USHRT_MAX);
-    const float g = ct.argb.green / float(USHRT_MAX);
-    const float b = ct.argb.blue  / float(USHRT_MAX);
-    const float max = Q_MAX_3(r, g, b);
-    const float min = Q_MIN_3(r, g, b);
-    const float delta = max - min;
-    const float delta2 = max + min;
-    const float lightness = 0.5f * delta2;
-    color.ct.ahsl.lightness = qRound(lightness * USHRT_MAX);
-    if (qFuzzyIsNull(delta)) {
+    const ushort r = ct.argb.red;
+    const ushort g = ct.argb.green;
+    const ushort b = ct.argb.blue;
+
+    // cf. https://en.wikipedia.org/wiki/HSL_and_HSV#From_RGB
+    const auto [min, max] = std::minmax({r, g, b});
+    const auto value = max;
+    if (min == max) {
         // achromatic case, hue is undefined
         color.ct.ahsl.hue = USHRT_MAX;
         color.ct.ahsl.saturation = 0;
+        color.ct.ahsl.lightness = value;
     } else {
         // chromatic case
-        float hue = 0;
-        if (lightness < 0.5f)
-            color.ct.ahsl.saturation = qRound((delta / delta2) * USHRT_MAX);
-        else
-            color.ct.ahsl.saturation = qRound((delta / (2.0f - delta2)) * USHRT_MAX);
-        if (qFuzzyCompare(r, max)) {
-            hue = ((g - b) /delta);
-        } else if (qFuzzyCompare(g, max)) {
-            hue = (2.0f + (b - r) / delta);
-        } else if (qFuzzyCompare(b, max)) {
-            hue = (4.0f + (r - g) / delta);
+        const float chroma = max - min;
+        const float lightness = 0.5f * (uint{max} + min); // use uint to avoid overflow
+        color.ct.ahsl.lightness = qRound(lightness);
+        const float saturation = 0.5f * chroma / (std::min)(lightness, USHRT_MAX - lightness);
+        color.ct.ahsl.saturation = qRound(saturation * USHRT_MAX);
+        float hue;
+        if (value == r) {
+            hue = 0 + (g - b) / chroma;
+            // hue = hue mod 6
+            if (hue < 0)
+                hue += 6;
+        } else if (value == g) {
+            hue = 2 + (b - r) / chroma;
         } else {
-            Q_ASSERT_X(false, "QColor::toHsv", "internal error");
+            Q_ASSERT(value == b); // by construction, `value` is one of r, g, and b!
+            hue = 4 + (r - g) / chroma;
         }
-        hue *= 60.0f;
-        if (hue < 0.0f)
-            hue += 360.0f;
-        color.ct.ahsl.hue = qRound(hue * 100.0f);
+        color.ct.ahsl.hue = qRound(hue * (60 * 100));
     }
 
     return color;
@@ -2396,10 +2574,8 @@ QColor QColor::fromRgba(QRgb rgba) noexcept
 */
 QColor QColor::fromRgb(int r, int g, int b, int a)
 {
-    if (!isRgbaValid(r, g, b, a)) {
-        qWarning("QColor::fromRgb: RGB parameters out of range");
+    if (!qColorCheckRgbValidity(r, g, b, a, __func__))
         return QColor();
-    }
 
     QColor color;
     color.cspec = Rgb;
@@ -2424,31 +2600,29 @@ QColor QColor::fromRgb(int r, int g, int b, int a)
 */
 QColor QColor::fromRgbF(float r, float g, float b, float a)
 {
-    if (a < 0.0f || a > 1.0f) {
-        qWarning("QColor::fromRgbF: Alpha parameter out of range");
-        return QColor();
-    }
+    QColor color;
 
-    if (r < 0.0f || r > 1.0f
-            || g < 0.0f || g > 1.0f
-            || b < 0.0f || b > 1.0f) {
-        QColor color;
+    switch (qColorCheckRgbFValidity(r, g, b, a, Invalid, __func__)) {
+    case QColorRgbFValidity::Invalid:
+        break;
+    case QColorRgbFValidity::ExtendedRgb:
         color.cspec = ExtendedRgb;
         castF16(color.ct.argbExtended.alphaF16) = qfloat16(a);
         castF16(color.ct.argbExtended.redF16)   = qfloat16(r);
         castF16(color.ct.argbExtended.greenF16) = qfloat16(g);
         castF16(color.ct.argbExtended.blueF16)  = qfloat16(b);
         color.ct.argbExtended.pad   = 0;
-        return color;
+        break;
+    case QColorRgbFValidity::Rgb:
+        color.cspec = Rgb;
+        color.ct.argb.alpha = qRound(a * USHRT_MAX);
+        color.ct.argb.red   = qRound(r * USHRT_MAX);
+        color.ct.argb.green = qRound(g * USHRT_MAX);
+        color.ct.argb.blue  = qRound(b * USHRT_MAX);
+        color.ct.argb.pad   = 0;
+        break;
     }
 
-    QColor color;
-    color.cspec = Rgb;
-    color.ct.argb.alpha = qRound(a * USHRT_MAX);
-    color.ct.argb.red   = qRound(r * USHRT_MAX);
-    color.ct.argb.green = qRound(g * USHRT_MAX);
-    color.ct.argb.blue  = qRound(b * USHRT_MAX);
-    color.ct.argb.pad   = 0;
     return color;
 }
 
@@ -2496,13 +2670,8 @@ QColor QColor::fromRgba64(QRgba64 rgba64) noexcept
 */
 QColor QColor::fromHsv(int h, int s, int v, int a)
 {
-    if (((h < 0 || h >= 360) && h != -1)
-        || s < 0 || s > 255
-        || v < 0 || v > 255
-        || a < 0 || a > 255) {
-        qWarning("QColor::fromHsv: HSV parameters out of range");
+    if (!qColorCheckHsvValidity(h, s, v, a, __func__, QColorHueLimit::Degrees))
         return QColor();
-    }
 
     QColor color;
     color.cspec = Hsv;
@@ -2527,13 +2696,8 @@ QColor QColor::fromHsv(int h, int s, int v, int a)
 */
 QColor QColor::fromHsvF(float h, float s, float v, float a)
 {
-    if (((h < 0.0f || h > 1.0f) && h != -1.0f)
-        || (s < 0.0f || s > 1.0f)
-        || (v < 0.0f || v > 1.0f)
-        || (a < 0.0f || a > 1.0f)) {
-        qWarning("QColor::fromHsvF: HSV parameters out of range");
+    if (!qColorCheckHsvFValidity(h, s, v, a, __func__))
         return QColor();
-    }
 
     QColor color;
     color.cspec = Hsv;
@@ -2559,13 +2723,8 @@ QColor QColor::fromHsvF(float h, float s, float v, float a)
 */
 QColor QColor::fromHsl(int h, int s, int l, int a)
 {
-    if (((h < 0 || h >= 360) && h != -1)
-        || s < 0 || s > 255
-        || l < 0 || l > 255
-        || a < 0 || a > 255) {
-        qWarning("QColor::fromHsl: HSL parameters out of range");
+    if (!qColorCheckHslValidity(h, s, l, a, __func__, QColorHueLimit::Degrees))
         return QColor();
-    }
 
     QColor color;
     color.cspec = Hsl;
@@ -2591,13 +2750,8 @@ QColor QColor::fromHsl(int h, int s, int l, int a)
 */
 QColor QColor::fromHslF(float h, float s, float l, float a)
 {
-    if (((h < 0.0f || h > 1.0f) && h != -1.0f)
-        || (s < 0.0f || s > 1.0f)
-        || (l < 0.0f || l > 1.0f)
-        || (a < 0.0f || a > 1.0f)) {
-        qWarning("QColor::fromHslF: HSL parameters out of range");
+    if (!qColorCheckHslFValidity(h, s, l, a, __func__))
         return QColor();
-    }
 
     QColor color;
     color.cspec = Hsl;
@@ -2679,12 +2833,7 @@ void QColor::getCmykF(float *c, float *m, float *y, float *k, float *a) const
 */
 void QColor::setCmyk(int c, int m, int y, int k, int a)
 {
-    if (c < 0 || c > 255
-        || m < 0 || m > 255
-        || y < 0 || y > 255
-        || k < 0 || k > 255
-        || a < 0 || a > 255) {
-        qWarning("QColor::setCmyk: CMYK parameters out of range");
+    if (!qColorCheckCmykValidity(c, m, y, k, a, __func__)) {
         invalidate();
         return;
     }
@@ -2709,12 +2858,7 @@ void QColor::setCmyk(int c, int m, int y, int k, int a)
 */
 void QColor::setCmykF(float c, float m, float y, float k, float a)
 {
-    if (c < 0.0f || c > 1.0f
-        || m < 0.0f || m > 1.0f
-        || y < 0.0f || y > 1.0f
-        || k < 0.0f || k > 1.0f
-        || a < 0.0f || a > 1.0f) {
-        qWarning("QColor::setCmykF: CMYK parameters out of range");
+    if (!qColorCheckCmykFValidity(c, m, y, k, a, __func__)) {
         invalidate();
         return;
     }
@@ -2738,14 +2882,8 @@ void QColor::setCmykF(float c, float m, float y, float k, float a)
 */
 QColor QColor::fromCmyk(int c, int m, int y, int k, int a)
 {
-    if (c < 0 || c > 255
-        || m < 0 || m > 255
-        || y < 0 || y > 255
-        || k < 0 || k > 255
-        || a < 0 || a > 255) {
-        qWarning("QColor::fromCmyk: CMYK parameters out of range");
+    if (!qColorCheckCmykValidity(c, m, y, k, a, __func__))
         return QColor();
-    }
 
     QColor color;
     color.cspec = Cmyk;
@@ -2770,14 +2908,8 @@ QColor QColor::fromCmyk(int c, int m, int y, int k, int a)
 */
 QColor QColor::fromCmykF(float c, float m, float y, float k, float a)
 {
-    if (c < 0.0f || c > 1.0f
-        || m < 0.0f || m > 1.0f
-        || y < 0.0f || y > 1.0f
-        || k < 0.0f || k > 1.0f
-        || a < 0.0f || a > 1.0f) {
-        qWarning("QColor::fromCmykF: CMYK parameters out of range");
+    if (!qColorCheckCmykFValidity(c, m, y, k, a, __func__))
         return QColor();
-    }
 
     QColor color;
     color.cspec = Cmyk;

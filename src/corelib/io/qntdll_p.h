@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNTDLL_P_H
 #define QNTDLL_P_H
@@ -17,9 +18,12 @@
 
 #include <QtCore/private/qglobal_p.h>
 
+#include <QtCore/qt_windows.h>
 #include <winternl.h>
 
 QT_BEGIN_NAMESPACE
+// Empty namespace scope just to suppress syncqt
+QT_END_NAMESPACE
 
 // keep the following structure as is, taken from
 // https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-_file_fs_sector_size_information
@@ -56,7 +60,5 @@ typedef enum _FSINFOCLASS {
     FileFsMaximumInformation
 } FS_INFORMATION_CLASS, *PFS_INFORMATION_CLASS;
 #endif
-
-QT_END_NAMESPACE
 
 #endif // QNTDLL_P_H

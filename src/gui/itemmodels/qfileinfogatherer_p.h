@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILEINFOGATHERER_H
 #define QFILEINFOGATHERER_H
@@ -29,6 +30,7 @@
 #include <qdir.h>
 #include <qelapsedtimer.h>
 
+#include <private/qfileinfo_p.h>
 #include <private/qfilesystemengine_p.h>
 
 #include <utility>
@@ -57,7 +59,8 @@ public:
 
 #ifndef QT_NO_FSFILEENGINE
     bool isCaseSensitive() const {
-        return QFileSystemEngine::isCaseSensitive();
+        auto *fiPriv = QFileInfoPrivate::get(const_cast<QFileInfo*>(&mFileInfo));
+        return qt_isCaseSensitive(fiPriv->fileEntry, fiPriv->metaData);
     }
 #endif
 

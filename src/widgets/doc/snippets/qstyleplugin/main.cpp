@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QApplication>
+#include <QtWidgets>
 #include <QtGui>
 
 //! [0]
@@ -13,6 +13,7 @@ public:
     MyStylePlugin(QObject *parent = nullptr);
 
     QStyle *create(const QString &key) override;
+    QStringList keys() const;
 };
 //! [0]
 

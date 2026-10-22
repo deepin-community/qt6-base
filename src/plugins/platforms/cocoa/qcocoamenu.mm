@@ -1,6 +1,7 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author James Turner <james.turner@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -25,7 +26,6 @@ QT_BEGIN_NAMESPACE
 
 QCocoaMenu::QCocoaMenu() :
     m_attachedItem(nil),
-    m_updateTimer(0),
     m_enabled(true),
     m_parentEnabled(true),
     m_visible(true),
@@ -45,6 +45,16 @@ QCocoaMenu::~QCocoaMenu()
 
     if (isOpen())
         dismiss();
+
+    if (NSMenu *superMenu = m_nativeMenu.supermenu) {
+        for (NSMenuItem *item in superMenu.itemArray) {
+            if (item.submenu == m_nativeMenu) {
+                [superMenu removeItem:item];
+                break;
+            }
+        }
+    }
+
     [m_nativeMenu release];
 }
 
@@ -63,7 +73,7 @@ void QCocoaMenu::setMinimumWidth(int width)
 void QCocoaMenu::setFont(const QFont &font)
 {
     if (font.resolveMask()) {
-        NSFont *customMenuFont = [NSFont fontWithName:font.families().constFirst().toNSString()
+        NSFont *customMenuFont = [NSFont fontWithName:font.family().toNSString()
                                   size:font.pointSize()];
         m_nativeMenu.font = customMenuFont;
     }
@@ -201,15 +211,16 @@ QCocoaMenuItem *QCocoaMenu::itemOrNull(int index) const
 
 void QCocoaMenu::scheduleUpdate()
 {
-    if (!m_updateTimer)
-        m_updateTimer = startTimer(0);
+    using namespace std::chrono_literals;
+
+    if (!m_updateTimer.isActive())
+        m_updateTimer.start(0ms, this);
 }
 
 void QCocoaMenu::timerEvent(QTimerEvent *e)
 {
-    if (e->timerId() == m_updateTimer) {
-        killTimer(m_updateTimer);
-        m_updateTimer = 0;
+    if (e->id() == m_updateTimer.id()) {
+        m_updateTimer.stop();
         [m_nativeMenu update];
     }
 }

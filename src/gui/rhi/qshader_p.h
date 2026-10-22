@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSHADER_P_H
 #define QSHADER_P_H
@@ -15,12 +16,14 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <rhi/qshader.h>
 #include <QtCore/QAtomicInt>
 #include <QtCore/QMap>
-#include <QtCore/QDebug>
 
 QT_BEGIN_NAMESPACE
+
+class QDataStream;
 
 struct Q_GUI_EXPORT QShaderPrivate
 {
@@ -64,6 +67,7 @@ struct Q_GUI_EXPORT QShaderPrivate
 
     static QShaderPrivate *get(QShader *s) { return s->d; }
     static const QShaderPrivate *get(const QShader *s) { return s->d; }
+    static bool readCount(QDataStream *stream, int *count);
     static int qtQsbVersion(QShader::SerializedFormatVersion qtVersion) {
         switch (qtVersion) {
         case QShader::SerializedFormatVersion::Qt_6_4:

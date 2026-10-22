@@ -1,10 +1,12 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author James Turner <james.turner@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOCOAMENU_H
 #define QCOCOAMENU_H
 
+#include <QtCore/qbasictimer.h>
 #include <QtCore/QList>
 #include <qpa/qplatformmenu.h>
 #include <qpa/qplatformmenu_p.h>
@@ -76,7 +78,7 @@ private:
     QList<QCocoaMenuItem *> m_menuItems;
     QCocoaNSMenu *m_nativeMenu;
     NSMenuItem *m_attachedItem;
-    int m_updateTimer;
+    QBasicTimer m_updateTimer;
     bool m_enabled:1;
     bool m_parentEnabled:1;
     bool m_visible:1;

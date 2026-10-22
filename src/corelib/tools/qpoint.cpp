@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpoint.h"
 #include "qdatastream.h"
@@ -450,12 +451,8 @@ QDebug operator<<(QDebug dbg, const QPointF &p)
 #endif
 
 /*!
-    \fn size_t qHash(QPoint key, size_t seed = 0)
-    \relates QHash
+    \qhashold{QHash}
     \since 6.0
-
-    Returns the hash value for the \a key, using \a seed to seed the
-    calculation.
 */
 size_t qHash(QPoint key, size_t seed) noexcept
 {

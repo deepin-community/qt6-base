@@ -1,12 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILESYSTEMMODEL_H
 #define QFILESYSTEMMODEL_H
 
 #include <QtGui/qtguiglobal.h>
 #include <QtCore/qabstractitemmodel.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qdir.h>
 #include <QtGui/qicon.h>
 
@@ -35,7 +35,7 @@ public:
     enum Roles {
         FileIconRole = Qt::DecorationRole,
 
-        FileInfoRole = Qt::UserRole - 4, // New values go before, -5, -6 ..etc
+        FileInfoRole = Qt::FileInfoRole, // New values go before, -5, -6 ..etc
         QT7_ONLY(
         FilePathRole = Qt::UserRole - 3,
         FileNameRole = Qt::UserRole - 2,

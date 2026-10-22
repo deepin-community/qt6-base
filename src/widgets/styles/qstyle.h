@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTYLE_H
 #define QSTYLE_H
@@ -86,11 +87,10 @@ public:
         State_Children =            0x00080000,
         State_Item =                0x00100000,
         State_Sibling =             0x00200000,
-        State_Editing =             0x00400000,
-        State_KeyboardFocusChange = 0x00800000,
-#ifdef QT_KEYPAD_NAVIGATION
-        State_HasEditFocus =        0x01000000,
+#if QT_DEPRECATED_SINCE(6, 11)
+        State_Editing Q_DECL_ENUMERATOR_DEPRECATED_X("Not used and no effect since Qt 5") = 0x00400000,
 #endif
+        State_KeyboardFocusChange = 0x00800000,
         State_ReadOnly =            0x02000000,
         State_Small =               0x04000000,
         State_Mini =                0x08000000
@@ -602,6 +602,7 @@ public:
         SH_ScrollView_FrameOnlyAroundContents,
         SH_MenuBar_AltKeyNavigation,
         SH_ComboBox_ListMouseTracking,
+        SH_ComboBox_ListMouseTracking_Current = SH_ComboBox_ListMouseTracking,
         SH_Menu_MouseTracking,
         SH_MenuBar_MouseTracking,
         SH_ItemView_ChangeHighlightOnFocus,
@@ -704,6 +705,7 @@ public:
         SH_TabBar_AllowWheelScrolling,
         SH_Table_AlwaysDrawLeftTopGridLines,
         SH_SpinBox_SelectOnStep,
+        SH_ComboBox_ListMouseTracking_Active,
         // Add new style hint values here
 
         SH_CustomBase = 0xf0000000
@@ -793,6 +795,10 @@ public:
         SP_DialogIgnoreButton,
         SP_RestoreDefaultsButton,
         SP_TabCloseButton,
+        SP_TabScrollLeftButton,
+        SP_TabScrollRightButton,
+        SP_TabScrollUpButton,
+        SP_TabScrollDownButton,
         NStandardPixmap, // assertion value for sync with QPlatformTheme::StandardPixmap
         // do not add any values below/greater than this
         SP_CustomBase = 0xf0000000
@@ -840,6 +846,7 @@ private:
     friend class QProxyStyle;
     friend class QProxyStylePrivate;
     friend class QStyleFactory;
+    friend class QStyleSheetProxySaver;
     void setProxy(QStyle *style);
 };
 

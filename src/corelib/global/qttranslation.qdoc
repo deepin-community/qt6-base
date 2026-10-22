@@ -2,6 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
+    \headerfile <QtTranslation>
+    \inmodule QtCore
+    \ingroup funclists
+    \brief Marking strings for translation.
+
+    \sa {Writing Source Code for Translation}
+*/
+
+/*!
     \macro QT_TR_NOOP(sourceText)
     \relates <QtTranslation>
 
@@ -34,7 +43,7 @@
 
     Example:
 
-    \snippet code/src_corelib_global_qglobal.cpp 35
+    \snippet code/src_corelib_global_qglobal_widgets.cpp 3
 
     \sa QT_TR_NOOP(), QT_TRANSLATE_NOOP3(), {Internationalization with Qt}
 */
@@ -56,7 +65,7 @@
 
     Example:
 
-    \snippet code/src_corelib_global_qglobal.cpp 36
+    \snippet code/src_corelib_global_qglobal_widgets.cpp 4
 
     \sa QT_TR_NOOP(), QT_TRANSLATE_NOOP(), {Internationalization with Qt}
 */
@@ -120,7 +129,7 @@
 
     Example:
 
-    \snippet code/src_corelib_global_qglobal.cpp qttranslatennoop3
+    \snippet code/src_corelib_global_qglobal_widgets.cpp qttranslatennoop
 
     \sa QT_TR_NOOP(), QT_TRANSLATE_NOOP(), QT_TRANSLATE_NOOP3(),
     {Internationalization with Qt}
@@ -180,7 +189,7 @@
 
     Example:
 
-    \snippet code/src_corelib_global_qglobal.cpp qttrid_noop
+    \snippet code/src_corelib_global_qglobal_widgets.cpp qttrid_noop
 
     \sa qtTrId(), {Internationalization with Qt}
 */

@@ -61,7 +61,7 @@ Q_DECLARE_METATYPE(QTransform)
 #define Q_CHECK_PAINTEVENTS
 #endif
 
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_MACOS)
 // On mac (cocoa) we always get full update.
 // So check that the expected region is contained inside the actual
 #define COMPARE_REGIONS(ACTUAL, EXPECTED) QVERIFY((EXPECTED).subtracted(ACTUAL).isEmpty())
@@ -469,7 +469,7 @@ private slots:
 
 private:
     GraphicsItems paintedItems;
-    QPointingDevice *m_touchDevice = QTest::createTouchDevice();
+    std::unique_ptr<QPointingDevice> m_touchDevice{QTest::createTouchDevice()};
 };
 
 void tst_QGraphicsItem::cleanup()
@@ -3047,13 +3047,14 @@ void tst_QGraphicsItem::mapRectFromToParent()
     QFETCH(QRectF, inputRect);
     QFETCH(QRectF, outputRect);
 
-    QGraphicsRectItem *rect = new QGraphicsRectItem;
+    std::unique_ptr<QGraphicsRectItem> rectParent; // keep this first
+    const auto rect = std::make_unique<QGraphicsRectItem>();
     rect->setPos(pos);
     rect->setTransform(transform);
 
     if (parent) {
-        QGraphicsRectItem *rectParent = new QGraphicsRectItem;
-        rect->setParentItem(rectParent);
+        rectParent = std::make_unique<QGraphicsRectItem>();
+        rect->setParentItem(rectParent.get());
         rectParent->setPos(parentPos);
         rectParent->setTransform(parentTransform);
     }
@@ -3190,46 +3191,78 @@ void tst_QGraphicsItem::graphicsitem_cast()
     QGraphicsTextItem textItem;
     const QGraphicsTextItem *pTextItem = &textItem;
 
-    QVERIFY(qgraphicsitem_cast<QGraphicsPathItem *>(&pathItem));
-    //QVERIFY(qgraphicsitem_cast<QAbstractGraphicsPathItem *>(&pathItem));
-    QVERIFY(qgraphicsitem_cast<QGraphicsItem *>(&pathItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsItem *>(pPathItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsPathItem *>(pPathItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsPathItem *>(&pathItem),
+                dynamic_cast<QGraphicsPathItem *>(&pathItem));
+    //QCOMPARE_EQ(qgraphicsitem_cast<QAbstractGraphicsPathItem *>(&pathItem),
+    //            dynamic_cast<QAbstractGraphicsPathItem *>(&pathItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsItem *>(&pathItem),
+                dynamic_cast<QGraphicsItem *>(&pathItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsItem *>(pPathItem),
+                dynamic_cast<const QGraphicsItem *>(pPathItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsPathItem *>(pPathItem),
+                dynamic_cast<const QGraphicsPathItem *>(pPathItem));
 
-    QVERIFY(qgraphicsitem_cast<QGraphicsRectItem *>(&rectItem));
-    QVERIFY(qgraphicsitem_cast<QGraphicsItem *>(&rectItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsItem *>(pRectItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsRectItem *>(pRectItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsRectItem *>(&rectItem),
+                dynamic_cast<QGraphicsRectItem *>(&rectItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsItem *>(&rectItem),
+                dynamic_cast<QGraphicsItem *>(&rectItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsItem *>(pRectItem),
+                dynamic_cast<const QGraphicsItem *>(pRectItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsRectItem *>(pRectItem),
+                dynamic_cast<const QGraphicsRectItem *>(pRectItem));
 
-    QVERIFY(qgraphicsitem_cast<QGraphicsEllipseItem *>(&ellipseItem));
-    QVERIFY(qgraphicsitem_cast<QGraphicsItem *>(&ellipseItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsItem *>(pEllipseItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsEllipseItem *>(pEllipseItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsEllipseItem *>(&ellipseItem),
+                dynamic_cast<QGraphicsEllipseItem *>(&ellipseItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsItem *>(&ellipseItem),
+                dynamic_cast<QGraphicsItem *>(&ellipseItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsItem *>(pEllipseItem),
+                dynamic_cast<const QGraphicsItem *>(pEllipseItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsEllipseItem *>(pEllipseItem),
+                dynamic_cast<const QGraphicsEllipseItem *>(pEllipseItem));
 
-    QVERIFY(qgraphicsitem_cast<QGraphicsPolygonItem *>(&polygonItem));
-    //QVERIFY(qgraphicsitem_cast<QAbstractGraphicsPathItem *>(&polygonItem));
-    QVERIFY(qgraphicsitem_cast<QGraphicsItem *>(&polygonItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsItem *>(pPolygonItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsPolygonItem *>(pPolygonItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsPolygonItem *>(&polygonItem),
+                dynamic_cast<QGraphicsPolygonItem *>(&polygonItem));
+    //QCOMPARE_EQ(qgraphicsitem_cast<QAbstractGraphicsPathItem *>(&polygonItem),
+    //            dynamic_cast<QAbstractGraphicsPathItem *>(&polygonItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsItem *>(&polygonItem),
+                dynamic_cast<QGraphicsItem *>(&polygonItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsItem *>(pPolygonItem),
+                dynamic_cast<const QGraphicsItem *>(pPolygonItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsPolygonItem *>(pPolygonItem),
+                dynamic_cast<const QGraphicsPolygonItem *>(pPolygonItem));
 
-    QVERIFY(qgraphicsitem_cast<QGraphicsLineItem *>(&lineItem));
-    QVERIFY(qgraphicsitem_cast<QGraphicsItem *>(&lineItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsItem *>(pLineItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsLineItem *>(pLineItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsLineItem *>(&lineItem),
+                dynamic_cast<QGraphicsLineItem *>(&lineItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsItem *>(&lineItem),
+                dynamic_cast<QGraphicsItem *>(&lineItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsItem *>(pLineItem),
+                dynamic_cast<const QGraphicsItem *>(pLineItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsLineItem *>(pLineItem),
+                dynamic_cast<const QGraphicsLineItem *>(pLineItem));
 
-    QVERIFY(qgraphicsitem_cast<QGraphicsPixmapItem *>(&pixmapItem));
-    QVERIFY(qgraphicsitem_cast<QGraphicsItem *>(&pixmapItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsItem *>(pPixmapItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsPixmapItem *>(pPixmapItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsPixmapItem *>(&pixmapItem),
+                dynamic_cast<QGraphicsPixmapItem *>(&pixmapItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsItem *>(&pixmapItem),
+                dynamic_cast<QGraphicsItem *>(&pixmapItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsItem *>(pPixmapItem),
+                dynamic_cast<const QGraphicsItem *>(pPixmapItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsPixmapItem *>(pPixmapItem),
+                dynamic_cast<const QGraphicsPixmapItem *>(pPixmapItem));
 
-    QVERIFY(qgraphicsitem_cast<QGraphicsTextItem *>(&textItem));
-    QVERIFY(qgraphicsitem_cast<QGraphicsItem *>(&textItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsItem *>(pTextItem));
-    QVERIFY(qgraphicsitem_cast<const QGraphicsTextItem *>(pTextItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsTextItem *>(&textItem),
+                dynamic_cast<QGraphicsTextItem *>(&textItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsItem *>(&textItem),
+                dynamic_cast<QGraphicsItem *>(&textItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsItem *>(pTextItem),
+                dynamic_cast<const QGraphicsItem *>(pTextItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsTextItem *>(pTextItem),
+                dynamic_cast<const QGraphicsTextItem *>(pTextItem));
 
     // and some casts that _should_ fail:
-    QVERIFY(!qgraphicsitem_cast<QGraphicsEllipseItem *>(&pathItem));
-    QVERIFY(!qgraphicsitem_cast<const QGraphicsTextItem *>(pPolygonItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<QGraphicsEllipseItem *>(&pathItem),
+                dynamic_cast<QGraphicsEllipseItem *>(&pathItem));
+    QCOMPARE_EQ(qgraphicsitem_cast<const QGraphicsTextItem *>(pPolygonItem),
+                dynamic_cast<const QGraphicsTextItem *>(pPolygonItem));
 
     // and this shouldn't crash
     QGraphicsItem *ptr = nullptr;
@@ -5001,12 +5034,12 @@ void tst_QGraphicsItem::sceneEventFilter()
     //Let check if the items are correctly removed from the sceneEventFilters array
     //to avoid stale pointers.
     QGraphicsView gv;
-    QGraphicsScene *anotherScene = new QGraphicsScene;
-    QGraphicsTextItem *ti = anotherScene->addText("This is a test #1");
+    QGraphicsScene anotherScene;
+    QGraphicsTextItem *ti = anotherScene.addText("This is a test #1");
     ti->moveBy(50, 50);
-    QGraphicsTextItem *ti2 = anotherScene->addText("This is a test #2");
-    QGraphicsTextItem *ti3 = anotherScene->addText("This is a test #3");
-    gv.setScene(anotherScene);
+    QGraphicsTextItem *ti2 = anotherScene.addText("This is a test #2");
+    QGraphicsTextItem *ti3 = anotherScene.addText("This is a test #3");
+    gv.setScene(&anotherScene);
     gv.show();
     QVERIFY(QTest::qWaitForWindowExposed(&gv));
     ti->installSceneEventFilter(ti2);
@@ -6199,7 +6232,7 @@ void tst_QGraphicsItem::untransformable()
 
 // Painting with the DiagCrossPattern is really slow on Mac
 // when zoomed out. (The test times out). Task to fix is 155567.
-#if !defined(Q_OS_MAC) || 1
+#if !defined(Q_OS_MACOS) || 1
     view.setBackgroundBrush(QBrush(Qt::black, Qt::DiagCrossPattern));
 #endif
 
@@ -7293,9 +7326,6 @@ void tst_QGraphicsItem::tabChangesFocus()
 
 void tst_QGraphicsItem::cacheMode()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QGraphicsScene scene(0, 0, 100, 100);
     QGraphicsView view(&scene);
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
@@ -7477,9 +7507,6 @@ void tst_QGraphicsItem::cacheMode()
 
 void tst_QGraphicsItem::cacheMode2()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QGraphicsScene scene(0, 0, 100, 100);
     QGraphicsView view(&scene);
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
@@ -8177,16 +8204,21 @@ void tst_QGraphicsItem::moveLineItem()
 
 void tst_QGraphicsItem::sorting_data()
 {
-    QTest::addColumn<int>("index");
+    QTest::addColumn<QGraphicsScene::ItemIndexMethod>("indexMethod");
 
-    QTest::newRow("NoIndex") << int(QGraphicsScene::NoIndex);
-    QTest::newRow("BspTreeIndex") << int(QGraphicsScene::BspTreeIndex);
+    QTest::newRow("NoIndex") << QGraphicsScene::NoIndex;
+    QTest::newRow("BspTreeIndex") << QGraphicsScene::BspTreeIndex;
 }
+
+QT_WARNING_PUSH
+// checked stack use and deemed it acceptable
+QT_WARNING_DISABLE_LARGE_STACK_FRAME
 
 void tst_QGraphicsItem::sorting()
 {
     if (qGuiApp->styleHints()->showIsFullScreen())
         QSKIP("Skipped because Platform is auto maximizing");
+    QFETCH(QGraphicsScene::ItemIndexMethod, indexMethod);
 
     _paintedItems.clear();
 
@@ -8202,6 +8234,7 @@ void tst_QGraphicsItem::sorting()
             scene.addItem(item);
         }
     }
+    scene.setItemIndexMethod(indexMethod);
 
     PainterItem *item1 = new PainterItem;
     PainterItem *item2 = new PainterItem;
@@ -8216,6 +8249,8 @@ void tst_QGraphicsItem::sorting()
     view.setWindowFlags(view.windowFlags() | Qt::Tool);
     view.setResizeAnchor(QGraphicsView::NoAnchor);
     view.setTransformationAnchor(QGraphicsView::NoAnchor);
+    view.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    view.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     view.resize(120, 100);
     view.setFrameStyle(0);
     view.show();
@@ -8229,14 +8264,17 @@ void tst_QGraphicsItem::sorting()
     _paintedItems.clear();
 
     view.viewport()->update();
-    const GraphicsItems expected{grid[0][0], grid[0][1], grid[0][2], grid[0][3],
-                                 grid[1][0], grid[1][1], grid[1][2], grid[1][3],
-                                 grid[2][0], grid[2][1], grid[2][2], grid[2][3],
-                                 grid[3][0], grid[3][1], grid[3][2], grid[3][3],
-                                 grid[4][0], grid[4][1], grid[4][2], grid[4][3],
+    const GraphicsItems expected{grid[0][0], grid[0][1], grid[0][2], grid[0][3], grid[0][4],
+                                 grid[1][0], grid[1][1], grid[1][2], grid[1][3], grid[1][4],
+                                 grid[2][0], grid[2][1], grid[2][2], grid[2][3], grid[2][4],
+                                 grid[3][0], grid[3][1], grid[3][2], grid[3][3], grid[3][4],
+                                 grid[4][0], grid[4][1], grid[4][2], grid[4][3], grid[4][4],
+                                 grid[5][0], grid[5][1], grid[5][2], grid[5][3], grid[5][4],
                                  item1, item2};
     QTRY_COMPARE(_paintedItems, expected);
 }
+
+QT_WARNING_POP // -Wframe-larger-than
 
 void tst_QGraphicsItem::itemHasNoContents()
 {
@@ -11077,13 +11115,14 @@ void tst_QGraphicsItem::touchEventPropagation()
     view.setSceneRect(touchEventReceiver->boundingRect());
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QInputDevicePrivate::get(m_touchDevice)->setAvailableVirtualGeometry(view.screen()->geometry());
+    QInputDevicePrivate::get(m_touchDevice.get())
+            ->setAvailableVirtualGeometry(view.screen()->geometry());
 
     QCOMPARE(touchEventReceiver->touchBeginEventCount(), 0);
 
     const QPointF scenePos = view.sceneRect().center();
     sendMousePress(&scene, scenePos);
-    QMutableTouchEvent touchBegin(QEvent::TouchBegin, m_touchDevice, Qt::NoModifier,
+    QMutableTouchEvent touchBegin(QEvent::TouchBegin, m_touchDevice.get(), Qt::NoModifier,
                                   createTouchPoints(view, scenePos, QSizeF(10, 10)));
     touchBegin.setTarget(view.viewport());
 
@@ -11137,11 +11176,12 @@ void tst_QGraphicsItem::touchEventTransformation()
     view.setTransform(viewTransform);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QInputDevicePrivate::get(m_touchDevice)->setAvailableVirtualGeometry(view.screen()->geometry());
+    QInputDevicePrivate::get(m_touchDevice.get())
+            ->setAvailableVirtualGeometry(view.screen()->geometry());
 
     QCOMPARE(touchEventReceiver->touchBeginEventCount(), 0);
 
-    QMutableTouchEvent touchBegin(QEvent::TouchBegin, m_touchDevice, Qt::NoModifier,
+    QMutableTouchEvent touchBegin(QEvent::TouchBegin, m_touchDevice.get(), Qt::NoModifier,
                                   createTouchPoints(view, touchScenePos, ellipseDiameters));
     touchBegin.setTarget(view.viewport());
     QCoreApplication::sendEvent(&scene, &touchBegin);
@@ -11155,7 +11195,7 @@ void tst_QGraphicsItem::touchEventTransformation()
     COMPARE_POINTF(touchBeginPoint.position(), expectedItemPos);
     COMPARE_SIZEF(touchBeginPoint.ellipseDiameters(), ellipseDiameters); // Must remain untransformed
 
-    QMutableTouchEvent touchUpdate(QEvent::TouchUpdate, m_touchDevice, Qt::NoModifier,
+    QMutableTouchEvent touchUpdate(QEvent::TouchUpdate, m_touchDevice.get(), Qt::NoModifier,
                                    createTouchPoints(view, touchScenePos, ellipseDiameters, QEventPoint::State::Updated));
     touchUpdate.setTarget(view.viewport());
 
@@ -11628,6 +11668,8 @@ void tst_QGraphicsItem::itemDiesDuringDraggingOperation()
     QCoreApplication::sendEvent(&scene, &dragEnter);
     QGraphicsSceneDragDropEvent event(QEvent::GraphicsSceneDragMove);
     event.setScenePos(item->boundingRect().center());
+    event.setProposedAction(Qt::DropAction::CopyAction); // prevent uninit'ed copy in...
+    event.setDropAction(Qt::DropAction::CopyAction);     // ...QGraphicsScenePrivate::cloneDragDropEvent()
     QCoreApplication::sendEvent(&scene, &event);
     QCOMPARE(QGraphicsScenePrivate::get(&scene)->dragDropItem, item);
     delete item;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDYNAMICDOCKWIDGET_H
 #define QDYNAMICDOCKWIDGET_H
@@ -25,6 +26,8 @@ class Q_WIDGETS_EXPORT QDockWidget : public QWidget
     Q_PROPERTY(Qt::DockWidgetAreas allowedAreas READ allowedAreas
                WRITE setAllowedAreas NOTIFY allowedAreasChanged)
     Q_PROPERTY(QString windowTitle READ windowTitle WRITE setWindowTitle DESIGNABLE true)
+    Q_PROPERTY(Qt::DockWidgetArea dockLocation READ dockLocation WRITE setDockLocation
+               NOTIFY dockLocationChanged)
 
 public:
     explicit QDockWidget(const QString &title, QWidget *parent = nullptr,
@@ -60,6 +63,9 @@ public:
 
     void setTitleBarWidget(QWidget *widget);
     QWidget *titleBarWidget() const;
+
+    void setDockLocation(Qt::DockWidgetArea area);
+    Qt::DockWidgetArea dockLocation() const;
 
     inline bool isAreaAllowed(Qt::DockWidgetArea area) const
     { return (allowedAreas() & area) == area; }

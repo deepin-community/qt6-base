@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #include "qplatformdefs.h"
 #include "qlibrary_p.h"
@@ -21,11 +22,6 @@ QStringList QLibraryPrivate::suffixes_sys(const QString& fullVersion)
 {
     Q_UNUSED(fullVersion);
     return QStringList(QStringLiteral(".dll"));
-}
-
-QStringList QLibraryPrivate::prefixes_sys()
-{
-    return QStringList();
 }
 
 bool QLibraryPrivate::load_sys()

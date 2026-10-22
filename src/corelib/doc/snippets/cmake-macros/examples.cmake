@@ -34,9 +34,9 @@ qt_wrap_cpp(myapp myapp.cpp)
 #! [qt_wrap_cpp_4]
 
 #! [qt_add_resources]
-set(SOURCES main.cpp)
-qt_add_resources(SOURCES example.qrc)
-qt_add_executable(myapp ${SOURCES})
+set(sources main.cpp)
+qt_add_resources(sources example.qrc)
+qt_add_executable(myapp ${sources})
 #! [qt_add_resources]
 
 #! [qt_add_resources_target]
@@ -68,11 +68,11 @@ qt_generate_moc(main.cpp main.moc TARGET myapp)
 
 #! [qt_import_plugins]
 qt_add_executable(myapp main.cpp)
-target_link_libraries(myapp Qt::Gui Qt::Sql)
+target_link_libraries(myapp Qt6::Gui Qt6::Sql)
 qt_import_plugins(myapp
-    INCLUDE Qt::QCocoaIntegrationPlugin
-    EXCLUDE Qt::QMinimalIntegrationPlugin
-    INCLUDE_BY_TYPE imageformats Qt::QGifPlugin Qt::QJpegPlugin
+    INCLUDE Qt6::QCocoaIntegrationPlugin
+    EXCLUDE Qt6::QMinimalIntegrationPlugin
+    INCLUDE_BY_TYPE imageformats Qt6::QGifPlugin Qt6::QJpegPlugin
     EXCLUDE_BY_TYPE sqldrivers
 )
 #! [qt_import_plugins]
@@ -91,6 +91,32 @@ qt_finalize_target(complexapp)
 qt_android_generate_deployment_settings(myapp)
 qt_android_add_apk_target(myapp)
 #! [qt_android_deploy_basic]
+
+#! [qt_add_android_permission]
+qt_add_executable(myapp
+    // ...
+)
+qt_add_android_permission(myapp
+    NAME android.permission.BLUETOOTH_SCAN
+    ATTRIBUTES
+        minSdkVersion 31
+        usesPermissionFlags neverForLocation
+)
+qt_add_android_permission(myapp
+    NAME android.permission.ACCESS_COARSE_LOCATION
+)
+#! [qt_add_android_permission]
+
+#! [qt_add_harmonyos_permission]
+qt_add_harmonyos_permission(myapp
+    NAME ohos.permission.CAMERA
+    REASON "$string:camera_permission_reason"
+    USED_SCENE_WHEN inuse
+)
+qt_add_harmonyos_permission(myapp
+    NAME ohos.permission.INTERNET
+)
+#! [qt_add_harmonyos_permission]
 
 #! [qt_finalize_project_manual]
 cmake_minimum_required(VERSIONS 3.16)

@@ -24,7 +24,7 @@ Q_LOGGING_CATEGORY(lcQpaFonts, "qt.qpa.fonts")
 void qt_registerFont(const QString &familyname, const QString &stylename,
                      const QString &foundryname, int weight,
                      QFont::Style style, int stretch, bool antialiased,
-                     bool scalable, int pixelSize, bool fixedPitch,
+                     bool scalable, int pixelSize, bool fixedPitch, bool colorFont,
                      const QSupportedWritingSystems &writingSystems, void *hanlde);
 
 void qt_registerFontFamily(const QString &familyName);
@@ -55,7 +55,7 @@ bool qt_isFontFamilyPopulated(const QString &familyName);
 void QPlatformFontDatabase::registerFont(const QString &familyname, const QString &stylename,
                                          const QString &foundryname, QFont::Weight weight,
                                          QFont::Style style, QFont::Stretch stretch, bool antialiased,
-                                         bool scalable, int pixelSize, bool fixedPitch,
+                                         bool scalable, int pixelSize, bool fixedPitch, bool colorFont,
                                          const QSupportedWritingSystems &writingSystems, void *usrPtr)
 {
     if (scalable)
@@ -63,7 +63,7 @@ void QPlatformFontDatabase::registerFont(const QString &familyname, const QStrin
 
     qt_registerFont(familyname, stylename, foundryname, weight, style,
                     stretch, antialiased, scalable, pixelSize,
-                    fixedPitch, writingSystems, usrPtr);
+                    fixedPitch, colorFont, writingSystems, usrPtr);
 }
 
 /*!
@@ -271,7 +271,8 @@ void QPlatformFontDatabase::invalidate()
     option to fall back to the fonts given by \a fallbacks if \a fontEngine does not support
     a certain character.
 */
-QFontEngineMulti *QPlatformFontDatabase::fontEngineMulti(QFontEngine *fontEngine, QChar::Script script)
+QFontEngineMulti *QPlatformFontDatabase::fontEngineMulti(QFontEngine *fontEngine,
+                                                         QFontDatabasePrivate::ExtendedScript script)
 {
     return new QFontEngineMulti(fontEngine, script);
 }
@@ -301,7 +302,7 @@ QFontEngine *QPlatformFontDatabase::fontEngine(const QFontDef &fontDef, void *ha
 
 /*!
     Returns the font engine that will be used to back a QRawFont,
-    based on the given \fontData, \a pixelSize, and \a hintingPreference.
+    based on the given \a fontData, \a pixelSize, and \a hintingPreference.
 
     This function is called by QRawFont, and does not play a part in
     the normal operations of QFontDatabase.
@@ -359,9 +360,12 @@ void QPlatformFontDatabase::releaseHandle(void *handle)
 */
 QString QPlatformFontDatabase::fontDir() const
 {
-    QString fontpath = QString::fromLocal8Bit(qgetenv("QT_QPA_FONTDIR"));
-    if (fontpath.isEmpty())
-        fontpath = QLibraryInfo::path(QLibraryInfo::LibrariesPath) + "/fonts"_L1;
+    QString fontpath = qEnvironmentVariable("QT_QPA_FONTDIR");
+    if (fontpath.isEmpty()) {
+        QStringList paths = QLibraryInfo::paths(QLibraryInfo::LibrariesPath);
+        if (!paths.isEmpty())
+            fontpath = paths.takeFirst() + "/fonts"_L1;
+    }
 
     return fontpath;
 }
@@ -656,6 +660,15 @@ bool QPlatformFontDatabase::supportsVariableApplicationFonts() const
     return false;
 }
 
+/*!
+    Returns true if this font database supports loading color fonts in the COLRv0 format.
+
+    \since 6.9
+*/
+bool QPlatformFontDatabase::supportsColrv0Fonts() const
+{
+    return false;
+}
 
 /*!
     \class QPlatformFontDatabase

@@ -8,8 +8,9 @@
 #include <private/qglobal_p.h>
 #include <QScopeGuard>
 
-#include <cstring>
-#include <iostream>
+#include <string.h>
+
+using namespace Qt::StringLiterals;
 
 class tst_QCollator : public QObject
 {
@@ -23,6 +24,7 @@ private Q_SLOTS:
     void compare();
 
     void state();
+    void detach();
 };
 
 static bool dpointer_is_null(QCollator &c)
@@ -77,6 +79,7 @@ void tst_QCollator::moveSemantics()
     QCollator c2(std::move(c1));
     QCOMPARE(c2.locale(), de_AT);
     QVERIFY(dpointer_is_null(c1));
+    QCOMPARE(c1, QCollator());
 
     QCollator c3(c1);
     QVERIFY(dpointer_is_null(c3));
@@ -84,6 +87,7 @@ void tst_QCollator::moveSemantics()
     c1 = std::move(c2);
     QCOMPARE(c1.locale(), de_AT);
     QVERIFY(dpointer_is_null(c2));
+    QCOMPARE(c2, QCollator());
 
     // test QCollatorSortKey move assignment
     // posix implementation supports only C and default locale,
@@ -139,14 +143,14 @@ void tst_QCollator::compare_data()
             << QString("en_US") << QString() << QString() << 0 << 0 << false << true << 0;
 
     /*
-        In Swedish, a with ring above (E5) comes before a with
-        diaresis (E4), which comes before o diaresis (F6), which
+        In Swedish, a with ring above (å) comes before a with
+        diaresis (ä), which comes before o diaresis (ö), which
         all come after z.
     */
-    QTest::newRow("swedish1") << QString("sv_SE") << QString::fromLatin1("\xe5") << QString::fromLatin1("\xe4") << -1 << -1 << false << false << -1;
-    QTest::newRow("swedish2") << QString("sv_SE") << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1 << -1 << false << false << -1;
-    QTest::newRow("swedish3") << QString("sv_SE") << QString::fromLatin1("\xe5") << QString::fromLatin1("\xf6") << -1 << -1 << false << false << -1;
-    QTest::newRow("swedish4") << QString("sv_SE") << QString::fromLatin1("z") << QString::fromLatin1("\xe5") << -1 << -1 << false << false << -1;
+    QTest::newRow("swedish1") << QString("sv_SE") << u"å"_s << u"ä"_s << -1 << -1 << false << false << -1;
+    QTest::newRow("swedish2") << QString("sv_SE") << u"ä"_s << u"ö"_s << -1 << -1 << false << false << -1;
+    QTest::newRow("swedish3") << QString("sv_SE") << u"å"_s << u"ö"_s << -1 << -1 << false << false << -1;
+    QTest::newRow("swedish4") << QString("sv_SE") << QString::fromLatin1("z") << u"å"_s << -1 << -1 << false << false << -1;
     QTest::newRow("swedish5") << QString("sv_SE") << QString("9") << QString("19") << -1 << -1 << true << false << -1;
     QTest::newRow("swedish6") << QString("sv_SE") << QString("Test 9") << QString("Test_19") << -1 << -1 << true << true << -1;
     QTest::newRow("swedish7") << QString("sv_SE") << QString("test_19") << QString("test 19") << 1 << 1 << true << false << 1;
@@ -161,12 +165,12 @@ void tst_QCollator::compare_data()
             << QString("sv_SE") << QString() << QString() << 0 << 0 << false << true << 0;
 
     /*
-        In Norwegian, ae (E6) comes before o with stroke (D8), which
-        comes before a with ring above (E5).
+        In Norwegian, ae (æ) comes before o with stroke (ø), which
+        comes before a with ring above (å).
     */
-    QTest::newRow("norwegian1") << QString("no_NO") << QString::fromLatin1("\xe6") << QString::fromLatin1("\xd8") << -1 << -1 << false << false << -1;
-    QTest::newRow("norwegian2") << QString("no_NO") << QString::fromLatin1("\xd8") << QString::fromLatin1("\xe5") << -1 << -1 << false << false << -1;
-    QTest::newRow("norwegian3") << QString("no_NO") << QString::fromLatin1("\xe6") << QString::fromLatin1("\xe5") << -1 << -1 << false << false << -1;
+    QTest::newRow("norwegian1") << QString("no_NO") << u"æ"_s << u"Ø"_s << -1 << -1 << false << false << -1;
+    QTest::newRow("norwegian2") << QString("no_NO") << u"Ø"_s << u"å"_s << -1 << -1 << false << false << -1;
+    QTest::newRow("norwegian3") << QString("no_NO") << u"æ"_s << u"å"_s << -1 << -1 << false << false << -1;
     QTest::newRow("norwegian4") << QString("no_NO") << QString("9") << QString("19") << -1 << -1 << true << false << -1;
     QTest::newRow("norwegian5") << QString("no_NO") << QString("Test 9") << QString("Test_19") << -1 << -1 << true << true << -1;
     QTest::newRow("norwegian6") << QString("no_NO") << QString("Test 9") << QString("Test_19") << -1 << -1 << true << true << -1;
@@ -182,17 +186,17 @@ void tst_QCollator::compare_data()
             << QString("nb_NO") << QString() << QString() << 0 << 0 << false << true << 0;
 
     /*
-        In German, z comes *after* a with diaresis (E4),
-        which comes before o diaresis (F6).
+        In German, z comes *after* a with diaresis (ä),
+        which comes before o diaresis (ö).
     */
-    QTest::newRow("german1") << QString("de_DE") << QString::fromLatin1("a") << QString::fromLatin1("\xe4") << -1 << -1 << false << false << -1;
-    QTest::newRow("german2") << QString("de_DE") << QString::fromLatin1("b") << QString::fromLatin1("\xe4") << 1 << 1 << false << false << 1;
-    QTest::newRow("german3") << QString("de_DE") << QString::fromLatin1("z") << QString::fromLatin1("\xe4") << 1 << 1 << false << false << 1;
-    QTest::newRow("german4") << QString("de_DE") << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1 << -1 << false << false << -1;
-    QTest::newRow("german5") << QString("de_DE") << QString::fromLatin1("z") << QString::fromLatin1("\xf6") << 1 << 1 << false << false << 1;
-    QTest::newRow("german6") << QString("de_DE") << QString::fromLatin1("\xc0") << QString::fromLatin1("\xe0") << 1 << 0 << false << false << 0;
-    QTest::newRow("german7") << QString("de_DE") << QString::fromLatin1("\xd6") << QString::fromLatin1("\xf6") << 1 << 0 << false << false << 0;
-    QTest::newRow("german8") << QString("de_DE") << QString::fromLatin1("oe") << QString::fromLatin1("\xf6") << 1 << 1 << false << false << 1;
+    QTest::newRow("german1") << QString("de_DE") << QString::fromLatin1("a") << u"ä"_s << -1 << -1 << false << false << -1;
+    QTest::newRow("german2") << QString("de_DE") << QString::fromLatin1("b") << u"ä"_s << 1 << 1 << false << false << 1;
+    QTest::newRow("german3") << QString("de_DE") << QString::fromLatin1("z") << u"ä"_s << 1 << 1 << false << false << 1;
+    QTest::newRow("german4") << QString("de_DE") << u"ä"_s << u"ö"_s << -1 << -1 << false << false << -1;
+    QTest::newRow("german5") << QString("de_DE") << QString::fromLatin1("z") << u"ö"_s << 1 << 1 << false << false << 1;
+    QTest::newRow("german6") << QString("de_DE") << u"À"_s << u"à"_s << 1 << 0 << false << false << 0;
+    QTest::newRow("german7") << QString("de_DE") << u"Ö"_s << u"ö"_s << 1 << 0 << false << false << 0;
+    QTest::newRow("german8") << QString("de_DE") << QString::fromLatin1("oe") << u"ö"_s << 1 << 1 << false << false << 1;
     QTest::newRow("german9") << QString("de_DE") << QString("A") << QString("a") << 1 << 0 << false << false << 0;
     QTest::newRow("german10") << QString("de_DE") << QString("9") << QString("19") << -1 << -1 << true << false << -1;
     QTest::newRow("german11") << QString("de_DE") << QString("Test 9") << QString("Test_19") << -1 << -1 << true << true << -1;
@@ -208,12 +212,12 @@ void tst_QCollator::compare_data()
             << QString("de_DE") << QString() << QString() << 0 << 0 << false << true << 0;
 
     /*
-        French sorting of e and e with acute accent
+        French sorting of e and e with acute accent (é)
     */
-    QTest::newRow("french1") << QString("fr_FR") << QString::fromLatin1("\xe9") << QString::fromLatin1("e") << 1 << 1 << false << false << 1;
-    QTest::newRow("french2") << QString("fr_FR") << QString::fromLatin1("\xe9t") << QString::fromLatin1("et") << 1 << 1 << false << false << 1;
-    QTest::newRow("french3") << QString("fr_FR") << QString::fromLatin1("\xe9") << QString::fromLatin1("d") << 1 << 1 << false << false << 1;
-    QTest::newRow("french4") << QString("fr_FR") << QString::fromLatin1("\xe9") << QString::fromLatin1("f") << -1 << -1 << false << false << -1;
+    QTest::newRow("french1") << QString("fr_FR") << u"é"_s << QString::fromLatin1("e") << 1 << 1 << false << false << 1;
+    QTest::newRow("french2") << QString("fr_FR") << u"ét"_s << QString::fromLatin1("et") << 1 << 1 << false << false << 1;
+    QTest::newRow("french3") << QString("fr_FR") << u"é"_s << QString::fromLatin1("d") << 1 << 1 << false << false << 1;
+    QTest::newRow("french4") << QString("fr_FR") << u"é"_s << QString::fromLatin1("f") << -1 << -1 << false << false << -1;
     QTest::newRow("french5") << QString("fr_FR") << QString("9") << QString("19") << -1 << -1 << true << false << -1;
     QTest::newRow("french6") << QString("fr_FR") << QString("Test 9") << QString("Test_19") << -1 << -1 << true << true << -1;
     QTest::newRow("french7") << QString("fr_FR") << QString("test_19") << QString("test 19") << 1 << 1 << true << false << 1;
@@ -272,6 +276,8 @@ void tst_QCollator::compare()
 #if !QT_CONFIG(icu) && !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
     if (collator.locale() != QLocale::c() && collator.locale() != QLocale::system().collation())
         QSKIP("POSIX implementation of collation only supports C and system collation locales");
+#elif QT_CONFIG(icu) || defined(Q_OS_WIN)
+#  define SORTKEY_WORKS
 #endif
 
     if (numericMode)
@@ -295,12 +301,10 @@ void tst_QCollator::compare()
 #endif
     }
 
-    // NOTE: currently QCollatorSortKey::compare is not working
-    // properly without icu: see QTBUG-88704 for details
     QCOMPARE(asSign(collator.compare(s1, s2)), result);
     if (!numericMode)
         QCOMPARE(asSign(QCollator::defaultCompare(s1, s2)), result);
-#if QT_CONFIG(icu)
+#ifdef SORTKEY_WORKS
     auto key1 = collator.sortKey(s1);
     auto key2 = collator.sortKey(s2);
     QCOMPARE(asSign(key1.compare(key2)), keyCompareResult);
@@ -312,14 +316,14 @@ void tst_QCollator::compare()
 #endif
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     QCOMPARE(asSign(collator.compare(s1, s2)), caseInsensitiveResult);
-#if QT_CONFIG(icu)
+#ifdef SORTKEY_WORKS
     key1 = collator.sortKey(s1);
     key2 = collator.sortKey(s2);
     QCOMPARE(asSign(key1.compare(key2)), keyCompareCaseInsensitiveResult);
 #endif
     collator.setIgnorePunctuation(ignorePunctuation);
     QCOMPARE(asSign(collator.compare(s1, s2)), punctuationResult);
-#if QT_CONFIG(icu)
+#ifdef SORTKEY_WORKS
     key1 = collator.sortKey(s1);
     key2 = collator.sortKey(s2);
     QCOMPARE(asSign(key1.compare(key2)), keyComparePunctuationResultResult);
@@ -347,6 +351,30 @@ void tst_QCollator::state()
     QCOMPARE(c.numericMode(), true);
     QCOMPARE(c.ignorePunctuation(), true);
     QCOMPARE(c.locale(), QLocale(QLocale::NorwegianBokmal));
+}
+
+void tst_QCollator::detach()
+{
+    {
+        QCollator c1(QLocale::Polish);
+        c1.setNumericMode(true);
+        c1.setIgnorePunctuation(true);
+        c1.setCaseSensitivity(Qt::CaseInsensitive);
+
+        QCollator c2(c1);
+        // force detach
+        c2.setLocale(QLocale::French);
+        QCOMPARE(c2.locale(), QLocale(QLocale::French));
+        QVERIFY(c2.numericMode());
+        QVERIFY(c2.ignorePunctuation());
+        QCOMPARE(c2.caseSensitivity(), Qt::CaseInsensitive);
+
+        // c1 unaffected
+        QCOMPARE(c1.locale(), QLocale(QLocale::Polish));
+        QVERIFY(c1.numericMode());
+        QVERIFY(c1.ignorePunctuation());
+        QCOMPARE(c1.caseSensitivity(), Qt::CaseInsensitive);
+    }
 }
 
 QTEST_APPLESS_MAIN(tst_QCollator)

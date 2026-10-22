@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWIDGETTEXTCONTROL_P_H
 #define QWIDGETTEXTCONTROL_P_H
@@ -268,6 +269,8 @@ public:
     inline QTextEditMimeData(const QTextDocumentFragment &aFragment) : fragment(aFragment) {}
 
     virtual QStringList formats() const override;
+    bool hasFormat(const QString &format) const override;
+
 protected:
     virtual QVariant retrieveData(const QString &mimeType, QMetaType type) const override;
 private:

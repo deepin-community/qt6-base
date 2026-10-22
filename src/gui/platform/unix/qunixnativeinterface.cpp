@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtGui/private/qtguiglobal_p.h>
 
@@ -136,7 +137,7 @@ QOpenGLContext *QNativeInterface::QGLXContext::fromNative(GLXContext visualBased
     this function can only be expected to have an effect on certain platforms,
     such as eglfs.
 
-    \sa QOpenGLContext::isValid(), QPlatformWindow::invalidateSurface()
+    \sa QOpenGLContext::isValid()
 */
 
 QT_DEFINE_NATIVE_INTERFACE(QEGLContext);
@@ -231,6 +232,21 @@ QT_DEFINE_PRIVATE_NATIVE_INTERFACE(QEvdevKeyMapper);
 
 #endif // QT_CONFIG(evdev)
 
+#if QT_CONFIG(vxworksevdev)
+
+/*!
+    \class QNativeInterface::Private::QVxKeyMapper
+    \since 6.8
+    \internal
+    \brief Native interface to QKeyMapper.
+    \inmodule QtGui
+    \ingroup native-interfaces
+*/
+
+QT_DEFINE_PRIVATE_NATIVE_INTERFACE(QVxKeyMapper);
+
+#endif // QT_CONFIG(vxworksevdev)
+
 #if QT_CONFIG(wayland)
 
 /*!
@@ -277,6 +293,11 @@ QT_DEFINE_PRIVATE_NATIVE_INTERFACE(QEvdevKeyMapper);
     \return the seat associated with the default input device.
 */
 
+/*!
+    \fn struct xkb_context *QNativeInterface::QWaylandApplication::xkbContext() const
+    \return the XKB context associated with the application.
+*/
+
 QT_DEFINE_NATIVE_INTERFACE(QWaylandApplication);
 
 /*!
@@ -301,6 +322,7 @@ QT_DEFINE_NATIVE_INTERFACE(QWaylandScreen);
     \internal
     \brief Native interface to a Wayland window.
     \inmodule QtGui
+    \inheaderfile QScreen
     \ingroup native-interfaces
 */
 

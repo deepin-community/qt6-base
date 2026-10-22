@@ -38,22 +38,22 @@ public:
     {
         if (TranslationSettings->objectName().isEmpty())
             TranslationSettings->setObjectName("TranslationSettings");
-        TranslationSettings->resize(346, 125);
+        TranslationSettings->resize(346, 169);
         vboxLayout = new QVBoxLayout(TranslationSettings);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout->setObjectName("vboxLayout");
         groupBox = new QGroupBox(TranslationSettings);
         groupBox->setObjectName("groupBox");
         gridLayout = new QGridLayout(groupBox);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         gridLayout->setObjectName("gridLayout");
@@ -82,8 +82,8 @@ public:
 
         buttonBox = new QDialogButtonBox(TranslationSettings);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::NoButton|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         vboxLayout->addWidget(buttonBox);
 

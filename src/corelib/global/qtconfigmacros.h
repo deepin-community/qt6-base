@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTCONFIGMACROS_H
 #define QTCONFIGMACROS_H
@@ -174,41 +175,87 @@ namespace QT_NAMESPACE {}
 #endif
 
 /*
-    Strict mode
+    Strict mode.
+
+    If you add a macro to the list, make sure to update the table at
+    https://doc.qt.io/qt-6/qtglobal.html#QT_ENABLE_STRICT_MODE_UP_TO
 */
 #ifdef QT_ENABLE_STRICT_MODE_UP_TO
 #ifndef QT_DISABLE_DEPRECATED_UP_TO
 #  define QT_DISABLE_DEPRECATED_UP_TO QT_ENABLE_STRICT_MODE_UP_TO
 #endif
 
+//
+// Add new versions _here_, newest first!
+//
+
+#if QT_ENABLE_STRICT_MODE_UP_TO >= QT_VERSION_CHECK(6, 12, 0)
+# ifndef QT_LEAN_HEADERS
+#  define QT_LEAN_HEADERS 2
+# endif
+# ifndef QT_NO_DISCONNECT_CONST_CONNECTION
+#  define QT_NO_DISCONNECT_CONST_CONNECTION
+# endif
+# ifndef QT_NO_QPAIR
+#  define QT_NO_QPAIR
+# endif
+# ifndef QT_NO_SINGLE_ARGUMENT_QHASH_OVERLOAD
+#  define QT_NO_SINGLE_ARGUMENT_QHASH_OVERLOAD
+# endif
+#endif // 6.12.0
+
 #if QT_ENABLE_STRICT_MODE_UP_TO >= QT_VERSION_CHECK(6, 0, 0)
+# ifndef QT_NO_FOREACH
 #  define QT_NO_FOREACH
-#  define QT_NO_CAST_FROM_ASCII
+# endif
+# ifndef QT_NO_CAST_TO_ASCII
 #  define QT_NO_CAST_TO_ASCII
+# endif
+# ifndef QT_NO_CAST_FROM_BYTEARRAY
 #  define QT_NO_CAST_FROM_BYTEARRAY
+# endif
+# ifndef QT_NO_URL_CAST_FROM_STRING
 #  define QT_NO_URL_CAST_FROM_STRING
+# endif
+# ifndef QT_NO_NARROWING_CONVERSIONS_IN_CONNECT
 #  define QT_NO_NARROWING_CONVERSIONS_IN_CONNECT
+# endif
+# ifndef QT_NO_JAVA_STYLE_ITERATORS
 #  define QT_NO_JAVA_STYLE_ITERATORS
+# endif
 #endif // 6.0.0
 
 #if QT_ENABLE_STRICT_MODE_UP_TO >= QT_VERSION_CHECK(6, 6, 0)
+# ifndef QT_NO_QEXCHANGE
 #  define QT_NO_QEXCHANGE
+# endif
 #endif // 6.6.0
 
 #if QT_ENABLE_STRICT_MODE_UP_TO >= QT_VERSION_CHECK(6, 7, 0)
+# ifndef QT_NO_CONTEXTLESS_CONNECT
 #  define QT_NO_CONTEXTLESS_CONNECT
+# endif
 #endif // 6.7.0
 
 #if QT_ENABLE_STRICT_MODE_UP_TO >= QT_VERSION_CHECK(6, 8, 0)
+# ifndef QT_NO_QASCONST
 #  define QT_NO_QASCONST
+# endif
 #  if !defined(QT_USE_NODISCARD_FILE_OPEN) && !defined(QT_NO_USE_NODISCARD_FILE_OPEN)
 #    define QT_USE_NODISCARD_FILE_OPEN
 #  endif
 #endif // 6.8.0
 
 #if QT_ENABLE_STRICT_MODE_UP_TO >= QT_VERSION_CHECK(6, 9, 0)
+# ifndef QT_NO_QSNPRINTF
 #  define QT_NO_QSNPRINTF
+# endif
 #endif // 6.9.0
+
+//
+// newer versions are added newest-first at the _front_!
+//
+
 #endif // QT_ENABLE_STRICT_MODE_UP_TO
 
 #endif /* QTCONFIGMACROS_H */

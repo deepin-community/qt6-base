@@ -9,7 +9,40 @@ instructions:
     maxTimeBetweenOutput: 1200
     userMessageOnFailure: >
       Failed to install tests archive.
+    enable_if:
+      condition: property
+      property: features
+      not_contains_value: "BuildTestsInTest"
   - type: ChangeDirectory
     directory: "{{.SourceDir}}_standalone_tests"
+
+  # For configurations with granular test significance,
+  # make the tests significant by default, unless a module
+  # explicitly overrides it.
+  - type: Group
+    enable_if:
+      condition: and
+      conditions:
+        - condition: property
+          property: features
+          not_contains_value: "InsignificantTests"
+        - condition: runtime
+          env_var: COIN_CTEST_IGNORE_EXIT_CODE
+          equals_value: "1"
+        - condition: or
+          conditions:
+            - condition: property
+              property: id
+              equals_value: "macos-26-arm64-developer-build-tests"
+            - condition: property
+              property: id
+              equals_value: "macos-26-x86_64-tests"
+        - condition: runtime
+          env_var: COIN_CTEST_FORCE_IGNORE_EXIT_CODE
+          equals_value: null
+    instructions:
+      - type: EnvironmentVariable
+        variableName: COIN_CTEST_IGNORE_EXIT_CODE
+        variableValue: "0"
 
   - !include "{{qt/qtbase}}/cmake_run_ctest.yaml"

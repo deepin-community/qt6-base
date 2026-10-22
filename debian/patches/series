@@ -1,70 +1,18 @@
-# Needs to be fixed upstream.
-add-ivs-variation-selector-support.patch
-fix-ivs-harfbuzz-run-boundaries.patch
-Add-SH-detection.patch
+# Fixed in 6.12.1
+fix_sparc64_detection.patch
 
-# Pushed to gerrit
-be_verbose_on_plugin_inclusion.patch
+# Fixed in 6.12.0
+
+# Fixed in 6.11.3
+
+# Needs to be fixed upstream.
+Add-SH-detection.patch
 
 # Debian specific
 remove_privacy_breaches.diff
 build_path_embedded_qtbuildinternalsextra_cmake.patch
 cross.patch
+cross2.patch
 remove_rpath_from_examples.patch
 forkfd_grow_stack_upwards_on_hppa.patch
 enable_skip_plugins.patch
-
-# Don't use yield on CPUs that might not support it
-# armel-noyield.patch
-
-# deepin-Allow-QPalettePrivate-to-be-used-outside-of-qpalette-cpp.patch
-
-# https://codereview.qt-project.org/c/qt/qtbase/+/530805
-# Make-sure-hicolor-searched-before-dashfallbacks.patch
-
-# https://codereview.qt-project.org/c/qt/qtbase/+/526124
-# add_QT_IM_MODULES_env_to_allows_multi_IM_key.patch
-# upstream_Ensure-that-libzstd-targets-are-promoted-to-global-i.patch
-# upstream_Prefer-using-the-non-suffixed-libzstd-over-static-on.patch
-CMake-Fix-Threads-Threads-global-target-promotion-is.patch
-QT_FORCE_OPENGL_TYPE.patch
-fix-QApplciation-with-a-QML-popupWindow.patch
-CVE-2025-5455_qDecodeDataUrl_FixMalformedCharsetHandling.patch
-0001-deepin-sw_64-support.diff
-add-single-finger-to-scroll-under-the-touch-screen.patch
-fix-single-finger-to-scroll-under-the-touch-screen.patch
-fix-QListView-multiple-selection-conflicts-with-long-press-function.patch
-fix-touch-screen-QListView-sliding-acceleration.patch
-Fix-Optimized-Happy-Eyeballs-processing-in-HTTPS-mode.patch
-QTBUG-85978-85985-QlineEdit-Fix-the-problem-under-the-touch-screen.patch
-fix-touchpat-crush-from-xcb-nullptr.patch
-Use-modern-key-management-APIs.patch
-Fix-heap-buffer-overflow.patch
-Add-clamping-to-QColor-Transfer-Generic-Function.patch
-Check-exactly-the-first-bit-of-XdndStatus-flags-in-QXcbDrag.patch
-fix-xcb-clear-stale-internal-state-when-setting-up-slave-devices.patch
-fix-xcb-Handle-DEVICE_ENABLED-in-XI2-hierarchy-events.patch
-fix-QLabel-Reset-link-hover-state.patch
-qt6-base-add-multi-seat-event.patch
-QDom-Change-default-InvalidDataPolicy-to-ReturnNullNode.patch
-CVE-2026-16762_fix-quadratic-behavior-in-resolvetag.patch
-
-# QTBUG-124898 / QTBUG-129434: Add truncated entries to QLocale::uiLanguages()
-# Backport of upstream commit 84afaafc9c6 (Qt 6.9). Fixes pt_BR loading pt
-# translations when both _pt_BR.qm and _pt.qm exist.
-Add-truncated-entries-to-QLocale-uiLanguages.patch
-CVE-2026-11573_fix-stack-overflow-in-qdom-serialization.patch
-CVE-2026-76151_port-nextNonWhitespace-to-qsizetype.patch
-CVE-2026-19248_fix-unbounded-nesting-depth-in-QDomNode-dtor.patch
-CVE-2026-78253_fix-stack-exhaustion-in-readElementText.patch
-CVE-2026-82292_guard-against-null-nodes-in-QDomBuilder.patch
-fix-ComboBox-Wheelevent.patch
-Fix-crash-when-fontconfig-fallback-pattern-has-no-charset.patch
-Fix-do-not-dispatch-events-while-closing.patch
-CVE-2026-95620_qhttp2stream-fix-upload-device-use-after-free.patch
-CVE-2026-96432_qhttp2connection-guard-null-qpointer.patch
-CVE-2026-105923_clamp-coordinates-in-qtriangulator.patch
-CVE-2026-107157_qcborvalue-fix-buffer-overread-fromcbor.patch
-CVE-2026-105946_qauthenticator-harden-qextractservertime.patch
-CVE-2026-105946_qauthenticator-fix-ntlm-phase2-bounds-overflow.patch
-CVE-2026-105946_qauthenticator-fix-digest-parser-pointer.patch

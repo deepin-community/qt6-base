@@ -22,7 +22,6 @@
 #include "QtGui/qtextoption.h"
 #include "QtGui/qtextlayout.h"
 
-#include "QtCore/qdebug.h"
 #include "QtCore/qlist.h"
 #include "QtCore/qnamespace.h"
 #include "QtCore/qset.h"
@@ -40,6 +39,8 @@
 
 #include <stdlib.h>
 #include <vector>
+
+struct hb_buffer_t;
 
 QT_BEGIN_NAMESPACE
 
@@ -584,6 +585,8 @@ private:
     void indexFormats();
     void resolveFormats() const;
 
+    mutable hb_buffer_t *buffer = nullptr;
+
 public:
     bool atWordSeparator(int position) const;
 
@@ -621,14 +624,11 @@ private:
     void addRequiredBoundaries() const;
     void shapeText(int item) const;
 #if QT_CONFIG(harfbuzz)
-    int shapeTextWithHarfbuzzNG(const QScriptItem &si,
-                                const ushort *string,
-                                int itemLength,
-                                QFontEngine *fontEngine,
-                                QSpan<uint> itemBoundaries,
-                                bool kerningEnabled,
+    int shapeTextWithHarfbuzzNG(const QScriptItem &si, const ushort *string, int stringBaseIndex,
+                                int stringLength, int itemLength, QFontEngine *fontEngine,
+                                QSpan<uint> itemBoundaries, bool kerningEnabled,
                                 bool hasLetterSpacing,
-                                const QHash<QFont::Tag, quint32> &features) const;
+                                const QMap<QFont::Tag, quint32> &features) const;
 #endif
 
     int endOfLine(int lineNum);

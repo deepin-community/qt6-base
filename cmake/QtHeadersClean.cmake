@@ -4,6 +4,8 @@
 # Add a custom ${module_target}_headersclean_check target that builds each header in
 # ${module_headers} with a custom set of defines. This makes sure our public headers
 # are self-contained, and also compile with more strict compiler options.
+# To enable the `headersclean` checks, pass `-headersclean` to `configure`
+# or `qt-configure-module`.
 function(qt_internal_add_headersclean_target module_target module_headers)
     if(INPUT_headersclean AND WASM)
         message(FATAL_ERROR "The headersclean targets are not supported on WASM platform.")
@@ -103,12 +105,21 @@ function(qt_internal_add_headersclean_target module_target module_headers)
     set(target_compile_flags_joined_genex
         "$<${compile_flags_exist_genex}:$<JOIN:${target_compile_flags_genex},;>>")
 
+    if (QT_FEATURE_cxx2c)
+        set(QT_HEADERS_CLEAN_CXX_STANDARD c++2c)
+    elseif (QT_FEATURE_cxx2b)
+        set(QT_HEADERS_CLEAN_CXX_STANDARD c++2b)
+    else()
+        set(QT_HEADERS_CLEAN_CXX_STANDARD c++20)
+    endif()
+
     if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
             OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang|IntelLLVM")
 
-        # Compile header in strict C++20 mode. Enable further warnings.
-        set(hcleanFLAGS -std=c++2a
+        # Compile header in strict C++20 (or later) mode for C++17 build. Enable further warnings.
+        set(hcleanFLAGS -std=${QT_HEADERS_CLEAN_CXX_STANDARD}
             -Wall -Wextra -Werror -pedantic-errors
+            -Wframe-larger-than=1024 # anything larger than 1KiB should be out-of-line!
             -Woverloaded-virtual -Wshadow -Wundef -Wfloat-equal
             -Wnon-virtual-dtor -Wpointer-arith -Wformat-security
             -Wchar-subscripts -Wold-style-cast
@@ -127,6 +138,10 @@ function(qt_internal_add_headersclean_target module_target module_headers)
         if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
             list(APPEND hcleanFLAGS -Wzero-as-null-pointer-constant
                 -Wdouble-promotion -Wfloat-conversion)
+            if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "14.0.0")
+                list(APPEND hcleanFLAGS
+                    -Wnrvo)
+            endif()
         endif()
 
         if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang|IntelLLVM")
@@ -157,6 +172,13 @@ function(qt_internal_add_headersclean_target module_target module_headers)
                         "-iframework" "${libdir}")
                 endif()
             endforeach()
+
+            # Avoid '#include_next is a language extension' enabled by `-pedantic-errors` in
+            # `Xcode 26`. We use the directive in framework forwarding headers.
+            if("${CMAKE_CXX_COMPILER_ID}" MATCHES "AppleClang"
+                    AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "17.0.0.17000319")
+                list(APPEND hcleanFLAGS -Wno-gnu-include-next)
+            endif()
         endif()
 
         set(compiler_command_line
@@ -237,12 +259,14 @@ function(qt_internal_add_headersclean_target module_target module_headers)
         get_filename_component(input_file_name ${input_path} NAME)
         set(artifact_path "${CMAKE_CURRENT_BINARY_DIR}/header_check/${input_file_name}.o")
 
-        unset(input_base_dir)
-        if(input_path MATCHES "${CMAKE_BINARY_DIR}")
-            set(input_base_dir "${CMAKE_BINARY_DIR}")
-        elseif(input_path MATCHES "${CMAKE_SOURCE_DIR}")
-            set(input_base_dir "${CMAKE_SOURCE_DIR}")
-        endif()
+        set(possible_base_dirs "${CMAKE_BINARY_DIR}" "${CMAKE_SOURCE_DIR}")
+        foreach(dir IN LISTS possible_base_dirs)
+            _qt_internal_path_is_prefix(dir "${input_path}" dir_is_prefix)
+            if(dir_is_prefix)
+                set(input_base_dir "${dir}")
+                break()
+            endif()
+        endforeach()
 
         if(input_base_dir AND IS_ABSOLUTE "${input_base_dir}" AND IS_ABSOLUTE "${input_path}")
             file(RELATIVE_PATH comment_header_path "${input_base_dir}" "${input_path}")

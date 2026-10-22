@@ -10,42 +10,64 @@
 /*!
     \page richtext.html
     \title Rich Text Processing
-    \brief An overview of Qt's rich text processing, editing and display features.
+    \brief Overview of Qt's rich text processing, editing, and display features.
     \ingroup explanations-ui
     \ingroup frameworks-technologies
     \ingroup qt-basic-concepts
 
-    \nextpage Rich Text Document Structure
+    Qt provides a set of classes for creating, editing, and rendering
+    structured rich text documents. These classes center around QTextDocument,
+    which represents a rich text document with a well-defined internal
+    structure. Working directly with QTextDocument allows applications to
+    create, modify, and inspect rich text without relying on intermediate
+    markup formats.
 
-    The Scribe framework provides a set of classes for reading and manipulating
-    structured rich text documents. Unlike previous rich text support in Qt, the
-    new classes are centered around the QTextDocument class rather than raw
-    textual information. This enables the developer to create and modify
-    structured rich text documents without having to prepare content in an
-    intermediate markup format.
+    You can access document information via two complementary interfaces:
 
-    The information within a document can be accessed via two complementary
-    interfaces: A cursor-based interface is used for editing, and a read-only
-    hierarchical interface provides a high level overview of the document
-    structure. The main advantage of the cursor-based interface is that the
-    text can be edited using operations that mimic a user's interaction with
-    an editor, without losing the underlying structure of the document. The
-    read-only hierarchical interface is most useful when performing operations
-    such as searching and document export.
+      \table
+        \header
+          \li Interface
+          \li Description
+        \row
+          \li Cursor-based interface (QTextCursor)
+          \li Supports editing operations that mimic user actions in a text
+              editor. Edits maintain the structural integrity of the underlying
+              document.
+        \row
+          \li Read-only hierarchical interface
+          \li Provides a high-level structural view of the document. It is
+              useful for tasks such as searching, inspection, and exporting
+              content.
+      \endtable
 
-    This document is divided up into chapters for convenient reference:
+    \section1 Rich Text Serialization
+
+    QTextDocument supports serialization to and from these markup formats:
 
     \list
-    \li \l{Rich Text Document Structure} outlines
-       the different kinds of elements in a QTextDocument, and describes how
-       they are arranged in a document structure.
-    \li \l{The QTextCursor Interface} explains how rich
-       text documents can be edited using the cursor-based interface.
-    \li \l{Document Layouts} briefly explains the role of document layouts.
-    \li \l{Common Rich Text Editing Tasks} examines some
-       common tasks that involve reading or manipulating rich text documents.
-    \li \l{Advanced Rich Text Processing} examines advanced rich text editing tasks.
-    \li \l{Supported HTML Subset} lists the HTML tags supported by QTextDocument.
+      \li HTML: A defined subset of HTML is supported for loading and saving.
+          See \l {Supported HTML Subset}.
+      \li Markdown: QTextDocument can parse Markdown in both CommonMark and
+          GitHub dialects.
+    \endlist
+
+    \section1 Rich Text Topics
+
+    \list
+        \li \l{Rich Text Document Structure} describes the different elements
+            in a QTextDocument and how they are arranged in a document
+            structure.
+        \li \l{The QTextCursor Interface} explains how to edit rich text
+            documents using the cursor-based interface.
+        \li \l{Document Layouts} describes how to visually arrange document
+            contents.
+        \li \l{Common Rich Text Editing Tasks} describes frequently used
+            operations for reading and manipulating rich text such as selecting,
+            searching, and printing.
+        \li \l{Advanced Rich Text Processing} describes advanced rich text
+            editing tasks such as handling large files.
+        \li \l{Supported HTML Subset} lists the HTML tags supported by
+            QTextDocument.
     \endlist
 
     \section1 Rich Text Processing APIs
@@ -83,6 +105,7 @@
     \table
     \row
     \li \inlineimage richtext-document.png
+                     {Document structure with frames and text blocks}
     \li \b{Basic structure}
 
     The "top level" of a document might be populated in the way shown.
@@ -650,7 +673,8 @@
     the QTextLayout class, to help developers perform word-wrapping and
     layout tasks without the need to create a document first.
 
-    \image plaintext-layout.png
+    \image plaintext-layout.webp {Screenshot of a text that flows around a
+           circle.}
 
     Formatting and drawing a paragraph of plain text is straightforward.
     The example below will lay out a paragraph of text, using a single
@@ -840,7 +864,7 @@
             \li Comment
     \row    \li \c a
             \li Anchor or link
-            \li Supports the \c href and \c name attributes.
+            \li Supports the \c href \c name and \c title attributes.
     \row    \li \c address
             \li Address
             \li
@@ -856,7 +880,7 @@
     \row    \li \c body
             \li Document body
             \li Supports the \c bgcolor attribute, which
-               can be a Qt \l{QColor::setNamedColor()}{color name}
+               can be a Qt \l{QColor::fromString()}{color name}
                or a \c #RRGGBB color specification.
     \row    \li \c br
             \li Line break
@@ -873,6 +897,9 @@
     \row    \li \c dd
             \li Definition data
             \li
+    \row    \li \c del
+            \li Deleted
+            \li Same as \c s. Since Qt 6.11
     \row    \li \c dfn
             \li Definition
             \li Same as \c i.
@@ -892,7 +919,7 @@
             \li Font size, family, and/or color
             \li Supports the following attributes:
                \c size, \c face, and \c color (Qt
-               \l{QColor::setNamedColor()}{color names} or
+               \l{QColor::fromString()}{color names} or
                \c #RRGGBB).
     \row    \li \c h1
             \li Level 1 heading
@@ -927,8 +954,7 @@
             \li
     \row    \li \c img
             \li Image
-            \li Supports the \c src, \c source
-               (for Qt 3 compatibility), \c width, and \c height
+            \li Supports the \c src, \c width, \c height, \c style, \c alt and \c title
                attributes.
     \row    \li \c kbd
             \li User-entered text
@@ -985,7 +1011,7 @@
     \row    \li \c table
             \li Table
             \li Supports the following attributes: \c border,
-               \c bgcolor (Qt \l{QColor::setNamedColor()}{color names}
+               \c bgcolor (Qt \l{QColor::fromString()}{color names}
                or \c #RRGGBB), \c cellspacing, \c cellpadding,
                \c width (absolute or relative), and \c height.
     \row    \li \c tbody
@@ -1012,7 +1038,7 @@
     \row    \li \c tr
             \li Table row
             \li Supports the \c bgcolor attribute, which
-               can be a Qt \l{QColor::setNamedColor()}{color name}
+               can be a Qt \l{QColor::fromString()}{color name}
                or a \c #RRGGBB color specification.
     \row    \li \c tt
             \li Typewrite font
@@ -1046,6 +1072,12 @@
     \li \c type (\c 1, \c a, \c A, \c square, \c disc, \c circle)
     \endlist
 
+    Additionally, the following attribute is supported by the \c ol tag:
+
+    \list
+    \li \c start
+    \endlist
+
     \section1 Table Cell Attributes
 
     The following attributes are supported by the \c td and \c th
@@ -1053,7 +1085,7 @@
 
     \list
     \li \c width (absolute, relative, or no-value)
-    \li \c bgcolor (Qt \l{QColor::setNamedColor()}{color names} or \c #RRGGBB)
+    \li \c bgcolor (Qt \l{QColor::fromString()}{color names} or \c #RRGGBB)
     \li \c colspan
     \li \c rowspan
     \li \c align (\c left, \c right, \c center, \c justify)
@@ -1238,6 +1270,11 @@
                  \li a percentage of the current font size.
                 \endlist
     \endtable
+
+    \note Certain CSS properties are only supported when applied to a block tag, such as \c{<p>}.
+    Setting these properties on a \c{<span>}, for instance, will have no effect. The margin is one
+    example of such a property. See QTextBlockFormat and QTextCharFormat for an overview of the
+    formatting options available on blocks and spans in QTextDocument.
 
     \section1 Qt-specific CSS properties
 

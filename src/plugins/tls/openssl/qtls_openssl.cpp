@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 #include "qsslsocket_openssl_symbols_p.h"
 #include "qx509_openssl_p.h"
@@ -15,6 +16,7 @@
 #include <QtNetwork/private/qsslsocket_p.h>
 
 #include <QtNetwork/qsslpresharedkeyauthenticator.h>
+#include <QtNetwork/qsslkeyingmaterial.h>
 
 #include <QtCore/qscopedvaluerollback.h>
 #include <QtCore/qscopeguard.h>
@@ -110,8 +112,6 @@ QSslCertificate findCertificateToFetch(const QList<QSslError> &tlsErrors, bool c
 } // unnamed namespace
 
 namespace QTlsPrivate {
-
-extern "C" {
 
 int q_X509Callback(int ok, X509_STORE_CTX *ctx)
 {
@@ -347,6 +347,15 @@ void qt_AlertInfoCallback(const SSL *connection, int from, int value)
         return;
     }
 
+    // Note: CB_HANDSHAKE_DONE is also raised when the handshake is paused to exchange early data,
+    // and SSL_in_init() cannot tell the two apart (OpenSSL clears it before invoking us). We never
+    // enable early data; if we ever do, this needs a guard.
+    if (from & SSL_CB_HANDSHAKE_DONE) {
+        // Handshake is done, get keying material:
+        crypto->exportKeyingMaterial();
+        return;
+    }
+
     if (!(from & SSL_CB_ALERT)) {
         // We only want to know about alerts (at least for now).
         return;
@@ -357,8 +366,6 @@ void qt_AlertInfoCallback(const SSL *connection, int from, int value)
     else
         crypto->alertMessageReceived(value);
 }
-
-} // extern "C"
 
 #if QT_CONFIG(ocsp)
 namespace {
@@ -491,6 +498,10 @@ void TlsCryptographOpenSSL::init(QSslSocket *qObj, QSslSocketPrivate *dObj)
 
     fetchAuthorityInformation = false;
     caToFetch.reset();
+
+    auto &sslCfg = d->configuration;
+    for (auto &entry : sslCfg.keyingMaterial)
+        entry = entry.clone();
 }
 
 void TlsCryptographOpenSSL::checkSettingSslContext(std::shared_ptr<QSslContext> tlsContext)
@@ -654,7 +665,7 @@ bool TlsCryptographOpenSSL::startHandshake()
                 return false;
             }
 
-            for (const QSslError &error : ocspErrors) {
+            for (const QSslError &error : std::as_const(ocspErrors)) {
                 errors << error;
                 emit q->peerVerifyError(error);
                 if (q->state() != QAbstractSocket::ConnectedState)
@@ -750,6 +761,53 @@ void TlsCryptographOpenSSL::cancelCAFetch()
 {
     fetchAuthorityInformation = false;
     caToFetch.reset();
+}
+
+void TlsCryptographOpenSSL::exportKeyingMaterial()
+{
+    if (d->configuration.keyingMaterial.isEmpty())
+        return; // Avoid deep-copy and store
+    auto sslCfg = q->sslConfiguration();
+    auto list = sslCfg.takeKeyingMaterial();
+
+    for (auto &entry : list) {
+        if (!entry.isValid()) {
+#ifdef QSSLSOCKET_DEBUG
+            qCDebug(lcTlsBackend) << "keying material request is invalid:" << entry;
+#endif
+            continue;
+        }
+
+        /*
+         * https://docs.openssl.org/1.1.1/man3/SSL_export_keying_material/
+         * Note that in TLSv1.2 and below a zero length context is treated
+         * differently from no context at all, and will result in different
+         * keying material being returned. In TLSv1.3 a zero length context
+         * is that same as no context at all and will result in the same
+         * keying material being returned.
+         */
+        const auto context = entry.context();
+        const auto label = entry.label();
+        if (QByteArray output(entry.requestedSize(), Qt::Uninitialized);
+            q_SSL_export_keying_material(ssl,
+                                         reinterpret_cast<unsigned char*>(output.data_ptr().data()),
+                                         entry.requestedSize(),
+                                         label.data(),
+                                         label.size(),
+                                         reinterpret_cast<const unsigned char*>(context.data()),
+                                         context.size(),
+                                         context.isNull() ? 0 : 1) > 0)
+        {
+            entry.m_value = std::move(output);
+#ifdef QSSLSOCKET_DEBUG
+        } else {
+            qCDebug(lcTlsBackend) << "cannot export keying material:" << entry;
+#endif
+        }
+    }
+
+    sslCfg.setKeyingMaterial(list);
+    q->setSslConfiguration(sslCfg);
 }
 
 void TlsCryptographOpenSSL::continueHandshake()
@@ -1074,12 +1132,15 @@ void TlsCryptographOpenSSL::transmit()
 #ifdef QSSLSOCKET_DEBUG
                 qCDebug(lcTlsBackend) << "TlsCryptographOpenSSL::transmit: remote disconnect";
 #endif
-                shutdown = true; // the other side shut down, make sure we do not send shutdown ourselves
-                {
+                if (!shutdown) {
+                    // We haven't sent our close_notify yet: the remote closed first.
+                    shutdown = true; // make sure we do not send shutdown ourselves
                     const ScopedBool bg(inSetAndEmitError, true);
                     setErrorAndEmit(d, QAbstractSocket::RemoteHostClosedError,
                                     QSslSocket::tr("The TLS/SSL connection has been closed"));
                 }
+                // else: we sent close_notify first and are receiving the expected response;
+                // not an error.
                 return;
             case SSL_ERROR_SYSCALL: // some IO error
             case SSL_ERROR_SSL: // error in the SSL library
@@ -1819,7 +1880,7 @@ void TlsCryptographOpenSSL::caRootLoaded(QSslCertificate cert, QSslCertificate t
             QSslConfiguration::setDefaultConfiguration(defaultConfig);
         }
         //Add the new root cert to this socket for future connections
-        QTlsBackend::addTustedRoot(d, trustedRoot);
+        QTlsBackend::addTrustedRoot(d, trustedRoot);
         //Remove the broken chain ssl errors (as chain is verified by windows)
         for (int i=sslErrors.count() - 1; i >= 0; --i) {
             if (sslErrors.at(i).certificate() == cert) {

@@ -34,11 +34,12 @@
 #include <private/qinputmethod_p.h>
 
 #include <QtWidgets/private/qapplication_p.h>
+#include <QtTest/private/qtesthelpers_p.h>
 
 Q_LOGGING_CATEGORY(lcTests, "qt.widgets.tests")
 
 //Used in copyAvailable
-typedef QPair<Qt::Key, Qt::KeyboardModifier> keyPairType;
+using keyPairType = std::pair<Qt::Key, Qt::KeyboardModifier>;
 typedef QList<keyPairType> pairListType;
 Q_DECLARE_METATYPE(keyPairType);
 
@@ -199,6 +200,9 @@ private slots:
     void nextFormatAfterEnterPressed();
 
     void dontCrashWithCss();
+
+    void linkSelectionArtifact();
+    void linkSelectionHighlightArtifact();
 
 private:
     void createSelection();
@@ -383,7 +387,7 @@ void tst_QTextEdit::cleanup()
 void tst_QTextEdit::inlineAttributesOnInsert()
 {
     const QColor blue(Qt::blue);
-    QVERIFY(ed->textCursor().charFormat().foreground().color() != blue);
+    QCOMPARE_NE(ed->textCursor().charFormat().foreground().color(), blue);
 
     ed->setTextColor(blue);
     QTest::keyClick(ed, Qt::Key_A);
@@ -409,7 +413,7 @@ void tst_QTextEdit::inlineAttributeSymmetry()
     QCOMPARE(ed->fontFamily(), QString("Test"));
 
     ed->setFontWeight(QFont::Bold);
-    QCOMPARE((int)ed->fontWeight(), (int)QFont::Bold);
+    QCOMPARE(ed->fontWeight(), QFont::Bold);
 
     ed->setFontUnderline(true);
     QCOMPARE(ed->fontUnderline(), true);
@@ -424,7 +428,7 @@ void tst_QTextEdit::inlineAttributeSymmetry()
     QCOMPARE(ed->textBackgroundColor(), QColor(Qt::red));
 
     ed->setAlignment(Qt::AlignRight);
-    QCOMPARE((int)ed->alignment(), (int)Qt::AlignRight);
+    QCOMPARE(ed->alignment(), Qt::AlignRight);
 }
 
 void tst_QTextEdit::inlineAttributeSymmetryWithSelection()
@@ -468,14 +472,14 @@ void tst_QTextEdit::createSelection()
 {
     QTest::keyClicks(ed, "Hello World");
     /* go to start */
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     QTest::keyClick(ed, Qt::Key_Home, Qt::ControlModifier);
 #else
     QTest::keyClick(ed, Qt::Key_Home);
 #endif
     QCOMPARE(ed->textCursor().position(), 0);
     /* select until end of text */
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     QTest::keyClick(ed, Qt::Key_End, Qt::ControlModifier | Qt::ShiftModifier);
 #else
     QTest::keyClick(ed, Qt::Key_End, Qt::ShiftModifier);
@@ -488,9 +492,6 @@ void tst_QTextEdit::clearMustNotChangeClipboard()
 {
     if (!PlatformClipboard::isAvailable())
         QSKIP("Clipboard not working with cron-started unit tests");
-
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
 
     ed->textCursor().insertText("Hello World");
     QString txt("This is different text");
@@ -559,7 +560,7 @@ void tst_QTextEdit::layoutingLoop()
     delete ed;
 
     // ###### should need less!
-    QVERIFY(callsToSetPageSize < 10);
+    QCOMPARE_LT(callsToSetPageSize, 10);
 }
 
 #ifndef QT_NO_CLIPBOARD
@@ -584,8 +585,7 @@ void tst_QTextEdit::asciiTab()
     QTextEdit edit;
     edit.setPlainText("\t");
     edit.show();
-    qApp->processEvents();
-    QCOMPARE(edit.toPlainText().at(0), QChar('\t'));
+    QTRY_COMPARE(edit.toPlainText().at(0), QChar('\t'));
 }
 
 
@@ -640,7 +640,7 @@ void tst_QTextEdit::mergeCurrentCharFormat()
     // do NOT select the current word under the cursor, /JUST/
     // call mergeCharFormat on the cursor
     QVERIFY(!cursor.charFormat().fontItalic());
-    QVERIFY(cursor.charFormat().foreground().color() != Qt::red);
+    QCOMPARE_NE(cursor.charFormat().foreground().color(), Qt::red);
 }
 
 void tst_QTextEdit::mergeCurrentBlockCharFormat()
@@ -660,12 +660,12 @@ void tst_QTextEdit::mergeCurrentBlockCharFormat()
     mod.setForeground(Qt::red);
     ed->mergeCurrentCharFormat(mod);
 
-    QVERIFY(cursor.blockCharFormat().foreground().color() != Qt::red);
+    QCOMPARE_NE(cursor.blockCharFormat().foreground().color(), Qt::red);
     cursor.movePosition(QTextCursor::Up);
-    QVERIFY(cursor.blockCharFormat().foreground().color() != Qt::red);
+    QCOMPARE_NE(cursor.blockCharFormat().foreground().color(), Qt::red);
     cursor.movePosition(QTextCursor::Down);
     cursor.movePosition(QTextCursor::Down);
-    QVERIFY(cursor.blockCharFormat().foreground().color() != Qt::red);
+    QCOMPARE_NE(cursor.blockCharFormat().foreground().color(), Qt::red);
 }
 
 int tst_QTextEdit::blockCount() const
@@ -754,7 +754,7 @@ void tst_QTextEdit::cursorPositionChanged()
     QCOMPARE(spy.size(), 1);
 
     CursorPositionChangedRecorder spy2(ed);
-    QVERIFY(ed->textCursor().position() > 0);
+    QCOMPARE_GT(ed->textCursor().position(), 0);
     ed->setPlainText("Hello World");
     QCOMPARE(spy2.cursorPositions.size(), 1);
     QCOMPARE(spy2.cursorPositions.at(0), 0);
@@ -787,15 +787,12 @@ void tst_QTextEdit::undoAvailableAfterPaste()
     if (!PlatformClipboard::isAvailable())
         QSKIP("Clipboard not working with cron-started unit tests");
 
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QSignalSpy spy(ed->document(), SIGNAL(undoAvailable(bool)));
 
     const QString txt("Test");
     QApplication::clipboard()->setText(txt);
     ed->paste();
-    QVERIFY(spy.size() >= 1);
+    QCOMPARE_GE(spy.size(), 1);
     QCOMPARE(ed->toPlainText(), txt);
 }
 #endif
@@ -869,7 +866,7 @@ void tst_QTextEdit::appendShouldUseCurrentFormat()
     QTextCursor cursor(ed->document());
 
     QVERIFY(cursor.movePosition(QTextCursor::NextCharacter));
-    QVERIFY(cursor.charFormat().foreground().color() != blue);
+    QCOMPARE_NE(cursor.charFormat().foreground().color(), blue);
     QVERIFY(!cursor.charFormat().fontItalic());
 
     QVERIFY(cursor.movePosition(QTextCursor::NextBlock));
@@ -992,17 +989,17 @@ void tst_QTextEdit::preserveCharFormatInAppend()
 
     cursor.movePosition(QTextCursor::Start);
     cursor.movePosition(QTextCursor::NextCharacter);
-    QCOMPARE(cursor.charFormat().fontWeight(), (int)QFont::Normal);
+    QCOMPARE(cursor.charFormat().fontWeight(), QFont::Normal);
     QCOMPARE(cursor.block().text(), QString("First para"));
 
     cursor.movePosition(QTextCursor::NextBlock);
     cursor.movePosition(QTextCursor::NextCharacter);
-    QCOMPARE(cursor.charFormat().fontWeight(), (int)QFont::Bold);
+    QCOMPARE(cursor.charFormat().fontWeight(), QFont::Bold);
     QCOMPARE(cursor.block().text(), QString("Second para"));
 
     cursor.movePosition(QTextCursor::NextBlock);
     cursor.movePosition(QTextCursor::NextCharacter);
-    QCOMPARE(cursor.charFormat().fontWeight(), (int)QFont::Normal);
+    QCOMPARE(cursor.charFormat().fontWeight(), QFont::Normal);
     QCOMPARE(cursor.block().text(), QString("third para"));
 }
 
@@ -1011,9 +1008,6 @@ void tst_QTextEdit::copyAndSelectAllInReadonly()
 {
     if (!PlatformClipboard::isAvailable())
         QSKIP("Clipboard not working with cron-started unit tests");
-
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
 
     ed->setReadOnly(true);
     ed->setPlainText("Hello World");
@@ -1222,7 +1216,7 @@ void tst_QTextEdit::lineWrapModes()
     cursor.mergeBlockFormat(fmt);
     cursor.insertText(QString("Another line"));
     ed->show(); // relayout;
-    QVERIFY(ed->document()->pageSize().width() > qreal(0));
+    QCOMPARE_GT(ed->document()->pageSize().width(), qreal(0));
 
     ed->setLineWrapColumnOrWidth(10);
     ed->setLineWrapMode(QTextEdit::FixedColumnWidth);
@@ -1261,13 +1255,13 @@ void tst_QTextEdit::implicitClear()
     QVariant testResource("hello world");
 
     ed->document()->addResource(QTextDocument::ImageResource, testUrl, testResource);
-    QVERIFY(ed->document()->resource(QTextDocument::ImageResource, testUrl) == testResource);
+    QCOMPARE(ed->document()->resource(QTextDocument::ImageResource, testUrl), testResource);
 
     ed->setPlainText("Blah");
-    QVERIFY(ed->document()->resource(QTextDocument::ImageResource, testUrl) == testResource);
+    QCOMPARE(ed->document()->resource(QTextDocument::ImageResource, testUrl), testResource);
 
     ed->setPlainText("<b>Blah</b>");
-    QVERIFY(ed->document()->resource(QTextDocument::ImageResource, testUrl) == testResource);
+    QCOMPARE(ed->document()->resource(QTextDocument::ImageResource, testUrl), testResource);
 
     ed->clear();
     QVERIFY(!ed->document()->resource(QTextDocument::ImageResource, testUrl).isValid());
@@ -1281,71 +1275,79 @@ void tst_QTextEdit::copyAvailable_data()
     QTest::addColumn<QList<bool> >("copyAvailable");
     QTest::addColumn<QString>("function");
 
-    pairListType keystrokes;
     QList<bool> copyAvailable;
-
-    keystrokes << qMakePair(Qt::Key_B, Qt::NoModifier) <<  qMakePair(Qt::Key_B, Qt::NoModifier)
-               << qMakePair(Qt::Key_Left, Qt::ShiftModifier);
+    pairListType keystrokes = {{Qt::Key_B, Qt::NoModifier},
+                               {Qt::Key_B, Qt::NoModifier},
+                               {Qt::Key_Left, Qt::ShiftModifier}};
     copyAvailable << true ;
     QTest::newRow(QString("Case1 B,B, <- + shift | signals: true").toLatin1())
         << keystrokes << copyAvailable << QString();
 
-    keystrokes.clear();
     copyAvailable.clear();
 
-    keystrokes << qMakePair(Qt::Key_T, Qt::NoModifier) << qMakePair(Qt::Key_A, Qt::NoModifier)
-               <<  qMakePair(Qt::Key_A, Qt::NoModifier) << qMakePair(Qt::Key_Left, Qt::ShiftModifier);
+    keystrokes = {{Qt::Key_T, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier}};
     copyAvailable << true << false;
     QTest::newRow(QString("Case2 T,A,A, <- + shift, cut() | signals: true, false").toLatin1())
         << keystrokes << copyAvailable << QString("cut");
 
-    keystrokes.clear();
     copyAvailable.clear();
 
-    keystrokes << qMakePair(Qt::Key_T, Qt::NoModifier) << qMakePair(Qt::Key_A, Qt::NoModifier)
-               <<  qMakePair(Qt::Key_A, Qt::NoModifier) << qMakePair(Qt::Key_Left, Qt::ShiftModifier)
-               << qMakePair(Qt::Key_Left, Qt::ShiftModifier)  << qMakePair(Qt::Key_Left, Qt::ShiftModifier);
+    keystrokes = {{Qt::Key_T, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier}};
     copyAvailable << true;
     QTest::newRow(QString("Case3 T,A,A, <- + shift, <- + shift, <- + shift, copy() | signals: true").toLatin1())
         << keystrokes << copyAvailable << QString("copy");
 
-    keystrokes.clear();
     copyAvailable.clear();
 
-    keystrokes << qMakePair(Qt::Key_T, Qt::NoModifier) << qMakePair(Qt::Key_A, Qt::NoModifier)
-               <<  qMakePair(Qt::Key_A, Qt::NoModifier) << qMakePair(Qt::Key_Left, Qt::ShiftModifier)
-               << qMakePair(Qt::Key_Left, Qt::ShiftModifier)  << qMakePair(Qt::Key_Left, Qt::ShiftModifier)
-               << qMakePair(Qt::Key_X, Qt::ControlModifier);
+    keystrokes = {{Qt::Key_T, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_X, Qt::ControlModifier}};
     copyAvailable << true << false;
     QTest::newRow(QString("Case4 T,A,A, <- + shift, <- + shift, <- + shift, ctrl + x, paste() | signals: true, false").toLatin1())
         << keystrokes << copyAvailable << QString("paste");
 
-    keystrokes.clear();
     copyAvailable.clear();
 
-    keystrokes << qMakePair(Qt::Key_B, Qt::NoModifier) <<  qMakePair(Qt::Key_B, Qt::NoModifier)
-               << qMakePair(Qt::Key_Left, Qt::ShiftModifier) << qMakePair(Qt::Key_Left, Qt::NoModifier);
+    keystrokes = {{Qt::Key_B, Qt::NoModifier},
+                  {Qt::Key_B, Qt::NoModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_Left, Qt::NoModifier}};
     copyAvailable << true << false;
     QTest::newRow(QString("Case5 B,B, <- + shift, <- | signals: true, false").toLatin1())
         << keystrokes << copyAvailable << QString();
 
-    keystrokes.clear();
     copyAvailable.clear();
 
-    keystrokes << qMakePair(Qt::Key_B, Qt::NoModifier) <<  qMakePair(Qt::Key_A, Qt::NoModifier)
-               << qMakePair(Qt::Key_Left, Qt::ShiftModifier) << qMakePair(Qt::Key_Left, Qt::NoModifier)
-               << qMakePair(Qt::Key_Right, Qt::ShiftModifier);
+    keystrokes = {{Qt::Key_B, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_Left, Qt::NoModifier},
+                  {Qt::Key_Right, Qt::ShiftModifier}};
     copyAvailable << true << false << true << false;
     QTest::newRow(QString("Case6 B,A, <- + shift, ->, <- + shift | signals: true, false, true, false").toLatin1())
         << keystrokes << copyAvailable << QString("cut");
 
-    keystrokes.clear();
     copyAvailable.clear();
 
-    keystrokes << qMakePair(Qt::Key_T, Qt::NoModifier) << qMakePair(Qt::Key_A, Qt::NoModifier)
-               <<  qMakePair(Qt::Key_A, Qt::NoModifier) << qMakePair(Qt::Key_Left, Qt::ShiftModifier)
-               << qMakePair(Qt::Key_Left, Qt::ShiftModifier)  << qMakePair(Qt::Key_Left, Qt::ShiftModifier)
-               << qMakePair(Qt::Key_X, Qt::ControlModifier);
+    keystrokes = {{Qt::Key_T, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_A, Qt::NoModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_Left, Qt::ShiftModifier},
+                  {Qt::Key_X, Qt::ControlModifier}};
     copyAvailable << true << false << true;
     QTest::newRow(QString("Case7 T,A,A, <- + shift, <- + shift, <- + shift, ctrl + x, undo() | signals: true, false, true").toLatin1())
         << keystrokes << copyAvailable << QString("undo");
@@ -1358,7 +1360,7 @@ void tst_QTextEdit::copyAvailable()
     QFETCH(QList<bool>, copyAvailable);
     QFETCH(QString, function);
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QSKIP("QTBUG-22283: copyAvailable has never passed on Mac");
 #endif
     ed->clear();
@@ -1617,9 +1619,6 @@ void tst_QTextEdit::canPaste()
     if (!PlatformClipboard::isAvailable())
         QSKIP("Clipboard not working with cron-started unit tests");
 
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QApplication::clipboard()->setText(QString());
     QVERIFY(!ed->canPaste());
     QApplication::clipboard()->setText("Test");
@@ -1640,10 +1639,10 @@ void tst_QTextEdit::ensureCursorVisibleOnInitialShow()
 
     ed->moveCursor(QTextCursor::End);
     ed->show();
-    QVERIFY(ed->verticalScrollBar()->value() > 10);
+    QTRY_COMPARE_GT(ed->verticalScrollBar()->value(), 10);
 
     ed->moveCursor(QTextCursor::Start);
-    QVERIFY(ed->verticalScrollBar()->value() < 10);
+    QCOMPARE_LT(ed->verticalScrollBar()->value(), 10);
     ed->hide();
     ed->verticalScrollBar()->setValue(ed->verticalScrollBar()->maximum());
     ed->show();
@@ -1671,7 +1670,7 @@ void tst_QTextEdit::setHtmlInsideResizeEvent()
     TestEdit edit;
     edit.show();
     edit.resize(800, 600);
-    QVERIFY(edit.resizeEventCalled);
+    QTRY_VERIFY(edit.resizeEventCalled);
 }
 
 void tst_QTextEdit::colorfulAppend()
@@ -1686,13 +1685,13 @@ void tst_QTextEdit::colorfulAppend()
     QCOMPARE(ed->document()->blockCount(), 3);
     QTextBlock block = ed->document()->begin();
     QCOMPARE(block.begin().fragment().text(), QString("Red"));
-    QVERIFY(block.begin().fragment().charFormat().foreground().color() == Qt::red);
+    QCOMPARE(block.begin().fragment().charFormat().foreground().color(), Qt::red);
     block = block.next();
     QCOMPARE(block.begin().fragment().text(), QString("Blue"));
-    QVERIFY(block.begin().fragment().charFormat().foreground().color() == Qt::blue);
+    QCOMPARE(block.begin().fragment().charFormat().foreground().color(), Qt::blue);
     block = block.next();
     QCOMPARE(block.begin().fragment().text(), QString("Green"));
-    QVERIFY(block.begin().fragment().charFormat().foreground().color() == Qt::green);
+    QCOMPARE(block.begin().fragment().charFormat().foreground().color(), Qt::green);
 }
 
 void tst_QTextEdit::ensureVisibleWithRtl()
@@ -1705,9 +1704,7 @@ void tst_QTextEdit::ensureVisibleWithRtl()
     ed->resize(100, 100);
     ed->show();
 
-    qApp->processEvents();
-
-    QVERIFY(ed->horizontalScrollBar()->maximum() > 0);
+    QTRY_COMPARE_GT(ed->horizontalScrollBar()->maximum(), 0);
 
     ed->moveCursor(QTextCursor::Start);
     QCOMPARE(ed->horizontalScrollBar()->value(), ed->horizontalScrollBar()->maximum());
@@ -1770,7 +1767,7 @@ void tst_QTextEdit::adjustScrollbars()
     QLatin1String txt("\nabc def ghi jkl mno pqr stu vwx");
     ed->setText(txt + txt + txt + txt);
 
-    QVERIFY(ed->verticalScrollBar()->maximum() > 0);
+    QTRY_COMPARE_GT(ed->verticalScrollBar()->maximum(), 0);
 
     ed->moveCursor(QTextCursor::End);
     int oldMaximum = ed->verticalScrollBar()->maximum();
@@ -1809,7 +1806,7 @@ void tst_QTextEdit::currentCharFormatChanged()
     ed->show();
     ed->setCurrentFont(ff);
 
-    QVERIFY(receiver.receivedSignals() > 0);
+    QTRY_COMPARE_GT(receiver.receivedSignals(), 0);
     QCOMPARE(receiver.charFormat().font(), ff);
 }
 
@@ -1835,7 +1832,7 @@ void tst_QTextEdit::textObscuredByScrollbars()
     QSize documentSize = ed->document()->documentLayout()->documentSize().toSize();
     QSize viewportSize = ed->viewport()->size();
 
-    QVERIFY(documentSize.width() <= viewportSize.width());
+    QCOMPARE_LE(documentSize.width(), viewportSize.width());
 }
 
 void tst_QTextEdit::setTextPreservesUndoRedoEnabled()
@@ -1922,9 +1919,6 @@ void tst_QTextEdit::copyPasteBackgroundImage()
     if (!PlatformClipboard::isAvailable())
         QSKIP("Native clipboard not working in this setup");
 
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QImage foo(16, 16, QImage::Format_ARGB32_Premultiplied);
     foo.save("foo.png");
     ed->setHtml("<body><table><tr><td background=\"foo.png\">Foo</td></tr></table></body>");
@@ -1948,7 +1942,7 @@ void tst_QTextEdit::copyPasteBackgroundImage()
 
     QVERIFY(a);
     QVERIFY(b);
-    QVERIFY(a != b);
+    QCOMPARE_NE(a, b);
 
     QBrush ba = a->cellAt(0, 0).format().background();
     QBrush bb = b->cellAt(0, 0).format().background();
@@ -2256,13 +2250,6 @@ void tst_QTextEdit::setDocumentPreservesPalette()
 }
 #endif
 
-class PublicTextEdit : public QTextEdit
-{
-public:
-    void publicInsertFromMimeData(const QMimeData *source)
-    { insertFromMimeData(source); }
-};
-
 void tst_QTextEdit::pasteFromQt3RichText()
 {
     QByteArray richtext("<!--StartFragment--><p>  QTextEdit is an  ");
@@ -2270,7 +2257,7 @@ void tst_QTextEdit::pasteFromQt3RichText()
     QMimeData mimeData;
     mimeData.setData("application/x-qrichtext", richtext);
 
-    static_cast<PublicTextEdit *>(ed)->publicInsertFromMimeData(&mimeData);
+    ed->insertFromMimeData(&mimeData);
 
     QCOMPARE(ed->toPlainText(), QString::fromLatin1("  QTextEdit is an  "));
     ed->clear();
@@ -2278,7 +2265,7 @@ void tst_QTextEdit::pasteFromQt3RichText()
     richtext = "<!--StartFragment-->  QTextEdit is an  ";
     mimeData.setData("application/x-qrichtext", richtext);
 
-    static_cast<PublicTextEdit *>(ed)->publicInsertFromMimeData(&mimeData);
+    ed->insertFromMimeData(&mimeData);
 
     QCOMPARE(ed->toPlainText(), QString::fromLatin1("  QTextEdit is an  "));
 }
@@ -2290,7 +2277,7 @@ void tst_QTextEdit::pasteFromMarkdown()
     QMimeData mimeData;
     mimeData.setData("text/markdown", richtext);
 
-    static_cast<PublicTextEdit *>(ed)->publicInsertFromMimeData(&mimeData);
+    ed->insertFromMimeData(&mimeData);
 
     QCOMPARE(ed->toPlainText(), "This text is rich");
 #if QT_CONFIG(textmarkdownwriter)
@@ -2326,9 +2313,10 @@ void tst_QTextEdit::noWrapBackgrounds()
 
     layout->addWidget(&edit);
     topLevel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
 
     const QImage img = edit.viewport()->grab().toImage();
-    QCOMPARE(img, img.mirrored(true, false));
+    QCOMPARE(img, img.flipped(Qt::Horizontal));
 }
 
 void tst_QTextEdit::preserveCharFormatAfterUnchangingSetPosition()
@@ -2385,48 +2373,48 @@ void tst_QTextEdit::taskQTBUG_7902_contextMenuCrash()
 void tst_QTextEdit::bidiVisualMovement_data()
 {
     QTest::addColumn<QString>("logical");
-    QTest::addColumn<int>("basicDir");
+    QTest::addColumn<QChar::Direction>("basicDir");
     QTest::addColumn<QList<int> >("positionList");
 
     QTest::newRow("Latin text")
         << QString::fromUtf8("abc")
-        << (int) QChar::DirL
+        << QChar::DirL
         << (QList<int>() << 0 << 1 << 2 << 3);
     QTest::newRow("Hebrew text, one item")
         << QString::fromUtf8("\327\220\327\221\327\222")
-        << (int) QChar::DirR
+        << QChar::DirR
         << (QList<int>() << 0 << 1 << 2 << 3);
     QTest::newRow("Hebrew text after Latin text")
         << QString::fromUtf8("abc\327\220\327\221\327\222")
-        << (int) QChar::DirL
+        << QChar::DirL
         << (QList<int>() << 0 << 1 << 2 << 6 << 5 << 4 << 3);
     QTest::newRow("Latin text after Hebrew text")
         << QString::fromUtf8("\327\220\327\221\327\222abc")
-        << (int) QChar::DirR
+        << QChar::DirR
         << (QList<int>() << 0 << 1 << 2 << 6 << 5 << 4 << 3);
     QTest::newRow("LTR, 3 items")
         << QString::fromUtf8("abc\327\220\327\221\327\222abc")
-        << (int) QChar::DirL
+        << QChar::DirL
         << (QList<int>() << 0 << 1 << 2 << 5 << 4 << 3 << 6 << 7 << 8 << 9);
     QTest::newRow("RTL, 3 items")
         << QString::fromUtf8("\327\220\327\221\327\222abc\327\220\327\221\327\222")
-        << (int) QChar::DirR
+        << QChar::DirR
         << (QList<int>() << 0 << 1 << 2 << 5 << 4 << 3 << 6 << 7 << 8 << 9);
     QTest::newRow("LTR, 4 items")
         << QString::fromUtf8("abc\327\220\327\221\327\222abc\327\220\327\221\327\222")
-        << (int) QChar::DirL
+        << QChar::DirL
         << (QList<int>() << 0 << 1 << 2 << 5 << 4 << 3 << 6 << 7 << 8 << 12 << 11 << 10 << 9);
     QTest::newRow("RTL, 4 items")
         << QString::fromUtf8("\327\220\327\221\327\222abc\327\220\327\221\327\222abc")
-        << (int) QChar::DirR
+        << QChar::DirR
         << (QList<int>() << 0 << 1 << 2 << 5 << 4 << 3 << 6 << 7 << 8 << 12 << 11 << 10 << 9);
 }
 
 void tst_QTextEdit::bidiVisualMovement()
 {
-    QFETCH(QString,      logical);
-    QFETCH(int,          basicDir);
-    QFETCH(QList<int>,   positionList);
+    QFETCH(QString,          logical);
+    QFETCH(QChar::Direction, basicDir);
+    QFETCH(QList<int>,       positionList);
 
     ed->setText(logical);
 
@@ -2479,9 +2467,9 @@ void tst_QTextEdit::bidiLogicalMovement_data()
 
 void tst_QTextEdit::bidiLogicalMovement()
 {
-    QFETCH(QString,      logical);
-    QFETCH(int,          basicDir);
-    QFETCH(QList<int>,   positionList);
+    QFETCH(QString,          logical);
+    QFETCH(QChar::Direction, basicDir);
+    QFETCH(QList<int>,       positionList);
 
     ed->setText(logical);
 
@@ -2529,9 +2517,6 @@ void tst_QTextEdit::bidiLogicalMovement()
 
 void tst_QTextEdit::inputMethodEvent()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     ed->show();
 
     // test that text change with an input method event triggers change signal
@@ -2634,16 +2619,11 @@ void tst_QTextEdit::inputMethodCursorRect()
 
 void tst_QTextEdit::highlightLongLine()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QTextEdit edit;
     edit.setAcceptRichText(false);
     edit.setWordWrapMode(QTextOption::NoWrap);
 
-    QString singeLongLine;
-    for (int i = 0; i < 10000; ++i)
-        singeLongLine += "0123456789";
+    QString singeLongLine = QString(QLatin1StringView("0123456789")).repeated(10000);
     edit.setPlainText(singeLongLine);
 
     class NumHighlighter : public QSyntaxHighlighter {
@@ -2661,7 +2641,7 @@ void tst_QTextEdit::highlightLongLine()
     };
     NumHighlighter nh(edit.document());
     edit.show();
-    QVERIFY(QTest::qWaitForWindowActive(edit.windowHandle()));
+    QVERIFY(QTest::qWaitForWindowActive(&edit));
     QCoreApplication::processEvents();
     //If there is a quadratic behaviour, this would take forever.
     QVERIFY(true);
@@ -2770,26 +2750,26 @@ namespace {
 
         void drawTextItem(const QPointF &, const QTextItem &textItem) override
         {
-            itemFonts.append(qMakePair(textItem.text(), textItem.font()));
+            itemFonts.append({textItem.text(), textItem.font()});
         }
 
         Type type() const override { return User; }
 
 
-        QList<QPair<QString, QFont> > itemFonts;
+        QList<std::pair<QString, QFont> > itemFonts;
     };
 
     class MyPaintDevice : public QPaintDevice
     {
     public:
-        MyPaintDevice() : m_paintEngine(new MyPaintEngine)
+        MyPaintDevice() : m_paintEngine(std::make_unique<MyPaintEngine>())
         {
         }
 
 
         QPaintEngine *paintEngine () const override
         {
-            return m_paintEngine;
+            return m_paintEngine.get();
         }
 
         int metric (QPaintDevice::PaintDeviceMetric metric) const override {
@@ -2816,7 +2796,7 @@ namespace {
             return 0;
         }
 
-        MyPaintEngine *m_paintEngine;
+        std::unique_ptr<MyPaintEngine> m_paintEngine;
     };
 }
 
@@ -3073,6 +3053,151 @@ void tst_QTextEdit::dontCrashWithCss()
     QTextEdit edit;
     edit.show();
     qApp->setStyleSheet(QString());
+}
+
+class CountingTextEdit : public QTextEdit {
+public:
+    using QTextEdit::QTextEdit;
+    int paintCount = 0;
+protected:
+    void paintEvent(QPaintEvent *e) override {
+        ++paintCount;
+        QTextEdit::paintEvent(e);
+    }
+};
+
+void tst_QTextEdit::linkSelectionArtifact()
+{
+    // QTBUG-115232: Clicking a link in QTextEdit shows a dotted focus
+    // outline. Cursor blink triggers partial repaints whose dirty rect
+    // clips the selection region, creating an extra outline edge inside
+    // the link area (visible as a double vertical line).
+
+    const auto platformIntegration = QGuiApplicationPrivate::platformIntegration();
+    if (!platformIntegration->hasCapability(QPlatformIntegration::ScreenWindowGrabbing))
+        QSKIP("QScreen::grabWindow is not supported in this config");
+
+    CountingTextEdit e;
+    e.resize(800, 600);
+
+    QPalette pal = e.palette();
+    pal.setColor(QPalette::Base, Qt::white);
+    e.setPalette(pal);
+
+    e.setTextInteractionFlags(Qt::TextEditorInteraction |
+                              Qt::TextSelectableByMouse |
+                              Qt::LinksAccessibleByMouse);
+
+    QTextCursor c = e.textCursor();
+    QTextCharFormat fmt;
+    fmt.setAnchor(true);
+    fmt.setAnchorHref("http://example.com");
+    fmt.setForeground(Qt::transparent);
+    c.setCharFormat(fmt);
+    c.insertText("Google");
+
+    e.setFont(QFont(e.font().family(), 30));
+    e.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&e));
+    QVERIFY(QTestPrivate::ensurePositionTopLeft(e.windowHandle()));
+    QTRY_COMPARE(QApplication::topLevelAt(e.geometry().center()), &e);
+
+    // Find the link boundaries
+    QTextCursor startCur(e.document());
+    startCur.movePosition(QTextCursor::Start);
+    const QRect startRect = e.cursorRect(startCur);
+    QTextCursor endCur(e.document());
+    endCur.movePosition(QTextCursor::End);
+    const QRect endRect = e.cursorRect(endCur);
+
+    // Set the paintCount to 0
+    e.paintCount = 0;
+    QCOMPARE(e.paintCount, 0);
+
+    // Click the link to activate the focus outline
+    const QPoint clickPos((startRect.left() + endRect.left()) / 2,
+                          startRect.center().y());
+    QTest::mouseClick(e.viewport(), Qt::LeftButton, Qt::NoModifier, clickPos);
+
+    // Wait for cursor blink to trigger a partial repaint (the artifact
+    // only appears after a partial repaint clips the selection region)
+    QTRY_COMPARE_NE(e.paintCount, 0);
+    const int countAfterClick = e.paintCount;
+    QTRY_COMPARE_GT(e.paintCount, countAfterClick);
+
+    // Check the interior of the selection outline, inset to avoid the
+    // outline's own borders. With transparent text and white background,
+    // any non-white pixel here is the artifact.
+    const int inset = 3;
+    const QRect checkRect(startRect.left() + inset, startRect.top() + inset,
+                          endRect.left() - startRect.left() - 2 * inset,
+                          startRect.height() - 2 * inset);
+
+    // Grab the screen without triggering a repaint — viewport()->grab()
+    // would do a full repaint and wipe the artifact from the backing store.
+    const QRect globalRect(e.viewport()->mapToGlobal(checkRect.topLeft()),
+                           e.viewport()->mapToGlobal(checkRect.bottomRight()));
+    const QPixmap grabbed = e.screen()->grabWindow(0,
+                                                   globalRect.x(), globalRect.y(),
+                                                   globalRect.width(), globalRect.height());
+    const QImage image = grabbed.toImage();
+
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QRgb pixel = image.pixel(x, y);
+            QVERIFY2(qRed(pixel) > 240 && qGreen(pixel) > 240 && qBlue(pixel) > 240,
+                     qPrintable(QString("Artifact pixel at (%1, %2): rgb(%3, %4, %5)")
+                                .arg(x).arg(y)
+                                .arg(qRed(pixel)).arg(qGreen(pixel)).arg(qBlue(pixel))));
+        }
+    }
+}
+
+void tst_QTextEdit::linkSelectionHighlightArtifact()
+{
+    QTextEdit e;
+    e.resize(800, 600);
+    e.show();
+
+    e.setAutoFormatting(QTextEdit::AutoNone);
+    e.setTextInteractionFlags(Qt::TextEditorInteraction | Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
+
+    QTextCursor c = e.textCursor();
+    QTextCharFormat fmt = c.charFormat();
+    fmt.setAnchor(true);
+    fmt.setAnchorHref("https://www.google.com");
+    c.setCharFormat(fmt);
+    c.insertText("Google");
+
+    QVERIFY(QTest::qWaitForWindowExposed(&e));
+
+    // Find the link position from cursor rect instead of hardcoded coordinates
+    c.setPosition(3); // middle of "Google"
+    const QPoint clickPos = e.cursorRect(c).center();
+    const QPoint viewportPos = e.viewport()->mapFromGlobal(e.mapToGlobal(clickPos));
+
+    // Track update regions emitted by the text control
+    auto *control = e.findChild<QWidgetTextControl *>();
+    QVERIFY(control);
+    QRectF updateRegion;
+    connect(control, &QWidgetTextControl::updateRequest,
+                        [&](const QRectF &rect) { updateRegion |= rect; });
+
+    // Single click to activate the link (sets focus indicator with outline)
+    QTest::mouseClick(e.viewport(), Qt::LeftButton, Qt::NoModifier, viewportPos);
+    QCoreApplication::processEvents();
+
+    // Reset tracking — we only care about what the double-click triggers
+    updateRegion = QRectF();
+
+    // Double-click to select the word (should switch from outline to background)
+    QTest::mouseDClick(e.viewport(), Qt::LeftButton, Qt::NoModifier, viewportPos);
+
+    // The double-click must trigger an update covering the full selection rect,
+    // not just the difference (which would be empty for a single-word link).
+    const QRectF selectionRect = control->selectionRect();
+    QVERIFY(!selectionRect.isEmpty());
+    QVERIFY(updateRegion.contains(selectionRect));
 }
 
 

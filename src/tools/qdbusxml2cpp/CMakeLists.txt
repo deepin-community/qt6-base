@@ -7,6 +7,7 @@
 
 qt_get_tool_target_name(target_name qdbusxml2cpp)
 qt_internal_add_tool(${target_name}
+    REQUIRED_FOR_DOCS
     TRY_RUN
     TARGET_DESCRIPTION "Qt D-Bus XML to C++ Compiler"
     TOOLS_TARGET DBus
@@ -14,7 +15,7 @@ qt_internal_add_tool(${target_name}
         qdbusxml2cpp.cpp
     DEFINES
         QT_NO_CAST_FROM_ASCII
-        QT_NO_FOREACH
+        QT_NO_URL_CAST_FROM_STRING
     LIBRARIES
         Qt::CorePrivate
         Qt::DBusPrivate

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwasmwindownonclientarea.h"
 
@@ -100,7 +101,7 @@ Resizer::ResizerElement::ResizerElement(emscripten::val parentElement, Qt::Edges
 
     m_mouseDownEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointerdown", [this](emscripten::val event) {
-                if (!onPointerDown(*PointerEvent::fromWeb(event)))
+                if (!onPointerDown(PointerEvent(EventType::PointerDown, event)))
                     return;
                 m_resizer->onInteraction();
                 event.call<void>("preventDefault");
@@ -108,12 +109,12 @@ Resizer::ResizerElement::ResizerElement(emscripten::val parentElement, Qt::Edges
             });
     m_mouseMoveEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointermove", [this](emscripten::val event) {
-                if (onPointerMove(*PointerEvent::fromWeb(event)))
+                if (onPointerMove(PointerEvent(EventType::PointerMove, event)))
                     event.call<void>("preventDefault");
             });
     m_mouseUpEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointerup", [this](emscripten::val event) {
-                if (onPointerUp(*PointerEvent::fromWeb(event))) {
+                if (onPointerUp(PointerEvent(EventType::PointerUp, event))) {
                     event.call<void>("preventDefault");
                     event.call<void>("stopPropagation");
                 }
@@ -308,7 +309,7 @@ TitleBar::TitleBar(QWasmWindow *window, emscripten::val parentElement)
 
     m_mouseDownEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointerdown", [this](emscripten::val event) {
-                if (!onPointerDown(*PointerEvent::fromWeb(event)))
+                if (!onPointerDown(PointerEvent(EventType::PointerDown, event)))
                     return;
                 m_window->onNonClientAreaInteraction();
                 event.call<void>("preventDefault");
@@ -316,13 +317,13 @@ TitleBar::TitleBar(QWasmWindow *window, emscripten::val parentElement)
             });
     m_mouseMoveEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointermove", [this](emscripten::val event) {
-                if (onPointerMove(*PointerEvent::fromWeb(event))) {
+                if (onPointerMove(PointerEvent(EventType::PointerMove, event))) {
                     event.call<void>("preventDefault");
                 }
             });
     m_mouseUpEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointerup", [this](emscripten::val event) {
-                if (onPointerUp(*PointerEvent::fromWeb(event))) {
+                if (onPointerUp(PointerEvent(EventType::PointerUp, event))) {
                     event.call<void>("preventDefault");
                     event.call<void>("stopPropagation");
                 }

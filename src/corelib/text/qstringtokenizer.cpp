@@ -1,5 +1,6 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:docs-only
 
 #include "qstringtokenizer.h"
 #include "qstringalgorithms.h"
@@ -14,6 +15,11 @@ QT_BEGIN_NAMESPACE
     \reentrant
     \ingroup tools
     \ingroup string-processing
+
+    QStringTokenizer\<Haystack, Needle\> is a template class where \a Haystack
+    is the type of the string being tokenized and \a Needle is the type of the
+    separator. In practice, you should never need to specify these template
+    arguments explicitly; they are deduced automatically by the compiler.
 
     Splits a string into substrings wherever a given separator occurs,
     returning a (lazily constructed) list of those strings. If the separator does
@@ -32,15 +38,14 @@ QT_BEGIN_NAMESPACE
         use(*it);
     \endcode
 
-    \note You should never, ever, name the template arguments of a
+    \note You should never name the template arguments of a
     QStringTokenizer explicitly. You may write
-    \c{QStringTokenizer{string, separator}} (without template
-    arguments), or use the qTokenize() function, or the
-    QStringView::split() or QLatin1StringView::split() member functions
-    and store the return value only in \c{auto} variables:
+    \c{QStringTokenizer{string, separator}} (without template arguments),
+    or use either QStringView::tokenize() or QLatin1StringView::tokenize(),
+    then store the return value only in an \c{auto} variable:
 
     \code
-    auto result = string.split(sep);
+    auto result = strview.tokenize(sep);
     \endcode
 
     This is because the template arguments of QStringTokenizer have a

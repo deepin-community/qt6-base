@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qplatformdefs.h>
 #include <qdom.h>
@@ -91,7 +92,7 @@ static void qt_split_namespace(QString& prefix, QString& name, const QString& qN
  *
  **************************************************************/
 QDomImplementation::InvalidDataPolicy QDomImplementationPrivate::invalidDataPolicy
-    = QDomImplementation::AcceptInvalidChars;
+    = QDomImplementation::ReturnNullNode;
 
 // [5] Name ::= (Letter | '_' | ':') (NameChar)*
 
@@ -504,8 +505,8 @@ QDomDocumentType QDomImplementation::createDocumentType(const QString& qName, co
         dt->publicId.clear();
         dt->systemId.clear();
     } else {
-        dt->publicId = fixedPublicId;
-        dt->systemId = fixedSystemId;
+        dt->publicId = std::move(fixedPublicId);
+        dt->systemId = std::move(fixedSystemId);
     }
     dt->ref.deref();
     return QDomDocumentType(dt);
@@ -541,11 +542,12 @@ bool QDomImplementation::isNull()
     This enum specifies what should be done when a factory function
     in QDomDocument is called with invalid data.
     \value AcceptInvalidChars The data should be stored in the DOM object
-        anyway. In this case the resulting XML document might not be well-formed.
-        This is the default value and QDom's behavior in Qt < 4.1.
+           anyway. In this case the resulting XML document might not be well-formed.
+           This was the default value and QDom's behavior prior to Qt 6.12.
     \value DropInvalidChars The invalid characters should be removed from
-        the data.
+           the data.
     \value ReturnNullNode The factory function should return a null node.
+           This is the default value since Qt 6.12.
 
     \sa setInvalidDataPolicy(), invalidDataPolicy()
 */
@@ -639,14 +641,9 @@ QDomNodeListPrivate::~QDomNodeListPrivate()
         delete node_impl;
 }
 
-bool QDomNodeListPrivate::operator==(const QDomNodeListPrivate &other) const
+bool QDomNodeListPrivate::operator==(const QDomNodeListPrivate &other) const noexcept
 {
     return (node_impl == other.node_impl) && (tagname == other.tagname);
-}
-
-bool QDomNodeListPrivate::operator!=(const QDomNodeListPrivate &other) const
-{
-    return !operator==(other);
 }
 
 void QDomNodeListPrivate::createList() const
@@ -654,52 +651,118 @@ void QDomNodeListPrivate::createList() const
     if (!node_impl)
         return;
 
+    list.clear();
     const QDomDocumentPrivate *const doc = node_impl->ownerDocument();
     if (doc && timestamp != doc->nodeListTime)
         timestamp = doc->nodeListTime;
+    forEachNode([&](QDomNodePrivate *p){ list.append(p); });
+}
 
-    QDomNodePrivate* p = node_impl->first;
+/*! \internal
 
-    list.clear();
+    Checks if a node is valid and fulfills the requirements set during the
+    generation of this list, i.e. matching tag and matching URI.
+*/
+bool QDomNodeListPrivate::checkNode(QDomNodePrivate *p) const
+{
+    return p && p->isElement() && (nsURI.isNull()
+                                   ? p->nodeName() == tagname
+                                   : p->name == tagname && p->namespaceURI == nsURI);
+}
+
+/*! \internal
+
+    Returns the next node item in the list. If the tagname or the URI are set,
+    the function iterates through the dom tree and returns node that match them.
+    If neither tag nor URI are set, the function iterates through a single level
+    in the tree and returns all nodes.
+
+    \sa forEachNode(), findPrevInOrder()
+ */
+QDomNodePrivate *QDomNodeListPrivate::findNextInOrder(QDomNodePrivate *p) const
+{
+    if (!p)
+        return p;
+
     if (tagname.isNull()) {
-        while (p) {
-            list.append(p);
+        if (p == node_impl)
+            return p->first;
+        else if (p && p->next)
+            return p->next;
+    }
+
+    if (p == node_impl) {
+        p = p->first;
+        if (checkNode(p))
+            return p;
+    }
+    while (p && p != node_impl) {
+        if (p->first) { // go down in the tree
+            p = p->first;
+        } else if (p->next) { // traverse the tree
             p = p->next;
-        }
-    } else if (nsURI.isNull()) {
-        while (p && p != node_impl) {
-            if (p->isElement() && p->nodeName() == tagname) {
-                list.append(p);
-            }
-            if (p->first)
-                p = p->first;
-            else if (p->next)
-                p = p->next;
-            else {
+        } else { // go up in the tree
+            p = p->parent();
+            while (p && p != node_impl && !p->next)
                 p = p->parent();
-                while (p && p != node_impl && !p->next)
-                    p = p->parent();
-                if (p && p != node_impl)
-                    p = p->next;
-            }
-        }
-    } else {
-        while (p && p != node_impl) {
-            if (p->isElement() && p->name==tagname && p->namespaceURI==nsURI) {
-                list.append(p);
-            }
-            if (p->first)
-                p = p->first;
-            else if (p->next)
+            if (p && p != node_impl)
                 p = p->next;
-            else {
-                p = p->parent();
-                while (p && p != node_impl && !p->next)
-                    p = p->parent();
-                if (p && p != node_impl)
-                    p = p->next;
-            }
         }
+        if (checkNode(p))
+            return p;
+    }
+    return node_impl;
+}
+
+/*! \internal
+
+    Similar as findNextInOrder() but iterarating in the opposite order.
+
+    \sa forEachNode(), findNextInOrder()
+ */
+QDomNodePrivate *QDomNodeListPrivate::findPrevInOrder(QDomNodePrivate *p) const
+{
+    if (!p)
+        return p;
+
+    if (tagname.isNull() && p == node_impl)
+        return p->last;
+    if (tagname.isNull())
+        return p->prev;
+
+    // We end all the way down in the tree
+    // so that is where we have to start
+    if (p == node_impl) {
+        while (p->last)
+            p = p->last;
+        if (checkNode(p))
+            return p;
+    }
+
+    while (p) {
+        if (p->prev) {// traverse the tree backwards
+            p = p->prev;
+            // go mmediately down if an item has children
+            while (p->last)
+                p = p->last;
+        } else { // go up in the tree
+            p = p->parent();
+        }
+        if (checkNode(p))
+            return p;
+    }
+    return node_impl;
+}
+
+void QDomNodeListPrivate::forEachNode(qxp::function_ref<void(QDomNodePrivate*)> yield) const
+{
+    if (!node_impl)
+        return;
+
+    QDomNodePrivate *current = findNextInOrder(node_impl);
+    while (current && current != node_impl) {
+        yield(current);
+        current = findNextInOrder(current);
     }
 }
 
@@ -729,6 +792,13 @@ int QDomNodeListPrivate::length() const
         return 0;
 
     return list.size();
+}
+
+int QDomNodeListPrivate::noexceptLength() const noexcept
+{
+    int count = 0;
+    forEachNode([&](QDomNodePrivate*){ ++count; });
+    return count;
 }
 
 /**************************************************************
@@ -799,26 +869,26 @@ QDomNodeList& QDomNodeList::operator=(const QDomNodeList &other)
 }
 
 /*!
-    Returns \c true if the node list \a other and this node list are equal;
+    \fn bool QDomNodeList::operator==(const QDomNodeList &lhs, const QDomNodeList &rhs)
+
+    Returns \c true if the node lists \a lhs and \a rhs are equal;
     otherwise returns \c false.
 */
-bool QDomNodeList::operator==(const QDomNodeList &other) const
+bool comparesEqual(const QDomNodeList &lhs, const QDomNodeList &rhs) noexcept
 {
-    if (impl == other.impl)
+    if (lhs.impl == rhs.impl)
         return true;
-    if (!impl || !other.impl)
+    if (!lhs.impl || !rhs.impl)
         return false;
-    return (*impl == *other.impl);
+    return *lhs.impl == *rhs.impl;
 }
 
 /*!
-    Returns \c true the node list \a other and this node list are not equal;
+    \fn bool QDomNodeList::operator!=(const QDomNodeList &lhs, const QDomNodeList &rhs)
+
+    Returns \c true if the node lists \a lhs and \a rhs are not equal;
     otherwise returns \c false.
 */
-bool QDomNodeList::operator!=(const QDomNodeList &other) const
-{
-    return !operator==(other);
-}
 
 /*!
     Destroys the object and frees its resources.
@@ -857,6 +927,16 @@ int QDomNodeList::length() const
 }
 
 /*!
+    Returns the number of nodes without creating the underlying QList.
+*/
+int QDomNodeList::noexceptLength() const noexcept
+{
+    if (!impl)
+        return 0;
+    return impl->noexceptLength();
+}
+
+/*!
     \fn bool QDomNodeList::isEmpty() const
 
     Returns \c true if the list contains no items; otherwise returns \c false.
@@ -885,6 +965,75 @@ int QDomNodeList::length() const
     node is returned (i.e. a node for which QDomNode::isNull() returns
     true).
 */
+
+/*!
+    \typedef QDomNodeList::const_iterator
+    \typedef QDomNodeList::const_reverse_iterator
+    \since 6.9
+
+    Typedefs for an opaque class that implements a bidirectional iterator over
+    a QDomNodeList.
+
+    \note QDomNodeList does not support modifying nodes in-place, so
+    there is no mutable iterator.
+*/
+
+/*!
+    \typedef QDomNodeList::value_type
+    \typedef QDomNodeList::difference_type
+    \typedef QDomNodeList::reference
+    \typedef QDomNodeList::const_reference
+    \typedef QDomNodeList::pointer
+    \typedef QDomNodeList::const_pointer
+    \since 6.9
+
+    Provided for STL-compatibility.
+
+    \note QDomNodeList does not support modifying nodes in-place, so
+    reference and const_reference are the same type, as are pointer and
+    const_pointer.
+*/
+
+/*!
+    \fn QDomNodeList::begin() const
+    \fn QDomNodeList::end() const;
+    \fn QDomNodeList::rbegin() const
+    \fn QDomNodeList::rend() const;
+    \fn QDomNodeList::cbegin() const
+    \fn QDomNodeList::cend() const;
+    \fn QDomNodeList::crbegin() const
+    \fn QDomNodeList::crend() const;
+    \fn QDomNodeList::constBegin() const;
+    \fn QDomNodeList::constEnd() const;
+    \since 6.9
+
+    Returns a const_iterator or const_reverse_iterator, respectively, pointing
+    to the first or one past the last item in the list.
+
+    \note QDomNodeList does not support modifying nodes in-place, so
+    there is no mutable iterator.
+*/
+
+QDomNodeList::It::It(const QDomNodeListPrivate *lp, bool start) noexcept
+    : parent(lp)
+{
+    if (!lp || !lp->node_impl)
+        current = nullptr;
+    else if (start)
+        current = lp->findNextInOrder(lp->node_impl);
+    else
+        current = lp->node_impl;
+}
+
+QDomNodePrivate *QDomNodeList::It::findNextInOrder(const QDomNodeListPrivate *parent, QDomNodePrivate *current)
+{
+    return parent->findNextInOrder(current);
+}
+
+QDomNodePrivate *QDomNodeList::It::findPrevInOrder(const QDomNodeListPrivate *parent, QDomNodePrivate *current)
+{
+    return parent->findPrevInOrder(current);
+}
 
 /**************************************************************
  *
@@ -938,19 +1087,22 @@ QDomNodePrivate::QDomNodePrivate(QDomNodePrivate *n, bool deep) : ref(1)
 
 QDomNodePrivate::~QDomNodePrivate()
 {
-    QDomNodePrivate* p = first;
-    QDomNodePrivate* n;
+    QDomNodePrivate *p = this;
 
-    while (p) {
-        n = p->next;
-        if (!p->ref.deref())
-            delete p;
-        else
-            p->setNoParent();
-        p = n;
+    // post-order depth-first-search; visitation is deletion (avoids recursion)
+    while (true) {
+        if (QDomNodePrivate *c = p->first) {
+            p->first = c->next;          // peel firstChild off p
+            if (c->ref.deref())
+                c->setNoParent();        // survivor: detach, don't descend
+            else
+                p = c;                   // descend; c's parent() remembers p
+        } else {                         // p ran out of children (= is a leaf now)
+            if (p == this)
+                break;                   // we're done, don't `delete this`
+            delete std::exchange(p, p->parent());  // deletes and ascends
+        }
     }
-    first = nullptr;
-    last = nullptr;
 }
 
 void QDomNodePrivate::clear()
@@ -1354,16 +1506,40 @@ void QDomNodePrivate::normalize()
     qNormalizeNode(this);
 }
 
-/*! \internal
-  \a depth is used for indentation, it seems.
- */
-void QDomNodePrivate::save(QTextStream& s, int depth, int indent) const
+void QDomNodePrivate::saveSubTree(const QDomNodePrivate *n, QTextStream &s,
+                                  int depth, int indent) const
 {
-    const QDomNodePrivate* n = first;
-    while (n) {
-        n->save(s, depth, indent);
-        n = n->next;
+    if (!n)
+        return;
+
+    const QDomNodePrivate *root = n->first;
+    n->save(s, depth, indent);
+    if (root) {
+        const int branchDepth = depth + 1;
+        int layerDepth = 0;
+        while (root) {
+            root->save(s, layerDepth + branchDepth, indent);
+            // A flattened (non-recursive) depth-first walk through the node tree.
+            if (root->first) {
+                layerDepth ++;
+                root = root->first;
+                continue;
+            }
+            root->afterSave(s, layerDepth + branchDepth, indent);
+            const QDomNodePrivate *prev = root;
+            root = root->next;
+            // Close QDomElementPrivate groups
+            while (!root && (layerDepth > 0)) {
+                root = prev->parent();
+                layerDepth --;
+                root->afterSave(s, layerDepth + branchDepth, indent);
+                prev = root;
+                root = root->next;
+            }
+        }
+        Q_ASSERT(layerDepth == 0);
     }
+    n->afterSave(s, depth, indent);
 }
 
 void QDomNodePrivate::setLocation(int lineNumber, int columnNumber)
@@ -2151,7 +2327,7 @@ void QDomNode::save(QTextStream& stream, int indent, EncodingPolicy encodingPoli
     if (isDocument())
         static_cast<const QDomDocumentPrivate *>(impl)->saveDocument(stream, indent, encodingPolicy);
     else
-        IMPL->save(stream, 1, indent);
+        IMPL->saveSubTree(IMPL, stream, 1, indent);
 }
 
 /*!
@@ -3069,11 +3245,11 @@ void QDomDocumentTypePrivate::save(QTextStream& s, int, int indent) const
 
         auto it2 = notations->map.constBegin();
         for (; it2 != notations->map.constEnd(); ++it2)
-            it2.value()->save(s, 0, indent);
+            it2.value()->saveSubTree(it2.value(), s, 0, indent);
 
         auto it = entities->map.constBegin();
         for (; it != entities->map.constEnd(); ++it)
-            it.value()->save(s, 0, indent);
+            it.value()->saveSubTree(it.value(), s, 0, indent);
 
         s << ']';
     }
@@ -3929,7 +4105,7 @@ void QDomElementPrivate::setAttributeNS(const QString& nsURI, const QString& qNa
         m_attr->setNamedItem(n);
     } else {
         n->setNodeValue(newValue);
-        n->prefix = prefix;
+        n->prefix = std::move(prefix);
     }
 }
 
@@ -3952,14 +4128,18 @@ QDomAttrPrivate* QDomElementPrivate::attributeNodeNS(const QString& nsURI, const
 
 QDomAttrPrivate* QDomElementPrivate::setAttributeNode(QDomAttrPrivate* newAttr)
 {
-    QDomNodePrivate* n = m_attr->namedItem(newAttr->nodeName());
+    if (!newAttr)
+        return nullptr;
+
+    QDomNodePrivate* foundAttr = m_attr->namedItem(newAttr->nodeName());
+    if (foundAttr)
+        m_attr->removeNamedItem(newAttr->nodeName());
 
     // Referencing is done by the maps
     m_attr->setNamedItem(newAttr);
-
     newAttr->setParent(this);
 
-    return static_cast<QDomAttrPrivate *>(n);
+    return static_cast<QDomAttrPrivate *>(foundAttr);
 }
 
 QDomAttrPrivate* QDomElementPrivate::setAttributeNodeNS(QDomAttrPrivate* newAttr)
@@ -3979,29 +4159,39 @@ QDomAttrPrivate* QDomElementPrivate::removeAttributeNode(QDomAttrPrivate* oldAtt
     return static_cast<QDomAttrPrivate *>(m_attr->removeNamedItem(oldAttr->nodeName()));
 }
 
-bool QDomElementPrivate::hasAttribute(const QString& aname)
+bool QDomElementPrivate::hasAttribute(const QString& aname) const
 {
     return m_attr->contains(aname);
 }
 
-bool QDomElementPrivate::hasAttributeNS(const QString& nsURI, const QString& localName)
+bool QDomElementPrivate::hasAttributeNS(const QString& nsURI, const QString& localName) const
 {
     return m_attr->containsNS(nsURI, localName);
 }
 
-QString QDomElementPrivate::text()
+QString QDomElementPrivate::text() const
 {
     QString t(u""_s);
 
-    QDomNodePrivate* p = first;
-    while (p) {
-        if (p->isText() || p->isCDATASection())
-            t += p->nodeValue();
-        else if (p->isElement())
-            t += static_cast<QDomElementPrivate *>(p)->text();
-        p = p->next;
-    }
+    // pre-order depth-first-search; visitation is t += nodeValue()
+    if (QDomNodePrivate* p = first) {
+        while (true) {
+            if (p->isText() || p->isCDATASection()) {
+                t += p->nodeValue();
+            } else if (p->isElement() && p->first) {
+                p = p->first;    // descend into Elements
+                continue;
+            }
 
+            while (!p->next) {
+                p = p->parent(); // ascend into visited parent (pre-order DFS)
+                if (p == this)
+                    return t; // done
+            }
+
+            p = p->next;
+        }
+    }
     return t;
 }
 
@@ -4126,13 +4316,25 @@ void QDomElementPrivate::save(QTextStream& s, int depth, int indent) const
             if (indent != -1)
                 s << Qt::endl;
         }
-        QDomNodePrivate::save(s, depth + 1, indent); if (!last->isText())
-            s << QString(indent < 1 ? 0 : depth * indent, u' ');
-
-        s << "</" << qName << '>';
     } else {
         s << "/>";
     }
+}
+
+void QDomElementPrivate::afterSave(QTextStream &s, int depth, int indent) const
+{
+    if (last) {
+        QString qName(name);
+
+        if (!prefix.isEmpty())
+            qName = prefix + u':' + name;
+
+        if (!last->isText())
+            s << QString(indent < 1 ? 0 : depth * indent, u' ');
+
+        s << "</" << qName << '>';
+    }
+
     if (!(next && next->isText())) {
         /* -1 disables new lines. */
         if (indent != -1)
@@ -5516,9 +5718,17 @@ void QDomProcessingInstructionPrivate::save(QTextStream& s, int, int) const
     not a processing instruction; among other differences, it cannot be
     inserted into a document anywhere but on the first line.
 
-    Do not use this function to create an xml declaration, since although it
-    has the same syntax as a processing instruction, it isn't, and might not
-    be treated by QDom as such.
+    \note Do not use this function to create an XML declaration. Although the
+    XML declaration shares the same syntax as a processing instruction, it
+    is not one. According to the
+    \l{https://www.w3.org/TR/xml/#sec-prolog-dtd}{XML 1.0 Specification} and the
+    \l{https://www.w3.org/TR/REC-DOM-Level-1/level-one-core.html#ID-1590626202}{W3C DOM Structure Model},
+    the XML declaration is part of the document prolog and not part of the
+    DOM tree - meaning it should not be represented as a DOM node and cannot be
+    created or inserted via the DOM API.
+    If you need to generate a well-formed XML document that includes an XML
+    declaration, use QXmlStreamWriter, which provides proper support for
+    writing the declaration through \l {QXmlStreamWriter::}{writeStartDocument}.
 
     The content of the processing instruction is retrieved with data()
     and set with setData(). The processing instruction's target is
@@ -5913,7 +6123,7 @@ void QDomDocumentPrivate::saveDocument(QTextStream& s, const int indent, QDomNod
                 type->save(s, 0, indent);
                 doc = true;
             }
-            n->save(s, 0, indent);
+            n->saveSubTree(n, s, 0, indent);
             n = n->next;
         }
     }
@@ -5940,8 +6150,8 @@ void QDomDocumentPrivate::saveDocument(QTextStream& s, const int indent, QDomNod
         }
 
         // Now we serialize all the nodes after the faked XML declaration(the PI).
-        while(startNode) {
-            startNode->save(s, 0, indent);
+        while (startNode) {
+            startNode->saveSubTree(startNode, s, 0, indent);
             startNode = startNode->next;
         }
     }

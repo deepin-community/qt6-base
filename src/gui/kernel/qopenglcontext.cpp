@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qpa/qplatformopenglcontext.h>
 #include <qpa/qplatformintegration.h>
@@ -153,6 +154,35 @@ QOpenGLContext *qt_gl_global_share_context()
     \note This means that when targeting WebAssembly with existing OpenGL-based
     Qt code, some porting may be required to cater to these limitations.
 
+    \section1 Security Considerations
+
+    All data consumed by QOpenGLContext and the classes building on it, such as
+    QOpenGLFunctions, the QtOpenGL module classes, and QRhi with its OpenGL
+    backend, is expected to be trusted content. This includes shader source
+    code, vertex and index data, textures and other pixel data, and all
+    parameters passed to OpenGL functions. Qt does not validate or sanitize any
+    of it.
+
+    Note also that getProcAddress() returns a raw function pointer resolved by
+    name from the OpenGL implementation. Qt cannot check that the signature the
+    caller casts it to matches the one the implementation provides; getting this
+    wrong results in undefined behavior.
+
+    The OpenGL implementation, meaning the driver and, on platforms that have
+    one, the library that dispatches to it, is a trusted, in-process platform
+    dependency. Qt loads it and calls into it directly, without any sandboxing
+    or verification, in the same way as it treats the Vulkan implementation.
+
+    Which library is loaded is decided by the platform's ordinary shared library
+    search order and, on some platforms, by environment variables. That
+    selection is part of the deployment's trusted configuration: a deployment
+    that does not control it does not control which native code runs inside the
+    process.
+
+    \warning Application developers are advised to carefully consider the
+    potential implications before allowing the feeding of user-provided content
+    that is not part of the application and is not under the developers'
+    control.
 
     \sa QOpenGLFunctions, QOpenGLBuffer, QOpenGLShaderProgram, QOpenGLFramebufferObject
 */
@@ -743,13 +773,13 @@ bool QOpenGLContext::makeCurrent(QSurface *surface)
 void QOpenGLContext::doneCurrent()
 {
     Q_D(QOpenGLContext);
-    if (!isValid())
-        return;
 
-    if (QOpenGLContext::currentContext() == this)
-        d->shareGroup->d_func()->deletePendingResources(this);
+    if (isValid()) {
+        if (QOpenGLContext::currentContext() == this)
+            d->shareGroup->d_func()->deletePendingResources(this);
+        d->platformGLContext->doneCurrent();
+    }
 
-    d->platformGLContext->doneCurrent();
     QOpenGLContextPrivate::setCurrentContext(nullptr);
 
     d->surface = nullptr;
@@ -804,9 +834,18 @@ void QOpenGLContext::swapBuffers(QSurface *surface)
 }
 
 /*!
-    Resolves the function pointer to an OpenGL extension function, identified by \a procName
+    Resolves the function pointer to an OpenGL extension function, identified by \a procName.
 
-    Returns \nullptr if no such function can be found.
+    Use this function to access OpenGL extension functions or core functions
+    that may not be available as linked symbols on all platforms.
+
+    The returned pointer may be platform-dependent. Some systems may return a
+    pointer that is not \nullptr even if the function is not valid or supported.
+
+    To reliably check function availability, test for extension support by calling
+    \l QOpenGLContext::hasExtension(). For core functions, check the current context's
+    version via \l{QSurfaceFormat::}{version()} in the QSurfaceFormat returned by
+    \l QOpenGLContext::format().
 */
 QFunctionPointer QOpenGLContext::getProcAddress(const QByteArray &procName) const
 {
@@ -959,10 +998,6 @@ bool QOpenGLContext::supportsThreadedOpenGL()
     This is useful if you need to upload OpenGL objects (buffers, textures,
     etc.) before creating or showing a QOpenGLWidget or QQuickWidget.
 
-    \note You must set the Qt::AA_ShareOpenGLContexts flag on QGuiApplication
-    before creating the QGuiApplication object, otherwise Qt may not create a
-    global shared context.
-
     \warning Do not attempt to make the context returned by this function
     current on any surface. Instead, you can create a new context which shares
     with the global one, and then make the new context current.
@@ -972,6 +1007,19 @@ bool QOpenGLContext::supportsThreadedOpenGL()
 QOpenGLContext *QOpenGLContext::globalShareContext()
 {
     Q_ASSERT(qGuiApp);
+
+    static QMutex mutex;
+    QMutexLocker locker(&mutex);
+
+    // Lazily create a global share context when enabled unless there is already one
+    if (!qt_gl_global_share_context() && qGuiApp->testAttribute(Qt::AA_ShareOpenGLContexts)) {
+        QOpenGLContext *ctx = new QOpenGLContext;
+        ctx->setFormat(QSurfaceFormat::defaultFormat());
+        ctx->create();
+        ctx->moveToThread(qGuiApp->thread());
+        qt_gl_set_global_share_context(ctx);
+        QGuiApplicationPrivate::instance()->ownGlobalShareContext = true;
+    }
     return qt_gl_global_share_context();
 }
 
@@ -1310,7 +1358,7 @@ QDebug operator<<(QDebug debug, const QOpenGLContext *ctx)
             debug << ", invalid";
         }
     } else {
-        debug << '0';
+        debug << "0x0";
     }
     debug << ')';
     return debug;
@@ -1324,7 +1372,7 @@ QDebug operator<<(QDebug debug, const QOpenGLContextGroup *cg)
     if (cg)
         debug << cg->shares();
     else
-        debug << '0';
+        debug << "0x0";
     debug << ')';
     return debug;
 }

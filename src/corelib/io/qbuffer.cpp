@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qbuffer.h"
 #include <QtCore/qmetaobject.h>
@@ -24,25 +25,11 @@ public:
     QByteArray peek(qint64 maxSize) override;
 
 #ifndef QT_NO_QOBJECT
-    // private slots
-    void _q_emitSignals();
-
     qint64 writtenSinceLastEmit = 0;
     int signalConnectionCount = 0;
     bool signalsEmitted = false;
 #endif
 };
-
-#ifndef QT_NO_QOBJECT
-void QBufferPrivate::_q_emitSignals()
-{
-    Q_Q(QBuffer);
-    emit q->bytesWritten(writtenSinceLastEmit);
-    writtenSinceLastEmit = 0;
-    emit q->readyRead();
-    signalsEmitted = false;
-}
-#endif
 
 qint64 QBufferPrivate::peek(char *data, qint64 maxSize)
 {
@@ -286,27 +273,32 @@ void QBuffer::setData(const char *data, qsizetype size)
 }
 
 /*!
-   \reimp
+    Opens the buffer using \a mode flags, returning \c true if successful;
+    otherwise returns \c false.
 
-   Unlike QFile, opening a QBuffer QIODevice::WriteOnly does not truncate it.
-   However, pos() is set to 0. Use QIODevice::Append or QIODevice::Truncate to
-   change either behavior.
+    The flags for \a mode must include \l QIODeviceBase::ReadOnly,
+    \l WriteOnly, or \l ReadWrite. If not, an error is printed and
+    the method fails. In any other case, it succeeds.
+
+    Unlike \l QFile::open(), opening a QBuffer with \l WriteOnly
+    does not truncate it. However, \l pos() is set to \c{0}.
+    Use \l Append or \l Truncate to change either behavior.
 */
-bool QBuffer::open(OpenMode flags)
+bool QBuffer::open(OpenMode mode)
 {
     Q_D(QBuffer);
 
-    if ((flags & (Append | Truncate)) != 0)
-        flags |= WriteOnly;
-    if ((flags & (ReadOnly | WriteOnly)) == 0) {
+    if ((mode & (Append | Truncate)) != 0)
+        mode |= WriteOnly;
+    if ((mode & (ReadOnly | WriteOnly)) == 0) {
         qWarning("QBuffer::open: Buffer access not specified");
         return false;
     }
 
-    if ((flags & Truncate) == Truncate)
+    if ((mode & Truncate) == Truncate)
         d->buf->resize(0);
 
-    return QIODevice::open(flags | QIODevice::Unbuffered);
+    return QIODevice::open(mode | QIODevice::Unbuffered);
 }
 
 /*!
@@ -414,7 +406,13 @@ qint64 QBuffer::writeData(const char *data, qint64 len)
     d->writtenSinceLastEmit += len;
     if (d->signalConnectionCount && !d->signalsEmitted && !signalsBlocked()) {
         d->signalsEmitted = true;
-        QMetaObject::invokeMethod(this, "_q_emitSignals", Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [](QBuffer *q) {
+            auto d = q->d_func();
+            emit q->bytesWritten(d->writtenSinceLastEmit);
+            d->writtenSinceLastEmit = 0;
+            emit q->readyRead();
+            d->signalsEmitted = false;
+        }, Qt::QueuedConnection, this);
     }
 #endif
     return len;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qplatformdefs.h>
 #include "qitemeditorfactory.h"
@@ -81,7 +82,6 @@ Q_SIGNALS:
     \class QItemEditorFactory
     \brief The QItemEditorFactory class provides widgets for editing item data
     in views and delegates.
-    \since 4.2
     \ingroup model-view
     \inmodule QtWidgets
 
@@ -237,7 +237,7 @@ QWidget *QDefaultItemEditorFactory::createEditor(int userType, QWidget *parent) 
         ed->setFrame(false);
         return ed; }
     case QMetaType::QDateTime: {
-        QDateTimeEdit *ed = new QDateTimeEdit(parent);
+        QDateTimeEdit *ed = new QItemEditorDateTimeEdit(parent);
         ed->setFrame(false);
         return ed; }
 #endif
@@ -336,7 +336,6 @@ void QItemEditorFactory::setDefaultFactory(QItemEditorFactory *factory)
     \class QItemEditorCreatorBase
     \brief The QItemEditorCreatorBase class provides an abstract base class that
     must be subclassed when implementing new item editor creators.
-    \since 4.2
     \ingroup model-view
     \inmodule QtWidgets
 
@@ -413,13 +412,12 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
            item editor creator bases without subclassing
            QItemEditorCreatorBase.
 
-    \since 4.2
     \ingroup model-view
     \inmodule QtWidgets
 
-    QItemEditorCreator is a convenience template class. It uses
-    the template class to create editors for QItemEditorFactory.
-    This way, it is not necessary to subclass
+    QItemEditorCreator\<T\> is a convenience template class where \a T specifies
+    the widget type. It uses the template class to create editors for
+    QItemEditorFactory. This way, it is not necessary to subclass
     QItemEditorCreatorBase.
 
     \snippet code/src_gui_itemviews_qitemeditorfactory.cpp 1
@@ -464,11 +462,11 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
     possibility to register widgets without having to subclass
     QItemEditorCreatorBase.
 
-    \since 4.2
     \ingroup model-view
     \inmodule QtWidgets
 
-    This convenience template class makes it possible to register widgets without
+    QStandardItemEditorCreator\<T\> is a convenience template class where \a T
+    specifies the widget type. It makes it possible to register widgets without
     having to subclass QItemEditorCreatorBase.
 
     Example:
@@ -564,6 +562,14 @@ void QExpandingLineEdit::resizeToContents()
     }
 }
 
+#endif // QT_CONFIG(lineedit)
+
+#if QT_CONFIG(datetimeedit)
+void QItemEditorDateTimeEdit::setDateTimeItemEditor(const QDateTime &datetime)
+{
+    setTimeZone(datetime.timeRepresentation());
+    setDateTime(datetime);
+}
 #endif // QT_CONFIG(lineedit)
 
 #if QT_CONFIG(combobox)

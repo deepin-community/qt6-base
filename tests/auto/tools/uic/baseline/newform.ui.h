@@ -48,15 +48,15 @@ public:
             NewForm->setObjectName("NewForm");
         NewForm->resize(495, 319);
         vboxLayout = new QVBoxLayout(NewForm);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout->setObjectName("vboxLayout");
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(1, 1, 1, 1);
@@ -77,7 +77,7 @@ public:
         sizePolicy.setHeightForWidth(lblPreview->sizePolicy().hasHeightForWidth());
         lblPreview->setSizePolicy(sizePolicy);
         lblPreview->setLineWidth(1);
-        lblPreview->setAlignment(Qt::AlignCenter);
+        lblPreview->setAlignment(Qt::AlignmentFlag::AlignCenter);
         lblPreview->setMargin(5);
 
         hboxLayout->addWidget(lblPreview);
@@ -87,8 +87,8 @@ public:
 
         horizontalLine = new QFrame(NewForm);
         horizontalLine->setObjectName("horizontalLine");
-        horizontalLine->setFrameShape(QFrame::HLine);
-        horizontalLine->setFrameShadow(QFrame::Sunken);
+        horizontalLine->setFrameShape(QFrame::Shape::HLine);
+        horizontalLine->setFrameShadow(QFrame::Shadow::Sunken);
 
         vboxLayout->addWidget(horizontalLine);
 

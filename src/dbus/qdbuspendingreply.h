@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDBUSPENDINGREPLY_H
 #define QDBUSPENDINGREPLY_H
@@ -10,6 +11,8 @@
 
 #ifndef QT_NO_DBUS
 
+class tst_QDBusPendingReply;
+
 QT_BEGIN_NAMESPACE
 
 
@@ -17,7 +20,14 @@ class Q_DBUS_EXPORT QDBusPendingReplyBase : public QDBusPendingCall
 {
 protected:
     QDBusPendingReplyBase();
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     ~QDBusPendingReplyBase();
+    QDBusPendingReplyBase(const QDBusPendingReplyBase &) = default;
+    QDBusPendingReplyBase &operator=(const QDBusPendingReplyBase &) = default;
+    QDBusPendingReplyBase(QDBusPendingReplyBase &&) noexcept = default;
+    QDBusPendingReplyBase &operator=(QDBusPendingReplyBase &&) noexcept = default;
+#endif
+
     void assign(const QDBusPendingCall &call);
     void assign(const QDBusMessage &message);
 
@@ -49,24 +59,21 @@ namespace QDBusPendingReplyTypes {
 template<typename... Types>
 class QDBusPendingReply : public QDBusPendingReplyBase
 {
+    friend class ::tst_QDBusPendingReply;
     template<int Index> using Select = QDBusPendingReplyTypes::Select<Index, Types...>;
 public:
     enum { Count = std::is_same_v<typename Select<0>::Type, void> ? 0 : sizeof...(Types) };
 
     inline constexpr int count() const { return Count; }
 
-
     inline QDBusPendingReply() = default;
-    inline QDBusPendingReply(const QDBusPendingReply &other)
-        : QDBusPendingReplyBase(other)
-    { }
+    // Rule Of Zero applies!
+
     inline Q_IMPLICIT QDBusPendingReply(const QDBusPendingCall &call) // required by qdbusxml2cpp-generated code
     { *this = call; }
     inline Q_IMPLICIT QDBusPendingReply(const QDBusMessage &message)
     { *this = message; }
 
-    inline QDBusPendingReply &operator=(const QDBusPendingReply &other)
-    { assign(other); return *this; }
     inline QDBusPendingReply &operator=(const QDBusPendingCall &call)
     { assign(call); return *this; }
     inline QDBusPendingReply &operator=(const QDBusMessage &message)
@@ -130,21 +137,19 @@ private:
 template<>
 class QDBusPendingReply<> : public QDBusPendingReplyBase
 {
+    friend class ::tst_QDBusPendingReply;
 public:
     enum { Count = 0 };
     inline int count() const { return Count; }
 
     inline QDBusPendingReply() = default;
-    inline QDBusPendingReply(const QDBusPendingReply &other)
-        : QDBusPendingReplyBase(other)
-    { }
+    // Rule Of Zero applies!
+
     inline Q_IMPLICIT QDBusPendingReply(const QDBusPendingCall &call) // required by qdbusxml2cpp-generated code
     { *this = call; }
     inline Q_IMPLICIT QDBusPendingReply(const QDBusMessage &message)
     { *this = message; }
 
-    inline QDBusPendingReply &operator=(const QDBusPendingReply &other)
-    { assign(other); return *this; }
     inline QDBusPendingReply &operator=(const QDBusPendingCall &call)
     { assign(call); return *this; }
     inline QDBusPendingReply &operator=(const QDBusMessage &message)

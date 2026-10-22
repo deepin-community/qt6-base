@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxdgdesktopportaltheme.h"
 #include "qxdgdesktopportalfiledialog_p.h"
@@ -19,6 +20,11 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+
+static constexpr QLatin1StringView appearanceInterface("org.freedesktop.appearance");
+static constexpr QLatin1StringView colorSchemeKey("color-scheme");
+static constexpr QLatin1StringView contrastKey("contrast");
+static constexpr QLatin1StringView motionKey("reduced-motion");
 
 class QXdgDesktopPortalThemePrivate : public QObject
     {
@@ -67,9 +73,17 @@ public Q_SLOTS:
     void settingChanged(const QString &group, const QString &key,
                         const QDBusVariant &value)
     {
-        if (group == "org.freedesktop.appearance"_L1 && key == "color-scheme"_L1) {
-            colorScheme = colorSchemeFromXdgPref(static_cast<XdgColorschemePref>(value.variant().toUInt()));
-            QWindowSystemInterface::handleThemeChange();
+        if (group == appearanceInterface) {
+            if (key == colorSchemeKey) {
+                colorScheme = colorSchemeFromXdgPref(static_cast<XdgColorschemePref>(value.variant().toUInt()));
+                QWindowSystemInterface::handleThemeChange();
+            } else if (key == contrastKey) {
+                contrast = static_cast<Qt::ContrastPreference>(value.variant().toUInt());
+                QWindowSystemInterface::handleThemeChange();
+            } else if (key == motionKey) {
+                motion = static_cast<Qt::MotionPreference>(value.variant().toUInt());
+                QWindowSystemInterface::handleThemeChange();
+            }
         }
     }
 
@@ -77,6 +91,8 @@ public:
     QPlatformTheme *baseTheme = nullptr;
     uint fileChooserPortalVersion = 0;
     Qt::ColorScheme colorScheme = Qt::ColorScheme::Unknown;
+    Qt::ContrastPreference contrast = Qt::ContrastPreference::NoPreference;
+    Qt::MotionPreference motion = Qt::MotionPreference::NoPreference;
 };
 
 QXdgDesktopPortalTheme::QXdgDesktopPortalTheme()
@@ -84,24 +100,19 @@ QXdgDesktopPortalTheme::QXdgDesktopPortalTheme()
 {
     Q_D(QXdgDesktopPortalTheme);
 
-    QStringList themeNames;
-    themeNames += QGuiApplicationPrivate::platform_integration->themeNames();
-    // 1) Look for a theme plugin.
-    for (const QString &themeName : std::as_const(themeNames)) {
+    const QStringList themeNames = QGuiApplicationPrivate::platform_integration->themeNames();
+    for (const QString &themeName : themeNames) {
+        if (QXdgDesktopPortalTheme::isXdgPlugin(themeName))
+            continue;
+        // 1) Look for a theme plugin.
         d->baseTheme = QPlatformThemeFactory::create(themeName, nullptr);
         if (d->baseTheme)
             break;
-    }
 
-    // 2) If no theme plugin was found ask the platform integration to
-    // create a theme
-    if (!d->baseTheme) {
-        for (const QString &themeName : std::as_const(themeNames)) {
-            d->baseTheme = QGuiApplicationPrivate::platform_integration->createPlatformTheme(themeName);
-            if (d->baseTheme)
-                break;
-        }
-        // No error message; not having a theme plugin is allowed.
+        // 2) If no theme plugin was found ask the platform integration to create a theme
+        d->baseTheme = QGuiApplicationPrivate::platform_integration->createPlatformTheme(themeName);
+        if (d->baseTheme)
+            break;
     }
 
     // 3) Fall back on the built-in "null" platform theme.
@@ -120,6 +131,9 @@ QXdgDesktopPortalTheme::QXdgDesktopPortalTheme()
         QDBusPendingReply<QVariant> reply = *watcher;
         if (reply.isValid()) {
             d->fileChooserPortalVersion = reply.value().toUInt();
+        } else {
+            qWarning() << "Call for getting org.freedesktop.portal.FileChooser version failed"
+                       << reply.error();
         }
         watcher->deleteLater();
     });
@@ -128,21 +142,29 @@ QXdgDesktopPortalTheme::QXdgDesktopPortalTheme()
     message = QDBusMessage::createMethodCall("org.freedesktop.portal.Desktop"_L1,
                                              "/org/freedesktop/portal/desktop"_L1,
                                              "org.freedesktop.portal.Settings"_L1,
-                                             "Read"_L1);
-    message << "org.freedesktop.appearance"_L1 << "color-scheme"_L1;
+                                             "ReadAll"_L1);
+
+    QStringList namespaces = { appearanceInterface };
+    message << namespaces;
 
     // this must not be asyncCall() because we have to set appearance now
-    QDBusReply<QVariant> reply = QDBusConnection::sessionBus().call(message);
+    QDBusReply<QMap<QString, QVariantMap>> reply = QDBusConnection::sessionBus().call(message);
     if (reply.isValid()) {
-        const QDBusVariant dbusVariant = qvariant_cast<QDBusVariant>(reply.value());
-        const QXdgDesktopPortalThemePrivate::XdgColorschemePref xdgPref = static_cast<QXdgDesktopPortalThemePrivate::XdgColorschemePref>(dbusVariant.variant().toUInt());
-        d->colorScheme = QXdgDesktopPortalThemePrivate::colorSchemeFromXdgPref(xdgPref);
+        const QMap<QString, QVariantMap> settingsMap = reply.value();
+        if (!settingsMap.isEmpty()) {
+            const auto xdgColorSchemePref = static_cast<QXdgDesktopPortalThemePrivate::XdgColorschemePref>(settingsMap.value(appearanceInterface).value(colorSchemeKey).toUInt());
+            d->colorScheme = QXdgDesktopPortalThemePrivate::colorSchemeFromXdgPref(xdgColorSchemePref);
+            d->contrast = static_cast<Qt::ContrastPreference>(settingsMap.value(appearanceInterface).value(contrastKey).toUInt());
+            d->motion = static_cast<Qt::MotionPreference>(settingsMap.value(appearanceInterface).value(motionKey).toUInt());
+        }
+    } else {
+        qWarning() << "Call to org.freedesktop.portal.Settings.ReadAll failed" << reply.error();
     }
 
     QDBusConnection::sessionBus().connect(
             "org.freedesktop.portal.Desktop"_L1, "/org/freedesktop/portal/desktop"_L1,
             "org.freedesktop.portal.Settings"_L1, "SettingChanged"_L1, d_ptr.get(),
-            SLOT(settingChanged(QString, QString, QDBusVariant)));
+            SLOT(settingChanged(QString,QString,QDBusVariant)));
 }
 
 QPlatformMenuItem* QXdgDesktopPortalTheme::createPlatformMenuItem() const
@@ -230,6 +252,18 @@ Qt::ColorScheme QXdgDesktopPortalTheme::colorScheme() const
     return d->colorScheme;
 }
 
+Qt::ContrastPreference QXdgDesktopPortalTheme::contrastPreference() const
+{
+    Q_D(const QXdgDesktopPortalTheme);
+    return d->contrast;
+}
+
+Qt::MotionPreference QXdgDesktopPortalTheme::motionPreference() const
+{
+    Q_D(const QXdgDesktopPortalTheme);
+    return d->motion;
+}
+
 QPixmap QXdgDesktopPortalTheme::standardPixmap(StandardPixmap sp, const QSizeF &size) const
 {
     Q_D(const QXdgDesktopPortalTheme);
@@ -261,6 +295,13 @@ QString QXdgDesktopPortalTheme::standardButtonText(int button) const
 {
     Q_D(const QXdgDesktopPortalTheme);
     return d->baseTheme->standardButtonText(button);
+}
+
+bool QXdgDesktopPortalTheme::isXdgPlugin(const QString &key)
+{
+    return key.compare("xdgdesktopportal"_L1, Qt::CaseInsensitive) == 0 ||
+           key.compare("flatpak"_L1, Qt::CaseInsensitive) == 0 ||
+           key.compare("snap"_L1, Qt::CaseInsensitive) == 0;
 }
 
 QT_END_NAMESPACE

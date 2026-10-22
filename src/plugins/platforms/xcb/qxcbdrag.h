@@ -1,8 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#ifndef QXCBDRAG_H
-#define QXCBDRAG_H
+#pragma once
 
 #include <qpa/qplatformdrag.h>
 #include <private/qsimpledrag_p.h>
@@ -15,8 +15,6 @@
 #include <qpointer.h>
 #include <qrect.h>
 #include <qxcbobject.h>
-
-#include <QtCore/QDebug>
 
 QT_REQUIRE_CONFIG(draganddrop);
 
@@ -128,7 +126,7 @@ private:
 
     // 10 minute timer used to discard old XdndDrop transactions
     static constexpr std::chrono::minutes XdndDropTransactionTimeout{10};
-    int cleanup_timer;
+    QBasicTimer cleanup_timer;
 
     QList<xcb_atom_t> drag_types;
 
@@ -157,5 +155,3 @@ private:
 Q_DECLARE_TYPEINFO(QXcbDrag::Transaction, Q_RELOCATABLE_TYPE);
 
 QT_END_NAMESPACE
-
-#endif

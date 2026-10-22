@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qtemporaryfile.h"
 
@@ -180,6 +181,7 @@ static bool createFileFromTemplate(NativeFileHandle &file, QTemporaryFileName &t
         const QFileSystemEntry::NativePath &path = templ.generateNext();
 
 #if defined(Q_OS_WIN)
+        // QTemporaryFileEngine::CreatesWithFileMode is false because of this.
         Q_UNUSED(mode);
         const DWORD shareMode = (flags & QTemporaryFileEngine::Win32NonShared)
                                 ? 0u : (FILE_SHARE_READ | FILE_SHARE_WRITE);
@@ -610,7 +612,7 @@ QString QTemporaryFilePrivate::defaultTemplateName()
     (at least six upper case \c "X" characters), which will be replaced with
     the auto-generated portion of the file name. If the file name doesn't
     contain \c {"XXXXXX"}, QTemporaryFile will append the generated part to the
-    file name. Only the first occurrence of \c {"XXXXXX"} will be considered.
+    file name. Only the last occurrence of \c {"XXXXXX"} will be considered.
 
     \note On Linux, QTemporaryFile will attempt to create unnamed temporary
     files. If that succeeds, open() will return true but exists() will be
@@ -736,14 +738,21 @@ QTemporaryFile::~QTemporaryFile()
 }
 
 /*!
-  \fn bool QTemporaryFile::open()
+    \fn bool QTemporaryFile::open()
 
-  A QTemporaryFile will always be opened in QIODevice::ReadWrite mode,
-  this allows easy access to the data in the file. This function will
-  return true upon success and will set the fileName() to the unique
-  filename used.
+    Opens a unique temporary file in the file system in
+    \l QIODeviceBase::ReadWrite mode.
+    Returns \c true if the file was successfully opened, or was already open.
+    Otherwise returns \c false.
 
-  \sa fileName(), QT_USE_NODISCARD_FILE_OPEN
+    If called for the first time, open() will create a unique file name
+    based on \l fileTemplate(). The file is guaranteed to have been created
+    by this function (that is, it has never existed before).
+
+    If a file is reopened after calling \l close(), the same file will be
+    opened again.
+
+    \sa setFileTemplate(), QT_USE_NODISCARD_FILE_OPEN
 */
 
 /*!
@@ -874,28 +883,66 @@ void QTemporaryFile::setFileTemplate(const QString &name)
     be used for a similar purpose too, particularly if the destination file is
     not temporary.
 
-    \sa QSaveFile, QSaveFile::commit(), QFile::rename()
+    \note Calling rename() does not disable autoRemove. If you want the renamed
+    file to persist, you must call setAutoRemove and set it to \c false after
+    calling rename(). Otherwise, the file will be deleted when the QTemporaryFile
+    object is destroyed.
+
+    This function will fail if \a newName already exists. To replace it, use
+    renameOverwrite() instead.
+
+    \sa renameOverwrite(), QSaveFile, QSaveFile::commit(), QFile::rename()
 */
 bool QTemporaryFile::rename(const QString &newName)
 {
     Q_D(QTemporaryFile);
-    auto tef = static_cast<QTemporaryFileEngine *>(d->fileEngine.get());
-    if (!tef || !tef->isReallyOpen() || !tef->filePathWasTemplate)
-        return QFile::rename(newName);
+    return d->rename(newName, false);
+}
 
-    unsetError();
-    close();
-    if (error() == QFile::NoError) {
-        if (tef->rename(newName)) {
-            unsetError();
+bool QTemporaryFilePrivate::rename(const QString &newName, bool overwrite)
+{
+    Q_Q(QTemporaryFile);
+    auto tef = static_cast<QTemporaryFileEngine *>(fileEngine.get());
+    if (!tef || !tef->isReallyOpen() || !tef->filePathWasTemplate)
+        return q->QFile::rename(newName);
+
+    q->unsetError();
+    q->close();
+    if (q->error() == QFile::NoError) {
+        if (overwrite ? tef->renameOverwrite(newName) : tef->rename(newName)) {
+            q->unsetError();
             // engine was able to handle the new name so we just reset it
-            d->fileName = newName;
+            fileName = newName;
             return true;
         }
 
-        d->setError(QFile::RenameError, tef->errorString());
+        setError(QFile::RenameError, tef->errorString());
     }
     return false;
+}
+
+/*!
+    \fn bool QTemporaryFile::renameOverwrite(const std::filesystem::path &newName)
+    \overload
+    \since 6.11
+*/
+
+/*!
+    \since 6.11
+
+    This is the same as rename(), except that it atomically replaces \a newName
+    if it already exists, like QSaveFile::commit() does, too.
+
+    Returns \c{false} if the rename could not performed atomically
+    (for example, the temporary file and the target file name live on
+    different file systems / volumes / drives.
+
+    \sa rename(), QSaveFile, QSaveFile::commit(), QFile::rename()
+*/
+bool QTemporaryFile::renameOverwrite(const QString &newName)
+{
+    Q_D(QTemporaryFile);
+    return d->rename(newName, true);
 }
 
 /*!
@@ -964,18 +1011,28 @@ QTemporaryFile *QTemporaryFile::createNativeFile(QFile &file)
 }
 
 /*!
-   \reimp
+    \reimp
 
-    Creates a unique file name for the temporary file, and opens it.  You can
-    get the unique name later by calling fileName(). The file is guaranteed to
-    have been created by this function (i.e., it has never existed before).
+    Opens a unique temporary file in the file system with \a mode flags.
+    Returns \c true if the file was successfully opened, or was already open.
+    Otherwise returns \c false.
+
+    If called for the first time, open() will create a unique file name
+    based on \l fileTemplate(), and open it with \a mode flags.
+    The file is guaranteed to have been created by this function (that is,
+    it has never existed before).
+
+    If a file is reopened after calling \l close(), the same file will be
+    opened again with \a mode flags.
+
+    \sa setFileTemplate(), QT_USE_NODISCARD_FILE_OPEN
 */
-bool QTemporaryFile::open(OpenMode flags)
+bool QTemporaryFile::open(OpenMode mode)
 {
     Q_D(QTemporaryFile);
     auto tef = static_cast<QTemporaryFileEngine *>(d->fileEngine.get());
     if (tef && tef->isReallyOpen()) {
-        setOpenMode(flags);
+        setOpenMode(mode);
         return true;
     }
 
@@ -986,7 +1043,7 @@ bool QTemporaryFile::open(OpenMode flags)
     //    d->engine();
     d->resetFileEngine();
 
-    if (QFile::open(flags)) {
+    if (QFile::open(mode)) {
         tef = static_cast<QTemporaryFileEngine *>(d->fileEngine.get());
         if (tef->isUnnamedFile())
             d->fileName.clear();

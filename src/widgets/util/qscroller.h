@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSCROLLER_H
 #define QSCROLLER_H
@@ -8,6 +9,8 @@
 #include <QtCore/QObject>
 #include <QtCore/QPointF>
 #include <QtWidgets/QScrollerProperties>
+
+class tst_QScroller;
 
 QT_REQUIRE_CONFIG(scroller);
 
@@ -106,6 +109,7 @@ private:
     Q_DISABLE_COPY(QScroller)
     Q_DECLARE_PRIVATE(QScroller)
 
+    friend class ::tst_QScroller;
 #ifndef QT_NO_GESTURES
     friend class QFlickGestureRecognizer;
 #endif

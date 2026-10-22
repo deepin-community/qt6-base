@@ -1,7 +1,7 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-qt_find_package(EGL)
+qt_find_package(EGL MODULE)
 
 if(QT_FEATURE_eglfs_gbm)
     set(_device_integration "eglfs_kms")
@@ -34,7 +34,6 @@ qt_internal_add_module(EglFSDeviceIntegrationPrivate
     DEFINES
         QT_BUILD_EGL_DEVICE_LIB
         QT_EGL_NO_X11
-        QT_NO_FOREACH
         EGLFS_PREFERRED_PLUGIN=${QT_QPA_DEFAULT_EGLFS_INTEGRATION}
     INCLUDE_DIRECTORIES
         api
@@ -57,9 +56,10 @@ qt_internal_extend_target(EglFSDeviceIntegrationPrivate CONDITION TARGET Qt::Inp
         Qt::InputSupportPrivate
 )
 
-qt_internal_extend_target(EglFSDeviceIntegrationPrivate CONDITION INTEGRITY AND TARGET IntegrityPlatformGraphics::IntegrityPlatformGraphics
-    LIBRARIES
-        IntegrityPlatformGraphics::IntegrityPlatformGraphics
+qt_internal_extend_target(EglFSDeviceIntegrationPrivate
+    CONDITION TARGET PlatformGraphics::PlatformGraphics
+    PUBLIC_LIBRARIES
+        PlatformGraphics::PlatformGraphics
 )
 
 qt_internal_extend_target(EglFSDeviceIntegrationPrivate CONDITION QT_FEATURE_opengl

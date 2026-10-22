@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPAINTENGINE_RASTER_P_H
 #define QPAINTENGINE_RASTER_P_H
@@ -39,7 +40,7 @@ class QClipData;
 class QRasterPaintEngineState : public QPainterState
 {
 public:
-    QRasterPaintEngineState(QRasterPaintEngineState &other);
+    QRasterPaintEngineState(const QRasterPaintEngineState &other);
     QRasterPaintEngineState();
     ~QRasterPaintEngineState();
 
@@ -361,7 +362,7 @@ inline void QClipData::appendSpan(int x, int length, int y, int coverage)
 
     if (count == allocated) {
         allocated *= 2;
-        m_spans = (QT_FT_Span *)realloc(m_spans, allocated*sizeof(QT_FT_Span));
+        m_spans = static_cast<QT_FT_Span*>(q_check_ptr(realloc(m_spans, allocated * sizeof(QT_FT_Span))));
     }
     m_spans[count].x = x;
     m_spans[count].len = length;
@@ -378,7 +379,7 @@ inline void QClipData::appendSpans(const QT_FT_Span *s, int num)
         do {
             allocated *= 2;
         } while (count + num > allocated);
-        m_spans = (QT_FT_Span *)realloc(m_spans, allocated*sizeof(QT_FT_Span));
+        m_spans = static_cast<QT_FT_Span*>(q_check_ptr(realloc(m_spans, allocated * sizeof(QT_FT_Span))));
     }
     memcpy(m_spans+count, s, num*sizeof(QT_FT_Span));
     count += num;

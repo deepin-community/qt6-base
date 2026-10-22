@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QIOSEVENTDISPATCHER_H
 #define QIOSEVENTDISPATCHER_H
@@ -32,8 +33,6 @@ public:
 
     // Public since we can't friend Objective-C methods
     void handleRunLoopExit(CFRunLoopActivity activity);
-
-    void interruptEventLoopExec();
 
 private:
     uint m_processEventLevel;

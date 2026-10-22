@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPALETTE_P_H
 #define QPALETTE_P_H
@@ -16,6 +17,8 @@
 //
 
 #include "qpalette.h"
+
+#include <QtCore/qatomic.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -66,8 +69,8 @@ public:
 
     QAtomicInt ref;
     QPalette::ResolveMask resolveMask = {0};
-    static inline int qt_palette_count = 0;
-    static inline int qt_palette_private_count = 0;
+    static QAtomicInt qt_palette_count;
+    static QAtomicInt qt_palette_private_count;
     int detach_no = ++qt_palette_private_count;
     QExplicitlySharedDataPointer<Data> data;
 };

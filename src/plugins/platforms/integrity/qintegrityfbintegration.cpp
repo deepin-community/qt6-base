@@ -1,12 +1,12 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qintegrityfbintegration.h"
 #include "qintegrityfbscreen.h"
 #include "qintegrityhidmanager.h"
 
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixservices_p.h>
 #include <QtGui/private/qgenericunixeventdispatcher_p.h>
 
 #include <QtFbSupport/private/qfbbackingstore_p.h>
@@ -16,12 +16,12 @@
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatforminputcontextfactory_p.h>
 #include <qpa/qwindowsysteminterface.h>
+#include <qpa/qplatformservices.h>
 
 QT_BEGIN_NAMESPACE
 
 QIntegrityFbIntegration::QIntegrityFbIntegration(const QStringList &paramList)
-    : m_fontDb(new QGenericUnixFontDatabase),
-      m_services(new QGenericUnixServices)
+    : m_fontDb(new QGenericUnixFontDatabase)
 {
     m_primaryScreen = new QIntegrityFbScreen(paramList);
 }
@@ -84,6 +84,9 @@ QPlatformFontDatabase *QIntegrityFbIntegration::fontDatabase() const
 
 QPlatformServices *QIntegrityFbIntegration::services() const
 {
+    if (m_services.isNull())
+        m_services.reset(new QPlatformServices);
+
     return m_services.data();
 }
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qaccessiblewidgets_p.h"
 #include "qabstracttextdocumentlayout.h"
@@ -58,11 +59,12 @@
 
 #if QT_CONFIG(accessibility)
 
+#include <QtGui/private/qaccessiblehelper_p.h>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-QString qt_accStripAmp(const QString &text);
 QString qt_accHotKey(const QString &text);
 
 QWidgetList _q_ac_childWidgets(const QWidget *widget)
@@ -108,13 +110,13 @@ QString QAccessiblePlainTextEdit::text(QAccessible::Text t) const
     if (t == QAccessible::Value)
         return plainTextEdit()->toPlainText();
 
-    return QAccessibleWidget::text(t);
+    return QAccessibleWidgetV2::text(t);
 }
 
 void QAccessiblePlainTextEdit::setText(QAccessible::Text t, const QString &text)
 {
     if (t != QAccessible::Value) {
-        QAccessibleWidget::setText(t, text);
+        QAccessibleWidgetV2::setText(t, text);
         return;
     }
     if (plainTextEdit()->isReadOnly())
@@ -139,7 +141,7 @@ void *QAccessiblePlainTextEdit::interface_cast(QAccessible::InterfaceType t)
         return static_cast<QAccessibleTextInterface*>(this);
     else if (t == QAccessible::EditableTextInterface)
         return static_cast<QAccessibleEditableTextInterface*>(this);
-    return QAccessibleWidget::interface_cast(t);
+    return QAccessibleWidgetV2::interface_cast(t);
 }
 
 QPoint QAccessiblePlainTextEdit::scrollBarPosition() const
@@ -234,13 +236,13 @@ QString QAccessibleTextEdit::text(QAccessible::Text t) const
     if (t == QAccessible::Value)
         return textEdit()->toPlainText();
 
-    return QAccessibleWidget::text(t);
+    return QAccessibleWidgetV2::text(t);
 }
 
 void QAccessibleTextEdit::setText(QAccessible::Text t, const QString &text)
 {
     if (t != QAccessible::Value) {
-        QAccessibleWidget::setText(t, text);
+        QAccessibleWidgetV2::setText(t, text);
         return;
     }
     if (textEdit()->isReadOnly())
@@ -265,7 +267,7 @@ void *QAccessibleTextEdit::interface_cast(QAccessible::InterfaceType t)
         return static_cast<QAccessibleTextInterface*>(this);
     else if (t == QAccessible::EditableTextInterface)
         return static_cast<QAccessibleEditableTextInterface*>(this);
-    return QAccessibleWidget::interface_cast(t);
+    return QAccessibleWidgetV2::interface_cast(t);
 }
 
 void QAccessibleTextEdit::scrollToSubstring(int startIndex, int endIndex)
@@ -292,7 +294,7 @@ void QAccessibleTextEdit::scrollToSubstring(int startIndex, int endIndex)
 #if QT_CONFIG(stackedwidget)
 // ======================= QAccessibleStackedWidget ======================
 QAccessibleStackedWidget::QAccessibleStackedWidget(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::LayeredPane)
+    : QAccessibleWidgetV2(widget, QAccessible::LayeredPane)
 {
     Q_ASSERT(qobject_cast<QStackedWidget *>(widget));
 }
@@ -340,7 +342,7 @@ QStackedWidget *QAccessibleStackedWidget::stackedWidget() const
 #if QT_CONFIG(toolbox)
 // ======================= QAccessibleToolBox ======================
 QAccessibleToolBox::QAccessibleToolBox(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::LayeredPane)
+    : QAccessibleWidgetV2(widget, QAccessible::LayeredPane)
 {
     Q_ASSERT(qobject_cast<QToolBox *>(widget));
 }
@@ -354,7 +356,7 @@ QToolBox * QAccessibleToolBox::toolBox() const
 // ======================= QAccessibleMdiArea ======================
 #if QT_CONFIG(mdiarea)
 QAccessibleMdiArea::QAccessibleMdiArea(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::LayeredPane)
+    : QAccessibleWidgetV2(widget, QAccessible::LayeredPane)
 {
     Q_ASSERT(qobject_cast<QMdiArea *>(widget));
 }
@@ -391,7 +393,7 @@ QMdiArea *QAccessibleMdiArea::mdiArea() const
 
 // ======================= QAccessibleMdiSubWindow ======================
 QAccessibleMdiSubWindow::QAccessibleMdiSubWindow(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::Window)
+    : QAccessibleWidgetV2(widget, QAccessible::Window)
 {
     Q_ASSERT(qobject_cast<QMdiSubWindow *>(widget));
 }
@@ -403,7 +405,7 @@ QString QAccessibleMdiSubWindow::text(QAccessible::Text textType) const
         title.remove("[*]"_L1);
         return title;
     }
-    return QAccessibleWidget::text(textType);
+    return QAccessibleWidgetV2::text(textType);
 }
 
 void QAccessibleMdiSubWindow::setText(QAccessible::Text textType, const QString &text)
@@ -411,7 +413,7 @@ void QAccessibleMdiSubWindow::setText(QAccessible::Text textType, const QString 
     if (textType == QAccessible::Name)
         mdiSubWindow()->setWindowTitle(text);
     else
-        QAccessibleWidget::setText(textType, text);
+        QAccessibleWidgetV2::setText(textType, text);
 }
 
 QAccessible::State QAccessibleMdiSubWindow::state() const
@@ -463,7 +465,7 @@ QRect QAccessibleMdiSubWindow::rect() const
     if (mdiSubWindow()->isHidden())
         return QRect();
     if (!mdiSubWindow()->parent())
-        return QAccessibleWidget::rect();
+        return QAccessibleWidgetV2::rect();
     const QPoint pos = mdiSubWindow()->mapToGlobal(QPoint(0, 0));
     return QRect(pos, mdiSubWindow()->size());
 }
@@ -477,7 +479,7 @@ QMdiSubWindow *QAccessibleMdiSubWindow::mdiSubWindow() const
 #if QT_CONFIG(dialogbuttonbox)
 // ======================= QAccessibleDialogButtonBox ======================
 QAccessibleDialogButtonBox::QAccessibleDialogButtonBox(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::Grouping)
+    : QAccessibleWidgetV2(widget, QAccessible::Grouping)
 {
     Q_ASSERT(qobject_cast<QDialogButtonBox*>(widget));
 }
@@ -500,7 +502,7 @@ QAccessible::Role QAccessibleTextBrowser::role() const
 #if QT_CONFIG(calendarwidget)
 // ===================== QAccessibleCalendarWidget ========================
 QAccessibleCalendarWidget::QAccessibleCalendarWidget(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::Table)
+    : QAccessibleWidgetV2(widget, QAccessible::Table)
 {
     Q_ASSERT(qobject_cast<QCalendarWidget *>(widget));
 }
@@ -563,7 +565,7 @@ QWidget *QAccessibleCalendarWidget::navigationBar() const
 // If there is a custom title bar widget, that one becomes child 1, after the content 0
 // (in that case the buttons are ignored)
 QAccessibleDockWidget::QAccessibleDockWidget(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::Window)
+    : QAccessibleWidgetV2(widget)
 {
 }
 
@@ -635,19 +637,28 @@ QString QAccessibleDockWidget::text(QAccessible::Text t) const
     }
     return QString();
 }
+
+QAccessible::Role QAccessibleDockWidget::role() const
+{
+    if (dockWidget()->isFloating())
+        return QAccessible::Window;
+
+    return QAccessible::Pane;
+}
+
 #endif // QT_CONFIG(dockwidget)
 
 #ifndef QT_NO_CURSOR
 
-QAccessibleTextWidget::QAccessibleTextWidget(QWidget *o, QAccessible::Role r, const QString &name):
-    QAccessibleWidget(o, r, name)
+QAccessibleTextWidget::QAccessibleTextWidget(QWidget *o, QAccessible::Role r, const QString &name)
+    : QAccessibleWidgetV2(o, r, name)
 {
 
 }
 
 QAccessible::State QAccessibleTextWidget::state() const
 {
-    QAccessible::State s = QAccessibleWidget::state();
+    QAccessible::State s = QAccessibleWidgetV2::state();
     s.selectableText = true;
     s.multiLine = true;
     return s;
@@ -948,54 +959,22 @@ QPoint QAccessibleTextWidget::scrollBarPosition() const
 QString QAccessibleTextWidget::textBeforeOffset(int offset, QAccessible::TextBoundaryType boundaryType,
                                                 int *startOffset, int *endOffset) const
 {
-    Q_ASSERT(startOffset);
-    Q_ASSERT(endOffset);
-
-    QTextCursor cursor = textCursor();
-    cursor.setPosition(offset);
-    QPair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
-    cursor.setPosition(boundaries.first - 1);
-    boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
-
-    *startOffset = boundaries.first;
-    *endOffset = boundaries.second;
-
-    return text(boundaries.first, boundaries.second);
- }
-
+    return qt_accTextBeforeOffsetHelper(*this, textCursor(), offset, boundaryType, startOffset,
+                                        endOffset);
+}
 
 QString QAccessibleTextWidget::textAfterOffset(int offset, QAccessible::TextBoundaryType boundaryType,
                                               int *startOffset, int *endOffset) const
 {
-    Q_ASSERT(startOffset);
-    Q_ASSERT(endOffset);
-
-    QTextCursor cursor = textCursor();
-    cursor.setPosition(offset);
-    QPair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
-    cursor.setPosition(boundaries.second);
-    boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
-
-    *startOffset = boundaries.first;
-    *endOffset = boundaries.second;
-
-    return text(boundaries.first, boundaries.second);
+    return qt_accTextAfterOffsetHelper(*this, textCursor(), offset, boundaryType, startOffset,
+                                       endOffset);
 }
 
 QString QAccessibleTextWidget::textAtOffset(int offset, QAccessible::TextBoundaryType boundaryType,
                                             int *startOffset, int *endOffset) const
 {
-    Q_ASSERT(startOffset);
-    Q_ASSERT(endOffset);
-
-    QTextCursor cursor = textCursor();
-    cursor.setPosition(offset);
-    QPair<int, int> boundaries = QAccessible::qAccessibleTextBoundaryHelper(cursor, boundaryType);
-
-    *startOffset = boundaries.first;
-    *endOffset = boundaries.second;
-
-    return text(boundaries.first, boundaries.second);
+    return qt_accTextAtOffsetHelper(*this, textCursor(), offset, boundaryType, startOffset,
+                                    endOffset);
 }
 
 void QAccessibleTextWidget::setCursorPosition(int position)
@@ -1071,7 +1050,7 @@ void QAccessibleTextWidget::replaceText(int startOffset, int endOffset, const QS
 
 #if QT_CONFIG(mainwindow)
 QAccessibleMainWindow::QAccessibleMainWindow(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::Window) { }
+    : QAccessibleWidgetV2(widget, QAccessible::Window) { }
 
 QAccessibleInterface *QAccessibleMainWindow::child(int index) const
 {

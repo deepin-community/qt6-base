@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwhatsthis.h"
 #include "qpointer.h"
@@ -10,7 +11,6 @@
 #include "qpixmap.h"
 #include "qscreen.h"
 #include "qpainter.h"
-#include "qtimer.h"
 #if QT_CONFIG(action)
 #include "qaction.h"
 #endif // QT_CONFIG(action)
@@ -73,7 +73,7 @@ QT_BEGIN_NAMESPACE
     the appropriate help text is shown. The mode is left when help is
     given or when the user presses Esc.
 
-    \image whatsthis.png
+    \image whatsthis.png {"What's This?" mode for New File button}
 
     You can enter "What's This?" mode programmatically with
     enterWhatsThisMode(), check the mode with inWhatsThisMode(), and
@@ -126,8 +126,8 @@ QWhatsThat *QWhatsThat::instance = nullptr;
 
 // shadowWidth not const, for XP drop-shadow-fu turns it to 0
 static int shadowWidth = 6;   // also used as '5' and '6' and even '8' below
-static const int vMargin = 8;
-static const int hMargin = 12;
+static constexpr int vMargin = 8;
+static constexpr int hMargin = 12;
 
 static inline bool dropShadow()
 {
@@ -198,7 +198,7 @@ void QWhatsThat::mousePressEvent(QMouseEvent* e)
     pressed = true;
     if (e->button() == Qt::LeftButton && rect().contains(e->position().toPoint())) {
         if (doc)
-            anchor = doc->documentLayout()->anchorAt(e->position().toPoint() -  QPoint(hMargin, vMargin));
+            anchor = doc->documentLayout()->anchorAt(e->position() - QPointF(hMargin, vMargin));
         return;
     }
     close();
@@ -209,7 +209,7 @@ void QWhatsThat::mouseReleaseEvent(QMouseEvent* e)
     if (!pressed)
         return;
     if (widget && e->button() == Qt::LeftButton && doc && rect().contains(e->position().toPoint())) {
-        QString a = doc->documentLayout()->anchorAt(e->position().toPoint() -  QPoint(hMargin, vMargin));
+        QString a = doc->documentLayout()->anchorAt(e->position() - QPointF(hMargin, vMargin));
         QString href;
         if (anchor == a)
             href = a;
@@ -230,7 +230,7 @@ void QWhatsThat::mouseMoveEvent(QMouseEvent* e)
 #else
     if (!doc)
         return;
-    QString a = doc->documentLayout()->anchorAt(e->position().toPoint() -  QPoint(hMargin, vMargin));
+    QString a = doc->documentLayout()->anchorAt(e->position() - QPointF(hMargin, vMargin));
     if (!a.isEmpty())
         setCursor(Qt::PointingHandCursor);
     else
@@ -556,10 +556,9 @@ void QWhatsThisPrivate::say(QWidget * widget, const QString &text, int x, int y)
 
     // squeeze it in if that would result in part of what's this
     // being only partially visible
-    if (x + w  + shadowWidth > sx+screenRect.width()) {
-        x = (widget ? qMin(screenRect.width(), pos.x() + widget->width())
-                    : screenRect.width())
-            - w;
+    if (x + w  + shadowWidth > screenRect.right()) {
+        x = widget ? qMin(screenRect.right(), pos.x() + widget->width()) : screenRect.right();
+        x -=w;
     }
 
     if (x < sx)
@@ -568,17 +567,16 @@ void QWhatsThisPrivate::say(QWidget * widget, const QString &text, int x, int y)
     if (widget && h > widget->height() + 16) {
         y = pos.y() + widget->height() + 2; // below, two pixels spacing
         // what's this is above or below, wherever there's most space
-        if (y + h + 10 > sy + screenRect.height())
+        if (y + h + 10 > screenRect.bottom())
             y = pos.y() + 2 - shadowWidth - h; // above, overlap
     }
     y = y + 2;
 
     // squeeze it in if that would result in part of what's this
     // being only partially visible
-    if (y + h + shadowWidth > sy + screenRect.height()) {
-        y = (widget ? qMin(screenRect.height(), pos.y() + widget->height())
-                    : screenRect.height())
-            - h;
+    if (y + h + shadowWidth > screenRect.bottom()) {
+        y = widget ? qMin(screenRect.bottom(), pos.y() + widget->height()) : screenRect.bottom();
+        y -= h;
     }
     if (y < sy)
         y = sy;

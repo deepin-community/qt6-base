@@ -9,7 +9,7 @@
     \brief This example shows how to create a minimal QWindow-based
     application using QRhi.
 
-    \image rhiwindow_example.jpg
+    \image rhiwindow_example.jpg {Screenshot of example}
 
     Qt 6.6 starts offering its accelerated 3D API and shader abstraction layer
     for application use as well. Applications can now use the same 3D graphics
@@ -118,13 +118,12 @@
 
     Due to being a Qt GUI module example, this example cannot have a dependency
     on the \l{Qt Shader Tools} module. This means that CMake helper functions
-    such as \c{qt_add_shaders} are not available for use. Therefore, the
+    such as \l qt_add_shaders() are not available for use. Therefore, the
     example has the pre-processed \c{.qsb} files included in the
     \c{shaders/prebuilt} folder, and they are simply included within the
     executable via \c{qt_add_resources}. This approach is not generally
-    recommended for applications, consider rather using \l{Qt Shader Tools
-    Build System Integration}{qt_add_shaders}, which avoids the need to
-    manually generate and manage the \c{.qsb} files.
+    recommended for applications, consider rather using \l{qt_add_shaders}(),
+    which avoids the need to manually generate and manage the \c{.qsb} files.
 
     To generate the \c{.qsb} files for this example, the command \c{qsb --qt6
     color.vert -o prebuilt/color.vert.qsb} etc. was used. This leads to

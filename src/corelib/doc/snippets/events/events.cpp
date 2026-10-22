@@ -54,7 +54,3 @@ bool MyWidget::event(QEvent *event)
     return QWidget::event(event);
 }
 //! [1]
-
-int main()
-{
-}

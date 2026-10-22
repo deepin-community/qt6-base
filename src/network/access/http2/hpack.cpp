@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "bitstreams_p.h"
 #include "hpack_p.h"
@@ -108,6 +109,16 @@ Encoder::Encoder(quint32 size, bool compress)
 quint32 Encoder::dynamicTableSize() const
 {
     return lookupTable.dynamicDataSize();
+}
+
+quint32 Encoder::dynamicTableCapacity() const
+{
+    return lookupTable.dynamicDataCapacity();
+}
+
+quint32 Encoder::maxDynamicTableCapacity() const
+{
+    return lookupTable.maxDynamicDataCapacity();
 }
 
 bool Encoder::encodeRequest(BitOStream &outputStream, const HttpHeader &header)
@@ -378,6 +389,7 @@ Decoder::Decoder(quint32 size)
 bool Decoder::decodeHeaderFields(BitIStream &inputStream)
 {
     header.clear();
+    headerListSize = 0;
     while (true) {
         if (read_bit_pattern(Indexed, inputStream)) {
             if (!decodeIndexedField(inputStream))
@@ -407,11 +419,26 @@ quint32 Decoder::dynamicTableSize() const
     return lookupTable.dynamicDataSize();
 }
 
+quint32 Decoder::dynamicTableCapacity() const
+{
+    return lookupTable.dynamicDataCapacity();
+}
+
+quint32 Decoder::maxDynamicTableCapacity() const
+{
+    return lookupTable.maxDynamicDataCapacity();
+}
+
 void Decoder::setMaxDynamicTableSize(quint32 size)
 {
     // Up to a caller (HTTP2 protocol handler)
     // to validate this size first.
     lookupTable.setMaxDynamicTableSize(size);
+}
+
+void Decoder::setMaxHeaderListSize(quint32 size)
+{
+    maxHeaderListSize = size;
 }
 
 bool Decoder::decodeIndexedField(BitIStream &inputStream)
@@ -489,6 +516,16 @@ bool Decoder::processDecodedField(BitPattern fieldType,
         if (!lookupTable.prependField(name, value))
             return false;
     }
+
+    if (lookupTable.maxDynamicDataCapacity() < lookupTable.dynamicDataCapacity()) {
+        qDebug("about to add a new field, but expected a Dynamic Table Size Update");
+        return false; // We expected a dynamic table size update.
+    }
+
+    const auto [sizeOk, fieldSize] = entry_size(name, value);
+    headerListSize += fieldSize;
+    if (!sizeOk || headerListSize > maxHeaderListSize)
+        return false;
 
     header.push_back(HeaderField(name, value));
     return true;

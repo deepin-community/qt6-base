@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qplatformdefs.h"
 #include "qurl.h"
@@ -17,48 +18,82 @@ using namespace Qt::Literals;
 */
 Q_CORE_EXPORT bool qDecodeDataUrl(const QUrl &uri, QString &mimeType, QByteArray &payload)
 {
+    /* https://www.rfc-editor.org/rfc/rfc2397.html
+
+        data:[<mediatype>][;base64],<data>
+        dataurl    := "data:" [ mediatype ] [ ";base64" ] "," data
+        mediatype  := [ type "/" subtype ] *( ";" parameter )
+        data       := *urlchar
+        parameter  := attribute "=" value
+    */
+
     if (uri.scheme() != "data"_L1 || !uri.host().isEmpty())
         return false;
 
-    mimeType = QStringLiteral("text/plain;charset=US-ASCII");
-
-    // the following would have been the correct thing, but
-    // reality often differs from the specification. People have
-    // data: URIs with ? and #
-    //QByteArray data = QByteArray::fromPercentEncoding(uri.path(QUrl::FullyEncoded).toLatin1());
-    const QByteArray dataArray =
-            QByteArray::fromPercentEncoding(uri.url(QUrl::FullyEncoded | QUrl::RemoveScheme).toLatin1());
-    QByteArrayView data = dataArray;
-
+    payload = uri.toEncoded(QUrl::RemoveScheme);
     // parse it:
-    const qsizetype pos = data.indexOf(',');
+    // percent decode after finding the `,`, to workaround parameter
+    // values containing a percent-encoded comma
+    const qsizetype pos = payload.indexOf(',');
     if (pos != -1) {
-        payload = data.mid(pos + 1).toByteArray();
-        data.truncate(pos);
+        QByteArray contentType = payload.first(pos).percentDecoded();
+        auto data = QLatin1StringView{contentType};
         data = data.trimmed();
 
-        // find out if the payload is encoded in Base64
-        constexpr auto base64 = ";base64"_L1;
-        if (QLatin1StringView{data}.endsWith(base64, Qt::CaseInsensitive)) {
-            payload = QByteArray::fromBase64(payload);
-            data.chop(base64.size());
-        }
-
-        QLatin1StringView textPlain;
+        QLatin1StringView mime;
+        QLatin1StringView charsetParam;
         constexpr auto charset = "charset"_L1;
-        if (QLatin1StringView{data}.startsWith(charset, Qt::CaseInsensitive)) {
-            qsizetype i = charset.size();
-            while (data.at(i) == ' ')
-                ++i;
-            if (data.at(i) == '=')
-                textPlain = "text/plain;"_L1;
+        bool first = true;
+        for (auto part : qTokenize(data, u';', Qt::SkipEmptyParts)) {
+            part = part.trimmed();
+            if (first) {
+                if (part.contains(u'/'))
+                    mime = part;
+                first = false;
+            }
+            // Minimal changes, e.g. if it's "charset=;" or "charset;" without
+            // an encoding, leave it as-is
+            if (part.startsWith(charset, Qt::CaseInsensitive))
+                charsetParam = part;
+
+            if (!mime.isEmpty() && !charsetParam.isEmpty())
+                break;
         }
 
-        if (!data.isEmpty())
-            mimeType = textPlain + QLatin1StringView(data.trimmed());
+        if (mime.isEmpty()) {
+            mime = "text/plain"_L1;
+            if (charsetParam.isEmpty())
+                charsetParam = "charset=US-ASCII"_L1;
+        }
+        if (!charsetParam.isEmpty())
+            mimeType = mime + u';' + charsetParam;
+        else
+            mimeType = mime;
+
+        // find out if the payload is encoded in Base64
+        constexpr auto base64 = ";base64"_L1; // per the RFC, at the end of `data`
+        const bool isBas64 = data.endsWith(base64, Qt::CaseInsensitive);
+
+        payload.slice(pos + 1);
+        data = {};
+        payload = std::move(payload).percentDecoded();
+
+        if (isBas64) {
+            auto r = QByteArray::fromBase64Encoding(std::move(payload));
+            if (!r) {
+                // just in case someone uses `payload` without checking the returned bool
+                payload = {};
+                return false; // decoding failed
+            }
+            payload = std::move(r.decoded);
+        }
+
+        return true;
+    } else {
+        payload = {};
     }
 
-    return true;
+    return false;
 }
 
 QT_END_NAMESPACE

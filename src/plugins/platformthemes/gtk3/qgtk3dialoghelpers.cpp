@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -14,7 +15,7 @@
 #include <qfileinfo.h>
 
 #include <private/qguiapplication_p.h>
-#include <private/qgenericunixservices_p.h>
+#include <private/qdesktopunixservices_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformfontdatabase.h>
 
@@ -109,7 +110,7 @@ bool QGtk3Dialog::show(Qt::WindowFlags flags, Qt::WindowModality modality, QWind
         if (false) {
 #if defined(GDK_WINDOWING_WAYLAND) && GTK_CHECK_VERSION(3, 22, 0)
         } else if (GDK_IS_WAYLAND_WINDOW(gdkWindow)) {
-            const auto unixServices = dynamic_cast<QGenericUnixServices *>(
+            const auto unixServices = dynamic_cast<QDesktopUnixServices *>(
                     QGuiApplicationPrivate::platformIntegration()->services());
             if (unixServices) {
                 const auto handle = unixServices->portalWindowIdentifier(parent);
@@ -442,7 +443,8 @@ void QGtk3FileDialogHelper::applyOptions()
     if (opts->initialDirectory().isLocalFile())
         setDirectory(opts->initialDirectory());
 
-    foreach (const QUrl &filename, opts->initiallySelectedFiles())
+    const auto initiallySelected = opts->initiallySelectedFiles();
+    for (const QUrl &filename : initiallySelected)
         selectFileInternal(filename);
 
     const QString initialNameFilter = opts->initiallySelectedNameFilter();
@@ -477,13 +479,13 @@ void QGtk3FileDialogHelper::setNameFilters(const QStringList &filters)
     _filters.clear();
     _filterNames.clear();
 
-    foreach (const QString &filter, filters) {
+    for (const QString &filter : filters) {
         GtkFileFilter *gtkFilter = gtk_file_filter_new();
         const QString name = filter.left(filter.indexOf(u'('));
         const QStringList extensions = cleanFilterList(filter);
 
         gtk_file_filter_set_name(gtkFilter, qUtf8Printable(name.isEmpty() ? extensions.join(", "_L1) : name));
-        foreach (const QString &ext, extensions)
+        for (const QString &ext : extensions)
             gtk_file_filter_add_pattern(gtkFilter, qUtf8Printable(ext));
 
         gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(gtkDialog), gtkFilter);
@@ -604,12 +606,41 @@ void QGtk3FontDialogHelper::onFontChanged(QGtk3FontDialogHelper *dialog)
     emit dialog->currentFontChanged(dialog->currentFont());
 }
 
+static gboolean
+qt_fontdialogoptions_filter(const PangoFontFamily *family, const PangoFontFace *face, gpointer data)
+{
+    const QFontDialogOptions *opts = static_cast<QFontDialogOptions*>(data);
+
+    constexpr QFontDialogOptions::FontDialogOptions scalableMask = QFontDialogOptions::ScalableFonts
+                                                                 | QFontDialogOptions::NonScalableFonts;
+    constexpr QFontDialogOptions::FontDialogOptions spacingMask = QFontDialogOptions::ProportionalFonts
+                                                                | QFontDialogOptions::MonospacedFonts;
+    const QFontDialogOptions::FontDialogOptions options = opts->options();
+
+    // The Pango functions are const-safe but the signatures are not const-correct.
+    if ((options & spacingMask) && (options & spacingMask) != spacingMask) {
+        if (bool(options & QFontDialogOptions::MonospacedFonts) != pango_font_family_is_monospace(const_cast<PangoFontFamily *>(family)))
+            return false;
+    }
+
+    if ((options & scalableMask) && (options & scalableMask) != scalableMask) {
+        int n_sizes;
+        pango_font_face_list_sizes(const_cast<PangoFontFace *>(face), NULL, &n_sizes);
+        if (bool(options & QFontDialogOptions::ScalableFonts) != (n_sizes == 0))
+            return false;
+    }
+
+    return true;
+}
+
 void QGtk3FontDialogHelper::applyOptions()
 {
     GtkDialog *gtkDialog = d->gtkDialog();
     const QSharedPointer<QFontDialogOptions> &opts = options();
 
     gtk_window_set_title(GTK_WINDOW(gtkDialog), qUtf8Printable(opts->windowTitle()));
+
+    gtk_font_chooser_set_filter_func(GTK_FONT_CHOOSER(gtkDialog), qt_fontdialogoptions_filter, opts.data(), NULL);
 }
 
 QT_END_NAMESPACE

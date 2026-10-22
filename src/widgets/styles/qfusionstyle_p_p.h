@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFUSIONSTYLE_P_P_H
 #define QFUSIONSTYLE_P_P_H
@@ -33,20 +34,10 @@ public:
     QFusionStylePrivate();
 
     // Used for grip handles
-    QColor lightShade() const {
-        return QColor(255, 255, 255, 90);
-    }
-    QColor darkShade() const {
-        return QColor(0, 0, 0, 60);
-    }
-
-    QColor topShadow() const {
-        return QColor(0, 0, 0, 18);
-    }
-
-    QColor innerContrastLine() const {
-        return QColor(255, 255, 255, 30);
-    }
+    static constexpr QColor lightShade = QColor(255, 255, 255, 90);
+    static constexpr QColor darkShade = QColor(0, 0, 0, 60);
+    static constexpr QColor topShadow = QColor(0, 0, 0, 18);
+    static constexpr QColor innerContrastLine = QColor(255, 255, 255, 30);
 
     // On mac we want a standard blue color used when the system palette is used
     bool isMacSystemPalette(const QPalette &pal) const {
@@ -75,9 +66,15 @@ public:
     }
 
     QColor outline(const QPalette &pal) const {
+        if (isHighContrast()) {
+            return pal.text().color();
+        }
         if (pal.window().style() == Qt::TexturePattern)
             return QColor(0, 0, 0, 160);
-        return pal.window().color().darker(140);
+        auto windowColor = pal.window().color();
+        if (!windowColor.isValid())
+            windowColor = QPalette().window().color();
+        return windowColor.darker(140);
     }
 
     QColor highlightedOutline(const QPalette &pal) const {
@@ -97,7 +94,8 @@ public:
         QColor buttonColor = pal.button().color();
         int val = qGray(buttonColor.rgb());
         buttonColor = buttonColor.lighter(100 + qMax(1, (180 - val)/6));
-        buttonColor.setHsv(buttonColor.hue(), buttonColor.saturation() * 0.75, buttonColor.value());
+        buttonColor.setHsv(buttonColor.hue(), buttonColor.saturation() * 0.75,
+                           buttonColor.value(), buttonColor.alpha());
         return buttonColor;
     }
 
@@ -107,6 +105,18 @@ public:
         menuRightBorder      = 15, // right border on menus
         menuCheckMarkWidth   = 12  // checkmarks width on menus
     };
+
+private:
+    Qt::ColorScheme colorScheme() const
+    {
+        return QGuiApplicationPrivate::platformTheme()->colorScheme();
+    }
+
+    bool isHighContrast() const
+    {
+        return QGuiApplicationPrivate::platformTheme()->contrastPreference()
+                == Qt::ContrastPreference::HighContrast;
+    }
 };
 
 QT_END_NAMESPACE

@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2013 Aleix Pol Gonzalez <aleixpol@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-impl-only
 
 #ifndef QCOLLATOR_H
 #define QCOLLATOR_H
@@ -17,8 +18,9 @@ QT_DECLARE_QESDP_SPECIALIZATION_DTOR(QCollatorSortKeyPrivate)
 
 class Q_CORE_EXPORT QCollatorSortKey
 {
-    friend class QCollator;
+    friend class QCollatorPrivate;
 public:
+    QCollatorSortKey() = delete;
     QCollatorSortKey(const QCollatorSortKey &other);
     QCollatorSortKey(QCollatorSortKey &&other) noexcept = default;
     ~QCollatorSortKey();
@@ -27,9 +29,7 @@ public:
     void swap(QCollatorSortKey &other) noexcept
     { d.swap(other.d); }
 
-    int compare(const QCollatorSortKey &key) const;
-    friend bool operator<(const QCollatorSortKey &lhs, const QCollatorSortKey &rhs)
-    { return lhs.compare(rhs) < 0; }
+    int compare(const QCollatorSortKey &key) const noexcept;
 
 protected:
     QCollatorSortKey(QCollatorSortKeyPrivate*);
@@ -37,7 +37,12 @@ protected:
     QExplicitlySharedDataPointer<QCollatorSortKeyPrivate> d;
 
 private:
-    QCollatorSortKey();
+    friend bool comparesEqual(const QCollatorSortKey &lhs, const QCollatorSortKey &rhs) noexcept
+    { return lhs.compare(rhs) == 0; }
+    friend Qt::weak_ordering
+    compareThreeWay(const QCollatorSortKey &lhs, const QCollatorSortKey &rhs) noexcept
+    { return Qt::compareThreeWay(lhs.compare(rhs), 0); }
+    Q_DECLARE_WEAKLY_ORDERED(QCollatorSortKey)
 };
 
 class Q_CORE_EXPORT QCollator
@@ -89,7 +94,10 @@ public:
     static QCollatorSortKey defaultSortKey(QStringView key);
 
 private:
-    QCollatorPrivate *d;
+    friend Q_CORE_EXPORT bool comparesEqual(const QCollator &lhs, const QCollator &rhs) noexcept;
+    Q_DECLARE_EQUALITY_COMPARABLE(QCollator)
+
+    mutable QCollatorPrivate *d;
 
     void detach();
 };

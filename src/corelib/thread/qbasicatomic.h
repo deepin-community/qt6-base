@@ -1,6 +1,7 @@
 // Copyright (C) 2011 Thiago Macieira <thiago@kde.org>
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QBASICATOMIC_H
 #define QBASICATOMIC_H
@@ -22,6 +23,17 @@ QT_END_NAMESPACE
 template <typename T>
 class QBasicAtomicInteger
 {
+    // atomic operations must never cause UB, so do signed add/sub in unsigned space:
+    static T add_no_UB(T lhs, T rhs)
+    {
+        using U = std::make_unsigned_t<T>;
+        return T(U(lhs) + U(rhs));
+    }
+    static T sub_no_UB(T lhs, T rhs)
+    {
+        using U = std::make_unsigned_t<T>;
+        return T(U(lhs) - U(rhs));
+    }
 public:
     typedef T Type;
     typedef QAtomicOps<T> Ops;
@@ -45,6 +57,7 @@ public:
     static constexpr bool isReferenceCountingWaitFree() noexcept { return Ops::isReferenceCountingWaitFree(); }
 
     bool ref() noexcept { return Ops::ref(_q_value); }
+    void refRelaxed() noexcept { Ops::fetchAndAddRelaxed(_q_value, 1); }
     bool deref() noexcept { return Ops::deref(_q_value); }
 
     static constexpr bool isTestAndSetNative() noexcept { return Ops::isTestAndSetNative(); }
@@ -129,18 +142,18 @@ public:
     { return Ops::fetchAndXorOrdered(_q_value, valueToAdd); }
 
     T operator++() noexcept
-    { return fetchAndAddOrdered(1) + 1; }
+    { return add_no_UB(fetchAndAddOrdered(1), 1); }
     T operator++(int) noexcept
     { return fetchAndAddOrdered(1); }
     T operator--() noexcept
-    { return fetchAndSubOrdered(1) - 1; }
+    { return sub_no_UB(fetchAndSubOrdered(1), 1); }
     T operator--(int) noexcept
     { return fetchAndSubOrdered(1); }
 
     T operator+=(T v) noexcept
-    { return fetchAndAddOrdered(v) + v; }
+    { return add_no_UB(fetchAndAddOrdered(v), v); }
     T operator-=(T v) noexcept
-    { return fetchAndSubOrdered(v) - v; }
+    { return sub_no_UB(fetchAndSubOrdered(v), v); }
     T operator&=(T v) noexcept
     { return fetchAndAndOrdered(v) & v; }
     T operator|=(T v) noexcept

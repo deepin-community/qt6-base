@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qiostheme.h"
 
@@ -11,6 +12,7 @@
 #include <QtGui/private/qcoregraphics_p.h>
 
 #include <QtGui/private/qcoretextfontdatabase_p.h>
+#include <QtGui/private/qapplefileiconengine_p.h>
 #include <QtGui/private/qappleiconengine_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
@@ -44,6 +46,10 @@ QIOSTheme::QIOSTheme()
         qCDebug(lcQpaFonts) << "Contents size category changed to" << UIApplication.sharedApplication.preferredContentSizeCategory;
         QPlatformFontDatabase::repopulateFontDatabase();
     });
+    m_motionPreferenceObserver = QMacNotificationObserver(nil,
+        UIAccessibilityReduceMotionStatusDidChangeNotification, [] {
+        QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
+    });
 }
 
 QIOSTheme::~QIOSTheme()
@@ -57,14 +63,19 @@ void QIOSTheme::initializeSystemPalette()
     Q_DECL_IMPORT QPalette qt_fusionPalette(void);
     s_systemPalette = qt_fusionPalette();
 
+    const auto disabledText = qt_mac_toQBrush(UIColor.tertiaryLabelColor.CGColor);
+
     s_systemPalette.setBrush(QPalette::Window, qt_mac_toQBrush(UIColor.systemGroupedBackgroundColor.CGColor));
     s_systemPalette.setBrush(QPalette::Active, QPalette::WindowText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Disabled, QPalette::WindowText, disabledText);
 
     s_systemPalette.setBrush(QPalette::Base, qt_mac_toQBrush(UIColor.secondarySystemGroupedBackgroundColor.CGColor));
     s_systemPalette.setBrush(QPalette::Active, QPalette::Text, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Disabled, QPalette::Text, disabledText);
 
     s_systemPalette.setBrush(QPalette::Button, qt_mac_toQBrush(UIColor.secondarySystemBackgroundColor.CGColor));
     s_systemPalette.setBrush(QPalette::Active, QPalette::ButtonText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Disabled, QPalette::ButtonText, disabledText);
 
     s_systemPalette.setBrush(QPalette::Active, QPalette::BrightText, qt_mac_toQBrush(UIColor.lightTextColor.CGColor));
     s_systemPalette.setBrush(QPalette::Active, QPalette::PlaceholderText, qt_mac_toQBrush(UIColor.placeholderTextColor.CGColor));
@@ -75,8 +86,10 @@ void QIOSTheme::initializeSystemPalette()
     s_systemPalette.setBrush(QPalette::Highlight, QColor(11, 70, 150, 60));
     s_systemPalette.setBrush(QPalette::HighlightedText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
 
-    if (@available(ios 15.0, *))
-        s_systemPalette.setBrush(QPalette::Accent, qt_mac_toQBrush(UIColor.tintColor.CGColor));
+    s_systemPalette.setBrush(QPalette::ToolTipText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Disabled, QPalette::ToolTipText, disabledText);
+
+    s_systemPalette.setBrush(QPalette::Accent, qt_mac_toQBrush(UIColor.tintColor.CGColor));
 }
 
 const QPalette *QIOSTheme::palette(QPlatformTheme::Palette type) const
@@ -140,6 +153,8 @@ QVariant QIOSTheme::themeHint(ThemeHint hint) const
         return QStringList(QStringLiteral("Fusion"));
     case KeyboardScheme:
         return QVariant(int(MacKeyboardScheme));
+    case PreferFileIconFromTheme:
+        return true;
     default:
         return QPlatformTheme::themeHint(hint);
     }
@@ -190,6 +205,16 @@ void QIOSTheme::requestColorScheme(Qt::ColorScheme scheme)
 #endif
 }
 
+Qt::ContrastPreference QIOSTheme::contrastPreference() const
+{
+    return UIAccessibilityDarkerSystemColorsEnabled() ? Qt::ContrastPreference::HighContrast : Qt::ContrastPreference::NoPreference;
+}
+
+Qt::MotionPreference QIOSTheme::motionPreference() const
+{
+    return UIAccessibilityIsReduceMotionEnabled() ? Qt::MotionPreference::ReducedMotion : Qt::MotionPreference::NoPreference;
+}
+
 void QIOSTheme::applyTheme(UIWindow *window)
 {
     const UIUserInterfaceStyle style = []{
@@ -217,5 +242,11 @@ QIconEngine *QIOSTheme::createIconEngine(const QString &iconName) const
 {
     return new QAppleIconEngine(iconName);
 }
+
+QIcon QIOSTheme::fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions iconOptions) const
+{
+    return QIcon(new QAppleFileIconEngine(fileInfo, iconOptions));
+}
+
 
 QT_END_NAMESPACE

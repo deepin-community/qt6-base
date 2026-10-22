@@ -4,12 +4,31 @@
 
 # WARNING must keep in sync with wasm-emscripten/qmake.conf!
 function (qt_internal_setup_wasm_target_properties wasmTarget)
+    if(QT6_INSTALL_PREFIX)
+        set(WASM_BUILD_DIR "${QT6_INSTALL_PREFIX}")
+    elseif(QT_BUILD_DIR)
+        set(WASM_BUILD_DIR "${QT_BUILD_DIR}")
+    endif()
 
     target_link_options("${wasmTarget}" INTERFACE
     "SHELL:-s MAX_WEBGL_VERSION=2"
-    "SHELL:-s FETCH=1"
     "SHELL:-s WASM_BIGINT=1"
     "SHELL:-s STACK_SIZE=5MB")
+
+    if (QT_FEATURE_sanitize_address OR QT_FEATURE_sanitize_undefined)
+        # It is important to set ASAN_OPTIONS for the address sanitizer, in asan.js
+        target_link_options("${wasmTarget}" INTERFACE "SHELL:--pre-js ${WASM_BUILD_DIR}/plugins/platforms/asan.js" )
+        target_link_options("${wasmTarget}" INTERFACE "SHELL:-g")
+        target_link_options("${wasmTarget}" INTERFACE "SHELL:-sALLOW_MEMORY_GROWTH=1")
+
+        # The default is changed to 1, when asan is in use, force to 0
+        target_link_options("${wasmTarget}" INTERFACE "SHELL:-sEXIT_RUNTIME=0")
+
+        target_compile_options("${wasmTarget}" INTERFACE "SHELL:-fno-inline")
+        target_compile_options("${wasmTarget}" INTERFACE "SHELL:-O1")
+    endif()
+
+    set(executable_link_flags "-sFETCH")
 
     ## wasm64
     if (WASM64)
@@ -25,10 +44,20 @@ function (qt_internal_setup_wasm_target_properties wasmTarget)
         target_compile_options("${wasmTarget}" INTERFACE -O2 -msimd128 -msse -msse2)
     endif()
 
-    # wasm exceptions
+    # exceptions
     if (QT_FEATURE_wasm_exceptions)
         target_compile_options("${wasmTarget}" INTERFACE -fwasm-exceptions)
         target_link_options("${wasmTarget}" INTERFACE -fwasm-exceptions)
+    elseif(QT_FEATURE_exceptions)
+        # add link option only, compile option is added in cross-platform code
+        target_link_options("${wasmTarget}" INTERFACE -fexceptions)
+    endif()
+
+    # setjmp/longjmp type. The type is "emscripten" by default, but must
+    # be set to "wasm" when wasm-exceptions are used, for compatibility reasons.
+    if (QT_FEATURE_wasm_exceptions)
+        target_compile_options("${wasmTarget}" INTERFACE -s SUPPORT_LONGJMP=wasm)
+        target_link_options("${wasmTarget}" INTERFACE -s SUPPORT_LONGJMP=wasm)
     endif()
 
     if (QT_FEATURE_thread)
@@ -72,21 +101,23 @@ function (qt_internal_setup_wasm_target_properties wasmTarget)
 
         target_link_options("${wasmTarget}" INTERFACE "SHELL:-s ASYNCIFY" "-Os")
         target_compile_definitions("${wasmTarget}" INTERFACE QT_HAVE_EMSCRIPTEN_ASYNCIFY)
+    elseif ("QT_EMSCRIPTEN_ASYNCIFY=2" IN_LIST QT_QMAKE_DEVICE_OPTIONS OR QT_FEATURE_wasm_jspi)
+        # Enable JSPI (also known as asyncify 2). Unlike asyncify 1 this
+        # is supported natively by the browsers, and does not require
+        # enabling optimizations.
+        target_link_options("${wasmTarget}" INTERFACE "SHELL:-s JSPI")
+        target_compile_definitions("${wasmTarget}" INTERFACE QT_HAVE_EMSCRIPTEN_ASYNCIFY)
     endif()
 
-    #  Set ASYNCIFY_IMPORTS unconditionally in order to support enabling asyncify at link time.
-    target_link_options("${wasmTarget}" INTERFACE "SHELL:-sASYNCIFY_IMPORTS=qt_asyncify_suspend_js,qt_asyncify_resume_js")
+    _qt_internal_handle_target_supports_shared_libs()
 
     if(QT_FEATURE_shared)
-
-        set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
-
         set(side_modules
             MODULE_LIBRARY SHARED_LIBRARY)
         set(enable_side_module_if_needed
             "$<$<IN_LIST:$<TARGET_PROPERTY:TYPE>,${side_modules}>:SHELL:-s SIDE_MODULE=1>")
         set(enable_main_module_if_needed
-            "$<$<IN_LIST:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:SHELL:-s MAIN_MODULE=1>")
+            "$<$<IN_LIST:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:SHELL:-sMAIN_MODULE=1 ${executable_link_flags}>")
         set(set_shared_module_type_if_needed
             "${enable_side_module_if_needed}"
             "${enable_main_module_if_needed}"
@@ -102,7 +133,7 @@ function (qt_internal_setup_wasm_target_properties wasmTarget)
         target_link_options("${wasmTarget}" INTERFACE "${set_shared_module_type_if_needed}")
 
     else()
-        target_link_options("${wasmTarget}" INTERFACE "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=1")
+        target_link_options("${wasmTarget}" INTERFACE "SHELL:-sERROR_ON_UNDEFINED_SYMBOLS=1 ${executable_link_flags}")
     endif()
 
     # Suppress warnings for known issues for developer builds

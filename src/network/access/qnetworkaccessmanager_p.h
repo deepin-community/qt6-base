@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKACCESSMANAGER_P_H
 #define QNETWORKACCESSMANAGER_P_H
@@ -19,7 +20,6 @@
 #include "qnetworkaccessmanager.h"
 #include "qnetworkaccesscache_p.h"
 #include "qnetworkaccessbackend_p.h"
-#include "private/qnetconmonitor_p.h"
 #include "qnetworkrequest.h"
 #include "qhsts_p.h"
 #include "private/qobject_p.h"
@@ -29,6 +29,10 @@
 #if QT_CONFIG(settings)
 #include "qhstsstore_p.h"
 #endif // QT_CONFIG(settings)
+
+#if QT_CONFIG(settings)
+#include <memory>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -116,16 +120,12 @@ public:
     // The cache with authorization data:
     std::shared_ptr<QNetworkAccessAuthenticationManager> authenticationManager;
 
-    // this cache can be used by individual backends to cache e.g. their TCP connections to a server
-    // and use the connections for multiple requests.
-    QNetworkAccessCache objectCache;
-
     Q_AUTOTEST_EXPORT static void clearAuthenticationCache(QNetworkAccessManager *manager);
     Q_AUTOTEST_EXPORT static void clearConnectionCache(QNetworkAccessManager *manager);
 
     QHstsCache stsCache;
 #if QT_CONFIG(settings)
-    QScopedPointer<QHstsStore> stsStore;
+    std::unique_ptr<QHstsStore> stsStore;
 #endif // QT_CONFIG(settings)
     bool stsEnabled = false;
 

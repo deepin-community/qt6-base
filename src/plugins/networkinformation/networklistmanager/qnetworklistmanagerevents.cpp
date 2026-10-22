@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworklistmanagerevents.h"
 #include <QtCore/private/qsystemerror_p.h>
@@ -195,10 +196,12 @@ using namespace winrt::Windows::Networking::Connectivity;
 [[nodiscard]]
 QNetworkInformation::TransportMedium getTransportMedium(const ConnectionProfile &profile)
 {
-    if (profile.IsWwanConnectionProfile())
-        return QNetworkInformation::TransportMedium::Cellular;
-    if (profile.IsWlanConnectionProfile())
-        return QNetworkInformation::TransportMedium::WiFi;
+    if (auto p2 = profile.try_as<IConnectionProfile2>()) {
+        if (p2.IsWwanConnectionProfile())
+            return QNetworkInformation::TransportMedium::Cellular;
+        if (p2.IsWlanConnectionProfile())
+            return QNetworkInformation::TransportMedium::WiFi;
+    }
 
     NetworkAdapter adapter(nullptr);
     try {

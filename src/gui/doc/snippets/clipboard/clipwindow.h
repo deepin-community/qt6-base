@@ -6,6 +6,8 @@
 
 #include <QMainWindow>
 
+QT_BEGIN_NAMESPACE
+
 class QClipboard;
 class QComboBox;
 class QLabel;
@@ -31,5 +33,7 @@ private:
     QLabel *dataInfoLabel;
     QListWidget *previousItems;
 };
+
+QT_END_NAMESPACE
 
 #endif

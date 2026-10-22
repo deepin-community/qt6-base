@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-parsing-only
 
 #include "qplatformdefs.h"
 #include "qfiledevice.h"
@@ -32,16 +33,32 @@ QAbstractFileEngine *QFileDevicePrivate::engine() const
     return fileEngine.get();
 }
 
+QFileDevice::Permissions QFileDevicePrivate::permissions() const
+{
+    QAbstractFileEngine::FileFlags perms = engine()->fileFlags(QAbstractFileEngine::PermsMask) & QAbstractFileEngine::PermsMask;
+    return QFile::Permissions::fromInt(perms.toInt()); //ewww
+}
+
+bool QFileDevicePrivate::setPermissions(QFileDevice::Permissions perms)
+{
+    if (engine()->setPermissions(perms.toInt())) {
+        setError(QFileDevice::NoError);
+        return true;
+    }
+    setError(QFile::PermissionsError, fileEngine->errorString());
+    return false;
+}
+
 void QFileDevicePrivate::setError(QFileDevice::FileError err)
 {
     error = err;
     errorString.clear();
 }
 
-void QFileDevicePrivate::setError(QFileDevice::FileError err, const QString &errStr)
+void QFileDevicePrivate::setError(QFileDevice::FileError err, QString errStr)
 {
     error = err;
-    errorString = errStr;
+    errorString = std::move(errStr);
 }
 
 void QFileDevicePrivate::setError(QFileDevice::FileError err, int errNum)
@@ -338,7 +355,8 @@ void QFileDevice::close()
     // reset cached size
     d->cachedSize = 0;
 
-    // keep earlier error from flush
+    // If flush() succeeded but close() failed, copy its error condition;
+    // otherwise, keep the earlier flush() error.
     if (d->fileEngine->close() && flushed)
         unsetError();
     else if (flushed)
@@ -653,8 +671,7 @@ bool QFileDevice::resize(qint64 sz)
 QFile::Permissions QFileDevice::permissions() const
 {
     Q_D(const QFileDevice);
-    QAbstractFileEngine::FileFlags perms = d->engine()->fileFlags(QAbstractFileEngine::PermsMask) & QAbstractFileEngine::PermsMask;
-    return QFile::Permissions::fromInt(perms.toInt()); //ewww
+    return d->permissions();
 }
 
 /*!
@@ -670,12 +687,7 @@ QFile::Permissions QFileDevice::permissions() const
 bool QFileDevice::setPermissions(Permissions permissions)
 {
     Q_D(QFileDevice);
-    if (d->engine()->setPermissions(permissions.toInt())) {
-        unsetError();
-        return true;
-    }
-    d->setError(QFile::PermissionsError, d->fileEngine->errorString());
-    return false;
+    return d->setPermissions(permissions);
 }
 
 /*!

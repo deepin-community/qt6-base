@@ -1,5 +1,8 @@
 type: Group
 instructions:
+  # Fetch a custom built cmake if the feature is set.
+  - !include "{{qt/qtbase}}/coin_fetch_custom_cmake_checked.yaml"
+
   - type: Group
     instructions:
     - !include "{{qt/qtbase}}/run_license_check.yaml"
@@ -24,7 +27,7 @@ instructions:
               equals_property: target.os
             - condition: property
               property: target.osVersion
-              in_values: [QEMU, QNX_710]
+              in_values: [QEMU, QNX_710, QNX_800]
     disable_if:
       condition: or
       conditions:
@@ -34,3 +37,6 @@ instructions:
         - condition: property
           property: features
           contains_value: LicenseCheckV2
+        - condition: property
+          property: features
+          contains_value: DoNotRunTestsButCreateTestWorkItem

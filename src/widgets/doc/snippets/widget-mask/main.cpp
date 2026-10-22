@@ -2,16 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtGui>
+#include <QApplication>
+#include <QLabel>
+#include <QPixmap>
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-//! [0]
+
+    //! [0]
     QLabel topLevelLabel;
     QPixmap pixmap(":/images/tux.png");
     topLevelLabel.setPixmap(pixmap);
     topLevelLabel.setMask(pixmap.mask());
-//! [0]
+    //! [0]
+
     topLevelLabel.show();
     return app.exec();
 }

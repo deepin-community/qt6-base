@@ -4,6 +4,7 @@
 
 layout(points) in;
 layout(line_strip, max_vertices = 7) out;
+layout(location = 0) in vec4 v_position[];
 
 layout(std140, binding = 0) uniform buf {
     float radius;
@@ -16,7 +17,7 @@ void main(void)
     {
         float theta = float(i) / 6.0f * 2.0 * M_PI;
 
-        gl_Position = gl_in[0].gl_Position;
+        gl_Position = v_position[0];
         gl_Position.xy += radius * vec2(cos(theta), sin(theta));
 
         EmitVertex();

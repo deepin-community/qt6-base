@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qiosurfacegraphicsbuffer.h"
 
@@ -45,6 +46,10 @@ QIOSurfaceGraphicsBuffer::QIOSurfaceGraphicsBuffer(const QSize &size, const QPix
 
     Q_ASSERT(size_t(bytesPerLine()) == bytesPerRow);
     Q_ASSERT(size_t(byteCount()) == totalBytes);
+
+    QObject::connect(this, &QObject::objectNameChanged, this, [this]{
+        IOSurfaceSetValue(m_surface, kIOSurfaceName, objectName().toNSString());
+    });
 }
 
 QIOSurfaceGraphicsBuffer::~QIOSurfaceGraphicsBuffer()

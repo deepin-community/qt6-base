@@ -2,16 +2,22 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "private/qlockfile_p.h"
 #include "private/qfilesystementry_p.h"
+#include "wcharhelpers_win_p.h"
+
+#include "QtCore/qdatetime.h"
+#include "QtCore/qdir.h"
+#include "QtCore/qdebug.h"
+#include "QtCore/qfileinfo.h"
+#include "QtCore/qthread.h"
+
 #include <qt_windows.h>
 #include <psapi.h>
-
-#include "QtCore/qfileinfo.h"
-#include "QtCore/qdatetime.h"
-#include "QtCore/qdebug.h"
-#include "QtCore/qthread.h"
+#include <io.h>
+#include <fcntl.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -21,14 +27,38 @@ static inline bool fileExists(const wchar_t *fileName)
     return GetFileAttributesEx(fileName, GetFileExInfoStandard, &data);
 }
 
+static bool deleteFile(const QString &fileName)
+{
+    const DWORD dwShareMode = 0;    // no sharing
+    SECURITY_ATTRIBUTES securityAtts = { sizeof(SECURITY_ATTRIBUTES), NULL, FALSE };
+    HANDLE fh = CreateFile(qt_castToWchar(QDir::toNativeSeparators(fileName)),
+                           GENERIC_READ | GENERIC_WRITE,
+                           dwShareMode,
+                           &securityAtts,
+                           OPEN_EXISTING, // error if it doesn't exist
+                           FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE,
+                           NULL);
+    bool success = (fh != INVALID_HANDLE_VALUE);
+    if (success) {
+        CloseHandle(fh);
+        // the file is now deleted
+    } else {
+        const DWORD lastError = GetLastError();
+        if (lastError == ERROR_FILE_NOT_FOUND)
+            success = true;
+    }
+    return success;
+}
+
 QLockFile::LockError QLockFilePrivate::tryLock_sys()
 {
     const QFileSystemEntry fileEntry(fileName);
     // When writing, allow others to read.
     // When reading, QFile will allow others to read and write, all good.
-    // Adding FILE_SHARE_DELETE would allow forceful deletion of stale files,
-    // but Windows doesn't allow recreating it while this handle is open anyway,
-    // so this would only create confusion (can't lock, but no lock file to read from).
+    // ### Open the file with DELETE permission and use
+    // SetFileInformationByHandle to delete the file without needing to close
+    // the handle first, to avoid someone opening the handle again without the
+    // FILE_SHARE_DELETE flag in-between closure and deletion.
     const DWORD dwShareMode = FILE_SHARE_READ;
     SECURITY_ATTRIBUTES securityAtts = { sizeof(SECURITY_ATTRIBUTES), NULL, FALSE };
     HANDLE fh = CreateFile((const wchar_t*)fileEntry.nativeFilePath().utf16(),
@@ -69,8 +99,8 @@ QLockFile::LockError QLockFilePrivate::tryLock_sys()
 
 bool QLockFilePrivate::removeStaleLock()
 {
-    // QFile::remove fails on Windows if the other process is still using the file, so it's not stale.
-    return QFile::remove(fileName);
+    // DeleteFile fails if the other process is still using the file, so it's not stale.
+    return deleteFile(fileName);
 }
 
 bool QLockFilePrivate::isProcessRunning(qint64 pid, const QString &appname)
@@ -115,6 +145,30 @@ QString QLockFilePrivate::processNameByPid(qint64 pid)
     return name;
 }
 
+int QLockFilePrivate::openNewFileDescriptor(const QString &fileName)
+{
+    // We currently open with FILE_SHARE_DELETE, which would allow deletion to
+    // be requested even while other processes have the file open. We mostly
+    // want to do this so we can later open the file with the DELETE permission
+    // to delete the file using SetFileInformationByHandle, avoiding the need
+    // to close the handle first, where e.g. search indexer or antivirus may
+    // see their chance to open the file before we can delete it.
+    // We can't make this change immediately because currently-deployed
+    // applications will not be using FILE_SHARE_DELETE, so they would suddenly
+    // be unable to read the lockfile information.
+    HANDLE handle = CreateFile(reinterpret_cast<const wchar_t *>(fileName.utf16()), GENERIC_READ,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return -1;
+    int fd = _open_osfhandle(intptr_t(handle), _O_RDONLY);
+    if (fd == -1) {
+        CloseHandle(handle);
+        return -1;
+    }
+    return fd;
+}
+
 void QLockFile::unlock()
 {
     Q_D(QLockFile);
@@ -123,7 +177,7 @@ void QLockFile::unlock()
     CloseHandle(d->fileHandle);
     int attempts = 0;
     static const int maxAttempts = 500; // 500ms
-    while (!QFile::remove(d->fileName) && ++attempts < maxAttempts) {
+    while (!deleteFile(d->fileName) && ++attempts < maxAttempts) {
         // Someone is reading the lock file right now (on Windows this prevents deleting it).
         QThread::msleep(1);
     }

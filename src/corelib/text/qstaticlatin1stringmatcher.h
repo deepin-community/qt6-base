@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QSTATICLATIN1STRINGMATCHER_H
 #define QSTATICLATIN1STRINGMATCHER_H
@@ -31,7 +32,7 @@ public:
         uchar max = n > uchar_max ? uchar_max : uchar(n);
         q20::fill(std::begin(m_skiptable), std::end(m_skiptable), max);
         Hash hf;
-        RandomIt1 pattern = std::next(pat_first, n - max);
+        RandomIt1 pattern = pat_first + (n - max);
         while (max--)
             m_skiptable[hf(*pattern++)] = max;
     }

@@ -1,7 +1,9 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #include "pythonwriteimports.h"
+#include "language.h"
 
 #include <customwidgetsinfo.h>
 #include <option.h>
@@ -78,7 +80,10 @@ static void formatImportClasses(QTextStream &str, QStringList classList)
     for (qsizetype i = 0; i < size; ++i) {
         if (i > 0)
             str << (i % 4 == 0 ? ",\n    " : ", ");
-        str << classList.at(i);
+        QString name = language::fixClassName(classList.at(i));
+        if (const auto dotPos = name.indexOf(u'.'); dotPos != -1)
+            name.truncate(dotPos); // Import outer class only in case of nested
+        str << name;
     }
     if (size > 1)
         str << ')';
@@ -215,9 +220,6 @@ bool WriteImports::addQtClass(const QString &className)
 
 void WriteImports::addPythonCustomWidget(const QString &className, const DomCustomWidget *node)
 {
-    if (className.contains("::"_L1))
-        return; // Exclude namespaced names (just to make tests pass).
-
     if (addQtClass(className))  // Qt custom widgets like QQuickWidget, QAxWidget, etc
         return;
 
@@ -227,15 +229,18 @@ void WriteImports::addPythonCustomWidget(const QString &className, const DomCust
         m_plainCustomWidgets.append(className);
     } else { // When we do have elementHeader, we know it's a relative import.
         QString modulePath = node->elementHeader()->text();
-        // Replace the '/' by '.'
-        modulePath.replace(u'/', u'.');
-        // '.h' is added by default on headers for <customwidget>.
-        if (modulePath.endsWith(".h"_L1, Qt::CaseInsensitive))
-            modulePath.chop(2);
-        else if (modulePath.endsWith(".hh"_L1))
-            modulePath.chop(3);
-        else if (modulePath.endsWith(".hpp"_L1))
-            modulePath.chop(4);
+        // Check for "Python:Module;"
+        if (!extractHeader("Python:"_L1, &modulePath)) {
+            // Replace the '/' by '.'
+            modulePath.replace(u'/', u'.');
+            // '.h' is added by default on headers for <customwidget>.
+            if (modulePath.endsWith(".h"_L1, Qt::CaseInsensitive))
+                modulePath.chop(2);
+            else if (modulePath.endsWith(".hh"_L1))
+                modulePath.chop(3);
+            else if (modulePath.endsWith(".hpp"_L1))
+                modulePath.chop(4);
+        }
         insertClass(modulePath, className, &m_customWidgets);
     }
 }

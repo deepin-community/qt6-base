@@ -11,6 +11,11 @@
 #include <QtTest/QTest>
 #include <QList>
 #include <QMap>
+#include <QScopeGuard>
+
+#ifdef Q_OS_UNIX
+#  include <signal.h>
+#endif
 
 class tst_qmessagehandler : public QObject
 {
@@ -37,6 +42,10 @@ private slots:
     void qMessagePattern_data();
     void qMessagePattern();
     void setMessagePattern();
+
+    void fatalWarnings_data();
+    void fatalWarnings();
+    void fatalWarningsRaceCondition();
 
     void formatLogMessage_data();
     void formatLogMessage();
@@ -721,16 +730,16 @@ void tst_qmessagehandler::qMessagePattern_data()
 
     // %{file} is tricky because of shadow builds
     QTest::newRow("basic") << "%{type} %{appname} %{line} %{function} %{message}" << true << (QList<QByteArray>()
-            << "debug  14 T::T static constructor"
+            << "debug  15 T::T static constructor"
             //  we can't be sure whether the QT_MESSAGE_PATTERN is already destructed
             << "static destructor"
-            << "debug tst_qlogging 35 MyClass::myFunction from_a_function 34"
-            << "debug tst_qlogging 45 main qDebug"
-            << "info tst_qlogging 46 main qInfo"
-            << "warning tst_qlogging 47 main qWarning"
-            << "critical tst_qlogging 48 main qCritical"
-            << "warning tst_qlogging 51 main qDebug with category"
-            << "debug tst_qlogging 55 main qDebug2");
+            << "debug tst_qlogging 36 MyClass::myFunction from_a_function 34"
+            << "debug tst_qlogging 58 main qDebug"
+            << "info tst_qlogging 59 main qInfo"
+            << "warning tst_qlogging 60 main qWarning"
+            << "critical tst_qlogging 61 main qCritical"
+            << "warning tst_qlogging 64 main qDebug with category"
+            << "debug tst_qlogging 68 main qDebug2");
 
 
     QTest::newRow("invalid") << "PREFIX: %{unknown} %{message}" << false << (QList<QByteArray>()
@@ -764,6 +773,11 @@ void tst_qmessagehandler::qMessagePattern_data()
 
     QTest::newRow("pid-tid") << "%{pid}/%{threadid}: %{message}"
          << true << QList<QByteArray>(); // can't match anything, just test validity
+#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN) || defined(Q_OS_FREEBSD) || defined(Q_OS_NETBSD) || defined(Q_OS_WIN)
+    QTest::newRow("threadname") << "%[%{threadname}] %{message}"
+         << true << (QList<QByteArray>()
+              << "[1234567890ABCDE] qDebug from another thread");
+#endif
     QTest::newRow("qthreadptr") << "ThreadId:%{qthreadptr}: %{message}"
          << true << (QList<QByteArray>()
               << "ThreadId:0x");
@@ -837,8 +851,8 @@ void tst_qmessagehandler::qMessagePattern()
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
 #else
-#ifdef Q_OS_ANDROID
-    QSKIP("This test crashes on Android");
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Spawning helper processes is not supported on this platform.");
 #endif
     QFETCH(QString, pattern);
     QFETCH(bool, valid);
@@ -883,8 +897,8 @@ void tst_qmessagehandler::setMessagePattern()
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
 #else
-#ifdef Q_OS_ANDROID
-    QSKIP("This test crashes on Android");
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Spawning helper processes is not supported on this platform.");
 #endif
 
     //
@@ -915,6 +929,104 @@ void tst_qmessagehandler::setMessagePattern()
 #endif
     QCOMPARE(QString::fromLatin1(output), QString::fromLatin1(expected));
 #endif // QT_CONFIG(process)
+}
+
+void tst_qmessagehandler::fatalWarnings_data()
+{
+    QTest::addColumn<QString>("varName");
+    QTest::addColumn<QString>("varValue");
+    QTest::addColumn<QByteArray>("presentOutput");
+    QTest::addColumn<QByteArray>("absentOutput");
+
+    QTest::newRow("QT_FATAL_WARNINGS=1")
+            << "QT_FATAL_WARNINGS" << "1"
+            << QByteArray("[warning] qWarning") << QByteArray("[critical] qCritical");
+    QTest::newRow("QT_FATAL_CRITICALS=1")
+            << "QT_FATAL_CRITICALS" << "1"
+            << QByteArray("[critical] qCritical") << QByteArray("[warning] qDebug with category");
+    QTest::newRow("QT_FATAL_WARNINGS=2")
+            << "QT_FATAL_WARNINGS" << "2"
+            << QByteArray("[warning] qDebug with category") << QByteArray("[debug] qDebug2");
+
+#if !QT_CONFIG(process)
+    QSKIP("This test requires QProcess support");
+#endif
+}
+
+void tst_qmessagehandler::fatalWarnings()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Spawning helper processes is not supported on this platform.");
+#endif
+#if QT_CONFIG(process)
+    QFETCH(QString, varName);
+    QFETCH(QString, varValue);
+    QFETCH(QByteArray, presentOutput);
+    QFETCH(QByteArray, absentOutput);
+
+    QProcess process;
+    const QString appExe(backtraceHelperPath());
+
+    //
+    // test QT_FATAL_WARNINGS / QT_FATAL_CRITICALS
+    //
+    QProcessEnvironment environment = m_baseEnvironment;
+    environment.insert(varName, varValue);
+    process.setProcessEnvironment(environment);
+
+    process.start(appExe, {}, QIODevice::Text | QIODevice::ReadWrite);
+    QVERIFY2(process.waitForStarted(), qPrintable(
+        QString::fromLatin1("Could not start %1: %2").arg(appExe, process.errorString())));
+    process.waitForFinished();
+
+    QCOMPARE(process.exitStatus(), QProcess::CrashExit);
+#  ifdef Q_OS_UNIX
+    QCOMPARE(process.exitCode(), SIGABRT);
+#  elif defined(Q_CC_MSVC)
+    // __fastfail produces STATUS_STACK_BUFFER_OVERRUN
+    QCOMPARE(process.exitCode(), int(0xc0000409));
+#  else
+    // RaiseFastFail produces STATUS_FAIL_FAST_EXCEPTION
+    QCOMPARE(process.exitCode(), int(0xc0000602));
+#  endif
+
+    QList<QByteArray> lines = process.readAllStandardError().split('\n');
+    auto outputOnError = qScopeGuard([&lines] {
+        qDebug("Output was:\n");
+        for (const QByteArray &line : lines)
+            qDebug() << line;
+    });
+
+    QVERIFY2(lines.contains(presentOutput), presentOutput);
+    QVERIFY2(!lines.contains(absentOutput), absentOutput);
+    outputOnError.dismiss();
+#endif // QT_CONFIG(process)
+}
+
+void tst_qmessagehandler::fatalWarningsRaceCondition()
+{
+#if !QT_CONFIG(process)
+    QSKIP("This test requires QProcess support");
+#elif !defined(Q_OS_UNIX)
+    QSKIP("This test only works on Unix systems (need a SIGABRT handler)");
+#elif defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Spawning helper processes is not supported on this platform.");
+#else
+    QProcess process;
+    const QString appExe(QCoreApplication::applicationDirPath() + "/qlogging_race_helper");
+
+    QProcessEnvironment environment = m_baseEnvironment;
+    environment.insert("QT_FATAL_WARNINGS", "1");
+    process.setProcessEnvironment(environment);
+
+    process.start(appExe, {}, QIODevice::Text | QIODevice::ReadWrite);
+    QVERIFY2(process.waitForStarted(), qPrintable(
+        QString::fromLatin1("Could not start %1: %2").arg(appExe, process.errorString())));
+    process.waitForFinished();
+
+    QCOMPARE(process.exitStatus(), QProcess::CrashExit);
+    QCOMPARE(process.exitCode(), SIGABRT);
+#endif
 }
 
 Q_DECLARE_METATYPE(QtMsgType)
@@ -955,11 +1067,7 @@ void tst_qmessagehandler::formatLogMessage_data()
             << format << "[F] msg"
             << QtFatalMsg << BA("") << 0 << BA("func") << QByteArray() << "msg";
     QTest::newRow("if_cat")
-#ifndef Q_OS_ANDROID
             << format << "[F] cat: msg"
-#else
-            << format << "[F] : msg"
-#endif
             << QtFatalMsg << BA("") << 0 << BA("func") << BA("cat") << "msg";
 }
 
@@ -984,8 +1092,8 @@ void tst_qmessagehandler::formatLogMessage()
 QString tst_qmessagehandler::backtraceHelperPath()
 {
 #ifdef Q_OS_ANDROID
-    QString appExe(QCoreApplication::applicationDirPath()
-                   + QLatin1String("/lib" BACKTRACE_HELPER_NAME ".so"));
+    qFatal("Launching the helper (which does exist) produces 'No such file or directory'.");
+    QString appExe;
 #else
     QString appExe(QCoreApplication::applicationDirPath()
                    + QLatin1String("/" BACKTRACE_HELPER_NAME));

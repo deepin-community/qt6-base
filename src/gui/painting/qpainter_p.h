@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPAINTER_P_H
 #define QPAINTER_P_H
@@ -15,6 +16,7 @@
 // We mean it.
 //
 
+#include <QtCore/qspan.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtGui/private/qtguiglobal_p.h>
 #include "QtGui/qbrush.h"
@@ -166,7 +168,7 @@ public:
     // redirections within the same paintEvent(), which should be enough
     // in 99% of all cases). E.g: A renders B which renders C which renders D.
     static constexpr qsizetype NDPtrs = 4;
-    QVarLengthArray<QPainterPrivate*, NDPtrs> d_ptrs;
+    QVarLengthArray<std::unique_ptr<QPainterPrivate>, NDPtrs> d_ptrs;
 
     std::unique_ptr<QPainterState> state;
     template <typename T, std::size_t N = 8>
@@ -242,6 +244,8 @@ public:
     std::unique_ptr<QEmulationPaintEngine> emulationEngine;
     QPaintEngineEx *extended = nullptr;
     QBrush colorBrush;          // for fill with solid color
+
+    Q_GUI_EXPORT void setEngineDirtyFlags(QSpan<const QPaintEngine::DirtyFlags>);
 };
 
 Q_GUI_EXPORT void qt_draw_helper(QPainterPrivate *p, const QPainterPath &path, QPainterPrivate::DrawOperation operation);

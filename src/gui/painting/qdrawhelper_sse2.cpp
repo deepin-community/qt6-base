@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <private/qdrawhelper_x86_p.h>
 
@@ -198,7 +199,7 @@ void QT_FASTCALL comp_func_Source_sse2(uint *dst, const uint *src, int length, u
 }
 
 #ifndef __haswell__
-static Q_NEVER_INLINE
+Q_NEVER_INLINE static
 void Q_DECL_VECTORCALL qt_memfillXX_aligned(void *dest, __m128i value128, quintptr bytecount)
 {
     __m128i *dst128 = reinterpret_cast<__m128i *>(dest);

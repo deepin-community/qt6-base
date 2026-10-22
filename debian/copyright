@@ -32,8 +32,7 @@ Files: *.qdoc
 Copyright: 2016-2021 The Qt Company Ltd.
 License: GFDL-NIV-1.3
 
-Files: conanfile.py
-       config.tests/static_link_order/*
+Files: config.tests/static_link_order/*
        mkspecs/features/data/dumpvcvars.bat
        qmake/*
        src/corelib/debug_script.py
@@ -60,7 +59,7 @@ Copyright: 2016-2022 The Qt Company Ltd.
 License: BSD-3-clause
 
 Files: debian/*
-Copyright: 2021-2022 Patrick Franz <deltaone@debian.org>
+Copyright: 2021-2026 Patrick Franz <deltaone@debian.org>
 License: LGPL-3 or GPL-2
 
 # Auto-generated rules for non-3rdparty code
@@ -89,7 +88,6 @@ Files: examples/network/multistreamclient/chatconsumer.cpp
        examples/network/multistreamserver/server.h
        examples/network/multistreamserver/timeprovider.cpp
        examples/network/multistreamserver/timeprovider.h
-       examples/network/shared/sctpchannels.h
        src/network/doc/snippets/code/src_network_socket_qsctpsocket.cpp
 Copyright: 2015-2016 Alex Trotsenko <alex1973tr@gmail.com>
 License: BSD-3-clause
@@ -139,13 +137,6 @@ Files: src/corelib/doc/snippets/code/src_corelib_io_qstorageinfo.cpp
 Copyright: 2014 Ivan Komissarov <ABBAPOH@gmail.com>
 License: BSD-3-clause
 
-Files: examples/widgets/itemviews/storageview/main.cpp
-       examples/widgets/itemviews/storageview/storagemodel.cpp
-       examples/widgets/itemviews/storageview/storagemodel.h
-Copyright: 2016 Ivan Komissarov <ABBAPOH@gmail.com>
-           2016 The Qt Company Ltd.
-License: BSD-3-clause
-
 Files: examples/network/dnslookup/dnslookup.cpp
        examples/network/dnslookup/dnslookup.h
        src/network/doc/snippets/code/src_network_kernel_qdnslookup.cpp
@@ -169,8 +160,7 @@ Files: tests/auto/cmake/mockplugins/mock1plugin/qmock1plugin.h
 Copyright: 2018 Kitware, Inc.
 License: BSD-3-clause
 
-Files: examples/widgets/itemviews/flattreeview/main.cpp
-       src/corelib/doc/snippets/code/src_corelib_text_qanystringview.cpp
+Files: src/corelib/doc/snippets/code/src_corelib_text_qanystringview.cpp
        src/corelib/doc/snippets/code/src_corelib_text_qstringiterator.cpp
        src/corelib/doc/snippets/code/src_corelib_text_qutf8stringview.cpp
        src/corelib/doc/snippets/code/src_corelib_tools_qscopeguard.cpp
@@ -200,19 +190,11 @@ Files: src/corelib/doc/snippets/code/src_corelib_thread_qthread.cpp
 Copyright: 2016 Olivier Goffart <ogoffart@woboq.com>
 License: BSD-3-clause
 
-Files: examples/widgets/widgets/mousebuttons/buttontester.cpp
-       examples/widgets/widgets/mousebuttons/buttontester.h
-       examples/widgets/widgets/mousebuttons/main.cpp
-Copyright: 2016 Rick Stockton <rickstockton@reno-computerhelp.com>
-           2016 The Qt Company Ltd.
-License: BSD-3-clause
-
 Files: src/corelib/doc/snippets/qmessageauthenticationcode/main.cpp
 Copyright: 2016 Ruslan Nigmatullin <euroelessar@yandex.ru>
 License: BSD-3-clause
 
-Files: src/corelib/doc/snippets/code/src_corelib_kernel_qabstractnativeeventfilter.h
-       src/corelib/doc/snippets/code/src_corelib_kernel_qabstractnativeeventfilter.mm
+Files: src/corelib/doc/snippets/code/src_corelib_kernel_qabstractnativeeventfilter.mm
        src/gui/doc/snippets/qfileopenevent/Info.plist
        src/gui/doc/snippets/qfileopenevent/main.cpp
        src/gui/doc/snippets/qimagewriter/main.cpp
@@ -227,12 +209,6 @@ Files: src/corelib/doc/snippets/qbytearraylist/main.cpp
 Copyright: 2014 by Southwest Research Institute (R)
 License: BSD-3-clause
 
-## Expat
-
-Files: util/x86simdgen/generate.pl
-Copyright: 2018 Intel Corporation
-License: Expat
-
 ## GFDL-NIV-1.3
 
 Files: src/corelib/global/qglobalstatic.qdoc
@@ -244,9 +220,7 @@ Copyright: 2016 Intel Corporation
            2019 The Qt Company Ltd.
 License: GFDL-NIV-1.3
 
-Files: src/corelib/global/qcompare.qdoc
-       src/corelib/text/qanystringview.qdoc
-       src/corelib/text/qstringiterator.qdoc
+Files: src/corelib/text/qstringiterator.qdoc
        src/corelib/text/qutf8stringview.qdoc
 Copyright: 2014-2020 Klarälvdalens Datakonsult AB, a KDAB Group company
 License: GFDL-NIV-1.3
@@ -255,11 +229,6 @@ Files: src/corelib/global/qnamespace.qdoc
        src/corelib/tools/qscopeguard.qdoc
 Copyright: 2018-2020 Klarälvdalens Datakonsult AB, a KDAB Group company
            2019-2021 The Qt Company Ltd.
-License: GFDL-NIV-1.3
-
-Files: examples/widgets/doc/mousebuttons.qdoc
-Copyright: 2016 Rick Stockton <rickstockton@reno-computerhelp.com>
-           2016 The Qt Company Ltd.
 License: GFDL-NIV-1.3
 
 ## GPL-3
@@ -276,8 +245,6 @@ Files: src/plugins/platforms/wasm/main.cpp
        src/plugins/platforms/wasm/qwasmcursor.h
        src/plugins/platforms/wasm/qwasmeventdispatcher.cpp
        src/plugins/platforms/wasm/qwasmeventdispatcher.h
-       src/plugins/platforms/wasm/qwasmeventtranslator.cpp
-       src/plugins/platforms/wasm/qwasmeventtranslator.h
        src/plugins/platforms/wasm/qwasmfontdatabase.cpp
        src/plugins/platforms/wasm/qwasmfontdatabase.h
        src/plugins/platforms/wasm/qwasmintegration.cpp
@@ -290,9 +257,6 @@ Files: src/plugins/platforms/wasm/main.cpp
        src/plugins/platforms/wasm/qwasmscreen.h
        src/plugins/platforms/wasm/qwasmservices.cpp
        src/plugins/platforms/wasm/qwasmservices.h
-       src/plugins/platforms/wasm/qwasmstring.cpp
-       src/plugins/platforms/wasm/qwasmstring.h
-       src/plugins/platforms/wasm/qwasmstylepixmaps_p.h
        src/plugins/platforms/wasm/qwasmtheme.cpp
        src/plugins/platforms/wasm/qwasmtheme.h
        src/plugins/platforms/wasm/qwasmwindow.cpp
@@ -325,7 +289,6 @@ Copyright: 2015 André Klitzing <aklitzing@gmail.com>
 License: GPL-3 with Qt-1.0 exception
 
 Files: tests/auto/corelib/io/qfileselector/tst_qfileselector.cpp
-       tests/manual/qsslsocket/main.cpp
 Copyright: 2013-2014 BlackBerry Limited (formerly Research In Motion)
 License: GPL-3 with Qt-1.0 exception
 
@@ -337,11 +300,6 @@ License: GPL-3 with Qt-1.0 exception
 Files: src/tools/androidtestrunner/main.cpp
 Copyright: 2019 BogDan Vatra <bogdan@kde.org>
            2016 The Qt Company Ltd.
-License: GPL-3 with Qt-1.0 exception
-
-Files: tests/manual/xembed-raster/gtk-embedder.py
-       tests/manual/xembed-widgets/gtk-embedder.py
-Copyright: 2013 Canonical, Ltd.
 License: GPL-3 with Qt-1.0 exception
 
 Files: tests/benchmarks/corelib/time/qtimezone/tst_bench_qtimezone.cpp
@@ -385,8 +343,7 @@ Copyright: 2014 Governikus GmbH & Co. KG.
            2016-2021 The Qt Company Ltd.
 License: GPL-3 with Qt-1.0 exception
 
-Files: tests/auto/corelib/text/qbytedatabuffer/tst_qbytedatabuffer.cpp
-       tests/benchmarks/network/access/qnetworkreply_from_cache/tst_qnetworkreply_from_cache.cpp
+Files: tests/benchmarks/network/access/qnetworkreply_from_cache/tst_qnetworkreply_from_cache.cpp
 Copyright: 2012 Hewlett-Packard Development Company, L.P.
 License: GPL-3 with Qt-1.0 exception
 
@@ -399,10 +356,7 @@ Copyright: 2021 Igor Kushnir <igorkuo@gmail.com>
            2016 The Qt Company Ltd.
 License: GPL-3 with Qt-1.0 exception
 
-Files: src/corelib/mimetypes/mime/generate.bat
-       src/corelib/mimetypes/mime/generate.pl
-       src/corelib/mimetypes/mime/hexdump.ps1
-       src/tools/moc/cbordevice.h
+Files: src/tools/moc/cbordevice.h
        tests/auto/corelib/global/qglobal/qglobal.c
        tests/auto/corelib/global/qrandomgenerator/tst_qrandomgenerator.cpp
        tests/auto/corelib/io/qipaddress/tst_qipaddress.cpp
@@ -413,7 +367,6 @@ Files: src/corelib/mimetypes/mime/generate.bat
        tests/auto/corelib/plugin/qplugin/invalidplugin/main.cpp
        tests/auto/corelib/plugin/qpluginloader/fakeplugin.cpp
        tests/auto/corelib/plugin/qpluginloader/machtest/generate-bad.pl
-       tests/auto/corelib/plugin/qpluginloader/machtest/ppcconverter.pl
        tests/auto/corelib/plugin/qpluginloader/staticplugin/main.cpp
        tests/auto/corelib/plugin/qpluginloader/theplugin/theoldplugin.cpp
        tests/auto/corelib/thread/qatomicinteger/tst_qatomicinteger.cpp
@@ -598,12 +551,10 @@ Files: tests/auto/cmake/test(needsquoting)dirname/mywidget.cpp
        tests/auto/corelib/itemmodels/qidentityproxymodel/tst_qidentityproxymodel.cpp
        tests/auto/corelib/itemmodels/qsortfilterproxymodel_recursive/tst_qsortfilterproxymodel_recursive.cpp
        tests/auto/corelib/kernel/qsignalblocker/tst_qsignalblocker.cpp
-       tests/auto/corelib/text/qlatin1string/tst_qlatin1string.cpp
        tests/auto/corelib/text/qstringiterator/tst_qstringiterator.cpp
        tests/auto/corelib/text/qstringtokenizer/tst_qstringtokenizer.cpp
        tests/auto/corelib/text/qstringview/tst_qstringview.cpp
        tests/auto/corelib/tools/containerapisymmetry/tst_containerapisymmetry.cpp
-       tests/auto/corelib/tools/qpair/tst_qpair.cpp
        tests/auto/testlib/selftests/deleteLater/tst_deleteLater.cpp
        tests/auto/testlib/selftests/deleteLater_noApp/tst_deleteLater_noApp.cpp
        tests/auto/tools/moc/cxx11-explicit-override-control.h
@@ -619,7 +570,6 @@ Files: tests/auto/cmake/test(needsquoting)dirname/mywidget.cpp
        tests/manual/qmetatype/declare_metatype_noninline.cpp
        tests/manual/qmetatype/declare_metatype_noninline.h
        tests/manual/qmetatype/tst_qmetatype.cpp
-       tests/manual/widgets/itemviews/qconcatenatetablesproxymodel/main.cpp
        tests/manual/widgets/itemviews/tableview-span-navigation/main.cpp
        util/glgen/codegenerator.cpp
        util/glgen/codegenerator.h
@@ -741,12 +691,10 @@ Files: tests/benchmarks/widgets/itemviews/qheaderview/qheaderviewbench.cpp
        tests/manual/widgets/itemviews/autoResizePrecision/tablehorz/testtable1.cpp
        tests/manual/widgets/itemviews/autoResizePrecision/tablevert/testtable2.cpp
        tests/manual/widgets/itemviews/autoResizePrecision/treeview/testtree.cpp
-       tests/manual/widgets/itemviews/delegate/example.cpp
        tests/manual/widgets/itemviews/qheaderview/qheaderviewtest1.cpp
        tests/manual/widgets/itemviews/qtreewidget/main.cpp
        tests/manual/widgets/kernel/layoutreplace/main.cpp
        tests/manual/widgets/kernel/qtooltip/main.cpp
-       tests/manual/widgets/kernel/sizeonhide/main.cpp
        tests/manual/widgets/qgraphicsview/rubberband/rubberbandtest.cpp
 Copyright: 2012-2013 Thorbjørn Lund Martsum <tmartsum@gmail.com>
 License: GPL-3 with Qt-1.0 exception
@@ -917,12 +865,9 @@ Files: src/android/jar/src/org/qtproject/qt/android/EditContextView.java
        src/android/jar/src/org/qtproject/qt/android/extras/QtAndroidBinder.java
        src/android/jar/src/org/qtproject/qt/android/extras/QtAndroidServiceConnection.java
        src/android/jar/src/org/qtproject/qt/android/extras/QtNative.java
-       src/plugins/platforms/android/androidjniclipboard.cpp
-       src/plugins/platforms/android/androidjniclipboard.h
        src/plugins/platforms/android/androidjniinput.h
        src/plugins/platforms/android/androidjnimenu.cpp
        src/plugins/platforms/android/androidjnimenu.h
-       src/plugins/platforms/android/androidsurfaceclient.h
        src/plugins/platforms/android/main.cpp
        src/plugins/platforms/android/qandroidassetsfileenginehandler.cpp
        src/plugins/platforms/android/qandroidassetsfileenginehandler.h
@@ -965,14 +910,10 @@ Files: src/android/jar/src/org/qtproject/qt/android/ExtractStyle.java
        src/android/jar/src/org/qtproject/qt/android/QtInputConnection.java
        src/android/jar/src/org/qtproject/qt/android/QtLayout.java
        src/android/jar/src/org/qtproject/qt/android/QtNative.java
-       src/android/jar/src/org/qtproject/qt/android/QtNativeLibrariesDir.java
-       src/android/jar/src/org/qtproject/qt/android/QtServiceDelegate.java
        src/android/jar/src/org/qtproject/qt/android/QtSurface.java
        src/plugins/platforms/android/androidjnimain.cpp
        src/plugins/platforms/android/androidjnimain.h
        src/plugins/platforms/android/extract.cpp
-       src/plugins/platforms/android/qandroidplatformbackingstore.cpp
-       src/plugins/platforms/android/qandroidplatformbackingstore.h
        src/plugins/platforms/android/qandroidplatformdialoghelpers.cpp
        src/plugins/platforms/android/qandroidplatformdialoghelpers.h
        src/plugins/platforms/android/qandroidplatformintegration.cpp
@@ -1000,9 +941,6 @@ Copyright: 2017 Borgar Ovsthus
 License: LGPL-3 or GPL-2
 
 Files: mkspecs/common/android/qplatformdefs.h
-       src/corelib/kernel/qsharedmemory_android.cpp
-       src/corelib/kernel/qsystemsemaphore_android.cpp
-       src/network/kernel/qdnslookup_android.cpp
 Copyright: 2012 Collabora Ltd, author <robin.burchell@collabora.co.uk>
 License: LGPL-3 or GPL-2
 
@@ -1110,9 +1048,7 @@ Files: src/corelib/text/qstring_mips_dsp_asm.S
 Copyright: 2013 Imagination Technologies Limited, www.imgtec.com
 License: LGPL-3 or GPL-2
 
-Files: config.tests/avx512/avx512.cpp
-       config.tests/x86_simd/main.cpp
-       mkspecs/features/data/unix/findclasslist.pl
+Files: config.tests/x86_simd/main.cpp
        src/corelib/global/minimum-linux_p.h
        src/corelib/global/qglobalstatic.h
        src/corelib/global/qrandom.h
@@ -1121,7 +1057,6 @@ Files: config.tests/avx512/avx512.cpp
        src/corelib/global/qsimd_x86_p.h
        src/corelib/global/qversiontagging.cpp
        src/corelib/global/qversiontagging.h
-       src/corelib/io/forkfd_qt.cpp
        src/corelib/io/qipaddress_p.h
        src/corelib/io/qurlquery.cpp
        src/corelib/io/qurlrecode.cpp
@@ -1228,7 +1163,6 @@ Copyright: 2018 Intel Corporation
 License: LGPL-3 or GPL-2
 
 Files: config.tests/arch/arch.cpp
-       libexec/syncqt.pl
        qmake/qmakelibraryinfo.cpp
        src/corelib/global/archdetect.cpp
        src/corelib/global/qcompilerdetection.h
@@ -1273,7 +1207,6 @@ Files: config.tests/arch/arch.cpp
        src/corelib/kernel/qcore_unix_p.h
        src/corelib/kernel/qcoreapplication.cpp
        src/corelib/kernel/qcoreevent.cpp
-       src/corelib/kernel/qelapsedtimer_unix.cpp
        src/corelib/kernel/qeventdispatcher_unix.cpp
        src/corelib/kernel/qeventdispatcher_win.cpp
        src/corelib/kernel/qobjectdefs.h
@@ -1451,10 +1384,6 @@ Copyright: 2013-2014 John Layt <jlayt@kde.org>
            2016-2022 The Qt Company Ltd.
 License: LGPL-3 or GPL-2
 
-Files: src/platformsupport/input/evdevtouch/qevdevtouchfilter_p.h
-Copyright: 2016 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
-License: LGPL-3 or GPL-2
-
 Files: src/platformsupport/input/evdevtouch/qevdevtouchhandler.cpp
        src/platformsupport/input/evdevtouch/qevdevtouchhandler_p.h
 Copyright: 2016 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
@@ -1580,13 +1509,6 @@ Files: mkspecs/haiku-g++/qplatformdefs.h
        tests/auto/corelib/global/qcompare/tst_qcompare.cpp
        tests/auto/corelib/itemmodels/qconcatenatetablesproxymodel/tst_qconcatenatetablesproxymodel.cpp
 Copyright: 2011-2021 Klarälvdalens Datakonsult AB, a KDAB Group company
-License: LGPL-3 or GPL-2
-
-Files: src/corelib/kernel/qsharedmemory_posix.cpp
-       src/corelib/kernel/qsystemsemaphore_posix.cpp
-Copyright: 2015 Klarälvdalens Datakonsult AB, a KDAB Group company
-           2015 Konstantin Ritt <ritt.ks@gmail.com>
-           2016 The Qt Company Ltd.
 License: LGPL-3 or GPL-2
 
 Files: src/corelib/text/qstringview.h
@@ -1869,8 +1791,7 @@ Copyright: 2014 Robin Burchell <robin.burchell@viroteck.net>
            2016 The Qt Company Ltd.
 License: LGPL-3 or GPL-2
 
-Files: src/corelib/tools/qmessageauthenticationcode.cpp
-       src/corelib/tools/qmessageauthenticationcode.h
+Files: src/corelib/tools/qmessageauthenticationcode.h
 Copyright: 2013 Ruslan Nigmatullin <euroelessar@yandex.ru>
 License: LGPL-3 or GPL-2
 
@@ -1905,11 +1826,6 @@ Files: src/plugins/platforms/xcb/qxcbsessionmanager.cpp
        src/plugins/platforms/xcb/qxcbsessionmanager.h
 Copyright: 2013 Teo Mrnjavac <teo@kde.org>
            2016 The Qt Company Ltd.
-License: LGPL-3 or GPL-2
-
-Files: src/corelib/thread/qatomic_bootstrap.h
-Copyright: 2016 The Qt Company Ltd.
-           2011 Thiago Macieira <thiago@kde.org>
 License: LGPL-3 or GPL-2
 
 Files: src/plugins/platforms/android/androidcontentfileengine.cpp
@@ -1956,10 +1872,6 @@ License: Expat
 
 # Manual rules for some files with non-standard licenses
 
-Files: tests/auto/testlib/selftests/catch_p_p.h
-Copyright: 2022 Two Blue Cubes Ltd.
-License: Boost-1.0
-
 Files: src/gui/vulkan/vk.xml
 Copyright: 2015-2020 The Khronos Group Inc.
 License: Apache-2.0 or Expat
@@ -1971,11 +1883,8 @@ Copyright: 2015-2016 The Khronos Group Inc.
 License: Apache-2.0
 
 Files: src/android/java/src/org/qtproject/qt/android/bindings/QtActivity.java
-       src/android/java/src/org/qtproject/qt/android/bindings/QtActivityLoader.java
        src/android/java/src/org/qtproject/qt/android/bindings/QtApplication.java
-       src/android/java/src/org/qtproject/qt/android/bindings/QtLoader.java
        src/android/java/src/org/qtproject/qt/android/bindings/QtService.java
-       src/android/java/src/org/qtproject/qt/android/bindings/QtServiceLoader.java
 Copyright: 2016 BogDan Vatra <bogdan@kde.org>
 License: BSD-2-clause
 
@@ -1999,17 +1908,6 @@ Copyright: 1991-2017 Unicode, Inc.
 License: Unicode
 
 # Manual rules for 3rdparty copyrights
-
-Files: src/testlib/3rdparty/callgrind_p.h
-       src/testlib/3rdparty/valgrind_p.h
-Copyright: 2003-2017 Josef Weidendorfer
-           2000-2017 Julian Seward
-License: Hybrid-BSD
-
-Files: src/testlib/3rdparty/cycle_p.h
-Copyright: 2003-2006 Matteo Frigo
-           2003-2006 Massachusetts Institute of Technology
-License: Expat
 
 Files: src/3rdparty/double-conversion/*
 Copyright: 2006-2012 the V8 project authors
@@ -2128,11 +2026,6 @@ Copyright: 1997-2020 University of Cambridge
            2009-2020 Zoltan Herczeg
 License: BSD-3-clause
 
-Files: src/3rdparty/pcre2/src/sljit/*
-Copyright: 2013 Tilera Corporation (jiwang@tilera.com)
-           2009-2018 Zoltan Herczeg (hzmester@freemail.hu)
-License: BSD-2-clause
-
 Files: src/3rdparty/pixman/*
 Copyright: 2009 Nokia Corporation
 License: Expat
@@ -2163,10 +2056,6 @@ Files: src/3rdparty/wasm/DejaVuSans.ttf
 Copyright: 2003 Bitstream, Inc.
            2006 Tavmjong Bah
            American Mathematical Society
-License: Bitstream
-
-Files: src/3rdparty/wasm/Vera.ttf
-Copyright: 2003 Bitstream, Inc.
 License: Bitstream
 
 Files: src/3rdparty/freetype/src/gzip/*
@@ -2229,9 +2118,7 @@ License: GPL-2+
  GNU General Public License for more details.
  .
  You should have received a copy of the GNU General Public License
- along with this program;  if not, write to the Free Software
- Foundation, Inc., 51 Franklin St, Fifth Floor, Boston,
- MA 02110-1301, USA.
+ along with this program.  If not, see https://www.gnu.org/licenses/.
  .
  On Debian GNU/Linux systems, the complete text of the GNU General
  Public License version 2 can be found in
@@ -2700,38 +2587,6 @@ License: FTL
     Robert Wilhelm    <robert.wilhelm@freetype.org>
     Werner Lemberg    <werner.lemberg@freetype.org>
 
-License: Hybrid-BSD
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions
- are met:
- .
- 1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
- .
- 2. The origin of this software must not be misrepresented; you must
-    not claim that you wrote the original software.  If you use this
-    software in a product, an acknowledgment in the product
-    documentation would be appreciated but is not required.
- .
- 3. Altered source versions must be plainly marked as such, and must
-    not be misrepresented as being the original software.
- .
- 4. The name of the author may not be used to endorse or promote
-    products derived from this software without specific prior written
-    permission.
- .
- THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
- OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 License: libjpeg
  The authors make NO WARRANTY or representation, either express or implied,
  with respect to this software, its quality, accuracy, merchantability, or
@@ -2812,31 +2667,6 @@ License: ISC
  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-License: Boost-1.0
- Boost Software License - Version 1.0 - August 17th, 2003
- .
- Permission is hereby granted, free of charge, to any person or organization
- obtaining a copy of the software and accompanying documentation covered by
- this license (the "Software") to use, reproduce, display, distribute,
- execute, and transmit the Software, and to prepare derivative works of the
- Software, and to permit third-parties to whom the Software is furnished to
- do so, all subject to the following:
- .
- The copyright notices in the Software and this entire statement, including
- the above license grant, this restriction and the following disclaimer,
- must be included in all copies of the Software, in whole or in part, and
- all derivative works of the Software, unless such copies or derivative
- works are solely in the form of machine-executable object code generated by
- a source language processor.
- .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
- SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
- FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
- ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- DEALINGS IN THE SOFTWARE.
 
 License: Harfbuzz
  Permission is hereby granted, without written agreement and without

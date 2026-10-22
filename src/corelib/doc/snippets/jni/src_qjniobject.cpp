@@ -1,5 +1,12 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+#include <QtCore/qglobal.h>
+#include <QtCore/qdebug.h>
+
+#if defined(Q_QDOC) || defined(Q_OS_ANDROID)
+
+#include <QtCore/qjniobject.h>
+#include <QtCore/qjnitypes.h>
 
 //! [QJniObject scope]
 void functionScope()
@@ -11,7 +18,8 @@ void functionScope()
         myJString = string.object<jstring>();
     }
 
-   // Ops! myJString is no longer valid.
+    // Ops! myJString is no longer valid.
+    QString myQtString = QJniObject(myJString).toString();
 }
 //! [QJniObject scope]
 
@@ -45,6 +53,7 @@ void foo()
 }
 //! [C++ native methods]
 
+#if 0 // Java code
 //! [Java native methods]
 class FooJavaClass
 {
@@ -61,3 +70,6 @@ private static native void callNativeTwo(int x);
 
 }
 //! [Java native methods]
+#endif
+
+#endif

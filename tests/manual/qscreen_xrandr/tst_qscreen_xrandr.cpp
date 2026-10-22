@@ -6,8 +6,9 @@
 #include <qscreen.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <QProcess>
+#include <QSignalSpy>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 class tst_QScreen_Xrandr: public QObject
 {

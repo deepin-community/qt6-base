@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qendian.h"
 
@@ -283,7 +284,9 @@ QT_BEGIN_NAMESPACE
     \brief The QLEInteger class provides platform-independent little-endian integers.
     \since 5.10
 
-    The template parameter \c T must be a C++ integer type:
+    QLEInteger\<T\> stores an integer value in little-endian byte order, where
+    \a T specifies the underlying C++ integer type. The template parameter \a T
+    must be a C++ integer type:
     \list
        \li 8-bit: char, signed char, unsigned char, qint8, quint8
        \li 16-bit: short, unsigned short, qint16, quint16, char16_t
@@ -442,7 +445,9 @@ QT_BEGIN_NAMESPACE
     \brief The QBEInteger class provides platform-independent big-endian integers.
     \since 5.10
 
-    The template parameter \c T must be a C++ integer type:
+    QBEInteger\<T\> stores an integer value in big-endian byte order, where
+    \a T specifies the underlying C++ integer type. The template parameter \a T
+    must be a C++ integer type:
     \list
        \li 8-bit: char, signed char, unsigned char, qint8, quint8
        \li 16-bit: short, unsigned short, qint16, quint16, char16_t
@@ -835,7 +840,7 @@ size_t simdSwapLoop(const uchar *, size_t, uchar *) noexcept
 }
 #endif
 
-template <typename T> static Q_ALWAYS_INLINE
+template <typename T> Q_ALWAYS_INLINE static
 void *bswapLoop(const uchar *src, size_t n, uchar *dst) noexcept
 {
     // Buffers cannot partially overlap: either they're identical or totally

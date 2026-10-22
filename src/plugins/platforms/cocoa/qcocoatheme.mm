@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -12,8 +13,10 @@
 #include "qcocoamenu.h"
 #include "qcocoamenubar.h"
 #include "qcocoahelpers.h"
+#include "qcocoaintegration.h"
 
 #include <QtCore/qfileinfo.h>
+#include <QtCore/qstandardpaths.h>
 #include <QtCore/private/qcore_mac_p.h>
 #include <QtGui/private/qfont_p.h>
 #include <QtGui/private/qguiapplication_p.h>
@@ -21,6 +24,7 @@
 #include <QtGui/qpainter.h>
 #include <QtGui/qtextformat.h>
 #include <QtGui/private/qcoretextfontdatabase_p.h>
+#include <QtGui/private/qapplefileiconengine_p.h>
 #include <QtGui/private/qappleiconengine_p.h>
 #include <QtGui/private/qfontengine_coretext_p.h>
 #include <QtGui/private/qabstractfileiconengine_p.h>
@@ -34,6 +38,7 @@
 #include "qcocoamessagedialog.h"
 
 #include <CoreServices/CoreServices.h>
+#include <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -214,7 +219,6 @@ QCocoaTheme::QCocoaTheme()
     : m_systemPalette(nullptr)
 {
     m_appearanceObserver = QMacKeyValueObserver(NSApp, @"effectiveAppearance", [this] {
-        NSAppearance.currentAppearance = NSApp.effectiveAppearance;
         handleSystemThemeChange();
     });
 
@@ -241,12 +245,11 @@ void QCocoaTheme::reset()
 
 void QCocoaTheme::handleSystemThemeChange()
 {
+    QMacAutoReleasePool pool;
+
     reset();
 
     updateColorScheme();
-
-    m_systemPalette = qt_mac_createSystemPalette();
-    m_palettes = qt_mac_createRolePalettes();
 
     if (QCoreTextFontEngine::fontSmoothing() == QCoreTextFontEngine::FontSmoothing::Grayscale) {
         // Re-populate glyph caches based on the new appearance's assumed text fill color
@@ -294,13 +297,25 @@ QPlatformSystemTrayIcon *QCocoaTheme::createPlatformSystemTrayIcon() const
 
 const QPalette *QCocoaTheme::palette(Palette type) const
 {
+    QMacAutoReleasePool pool;
+
+    // Note: NSColor resolves its RGB values based on the current
+    // drawing appearance, so we need to propagate the effective
+    // appearance when (re)creating the palettes.
+
     if (type == SystemPalette) {
-        if (!m_systemPalette)
-            m_systemPalette = qt_mac_createSystemPalette();
+        if (!m_systemPalette) {
+            [NSApp.effectiveAppearance performAsCurrentDrawingAppearance:^{
+                m_systemPalette = qt_mac_createSystemPalette();
+            }];
+        }
         return m_systemPalette;
     } else {
-        if (m_palettes.isEmpty())
-            m_palettes = qt_mac_createRolePalettes();
+        if (m_palettes.isEmpty()) {
+            [NSApp.effectiveAppearance performAsCurrentDrawingAppearance:^{
+                m_palettes = qt_mac_createRolePalettes();
+            }];
+        }
         return m_palettes.value(type, nullptr);
     }
     return nullptr;
@@ -348,9 +363,16 @@ QPixmap QCocoaTheme::standardPixmap(StandardPixmap sp, const QSizeF &size) const
     case MessageBoxCritical:
         iconType = kAlertStopIcon;
         break;
-    case DesktopIcon:
-        iconType = kDesktopIcon;
-        break;
+    case DesktopIcon: {
+        auto desktop = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+        NSImage *icon = [NSWorkspace.sharedWorkspace iconForFile:desktop.toNSString()];
+        return qt_mac_toQPixmap(icon, size);
+    }
+    case DirHomeIcon: {
+        auto home = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+        NSImage *icon = [NSWorkspace.sharedWorkspace iconForFile:home.toNSString()];
+        return qt_mac_toQPixmap(icon, size);
+    }
     case TrashIcon:
         iconType = kTrashIcon;
         break;
@@ -371,12 +393,13 @@ QPixmap QCocoaTheme::standardPixmap(StandardPixmap sp, const QSizeF &size) const
         iconType = kGenericNetworkIcon;
         break;
     case DirOpenIcon:
-        iconType = kOpenFolderIcon;
-        break;
+    case DirLinkOpenIcon:
+    case DirIcon:
     case DirClosedIcon:
-    case DirLinkIcon:
-        iconType = kGenericFolderIcon;
-        break;
+    case DirLinkIcon: {
+        NSImage *icon = [NSWorkspace.sharedWorkspace iconForContentType:UTTypeFolder];
+        return qt_mac_toQPixmap(icon, size);
+    }
     case FileLinkIcon:
     case FileIcon:
         iconType = kGenericDocumentIcon;
@@ -400,31 +423,10 @@ QPixmap QCocoaTheme::standardPixmap(StandardPixmap sp, const QSizeF &size) const
     return QPlatformTheme::standardPixmap(sp, size);
 }
 
-class QCocoaFileIconEngine : public QAbstractFileIconEngine
-{
-public:
-    explicit QCocoaFileIconEngine(const QFileInfo &info,
-                                  QPlatformTheme::IconOptions opts) :
-        QAbstractFileIconEngine(info, opts) {}
-
-    QList<QSize> availableSizes(QIcon::Mode = QIcon::Normal, QIcon::State = QIcon::Off) override
-    { return QAppleIconEngine::availableIconSizes(); }
-
-protected:
-    QPixmap filePixmap(const QSize &size, QIcon::Mode, QIcon::State) override
-    {
-        QMacAutoReleasePool pool;
-
-        NSImage *iconImage = [[NSWorkspace sharedWorkspace] iconForFile:fileInfo().canonicalFilePath().toNSString()];
-        if (!iconImage)
-            return QPixmap();
-        return qt_mac_toQPixmap(iconImage, size);
-    }
-};
-
 QIcon QCocoaTheme::fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions iconOptions) const
 {
-    return QIcon(new QCocoaFileIconEngine(fileInfo, iconOptions));
+    QMacAutoReleasePool pool;
+    return QIcon(new QAppleFileIconEngine(fileInfo, iconOptions));
 }
 
 QIconEngine *QCocoaTheme::createIconEngine(const QString &iconName) const
@@ -465,6 +467,8 @@ QVariant QCocoaTheme::themeHint(ThemeHint hint) const
     case QPlatformTheme::KeyboardAutoRepeatRate:
         return 1.0 / NSEvent.keyRepeatInterval;
     case QPlatformTheme::ShowIconsInMenus:
+        return QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSTahoe;
+    case QPlatformTheme::MenuSelectionWraps:
         return false;
     default:
         break;
@@ -479,6 +483,8 @@ Qt::ColorScheme QCocoaTheme::colorScheme() const
 
 void QCocoaTheme::requestColorScheme(Qt::ColorScheme scheme)
 {
+    QMacAutoReleasePool pool;
+
     NSAppearance *appearance = nil;
     switch (scheme) {
     case Qt::ColorScheme::Dark:
@@ -490,8 +496,11 @@ void QCocoaTheme::requestColorScheme(Qt::ColorScheme scheme)
     case Qt::ColorScheme::Unknown:
         break;
     }
-    if (appearance != NSApp.effectiveAppearance)
-        NSApplication.sharedApplication.appearance = appearance;
+
+    // Always override the appearance, even if it's the same
+    // as the current effective appearance, as otherwise the
+    // requested appearance won't stick on system theme changes.
+    NSApp.appearance = appearance;
 }
 
 /*
@@ -503,7 +512,22 @@ void QCocoaTheme::requestColorScheme(Qt::ColorScheme scheme)
 */
 void QCocoaTheme::updateColorScheme()
 {
-    m_colorScheme = qt_mac_applicationIsInDarkMode() ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
+    auto appearance = [NSApp.effectiveAppearance bestMatchFromAppearancesWithNames:
+            @[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
+    m_colorScheme = [appearance isEqualToString:NSAppearanceNameDarkAqua] ?
+        Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
+}
+
+Qt::ContrastPreference QCocoaTheme::contrastPreference() const
+{
+    return NSWorkspace.sharedWorkspace.accessibilityDisplayShouldIncreaseContrast ? Qt::ContrastPreference::HighContrast
+                                                                                  : Qt::ContrastPreference::NoPreference;
+}
+
+Qt::MotionPreference QCocoaTheme::motionPreference() const
+{
+    return NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion ? Qt::MotionPreference::ReducedMotion
+                                                                              : Qt::MotionPreference::NoPreference;
 }
 
 QString QCocoaTheme::standardButtonText(int button) const
@@ -538,9 +562,10 @@ QPlatformMenuBar *QCocoaTheme::createPlatformMenuBar() const
     static bool haveMenubar = false;
     if (!haveMenubar) {
         haveMenubar = true;
-        QObject::connect(qGuiApp, SIGNAL(focusWindowChanged(QWindow*)),
-            QGuiApplicationPrivate::platformIntegration()->nativeInterface(),
-                SLOT(onAppFocusWindowChanged(QWindow*)));
+        QObject::connect(qGuiApp, &QGuiApplication::focusWindowChanged,
+            QCocoaIntegration::instance(), []{
+                QCocoaMenuBar::updateMenuBarImmediately();
+            });
     }
 
     auto *menuBar = new QCocoaMenuBar();

@@ -2,6 +2,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEGLFSKMSSCREEN_H
 #define QEGLFSKMSSCREEN_H
@@ -58,6 +59,7 @@ public:
 
     QList<QPlatformScreen *> virtualSiblings() const override { return m_siblings; }
     void setVirtualSiblings(QList<QPlatformScreen *> sl) { m_siblings = sl; }
+    void removeSibling(QPlatformScreen *screen);
 
     QList<QPlatformScreen::Mode> modes() const override;
 
@@ -68,6 +70,7 @@ public:
 
     virtual void waitForFlip();
 
+    void updateOutput(QKmsOutput output);
     QKmsOutput &output() { return m_output; }
     void restoreMode();
 
@@ -80,6 +83,8 @@ public:
     void setCursorOutOfRange(bool b) { m_cursorOutOfRange = b; }
 
     virtual void pageFlipped(unsigned int sequence, unsigned int tv_sec, unsigned int tv_usec);
+    static bool isScreenKnown(QEglFSKmsScreen *s);
+
 protected:
     QEglFSKmsDevice *m_device;
 

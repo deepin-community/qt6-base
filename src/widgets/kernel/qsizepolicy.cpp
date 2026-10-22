@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsizepolicy.h"
 
@@ -283,9 +284,7 @@ void QSizePolicy::setControlType(ControlType type) noexcept
 /*!
     \fn size_t QSizePolicy::qHash(QSizePolicy key, size_t seed = 0)
     \since 5.6
-
-    Returns the hash value for \a key, using
-    \a seed to seed the calculation.
+    \qhash{QSizePolicy}
 */
 
 /*!

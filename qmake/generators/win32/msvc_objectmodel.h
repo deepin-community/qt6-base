@@ -29,7 +29,8 @@ enum DotNET {
     NET2015 = 0xd0,
     NET2017 = 0xe0,
     NET2019,
-    NET2022
+    NET2022,
+    NET2026
 };
 
 DotNET vsVersionFromString(const ProString &versionString);
@@ -444,8 +445,8 @@ enum warningLevelOption {
 class VCToolBase {
 protected:
     // Functions
-    VCToolBase(){}
-    virtual ~VCToolBase(){}
+    VCToolBase() = default;
+    virtual ~VCToolBase() = default;
     virtual bool parseOption(const char* option) = 0;
 public:
     void parseOptions(const ProStringList& options) {

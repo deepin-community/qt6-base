@@ -15,7 +15,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcModelTest, "qt.modeltest")
+Q_STATIC_LOGGING_CATEGORY(lcModelTest, "qt.modeltest")
 
 #define MODELTESTER_VERIFY(statement) \
 do { \
@@ -71,6 +71,8 @@ public:
     void headerDataChanged(Qt::Orientation orientation, int start, int end);
 
 private:
+    QString safeParentData(const QModelIndex &parent) const;
+
     void checkChildren(const QModelIndex &parent, int currentDepth = 0);
 
     bool verify(bool statement, const char *statementStr, const char *description, const char *file, int line);
@@ -196,6 +198,8 @@ private:
 /*!
     Creates a model tester instance, with the given \a parent, that will test
     the model \a model.
+
+    The failure reporting mode is set to FailureReportingMode::QtTest.
 */
 QAbstractItemModelTester::QAbstractItemModelTester(QAbstractItemModel *model, QObject *parent)
     : QAbstractItemModelTester(model, FailureReportingMode::QtTest, parent)
@@ -526,6 +530,13 @@ void QAbstractItemModelTesterPrivate::parent()
     checkChildren(QModelIndex());
 }
 
+// "safe" because it avoids assertion failures in some models. It is within their rights to expect only valid
+// indexes passed to data(), as per the QAIM API contract.
+QString QAbstractItemModelTesterPrivate::safeParentData(const QModelIndex &parent) const
+{
+    return parent.isValid() ? model->data(parent).toString() : QStringLiteral("<no parent>");
+}
+
 /*
     Called from the parent() test.
 
@@ -606,7 +617,7 @@ void QAbstractItemModelTesterPrivate::checkChildren(const QModelIndex &parent, i
                 qCWarning(lcModelTest) << "    index=" << index << "exp. parent=" << parent << "act. parent=" << model->parent(index);
                 qCWarning(lcModelTest) << "    row=" << r << "col=" << c << "depth=" << currentDepth;
                 qCWarning(lcModelTest) << "    data for child" << model->data(index).toString();
-                qCWarning(lcModelTest) << "    data for parent" << model->data(parent).toString();
+                qCWarning(lcModelTest) << "    data for parent" << safeParentData(parent);
             }
 
             // Check that we can get back our real parent.
@@ -729,7 +740,7 @@ void QAbstractItemModelTesterPrivate::columnsAboutToBeInserted(const QModelIndex
 
     qCDebug(lcModelTest) << "columnsAboutToBeInserted"
                          << "start=" << start << "end=" << end << "parent=" << parent
-                         << "parent data=" << model->data(parent).toString()
+                         << "parent data=" << safeParentData(parent)
                          << "current count of parent=" << model->rowCount(parent)
                          << "last before insertion=" << model->index(start - 1, 0, parent)
                          << model->data(model->index(start - 1, 0, parent));
@@ -743,7 +754,7 @@ void QAbstractItemModelTesterPrivate::columnsInserted(const QModelIndex &parent,
 
     qCDebug(lcModelTest) << "columnsInserted"
                          << "start=" << first << "end=" << last << "parent=" << parent
-                         << "parent data=" << model->data(parent).toString()
+                         << "parent data=" << safeParentData(parent)
                          << "current count of parent=" << model->rowCount(parent);
 }
 
@@ -787,7 +798,7 @@ void QAbstractItemModelTesterPrivate::columnsAboutToBeRemoved(const QModelIndex 
 
     qCDebug(lcModelTest) << "columnsAboutToBeRemoved"
                          << "start=" << first << "end=" << last << "parent=" << parent
-                         << "parent data=" << model->data(parent).toString()
+                         << "parent data=" << safeParentData(parent)
                          << "current count of parent=" << model->rowCount(parent)
                          << "last before removal=" << model->index(first - 1, 0, parent)
                          << model->data(model->index(first - 1, 0, parent));
@@ -800,7 +811,7 @@ void QAbstractItemModelTesterPrivate::columnsRemoved(const QModelIndex &parent, 
 
     qCDebug(lcModelTest) << "columnsRemoved"
                          << "start=" << first << "end=" << last << "parent=" << parent
-                         << "parent data=" << model->data(parent).toString()
+                         << "parent data=" << safeParentData(parent)
                          << "current count of parent=" << model->rowCount(parent);
 }
 
@@ -816,7 +827,7 @@ void QAbstractItemModelTesterPrivate::rowsAboutToBeInserted(const QModelIndex &p
 
     qCDebug(lcModelTest) << "rowsAboutToBeInserted"
                          << "start=" << start << "end=" << end << "parent=" << parent
-                         << "parent data=" << model->data(parent).toString()
+                         << "parent data=" << safeParentData(parent)
                          << "current count of parent=" << model->rowCount(parent)
                          << "last before insertion=" << model->index(start - 1, 0, parent) << model->data(model->index(start - 1, 0, parent));
 
@@ -840,7 +851,7 @@ void QAbstractItemModelTesterPrivate::rowsInserted(const QModelIndex &parent, in
 
     qCDebug(lcModelTest) << "rowsInserted"
                          << "start=" << start << "end=" << end << "parent=" << parent
-                         << "parent data=" << model->data(parent).toString()
+                         << "parent data=" << safeParentData(parent)
                          << "current count of parent=" << model->rowCount(parent);
 
     for (int i = start; i <= end; ++i) {
@@ -944,7 +955,7 @@ void QAbstractItemModelTesterPrivate::rowsAboutToBeRemoved(const QModelIndex &pa
 
     qCDebug(lcModelTest) << "rowsAboutToBeRemoved"
                          << "start=" << start << "end=" << end << "parent=" << parent
-                         << "parent data=" << model->data(parent).toString()
+                         << "parent data=" << safeParentData(parent)
                          << "current count of parent=" << model->rowCount(parent)
                          << "last before removal=" << model->index(start - 1, 0, parent) << model->data(model->index(start - 1, 0, parent));
 
@@ -977,7 +988,7 @@ void QAbstractItemModelTesterPrivate::rowsRemoved(const QModelIndex &parent, int
 
     qCDebug(lcModelTest) << "rowsRemoved"
                          << "start=" << start << "end=" << end << "parent=" << parent
-                         << "parent data=" << model->data(parent).toString()
+                         << "parent data=" << safeParentData(parent)
                          << "current count of parent=" << model->rowCount(parent);
 
     Changing c = remove.pop();

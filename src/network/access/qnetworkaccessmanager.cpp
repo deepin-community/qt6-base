@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
@@ -61,16 +62,17 @@
 #include "qhttpmultipart_p.h"
 #endif
 
-#include "qnetconmonitor_p.h"
-
 #include <mutex>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 
-Q_LOGGING_CATEGORY(lcQnam, "qt.network.access.manager")
+#if defined(Q_OS_MACOS)
+Q_STATIC_LOGGING_CATEGORY(lcQnam, "qt.network.access.manager")
+#endif
 
 Q_APPLICATION_STATIC(QNetworkAccessFileBackendFactory, fileBackend)
 
@@ -183,7 +185,7 @@ static void ensureInitialized()
 
     Once a QNetworkAccessManager object has been created, the application can
     use it to send requests over the network. A group of standard functions
-    are supplied that take a request and optional data, and each return a
+    is supplied that take a request and optional data, and each returns a
     QNetworkReply object. The returned object is used to obtain any data
     returned in response to the corresponding request.
 
@@ -205,9 +207,27 @@ static void ensureInitialized()
     Currently, for the HTTP protocol on desktop platforms, 6 requests are
     executed in parallel for one host/port combination.
 
+    \note QNetworkAccessManager doesn't handle RFC 2616 Section 8.2.2 properly,
+    in that it doesn't react to incoming data until it's done writing. For
+    example, the upload of a large file won't stop even if the server returns
+    a status code that instructs the client to not continue.
+
     A more involved example, assuming the manager is already existent,
     can be:
     \snippet code/src_network_access_qnetworkaccessmanager.cpp 1
+
+    Since Qt 6.11 the defaults of the TCP Keepalive parameters used by
+    QNetworkAccessManager have been changed. With the current settings
+    the connection will be terminated after 2 minutes of inactivity.
+
+    These settings can be changed the individual requests, to make
+    them more lenient, or even more aggressive via the QNetworkRequest API.
+    \snippet http/httpwindow.cpp qnam-tcpkeepalive
+
+    In the above snippet we are picking a more aggressive strategy, to
+    terminate the connection after thirty seconds of inactivity. This can
+    be useful, for example, in early detection of network hangs caused
+    by network changes on Linux.
 
     \sa QNetworkRequest, QNetworkReply, QNetworkProxy
 */
@@ -408,7 +428,7 @@ QNetworkAccessManager::QNetworkAccessManager(QObject *parent)
     qRegisterMetaType<QSslConfiguration>();
     qRegisterMetaType<QSslPreSharedKeyAuthenticator *>();
 #endif
-    qRegisterMetaType<QList<QPair<QByteArray,QByteArray> > >();
+    qRegisterMetaType<QList<std::pair<QByteArray, QByteArray>>>();
 #if QT_CONFIG(http)
     qRegisterMetaType<QHttpNetworkRequest>();
 #endif
@@ -677,6 +697,18 @@ bool QNetworkAccessManager::isStrictTransportSecurityEnabled() const
     If this behavior is undesired, enable HSTS store before enabling Strict Transport
     Security. By default, the persistent store of HSTS policies is disabled.
 
+    \note The HSTS store persists policies to disk using QSettings in INI format
+    without encryption or integrity protection. The store reveals which hosts the
+    application has communicated with over HTTPS, since an HSTS entry is recorded
+    for each host that sends a Strict-Transport-Security header. In privacy-sensitive
+    applications, this connection history should be treated as confidential data.
+
+    An attacker with write access to the store file could remove HSTS entries for
+    specific domains, causing the application to permit plaintext HTTP connections to
+    those domains on subsequent requests and potentially enabling SSL stripping attacks.
+    Applications that rely on HSTS should ensure the store directory is protected by
+    appropriate filesystem permissions.
+
     \sa isStrictTransportSecurityStoreEnabled(), setStrictTransportSecurityEnabled(),
     QStandardPaths::standardLocations()
 */
@@ -686,7 +718,7 @@ void QNetworkAccessManager::enableStrictTransportSecurityStore(bool enabled, con
 #if QT_CONFIG(settings)
     Q_D(QNetworkAccessManager);
     d->stsStore.reset(enabled ? new QHstsStore(storeDir) : nullptr);
-    d->stsCache.setStore(d->stsStore.data());
+    d->stsCache.setStore(d->stsStore.get());
 #else
     Q_UNUSED(enabled);
     Q_UNUSED(storeDir);
@@ -707,7 +739,7 @@ bool QNetworkAccessManager::isStrictTransportSecurityStoreEnabled() const
 {
 #if QT_CONFIG(settings)
     Q_D(const QNetworkAccessManager);
-    return bool(d->stsStore.data());
+    return bool(d->stsStore);
 #else
     return false;
 #endif // QT_CONFIG(settings)
@@ -730,7 +762,7 @@ bool QNetworkAccessManager::isStrictTransportSecurityStoreEnabled() const
     policies, but this information can be overridden by "Strict-Transport-Security"
     response headers.
 
-    \sa addStrictTransportSecurityHosts(), enableStrictTransportSecurityStore(), QHstsPolicy
+    \sa strictTransportSecurityHosts(), enableStrictTransportSecurityStore(), QHstsPolicy
 */
 
 void QNetworkAccessManager::addStrictTransportSecurityHosts(const QList<QHstsPolicy> &knownHosts)
@@ -788,7 +820,7 @@ QNetworkReply *QNetworkAccessManager::get(const QNetworkRequest &request)
    \note A GET request with a message body is not cached.
 
    \note If the request is redirected, the message body will be kept only if the status code is
-   307 or 308.
+   308.
 */
 
 QNetworkReply *QNetworkAccessManager::get(const QNetworkRequest &request, QIODevice *data)
@@ -806,7 +838,7 @@ QNetworkReply *QNetworkAccessManager::get(const QNetworkRequest &request, QIODev
    \note A GET request with a message body is not cached.
 
    \note If the request is redirected, the message body will be kept only if the status code is
-   307 or 308.
+   308.
 */
 
 QNetworkReply *QNetworkAccessManager::get(const QNetworkRequest &request, const QByteArray &data)
@@ -1252,7 +1284,7 @@ QNetworkReply *QNetworkAccessManager::createRequest(QNetworkAccessManager::Opera
     auto h = request.headers();
 #ifndef Q_OS_WASM // Content-length header is not allowed to be set by user in wasm
     if (!h.contains(QHttpHeaders::WellKnownHeader::ContentLength) &&
-        outgoingData && !outgoingData->isSequential()) {
+        outgoingData && !outgoingData->isSequential() && outgoingData->size()) {
         // request has no Content-Length
         // but the data that is outgoing is random-access
         h.append(QHttpHeaders::WellKnownHeader::ContentLength,
@@ -1710,7 +1742,6 @@ void QNetworkAccessManagerPrivate::clearAuthenticationCache(QNetworkAccessManage
 
 void QNetworkAccessManagerPrivate::clearConnectionCache(QNetworkAccessManager *manager)
 {
-    manager->d_func()->objectCache.clear();
     manager->d_func()->destroyThread();
 }
 

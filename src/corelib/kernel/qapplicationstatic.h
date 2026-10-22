@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QAPPLICATIONSTATIC_H
 #define QAPPLICATIONSTATIC_H
@@ -67,8 +68,10 @@ template <typename QAS> struct ApplicationHolder
     {
         // we only synchronize using the mutex here, not the guard
         QMutexLocker locker(&mutex);
-        realPointer()->~PlainType();
-        guard.storeRelaxed(QtGlobalStatic::Uninitialized);
+        if (guard.loadRelaxed() == QtGlobalStatic::Initialized) {
+            realPointer()->~PlainType();
+            guard.storeRelaxed(QtGlobalStatic::Uninitialized);
+        }
     }
 };
 } // namespace QtGlobalStatic

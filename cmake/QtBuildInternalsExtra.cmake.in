@@ -73,6 +73,10 @@ if(@FEATURE_developer_build@)
     set(FEATURE_developer_build ON CACHE BOOL "Developer build." FORCE)
 endif()
 
+# Propagate CI files installation
+set(QT_INSTALL_CI_FILES @QT_INSTALL_CI_FILES@ CACHE BOOL
+    "Install CI files for internal use only" FORCE)
+
 # Propagate non-prefix builds.
 set(QT_WILL_INSTALL @QT_WILL_INSTALL@ CACHE BOOL
     "Boolean indicating if doing a Qt prefix build (vs non-prefix build)." FORCE)
@@ -89,6 +93,7 @@ set(QT_BUILD_MINIMAL_STATIC_TESTS @QT_BUILD_MINIMAL_STATIC_TESTS@ CACHE BOOL
     "Build minimal subset of tests for static Qt builds")
 set(QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS @QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS@ CACHE BOOL
     "Build minimal subset of tests for Android multi-ABI Qt builds")
+set(QT_BUILD_DOC_SNIPPETS @QT_BUILD_SNIPPETS@ CACHE BOOL "Build Qt documentation snippets")
 
 set(QT_BUILD_TESTS_BATCHED @QT_BUILD_TESTS_BATCHED@ CACHE BOOL
     "Should all tests be batched into a single binary.")

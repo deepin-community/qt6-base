@@ -248,10 +248,7 @@ function(__qt_internal_add_static_plugin_init_object_library
         CONTENT "${import_content}"
     )
 
-    # CMake versions earlier than 3.18.0 can't find the generated file for some reason,
-    # failing at generation phase.
-    # Explicitly marking the file as GENERATED fixes the issue.
-    set_source_files_properties("${generated_qt_plugin_file_name}" PROPERTIES GENERATED TRUE)
+    _qt_internal_set_source_file_generated(SOURCES "${generated_qt_plugin_file_name}")
 
     __qt_internal_get_static_plugin_init_target_name("${plugin_target}" plugin_init_target)
 
@@ -416,46 +413,6 @@ function(__qt_internal_collect_plugin_targets_from_dependencies_of_plugins targe
     set("${out_var}" "${plugin_targets}" PARENT_SCOPE)
 endfunction()
 
-# Generate plugin information files for deployment
-#
-# Arguments:
-# OUT_PLUGIN_TARGETS - Variable name to store the plugin targets that were collected with
-#                      __qt_internal_collect_plugin_targets_from_dependencies.
-function(__qt_internal_generate_plugin_deployment_info target)
-    set(no_value_options "")
-    set(single_value_options "OUT_PLUGIN_TARGETS")
-    set(multi_value_options "")
-    cmake_parse_arguments(PARSE_ARGV 0 arg
-        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
-    )
-
-    __qt_internal_collect_plugin_targets_from_dependencies("${target}" plugin_targets)
-    if(NOT "${arg_OUT_PLUGIN_TARGETS}" STREQUAL "")
-        set("${arg_OUT_PLUGIN_TARGETS}" "${plugin_targets}" PARENT_SCOPE)
-    endif()
-
-    get_target_property(marked_for_deployment ${target} _qt_marked_for_deployment)
-    if(NOT marked_for_deployment)
-        return()
-    endif()
-
-    __qt_internal_collect_plugin_library_files(${target} "${plugin_targets}" plugins_files)
-    set(plugins_files "$<FILTER:${plugins_files},EXCLUDE,^$>")
-
-    _qt_internal_get_deploy_impl_dir(deploy_impl_dir)
-    set(file_path "${deploy_impl_dir}/${target}-plugins")
-    get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
-    if(is_multi_config)
-        string(APPEND file_path "-$<CONFIG>")
-    endif()
-    string(APPEND file_path ".cmake")
-
-    file(GENERATE
-        OUTPUT ${file_path}
-        CONTENT "set(__QT_DEPLOY_PLUGINS ${plugins_files})"
-    )
-endfunction()
-
 # Main logic of finalizer mode.
 function(__qt_internal_apply_plugin_imports_finalizer_mode target)
     # Process a target only once.
@@ -463,9 +420,6 @@ function(__qt_internal_apply_plugin_imports_finalizer_mode target)
     if(processed)
         return()
     endif()
-
-    __qt_internal_generate_plugin_deployment_info(${target}
-        OUT_PLUGIN_TARGETS plugin_targets)
 
     # By default if the project hasn't explicitly opted in or out, use finalizer mode.
     # The precondition for this is that qt_finalize_target was called (either explicitly by the user
@@ -480,12 +434,57 @@ function(__qt_internal_apply_plugin_imports_finalizer_mode target)
         return()
     endif()
 
+    __qt_internal_collect_plugin_targets_from_dependencies("${target}" plugin_targets)
     __qt_internal_collect_plugin_init_libraries("${plugin_targets}" init_libraries)
     __qt_internal_collect_plugin_libraries("${plugin_targets}" plugin_libraries)
 
     target_link_libraries(${target} PRIVATE "${plugin_libraries}" "${init_libraries}")
 
     set_target_properties(${target} PROPERTIES _qt_plugin_finalizer_imports_processed TRUE)
+endfunction()
+
+# Adds the specific plugin target to the INTERFACE_QT_PLUGIN_TARGETS transitive compile property.
+# The property is then propagated to all targets that link the plugin_module_target and
+# can be accessed using $<TARGET_PROPERTY:tgt_name,QT_PLUGIN_TARGETS> genex.
+#
+# Note: this is only supported in CMake versions 3.30 and higher.
+function(__qt_internal_add_interface_plugin_target plugin_module_target plugin_target)
+    if(CMAKE_VERSION VERSION_LESS 3.30)
+        return()
+    endif()
+
+    cmake_parse_arguments(arg "BUILD_ONLY" "" "" ${ARGN})
+    if(arg_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "Unexpected arguments: ${arg_UNPARSED_ARGUMENTS}")
+    endif()
+
+    __qt_internal_get_static_plugin_condition_genex(${plugin_target} plugin_target_condition)
+    string(JOIN "" plugin_target_name_wrapped
+        "$<${plugin_target_condition}:"
+            "$<TARGET_NAME:${QT_CMAKE_EXPORT_NAMESPACE}::${plugin_target}>"
+        ">"
+    )
+
+    if(arg_BUILD_ONLY)
+        set(plugin_target_name_wrapped "$<BUILD_LOCAL_INTERFACE:${plugin_target_name_wrapped}>")
+    endif()
+
+    set_property(TARGET ${plugin_module_target}
+        APPEND PROPERTY INTERFACE_QT_PLUGIN_TARGETS ${plugin_target_name_wrapped})
+endfunction()
+
+# TODO: Figure out how to do this more reliably, instead of parsing the file name to get
+# the target name.
+function(__qt_internal_get_target_name_from_plugin_config_file_name
+        config_file_path
+        package_prefix_regex
+        out_var)
+    string(REGEX REPLACE
+        "^.*/${QT_CMAKE_EXPORT_NAMESPACE}(${package_prefix_regex})Config.cmake$"
+        "\\1"
+        target "${config_file_path}")
+
+    set(${out_var} "${target}" PARENT_SCOPE)
 endfunction()
 
 # Include CMake plugin packages that belong to the Qt module ${target} and initialize automatic
@@ -499,10 +498,12 @@ macro(__qt_internal_include_plugin_packages target)
 
     # Properties can't be set on aliased targets, so make sure to unalias the target. This is needed
     # when Qt examples are built as part of the Qt build itself.
-    get_target_property(_aliased_target ${__qt_${target}_plugin_module_target} ALIASED_TARGET)
-    if(_aliased_target)
-        set(__qt_${target}_plugin_module_target ${_aliased_target})
-    endif()
+    _qt_internal_dealias_target(__qt_${target}_plugin_module_target)
+
+    # Ensure that QT_PLUGIN_TARGETS is a known transitive compile property. Works with CMake
+    # versions >= 3.30.
+    _qt_internal_add_transitive_property(${__qt_${target}_plugin_module_target}
+        COMPILE QT_PLUGIN_TARGETS)
 
     # Include all PluginConfig.cmake files and update the _qt_plugins and QT_PLUGINS property of
     # the module. The underscored version is the one we will use going forward to have compatibility
@@ -511,13 +512,18 @@ macro(__qt_internal_include_plugin_packages target)
     file(GLOB __qt_${target}_plugin_config_files
         "${CMAKE_CURRENT_LIST_DIR}/${QT_CMAKE_EXPORT_NAMESPACE}*PluginConfig.cmake")
     foreach(__qt_${target}_plugin_config_file ${__qt_${target}_plugin_config_files})
-        string(REGEX REPLACE
-            "^.*/${QT_CMAKE_EXPORT_NAMESPACE}(.*Plugin)Config.cmake$"
-            "\\1"
-            __qt_${target}_qt_plugin "${__qt_${target}_plugin_config_file}")
         include("${__qt_${target}_plugin_config_file}")
+
+        __qt_internal_get_target_name_from_plugin_config_file_name(
+            "${__qt_${target}_plugin_config_file}"
+            "(.*Plugin)"
+            __qt_${target}_qt_plugin
+        )
+
         if(TARGET "${QT_CMAKE_EXPORT_NAMESPACE}::${__qt_${target}_qt_plugin}")
             list(APPEND __qt_${target}_plugins ${__qt_${target}_qt_plugin})
+            __qt_internal_add_interface_plugin_target(${__qt_${target}_plugin_module_target}
+                ${__qt_${target}_qt_plugin})
         endif()
     endforeach()
     set_property(TARGET ${__qt_${target}_plugin_module_target}
@@ -544,10 +550,34 @@ macro(__qt_internal_include_plugin_packages target)
             continue()
         endif()
 
-        list(APPEND "QT_ALL_PLUGINS_FOUND_BY_FIND_PACKAGE_${__plugin_type}" "${plugin_target}")
+        set(plugin_target_versioned "${QT_CMAKE_EXPORT_NAMESPACE}::${plugin_target}")
+
+        if(NOT "${plugin_target}"
+                IN_LIST QT_ALL_PLUGINS_FOUND_VIA_FIND_PACKAGE)
+
+            # Old compatibility name.
+            # TODO: Remove once all usages are ported.
+            list(APPEND QT_ALL_PLUGINS_FOUND_BY_FIND_PACKAGE "${plugin_target}")
+
+            # New name consistent with other such variables.
+            list(APPEND QT_ALL_PLUGINS_FOUND_VIA_FIND_PACKAGE "${plugin_target}")
+            list(APPEND QT_ALL_PLUGINS_VERSIONED_FOUND_VIA_FIND_PACKAGE
+                "${plugin_target_versioned}")
+        endif()
+
+        if(NOT "${plugin_target}" IN_LIST QT_ALL_PLUGINS_FOUND_VIA_FIND_PACKAGE_${__plugin_type})
+            # Old compatibility name.
+            # TODO: Remove once all usages are ported.
+            list(APPEND QT_ALL_PLUGINS_FOUND_BY_FIND_PACKAGE_${__plugin_type} "${plugin_target}")
+
+            # New name consistent with other such variables.
+            list(APPEND QT_ALL_PLUGINS_FOUND_VIA_FIND_PACKAGE_${__plugin_type} "${plugin_target}")
+            list(APPEND
+                QT_ALL_PLUGINS_VERSIONED_FOUND_VIA_FIND_PACKAGE_${__plugin_type}
+                "${plugin_target_versioned}")
+        endif()
 
         # Auto-linkage should be set up only for static plugins.
-        set(plugin_target_versioned "${QT_CMAKE_EXPORT_NAMESPACE}::${plugin_target}")
         get_target_property(type "${plugin_target_versioned}" TYPE)
         if(type STREQUAL STATIC_LIBRARY)
             __qt_internal_add_static_plugin_linkage(
@@ -560,3 +590,87 @@ macro(__qt_internal_include_plugin_packages target)
     set_target_properties(
         ${__qt_${target}_plugin_module_target} PROPERTIES __qt_internal_plugins_added TRUE)
 endmacro()
+
+# Include Qt Qml plugin CMake packages that are present under the Qml package directory.
+# TODO: Consider moving this to qtdeclarative somehow.
+macro(__qt_internal_include_qml_plugin_packages)
+    # Qml plugin targets might have dependencies on other qml plugin targets, but the Targets.cmake
+    # files are included in the order that file(GLOB) returns, which means certain targets that are
+    # referenced might not have been created yet, and ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE
+    # might be set to a message saying those targets don't exist.
+    #
+    # Postpone checking of which targets don't exist until all Qml PluginConfig.cmake files have
+    # been included, by including all the files one more time and checking for errors at each step.
+    #
+    # TODO: Find a better way to deal with this, perhaps by using find_package() instead of include
+    # for the Qml PluginConfig.cmake files.
+
+    # Distributions should probably change this default.
+    if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
+        set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION OFF)
+    endif()
+
+    set(__qt_qml_plugins_config_file_list "")
+    set(__qt_qml_plugins_glob_prefixes "${CMAKE_CURRENT_LIST_DIR}")
+
+    # Allow passing additional prefixes where we will glob for PluginConfig.cmake files.
+    if(QT_ADDITIONAL_QML_PLUGIN_GLOB_PREFIXES)
+        foreach(__qt_qml_plugin_glob_prefix IN LISTS QT_ADDITIONAL_QML_PLUGIN_GLOB_PREFIXES)
+            if(__qt_qml_plugin_glob_prefix)
+                list(APPEND __qt_qml_plugins_glob_prefixes "${__qt_qml_plugin_glob_prefix}")
+            endif()
+        endforeach()
+    endif()
+
+    list(REMOVE_DUPLICATES __qt_qml_plugins_glob_prefixes)
+
+    foreach(__qt_qml_plugin_glob_prefix IN LISTS __qt_qml_plugins_glob_prefixes)
+        file(GLOB __qt_qml_plugins_glob_config_file_list
+            "${__qt_qml_plugin_glob_prefix}/QmlPlugins/${INSTALL_CMAKE_NAMESPACE}*Config.cmake")
+        if(__qt_qml_plugins_glob_config_file_list)
+            list(APPEND __qt_qml_plugins_config_file_list ${__qt_qml_plugins_glob_config_file_list})
+        endif()
+    endforeach()
+
+    if (__qt_qml_plugins_config_file_list AND NOT QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
+        # First round of inclusions ensure all qml plugin targets are brought into scope.
+        foreach(__qt_qml_plugin_config_file ${__qt_qml_plugins_config_file_list})
+            include(${__qt_qml_plugin_config_file})
+
+            # Temporarily unset any failure markers and mark the Qml package as found.
+            unset(${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE)
+            set(${CMAKE_FIND_PACKAGE_NAME}_FOUND TRUE)
+        endforeach()
+
+        # For the second round of inclusions, check and bail out early if there are errors.
+        foreach(__qt_qml_plugin_config_file ${__qt_qml_plugins_config_file_list})
+            include(${__qt_qml_plugin_config_file})
+
+            __qt_internal_get_target_name_from_plugin_config_file_name(
+                "${__qt_qml_plugin_config_file}"
+                "(.*)"
+                __qt_qml_plugin_target
+            )
+            set(__qt_qml_plugin_target_versioned
+                "${QT_CMAKE_EXPORT_NAMESPACE}::${__qt_qml_plugin_target}")
+
+            if(TARGET "${__qt_qml_plugin_target_versioned}"
+                AND NOT "${__qt_qml_plugin_target}"
+                    IN_LIST QT_ALL_QML_PLUGINS_FOUND_VIA_FIND_PACKAGE)
+                list(APPEND QT_ALL_QML_PLUGINS_FOUND_VIA_FIND_PACKAGE "${__qt_qml_plugin_target}")
+                list(APPEND QT_ALL_QML_PLUGINS_VERSIONED_FOUND_VIA_FIND_PACKAGE
+                    "${__qt_qml_plugin_target_versioned}")
+            endif()
+            unset(__qt_qml_plugin_target)
+            unset(__qt_qml_plugin_target_versioned)
+
+            if(${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE)
+                string(APPEND ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE
+                    "\nThe message was set in ${__qt_qml_plugin_config_file} ")
+                set(${CMAKE_FIND_PACKAGE_NAME}_FOUND FALSE)
+                return()
+            endif()
+        endforeach()
+    endif()
+endmacro()
+

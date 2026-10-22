@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <QTest>
 #include <QtCore/qmath.h>
 #include <QtGui/qquaternion.h>
@@ -27,6 +25,11 @@ static inline bool myFuzzyCompare(const QQuaternion &q1, const QQuaternion &q2)
 {
     const float d = QQuaternion::dotProduct(q1, q2);
     return myFuzzyCompare(d * d, 1.0f);
+}
+
+static inline bool myFuzzyCompare(QQuaternion::Axis lhs, QVector3D rhs)
+{
+    return myFuzzyCompare(lhs.toVector3D(), rhs);
 }
 
 static inline bool myFuzzyCompareRadians(float p1, float p2)
@@ -896,6 +899,13 @@ void tst_QQuaternion::fromAxes()
 
     QQuaternion result = QQuaternion::fromAxisAndAngle(QVector3D(x1, y1, z1), angle);
 
+    {
+        const auto axes = result.toAxes();
+        QVERIFY(myFuzzyCompare(axes.x, xAxis));
+        QVERIFY(myFuzzyCompare(axes.y, yAxis));
+        QVERIFY(myFuzzyCompare(axes.z, zAxis));
+    }
+
     QVector3D axes[3];
     result.getAxes(&axes[0], &axes[1], &axes[2]);
     QVERIFY(myFuzzyCompare(axes[0], xAxis));
@@ -970,27 +980,30 @@ void tst_QQuaternion::fromDirection_data()
     QTest::addColumn<QVector3D>("direction");
     QTest::addColumn<QVector3D>("up");
 
-    QList<QQuaternion> orientations;
-    orientations << QQuaternion();
+    // 1 default constructed element + 360/45 loops, each adding 4 elements
+    constexpr int size = 1 + (360 / 45) * 4;
+    std::array<QQuaternion, size> orientations;
+    orientations[0] = {};
+    int n = 0;
     for (int angle = 45; angle <= 360; angle += 45) {
-        orientations << QQuaternion::fromAxisAndAngle(QVector3D(1, 0, 0), angle)
-                     << QQuaternion::fromAxisAndAngle(QVector3D(0, 1, 0), angle)
-                     << QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), angle)
-                     << QQuaternion::fromAxisAndAngle(QVector3D(1, 0, 0), angle)
-                        * QQuaternion::fromAxisAndAngle(QVector3D(0, 1, 0), angle)
-                        * QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), angle);
+        orientations[++n] = QQuaternion::fromAxisAndAngle(QVector3D(1, 0, 0), angle);
+        orientations[++n] = QQuaternion::fromAxisAndAngle(QVector3D(0, 1, 0), angle);
+        orientations[++n] = QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), angle);
+        orientations[++n] = QQuaternion::fromAxisAndAngle(QVector3D(1, 0, 0), angle)
+                          * QQuaternion::fromAxisAndAngle(QVector3D(0, 1, 0), angle)
+                          * QQuaternion::fromAxisAndAngle(QVector3D(0, 0, 1), angle);
     }
+    QCOMPARE(n, size - 1);
 
     // othonormal up and dir
-    foreach (const QQuaternion &q, orientations) {
-        QVector3D xAxis, yAxis, zAxis;
-        q.getAxes(&xAxis, &yAxis, &zAxis);
+    for (QQuaternion q : orientations) {
+        const auto [xAxis, yAxis, zAxis] = q.toAxes();
 
         QTest::addRow("ortho dirs: (%.1f,%.1f,%.1f), (%.1f,%.1f,%.1f), (%.1f,%.1f,%.1f)",
-                      xAxis.x(), xAxis.y(), xAxis.z(),
-                      yAxis.x(), yAxis.y(), yAxis.z(),
-                      zAxis.x(), zAxis.y(), zAxis.z())
-            << zAxis * 10.0f << yAxis * 10.0f;
+                      xAxis.x, xAxis.y, xAxis.z,
+                      yAxis.x, yAxis.y, yAxis.z,
+                      zAxis.x, zAxis.y, zAxis.z)
+            << zAxis.toVector3D() * 10.0f << yAxis.toVector3D() * 10.0f;
     }
 
     // collinear up and dir
@@ -1004,15 +1017,14 @@ void tst_QQuaternion::fromDirection_data()
     QTest::newRow("dir: +X+Y+Z, up: -X-Y-Z") << QVector3D(10.0f, 10.0f, 10.0f) << QVector3D(-10.0f, -10.0f, -10.0f);
 
     // invalid up
-    foreach (const QQuaternion &q, orientations) {
-        QVector3D xAxis, yAxis, zAxis;
-        q.getAxes(&xAxis, &yAxis, &zAxis);
+    for (QQuaternion q : orientations) {
+        const auto [xAxis, yAxis, zAxis] = q.toAxes();
 
         QTest::addRow("bad dirs: (%.1f,%.1f,%.1f), (%.1f,%.1f,%.1f), (%.1f,%.1f,%.1f)",
-                      xAxis.x(), xAxis.y(), xAxis.z(),
-                      yAxis.x(), yAxis.y(), yAxis.z(),
-                      zAxis.x(), zAxis.y(), zAxis.z())
-            << zAxis * 10.0f << QVector3D();
+                      xAxis.x, xAxis.y, xAxis.z,
+                      yAxis.x, yAxis.y, yAxis.z,
+                      zAxis.x, zAxis.y, zAxis.z)
+            << zAxis.toVector3D() * 10.0f << QVector3D();
     }
 }
 void tst_QQuaternion::fromDirection()
@@ -1020,22 +1032,21 @@ void tst_QQuaternion::fromDirection()
     QFETCH(QVector3D, direction);
     QFETCH(QVector3D, up);
 
-    QVector3D expextedZ(direction != QVector3D() ? direction.normalized() : QVector3D(0, 0, 1));
-    QVector3D expextedY(up.normalized());
+    const QVector3D expectedZ = direction != QVector3D() ? direction.normalized()
+                                /* else */               : QVector3D(0, 0, 1);
+    const QVector3D expectedY = up.normalized();
 
     QQuaternion result = QQuaternion::fromDirection(direction, up);
     QVERIFY(myFuzzyCompare(result, result.normalized()));
 
-    QVector3D xAxis, yAxis, zAxis;
-    result.getAxes(&xAxis, &yAxis, &zAxis);
+    const auto axes = result.toAxes();
 
-    QVERIFY(myFuzzyCompare(zAxis, expextedZ));
+    QVERIFY(myFuzzyCompare(axes.z, expectedZ));
 
-    if (!qFuzzyIsNull(QVector3D::crossProduct(expextedZ, expextedY).lengthSquared())) {
-        QVector3D expextedX(QVector3D::crossProduct(expextedY, expextedZ));
-
-        QVERIFY(myFuzzyCompare(yAxis, expextedY));
-        QVERIFY(myFuzzyCompare(xAxis, expextedX));
+    const QVector3D expectedX = QVector3D::crossProduct(expectedY, expectedZ);
+    if (!qFuzzyIsNull(expectedX.lengthSquared())) {
+        QVERIFY(myFuzzyCompare(axes.x, expectedX));
+        QVERIFY(myFuzzyCompare(axes.y, expectedY));
     }
 }
 
@@ -1054,11 +1065,20 @@ void tst_QQuaternion::fromEulerAngles_data()
     QTest::newRow("xonly")
         << 90.0f << 0.0f << 0.0f << QQuaternion(0.707107f, 0.707107f, 0.0f, 0.0f);
 
+    QTest::newRow("xonly-opposite")
+        << -90.0f << 0.0f << 0.0f << QQuaternion{M_SQRT1_2, -M_SQRT1_2, 0, 0};
+
     QTest::newRow("yonly")
         << 0.0f << 180.0f << 0.0f << QQuaternion(0.0f, 0.0f, 1.0f, 0.0f);
 
+    QTest::newRow("yonly-opposite")
+        << 0.0f << -180.0f << 0.0f << QQuaternion(0.0f, 0.0f, -1.0f, 0.0f);
+
     QTest::newRow("zonly")
         << 0.0f << 0.0f << 270.0f << QQuaternion(-0.707107f, 0.0f, 0.0f, 0.707107f);
+
+    QTest::newRow("zonly-opposite")
+        << 0.0f << 0.0f << -270.0f << QQuaternion(-M_SQRT1_2, 0.0f, 0.0f, M_SQRT1_2);
 
     QTest::newRow("x+z")
         << 30.0f << 0.0f << 45.0f << QQuaternion(0.892399f, 0.239118f, -0.099046f, 0.369644f);
@@ -1159,6 +1179,27 @@ void tst_QQuaternion::fromEulerAngles()
         QVERIFY(myFuzzyCompareDegrees(quaternionYaw, yaw));
         QVERIFY(myFuzzyCompareDegrees(quaternionRoll, roll));
     }
+
+    {
+        const QQuaternion::EulerAngles angles = answer.eulerAngles(); // CTAD
+        QVERIFY(myFuzzyCompareDegrees(angles.pitch, pitch));
+        QVERIFY(myFuzzyCompareDegrees(angles.yaw, yaw));
+        QVERIFY(myFuzzyCompareDegrees(angles.roll, roll));
+    }
+
+    {
+        const QQuaternion::EulerAngles angles = quaternion.eulerAngles(); // CTAD
+        QVERIFY(myFuzzyCompareDegrees(angles.pitch, pitch));
+        QVERIFY(myFuzzyCompareDegrees(angles.yaw, yaw));
+        QVERIFY(myFuzzyCompareDegrees(angles.roll, roll));
+    }
+
+    // ensure braced initialization continues to work (was: QVector3D; now; EulerAngles)
+    answer = QQuaternion::fromEulerAngles({pitch, yaw, roll});
+    QVERIFY(myFuzzyCompare(answer.x(), result.x()));
+    QVERIFY(myFuzzyCompare(answer.y(), result.y()));
+    QVERIFY(myFuzzyCompare(answer.z(), result.z()));
+    QVERIFY(myFuzzyCompare(answer.scalar(), result.scalar()));
 }
 
 // Test spherical interpolation of quaternions.

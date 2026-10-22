@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qshortcut.h"
 #include "qshortcut_p.h"
@@ -576,5 +577,7 @@ bool QShortcut::event(QEvent *e)
 }
 
 QT_END_NAMESPACE
+
+#undef QAPP_CHECK
 
 #include "moc_qshortcut.cpp"

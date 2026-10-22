@@ -2,18 +2,19 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <qurl.h>
-#include <QtCore/QDebug>
+#include <QtTest/qtest.h>
 
-#include <QTest>
+#include <QtConcurrent/qtconcurrentrun.h>
+
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qdiriterator.h>
+#include <QtCore/qfileinfo.h>
+#include <QtCore/qmap.h>
+#include <QtCore/qthreadpool.h>
+#include <QtCore/qurl.h>
+
 #include <QtTest/private/qcomparisontesthelper_p.h>
-#include <QDirIterator>
-
-#include <qcoreapplication.h>
-
-#include <qfileinfo.h>
-#include <qmap.h>
-
 #include <QtTest/private/qemulationdetector_p.h>
 
 using namespace Qt::StringLiterals;
@@ -60,6 +61,9 @@ private slots:
     void fromLocalFile();
     void fromLocalFileNormalize_data();
     void fromLocalFileNormalize();
+    void fromLocalFileNormalizeNonRoundtrip_data();
+    void fromLocalFileNormalizeNonRoundtrip();
+    void macTypes_data();
     void macTypes();
     void relative();
     void compat_legacy();
@@ -111,8 +115,6 @@ private slots:
     void correctEncodedMistakes();
     void correctDecodedMistakes_data();
     void correctDecodedMistakes();
-    void tldRestrictions_data();
-    void tldRestrictions();
     void emptyQueryOrFragment();
     void hasFragment_data();
     void hasFragment();
@@ -332,6 +334,34 @@ void tst_QUrl::comparison()
     QCOMPARE(url4EncodedDots.toString(), QString("example://a/.//b/..%2F/b/c/"));
     QCOMPARE(url4EncodedDots.adjusted(QUrl::NormalizePathSegments).toString(), QString("example://a//b/..%2F/b/c/"));
 
+    QUrl urlPathSetDecoded = QUrl("ws://localhost:12345/segment/with spaces/<é>", QUrl::TolerantMode);
+    QUrl urlPathSetEncoded = QUrl("ws://localhost:12345/segment/with%20spaces/%3C%c3%a9%3E", QUrl::TolerantMode);
+    QCOMPARE(urlPathSetDecoded, urlPathSetEncoded);
+    QUrl urlSetPathEncodedWithPercent = QUrl("ws://localhost:12345");
+    urlSetPathEncodedWithPercent.setPath("/segment/with%20spaces/%3C%c3%a9%3E", QUrl::TolerantMode);
+    QUrl urlSetPathEncodedWithLiterals = QUrl("ws://localhost:12345");
+    urlSetPathEncodedWithLiterals.setPath("/segment/with spaces/<é>", QUrl::TolerantMode);
+    QUrl urlSetPathDecoded = QUrl("ws://localhost:12345");
+    urlSetPathDecoded.setPath("/segment/with spaces/<é>", QUrl::DecodedMode);
+    QCOMPARE(urlSetPathEncodedWithPercent, urlPathSetEncoded);
+    QCOMPARE(urlSetPathEncodedWithPercent, urlPathSetDecoded);
+    QCOMPARE(urlSetPathEncodedWithLiterals, urlPathSetEncoded);
+    QCOMPARE(urlSetPathEncodedWithLiterals, urlPathSetDecoded);
+    QCOMPARE(urlSetPathEncodedWithLiterals, urlSetPathEncodedWithPercent);
+    QCOMPARE(urlSetPathDecoded, urlPathSetEncoded);
+    QCOMPARE(urlSetPathDecoded, urlPathSetDecoded);
+    QCOMPARE(urlSetPathDecoded, urlSetPathEncodedWithPercent);
+    QCOMPARE(urlSetPathDecoded, urlSetPathEncodedWithLiterals);
+    QCOMPARE(qHash(urlSetPathEncodedWithPercent), qHash(urlPathSetEncoded));
+    QCOMPARE(qHash(urlSetPathEncodedWithPercent), qHash(urlPathSetDecoded));
+    QCOMPARE(qHash(urlSetPathEncodedWithLiterals), qHash(urlPathSetEncoded));
+    QCOMPARE(qHash(urlSetPathEncodedWithLiterals), qHash(urlPathSetDecoded));
+    QCOMPARE(qHash(urlSetPathEncodedWithLiterals), qHash(urlSetPathEncodedWithPercent));
+    QCOMPARE(qHash(urlSetPathDecoded), qHash(urlPathSetEncoded));
+    QCOMPARE(qHash(urlSetPathDecoded), qHash(urlPathSetDecoded));
+    QCOMPARE(qHash(urlSetPathDecoded), qHash(urlSetPathEncodedWithPercent));
+    QCOMPARE(qHash(urlSetPathDecoded), qHash(urlSetPathEncodedWithLiterals));
+
     // 6.2.2.1 Make sure hexdecimal characters in percent encoding are
     // treated case-insensitively
     QUrl url5;
@@ -436,6 +466,33 @@ void tst_QUrl::comparison2_data()
     QTest::newRow("fragment-scheme") << QUrl("#foo") << QUrl("x:") << -1;
 
     QTest::newRow("noport-zeroport") << QUrl("http://example.com") << QUrl("http://example.com:0") << -1;
+
+    // check that nothing is remembered
+    auto addEmptiedUrl = [](const char *label, const QUrl &url) {
+        QUrl copy = url;
+        copy.setUrl(QString());
+        QTest::addRow("null-latent-%s", label) << QUrl() << copy << 0;
+
+        QString nonempty = u"https://www.qt-project.org"_s;
+        copy = url;
+        copy.setUrl(nonempty);
+        QTest::addRow("nonnull-latent-%s", label) << QUrl(nonempty) << copy << 0;
+    };
+    addEmptiedUrl("scheme", QUrl("x:"));
+    addEmptiedUrl("username", QUrl("//user@"));
+    addEmptiedUrl("password", QUrl("//:pass@"));
+    addEmptiedUrl("userinfo", QUrl("//user:pass@"));
+    addEmptiedUrl("host", QUrl("//foo"));
+    addEmptiedUrl("username-host", QUrl("//user@bar"));
+    addEmptiedUrl("password-host", QUrl("//:pass@bar"));
+    addEmptiedUrl("userinfo-host", QUrl("//user:pass@bar"));
+    addEmptiedUrl("host-port", QUrl("//bar:1"));
+    addEmptiedUrl("abpath", QUrl("/"));
+    addEmptiedUrl("relpath", QUrl("hello"));
+    addEmptiedUrl("abpath-local", QUrl("file:/"));
+    addEmptiedUrl("relpath-local", QUrl("file:hello"));
+    addEmptiedUrl("query", QUrl("?boop"));
+    addEmptiedUrl("fragment", QUrl("#meep"));
 }
 
 void tst_QUrl::comparison2()
@@ -452,10 +509,21 @@ void tst_QUrl::comparison2()
         return Qt::weak_ordering::equivalent;
     }();
 
-    QCOMPARE(url1.toString() == url2.toString(), ordering == 0);
-    QT_TEST_ALL_COMPARISON_OPS(url1, url2, expectedOrdering);
-    if (ordering == 0)
+    if (ordering == 0) {
+        QCOMPARE(url1.toString(), url2.toString());
+        QCOMPARE(url1, url2);
         QCOMPARE(qHash(url1), qHash(url2));
+        QCOMPARE(qHash(url1, 1), qHash(url2, 1));
+    } else if (ordering < 0) {
+        QCOMPARE_LT(url1.toString(), url2.toString());
+        QCOMPARE_NE(url1, url2);
+        QCOMPARE_LT(url1, url2);
+    } else {
+        QCOMPARE_GT(url1.toString(), url2.toString());
+        QCOMPARE_NE(url1, url2);
+        QCOMPARE_GT(url1, url2);
+    }
+    QT_TEST_ALL_COMPARISON_OPS(url1, url2, expectedOrdering);
 
     // redundant checks (the above should catch these)
     QCOMPARE(url1 < url2 || url2 < url1, ordering != 0);
@@ -600,7 +668,7 @@ void tst_QUrl::setUrl()
 
         QUrl url2("../../////kdebase/konqueror");
         QCOMPARE(url.resolved(url2).toString(),
-                QString::fromLatin1("file:///usr/local/src/kde2/////kdebase/konqueror"));
+                QString::fromLatin1("file:///usr/local/src/kde2/kdebase/konqueror"));
     }
 
     {
@@ -839,7 +907,33 @@ void tst_QUrl::resolving_data()
     QTest::addColumn<QString>("relativeUrl");
     QTest::addColumn<QString>("resolvedUrl");
 
+    // boundary cases
+    QTest::newRow("empty-on-empty") << "http://a" << "" << "http://a";
+    QTest::newRow("empty-on-/") << "http://a/" << "" << "http://a/";
+    QTest::newRow("empty-on-//") << "http://a//" << "" << "http://a//";
+    QTest::newRow("empty-on-/.") << "http://a/." << "" << "http://a/";
+    QTest::newRow("empty-on-/./") << "http://a/./" << "" << "http://a/";
+    QTest::newRow("empty-on-/..") << "http://a/.." << "" << "http://a/";
+    QTest::newRow("empty-on-/../") << "http://a/../" << "" << "http://a/";
+
+    QTest::newRow("/-on-empty-with-authority") << "http://a" << "/" << "http://a/";
+    QTest::newRow(".-on-empty-with-authority") << "http://a" << "." << "http://a/";
+    QTest::newRow("./-on-empty-with-authority") << "http://a" << "./" << "http://a/";
+    QTest::newRow(".//-on-empty-with-authority") << "http://a" << ".//" << "http://a//";
+    QTest::newRow("..-on-empty-with-authority") << "http://a" << ".." << "http://a/";
+    QTest::newRow("../-on-empty-with-authority") << "http://a" << "../" << "http://a/";
+    QTest::newRow("/-on-empty-no-authority") << "scheme:" << "/" << "scheme:/";
+    QTest::newRow(".-on-empty-no-authority") << "scheme:" << "." << "scheme:";
+    QTest::newRow("./-on-empty-no-authority") << "scheme:" << "./" << "scheme:";
+    QTest::newRow(".//-on-empty-no-authority") << "scheme:" << ".//" << "scheme:";
+    QTest::newRow("..-on-empty-no-authority") << "scheme:" << ".." << "scheme:";
+    QTest::newRow("../-on-empty-no-authority") << "scheme:" << "../" << "scheme:";
+
+    QTest::newRow("scheme-change") << "http://a" << "https://b" << "https://b";
+    QTest::newRow("scheme-change-path") << "http://a/" << "scheme:" << "scheme:";
+
     // 5.4.1 Normal Examples (http://www.ietf.org/rfc/rfc3986.txt)
+    // URL paths not ending in /
     QTest::newRow("g:h")       << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("g:h")      << QString::fromLatin1("g:h");
     QTest::newRow("g")         << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("g")        << QString::fromLatin1("http://a/b/c/g");
     QTest::newRow("./g")       << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("./g")      << QString::fromLatin1("http://a/b/c/g");
@@ -857,12 +951,62 @@ void tst_QUrl::resolving_data()
     QTest::newRow("[empty]")   << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("")         << QString::fromLatin1("http://a/b/c/d;p?q");
     QTest::newRow(".")         << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1(".")        << QString::fromLatin1("http://a/b/c/");
     QTest::newRow("./")        << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("./")       << QString::fromLatin1("http://a/b/c/");
+    QTest::newRow(".//")       << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1(".//")      << QString::fromLatin1("http://a/b/c//");
     QTest::newRow("..")        << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("..")       << QString::fromLatin1("http://a/b/");
     QTest::newRow("../")       << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../")      << QString::fromLatin1("http://a/b/");
+    QTest::newRow("..//")      << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("..//")     << QString::fromLatin1("http://a/b//");
     QTest::newRow("../g")      << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../g")     << QString::fromLatin1("http://a/b/g");
+    QTest::newRow("..//g")     << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("..//g")    << QString::fromLatin1("http://a/b//g");
     QTest::newRow("../..")     << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../..")    << QString::fromLatin1("http://a/");
     QTest::newRow("../../")    << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../")   << QString::fromLatin1("http://a/");
+    QTest::newRow("../..//")   << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../..//")  << QString::fromLatin1("http://a//");
     QTest::newRow("../../g")   << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../g")  << QString::fromLatin1("http://a/g");
+    QTest::newRow("../..//g")  << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../..//g") << QString::fromLatin1("http://a//g");
+
+    // URL paths ending in /
+    QTest::newRow("g:h-on-/")      << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("g:h")      << QString::fromLatin1("g:h");
+    QTest::newRow("g-on-/")        << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("g")        << QString::fromLatin1("http://a/b/c/g");
+    QTest::newRow("./g-on-/")      << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("./g")      << QString::fromLatin1("http://a/b/c/g");
+    QTest::newRow("g/-on-/")       << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("g/")       << QString::fromLatin1("http://a/b/c/g/");
+    QTest::newRow("/g-on-/")       << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("/g")       << QString::fromLatin1("http://a/g");
+    QTest::newRow("//g-on-/")      << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("//g")      << QString::fromLatin1("http://g");
+    QTest::newRow("?y-on-/")       << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("?y")       << QString::fromLatin1("http://a/b/c/;p?y");
+    QTest::newRow("g?y-on-/")      << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("g?y")      << QString::fromLatin1("http://a/b/c/g?y");
+    QTest::newRow("#s-on-/")       << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("#s")       << QString::fromLatin1("http://a/b/c/;p?q#s");
+    QTest::newRow("g#s-on-/")      << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("g#s")      << QString::fromLatin1("http://a/b/c/g#s");
+    QTest::newRow("g?y#s-on-/")    << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("g?y#s")    << QString::fromLatin1("http://a/b/c/g?y#s");
+    QTest::newRow(";x-on-/")       << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1(";x")       << QString::fromLatin1("http://a/b/c/;x");
+    QTest::newRow("g;x-on-/")      << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("g;x")      << QString::fromLatin1("http://a/b/c/g;x");
+    QTest::newRow("g;x?y#s-on-/")  << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("g;x?y#s")  << QString::fromLatin1("http://a/b/c/g;x?y#s");
+    QTest::newRow("[empty]-on-/")  << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("")         << QString::fromLatin1("http://a/b/c/;p?q");
+    QTest::newRow(".-on-/")        << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1(".")        << QString::fromLatin1("http://a/b/c/");
+    QTest::newRow("./-on-/")       << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("./")       << QString::fromLatin1("http://a/b/c/");
+    QTest::newRow(".//-on-/")      << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1(".//")      << QString::fromLatin1("http://a/b/c//");
+    QTest::newRow("..-on-/")       << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("..")       << QString::fromLatin1("http://a/b/");
+    QTest::newRow("../-on-/")      << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("../")      << QString::fromLatin1("http://a/b/");
+    QTest::newRow("..//-on-/")     << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("..//")     << QString::fromLatin1("http://a/b//");
+    QTest::newRow("../g-on-/")     << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("../g")     << QString::fromLatin1("http://a/b/g");
+    QTest::newRow("..//g-on-/")    << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("..//g")    << QString::fromLatin1("http://a/b//g");
+    QTest::newRow("../..-on-/")    << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("../..")    << QString::fromLatin1("http://a/");
+    QTest::newRow("../../-on-/")   << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("../../")   << QString::fromLatin1("http://a/");
+    QTest::newRow("../..//-on-/")  << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("../..//")  << QString::fromLatin1("http://a//");
+    QTest::newRow("../../g-on-/")  << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("../../g")  << QString::fromLatin1("http://a/g");
+    QTest::newRow("../..//g-on-/") << QString::fromLatin1("http://a/b/c/;p?q") << QString::fromLatin1("../..//g") << QString::fromLatin1("http://a//g");
+
+    // URL paths ending in //
+    QTest::newRow(".-on-//") << "http://a/b/c//" << "." << "http://a/b/c//";
+    QTest::newRow("./-on-//") << "http://a/b/c//" << "./" << "http://a/b/c//";
+    QTest::newRow(".//-on-//") << "http://a/b/c//" << ".//" << "http://a/b/c///";  // weird but correct
+    QTest::newRow("..-on-//") << "http://a/b/c//" << ".." << "http://a/b/c/";
+    QTest::newRow("../-on-//") << "http://a/b/c//" << "../" << "http://a/b/c/";
+    QTest::newRow("..//-on-//") << "http://a/b/c//" << "..//" << "http://a/b/c//";
+    QTest::newRow("../g-on-//") << "http://a/b/c//" << "../g" << "http://a/b/c/g";
+    QTest::newRow("..//g-on-//") << "http://a/b/c//" << "..//g" << "http://a/b/c//g";
+    QTest::newRow("../..-on-//") << "http://a/b/c//" << "../.." << "http://a/b/";
+    QTest::newRow("../../-on-//") << "http://a/b/c//" << "../../" << "http://a/b/";
+    QTest::newRow("../..//-on-//") << "http://a/b/c//" << "../..//" << "http://a/b//";
+    QTest::newRow("../../g-on-//") << "http://a/b/c//" << "../../g" << "http://a/b/g";
+    QTest::newRow("../..//g-on-//") << "http://a/b/c//" << "../..//g" << "http://a/b//g";
 
     // 5.4.2  Abnormal Examples (http://www.ietf.org/rfc/rfc3986.txt)
 
@@ -870,8 +1014,15 @@ void tst_QUrl::resolving_data()
     // relative path ".." segments than there are hierarchical levels in the
     // base URI's path.  Note that the ".." syntax cannot be used to change
     // the authority component of a URI.
+    QTest::newRow("../../../")    << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../../")     << QString::fromLatin1("http://a/");
+    QTest::newRow("../../../..") << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../../..")  << QString::fromLatin1("http://a/");
+    QTest::newRow("../../../..//") << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../../..//")  << QString::fromLatin1("http://a//");
+    QTest::newRow("../../../../..") << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../../../..")  << QString::fromLatin1("http://a/");
+    QTest::newRow("../../../../../") << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../../../../")  << QString::fromLatin1("http://a/");
     QTest::newRow("../../../g")    << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../../g")     << QString::fromLatin1("http://a/g");
+    QTest::newRow("../../..//g")   << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../..//g")    << QString::fromLatin1("http://a//g");
     QTest::newRow("../../../../g") << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../../../g")  << QString::fromLatin1("http://a/g");
+    QTest::newRow("../../../..//g") << QString::fromLatin1("http://a/b/c/d;p?q") << QString::fromLatin1("../../../..//g") << QString::fromLatin1("http://a//g");
 
     // Similarly, parsers must remove the dot-segments "." and ".." when
     // they are complete components of a path, but not when they are only
@@ -917,11 +1068,49 @@ void tst_QUrl::resolving_data()
     QTest::newRow("../a (2)")  << QString::fromLatin1("b/a") << QString::fromLatin1("../a")  << QString::fromLatin1("a");
     QTest::newRow("../a (3)")  << QString::fromLatin1("b/c/a") << QString::fromLatin1("../a")  << QString::fromLatin1("b/a");
     QTest::newRow("../a (4)")  << QString::fromLatin1("b") << QString::fromLatin1("/a")  << QString::fromLatin1("/a");
+    QTest::newRow("relative+.") << "scheme:" << "." << "scheme:";
+    QTest::newRow("relative+./") << "scheme:" << "./" << "scheme:";
+    QTest::newRow("relative+.//") << "scheme:" << ".//" << "scheme:";
+    QTest::newRow("relative+.///") << "scheme:" << ".///" << "scheme:";
+    QTest::newRow("relative+./.") << "scheme:" << "./." << "scheme:";
+    QTest::newRow("relative+././") << "scheme:" << "././" << "scheme:";
+    QTest::newRow("relative+..") << "scheme:" << ".." << "scheme:";
+    QTest::newRow("relative+../") << "scheme:" << "../" << "scheme:";
+    QTest::newRow("relative+..//") << "scheme:" << "..//" << "scheme:";
+    QTest::newRow("relative+..///") << "scheme:" << "..///" << "scheme:";
+    QTest::newRow("relative+../.") << "scheme:" << "../." << "scheme:";
+    QTest::newRow("relative+.././") << "scheme:" << ".././" << "scheme:";
+    QTest::newRow("relative+.././/") << "scheme:" << ".././/" << "scheme:";
+    QTest::newRow("relative+.././//") << "scheme:" << ".././//" << "scheme:";
+    QTest::newRow("relative+../../../..") << "scheme:b/c/d" << "../../../.." << "scheme:";
+    QTest::newRow("relative+../../../../") << "scheme:b/c/d" << "../../../../" << "scheme:";
+    QTest::newRow("relative+../../../..//") << "scheme:b/c/d" << "../../../..//" << "scheme:";
+    QTest::newRow("relative+../../d/../..") << "scheme:b/c/d" << "../../d/../.." << "scheme:";
+    QTest::newRow("relative+../../d/../../") << "scheme:b/c/d" << "../../d/../../" << "scheme:";
+    QTest::newRow("relative+endslash+../../../..") << "scheme:b/c/d/" << "../../../.." << "scheme:";
+    QTest::newRow("relative+endslash+../../../../") << "scheme:b/c/d/" << "../../../../" << "scheme:";
+    QTest::newRow("relative+endslash+../../../..//") << "scheme:b/c/d/" << "../../../..//" << "scheme:";
 
+    // Resolve absolute without authority with relative
     QTest::newRow("../a (5)")  << QString::fromLatin1("/b") << QString::fromLatin1("../a")  << QString::fromLatin1("/a");
     QTest::newRow("../a (6)")  << QString::fromLatin1("/b/a") << QString::fromLatin1("../a")  << QString::fromLatin1("/a");
     QTest::newRow("../a (7)")  << QString::fromLatin1("/b/c/a") << QString::fromLatin1("../a")  << QString::fromLatin1("/b/a");
     QTest::newRow("../a (8)")  << QString::fromLatin1("/b") << QString::fromLatin1("/a")  << QString::fromLatin1("/a");
+    QTest::newRow("noauthority+.") << "scheme:/a/b" << "." << "scheme:/a/";
+    QTest::newRow("noauthority+./") << "scheme:/a/b" << "./" << "scheme:/a/";
+    QTest::newRow("noauthority+.//") << "scheme:/a/b" << ".//" << "scheme:/a//";
+    QTest::newRow("noauthority+./d") << "scheme:/a/b" << "./d" << "scheme:/a/d";
+    QTest::newRow("noauthority+.//d") << "scheme:/a/b" << ".//d" << "scheme:/a//d";
+    QTest::newRow("noauthority+..") << "scheme:/a/b" << ".." << "scheme:/";
+    QTest::newRow("noauthority+../") << "scheme:/a/b" << "../" << "scheme:/";
+    QTest::newRow("noauthority+..//") << "scheme:/a/b" << "..//" << "scheme:/";
+    QTest::newRow("noauthority+../d") << "scheme:/a/b" << "../d" << "scheme:/d";
+    QTest::newRow("noauthority+..//d") << "scheme:/a/b" << "..//d" << "scheme:/d"; // no double slash!
+    QTest::newRow("noauthority+../..") << "scheme:/a/b" << "../.." << "scheme:/";
+    QTest::newRow("noauthority+../../") << "scheme:/a/b" << "../../" << "scheme:/";
+    QTest::newRow("noauthority+../..//") << "scheme:/a/b" << "../..//" << "scheme:/";
+    QTest::newRow("noauthority+../../d") << "scheme:/a/b" << "../../d" << "scheme:/d";
+    QTest::newRow("noauthority+../..//d") << "scheme:/a/b" << "../..//d" << "scheme:/d"; // no double slash!
 
     // More tests from KDE
     QTest::newRow("brackets")  << QString::fromLatin1("http://www.calorieking.com/personal/diary/") << QString::fromLatin1("/personal/diary/rpc.php?C=jsrs1&F=getDiaryDay&P0=[2006-3-8]&U=1141858921458") << QString::fromLatin1("http://www.calorieking.com/personal/diary/rpc.php?C=jsrs1&F=getDiaryDay&P0=[2006-3-8]&U=1141858921458");
@@ -1194,6 +1383,19 @@ void tst_QUrl::toString_constructed()
     QCOMPARE(url.toString(formattingOptions), asString);
     QCOMPARE(QString::fromLatin1(url.toEncoded(formattingOptions)), QString::fromLatin1(asEncoded)); // readable in case of differences
     QCOMPARE(url.toEncoded(formattingOptions), asEncoded);
+
+    if (options == QUrl::UrlFormattingOption::None) {
+        QUrl parsed(asString);
+        QCOMPARE(url, parsed);
+        QCOMPARE(qHash(url), qHash(parsed));
+        QCOMPARE(qHash(url, 1), qHash(parsed, 1));
+    }
+
+    // clear it and ensure no memory of the previous state remains
+    url.setUrl(QString());
+    QCOMPARE(url, QUrl());
+    QCOMPARE(qHash(url), qHash(QUrl()));
+    QCOMPARE(qHash(url, 1), qHash(QUrl(), 1));
 }
 
 void tst_QUrl::toDisplayString_PreferLocalFile_data()
@@ -1244,6 +1446,8 @@ void tst_QUrl::toLocalFile_data()
     QTest::newRow("FILE:/") << QString::fromLatin1("FILE:/a.txt") << QString::fromLatin1("/a.txt");
 
     QTest::newRow("path-delimiter") << QString::fromLatin1("file:///Mambo <%235>.mp3") << QString::fromLatin1("/Mambo <#5>.mp3");
+    QTest::newRow("path-brackets-encoded") << u"file:///tmp/%5Btest%5D.txt"_s << u"/tmp/[test].txt"_s;
+    QTest::newRow("path-brackets-decoded") << u"file:///tmp/[test].txt"_s << u"/tmp/[test].txt"_s;
     QTest::newRow("path-percent") << QString::fromLatin1("file:///a%25.txt") << QString::fromLatin1("/a%.txt");
     QTest::newRow("path-percent-percent") << QString::fromLatin1("file:///a%25%25.txt") << QString::fromLatin1("/a%%.txt");
     QTest::newRow("path-percent-a-percent") << QString::fromLatin1("file:///a%25a%25.txt") << QString::fromLatin1("/a%a%.txt");
@@ -1285,6 +1489,21 @@ void tst_QUrl::toLocalFile()
     QUrl url(theUrl);
     QCOMPARE(url.toLocalFile(), theFile);
     QCOMPARE(url.isLocalFile(), !theFile.isEmpty());
+
+    // set the path to the same (encoded) thing - nothing should change
+    url.setPath(url.path(QUrl::FullyEncoded), QUrl::TolerantMode);
+    QCOMPARE(url.toLocalFile(), theFile);
+    QCOMPARE(url.isLocalFile(), !theFile.isEmpty());
+
+    // QUrl::PrettyDecoded is still URL-encoded and lossless
+    url.setPath(url.path(QUrl::PrettyDecoded), QUrl::TolerantMode);
+    QCOMPARE(url.toLocalFile(), theFile);
+    QCOMPARE(url.isLocalFile(), !theFile.isEmpty());
+
+    // local file paths can be fully decoded without loss
+    url.setPath(url.path());
+    QCOMPARE(url.toLocalFile(), theFile);
+    QCOMPARE(url.isLocalFile(), !theFile.isEmpty());
 }
 
 void tst_QUrl::fromLocalFile_data()
@@ -1298,9 +1517,14 @@ void tst_QUrl::fromLocalFile_data()
     QTest::newRow("absolute-two-path") << QString::fromLatin1("/a/b.txt") << QString::fromLatin1("file:///a/b.txt") << QString::fromLatin1("/a/b.txt");
     QTest::newRow("path-delimiters") << QString::fromLatin1("/Mambo <#5>.mp3") << QString::fromLatin1("file:///Mambo <%235>.mp3")
                                      << QString::fromLatin1("/Mambo <#5>.mp3");
+    QTest::newRow("path-brackets") << u"/tmp/[test].txt"_s << u"file:///tmp/%5Btest%5D.txt"_s << u"/tmp/[test].txt"_s;
 
     // Windows absolute details
     QTest::newRow("windows-drive") << QString::fromLatin1("c:/a.txt") << QString::fromLatin1("file:///c:/a.txt") << QString::fromLatin1("/c:/a.txt");
+
+    // Handling of Windows roots with relative - note, no normalization!
+    QTest::newRow("windows-drive-above-root")
+            << QString::fromLatin1("c:/../a.txt") << QString::fromLatin1("file:///c:/../a.txt") << QString::fromLatin1("/c:/../a.txt");
 
     // Windows UNC paths
     for (const char *suffix : { "", "/", "/somedir/somefile" }) {
@@ -1356,6 +1580,21 @@ void tst_QUrl::fromLocalFile()
 
     QCOMPARE(url.toString(QUrl::DecodeReserved), theUrl);
     QCOMPARE(url.path(), thePath);
+
+    // set the path to the same (encoded) thing - nothing should change
+    url.setPath(url.path(QUrl::FullyEncoded), QUrl::TolerantMode);
+    QCOMPARE(url.toString(QUrl::DecodeReserved), theUrl);
+    QCOMPARE(url.path(), thePath);
+
+    // QUrl::PrettyDecoded is still URL-encoded and lossless
+    url.setPath(url.path(QUrl::PrettyDecoded), QUrl::TolerantMode);
+    QCOMPARE(url.toString(QUrl::DecodeReserved), theUrl);
+    QCOMPARE(url.path(), thePath);
+
+    // local file paths can be fully decoded without loss
+    url.setPath(url.path());
+    QCOMPARE(url.toString(QUrl::DecodeReserved), theUrl);
+    QCOMPARE(url.path(), thePath);
 }
 
 void tst_QUrl::fromLocalFileNormalize_data()
@@ -1366,6 +1605,11 @@ void tst_QUrl::fromLocalFileNormalize_data()
 
     QTest::newRow("absolute-path") << QString::fromLatin1("/a.txt") << QString::fromLatin1("file:///a.txt") << QString::fromLatin1("file:///a.txt");
     QTest::newRow("relative-path") << QString::fromLatin1("a.txt") << QString::fromLatin1("file:a.txt") << QString::fromLatin1("file:a.txt");
+
+    QTest::newRow("absolute-path-trailing-slash") << u"/b/"_s << u"file:///b/"_s << u"file:///b/"_s;
+    QTest::newRow("absolute-path-no-trailing-slash") << u"/b"_s << u"file:///b"_s << u"file:///b"_s;
+    QTest::newRow("absolute-path-2-trailing-slashes") << u"/b//"_s << u"file:///b//"_s << u"file:///b/"_s;
+
     QTest::newRow("percent") << QString::fromLatin1("/a%.txt") << QString::fromLatin1("file:///a%25.txt")
                              << QString::fromLatin1("file:///a%25.txt");
     QTest::newRow("percent25") << QString::fromLatin1("/a%25.txt") << QString::fromLatin1("file:///a%2525.txt")
@@ -1375,8 +1619,13 @@ void tst_QUrl::fromLocalFileNormalize_data()
     QTest::newRow("relative-dot") << QString::fromLatin1("./a.txt") << QString::fromLatin1("file:./a.txt") << QString::fromLatin1("file:a.txt");
     QTest::newRow("relative-dot-dot") << QString::fromLatin1("././a.txt") << QString::fromLatin1("file:././a.txt") << QString::fromLatin1("file:a.txt");
     QTest::newRow("relative-path-dotdot") << QString::fromLatin1("b/../a.txt") << QString::fromLatin1("file:b/../a.txt") << QString::fromLatin1("file:a.txt");
+    QTest::newRow("relative-path-dotdot-dotdot") << QString::fromLatin1("b/../../a.txt") << QString::fromLatin1("file:b/../../a.txt") << QString::fromLatin1("file:../a.txt");
     QTest::newRow("absolute-path-dotdot") << QString::fromLatin1("/b/../a.txt") << QString::fromLatin1("file:///b/../a.txt") << QString::fromLatin1("file:///a.txt");
-    QTest::newRow("absolute-path-dot") << QString::fromLatin1("/b/.") << QString::fromLatin1("file:///b/.") << QString::fromLatin1("file:///b");
+    QTest::newRow("absolute-path-dotdot-dotdot") << QString::fromLatin1("/b/../../a.txt") << QString::fromLatin1("file:///b/../../a.txt") << QString::fromLatin1("file:///../a.txt");
+    QTest::newRow("absolute-path-slash") << QString::fromLatin1("/b/") << QString::fromLatin1("file:///b/") << QString::fromLatin1("file:///b/");
+    QTest::newRow("absolute-path-slahs-dot") << QString::fromLatin1("/b/.") << QString::fromLatin1("file:///b/.") << QString::fromLatin1("file:///b/");
+    QTest::newRow("absolute-path-slahs-dot-slash") << QString::fromLatin1("/b/./") << QString::fromLatin1("file:///b/./") << QString::fromLatin1("file:///b/");
+    QTest::newRow("absolute-path-dotdot-slashslash") << QString::fromLatin1("/b/..//") << QString::fromLatin1("file:///b/..//") << QString::fromLatin1("file:////");
 }
 
 void tst_QUrl::fromLocalFileNormalize()
@@ -1393,13 +1642,84 @@ void tst_QUrl::fromLocalFileNormalize()
     QCOMPARE(url.toString(QUrl::NormalizePathSegments), urlWithNormalizedPath);
 }
 
-void tst_QUrl::macTypes()
+void tst_QUrl::fromLocalFileNormalizeNonRoundtrip_data()
+{
+#ifdef Q_OS_WIN32
+    static constexpr bool IsWindows = true;
+#else
+    static constexpr bool IsWindows = false;
+#endif
+
+    QTest::addColumn<QString>("input");
+    QTest::addColumn<QString>("theUrl");
+    QTest::addColumn<QString>("thePath");
+    QTest::addColumn<QString>("urlWithNormalizedPath");
+
+    QTest::newRow("server") << u"//server"_s << u"file://server"_s << QString() << u"file://server"_s;
+    QTest::newRow("server/..") << u"//server/.."_s << u"file://server/.."_s << u"/.."_s << u"file://server/.."_s;
+    QTest::newRow("server/share") << u"//server/share"_s << u"file://server/share"_s << u"/share"_s << u"file://server/share"_s;
+    QTest::newRow("server/share/..") << u"//server/share/.."_s << u"file://server/share/.."_s << u"/share/.."_s << u"file://server/"_s;
+
+    auto addAbsoluteWindowsPathRow = [](const char *name, const QString &input,
+            const QString &unixNormalized, const QString &windowsNormalized) {
+        QString thePath = '/' + input;        // fromPercentEncoding, but works for now
+        QString theUrl = "file://" + thePath;
+        const QString &normalized = IsWindows ? windowsNormalized : unixNormalized;
+        QTest::newRow(name) << input << theUrl << thePath << normalized;
+    };
+    addAbsoluteWindowsPathRow("relative-drive", "c:", "file:///c:", "file:///c:");
+    addAbsoluteWindowsPathRow("absolute-drive", "c:/", "file:///c:/", "file:///c:/");
+    addAbsoluteWindowsPathRow("relative-drive/path", "c:autoexec.bat",
+                              "file:///c:autoexec.bat", "file:///c:autoexec.bat");
+    addAbsoluteWindowsPathRow("absolute-drive/path", "c:/config.sys",
+                              "file:///c:/config.sys", "file:///c:/config.sys");
+    addAbsoluteWindowsPathRow("absolute-drive/path/..", "c:/dos/..",
+                              "file:///c:/", "file:///c:/");
+    addAbsoluteWindowsPathRow("absolute-drive/path/../", "c:/dos/../",
+                              "file:///c:/", "file:///c:/");
+
+    // The drive root should remain for the normalized URLs on Windows
+    addAbsoluteWindowsPathRow("absolute-drive/..", "c:/..",
+                              "file:///", "file:///c:/..");
+    addAbsoluteWindowsPathRow("relative-drive/path/..", "c:dos/..",
+                              "file:///", "file:///c:");
+    addAbsoluteWindowsPathRow("relative-drive/path/../", "c:dos/../",
+                              "file:///", "file:///c:");   // Note: trailing / would change meaning!
+    addAbsoluteWindowsPathRow("relative-drive/path/../..", "c:dos/../..",
+                              "file:///..", "file:///c:..");
+    addAbsoluteWindowsPathRow("relative-drive/path/../../", "c:dos/../../",
+                              "file:///../", "file:///c:../");
+}
+
+void tst_QUrl::fromLocalFileNormalizeNonRoundtrip()
+{
+    QFETCH(QString, input);
+    QFETCH(QString, theUrl);
+    QFETCH(QString, thePath);
+    QFETCH(QString, urlWithNormalizedPath);
+
+    QUrl url = QUrl::fromLocalFile(input);
+
+    QCOMPARE(url.toString(QUrl::DecodeReserved), theUrl);
+    QCOMPARE(url.path(), thePath);
+    QCOMPARE(url.toString(QUrl::NormalizePathSegments), urlWithNormalizedPath);
+}
+
+void tst_QUrl::macTypes_data()
 {
 #ifndef Q_OS_DARWIN
     QSKIP("This is a Mac-only test");
 #else
-    extern void tst_QUrl_mactypes(); // in tst_qurl_mac.mm
-    void tst_QUrl_mactypes();
+    extern void tst_QUrl_mactypes_data();
+    tst_QUrl_mactypes_data();
+#endif
+}
+
+void tst_QUrl::macTypes()
+{
+#ifdef Q_OS_DARWIN
+    extern void tst_QUrl_mactypes();
+    tst_QUrl_mactypes();
 #endif
 }
 
@@ -2010,6 +2330,10 @@ void tst_QUrl::moreIpv6()
     QUrl waba1("http://www.kde.org/cgi/test.cgi");
     waba1.setHost("::ffff:129.144.52.38");
     QCOMPARE(QString::fromLatin1(waba1.toEncoded()), QString::fromLatin1("http://[::ffff:129.144.52.38]/cgi/test.cgi"));
+
+    QUrl withInvalidHost;
+    withInvalidHost.setHost("[:]"); // This had an UB (ptr[-1] read)
+    QCOMPARE(withInvalidHost.host(), QString());
 }
 
 void tst_QUrl::isRelative_data()
@@ -2560,90 +2884,6 @@ void tst_QUrl::correctDecodedMistakes()
     } else {
         QVERIFY(url.toString().isEmpty());
     }
-}
-
-void tst_QUrl::tldRestrictions_data()
-{
-    QTest::addColumn<QString>("tld");
-    QTest::addColumn<bool>("encode");
-
-    // current whitelist
-    QTest::newRow("ac")  << QString("ac")  << true;
-    QTest::newRow("ar")  << QString("ar")  << true;
-    QTest::newRow("asia")  << QString("asia")  << true;
-    QTest::newRow("at") << QString("at") << true;
-    QTest::newRow("biz")  << QString("biz")  << true;
-    QTest::newRow("br") << QString("br") << true;
-    QTest::newRow("cat")  << QString("cat")  << true;
-    QTest::newRow("ch")  << QString("ch")  << true;
-    QTest::newRow("cl")  << QString("cl")  << true;
-    QTest::newRow("cn") << QString("cn") << true;
-    QTest::newRow("com")  << QString("com")  << true;
-    QTest::newRow("de")  << QString("de")  << true;
-    QTest::newRow("dk") << QString("dk") << true;
-    QTest::newRow("es")  << QString("es")  << true;
-    QTest::newRow("fi") << QString("fi") << true;
-    QTest::newRow("gr")  << QString("gr")  << true;
-    QTest::newRow("hu") << QString("hu") << true;
-    QTest::newRow("il")  << QString("il")  << true;
-    QTest::newRow("info")  << QString("info")  << true;
-    QTest::newRow("io") << QString("io") << true;
-    QTest::newRow("is")  << QString("is")  << true;
-    QTest::newRow("ir")  << QString("ir")  << true;
-    QTest::newRow("jp") << QString("jp") << true;
-    QTest::newRow("kr") << QString("kr") << true;
-    QTest::newRow("li")  << QString("li")  << true;
-    QTest::newRow("lt") << QString("lt") << true;
-    QTest::newRow("lu")  << QString("lu")  << true;
-    QTest::newRow("lv")  << QString("lv")  << true;
-    QTest::newRow("museum") << QString("museum") << true;
-    QTest::newRow("name")  << QString("name")  << true;
-    QTest::newRow("net")  << QString("name")  << true;
-    QTest::newRow("no") << QString("no") << true;
-    QTest::newRow("nu")  << QString("nu")  << true;
-    QTest::newRow("nz")  << QString("nz")  << true;
-    QTest::newRow("org")  << QString("org")  << true;
-    QTest::newRow("pl")  << QString("pl")  << true;
-    QTest::newRow("pr")  << QString("pr")  << true;
-    QTest::newRow("se")  << QString("se")  << true;
-    QTest::newRow("sh") << QString("sh") << true;
-    QTest::newRow("tel")  << QString("tel")  << true;
-    QTest::newRow("th")  << QString("th")  << true;
-    QTest::newRow("tm")  << QString("tm")  << true;
-    QTest::newRow("tw") << QString("tw") << true;
-    QTest::newRow("ua")  << QString("ua")  << true;
-    QTest::newRow("vn") << QString("vn") << true;
-
-    // known blacklists:
-    QTest::newRow("foo") << QString("foo") << false;
-}
-
-void tst_QUrl::tldRestrictions()
-{
-    QFETCH(QString, tld);
-
-    // www.brød.tld
-    QByteArray ascii = "www.xn--brd-1na." + tld.toLatin1();
-    QString unicode = QLatin1String("www.br\370d.") + tld;
-    QString encoded = QUrl::fromAce(ascii);
-    QTEST(!encoded.contains(".xn--"), "encode");
-    QTEST(encoded == unicode, "encode");
-
-    QUrl url = QUrl::fromEncoded("http://www.xn--brd-1na." + tld.toLatin1());
-    QTEST(!url.host().contains(".xn--"), "encode");
-    QTEST(url.host() == unicode, "encode");
-
-    url.setUrl(QLatin1String("http://www.xn--brd-1na.") + tld);
-    QTEST(!url.host().contains(".xn--"), "encode");
-    QTEST(url.host() == unicode, "encode");
-
-    url.setUrl(QLatin1String("http://www.br\370d.") + tld);
-    QTEST(!url.host().contains(".xn--"), "encode");
-    QTEST(url.host() == unicode, "encode");
-
-    url = QUrl::fromEncoded("http://www.br%C3%B8d." + tld.toLatin1());
-    QTEST(!url.host().contains(".xn--"), "encode");
-    QTEST(url.host() == unicode, "encode");
 }
 
 void tst_QUrl::emptyQueryOrFragment()
@@ -3917,24 +4157,25 @@ void tst_QUrl::setComponents_data()
                                            << int(Scheme) << "http%61" << Decoded << false
                                            << PrettyDecoded << "" << "";
     QTest::newRow("username-encode") << QUrl("http://example.com")
-                                     << int(UserName) << "h%61llo:world" << Decoded << true
-                                     << PrettyDecoded << "h%2561llo:world" << "http://h%2561llo%3Aworld@example.com";
+                                     << int(UserName) << "h%61llo[:]world" << Decoded << true
+                                     << PrettyDecoded << "h%2561llo[:]world" << "http://h%2561llo%5B%3A%5Dworld@example.com";
     QTest::newRow("password-encode") << QUrl("http://example.com")
-                                     << int(Password) << "h%61llo:world@" << Decoded << true
-                                     << PrettyDecoded << "h%2561llo:world@" << "http://:h%2561llo:world%40@example.com";
+                                     << int(Password) << "h%61llo[:]world@" << Decoded << true
+                                     << PrettyDecoded << "h%2561llo[:]world@" << "http://:h%2561llo%5B:%5Dworld%40@example.com";
     // '%' characters are not permitted in the hostname, these test that it fails to set anything
     QTest::newRow("invalid-host-encode") << QUrl("http://example.com")
                                          << int(Host) << "ex%61mple.com" << Decoded << false
                                          << PrettyDecoded << QString() << QString();
+    // square brackets are force-encoded from decoded forms in the path, query, and fragment
     QTest::newRow("path-encode") << QUrl("http://example.com/foo")
-                                 << int(Path) << "/bar%23" << Decoded << true
-                                 << PrettyDecoded << "/bar%2523" << "http://example.com/bar%2523";
+                                 << int(Path) << "/ba[r]%23" << Decoded << true
+                                 << PrettyDecoded << "/ba%5Br%5D%2523" << "http://example.com/ba%5Br%5D%2523";
     QTest::newRow("query-encode") << QUrl("http://example.com/foo?q")
-                                  << int(Query) << "bar%23" << Decoded << true
-                                  << PrettyDecoded << "bar%2523" << "http://example.com/foo?bar%2523";
+                                  << int(Query) << "ba[r]%23" << Decoded << true
+                                  << PrettyDecoded << "ba%5Br%5D%2523" << "http://example.com/foo?ba%5Br%5D%2523";
     QTest::newRow("fragment-encode") << QUrl("http://example.com/foo#z")
-                                     << int(Fragment) << "bar%23" << Decoded << true
-                                     << PrettyDecoded << "bar%2523" << "http://example.com/foo#bar%2523";
+                                     << int(Fragment) << "ba[r]%23" << Decoded << true
+                                     << PrettyDecoded << "ba%5Br%5D%2523" << "http://example.com/foo#ba%5Br%5D%2523";
     // force decoding
     QTest::newRow("username-decode") << QUrl("http://example.com")
                                      << int(UserName) << "hello%3Aworld%25" << Tolerant << true
@@ -3943,8 +4184,8 @@ void tst_QUrl::setComponents_data()
                                      << int(Password) << "}}>b9o%25kR(" << Tolerant << true
                                      << FullyDecoded << "}}>b9o%kR(" << "http://:%7D%7D%3Eb9o%25kR(@example.com";
     QTest::newRow("path-decode") << QUrl("http://example.com/")
-                                 << int(Path) << "/bar%25foo" << Tolerant << true
-                                 << FullyDecoded << "/bar%foo" << "http://example.com/bar%25foo";
+                                 << int(Path) << "/bar%25[foo]" << Tolerant << true
+                                 << FullyDecoded << "/bar%[foo]" << "http://example.com/bar%25[foo]";
     QTest::newRow("query-decode") << QUrl("http://example.com/foo?qq")
                                   << int(Query) << "bar%25foo" << Tolerant << true
                                   << FullyDecoded << "bar%foo" << "http://example.com/foo?bar%25foo";
@@ -4026,6 +4267,12 @@ void tst_QUrl::setComponents()
         QCOMPARE(copy.toString(), toString);
         // Check round-tripping
         QCOMPARE(QUrl(copy.toString()).toString(), toString);
+
+        // check comparisons
+        QUrl recreated(toString);
+        QCOMPARE(copy, recreated);
+        QCOMPARE(qHash(copy), qHash(recreated));
+        QCOMPARE(qHash(copy, 1), qHash(recreated, 1));
     } else {
         QVERIFY(copy.toString().isEmpty());
     }
@@ -4121,9 +4368,6 @@ void tst_QUrl::testThreadingHelper()
         QTest::qWait(10); // give time for the other threads to start
     }
 }
-
-#include <QThreadPool>
-#include <QtConcurrent>
 
 void tst_QUrl::testThreading()
 {
@@ -4311,6 +4555,7 @@ void tst_QUrl::normalizeRemotePaths()
     QCOMPARE(url.adjusted(QUrl::NormalizePathSegments).toString(), expected);
     QCOMPARE(url.adjusted(QUrl::NormalizePathSegments | QUrl::RemoveFilename).toString(),
              expectedNoFilename);
+    QCOMPARE(url.resolved(QUrl(".")).toString(), expectedNoFilename);
 }
 
 QTEST_MAIN(tst_QUrl)

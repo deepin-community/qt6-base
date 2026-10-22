@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKREPLYHTTPIMPL_P_H
 #define QNETWORKREPLYHTTPIMPL_P_H
@@ -22,7 +23,6 @@
 #include "QtCore/qpointer.h"
 #include "QtCore/qdatetime.h"
 #include "QtCore/qsharedpointer.h"
-#include "QtCore/qscopedpointer.h"
 #include "QtCore/qtimer.h"
 #include "qatomic.h"
 
@@ -33,6 +33,8 @@
 
 #ifndef QT_NO_SSL
 #include <QtNetwork/QSslConfiguration>
+
+#include <memory>
 #endif
 
 Q_MOC_INCLUDE(<QtNetwork/QAuthenticator>)
@@ -57,6 +59,7 @@ public:
 
     void close() override;
     void abort() override;
+    void abortImpl(QNetworkReply::NetworkError error);
     qint64 bytesAvailable() const override;
     bool isSequential () const override;
     qint64 size() const override;
@@ -162,6 +165,7 @@ public:
     QString reasonPhrase;
 
     // upload
+    void maybeDropUploadDevice(const QNetworkRequest &newHttpRequest);
     QNonContiguousByteDevice* createUploadByteDevice();
     std::shared_ptr<QNonContiguousByteDevice> uploadByteDevice;
     qint64 uploadByteDevicePosition;
@@ -220,7 +224,7 @@ public:
 
 
 #ifndef QT_NO_SSL
-    QScopedPointer<QSslConfiguration> sslConfiguration;
+    std::unique_ptr<QSslConfiguration> sslConfiguration;
     bool pendingIgnoreAllSslErrors;
     QList<QSslError> pendingIgnoreSslErrorsList;
 #endif

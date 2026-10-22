@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDATETIME_P_H
 #define QDATETIME_P_H
@@ -129,20 +130,31 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QDateTimePrivate::TransitionOptions)
 namespace QtPrivate {
 namespace DateTimeConstants {
 using namespace std::chrono;
+inline
 constexpr qint64 SECS_PER_MIN = minutes::period::num;
+inline
 constexpr qint64 SECS_PER_HOUR = hours::period::num;
+inline
 constexpr qint64 SECS_PER_DAY = SECS_PER_HOUR * 24; // std::chrono::days is C++20
 
+inline
 constexpr qint64 MINS_PER_HOUR = std::ratio_divide<hours::period, minutes::period>::num;
 
+inline
 constexpr qint64 MSECS_PER_SEC = milliseconds::period::den;
+inline
 constexpr qint64 MSECS_PER_MIN = SECS_PER_MIN * MSECS_PER_SEC;
+inline
 constexpr qint64 MSECS_PER_HOUR = SECS_PER_HOUR * MSECS_PER_SEC;
+inline
 constexpr qint64 MSECS_PER_DAY = SECS_PER_DAY * MSECS_PER_SEC;
 
+inline
 constexpr qint64 JULIAN_DAY_FOR_EPOCH = 2440588; // result of QDate(1970, 1, 1).toJulianDay()
 
+inline
 constexpr qint64 JulianDayMax = Q_INT64_C( 784354017364);
+inline
 constexpr qint64 JulianDayMin = Q_INT64_C(-784350574879);
 }
 }

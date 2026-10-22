@@ -75,7 +75,7 @@ private slots:
 private:
     void removeThirdWidget();
     void addThirdWidget();
-    QSplitter *splitter;
+    QSplitter *splitter = nullptr;
     QWidget *w1;
     QWidget *w2;
     QWidget *w3;
@@ -144,6 +144,7 @@ void tst_QSplitter::addThirdWidget()
 
 void tst_QSplitter::cleanupTestCase()
 {
+    delete splitter;
 }
 
 
@@ -258,9 +259,6 @@ void tst_QSplitter::saveAndRestoreState()
 
 void tst_QSplitter::saveAndRestoreStateOfNotYetShownSplitter()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QSplitter *spl = new QSplitter;
     QLabel *l1 = new QLabel;
     QLabel *l2 = new QLabel;
@@ -510,28 +508,27 @@ void tst_QSplitter::insertWidget()
 
 void tst_QSplitter::setStretchFactor_data()
 {
-    QTest::addColumn<int>("orientation");
+    QTest::addColumn<Qt::Orientation>("orientation");
     QTest::addColumn<int>("widgetIndex");
     QTest::addColumn<int>("stretchFactor");
     QTest::addColumn<int>("expectedHStretch");
     QTest::addColumn<int>("expectedVStretch");
 
-    QTest::newRow("ok01") << int(Qt::Horizontal) << 1 << 2 << 2 << 2;
-    QTest::newRow("ok02") << int(Qt::Horizontal) << 2 << 0 << 0 << 0;
-    QTest::newRow("ok03") << int(Qt::Horizontal) << 3 << 1 << 1 << 1;
-    QTest::newRow("ok04") << int(Qt::Horizontal) << 0 << 7 << 7 << 7;
-    QTest::newRow("ok05") << int(Qt::Vertical) << 0 << 0 << 0 << 0;
-    QTest::newRow("ok06") << int(Qt::Vertical) << 1 << 1 << 1 << 1;
-    QTest::newRow("ok07") << int(Qt::Vertical) << 2 << 2 << 2 << 2;
-    QTest::newRow("ok08") << int(Qt::Vertical) << 3 << 5 << 5 << 5;
-    QTest::newRow("ok09") << int(Qt::Vertical) << -1 << 5 << 0 << 0;
+    QTest::newRow("ok01") << Qt::Horizontal << 1 << 2 << 2 << 2;
+    QTest::newRow("ok02") << Qt::Horizontal << 2 << 0 << 0 << 0;
+    QTest::newRow("ok03") << Qt::Horizontal << 3 << 1 << 1 << 1;
+    QTest::newRow("ok04") << Qt::Horizontal << 0 << 7 << 7 << 7;
+    QTest::newRow("ok05") << Qt::Vertical << 0 << 0 << 0 << 0;
+    QTest::newRow("ok06") << Qt::Vertical << 1 << 1 << 1 << 1;
+    QTest::newRow("ok07") << Qt::Vertical << 2 << 2 << 2 << 2;
+    QTest::newRow("ok08") << Qt::Vertical << 3 << 5 << 5 << 5;
+    QTest::newRow("ok09") << Qt::Vertical << -1 << 5 << 0 << 0;
 }
 
 void tst_QSplitter::setStretchFactor()
 {
-    QFETCH(int, orientation);
-    Qt::Orientation orient = Qt::Orientation(orientation);
-    QSplitter split(orient);
+    QFETCH(Qt::Orientation, orientation);
+    QSplitter split(orientation);
     QWidget *w = new QWidget;
     split.addWidget(w);
     w = new QWidget;
@@ -573,9 +570,6 @@ void tst_QSplitter::testShowHide_data()
 
 void tst_QSplitter::testShowHide()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(bool, hideWidget1);
     QFETCH(bool, hideWidget2);
 
@@ -702,9 +696,6 @@ void tst_QSplitter::replaceWidget_data()
 
 void tst_QSplitter::replaceWidget()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(int, index);
     QFETCH(bool, visible);
     QFETCH(bool, collapsed);
@@ -748,11 +739,15 @@ void tst_QSplitter::replaceWidget()
     EventCounterSpy ef(&sp);
     ef.installEventFilter();
     const QWidget *res = sp.replaceWidget(index, newWidget);
+    std::unique_ptr<const QWidget> reaper{res};
     QTest::qWait(100); // Give visibility and resizing some time
 
     // Check
     if (index < 0 || index >= count) {
-        QVERIFY(!res);
+        // check before reset() may delete *res: C++/Coverity are picky with zapped pointers
+        const bool resWasNull = !res;
+        reaper.reset(newWidget); // newWidget wasn't added, so we need to delete
+        QVERIFY(resWasNull);
         QVERIFY(!newWidget->parentWidget());
         QCOMPARE(ef.resizeCount, 0);
         QCOMPARE(ef.paintCount, 0);
@@ -769,7 +764,6 @@ void tst_QSplitter::replaceWidget()
         if (visible && !collapsed)
             QCOMPARE(newWidget->geometry(), oldGeom);
         QCOMPARE(newWidget->size().isEmpty(), !visible || collapsed);
-        delete res;
     }
     QCOMPARE(sp.count(), count);
     QCOMPARE(sp.sizes(), sizes);
@@ -861,7 +855,7 @@ void tst_QSplitter::replaceWidgetWhileHidden()
         newWidget->hide();
 
     const bool wasExplicitHide = !widgetVisible && newWidget->testAttribute(Qt::WA_WState_ExplicitShowHide);
-    splitter.replaceWidget(1, newWidget);
+    const std::unique_ptr<QWidget> reaper{splitter.replaceWidget(1, newWidget)};
 
     QCOMPARE(!widgetVisible && newWidget->testAttribute(Qt::WA_WState_ExplicitShowHide), wasExplicitHide);
 
@@ -882,16 +876,13 @@ void tst_QSplitter::handleMinimumWidth()
     QVERIFY(QTest::qWaitForWindowExposed(&split));
     for (int i = 0; i < 10; i++) {
         split.setHandleWidth(i);
-        QTest::qWait(100); // resizing
-        QCOMPARE(split.handle(1)->width(), qMax(4 + (i & 1), i));
+        QTRY_COMPARE(split.handle(1)->width(), qMax(4 + (i & 1), i));
     }
 
     split.setOrientation(Qt::Vertical);
-    QTest::qWait(100);
     for (int i = 0; i < 10; i++) {
         split.setHandleWidth(i);
-        QTest::qWait(100); // resizing
-        QCOMPARE(split.handle(1)->height(), qMax(4 + (i & 1), i));
+        QTRY_COMPARE(split.handle(1)->height(), qMax(4 + (i & 1), i));
     }
 }
 
@@ -987,9 +978,6 @@ class MyTextEdit : public QTextEdit
 
 void tst_QSplitter::task169702_sizes()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QWidget topLevel;
     // Create two nested (non-collapsible) splitters
     QSplitter* outerSplitter = new QSplitter(Qt::Vertical, &topLevel);

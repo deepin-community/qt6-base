@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QMdiSubWindow
@@ -16,6 +17,7 @@
     title bar and a center area for the internal widget.
 
     \image qmdisubwindowlayout.png
+           {MDI window with a title bar and an internal widget}
 
     The most common way to construct a QMdiSubWindow is to call
     QMdiArea::addSubWindow() with the internal widget as the argument.
@@ -139,6 +141,7 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 using namespace QMdi;
 
@@ -478,7 +481,7 @@ void ControlLabel::updateWindowIcon()
     if (menuIcon.isNull())
         menuIcon = style()->standardIcon(QStyle::SP_TitleBarMenuButton, nullptr, parentWidget());
     const int iconSize = style()->pixelMetric(QStyle::PM_TitleBarButtonIconSize, nullptr, parentWidget());
-    label = menuIcon.pixmap(iconSize);
+    label = menuIcon.pixmap(QSize(iconSize, iconSize), devicePixelRatio());
     update();
 }
 
@@ -872,7 +875,6 @@ QMdiSubWindowPrivate::QMdiSubWindowPrivate()
       isExplicitlyDeactivated(false),
       keyboardSingleStep(5),
       keyboardPageStep(20),
-      resizeTimerId(-1),
       currentOperation(None),
       hoveredSubControl(QStyle::SC_None),
       activeSubControl(QStyle::SC_None),
@@ -1136,7 +1138,7 @@ void QMdiSubWindowPrivate::updateMask()
         || q->windowFlags() & Qt::FramelessWindowHint)
         return;
 
-    if (resizeTimerId == -1)
+    if (!resizeTimer.isActive())
         cachedStyleOptions = titleBarOptions();
     cachedStyleOptions.rect = q->rect();
     QStyleHintReturnMask frameMask;
@@ -1460,9 +1462,8 @@ void QMdiSubWindowPrivate::setActive(bool activate, bool changeFocus)
 
     // Make sure we don't use cached style options if we get
     // resize events right before activation/deactivation.
-    if (resizeTimerId != -1) {
-        q->killTimer(resizeTimerId);
-        resizeTimerId = -1;
+    if (resizeTimer.isActive()) {
+        resizeTimer.stop();
         updateDirtyRegions();
     }
 
@@ -1652,7 +1653,7 @@ QStyleOptionTitleBar QMdiSubWindowPrivate::titleBarOptions() const
         // Set the text here before asking for the width of the title bar label
         // in case people uses the actual text to calculate the width.
         titleBarOptions.text = windowTitle;
-        titleBarOptions.fontMetrics = QFontMetrics(font);
+        titleBarOptions.fontMetrics = QFontMetrics(font, q);
         int width = q->style()->subControlRect(QStyle::CC_TitleBar, &titleBarOptions,
                                                QStyle::SC_TitleBarLabel, q).width();
         // Set elided text if we don't have enough space for the entire title.
@@ -2219,7 +2220,7 @@ QMdiSubWindow::QMdiSubWindow(QWidget *parent, Qt::WindowFlags flags)
     d->titleBarPalette = d->desktopPalette();
     d->font = QApplication::font("QMdiSubWindowTitleBar");
     // We don't want the menu icon by default on mac.
-#ifndef Q_OS_MAC
+#ifndef Q_OS_DARWIN
     if (windowIcon().isNull())
         d->menuIcon = style()->standardIcon(QStyle::SP_TitleBarMenuButton, nullptr, this);
     else
@@ -2241,6 +2242,7 @@ QMdiSubWindow::~QMdiSubWindow()
     d->removeButtonsFromMenuBar();
 #endif
     d->setActive(false);
+    delete d->controlContainer;
 }
 
 /*!
@@ -2646,7 +2648,7 @@ bool QMdiSubWindow::eventFilter(QObject *object, QEvent *event)
                 close();
         } else if (event->type() == QEvent::MouseMove) {
             QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-            d->hoveredSubControl = d->getSubControl(mapFromGlobal(mouseEvent->globalPosition().toPoint()));
+            d->hoveredSubControl = d->getSubControl(mapFromGlobal(mouseEvent->globalPosition()).toPoint());
         } else if (event->type() == QEvent::Hide) {
             d->activeSubControl = QStyle::SC_None;
             update(QRegion(0, 0, width(), d->titleBarHeight()));
@@ -2660,7 +2662,7 @@ bool QMdiSubWindow::eventFilter(QObject *object, QEvent *event)
         if (event->type() != QEvent::MouseButtonPress || !testOption(QMdiSubWindow::RubberBandResize))
             return QWidget::eventFilter(object, event);
         const QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-        d->mousePressPosition = parentWidget()->mapFromGlobal(mouseEvent->globalPosition().toPoint());
+        d->mousePressPosition = parentWidget()->mapFromGlobal(mouseEvent->globalPosition()).toPoint();
         d->oldGeometry = geometry();
         d->currentOperation = isLeftToRight() ? QMdiSubWindowPrivate::BottomRightResize
                                               : QMdiSubWindowPrivate::BottomLeftResize;
@@ -2845,8 +2847,11 @@ bool QMdiSubWindow::event(QEvent *event)
         break;
     case QEvent::WindowIconChange:
         d->menuIcon = windowIcon();
+        // We don't want the default menu icon on mac.
+#ifndef Q_OS_DARWIN
         if (d->menuIcon.isNull())
             d->menuIcon = style()->standardIcon(QStyle::SP_TitleBarMenuButton, nullptr, this);
+#endif
         if (d->controlContainer)
             d->controlContainer->updateWindowIcon(d->menuIcon);
         if (!maximizedSystemMenuIconWidget())
@@ -3045,11 +3050,9 @@ void QMdiSubWindow::resizeEvent(QResizeEvent *resizeEvent)
     if (!isVisible())
         return;
 
-    if (d->resizeTimerId <= 0)
+    if (!d->resizeTimer.isActive())
         d->cachedStyleOptions = d->titleBarOptions();
-    else
-        killTimer(d->resizeTimerId);
-    d->resizeTimerId = startTimer(200);
+    d->resizeTimer.start(200ms, this);
 }
 
 /*!
@@ -3058,9 +3061,8 @@ void QMdiSubWindow::resizeEvent(QResizeEvent *resizeEvent)
 void QMdiSubWindow::timerEvent(QTimerEvent *timerEvent)
 {
     Q_D(QMdiSubWindow);
-    if (timerEvent->timerId() == d->resizeTimerId) {
-        killTimer(d->resizeTimerId);
-        d->resizeTimerId = -1;
+    if (timerEvent->id() == d->resizeTimer.id()) {
+        d->resizeTimer.stop();
         d->updateDirtyRegions();
     }
 }
@@ -3092,7 +3094,7 @@ void QMdiSubWindow::paintEvent(QPaintEvent *paintEvent)
 
     Q_D(QMdiSubWindow);
 
-    if (d->resizeTimerId != -1) {
+    if (d->resizeTimer.isActive()) {
         // Only update the style option rect and the window title.
         int border = d->hasBorder(d->cachedStyleOptions) ? 4 : 0;
         int titleBarHeight = d->titleBarHeight(d->cachedStyleOptions);
@@ -3301,7 +3303,7 @@ void QMdiSubWindow::mouseMoveEvent(QMouseEvent *mouseEvent)
         if ((d->isResizeOperation() && d->resizeEnabled) || (d->isMoveOperation() && d->moveEnabled)) {
             // As setNewGeometry moves the window, it invalidates the pos() value of any mouse move events that are
             // currently queued in the event loop. Map to parent using globalPos() instead.
-            d->setNewGeometry(parentWidget()->mapFromGlobal(mouseEvent->globalPosition().toPoint()));
+            d->setNewGeometry(parentWidget()->mapFromGlobal(mouseEvent->globalPosition()).toPoint());
         }
         return;
     }

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -46,7 +47,6 @@ void QCocoaTouch::updateTouchData(NSTouch *nstouch, NSTouchPhase phase)
     // reference position:
     NSPoint npos = [nstouch normalizedPosition];
     QPointF qnpos = QPointF(npos.x, 1 - npos.y);
-    _touchPoint.normalPosition = qnpos;
 
     if (_touchPoint.id == 0 && phase == NSTouchPhaseBegan) {
         _trackpadReferencePos = qnpos;
@@ -190,7 +190,6 @@ QPointingDevice *QCocoaTouch::getTouchDevice(QInputDevice::DeviceType type, quin
         ret = new QPointingDevice(type == QInputDevice::DeviceType::TouchScreen ? "touchscreen"_L1 : "trackpad"_L1,
                                   id, type, QPointingDevice::PointerType::Finger,
                                   QInputDevice::Capability::Position |
-                                  QInputDevice::Capability::NormalizedPosition |
                                   QInputDevice::Capability::MouseEmulation,
                                   10, 0);
         QWindowSystemInterface::registerInputDevice(ret);

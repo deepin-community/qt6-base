@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qscreen.h"
 #include "qscreen_p.h"
@@ -34,6 +35,12 @@ QT_BEGIN_NAMESPACE
     \note Both physical and logical DPI are expressed in device-independent dots.
     Multiply by QScreen::devicePixelRatio() to get device-dependent density.
 
+    To obtain a QScreen object, use QGuiApplication::primaryScreen() for the
+    primary screen, or QGuiApplication::screens() to get a list of all screens.
+
+    \sa QGuiApplication::primaryScreen()
+    \sa QGuiApplication::screens()
+
     \inmodule QtGui
 */
 
@@ -58,10 +65,8 @@ QScreen::QScreen(QPlatformScreen *platformScreen)
 
 void QScreenPrivate::updateGeometry()
 {
-    qreal scaleFactor = QHighDpiScaling::factor(platformScreen);
-    QRect nativeGeometry = platformScreen->geometry();
-    geometry = QRect(nativeGeometry.topLeft(), QHighDpi::fromNative(nativeGeometry.size(), scaleFactor));
-    availableGeometry = QHighDpi::fromNative(platformScreen->availableGeometry(), scaleFactor, geometry.topLeft());
+    geometry = QHighDpi::fromNativeGlobalPosition(platformScreen->geometry(), platformScreen);
+    availableGeometry = QHighDpi::fromNativeGlobalPosition(platformScreen->availableGeometry(), platformScreen);
 }
 
 /*!
@@ -277,8 +282,13 @@ qreal QScreen::logicalDotsPerInch() const
 
     Returns the ratio between physical pixels and device-independent pixels for the screen.
 
-    Common values are 1.0 on normal displays and 2.0 on "retina" displays.
-    Higher values are also possible.
+    This function may return a value that differs from QWindow::devicePixelRatio(),
+    for instance on Wayland when using fractional scaling, or if window properties
+    that affect surface resolution are set. Prefer using QWindow::devicePixelRatio().
+
+    \note On some platforms the devicePixelRatio of a window and the screen it is on can
+    be different. Use this function only when you don't know which window you are targeting.
+    If you do know the target window, use QWindow::devicePixelRatio() instead.
 
     \sa QWindow::devicePixelRatio(), QGuiApplication::devicePixelRatio()
 */
@@ -659,6 +669,20 @@ QScreen *QScreen::virtualSiblingAt(QPoint point)
     that are not part of the application, window system frames, and so
     on.
 
+    When \a window is \e{0}, the behavior is platform-dependent.
+    \list
+        \li On platforms where coordinates are screen-local (Windows, X11),
+        (\a{x}, \a{y}) are relative to this screen's origin.
+        \li On platforms where coordinates are global (macOS),
+        (\a{x}, \a{y}) are relative to the virtual desktop.
+        This requires callers to subtract \c{screen->geometry().topLeft()}
+        to achieve the same result as on Windows.
+    \endlist
+
+    To grab the entire screen portably across platforms, use \c{grabWindow(0)}
+    without specifying coordinates. Code that grabs a sub-area must account for
+    this difference explicitly.
+
     \warning Grabbing windows that are not part of the application is
     not supported on systems such as iOS, where sandboxing/security
     prevents reading pixels of windows not owned by the application.
@@ -671,7 +695,7 @@ QScreen *QScreen::virtualSiblingAt(QPoint point)
     Note on X11 that if the given \a window doesn't have the same depth
     as the root window, and another window partially or entirely
     obscures the one you grab, you will \e not get pixels from the
-    overlying window.  The contents of the obscured areas in the
+    overlying window. The contents of the obscured areas in the
     pixmap will be undefined and uninitialized.
 
     On Windows Vista and above grabbing a layered window, which is
@@ -749,6 +773,10 @@ void *QScreen::resolveInterface(const char *name, int revision) const
 
 #if QT_CONFIG(wayland)
     QT_NATIVE_INTERFACE_RETURN_IF(QWaylandScreen, platformScreen);
+#endif
+
+#if defined(Q_OS_MACOS)
+    QT_NATIVE_INTERFACE_RETURN_IF(QCocoaScreen, platformScreen);
 #endif
 
     return nullptr;

@@ -1,8 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <QTest>
 
 #include <QtCore/qcoreapplication.h>
@@ -69,13 +67,13 @@ void tst_QKeyEvent::basicEventDelivery()
     QCOMPARE(window.keyEvents.size(), 2);
     QCOMPARE(window.keyEvents.first()->type(), QKeyEvent::KeyPress);
     QCOMPARE(window.keyEvents.last()->type(), QKeyEvent::KeyRelease);
-    foreach (const QKeyEvent *event, window.keyEvents) {
+    for (const QKeyEvent *event : std::as_const(window.keyEvents)) {
         QCOMPARE(Qt::Key(event->key()), key);
         QCOMPARE(Qt::KeyboardModifiers(event->modifiers()), modifiers);
     }
 }
 
-static bool orderByModifier(const QList<int> &v1, const QList<int> &v2)
+static bool lessThanByModifier(const QList<int> &v1, const QList<int> &v2)
 {
     if (v1.size() != v2.size())
         return v1.size() < v2.size();
@@ -87,7 +85,7 @@ static bool orderByModifier(const QList<int> &v1, const QList<int> &v2)
         return v1.at(i) < v2.at(i);
     }
 
-    return true;
+    return false;
 }
 
 static QByteArray modifiersTestRowName(const QString &keySequence)
@@ -136,10 +134,10 @@ void tst_QKeyEvent::modifiers_data()
         modifierCombinations.append(modifierCombination);
     }
 
-    std::sort(modifierCombinations.begin(), modifierCombinations.end(), orderByModifier);
+    std::sort(modifierCombinations.begin(), modifierCombinations.end(), lessThanByModifier);
 
     QTest::addColumn<Qt::KeyboardModifiers>("modifiers");
-    foreach (const QList<int> combination, modifierCombinations) {
+    for (const QList<int> &combination : std::as_const(modifierCombinations)) {
         int keys[4] = {};
         Qt::KeyboardModifiers mods;
         for (int i = 0; i < combination.size(); ++i) {

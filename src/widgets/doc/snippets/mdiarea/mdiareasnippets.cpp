@@ -6,10 +6,11 @@
 void mainWindowExample()
 {
     QMdiArea *mdiArea = new QMdiArea;
-//! [0]
+
+    //! [0]
     QMainWindow *mainWindow = new QMainWindow;
     mainWindow->setCentralWidget(mdiArea);
-//! [0]
+    //! [0]
 
     mdiArea->addSubWindow(new QPushButton("Push Me Now!"));
 
@@ -21,7 +22,7 @@ void addingSubWindowsExample()
     QWidget *internalWidget1 = new QWidget;
     QWidget *internalWidget2 = new QWidget;
 
-//! [1]
+    //! [1]
     QMdiArea mdiArea;
     QMdiSubWindow *subWindow1 = new QMdiSubWindow;
     subWindow1->setWidget(internalWidget1);
@@ -31,7 +32,7 @@ void addingSubWindowsExample()
     QMdiSubWindow *subWindow2 =
         mdiArea.addSubWindow(internalWidget2);
 
-//! [1]
+    //! [1]
     subWindow1->show();
     subWindow2->show();
 

@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qatomic.h"
 
@@ -27,9 +28,10 @@
 
     An \e atomic operation is a complex operation that completes without interruption.
     The QAtomicInteger class provides atomic reference counting, test-and-set, fetch-and-store,
-    and fetch-and-add for integers.
+    and fetch-and-add for integers. The template parameter \a T specifies the integer type
+    being made atomic.
 
-    The template parameter \c T must be a C++ integer type:
+    The template parameter \a T must be a C++ integer type:
     \list
        \li 8-bit: bool, char, signed char, unsigned char, qint8, quint8, char8_t (C++20)
        \li 16-bit: short, unsigned short, qint16, quint16, char16_t
@@ -87,7 +89,7 @@
 
     If the current value of the QAtomicInteger is an expected value, the
     test-and-set functions assign a new value to the QAtomicInteger and
-    return true. If values are \a not the same, these functions do
+    return true. If values are \e not the same, these functions do
     nothing and return false. This operation equates to the following
     code:
 
@@ -315,6 +317,19 @@
 */
 
 /*!
+    \fn template <typename T> void QAtomicInteger<T>::refRelaxed()
+    \internal
+    Atomically increments the value of this QAtomicInteger.
+
+    In contrast to ref(), this uses relaxed semantics, which is
+    all that is needed for reference counting (together with deref's
+    acquire-release semantics).
+    It also doesn't return anything.
+
+    \sa deref(), operator++()
+*/
+
+/*!
     \fn template <typename T> T QAtomicInteger<T>::operator++()
     \since 5.3
 
@@ -398,7 +413,7 @@
     Atomic test-and-set.
 
     \note If you use this function in a loop, consider using the overload with the
-    additional \c{T &currentValue} argument instead, which avoids the extra load() on
+    additional \c{T &currentValue} argument instead, which avoids the extra loadRelaxed() on
     failure.
 
     If the current value of this QAtomicInteger is the \a expectedValue,
@@ -420,7 +435,7 @@
     Atomic test-and-set.
 
     \note If you use this function in a loop, consider using the overload with the
-    additional \c{T &currentValue} argument instead, which avoids the extra load() on
+    additional \c{T &currentValue} argument instead, which avoids the extra loadAcquire() on
     failure.
 
     If the current value of this QAtomicInteger is the \a expectedValue,
@@ -442,7 +457,7 @@
     Atomic test-and-set.
 
     \note If you use this function in a loop, consider using the overload with the
-    additional \c{T &currentValue} argument instead, which avoids the extra load() on
+    additional \c{T &currentValue} argument instead, which avoids the extra loadRelaxed() on
     failure.
 
     If the current value of this QAtomicInteger is the \a expectedValue,
@@ -464,7 +479,7 @@
     Atomic test-and-set.
 
     \note If you use this function in a loop, consider using the overload with the
-    additional \c{T &currentValue} argument instead, which avoids the extra load() on
+    additional \c{T &currentValue} argument instead, which avoids the extra loadAcquire() on
     failure.
 
     If the current value of this QAtomicInteger is the \a expectedValue,
@@ -492,7 +507,11 @@
     return \c true. If the values are \e not the same, the functions load the
     current value of this QAtomicInteger into \a currentValue and return \c false.
 
+//![memory-order-3-arg-relaxed]
     \include qatomic.cpp memory-order-relaxed
+    If the test-and-set fails, the \a currentValue is loaded with \e relaxed
+    \l {QAtomicInteger#Memory ordering}{memory ordering} semantics.
+//![memory-order-3-arg-relaxed]
 */
 
 /*!
@@ -506,7 +525,11 @@
     return \c true. If the values are \e not the same, the functions load the
     current value of this QAtomicInteger into \a currentValue and return \c false.
 
+//![memory-order-3-arg-acquire]
     \include qatomic.cpp memory-order-acquire
+    If the test-and-set fails, the \a currentValue is loaded with \e acquire
+    \l {QAtomicInteger#Memory ordering}{memory ordering} semantics.
+//![memory-order-3-arg-acquire]
 */
 
 /*!
@@ -520,7 +543,11 @@
     return \c true. If the values are \e not the same, the functions loads the
     current value of this QAtomicInteger into \a currentValue and return \c false.
 
+//![memory-order-3-arg-release]
     \include qatomic.cpp memory-order-release
+    If the test-and-set fails, the \a currentValue is loaded with \e relaxed
+    \l {QAtomicInteger#Memory ordering}{memory ordering} semantics.
+//![memory-order-3-arg-release]
 */
 
 /*!
@@ -534,7 +561,11 @@
     return \c true. If the values are \e not the same, it loads the current
     value of this QAtomicInteger into \a currentValue and return \c false.
 
+//![memory-order-3-arg-ordered]
     \include qatomic.cpp memory-order-ordered
+    If the test-and-set fails, the \a currentValue is loaded with \e acquire
+    \l {QAtomicInteger#Memory ordering}{memory ordering} semantics.
+//![memory-order-3-arg-ordered]
 */
 
 /*!
@@ -1060,7 +1091,7 @@
 
     This macro is defined when only certain generations of the
     processor support atomic reference counting. Use the
-    QAtomicInteger<T>::isReferenceCountingNative() function to check what
+    QAtomicInteger::isReferenceCountingNative() function to check what
     your processor supports.
 
     \e{nn} is the size of the integer, in bits (8, 16, 32 or 64).
@@ -1103,7 +1134,7 @@
 
     This macro is defined when only certain generations of the
     processor support atomic test-and-set on integers. Use the
-    QAtomicInteger<T>::isTestAndSetNative() function to check what your
+    QAtomicInteger::isTestAndSetNative() function to check what your
     processor supports.
 
     \e{nn} is the size of the integer, in bits (8, 16, 32 or 64).
@@ -1146,7 +1177,7 @@
 
     This macro is defined when only certain generations of the
     processor support atomic fetch-and-store on integers. Use the
-    QAtomicInteger<T>::isFetchAndStoreNative() function to check what your
+    QAtomicInteger::isFetchAndStoreNative() function to check what your
     processor supports.
 
     \e{nn} is the size of the integer, in bits (8, 16, 32 or 64).
@@ -1189,7 +1220,7 @@
 
     This macro is defined when only certain generations of the
     processor support atomic fetch-and-add on integers. Use the
-    QAtomicInteger<T>::isFetchAndAddNative() function to check what your
+    QAtomicInteger::isFetchAndAddNative() function to check what your
     processor supports.
 
     \e{nn} is the size of the integer, in bits (8, 16, 32 or 64).
@@ -1230,7 +1261,8 @@
     For atomic operations on integers, see the QAtomicInteger class.
 
     An \e atomic operation is a complex operation that completes without interruption.
-    The QAtomicPointer class provides atomic test-and-set, fetch-and-store, and fetch-and-add for pointers.
+    The QAtomicPointer class provides atomic test-and-set, fetch-and-store, and fetch-and-add
+    for pointers. The template parameter \a T specifies the pointed-to type.
 
     \section1 The Atomic API
 
@@ -1264,7 +1296,7 @@
 
     If the current value of the QAtomicPointer is an expected value,
     the test-and-set functions assign a new value to the
-    QAtomicPointer and return true. If values are \a not the same,
+    QAtomicPointer and return true. If values are \e not the same,
     these functions do nothing and return false. This operation
     equates to the following code:
 
@@ -1440,6 +1472,10 @@
 
     Atomic test-and-set.
 
+    \note If you use this function in a loop, consider using the overload with the
+    additional \c{T *&currentValue} argument instead, which avoids the extra load() on
+    failure.
+
     If the current value of this QAtomicPointer is the \a expectedValue,
     the test-and-set functions assign the \a newValue to this
     QAtomicPointer and return true. If the values are \e not the same,
@@ -1454,6 +1490,10 @@
     \fn template <typename T> bool QAtomicPointer<T>::testAndSetAcquire(T *expectedValue, T *newValue)
 
     Atomic test-and-set.
+
+    \note If you use this function in a loop, consider using the overload with the
+    additional \c{T *&currentValue} argument instead, which avoids the extra load() on
+    failure.
 
     If the current value of this QAtomicPointer is the \a expectedValue,
     the test-and-set functions assign the \a newValue to this
@@ -1471,6 +1511,10 @@
 
     Atomic test-and-set.
 
+    \note If you use this function in a loop, consider using the overload with the
+    additional \c{T *&currentValue} argument instead, which avoids the extra load() on
+    failure.
+
     If the current value of this QAtomicPointer is the \a expectedValue,
     the test-and-set functions assign the \a newValue to this
     QAtomicPointer and return true. If the values are \e not the same,
@@ -1487,6 +1531,10 @@
 
     Atomic test-and-set.
 
+    \note If you use this function in a loop, consider using the overload with the
+    additional \c{T *&currentValue} argument instead, which avoids the extra load() on
+    failure.
+
     If the current value of this QAtomicPointer is the \a expectedValue,
     the test-and-set functions assign the \a newValue to this
     QAtomicPointer and return true. If the values are \e not the same,
@@ -1496,6 +1544,58 @@
     ordering}{memory ordering} semantics, which ensures that memory
     access before and after the atomic operation (in program order)
     may not be re-ordered.
+*/
+
+/*!
+    \fn template <typename T> bool QAtomicPointer<T>::testAndSetRelaxed(T *expectedValue, T *newValue, T *&currentValue)
+
+    Atomic test-and-set.
+
+    If the current value of this QAtomicPointer is the \a expectedValue, the
+    test-and-set functions assign the \a newValue to this QAtomicPointer and
+    return \c true. If the values are \e not the same, the functions load the
+    current value of this QAtomicPointer into \a currentValue and return \c false.
+
+    \include qatomic.cpp memory-order-3-arg-relaxed
+*/
+
+/*!
+    \fn template <typename T> bool QAtomicPointer<T>::testAndSetAcquire(T *expectedValue, T *newValue, T *&currentValue)
+
+    Atomic test-and-set.
+
+    If the current value of this QAtomicPointer is the \a expectedValue, the
+    test-and-set functions assign the \a newValue to this QAtomicPointer and
+    return \c true. If the values are \e not the same, the functions load the
+    current value of this QAtomicPointer into \a currentValue and return \c false.
+
+    \include qatomic.cpp memory-order-3-arg-acquire
+*/
+
+/*!
+    \fn template <typename T> bool QAtomicPointer<T>::testAndSetRelease(T *expectedValue, T *newValue, T *&currentValue)
+
+    Atomic test-and-set.
+
+    If the current value of this QAtomicPointer is the \a expectedValue, the
+    test-and-set functions assign the \a newValue to this QAtomicPointer and
+    return \c true. If the values are \e not the same, the functions load the
+    current value of this QAtomicPointer into \a currentValue and return \c false.
+
+    \include qatomic.cpp memory-order-3-arg-release
+*/
+
+/*!
+    \fn template <typename T> bool QAtomicPointer<T>::testAndSetOrdered(T *expectedValue, T *newValue, T *&currentValue)
+
+    Atomic test-and-set.
+
+    If the current value of this QAtomicPointer is the \a expectedValue, the
+    test-and-set functions assign the \a newValue to this QAtomicPointer and
+    return \c true. If the values are \e not the same, the functions load the
+    current value of this QAtomicPointer into \a currentValue and return \c false.
+
+    \include qatomic.cpp memory-order-3-arg-ordered
 */
 
 /*!

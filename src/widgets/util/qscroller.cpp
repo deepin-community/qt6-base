@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qevent.h"
 #include "qwidget.h"
@@ -32,7 +33,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcScroller, "qt.widgets.scroller")
+Q_STATIC_LOGGING_CATEGORY(lcScroller, "qt.widgets.scroller")
 
 bool qt_sendSpontaneousEvent(QObject *receiver, QEvent *event);
 
@@ -154,9 +155,7 @@ static qreal progressForValue(const QEasingCurve &curve, qreal value)
 class QScrollTimer : public QAbstractAnimation
 {
 public:
-    QScrollTimer(QScrollerPrivate *_d)
-        : QAbstractAnimation(_d), d(_d), ignoreUpdate(false), skip(0)
-    { }
+    QScrollTimer(QScrollerPrivate *_d) : QAbstractAnimation(_d), d(_d), skip(0) {}
 
     int duration() const override
     {
@@ -165,28 +164,21 @@ public:
 
     void start()
     {
-        // QAbstractAnimation::start() will immediately call
-        // updateCurrentTime(), but our state is not set correctly yet
-        ignoreUpdate = true;
         QAbstractAnimation::start();
-        ignoreUpdate = false;
         skip = 0;
     }
 
 protected:
     void updateCurrentTime(int /*currentTime*/) override
    {
-        if (!ignoreUpdate) {
-            if (++skip >= d->frameRateSkip()) {
-                skip = 0;
-                d->timerTick();
-            }
+        if (++skip >= d->frameRateSkip()) {
+            skip = 0;
+            d->timerTick();
         }
     }
 
 private:
     QScrollerPrivate *d;
-    bool ignoreUpdate;
     int skip;
 };
 #endif // animation
@@ -1309,14 +1301,11 @@ void QScrollerPrivate::createScrollingSegments(qreal v, qreal startPos,
 
         qCDebug(lcScroller) << "Overshoot: delta:" << (stopPos - startPos);
 
-        qreal stopProgress = progressForValue(sp->scrollingCurve, qAbs((stopPos - startPos) / deltaPos));
-
         if (!canOvershoot) {
-            qCDebug(lcScroller) << "Overshoot stopp:" << stopProgress;
-
-            pushSegment(ScrollTypeFlick, deltaTime, stopProgress, startPos, endPos, stopPos,
+            pushSegment(ScrollTypeFlick, deltaTime, qreal(1), startPos, deltaPos, stopPos,
                         sp->scrollingCurve.type(), orientation);
         } else {
+            qreal stopProgress = progressForValue(sp->scrollingCurve, qAbs((stopPos - startPos) / deltaPos));
             qreal oDeltaTime = sp->overshootScrollTime;
             qreal oStopProgress = qMin(stopProgress + oDeltaTime * qreal(0.3) / deltaTime, qreal(1));
             qreal oDistance = startPos + deltaPos * sp->scrollingCurve.valueForProgress(oStopProgress) - stopPos;
@@ -1658,6 +1647,7 @@ void QScrollerPrivate::setState(QScroller::State newstate)
 {
     Q_Q(QScroller);
     bool sendLastScroll = false;
+    bool startTimer = false;
 
     if (state == newstate)
         return;
@@ -1690,19 +1680,24 @@ void QScrollerPrivate::setState(QScroller::State newstate)
         dragDistance = QPointF(0, 0);
 #if QT_CONFIG(animation)
         if (state == QScroller::Pressed)
-            scrollTimer->start();
+            startTimer = true;
 #endif
         break;
 
     case QScroller::Scrolling:
 #if QT_CONFIG(animation)
-        scrollTimer->start();
+        startTimer = true;
 #endif
         break;
     }
 
     qSwap(state, newstate);
 
+#if QT_CONFIG(animation)
+    // Only start the timer after the state has been changed
+    if (startTimer)
+        scrollTimer->start();
+#endif
     if (sendLastScroll) {
         QScrollEvent se(contentPosition, overshootPosition, QScrollEvent::ScrollFinished);
         sendEvent(target, &se);

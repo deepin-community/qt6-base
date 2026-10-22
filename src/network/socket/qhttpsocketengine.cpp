@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "qhttpsocketengine_p.h"
 #include "qtcpsocket.h"
@@ -411,8 +412,15 @@ bool QHttpSocketEngine::isReadNotificationEnabled() const
 void QHttpSocketEngine::setReadNotificationEnabled(bool enable)
 {
     Q_D(QHttpSocketEngine);
-    if (d->readNotificationEnabled == enable)
+    if (d->readNotificationEnabled == enable) {
+        // When already enabled, we still need to check for
+        // buffered data. The inner socket may have data in its user-space
+        // buffer that won't trigger a new OS-level read notification.
+        // Without this check, partial reads leave data stranded forever.
+        if (enable && bytesAvailable() > 0)
+            emitReadNotification();
         return;
+    }
 
     d->readNotificationEnabled = enable;
     if (enable) {

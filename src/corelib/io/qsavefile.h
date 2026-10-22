@@ -1,5 +1,6 @@
 // Copyright (C) 2012 David Faure <faure@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:header-decls-only
 
 #ifndef QSAVEFILE_H
 #define QSAVEFILE_H
@@ -22,22 +23,24 @@ class QSaveFilePrivate;
 
 class Q_CORE_EXPORT QSaveFile : public QFileDevice
 {
-#ifndef QT_NO_QOBJECT
     Q_OBJECT
-#endif
     Q_DECLARE_PRIVATE(QSaveFile)
 
 public:
-
+#if QT_CORE_REMOVED_SINCE(6, 11)
     explicit QSaveFile(const QString &name);
-#ifndef QT_NO_QOBJECT
-    explicit QSaveFile(QObject *parent = nullptr);
-    explicit QSaveFile(const QString &name, QObject *parent);
 #endif
+    explicit QSaveFile(QObject *parent = nullptr);
+    explicit QSaveFile(const QString &name, QObject *parent = nullptr);
     ~QSaveFile();
 
     QString fileName() const override;
     void setFileName(const QString &name);
+
+#ifdef Q_QDOC
+    Permissions permissions() const override;
+    bool setPermissions(Permissions permissionSpec) override;
+#endif // Q_QDOC
 
     QFILE_MAYBE_NODISCARD bool open(OpenMode flags) override;
     bool commit();
@@ -46,6 +49,20 @@ public:
 
     void setDirectWriteFallback(bool enabled);
     bool directWriteFallback() const;
+
+#if QT_CONFIG(cxx17_filesystem) || defined(Q_QDOC)
+    Q_WEAK_OVERLOAD QSaveFile(const std::filesystem::path &path, QObject *parent = nullptr)
+        : QSaveFile(QtPrivate::fromFilesystemPath(path), parent)
+    {
+    }
+
+    std::filesystem::path filesystemFileName() const
+    { return QtPrivate::toFilesystemPath(fileName()); }
+    Q_WEAK_OVERLOAD void setFileName(const std::filesystem::path &name)
+    {
+        setFileName(QtPrivate::fromFilesystemPath(name));
+    }
+#endif // QT_CONFIG(cxx17_filesystem)
 
 protected:
     qint64 writeData(const char *data, qint64 len) override;
@@ -58,6 +75,7 @@ private:
 
 private:
     Q_DISABLE_COPY(QSaveFile)
+    friend class QFilePrivate;
 };
 
 QT_END_NAMESPACE

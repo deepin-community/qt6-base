@@ -2,6 +2,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEGLFSKMSGBMSCREEN_H
 #define QEGLFSKMSGBMSCREEN_H
@@ -67,7 +68,7 @@ protected:
 
     QMutex m_flipMutex;
     QWaitCondition m_flipCond;
-    static QMutex m_nonThreadedFlipMutex;
+    static QMutex s_nonThreadedFlipMutex;
 
     QScopedPointer<QEglFSKmsGbmCursor> m_cursor;
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QRHIWIDGET_P_H
 #define QRHIWIDGET_P_H
@@ -22,7 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class QRhiWidgetPrivate : public QWidgetPrivate
+class Q_WIDGETS_EXPORT QRhiWidgetPrivate : public QWidgetPrivate
 {
     Q_DECLARE_PUBLIC(QRhiWidget)
 public:
@@ -32,6 +33,7 @@ public:
     void endCompose() override;
     QImage grabFramebuffer() override;
 
+    void init();
     void ensureRhi();
     void ensureTexture(bool *changed);
     bool invokeInitialize(QRhiCommandBuffer *cb);

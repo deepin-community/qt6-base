@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWCONTAINER_H
 #define QWINDOWCONTAINER_H
@@ -30,7 +31,7 @@ class Q_WIDGETS_EXPORT QWindowContainer : public QWidget
 public:
     explicit QWindowContainer(QWindow *embeddedWindow, QWidget *parent = nullptr, Qt::WindowFlags f = { });
     ~QWindowContainer();
-    QWindow *containedWindow() const;
+    Q_INVOKABLE QWindow *containedWindow() const;
     QSize minimumSizeHint() const override;
 
     static void toplevelAboutToBeDestroyed(QWidget *parent);

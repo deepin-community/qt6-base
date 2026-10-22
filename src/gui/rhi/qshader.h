@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSHADER_H
 #define QSHADER_H
@@ -23,11 +24,6 @@ QT_BEGIN_NAMESPACE
 struct QShaderPrivate;
 class QShaderKey;
 
-#ifdef Q_OS_INTEGRITY
-  class QShaderVersion;
-  size_t qHash(const QShaderVersion &, size_t = 0) noexcept;
-#endif
-
 class Q_GUI_EXPORT QShaderVersion
 {
 public:
@@ -46,6 +42,10 @@ public:
     void setFlags(Flags f) { m_flags = f; }
 
 private:
+    Q_GUI_EXPORT friend size_t qHash(QShaderVersion key, size_t seed) noexcept;
+    friend size_t qHash(QShaderVersion key) noexcept { return qHash(key, size_t{0}); }
+    #define QSHADERVERSION_IS_HASHABLE
+
     int m_version = 100;
     Flags m_flags;
 };
@@ -105,7 +105,8 @@ public:
         BatchableVertexShader,
         UInt16IndexedVertexAsComputeShader,
         UInt32IndexedVertexAsComputeShader,
-        NonIndexedVertexAsComputeShader
+        NonIndexedVertexAsComputeShader,
+        HdrCapableFragmentShader,
     };
 
     enum class SerializedFormatVersion {
@@ -140,7 +141,7 @@ public:
     QByteArray serialized(SerializedFormatVersion version = SerializedFormatVersion::Latest) const;
     static QShader fromSerialized(const QByteArray &data);
 
-    using NativeResourceBindingMap = QMap<int, QPair<int, int> >; // binding -> native_binding[, native_binding]
+    using NativeResourceBindingMap = QMap<int, std::pair<int, int>>; // binding -> native_binding[, native_binding]
     NativeResourceBindingMap nativeResourceBindingMap(const QShaderKey &key) const;
     void setResourceBindingMap(const QShaderKey &key, const NativeResourceBindingMap &map);
     void removeResourceBindingMap(const QShaderKey &key);
@@ -173,6 +174,8 @@ private:
     friend Q_GUI_EXPORT QDebug operator<<(QDebug, const QShader &);
 #endif
 };
+
+Q_DECLARE_SHARED(QShader)
 
 class Q_GUI_EXPORT QShaderKey
 {

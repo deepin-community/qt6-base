@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSMENU_H
 #define QWINDOWSMENU_H
@@ -76,7 +77,9 @@ private:
     bool m_checkable = false;
     bool m_checked = false;
     bool m_enabled = true;
+#if QT_CONFIG(shortcut)
     QKeySequence m_shortcut;
+#endif
 };
 
 class QWindowsMenu : public QPlatformMenu

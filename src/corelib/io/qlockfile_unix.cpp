@@ -2,22 +2,20 @@
 // Copyright (C) 2017 Intel Corporation.
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "private/qlockfile_p.h"
 
-#include "QtCore/qtemporaryfile.h"
-#include "QtCore/qfileinfo.h"
 #include "QtCore/qdebug.h"
 #include "QtCore/qdatetime.h"
 #include "QtCore/qfileinfo.h"
-#include "QtCore/qcache.h"
-#include "QtCore/qglobalstatic.h"
-#include "QtCore/qmutex.h"
+#if defined(Q_OS_HARMONY)
+#include "QtCore/qcoreapplication.h"
+#endif
 
 #include "private/qcore_unix_p.h" // qt_safe_open
-#include "private/qabstractfileengine_p.h"
 #include "private/qfilesystementry_p.h"
-#include "private/qtemporaryfile_p.h"
+#include "private/quniquehandle_types_p.h"
 
 #if !defined(Q_OS_INTEGRITY)
 #include <sys/file.h>  // flock
@@ -50,6 +48,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // ### merge into qt_safe_write?
 static qint64 qt_write_loop(int fd, const char *data, qint64 len)
@@ -101,25 +101,131 @@ static qint64 qt_write_loop(int fd, const char *data, qint64 len)
  * actually the same. Therefore, it's a very bad idea to mix them in the same
  * process.
  *
- * We therefore use only flock(2).
+ * We therefore use only flock(2), except on Android.
+ *
+ * Android Compatibility:
+ * Some versions of Android have known issues where flock does not function correctly.
+ * As a result, on Android, we use POSIX fcntl(F_SETLK) to handle file locking.
+ * fcntl is better integrated with Android’s underlying system, avoiding
+ * the limitations of flock.
+ *
+ * Race conditions and mitigations:
+ *
+ * 1) Concurrent creation of the lock file
+ * Creation of the lock file requires O_EXCL flag, which causes the OS to
+ * arbitrate. Only the thread that succeeded creating the lock file with this
+ * flag can claim to have locked.
+ *
+ * 2) Concurrent setNativeLocks()
+ * (Assuming an implementation that works, see main class docs for known
+ * limitations)
+ * This is applicable to tryLock_sys() and removeStaleLock() concurrency, as
+ * tryLock_sys() will only attempt to lock if open(O_EXCL) succeeded. The OS
+ * arbitrates and ensures only one thread at a time can lock the file's
+ * contents. QLockFile success implies the native lock either succeeded too or
+ * wasn't supported (definitely did not fail to lock).
+ *
+ * 3) Lock creation and unlink() race
+ * This is also applicable to tryLock_sys() and removeStaleLock() concurrency:
+ * following from the last case, removeStaleLock() may have natively-locked the
+ * file, unlinked it, then unlocked, all before tryLock_sys() reached
+ * setNativeLocks(). At this point, the lock file no longer exists in the
+ * directory but setNativeLocks() may yet succeed. This race is unavoidable, so
+ * we re-verify at the end whether the lock file is ours: if it is, then it has
+ * the lock and shouldn't get stolen.
  */
 
-static bool setNativeLocks(int fd)
-{
-#if defined(LOCK_EX) && defined(LOCK_NB)
-    if (flock(fd, LOCK_EX | LOCK_NB) == -1) // other threads, and other processes on a local fs
-        return false;
-#else
-    Q_UNUSED(fd);
-#endif
-    return true;
+namespace {
+enum class NativeLocking {
+    UnknownError = -2,
+    NotSupported = -1,
+    Failed = 0,
+    Locked = 1,
+};
 }
 
+static NativeLocking setNativeLocks(int fd)
+{
+    int ret;
+#if defined(Q_OS_ANDROID)
+    struct flock fl;
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_SET;
+    fl.l_start = 0;
+    fl.l_len = 0;
+    QT_EINTR_LOOP(ret, fcntl(fd, F_SETLK, &fl));
+#elif defined(LOCK_EX) && defined(LOCK_NB)
+    // applies to other threads, and other processes on a local fs
+    QT_EINTR_LOOP(ret, flock(fd, LOCK_EX | LOCK_NB));
+#else
+    Q_UNUSED(fd);
+    ret = -1;
+    errno = ENOTSUP;
+#endif
+
+    if (ret == 0)
+        return NativeLocking::Locked;
+
+    // failed to lock, but why?
+    switch (errno) {
+    case EWOULDBLOCK:   // flock() documented to use this
+#if EAGAIN != EWOULDBLOCK
+    case EAGAIN:        // F_SETLK documented to use this
+#endif
+    case EACCES:        // F_SETLK documented to possibly use this too
+        return NativeLocking::Failed;
+
+    case ENOLCK:
+        // This can be both a resource error (lock table is full) and locking
+        // is not possible (e.g., rpc.lockd unable to lock). We err on the side
+        // of the permanence (more likely).
+        return NativeLocking::NotSupported;
+
+    case EINVAL:
+    case ENOTSUP:
+    case ENOSYS:
+        return NativeLocking::NotSupported;
+    }
+
+    return NativeLocking::UnknownError;
+}
+
+static bool releaseLockFile(int fileHandle, const QByteArray &fileName)
+{
+    // first we try to unlink the file while it's locked
+    int ret = unlink(fileName);
+    int savedErrno = ret == 0 ? 0 : errno;
+    qt_safe_close(fileHandle);
+
+    switch (savedErrno) {
+        // we have observed on some systems we can't unlink a file with an
+        // active lock, so we must close it first, then unlink
+    case EBUSY:     // observed with some NFS servers
+    case ETXTBSY:   // not observed, just defensive
+    case EPERM:     // probably can't unlink() an open file (independent of locks)
+        ret = unlink(fileName.data());
+        savedErrno = ret == 0 ? 0 : errno;
+    }
+
+    if (savedErrno == 0 || savedErrno == ENOENT || savedErrno == ENOTDIR)
+        return true;        // file is gone
+
+    qWarning("Could not remove our own lock file %s: %ls (maybe permissions changed meanwhile?)",
+             fileName.cbegin(), qUtf16Printable(qt_error_string(savedErrno)));
+    // This is bad because other users of this lock file will now have to wait for the stale-lock-timeout...
+
+    return false;
+}
+
+// This function is designed to deal with race conditions coming from two (or
+// more) threads/processes accessing the lock file at the same time, either in
+// tryLock_sys() itself or removeStaleLock() - both called by tryLock().
 QLockFile::LockError QLockFilePrivate::tryLock_sys()
 {
+    constexpr int OpenFlags = QT_OPEN_RDWR | QT_OPEN_CREAT | QT_OPEN_EXCL;
     const QByteArray lockFileName = QFile::encodeName(fileName);
-    const int fd = qt_safe_open(lockFileName.constData(), O_RDWR | O_CREAT | O_EXCL, 0666);
-    if (fd < 0) {
+    QUniqueFileDescriptorHandle fd(qt_safe_open(lockFileName.constData(), OpenFlags, 0666));
+    if (fd.get() < 0) {
         switch (errno) {
         case EEXIST:
             return QLockFile::LockFailedError;
@@ -131,21 +237,34 @@ QLockFile::LockError QLockFilePrivate::tryLock_sys()
         }
     }
     // Ensure nobody else can delete the file while we have it
-    if (!setNativeLocks(fd)) {
+    if (NativeLocking r = setNativeLocks(fd.get()); r == NativeLocking::Failed) {
+        // someone holds this lock
+        return QLockFile::LockFailedError;
+    } else if (r == NativeLocking::UnknownError) {
         const int errnoSaved = errno;
         qWarning() << "setNativeLocks failed:" << qt_error_string(errnoSaved);
     }
 
     QByteArray fileData = lockFileContents();
-    if (qt_write_loop(fd, fileData.constData(), fileData.size()) < fileData.size()) {
-        qt_safe_close(fd);
-        if (!QFile::remove(fileName))
-            qWarning("QLockFile: Could not remove our own lock file %ls.", qUtf16Printable(fileName));
+    if (qt_write_loop(fd.get(), fileData.constData(), fileData.size()) < fileData.size()) {
+        releaseLockFile(fd.release(), lockFileName);
         return QLockFile::UnknownError; // partition full
     }
 
+    // Confirm the lock file is our file.
+    QT_STATBUF fromFs, fromFd = {};
+    if (QT_STAT(lockFileName.constData(), &fromFs) < 0) {
+        // probably ENOENT, meaning the file has disappeared
+        return QLockFile::LockFailedError;
+    }
+    std::ignore = QT_FSTAT(fd.get(), &fromFd);
+    if (fromFd.st_dev != fromFs.st_dev || fromFd.st_ino != fromFs.st_ino) {
+        // lock file was replaced, stolen from under us
+        return QLockFile::LockFailedError;
+    }
+
     // We hold the lock, continue.
-    fileHandle = fd;
+    fileHandle = fd.release();
 
     // Sync to disk if possible. Ignore errors (e.g. not supported).
 #if defined(_POSIX_SYNCHRONIZED_IO) && _POSIX_SYNCHRONIZED_IO > 0
@@ -162,10 +281,16 @@ bool QLockFilePrivate::removeStaleLock()
     const QByteArray lockFileName = QFile::encodeName(fileName);
     const int fd = qt_safe_open(lockFileName.constData(), O_WRONLY, 0666);
     if (fd < 0) // gone already?
-        return false;
-    bool success = setNativeLocks(fd) && (::unlink(lockFileName) == 0);
-    close(fd);
-    return success;
+        return errno == ENOENT;
+
+    if (setNativeLocks(fd) != NativeLocking::Failed) {
+        // if we applied native locks, the file was stale; do delete it
+        return releaseLockFile(fd, lockFileName);
+    }
+
+    // there was a lock, so it's not stale
+    qt_safe_close(fd);
+    return false;
 }
 
 bool QLockFilePrivate::isProcessRunning(qint64 pid, const QString &appname)
@@ -191,6 +316,15 @@ QString QLockFilePrivate::processNameByPid(qint64 pid)
     char name[1024];
     proc_name(pid, name, sizeof(name) / sizeof(char));
     return QFile::decodeName(name);
+#elif defined(Q_OS_HARMONY)
+    // On OHOS, all Qt applications are started by the appspawn daemon via fork() + dlopen(),
+    // so /proc/{pid}/exe always resolves to "appspawn" rather than the actual application.
+    // For the current process, qAppName() is used instead, which is set by the OHOS QPA plugin
+    // to the loaded .so path (e.g. libMyApp.so). For external processes, /proc/{pid}/... is
+    // inaccessible due to sandboxing, so an empty string is returned; this causes
+    // isProcessRunning() to skip the name comparison and rely solely on PID existence.
+    // Note: this means PID reuse by an external process is not detected.
+    return pid == ::getpid() ? qAppName() : QString();
 #elif defined(Q_OS_LINUX)
     if (!qt_haveLinuxProcfs())
         return QString();
@@ -269,17 +403,20 @@ QString QLockFilePrivate::processNameByPid(qint64 pid)
 #endif
 }
 
+int QLockFilePrivate::openNewFileDescriptor(const QString &fileName)
+{
+    return QT_OPEN(fileName.toLocal8Bit().constData(), QT_OPEN_RDONLY);
+}
+
 void QLockFile::unlock()
 {
     Q_D(QLockFile);
     if (!d->isLocked)
         return;
-    close(d->fileHandle);
+
+    const QByteArray lockFileName = QFile::encodeName(d->fileName);
+    releaseLockFile(d->fileHandle, lockFileName);
     d->fileHandle = -1;
-    if (!QFile::remove(d->fileName)) {
-        qWarning() << "Could not remove our own lock file" << d->fileName << "maybe permissions changed meanwhile?";
-        // This is bad because other users of this lock file will now have to wait for the stale-lock-timeout...
-    }
     d->lockError = QLockFile::NoError;
     d->isLocked = false;
 }

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTBUTTON_P_H
 #define QABSTRACTBUTTON_P_H
@@ -20,6 +21,7 @@
 
 #include "QtCore/qbasictimer.h"
 #include "private/qwidget_p.h"
+#include "QtWidgets/qstyle.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -69,6 +71,10 @@ public:
     void emitReleased();
     void emitClicked();
     void emitToggled(bool checked);
+
+    // ### Qt7: add a public virtual initStyleOption()
+    // returns additional button states for QStyleOption
+    virtual QStyle::State styleButtonState(QStyle::State state) const;
 };
 
 QT_END_NAMESPACE

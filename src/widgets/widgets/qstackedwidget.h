@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTACKEDWIDGET_H
 #define QSTACKEDWIDGET_H
@@ -41,6 +42,7 @@ public Q_SLOTS:
 Q_SIGNALS:
     void currentChanged(int);
     void widgetRemoved(int index);
+    void widgetAdded(int index);
 
 protected:
     bool event(QEvent *e) override;

@@ -34,3 +34,11 @@ qt_internal_extend_target(tst_qsslsocket CONDITION QT_FEATURE_private_tests AND 
     LIBRARIES
         WrapOpenSSL::WrapOpenSSL
 )
+
+if(QT_FEATURE_process)
+    add_subdirectory(stresstest_hash_before_ssl)
+
+    if(QT_FEATURE_ssl)
+        add_dependencies(tst_qsslsocket opensslhash_before_ssl)
+    endif()
+endif()

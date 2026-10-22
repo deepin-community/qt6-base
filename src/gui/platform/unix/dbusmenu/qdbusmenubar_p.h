@@ -1,5 +1,6 @@
 // Copyright (C) 2016 Dmitry Shachnev <mitya57@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDBUSMENUBAR_P_H
 #define QDBUSMENUBAR_P_H
@@ -42,7 +43,8 @@ private:
     QDBusPlatformMenu *m_menu;
     QDBusMenuAdaptor *m_menuAdaptor;
     QHash<quintptr, QDBusPlatformMenuItem *> m_menuItems;
-    uint m_windowId;
+    QPointer<QWindow> m_window;
+    WId m_windowId = 0;
     QString m_objectPath;
 
     QDBusPlatformMenuItem *menuItemForMenu(QPlatformMenu *menu);

@@ -1,0 +1,9 @@
+usr/lib/${DEB_HOST_MULTIARCH}/libQt6WaylandClient.so.6
+usr/lib/${DEB_HOST_MULTIARCH}/libQt6WaylandClient.so.6.*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/platforms/libqwayland.so
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/wayland-decoration-client/libbradient.so
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/wayland-graphics-integration-client/libdmabuf-server.so
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/wayland-graphics-integration-client/libdrm-egl-server.so
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/wayland-graphics-integration-client/libshm-emulation-server.so
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/plugins/wayland-graphics-integration-client/libvulkan-server.so

@@ -13,14 +13,28 @@ set_property(CACHE INPUT_sqlite PROPERTY STRINGS undefined qt system)
 
 #### Libraries
 
-qt_find_package(DB2 PROVIDED_TARGETS DB2::DB2 MODULE_NAME sqldrivers QMAKE_LIB db2)
-qt_find_package(MySQL PROVIDED_TARGETS MySQL::MySQL MODULE_NAME sqldrivers QMAKE_LIB mysql)
-qt_find_package(PostgreSQL PROVIDED_TARGETS PostgreSQL::PostgreSQL MODULE_NAME sqldrivers QMAKE_LIB psql)
-qt_find_package(Oracle PROVIDED_TARGETS Oracle::OCI MODULE_NAME sqldrivers QMAKE_LIB oci)
+qt_feature_vcpkg_scope(sql)
+qt_find_package(DB2 MODULE PROVIDED_TARGETS DB2::DB2 MODULE_NAME sqldrivers QMAKE_LIB db2)
+qt_find_package(MySQL MODULE PROVIDED_TARGETS MySQL::MySQL MODULE_NAME sqldrivers QMAKE_LIB mysql
+    VCPKG_PORT libmysql
+    VCPKG_ADD_TO_FEATURE sql-mysql
+)
+qt_find_package(PostgreSQL MODULE PROVIDED_TARGETS PostgreSQL::PostgreSQL MODULE_NAME sqldrivers QMAKE_LIB psql
+    VCPKG_PORT libpq
+    VCPKG_ADD_TO_FEATURE sql-psql
+)
+qt_find_package(Oracle MODULE PROVIDED_TARGETS Oracle::OCI MODULE_NAME sqldrivers QMAKE_LIB oci)
 qt_find_package(ODBC PROVIDED_TARGETS ODBC::ODBC MODULE_NAME sqldrivers QMAKE_LIB odbc)
-qt_find_package(SQLite3 PROVIDED_TARGETS SQLite::SQLite3 MODULE_NAME sqldrivers QMAKE_LIB sqlite3)
-qt_find_package(Interbase PROVIDED_TARGETS Interbase::Interbase MODULE_NAME sqldrivers QMAKE_LIB ibase) # special case
-qt_find_package(Mimer PROVIDED_TARGETS MimerSQL::MimerSQL MODULE_NAME sqldrivers QMAKE_LIB mimer)
+qt_find_package(WrapSystemSQLite3
+    PROVIDED_TARGETS WrapSystemSQLite3::WrapSystemSQLite3
+    MODULE_NAME sqldrivers
+    QMAKE_LIB sqlite3
+    VCPKG_PORT sqlite3
+    VCPKG_ADD_TO_FEATURE sql-sqlite
+)
+qt_find_package(Interbase MODULE
+    PROVIDED_TARGETS Interbase::Interbase MODULE_NAME sqldrivers QMAKE_LIB ibase) # special case
+qt_find_package(Mimer MODULE PROVIDED_TARGETS MimerSQL::MimerSQL MODULE_NAME sqldrivers QMAKE_LIB mimer)
 if(NOT WIN32 AND QT_FEATURE_system_zlib)
     qt_add_qmake_lib_dependency(sqlite3 zlib)
 endif()
@@ -59,8 +73,9 @@ qt_feature("sql-psql" PRIVATE
 qt_feature("sql-sqlite" PRIVATE
     LABEL "SQLite"
     CONDITION QT_FEATURE_datestring
+    VCPKG_DEFAULT
 )
-qt_feature("system-sqlite" PRIVATE
+qt_feature("system-sqlite" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system provided SQLite"
     AUTODETECT OFF
     CONDITION QT_FEATURE_sql_sqlite AND SQLite3_FOUND

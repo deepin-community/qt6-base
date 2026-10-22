@@ -1,5 +1,6 @@
 // Copyright (C) 2011 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qidentityproxymodel.h"
 #include "qidentityproxymodel_p.h"
@@ -7,6 +8,12 @@
 #include <private/qabstractproxymodel_p.h>
 
 QT_BEGIN_NAMESPACE
+
+QIdentityProxyModelPrivate::QIdentityProxyModelPrivate()
+    = default;
+
+QIdentityProxyModelPrivate::~QIdentityProxyModelPrivate()
+    = default;
 
 /*!
     \since 4.8
@@ -194,19 +201,7 @@ QModelIndex QIdentityProxyModel::mapToSource(const QModelIndex& proxyIndex) cons
  */
 QModelIndexList QIdentityProxyModel::match(const QModelIndex& start, int role, const QVariant& value, int hits, Qt::MatchFlags flags) const
 {
-    Q_D(const QIdentityProxyModel);
-    Q_ASSERT(start.isValid() ? start.model() == this : true);
-    if (!d->model)
-        return QModelIndexList();
-
-    const QModelIndexList sourceList = d->model->match(mapToSource(start), role, value, hits, flags);
-    QModelIndexList::const_iterator it = sourceList.constBegin();
-    const QModelIndexList::const_iterator end = sourceList.constEnd();
-    QModelIndexList proxyList;
-    proxyList.reserve(sourceList.size());
-    for ( ; it != end; ++it)
-        proxyList.append(mapFromSource(*it));
-    return proxyList;
+    return QAbstractProxyModel::match(start, role, value, hits, flags);
 }
 
 /*!
@@ -288,21 +283,25 @@ QVariant QIdentityProxyModel::headerData(int section, Qt::Orientation orientatio
  */
 void QIdentityProxyModel::setSourceModel(QAbstractItemModel* newSourceModel)
 {
-    beginResetModel();
-
     Q_D(QIdentityProxyModel);
+
+    if (newSourceModel == d->model)
+        return;
+
+    beginResetModel();
 
     // Call QObject::disconnect() unconditionally, if there is an existing source
     // model, it's disconnected, and if there isn't, then calling disconnect() on
     // a default-constructed Connection does nothing
-    for (const auto &c : d->m_sourceModelConnections)
+    for (auto &c : d->m_sourceModelConnections)
         QObject::disconnect(c);
 
     QAbstractProxyModel::setSourceModel(newSourceModel);
 
     if (sourceModel()) {
         auto *m = sourceModel();
-        d->m_sourceModelConnections = {
+        using C = QMetaObject::Connection;
+        d->m_sourceModelConnections = std::array{
             QObjectPrivate::connect(m, &QAbstractItemModel::rowsAboutToBeInserted, d,
                                     &QIdentityProxyModelPrivate::sourceRowsAboutToBeInserted),
             QObjectPrivate::connect(m, &QAbstractItemModel::rowsInserted, d,
@@ -333,21 +332,16 @@ void QIdentityProxyModel::setSourceModel(QAbstractItemModel* newSourceModel)
                                     &QIdentityProxyModelPrivate::sourceModelReset),
             QObjectPrivate::connect(m, &QAbstractItemModel::headerDataChanged, d,
                                     &QIdentityProxyModelPrivate::sourceHeaderDataChanged),
-        };
-
-        if (d->m_handleDataChanges) {
-            d->m_sourceModelConnections.emplace_back(
+            !d->m_handleDataChanges ? C{} :
                 QObjectPrivate::connect(m, &QAbstractItemModel::dataChanged, d,
-                                        &QIdentityProxyModelPrivate::sourceDataChanged));
-        }
-        if (d->m_handleLayoutChanges) {
-            d->m_sourceModelConnections.emplace_back(
+                                        &QIdentityProxyModelPrivate::sourceDataChanged),
+            !d->m_handleLayoutChanges ? C{} :
                 QObjectPrivate::connect(m, &QAbstractItemModel::layoutAboutToBeChanged, d,
-                                        &QIdentityProxyModelPrivate::sourceLayoutAboutToBeChanged));
-            d->m_sourceModelConnections.emplace_back(
+                                        &QIdentityProxyModelPrivate::sourceLayoutAboutToBeChanged),
+            !d->m_handleLayoutChanges ? C{} :
                 QObjectPrivate::connect(m, &QAbstractItemModel::layoutChanged, d,
-                                        &QIdentityProxyModelPrivate::sourceLayoutChanged));
-        }
+                                        &QIdentityProxyModelPrivate::sourceLayoutChanged),
+        };
     }
 
     endResetModel();

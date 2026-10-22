@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPEN_H
 #define QPEN_H
@@ -40,6 +41,9 @@ public:
     QPen(QPen &&other) noexcept = default;
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QPen)
     void swap(QPen &other) noexcept { d.swap(other.d); }
+
+    QPen &operator=(QColor color);
+    QPen &operator=(Qt::PenStyle style);
 
     Qt::PenStyle style() const;
     void setStyle(Qt::PenStyle);
@@ -85,6 +89,22 @@ public:
 private:
     friend Q_GUI_EXPORT QDataStream &operator>>(QDataStream &, QPen &);
     friend Q_GUI_EXPORT QDataStream &operator<<(QDataStream &, const QPen &);
+
+    bool isSolidDefaultLine() const noexcept;
+
+    bool doCompareEqualColor(QColor rhs) const noexcept;
+    friend bool comparesEqual(const QPen &lhs, QColor rhs) noexcept
+    {
+        return lhs.doCompareEqualColor(rhs);
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(QPen, QColor)
+
+    bool doCompareEqualStyle(Qt::PenStyle rhs) const;
+    friend bool comparesEqual(const QPen &lhs, Qt::PenStyle rhs)
+    {
+        return lhs.doCompareEqualStyle(rhs);
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QPen, Qt::PenStyle)
 
 public:
     using DataPtr = QExplicitlySharedDataPointer<QPenPrivate>;

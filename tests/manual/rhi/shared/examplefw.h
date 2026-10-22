@@ -18,7 +18,7 @@
 #include <rhi/qrhi.h>
 
 #ifdef EXAMPLEFW_IMGUI
-#include "qrhiimgui_p.h"
+#include "qrhiimgui.h"
 #include "imgui.h"
 #endif
 
@@ -98,6 +98,9 @@ protected:
 
     void customInit();
     void customRelease();
+#ifdef EXAMPLEFW_BEFORE_FRAME
+    void customBeforeFrame();
+#endif
     void customRender();
 #ifdef EXAMPLEFW_IMGUI
     void customGui();
@@ -221,6 +224,8 @@ bool Window::event(QEvent *e)
 
 void Window::init()
 {
+    QRhi::AdapterList adapters;
+
     if (graphicsApi == Null) {
         QRhiNullInitParams params;
         m_r = QRhi::create(QRhi::Null, &params, rhiFlags);
@@ -241,6 +246,7 @@ void Window::init()
         QRhiVulkanInitParams params;
         params.inst = vulkanInstance();
         params.window = this;
+        adapters = QRhi::enumerateAdapters(QRhi::Vulkan, &params);
         m_r = QRhi::create(QRhi::Vulkan, &params, rhiFlags);
     }
 #endif
@@ -251,12 +257,14 @@ void Window::init()
         if (debugLayer)
             qDebug("Enabling D3D11 debug layer");
         params.enableDebugLayer = debugLayer;
+        adapters = QRhi::enumerateAdapters(QRhi::D3D11, &params);
         m_r = QRhi::create(QRhi::D3D11, &params, rhiFlags);
     } else if (graphicsApi == D3D12) {
         QRhiD3D12InitParams params;
         if (debugLayer)
             qDebug("Enabling D3D12 debug layer");
         params.enableDebugLayer = debugLayer;
+        adapters = QRhi::enumerateAdapters(QRhi::D3D12, &params);
         m_r = QRhi::create(QRhi::D3D12, &params, rhiFlags);
     }
 #endif
@@ -267,6 +275,12 @@ void Window::init()
         m_r = QRhi::create(QRhi::Metal, &params, rhiFlags);
     }
 #endif
+
+    if (!adapters.isEmpty()) {
+        qDebug() << "For information, enumerateAdapters() reports:";
+        for (qsizetype i = 0; i < adapters.count(); ++i)
+            qDebug() << "  QRhiAdapter #" << i << ":" << adapters[i]->info();
+    }
 
     if (!m_r)
         qFatal("Failed to create RHI backend");
@@ -359,6 +373,10 @@ void Window::render()
 {
     if (!m_hasSwapChain || m_notExposed)
         return;
+
+#ifdef EXAMPLEFW_BEFORE_FRAME
+    customBeforeFrame();
+#endif
 
     // If the window got resized or got newly exposed, resize the swapchain.
     // (the newly-exposed case is not actually required by some

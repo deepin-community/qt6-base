@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdbusutil_p.h"
 
@@ -407,6 +408,8 @@ namespace QDBusUtil
             return isValidUniqueConnectionName(busName);
 
         const auto parts = QStringView{busName}.split(u'.');
+        if (parts.size() < 2)
+            return false;
         for (QStringView part : parts) {
             if (part.isEmpty())
                 return false;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qhash.h>
 #include <QtWidgets/qpushbutton.h>
@@ -67,13 +68,21 @@ QT_BEGIN_NAMESPACE
 
     Currently the buttons are laid out in the following way if the button box is horizontal:
     \table
-    \row \li \inlineimage buttonbox-gnomelayout-horizontal.png GnomeLayout Horizontal
+    \row \li \inlineimage buttonbox-gnomelayout-horizontal.png
+             {Several buttons using the GnomeLayout horizontal layout}
+             GnomeLayout Horizontal
          \li Button box laid out in horizontal GnomeLayout
-    \row \li \inlineimage buttonbox-kdelayout-horizontal.png KdeLayout Horizontal
+    \row \li \inlineimage buttonbox-kdelayout-horizontal.png
+             {Several buttons using the KdeLayout horizontal layout}
+             KdeLayout Horizontal
          \li Button box laid out in horizontal KdeLayout
-    \row \li \inlineimage buttonbox-maclayout-horizontal.png MacLayout Horizontal
+    \row \li \inlineimage buttonbox-maclayout-horizontal.png
+             {Several buttons using the MacLayout horizontal layout}
+             MacLayout Horizontal
          \li Button box laid out in horizontal MacLayout
-    \row \li \inlineimage buttonbox-winlayout-horizontal.png  WinLayout Horizontal
+    \row \li \inlineimage buttonbox-winlayout-horizontal.png
+             {Several buttons using the WinLayout horizontal layout}
+             WinLayout Horizontal
          \li Button box laid out in horizontal WinLayout
     \endtable
 
@@ -84,10 +93,18 @@ QT_BEGIN_NAMESPACE
          \li KdeLayout
          \li MacLayout
          \li WinLayout
-    \row \li \inlineimage buttonbox-gnomelayout-vertical.png GnomeLayout Vertical
-         \li \inlineimage buttonbox-kdelayout-vertical.png KdeLayout Vertical
-         \li \inlineimage buttonbox-maclayout-vertical.png MacLayout Vertical
-         \li \inlineimage buttonbox-winlayout-vertical.png WinLayout Vertical
+    \row \li \inlineimage buttonbox-gnomelayout-vertical.png
+             {Several buttons using the GnomeLayout vertical layout}
+             GnomeLayout Vertical
+         \li \inlineimage buttonbox-kdelayout-vertical.png
+             {Several buttons using the KdeLayout vertical layout}
+             KdeLayout Vertical
+         \li \inlineimage buttonbox-maclayout-vertical.png
+             {Several buttons using the MacLayout vertical layout}
+             MacLayout Vertical
+         \li \inlineimage buttonbox-winlayout-vertical.png
+             {Several buttons using the WinLayout vertical layout}
+             WinLayout Vertical
     \endtable
 
     Additionally, button boxes that contain only buttons with ActionRole or
@@ -95,9 +112,13 @@ QT_BEGIN_NAMESPACE
 
     \table
     \row \li modeless horizontal MacLayout
-         \li \inlineimage buttonbox-mac-modeless-horizontal.png Screenshot of modeless horizontal MacLayout
+         \li \inlineimage buttonbox-mac-modeless-horizontal.png
+             {Several buttons using the horizontal modeless style on macOS}
+             Screenshot of modeless horizontal MacLayout
     \row \li modeless vertical MacLayout
-         \li \inlineimage buttonbox-mac-modeless-vertical.png Screenshot of modeless vertical MacLayout
+         \li \inlineimage buttonbox-mac-modeless-vertical.png
+             {Several buttons using the horizontal modeless style on macOS}
+             Screenshot of modeless vertical MacLayout
     \endtable
 
     When a button is clicked in the button box, the clicked() signal is emitted
@@ -189,7 +210,7 @@ void QDialogButtonBoxPrivate::layoutButtons()
     Q_Q(QDialogButtonBox);
     const int MacGap = 36 - 8;    // 8 is the default gap between a widget and a spacer item
 
-    QBoolBlocker blocker(ignoreShowAndHide);
+    QScopedValueRollback blocker(ignoreShowAndHide, true);
     for (int i = buttonLayout->count() - 1; i >= 0; --i) {
         QLayoutItem *item = buttonLayout->takeAt(i);
         if (QWidget *widget = item->widget())
@@ -368,7 +389,7 @@ QPushButton *QDialogButtonBoxPrivate::createButton(QDialogButtonBox::StandardBut
         return nullptr;
         ;
     }
-    QPushButton *button = new QPushButton(QGuiApplicationPrivate::platformTheme()->standardButtonText(sbutton), q);
+    QPushButton *button = new QPushButton(QDialogButtonBox::standardButtonText(sbutton), q);
     QStyle *style = q->style();
     if (style->styleHint(QStyle::SH_DialogButtonBox_ButtonsHaveIcons, nullptr, q) && icon != 0)
         button->setIcon(style->standardIcon(QStyle::StandardPixmap(icon), nullptr, q));
@@ -381,7 +402,7 @@ QPushButton *QDialogButtonBoxPrivate::createButton(QDialogButtonBox::StandardBut
     else
         addButton(button, static_cast<QDialogButtonBox::ButtonRole>(role), layoutRule);
 #if QT_CONFIG(shortcut)
-    const QKeySequence standardShortcut = QGuiApplicationPrivate::platformTheme()->standardButtonShortcut(sbutton);
+    const QKeySequence standardShortcut = QDialogButtonBox::standardButtonShortcut(sbutton);
     if (!standardShortcut.isEmpty())
         button->setShortcut(standardShortcut);
 #endif
@@ -427,7 +448,7 @@ void QDialogButtonBoxPrivate::createStandardButtons(QDialogButtonBox::StandardBu
 void QDialogButtonBoxPrivate::retranslateStrings()
 {
     for (const auto &it : std::as_const(standardButtonMap)) {
-        const QString text = QGuiApplicationPrivate::platformTheme()->standardButtonText(it.second);
+        const QString text = QDialogButtonBox::standardButtonText(it.second);
         if (!text.isEmpty())
             it.first->setText(text);
     }
@@ -493,6 +514,8 @@ QDialogButtonBox::~QDialogButtonBox()
     // otherwise the connection may kick in on child destruction and reach
     // the parent's destroyed private object
     d->disconnectAll();
+    // ditto event filter:
+    d->filter.reset();
 }
 
 /*!
@@ -867,6 +890,35 @@ QDialogButtonBox::StandardButton QDialogButtonBox::standardButton(QAbstractButto
     return d->standardButtonMap.value(static_cast<QPushButton *>(button));
 }
 
+/*!
+    Returns the display text for the standard \a button, as shown
+    on the button label. The text is platform- and locale-dependent.
+
+    Returns an empty string if \a button is not a recognized standard button.
+
+    \since 6.12
+    \sa standardButtonShortcut(), StandardButton
+*/
+QString QDialogButtonBox::standardButtonText(StandardButton button)
+{
+    return QGuiApplicationPrivate::platformTheme()->standardButtonText(button);
+}
+
+#if QT_CONFIG(shortcut)
+/*!
+    Returns the keyboard shortcut for the standard \a button. The shortcut
+    is platform-dependent. Returns an empty \l QKeySequence if \a button has
+    no associated shortcut or is not a recognized standard button.
+
+    \since 6.12
+    \sa standardButtonText(), StandardButton
+*/
+QKeySequence QDialogButtonBox::standardButtonShortcut(StandardButton button)
+{
+    return QGuiApplicationPrivate::platformTheme()->standardButtonShortcut(button);
+}
+#endif
+
 void QDialogButtonBoxPrivate::handleButtonClicked()
 {
     Q_Q(QDialogButtonBox);
@@ -980,7 +1032,7 @@ void QDialogButtonBox::changeEvent(QEvent *event)
             for (auto key : d->standardButtonMap.keys())
                 key->setStyle(newStyle);
         }
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         Q_FALLTHROUGH();
     case QEvent::MacSizeChange:
 #endif

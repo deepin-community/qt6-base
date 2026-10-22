@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformsurface.h"
 #ifndef QT_NO_DEBUG_STREAM
@@ -30,17 +31,6 @@ QSurface *QPlatformSurface::surface() const
 
 QPlatformSurface::QPlatformSurface(QSurface *surface) : m_surface(surface)
 {
-}
-
-bool QPlatformSurface::isRasterSurface(QSurface *surface)
-{
-    switch (surface->surfaceType()) {
-    case QSurface::RasterSurface:
-    case QSurface::RasterGLSurface:
-        return true;
-    default:
-        return false;
-    };
 }
 
 #ifndef QT_NO_DEBUG_STREAM

@@ -1,22 +1,20 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qthread.h"
-#include "qthreadstorage.h"
-#include "qmutex.h"
-#include "qreadwritelock.h"
+#include "qthread_p.h"
+
 #include "qabstracteventdispatcher.h"
 #include "qbindingstorage.h"
-
-#include <qeventloop.h>
-
-#include "qthread_p.h"
 #include "private/qcoreapplication_p.h"
-
-#include <limits>
+#include "qeventloop.h"
+#include "qmutex.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*
     QPostEventList
@@ -45,26 +43,12 @@ void QPostEventList::addEvent(const QPostEvent &ev)
   QThreadData
 */
 
-QThreadData::QThreadData(int initialRefCount)
-    : _ref(initialRefCount), loopLevel(0), scopeLevel(0),
-      eventDispatcher(nullptr),
-      quitNow(false), canWait(true), isAdopted(false), requiresCoreApplication(true)
-{
-    // fprintf(stderr, "QThreadData %p created\n", this);
-}
-
 QThreadData::~QThreadData()
 {
 #if QT_CONFIG(thread)
     Q_ASSERT(_ref.loadRelaxed() == 0);
 #endif
 
-    // In the odd case that Qt is running on a secondary thread, the main
-    // thread instance will have been dereffed asunder because of the deref in
-    // QThreadData::current() and the deref in the pthread_destroy. To avoid
-    // crashing during QCoreApplicationData's global static cleanup we need to
-    // safeguard the main thread here.. This fix is a bit crude, but it solves
-    // the problem...
     if (threadId.loadAcquire() == QCoreApplicationPrivate::theMainThreadId.loadAcquire()) {
         QCoreApplicationPrivate::theMainThread.storeRelease(nullptr);
         QCoreApplicationPrivate::theMainThreadId.storeRelaxed(nullptr);
@@ -82,32 +66,21 @@ QThreadData::~QThreadData()
     thread.storeRelease(nullptr);
     delete t;
 
-    for (int i = 0; i < postEventList.size(); ++i) {
-        const QPostEvent &pe = postEventList.at(i);
-        if (pe.event) {
-            --pe.receiver->d_func()->postedEvents;
-            pe.event->m_posted = false;
-            delete pe.event;
-        }
-    }
+    clearEvents();
 
     // fprintf(stderr, "QThreadData %p destroyed\n", this);
 }
 
-void QThreadData::ref()
+void QThreadData::clearEvents()
 {
-#if QT_CONFIG(thread)
-    (void) _ref.ref();
-    Q_ASSERT(_ref.loadRelaxed() != 0);
-#endif
-}
-
-void QThreadData::deref()
-{
-#if QT_CONFIG(thread)
-    if (!_ref.deref())
-        delete this;
-#endif
+    for (const auto &pe : std::as_const(postEventList)) {
+        if (pe.event) {
+            pe.receiver->d_func()->postedEvents.fetchAndSubRelaxed(1);
+            pe.event->m_posted = false;
+            delete pe.event;
+        }
+    }
+    postEventList.clear();
 }
 
 QAbstractEventDispatcher *QThreadData::createEventDispatcher()
@@ -124,14 +97,32 @@ QAbstractEventDispatcher *QThreadData::createEventDispatcher()
 QAdoptedThread::QAdoptedThread(QThreadData *data)
     : QThread(*new QThreadPrivate(data))
 {
+    // avoid a cyclic reference count: QThreadData owns this QAdoptedThread
+    // object but QObject's constructor increased the count
+    data->deref();
+
+    data->isAdopted = true;
+    Qt::HANDLE id = QThread::currentThreadId();
+    data->threadId.storeRelaxed(id);
+    if (!QCoreApplicationPrivate::theMainThreadId.loadAcquire()) {
+        // we are the main thread
+        QCoreApplicationPrivate::theMainThread.storeRelease(this);
+        QCoreApplicationPrivate::theMainThreadId.storeRelaxed(id);
+
+        // bypass the bindings because nothing can be listening yet
+        d_func()->setObjectNameWithoutBindings(u"Qt mainThread"_s);
+    }
+
     // thread should be running and not finished for the lifetime
     // of the application (even if QCoreApplication goes away)
 #if QT_CONFIG(thread)
-    d_func()->running = true;
-    d_func()->finished = false;
+    d_func()->threadState = QThreadPrivate::Running;
     init();
-    d_func()->m_statusOrPendingObjects.setStatusAndClearList(
+    {
+        QMutexLocker lock(&d_func()->mutex);
+        d_func()->data->m_statusOrPendingObjects.setStatusAndClearList(
                 QtPrivate::getBindingStatus({}));
+    }
 #endif
     // fprintf(stderr, "new QAdoptedThread = %p\n", this);
 }
@@ -149,31 +140,13 @@ void QAdoptedThread::run()
 }
 #endif
 
-QScopedScopeLevelCounter::QScopedScopeLevelCounter(QThreadData *threadData)
-    : threadData(threadData)
-{
-    ++threadData->scopeLevel;
-    qCDebug(lcDeleteLater) << "Increased" << threadData->thread
-                      << "scope level to" << threadData->scopeLevel;
-}
-
-QScopedScopeLevelCounter::~QScopedScopeLevelCounter()
-{
-    --threadData->scopeLevel;
-    qCDebug(lcDeleteLater) << "Decreased" << threadData->thread
-                      << "scope level to" << threadData->scopeLevel;
-}
-
 #if QT_CONFIG(thread)
 /*
   QThreadPrivate
 */
 
 QThreadPrivate::QThreadPrivate(QThreadData *d)
-    : QObjectPrivate(), running(false), finished(false),
-      isInFinish(false), interruptionRequested(false),
-      exited(false), returnCode(-1),
-      stackSize(0), priority(QThread::InheritPriority), data(d)
+    : QObjectPrivate(), data(d)
 {
 
 // INTEGRITY doesn't support self-extending stack. The default stack size for
@@ -190,8 +163,6 @@ QThreadPrivate::QThreadPrivate(QThreadData *d)
 
 #if defined (Q_OS_WIN)
     handle = 0;
-    id = 0;
-    waiters = 0;
     terminationEnabled = true;
     terminatePending = false;
 #endif
@@ -205,7 +176,8 @@ QThreadPrivate::~QThreadPrivate()
     // access to m_statusOrPendingObjects cannot race with anything
     // unless there is already a potential use-after-free bug, as the
     // thread is in the process of being destroyed
-    delete m_statusOrPendingObjects.list();
+    delete data->m_statusOrPendingObjects.list();
+    data->clearEvents();
     data->deref();
 }
 
@@ -304,7 +276,7 @@ QThreadPrivate::~QThreadPrivate()
     \l{Mandelbrot} example, as that is the name of the QThread subclass).
     Note that this is currently not available with release builds on Windows.
 
-    \sa {Thread Support in Qt}, QThreadStorage, {Synchronizing Threads},
+    \sa {Multi-threading in Qt}, QThreadStorage, {Synchronizing Threads},
         Mandelbrot, {Producer and Consumer using Semaphores},
         {Producer and Consumer using Wait Conditions}
 */
@@ -371,9 +343,12 @@ QThreadPrivate::~QThreadPrivate()
     \fn void QThread::started()
 
     This signal is emitted from the associated thread when it starts executing,
-    before the run() function is called.
+    so any slots connected to it may be called via queued invocation. Whilst
+    the event may have been posted before run() is called, any
+    \l {Signals and Slots Across Threads} {cross-thread delivery} of the signal
+    may still be pending.
 
-    \sa finished()
+    \sa run(), finished()
 */
 
 /*!
@@ -492,13 +467,10 @@ QThread::~QThread()
     Q_D(QThread);
     {
         QMutexLocker locker(&d->mutex);
-        if (d->isInFinish) {
-            locker.unlock();
-            wait();
-            locker.relock();
-        }
-        if (d->running && !d->finished && !d->data->isAdopted)
-            qFatal("QThread: Destroyed while thread is still running");
+        if (d->threadState == QThreadPrivate::Finishing)
+            d->wait(locker, QDeadlineTimer::Forever);
+        if (d->threadState == QThreadPrivate::Running && !d->data->isAdopted)
+            qFatal("QThread: Destroyed while thread '%ls' is still running", qUtf16Printable(objectName()));
 
         d->data->thread.storeRelease(nullptr);
     }
@@ -508,18 +480,33 @@ QThread::~QThread()
     \threadsafe
     Returns \c true if the thread is finished; otherwise returns \c false.
 
+    A thread is considered finished if it has returned from the run() function
+    and the finished() signal has been emitted.
+
+//! [execution-after-finished]
+    Note the thread may still run for arbitrary amount of time after the
+    finished() signal is emitted, running clean-up operations such as executing
+    the destructors to \c{thread_local} variables. To synchronize with all
+    effects from the thread, call wait() and verify it returned true.
+//! [execution-after-finished]
+
     \sa isRunning()
 */
 bool QThread::isFinished() const
 {
     Q_D(const QThread);
     QMutexLocker locker(&d->mutex);
-    return d->finished || d->isInFinish;
+    return d->threadState >= QThreadPrivate::Finishing;
 }
 
 /*!
     \threadsafe
     Returns \c true if the thread is running; otherwise returns \c false.
+
+    A thread is considered to be running if QThread has been started with
+    start() but is not yet finished.
+
+    \include qthread.cpp execution-after-finished
 
     \sa isFinished()
 */
@@ -527,12 +514,12 @@ bool QThread::isRunning() const
 {
     Q_D(const QThread);
     QMutexLocker locker(&d->mutex);
-    return d->running && !d->isInFinish;
+    return d->threadState == QThreadPrivate::Running;
 }
 
 /*!
-    Sets the stack size for the thread to \a stackSize. If \a stackSize is
-    zero, the operating system or runtime will choose a default value.
+    Sets the stack size for the thread to \a stackSize bytes. If \a stackSize
+    is zero, the operating system or runtime will choose a default value.
     Otherwise, the thread's stack size will be the value provided (which may be
     rounded up or down).
 
@@ -553,14 +540,14 @@ bool QThread::isRunning() const
 void QThread::setStackSize(uint stackSize)
 {
     Q_D(QThread);
-    QMutexLocker locker(&d->mutex);
-    Q_ASSERT_X(!d->running, "QThread::setStackSize",
+    Q_ASSERT_X(!isRunning(), "QThread::setStackSize",
                "cannot change stack size while the thread is running");
+    QMutexLocker locker(&d->mutex);
     d->stackSize = stackSize;
 }
 
 /*!
-    Returns the maximum stack size for the thread (if set with
+    Returns the maximum stack size for the thread in bytes (if set with
     setStackSize()); otherwise returns zero.
 
     \sa setStackSize()
@@ -573,6 +560,69 @@ uint QThread::stackSize() const
 }
 
 /*!
+    \enum QThread::QualityOfService
+    \since 6.9
+
+    This enum describes the quality of service level of a thread, and provides
+    the scheduler with information about the kind of work that the thread
+    performs. On platforms with different CPU profiles, or with the ability to
+    clock certain cores of a CPU down, this allows the scheduler to select or
+    configure a CPU core with suitable performance and energy characteristics
+    for the thread.
+
+    \value Auto The default value, leaving it to the scheduler to decide which
+                CPU core to run the thread on.
+    \value High The scheduler should run this thread to a high-performance CPU
+                core.
+    \value Eco  The scheduler should run this thread to an energy-efficient CPU
+                core.
+
+    \sa Priority, serviceLevel(), QThreadPool::serviceLevel()
+*/
+
+/*!
+    \since 6.9
+
+    Set the Quality of Service level of the thread object to \a serviceLevel.
+    This can only be called from the thread itself or before the thread is
+    started!
+
+    This is currently only implemented on Apple platforms, and Windows.
+    The function call will complete successfully on other platforms but will
+    not currently have any effect.
+
+    \sa serviceLevel(), QThreadPool::setServiceLevel()
+*/
+void QThread::setServiceLevel(QualityOfService serviceLevel)
+{
+    Q_D(QThread);
+    QMutexLocker locker(&d->mutex);
+    if (d->threadState != QThreadPrivate::Running) {
+        d->serviceLevel = serviceLevel;
+    } else {
+        Q_ASSERT_X(isCurrentThread(), "QThread::setServiceLevel",
+                "cannot change quality of service level of a separate, running, thread");
+        d->setQualityOfServiceLevel(serviceLevel);
+    }
+}
+
+/*!
+    \since 6.9
+
+    Return the current Quality of Service level of the thread.
+
+    \sa setServiceLevel(), QThreadPool::serviceLevel()
+*/
+QThread::QualityOfService QThread::serviceLevel() const
+{
+    Q_D(const QThread);
+    QMutexLocker locker(&d->mutex);
+    return d->serviceLevel;
+}
+
+#endif
+
+/*!
     \internal
     Transitions BindingStatusOrList to the binding status state. If we had a list of
     pending objects, all objects get their reinitBindingStorageAfterThreadMove method
@@ -580,7 +630,6 @@ uint QThread::stackSize() const
  */
 void QtPrivate::BindingStatusOrList::setStatusAndClearList(QBindingStatus *status) noexcept
 {
-
     if (auto pendingObjects = list()) {
         for (auto obj: *pendingObjects)
             QObjectPrivate::get(obj)->reinitBindingStorageAfterThreadMove();
@@ -589,6 +638,8 @@ void QtPrivate::BindingStatusOrList::setStatusAndClearList(QBindingStatus *statu
     // synchronizes-with the load-acquire in bindingStatus():
     data.store(encodeBindingStatus(status), std::memory_order_release);
 }
+
+#if QT_CONFIG(thread)
 
 /*!
     Enters the event loop and waits until exit() is called, returning the value
@@ -609,7 +660,7 @@ int QThread::exec()
     const auto status = QtPrivate::getBindingStatus(QtPrivate::QBindingStatusAccessToken{});
 
     QMutexLocker locker(&d->mutex);
-    d->m_statusOrPendingObjects.setStatusAndClearList(status);
+    d->data->m_statusOrPendingObjects.setStatusAndClearList(status);
     d->data->quitNow = false;
     if (d->exited) {
         d->exited = false;
@@ -663,18 +714,18 @@ void QtPrivate::BindingStatusOrList::removeObject(QObject *object)
 
 QBindingStatus *QThreadPrivate::addObjectWithPendingBindingStatusChange(QObject *obj)
 {
-    if (auto status = m_statusOrPendingObjects.bindingStatus())
+    if (auto status = data->m_statusOrPendingObjects.bindingStatus())
         return status;
     QMutexLocker lock(&mutex);
-    return m_statusOrPendingObjects.addObjectUnlessAlreadyStatus(obj);
+    return data->m_statusOrPendingObjects.addObjectUnlessAlreadyStatus(obj);
 }
 
 void QThreadPrivate::removeObjectWithPendingBindingStatusChange(QObject *obj)
 {
-    if (m_statusOrPendingObjects.bindingStatus())
+    if (data->m_statusOrPendingObjects.bindingStatus())
         return;
     QMutexLocker lock(&mutex);
-    m_statusOrPendingObjects.removeObject(obj);
+    data->m_statusOrPendingObjects.removeObject(obj);
 }
 
 
@@ -769,7 +820,7 @@ void QThread::setPriority(Priority priority)
     }
     Q_D(QThread);
     QMutexLocker locker(&d->mutex);
-    if (!d->running) {
+    if (d->threadState != QThreadPrivate::Running) {
         qWarning("QThread::setPriority: Cannot set priority, thread is not running");
         return;
     }
@@ -901,8 +952,27 @@ QThread::Priority QThread::priority() const
     This provides similar functionality to the POSIX \c
     pthread_join() function.
 
+    \note On some operating systems, this function may return true while the
+    operating system thread is still running and may be executing clean-up code
+    such as C++11 \c{thread_local} destructors. Operating systems where this
+    function only returns true after the OS thread has fully exited include
+    Linux, Windows, and Apple operating systems.
+
     \sa sleep(), terminate()
 */
+bool QThread::wait(QDeadlineTimer deadline)
+{
+    Q_D(QThread);
+    QMutexLocker locker(&d->mutex);
+
+    if (d->threadState == QThreadPrivate::NotStarted || d->threadState == QThreadPrivate::Finished)
+        return true;
+    if (isCurrentThread()) {
+        qWarning("QThread::wait: Thread tried to wait on itself");
+        return false;
+    }
+    return d->wait(locker, deadline);
+}
 
 /*!
     \fn void QThread::setTerminationEnabled(bool enabled)
@@ -983,6 +1053,11 @@ QThread::~QThread()
 
 }
 
+QThread *QThread::createThreadImpl(std::future<void>&&)
+{
+    return nullptr;
+}
+
 void QThread::run()
 {
 
@@ -1041,6 +1116,11 @@ QThread *QThread::currentThread()
     return QThreadData::current()->thread.loadAcquire();
 }
 
+bool QThread::isMainThread() noexcept
+{
+    return true;
+}
+
 bool QThread::isCurrentThread() const noexcept
 {
     return true;
@@ -1081,24 +1161,23 @@ void QThread::setTerminationEnabled(bool)
 {
 }
 
+void QThread::setServiceLevel(QualityOfService)
+{
+}
+
 // No threads: so we can just use static variables
 Q_CONSTINIT static QThreadData *data = nullptr;
 
-QThreadData *QThreadData::current(bool createIfNecessary)
+QThreadData *QThreadData::currentThreadData() noexcept
 {
-    if (!data && createIfNecessary) {
-        data = new QThreadData;
-        data->thread = new QAdoptedThread(data);
-        data->threadId.storeRelaxed(Qt::HANDLE(data->thread.loadAcquire()));
-        data->deref();
-        data->isAdopted = true;
-        if (!QCoreApplicationPrivate::theMainThreadId.loadAcquire()) {
-            auto *mainThread = data->thread.loadRelaxed();
-            mainThread->setObjectName("Qt mainThread");
-            QCoreApplicationPrivate::theMainThread.storeRelease(mainThread);
-            QCoreApplicationPrivate::theMainThreadId.storeRelaxed(data->threadId.loadRelaxed());
-        }
-    }
+    return data;
+}
+
+QThreadData *QThreadData::createCurrentThreadData()
+{
+    Q_ASSERT(!currentThreadData());
+    data = new QThreadData;
+    data->thread = new QAdoptedThread(data);
     return data;
 }
 
@@ -1173,7 +1252,7 @@ void QThread::setEventDispatcher(QAbstractEventDispatcher *eventDispatcher)
     } else {
         eventDispatcher->moveToThread(this);
         if (eventDispatcher->thread() == this) // was the move successful?
-            d->data->eventDispatcher = eventDispatcher;
+            d->data->eventDispatcher.storeRelaxed(eventDispatcher);
         else
             qWarning("QThread::setEventDispatcher: Could not move event dispatcher to target thread");
     }
@@ -1212,6 +1291,9 @@ bool QThread::event(QEvent *event)
     This function does not stop any event loop running on the thread and
     does not terminate it in any way.
 
+    This function has no effect on the main thread, and does nothing if the thread
+    is not currently running.
+
     \sa isInterruptionRequested()
 */
 
@@ -1223,7 +1305,7 @@ void QThread::requestInterruption()
         return;
     }
     QMutexLocker locker(&d->mutex);
-    if (!d->running || d->finished || d->isInFinish)
+    if (d->threadState != QThreadPrivate::Running)
         return;
     d->interruptionRequested.store(true, std::memory_order_relaxed);
 }
@@ -1252,7 +1334,7 @@ void QThread::requestInterruption()
     \note This can only be called within the thread itself, i.e. when
     it is the current thread.
 
-    \sa currentThread() requestInterruption()
+    \sa currentThread(), requestInterruption()
 */
 bool QThread::isInterruptionRequested() const
 {
@@ -1262,7 +1344,7 @@ bool QThread::isInterruptionRequested() const
         return false;
     // slow path: if the flag is set, take into account run status:
     QMutexLocker locker(&d->mutex);
-    return d->running && !d->finished && !d->isInFinish;
+    return d->threadState == QThreadPrivate::Running;
 }
 
 /*!

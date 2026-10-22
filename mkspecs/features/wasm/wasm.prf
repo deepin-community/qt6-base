@@ -24,6 +24,7 @@ exists($$QMAKE_QT_CONFIG) {
 
     EMCC_LFLAGS += -s EXPORT_NAME=$$EXPORT_NAME
 
+
     qtConfig(thread) {
 
         EMCC_LFLAGS += -pthread
@@ -49,11 +50,18 @@ exists($$QMAKE_QT_CONFIG) {
     }
     EMCC_LFLAGS += -s INITIAL_MEMORY=$$INITIAL_MEMORY
     isEmpty(QT_WASM_MAXIMUM_MEMORY) {
-        MAXIMUM_MEMORY = 4GB # 32-bit max
+        contains(QMAKE_CFLAGS, -s MEMORY64=1) {
+            MAXIMUM_MEMORY = 16GB
+        } else {
+            MAXIMUM_MEMORY = 4GB
+        }
     } else {
         MAXIMUM_MEMORY = $$QT_WASM_MAXIMUM_MEMORY
     }
     EMCC_LFLAGS += -s MAXIMUM_MEMORY=$$MAXIMUM_MEMORY
+
+    target_filename_base = $$replace(TARGET, \.js$, )
+    QMAKE_DISTCLEAN += qtloader.js qtlogo.svg $${target_filename_base}.wasm $${target_filename_base}.js $${target_filename_base}.html
 
     qtConfig(sse2) {
         QMAKE_CFLAGS += -O2 -msimd128 -msse -msse2
@@ -71,6 +79,14 @@ exists($$QMAKE_QT_CONFIG) {
         }
         EMCC_CFLAGS += $$EMCC_MODULE_FLAGS
         EMCC_LFLAGS += $$EMCC_MODULE_FLAGS
+    }
+
+    qtConfig(wasm-jspi) {
+        EMCC_LFLAGS += -sJSPI
+    }
+
+    qtConfig(wasm-exceptions) {
+        EMCC_LFLAGS += -fwasm-exceptions
     }
 
     QMAKE_LFLAGS       += $$EMCC_LFLAGS

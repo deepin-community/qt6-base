@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qpa/qplatformthemefactory_p.h>
 #include <qpa/qplatformthemeplugin.h>
@@ -31,6 +32,7 @@ QPlatformTheme *QPlatformThemeFactory::create(const QString& key, const QString 
 }
 
 /*!
+    \internal
     Returns the list of valid keys, i.e. the keys this factory can
     create styles for.
 

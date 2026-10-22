@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QANDROIDMODELINDEXPROXY_P_H
 #define QANDROIDMODELINDEXPROXY_P_H
@@ -10,7 +11,6 @@
 #include <QtCore/qjniobject.h>
 #include <QtCore/qjnienvironment.h>
 #include <QtCore/qjnitypes.h>
-#include <QDebug>
 
 //
 //  W A R N I N G
@@ -50,6 +50,6 @@ public:
     static bool registerNatives(QJniEnvironment &env);
 };
 
-QT_BEGIN_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // QANDROIDMODELINDEXPROXY_P_H

@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef HTTP2CONNECTION_P_H
 #define HTTP2CONNECTION_P_H
@@ -100,6 +101,12 @@ public:
     Q_ENUM(State)
     constexpr static quint8 DefaultPriority = 127;
 
+    struct Configuration
+    {
+        bool useDownloadBuffer = true;
+        bool useHeaderBuffer = true;
+    };
+
     ~QHttp2Stream() noexcept;
 
     // HTTP2 things
@@ -123,6 +130,8 @@ public:
     QByteDataBuffer takeDownloadBuffer() noexcept { return std::exchange(m_downloadBuffer, {}); }
     void clearDownloadBuffer() { m_downloadBuffer.clear(); }
 
+    Configuration configuration() const { return m_configuration; }
+
 Q_SIGNALS:
     void headersReceived(const HPack::HttpHeader &headers, bool endStream);
     void headersUpdated();
@@ -131,7 +140,7 @@ Q_SIGNALS:
     void promisedStreamReceived(quint32 newStreamID);
     void uploadBlocked();
     void dataReceived(const QByteArray &data, bool endStream);
-    void rstFrameRecived(quint32 errorCode);
+    void rstFrameReceived(quint32 errorCode);
 
     void bytesWritten(qint64 bytesWritten);
     void uploadDeviceError(const QString &errorString);
@@ -141,8 +150,9 @@ public Q_SLOTS:
     bool sendRST_STREAM(Http2::Http2Error errorCode);
     bool sendHEADERS(const HPack::HttpHeader &headers, bool endStream,
                      quint8 priority = DefaultPriority);
-    void sendDATA(QIODevice *device, bool endStream);
-    void sendDATA(QNonContiguousByteDevice *device, bool endStream);
+    bool sendDATA(const QByteArray &payload, bool endStream);
+    bool sendDATA(QIODevice *device, bool endStream);
+    bool sendDATA(QNonContiguousByteDevice *device, bool endStream);
     void sendWINDOW_UPDATE(quint32 delta);
 
 private Q_SLOTS:
@@ -152,7 +162,8 @@ private Q_SLOTS:
 
 private:
     friend class QHttp2Connection;
-    QHttp2Stream(QHttp2Connection *connection, quint32 streamID) noexcept;
+    QHttp2Stream(QHttp2Connection *connection, quint32 streamID,
+                 Configuration configuration) noexcept;
 
     [[nodiscard]] QHttp2Connection *getConnection() const
     {
@@ -179,8 +190,7 @@ private:
     void finishWithError(Http2::Http2Error errorCode, const QString &message);
     void finishWithError(Http2::Http2Error errorCode);
 
-    void streamError(Http2::Http2Error errorCode,
-                     QLatin1StringView message);
+    void streamError(Http2::Http2Error errorCode, const QString &message);
 
     // Keep it const since it never changes after creation
     const quint32 m_streamID = 0;
@@ -199,6 +209,8 @@ private:
     bool m_isReserved = false;
     bool m_owningByteDevice = false;
 
+    const Configuration m_configuration;
+
     friend tst_QHttp2Connection;
 };
 
@@ -212,6 +224,7 @@ public:
         MaxConcurrentStreamsReached,
         StreamIdsExhausted,
         ReceivedGOAWAY,
+        UnknownError,
     };
     Q_ENUM(CreateStreamError)
 
@@ -232,7 +245,12 @@ public:
     createDirectServerConnection(QIODevice *socket, const QHttp2Configuration &config);
     ~QHttp2Connection();
 
-    [[nodiscard]] QH2Expected<QHttp2Stream *, CreateStreamError> createStream();
+    [[nodiscard]] QH2Expected<QHttp2Stream *, CreateStreamError> createStream()
+    {
+        return createStream(QHttp2Stream::Configuration{});
+    }
+    [[nodiscard]] QH2Expected<QHttp2Stream *, CreateStreamError>
+    createStream(QHttp2Stream::Configuration config);
 
     QHttp2Stream *getStream(quint32 streamId) const;
     QHttp2Stream *promisedStream(const QUrl &streamKey) const
@@ -242,11 +260,15 @@ public:
         return nullptr;
     }
 
-    void close() { sendGOAWAY(Http2::HTTP2_NO_ERROR); }
+    void close(Http2::Http2Error errorCode = Http2::HTTP2_NO_ERROR);
 
     bool isGoingAway() const noexcept { return m_goingAway; }
+    // Set once a GOAWAY has been received; the peer did not process streams above this ID.
+    std::optional<quint32> lastGoAwayStreamID() const noexcept { return m_lastGoAwayLastStreamID; }
 
     quint32 maxConcurrentStreams() const noexcept { return m_maxConcurrentStreams; }
+    quint32 peerMaxConcurrentStreams() const noexcept { return m_peerMaxConcurrentStreams; }
+
     quint32 maxHeaderListSize() const noexcept { return m_maxHeaderListSize; }
 
     bool isUpgradedConnection() const noexcept { return m_upgradedConnection; }
@@ -257,10 +279,12 @@ Q_SIGNALS:
     void errorReceived(/*@future: add as needed?*/); // Connection errors only, no stream-specific errors
     void connectionClosed();
     void settingsFrameReceived();
-    void pingFrameRecived(QHttp2Connection::PingState state);
+    void pingFrameReceived(QHttp2Connection::PingState state);
     void errorOccurred(Http2::Http2Error errorCode, const QString &errorString);
     void receivedGOAWAY(Http2::Http2Error errorCode, quint32 lastStreamID);
     void receivedEND_STREAM(quint32 streamID);
+    void incomingStreamErrorOccured(CreateStreamError error);
+
 public Q_SLOTS:
     bool sendPing();
     bool sendPing(QByteArrayView data);
@@ -271,14 +295,17 @@ private:
     friend class QHttp2Stream;
     [[nodiscard]] QIODevice *getSocket() const { return qobject_cast<QIODevice *>(parent()); }
 
-    QH2Expected<QHttp2Stream *, QHttp2Connection::CreateStreamError> createStreamInternal();
-    QHttp2Stream *createStreamInternal_impl(quint32 streamID);
+    QH2Expected<QHttp2Stream *, QHttp2Connection::CreateStreamError>
+    createLocalStreamInternal(QHttp2Stream::Configuration = {});
+    QHttp2Stream *createStreamInternal_impl(quint32 streamID, QHttp2Stream::Configuration = {});
 
     bool isInvalidStream(quint32 streamID) noexcept;
     bool streamWasResetLocally(quint32 streamID) noexcept;
+    Q_ALWAYS_INLINE
+    bool streamIsIgnored(quint32 streamID) const noexcept;
 
-    void connectionError(Http2::Http2Error errorCode,
-                         const char *message); // Connection failed to be established?
+    void connectionError(Http2::Http2Error errorCode, const QString &message,
+                         bool logAsError = true);
     void setH2Configuration(QHttp2Configuration config);
     void closeSession();
     void registerStreamAsResetLocally(quint32 streamID);
@@ -291,7 +318,11 @@ private:
     bool sendServerPreface();
     bool serverCheckClientPreface();
     bool sendWINDOW_UPDATE(quint32 streamID, quint32 delta);
-    bool sendGOAWAY(Http2::Http2Error errorCode);
+    void sendClientGracefulShutdownGoaway();
+    void sendInitialServerGracefulShutdownGoaway();
+    void sendFinalServerGracefulShutdownGoaway();
+    bool sendGOAWAYFrame(Http2::Http2Error errorCode, quint32 lastSreamID);
+    void maybeCloseOnGoingAway();
     bool sendSETTINGS_ACK();
 
     void handleDATA();
@@ -306,6 +337,8 @@ private:
     void handleCONTINUATION();
 
     void handleContinuedHEADERS();
+
+    bool validateHeaderListSize(const Http2::Frame &frame);
 
     bool acceptSetting(Http2::Settings identifier, quint32 newValue);
 
@@ -322,6 +355,13 @@ private:
     // one decompression context are used for the entire connection.
     HPack::Decoder decoder = HPack::Decoder(HPack::FieldLookupTable::DefaultSize);
     HPack::Encoder encoder = HPack::Encoder(HPack::FieldLookupTable::DefaultSize, true);
+
+    // If we receive SETTINGS_HEADER_TABLE_SIZE in a SETTINGS frame we have to perform a dynamic
+    // table size update on the _next_ HEADER block we send.
+    // Because this only happens on the next block we may have multiple pending updates, so we must
+    // notify of the _smallest_ one followed by the _final_ one. We keep them sorted in that order.
+    // @future: keep in mind if we add support for sending PUSH_PROMISE because it is a HEADER block
+    std::array<std::optional<quint32>, 2> pendingTableSizeUpdates;
 
     QHttp2Configuration m_config;
     QHash<quint32, QPointer<QHttp2Stream>> m_streams;
@@ -344,15 +384,20 @@ private:
     // from several CONTINUATION frames ...
     bool continuationExpected = false;
     std::vector<Http2::Frame> continuedFrames;
+    quint32 m_headerBlockSize = 0;
 
     // Control flow:
 
     // This is how many concurrent streams our peer allows us, 100 is the
     // initial value, can be updated by the server's SETTINGS frame(s):
-    quint32 m_maxConcurrentStreams = Http2::maxConcurrentStreams;
+    quint32 m_peerMaxConcurrentStreams = Http2::maxConcurrentStreams;
     // While we allow sending SETTTINGS_MAX_CONCURRENT_STREAMS to limit our peer,
     // it's just a hint and we do not actually enforce it (and we can continue
     // sending requests and creating streams while maxConcurrentStreams allows).
+
+    // This is how many concurrent streams we allow our peer to create
+    // This value is specified in QHttp2Configuration when creating the connection
+    quint32 m_maxConcurrentStreams = Http2::maxConcurrentStreams;
 
     // This is our (client-side) maximum possible receive window size, we set
     // it in a ctor from QHttp2Configuration, it does not change after that.
@@ -375,13 +420,31 @@ private:
     // Our peer's header size limitations. It's unlimited by default, but can
     // be changed via peer's SETTINGS frame.
     quint32 m_maxHeaderListSize = (std::numeric_limits<quint32>::max)();
-    // While we can send SETTINGS_MAX_HEADER_LIST_SIZE value (our limit on
-    // the headers size), we never enforce it, it's just a hint to our peer.
+    // The limit we advertise via SETTINGS_MAX_HEADER_LIST_SIZE is enforced on
+    // incoming header blocks both before HPACK decoding (compressed size) and
+    // during HPACK decoding (decoded size).
 
     bool m_upgradedConnection = false;
     bool m_goingAway = false;
     bool pushPromiseEnabled = false;
     quint32 m_lastIncomingStreamID = Http2::connectionStreamID;
+    // Gets lowered when/if we send GOAWAY:
+    quint32 m_lastStreamToProcess = Http2::lastValidStreamID;
+    static constexpr std::chrono::duration GoawayGracePeriod = std::chrono::seconds(60);
+    QDeadlineTimer m_goawayGraceTimer;
+
+    std::optional<quint32> m_lastGoAwayLastStreamID;
+    bool m_connectionAborted = false;
+
+    enum class GracefulShutdownState {
+        None,
+        AwaitingPriorPing,
+        AwaitingShutdownPing,
+        FinalGOAWAYSent,
+    };
+    GracefulShutdownState m_gracefulShutdownState = GracefulShutdownState::None;
+
+    bool m_prefaceSent = false;
 
     // Server-side only:
     bool m_waitingForClientPreface = false;

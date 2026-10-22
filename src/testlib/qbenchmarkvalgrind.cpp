@@ -60,8 +60,8 @@ qint64 QBenchmarkValgrindUtils::extractResult(const QString &fileName)
     Q_UNUSED(openOk);
 
     std::optional<qint64> val = std::nullopt;
-    while (!file.atEnd()) {
-        const QByteArray line = file.readLine();
+    QByteArray line;
+    while (file.readLineInto(&line)) {
         constexpr QByteArrayView tag = "summary: ";
         if (line.startsWith(tag)) {
             const auto maybeNumber = line.data() + tag.size();
@@ -173,11 +173,19 @@ void QBenchmarkCallgrindMeasurer::start()
     CALLGRIND_ZERO_STATS;
 }
 
-QList<QBenchmarkMeasurerBase::Measurement> QBenchmarkCallgrindMeasurer::stop()
+void QBenchmarkCallgrindMeasurer::updateMeasurement()
 {
     CALLGRIND_DUMP_STATS;
     const qint64 result = QBenchmarkValgrindUtils::extractLastResult();
-    return { { qreal(result), QTest::InstructionReads } };
+    accumulator.update(qreal(result));
+    CALLGRIND_ZERO_STATS;       // Zero cost centers again to ignore operations in previous lines
+}
+
+QList<QBenchmarkMeasurerBase::Measurement> QBenchmarkCallgrindMeasurer::stop()
+{
+    return { { accumulator.total(),
+               accumulator.variance() / QBenchmarkTestMethodData::current->measurementBlockSize,
+               QTest::InstructionReads } };
 }
 
 bool QBenchmarkCallgrindMeasurer::isMeasurementAccepted(Measurement measurement)

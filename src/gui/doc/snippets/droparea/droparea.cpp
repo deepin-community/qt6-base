@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
-#include <QApplication>
+#include <QGuiApplication>
 #include <QClipboard>
 #include <QMimeData>
 #include <QWidget>
@@ -13,10 +13,11 @@ struct DropArea : public QWidget {
     void setTextFormat(Qt::TextFormat);
 };
 
+#ifndef QT_NO_CLIPBOARD
 //![0]
 void DropArea::paste()
 {
-    const QClipboard *clipboard = QApplication::clipboard();
+    const QClipboard *clipboard = QGuiApplication::clipboard();
     const QMimeData *mimeData = clipboard->mimeData();
 
     if (mimeData->hasImage()) {
@@ -32,5 +33,6 @@ void DropArea::paste()
     }
 }
 //![0]
+#endif
 
 } // droparea

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "private/qgesturemanager_p.h"
 #include "private/qstandardgestures_p.h"
@@ -15,6 +16,10 @@
 #include "qgesture.h"
 #include "qevent.h"
 
+#ifdef Q_OS_HARMONY
+#include "qohosgesturerecognizer_p.h"
+#endif
+
 #ifdef Q_OS_MACOS
 #include "qmacgesturerecognizer_p.h"
 #endif
@@ -27,7 +32,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcGestureManager, "qt.widgets.gestures")
+Q_STATIC_LOGGING_CATEGORY(lcGestureManager, "qt.widgets.gestures")
 
 #if !defined(Q_OS_MACOS)
 static inline int panTouchPoints()
@@ -58,6 +63,12 @@ QGestureManager::QGestureManager(QObject *parent)
     registerGestureRecognizer(new QMacSwipeGestureRecognizer);
     registerGestureRecognizer(new QMacPinchGestureRecognizer);
     registerGestureRecognizer(new QMacPanGestureRecognizer);
+#elif defined(Q_OS_HARMONY)
+    registerGestureRecognizer(new QPanGestureRecognizer(panTouchPoints()));
+    registerGestureRecognizer(new QPinchGestureRecognizer);
+    registerGestureRecognizer(makeQOhosPinchGestureRecognizer().release());
+    registerGestureRecognizer(new QSwipeGestureRecognizer);
+    registerGestureRecognizer(new QTapGestureRecognizer);
 #else
     registerGestureRecognizer(new QPanGestureRecognizer(panTouchPoints()));
     registerGestureRecognizer(new QPinchGestureRecognizer);
@@ -115,6 +126,14 @@ void QGestureManager::unregisterGestureRecognizer(Qt::GestureType type)
                 }
             }
         }
+    }
+
+    for (QGestureRecognizer *recognizer : std::as_const(list)) {
+        const bool isObsolete = m_obsoleteGestures.contains(recognizer);
+        const bool isDeleted = m_deletedRecognizers.values().contains(recognizer);
+
+        if (!isObsolete && !isDeleted)
+            delete recognizer;
     }
 }
 
@@ -605,8 +624,11 @@ void QGestureManager::deliverEvents(const QSet<QGesture *> &gestures,
             Q_ASSERT(gesture->state() == Qt::GestureStarted);
             if (gesture->hasHotSpot()) {
                 // guess the target widget using the hotspot of the gesture
-                QPoint pt = gesture->hotSpot().toPoint();
-                if (QWidget *topLevel = QApplication::topLevelAt(pt)) {
+                const QPointF pt = gesture->hotSpot();
+                qCDebug(lcGestureManager) << __FUNCTION__ << gesture
+                                          << "doesn't have a target yet."
+                                          << "Trying hotspot at" << pt;
+                if (QWidget *topLevel = QApplication::topLevelAt(pt.toPoint())) {
                     QWidget *child = topLevel->childAt(topLevel->mapFromGlobal(pt));
                     target = child ? child : topLevel;
                 }
@@ -615,6 +637,9 @@ void QGestureManager::deliverEvents(const QSet<QGesture *> &gestures,
                 QObject *context = m_gestureOwners.value(gesture, 0);
                 if (context->isWidgetType())
                     target = static_cast<QWidget *>(context);
+                qCDebug(lcGestureManager) << __FUNCTION__ << gesture
+                                          << "doesn't have a target yet."
+                                          << "Trying context" << context;
             }
             if (target)
                 m_gestureTargets.insert(gesture, target);
@@ -625,9 +650,9 @@ void QGestureManager::deliverEvents(const QSet<QGesture *> &gestures,
         Q_UNUSED(gestureType);
 
         if (Q_UNLIKELY(!target)) {
-            qCDebug(lcGestureManager) << "QGestureManager::deliverEvent: could not find the target for gesture"
+            qCDebug(lcGestureManager) << __FUNCTION__ << "could not find the target for gesture"
                     << gesture->gestureType();
-            qWarning("QGestureManager::deliverEvent: could not find the target for gesture");
+            qWarning("QGestureManager::deliverEvents: could not find the target for gesture");
             undeliveredGestures->insert(gesture);
         } else {
             if (gesture->state() == Qt::GestureStarted) {
@@ -639,7 +664,7 @@ void QGestureManager::deliverEvents(const QSet<QGesture *> &gestures,
     }
 
     getGestureTargets(startedGestures, &conflictedGestures, &normalStartedGestures);
-    qCDebug(lcGestureManager) << "QGestureManager::deliverEvents:"
+    qCDebug(lcGestureManager) << __FUNCTION__
             << "\nstarted: " << startedGestures
             << "\nconflicted: " << conflictedGestures
             << "\nnormal: " << normalStartedGestures
@@ -650,7 +675,7 @@ void QGestureManager::deliverEvents(const QSet<QGesture *> &gestures,
         e = conflictedGestures.constEnd(); it != e; ++it) {
         QWidget *receiver = it.key();
         const QList<QGesture *> &gestures = it.value();
-        qCDebug(lcGestureManager) << "QGestureManager::deliverEvents: sending GestureOverride to"
+        qCDebug(lcGestureManager) << __FUNCTION__ << "sending GestureOverride to"
                 << receiver
                 << "gestures:" << gestures;
         QGestureEvent event(gestures);
@@ -684,8 +709,8 @@ void QGestureManager::deliverEvents(const QSet<QGesture *> &gestures,
     for (GesturesPerWidget::const_iterator it = normalStartedGestures.constBegin(),
         e = normalStartedGestures.constEnd(); it != e; ++it) {
         if (!it.value().isEmpty()) {
-            qCDebug(lcGestureManager) << "QGestureManager::deliverEvents: sending to" << it.key()
-                    << "gestures:" << it.value();
+            qCDebug(lcGestureManager) << __FUNCTION__ << "sending to" << it.key()
+                                      << "gestures:" << it.value();
             QGestureEvent event(it.value());
             QCoreApplication::sendEvent(it.key(), &event);
             bool eventAccepted = event.isAccepted();

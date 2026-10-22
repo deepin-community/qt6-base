@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCMYK_P_H
 #define QCMYK_P_H
@@ -33,15 +34,15 @@ public:
     QCmyk32() = default;
 
     constexpr QCmyk32(int cyan, int magenta, int yellow, int black) :
-#if QT_BYTE_ORDER == Q_BIG_ENDIAN
-        m_cmyk(cyan << 24 | magenta << 16 | yellow << 8 | black)
+#if Q_BYTE_ORDER == Q_BIG_ENDIAN
+        m_cmyk(uint(cyan) << 24 | magenta << 16 | yellow << 8 | black)
 #else
-        m_cmyk(cyan | magenta << 8 | yellow << 16 | black << 24)
+        m_cmyk(cyan | magenta << 8 | yellow << 16 | uint(black) << 24)
 #endif
     {
     }
 
-#if QT_BYTE_ORDER == Q_BIG_ENDIAN
+#if Q_BYTE_ORDER == Q_BIG_ENDIAN
     constexpr int cyan() const noexcept    { return (m_cmyk >> 24) & 0xff; }
     constexpr int magenta() const noexcept { return (m_cmyk >> 16) & 0xff; }
     constexpr int yellow() const noexcept  { return (m_cmyk >>  8) & 0xff; }

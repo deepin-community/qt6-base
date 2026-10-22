@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2014 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QSTRINGITERATOR_H
 #define QSTRINGITERATOR_H
@@ -147,6 +148,17 @@ public:
         return uc.unicode();
     }
 
+    char32_t nextOrRawCodeUnit()
+    {
+        Q_ASSERT_X(hasNext(), Q_FUNC_INFO, "iterator hasn't a next item");
+
+        const QChar uc = *pos++;
+        if (uc.isHighSurrogate() && hasNext() && pos->isLowSurrogate())
+            return QChar::surrogateToUcs4(uc, *pos++);
+
+        return uc.unicode();
+    }
+
     // backwards iteration
 
     inline bool hasPrevious() const
@@ -224,6 +236,17 @@ public:
                 return QChar::surrogateToUcs4(*--pos, uc);
             return invalidAs;
         }
+
+        return uc.unicode();
+    }
+
+    char32_t previousOrRawCodeUnit()
+    {
+        Q_ASSERT_X(hasPrevious(), Q_FUNC_INFO, "iterator hasn't a previous item");
+
+        const QChar uc = *--pos;
+        if (uc.isLowSurrogate() && hasPrevious() && pos[-1].isHighSurrogate())
+            return QChar::surrogateToUcs4(*--pos, uc);
 
         return uc.unicode();
     }

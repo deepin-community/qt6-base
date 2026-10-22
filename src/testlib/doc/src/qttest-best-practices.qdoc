@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
-    \page qttest-best-practices.qdoc
+    \page qttest-best-practices.html
 
     \title Qt Test Best Practices
 
@@ -32,6 +32,9 @@
         \li \l {Setting up Test Machines}
     \endlist
 
+    The advice on \l {Qt Test Security Considerations}{Security Considerations}
+    should be borne in mind alongside those best practices.
+
     \section1 General Principles
 
     The following sections provide general guidelines for writing unit tests:
@@ -40,6 +43,7 @@
         \li \l {Verify Tests}
         \li \l {Give Test Functions Descriptive Names}
         \li \l {Write Self-contained Test Functions}
+        \li \l {Avoid external dependencies}
         \li \l {Test the Full Stack}
         \li \l {Make Tests Complete Quickly}
         \li \l {Use Data-driven Testing}
@@ -61,7 +65,7 @@
 
     \list 1
         \li Create a branch for your fix and test:
-            \c {git checkout -b fix-branch 5.14}
+            \c {git checkout -b fix-branch dev}
         \li Write a test and fix the bug.
         \li Build and test with both the fix and the new test, to verify that
             the new test passes with the fix.
@@ -71,19 +75,18 @@
             \c {git commit -m 'Fix bug in QDateTime'}
         \li To verify that the test actually catches something for which you
             needed the fix, checkout the branch you based your own branch on:
-            \c {git checkout 5.14}
-        \li Checkout only the test file to the 5.14 branch:
+            \c {git checkout dev}
+        \li Checkout only the test file from the fix branch:
             \c {git checkout fix-branch -- tests/auto/corelib/time/qdatetime/tst_qdatetime.cpp}
 
-            Only the test is now on the fix-branch. The rest of the source tree
-            is still on 5.14.
-        \li Build and run the test to verify that it fails on 5.14, and
-            therefore does indeed catch a bug.
+            The rest of the source tree stays on dev, without the fix, but with
+            the new test ready to try on it.
+        \li Build and run the test to verify that it fails on dev, and therefore
+            does indeed catch a bug.
         \li You can now return to the fix branch:
             \c {git checkout fix-branch}
         \li Alternatively, you can restore your work tree to a clean state on
-            5.14:
-            \c{git checkout HEAD -- tests/auto/corelib/time/qdatetime/tst_qdatetime.cpp}
+            dev: \c{git checkout HEAD -- tests/auto/corelib/time/qdatetime/tst_qdatetime.cpp}
     \endlist
 
     When you're reviewing a change, you can adapt this workflow to check that
@@ -93,14 +96,15 @@
 
     Naming test cases is important. The test name appears in the failure report
     for a test run. For data-driven tests, the name of the data row also appears
-    in the failure report. The names give those reading the report a first
+    in the failure report. Good names can give those reading the report a first
     indication of what has gone wrong.
 
     Test function names should make it obvious what the function is trying to
     test. Do not simply use the bug-tracking identifier, because the identifiers
-    become obsolete if the bug-tracker is replaced. Also, some bug-trackers may
-    not be accessible to all users. When the bug report may be of interest to
-    later readers of the test code, you can mention it in a comment alongside a
+    become obsolete if the bug-tracker is replaced. Also, developers working
+    offline cannot access your bug-tracker and some bug-trackers may not be
+    accessible to all users. When the bug report may be of interest to later
+    readers of the test code, you can mention it in a comment alongside a
     relevant part of the test.
 
     Likewise, when writing data-driven tests, give descriptive names to the
@@ -118,14 +122,47 @@
 
     Within a test program, test functions should be independent of each other
     and they should not rely upon previous test functions having been run. You
-    can check this by running the test function on its own with
-    \c {tst_foo testname}.
+    can check this by running the test function on its own with \c {tst_foo
+    testname}. For data-driven tests, likewise, avoid dependencies between the
+    rows of the test's data table so that \c {tst_foo function:tag} can be used
+    to run a single row in isolation (for example, to investigate why it fails).
 
     Do not re-use instances of the class under test in several tests. Test
     instances (for example widgets) should not be member variables of the
     tests, but preferably be instantiated on the stack to ensure proper
     cleanup even if a test fails, so that tests do not interfere with
     each other.
+
+    If your test involves making global changes, take care to ensure the prior
+    state is restored at the end of the test, whether it passes or fails. Since
+    failure prevents code later than the failing check from running, restoring
+    at the end of the test doesn't work when the test fails. The robust way to
+    restore even on failure is to instantiate an RAII (resource acquisition is
+    initialization) object whose destructor restores the prior state. This can
+    often be conveniently done using \l qScopeGuard(), for example
+
+    \snippet code/src_qtestlib_qtestcase.cpp 36
+
+    before the first call to \l QLocale::setDefault() in a test that needs to
+    control the locale used by the code under test.
+
+    \section2 Avoid external dependencies
+
+    Test functions should likewise avoid any reliance on external resources.
+    Such a dependency is apt to make the test fail if that resource is
+    transiently unavailable. Even when it is available, the resource may block
+    access by the test system - for example, when tests are run frequently, the
+    resource may interpret the test as an unwelcome burden on its service.
+
+    Skipping the test when inaccessible could hide a problem that would have
+    been revealed had the test been run, making it a poor remedy for these
+    issues. It is better to construct a local mimic of the resource, with enough
+    of its characteristics for the purposes of the test.
+
+    External dependencies also present problems for developers working offline,
+    as well as for testing within a sandbox, such as an isolated virtual
+    machine, when evaluating code changes from untrusted sources. See \l {Qt
+    Test Security Considerations} for related concerns.
 
     \section2 Test the Full Stack
 
@@ -134,7 +171,7 @@
     code-paths all the way down into the backends. Testing the upper layer API
     parts using a mock backend is a nice way to isolate errors in the API layer
     from the backends, but it is complementary to tests that run the actual
-    implementation with real-world data.
+    implementation with data that faithfully illustrates real-world conditions.
 
     \section2 Make Tests Complete Quickly
 
@@ -210,7 +247,7 @@
     If an entire test program is inapplicable for a specific platform or unless
     a particular feature is enabled, the best approach is to use the parent
     directory's build configuration to avoid building the test. For example, if
-    the \c tests/auto/gui/someclass test is not valid for \macOS, wrap its
+    the \c tests/auto/gui/someclass test is not valid for \macos, wrap its
     inclusion as a subdirectory in \c{tests/auto/gui/CMakeLists.txt} in a
     platform check:
 
@@ -268,16 +305,15 @@
     in verification steps can make a test difficult to understand. Also,
     they can easily break a test in ways that are difficult to diagnose
     when the test is changed to use \l QTRY_VERIFY(), \l QTRY_COMPARE() or
-    \l QBENCHMARK(). These can execute the passed expression multiple times,
-    thus repeating any side-effects.
+    \l QBENCHMARK. These can execute the passed expression repeatedly, thus
+    repeating any side-effects.
 
     When side-effects are unavoidable, ensure that the prior state is restored
     at the end of the test function, even if the test fails. This commonly
-    requires use of an RAII (resource acquisition is initialization) class
-    that restores state when the function returns, or a \c cleanup() method.
-    Do not simply put the restoration code at the end of the test. If part of
-    the test fails, such code will be skipped and the prior state will not be
-    restored.
+    requires use of an RAII class (see \l {Write Self-contained Test Functions}
+    above), or a \c cleanup() method. Do not simply put the restoration code at
+    the end of the test. If part of the test fails, such code will be skipped
+    and the prior state will not be restored.
 
     \section2 Avoid Fixed Timeouts
 
@@ -305,12 +341,13 @@
     macros, which periodically test a specified condition until it becomes true
     or some maximum timeout is reached. These macros prevent the test from
     taking longer than necessary, while avoiding breakages when tests are
-    written on workstations and later executed on embedded platforms.
+    developed on faster systems and later executed on slower ones.
 
     If there are no Qt signals, and you are writing the test as part of
     developing a new API, consider whether the API could benefit from the
     addition of a signal that reports the completion of the asynchronous
-    behavior.
+    behavior. If it would make your testing easier, it may well be useful for
+    callers of your API, too.
 
     \section2 Beware of Timing-dependent Behavior
 
@@ -388,13 +425,12 @@
     only tell you whether \e{the test} was built in debug mode, and that does
     not guarantee that the \e{Qt libraries} were also built in debug mode.
 
-    Your tests can (since Qt 6.3) verify that they do not trigger calls to
-    \l qWarning() by calling \l QTest::failOnWarning(). This takes the warning
-    message to test for or a \l QRegularExpression to match against warnings; if
-    a matching warning is produced, it will be reported and cause the test to
-    fail. For example, a test that should produce no warnings at all can
-    \c{QTest::failOnWarning(QRegularExpression(u".*"_s))}, which will match any
-    warning at all.
+    Your tests can verify that they do not trigger calls to \l qWarning() by
+    calling \l QTest::failOnWarning(). With no parameter (since Qt 6.8), this
+    makes the test fail if a warning is produced, outputting the warning. You
+    can optionally pass \c failOnWarning() either a warning message to test for
+    or a \l QRegularExpression to match against, so as to limit this behavior to
+    matching warnings. (These filtered version were introduced in Qt 6.3.)
 
     You can also set the environment variable \c QT_FATAL_WARNINGS to cause
     warnings to be treated as fatal errors. See \l qWarning() for details; this
@@ -404,9 +440,12 @@
 
     \section2 Avoid Printing Debug Messages from Autotests
 
-    Autotests should not produce any unhandled warning or debug messages.
-    This will allow the CI Gate to treat new warning or debug messages as
-    test failures.
+    Autotests that pass should not produce any unhandled warning or debug
+    messages. This will allow the CI Gate to treat new warning or debug messages
+    as test failures. As with warnings from compilers when building your code,
+    if warnings are rare they are useful clues to problems, but if they are
+    routine they may hide meaningful issues from developers testing their
+    changes.
 
     Adding debug messages during development is fine, but these should be
     either disabled or removed before a test is checked in.
@@ -498,7 +537,7 @@
     causing unreproducible failures.
 
     Examples of typical problems include online update notification dialogs
-    on macOS, false alarms from virus scanners, scheduled tasks such as virus
+    on \macos, false alarms from virus scanners, scheduled tasks such as virus
     signature updates, software updates pushed out to workstations, and chat
     programs popping up windows on top of the stack.
 

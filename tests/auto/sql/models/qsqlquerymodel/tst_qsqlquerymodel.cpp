@@ -1,21 +1,20 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtTest/qtest.h>
+#include <QtTest/qsignalspy.h>
 
-#include <QTest>
-#include <QtGui>
-#include <QtWidgets>
-#include <QSignalSpy>
+#include <QtWidgets/qtableview.h>
 
-#include <qsqldriver.h>
-#include <qsqldatabase.h>
-#include <qsqlerror.h>
-#include <qsqlfield.h>
-#include <qsqlquery.h>
-#include <qsqlrecord.h>
+#include <QtSql/qsqldriver.h>
+#include <QtSql/qsqldatabase.h>
+#include <QtSql/qsqlerror.h>
+#include <QtSql/qsqlfield.h>
+#include <QtSql/qsqlquery.h>
+#include <QtSql/qsqlrecord.h>
+#include <QtSql/qsqlquerymodel.h>
 
-#include <qsqlquerymodel.h>
-#include <qsortfilterproxymodel.h>
+#include <QtCore/qsortfilterproxymodel.h>
 
 #include "../../kernel/qsqldatabase/tst_databases.h"
 
@@ -60,7 +59,10 @@ private slots:
     void task_180617();
     void task_180617_data() { generic_data(); }
     void task_QTBUG_4963_setHeaderDataWithProxyModel();
-
+    void refresh_data() { generic_data(); }
+    void refresh();
+    void refreshWithBoundValues_data() { generic_data(); }
+    void refreshWithBoundValues();
 private:
     void generic_data(const QString &engine = QString());
     void dropTestTables(const QSqlDatabase &db);
@@ -660,6 +662,62 @@ void tst_QSqlQueryModel::task_QTBUG_4963_setHeaderDataWithProxyModel()
     QVERIFY(!plainModel.setHeaderData(0, Qt::Horizontal, QObject::tr("ID")));
     // And it should not crash.
 }
+
+void tst_QSqlQueryModel::refresh()
+{
+    QFETCH(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    QSqlQueryModel model;
+
+    model.setQuery("SELECT * FROM " + qTableName("test", __FILE__, db), db);
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.data(model.index(0, 0)).toInt(), 1);
+    QCOMPARE(model.data(model.index(0, 1)).toString(), QString("harry"));
+    QCOMPARE(model.data(model.index(0, 2)).toInt(), 1);
+
+    QSqlQuery(db).exec("UPDATE " + qTableName("test", __FILE__, QSqlDatabase::database(dbName))
+                                                   + " SET name = 'updated_harry' WHERE id = 1");
+    model.refresh();
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.data(model.index(0, 0)).toInt(), 1);
+    QCOMPARE(model.data(model.index(0, 1)).toString(), QString("updated_harry"));
+    QCOMPARE(model.data(model.index(0, 2)).toInt(), 1);
+
+    // Resetting the name to "harry" in the table
+    QSqlQuery(db).exec("UPDATE " + qTableName("test", __FILE__, QSqlDatabase::database(dbName))
+                                                   + " SET name = 'harry' WHERE id = 1");
+}
+
+void tst_QSqlQueryModel::refreshWithBoundValues()
+{
+    QFETCH(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    QSqlQueryModel model;
+
+    {
+        QSqlQuery query(db);
+        query.prepare("SELECT name FROM " + qTableName("test", __FILE__, db) + " WHERE id = :id");
+        query.bindValue(":id", 1);
+        query.exec();
+        model.setQuery(std::move(query));
+    }
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0, 0)).toString(), QString("harry"));
+
+    QSqlQuery(db).exec("UPDATE " + qTableName("test", __FILE__, QSqlDatabase::database(dbName))
+                                                   + " SET name = 'updated_harry' WHERE id = 1");
+    model.refresh();
+    QCOMPARE(model.rowCount(), 0);
+    QCOMPARE_NE(model.data(model.index(0, 0)).toString(), QString("updated_harry"));
+    QCOMPARE(model.data(model.index(0, 0)).toString(), QString(""));
+
+    // Resetting the name to "harry" in the table
+    QSqlQuery(db).exec("UPDATE " + qTableName("test", __FILE__, QSqlDatabase::database(dbName))
+                                                   + " SET name = 'harry' WHERE id = 1");
+}
+
+
 
 QTEST_MAIN(tst_QSqlQueryModel)
 #include "tst_qsqlquerymodel.moc"

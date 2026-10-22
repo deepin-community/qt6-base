@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTFILEICONPROVIDER_H
 #define QABSTRACTFILEICONPROVIDER_H
@@ -15,8 +16,10 @@ class QAbstractFileIconProviderPrivate;
 
 class Q_GUI_EXPORT QAbstractFileIconProvider
 {
+    Q_GADGET
 public:
     enum IconType { Computer, Desktop, Trashcan, Network, Drive, Folder, File };
+    Q_ENUM(IconType)
     enum Option {
         DontUseCustomDirectoryIcons = 0x00000001
     };

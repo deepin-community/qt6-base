@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QRHIMETAL_P_H
 #define QRHIMETAL_P_H
@@ -105,6 +106,21 @@ struct QMetalSampler : public QRhiSampler
     friend struct QMetalShaderResourceBindings;
 };
 
+struct QMetalShadingRateMapData;
+
+struct QMetalShadingRateMap : public QRhiShadingRateMap
+{
+    QMetalShadingRateMap(QRhiImplementation *rhi);
+    ~QMetalShadingRateMap();
+    void destroy() override;
+    bool createFrom(NativeShadingRateMap src) override;
+
+    QMetalShadingRateMapData *d;
+    uint generation = 0;
+    int lastActiveFrameSlot = -1;
+    friend class QRhiMetal;
+};
+
 struct QMetalRenderPassDescriptor : public QRhiRenderPassDescriptor
 {
     QMetalRenderPassDescriptor(QRhiImplementation *rhi);
@@ -124,6 +140,7 @@ struct QMetalRenderPassDescriptor : public QRhiRenderPassDescriptor
     bool hasDepthStencil = false;
     int colorFormat[MAX_COLOR_ATTACHMENTS];
     int dsFormat;
+    bool hasShadingRateMap = false;
     QVector<quint32> serializedFormatData;
 };
 
@@ -158,6 +175,9 @@ struct QMetalTextureRenderTarget : public QRhiTextureRenderTarget
     QMetalRenderTargetData *d;
     friend class QRhiMetal;
 };
+
+struct QMetalGraphicsPipeline;
+struct QMetalComputePipeline;
 
 struct QMetalShaderResourceBindings : public QRhiShaderResourceBindings
 {
@@ -200,6 +220,8 @@ struct QMetalShaderResourceBindings : public QRhiShaderResourceBindings
         };
     };
     QVarLengthArray<BoundResourceData, 8> boundResourceData;
+    QMetalGraphicsPipeline *lastUsedGraphicsPipeline = nullptr;
+    QMetalComputePipeline *lastUsedComputePipeline = nullptr;
 
     uint generation = 0;
     friend class QRhiMetal;
@@ -278,8 +300,16 @@ struct QMetalCommandBuffer : public QRhiCommandBuffer
     QRhiCommandBuffer::IndexFormat currentIndexFormat;
     int currentCullMode;
     int currentTriangleFillMode;
+    int currentDepthClipMode;
     int currentFrontFaceWinding;
-    QPair<float, float> currentDepthBiasValues;
+    std::pair<float, float> currentDepthBiasValues;
+    bool hasCustomScissorSet;
+    QRhiScissor currentScissor;
+    QRhiViewport currentViewport;
+    bool hasBlendConstantsSet;
+    QColor currentBlendConstants;
+    bool hasStencilRefSet;
+    quint32 currentStencilRef;
 
     const QRhiNativeHandles *nativeHandles();
     void resetState(double lastGpuTime = 0);
@@ -361,6 +391,8 @@ public:
     QRhiTextureRenderTarget *createTextureRenderTarget(const QRhiTextureRenderTargetDescription &desc,
                                                        QRhiTextureRenderTarget::Flags flags) override;
 
+    QRhiShadingRateMap *createShadingRateMap() override;
+
     QRhiSwapChain *createSwapChain() override;
     QRhi::FrameOpResult beginFrame(QRhiSwapChain *swapChain, QRhi::BeginFrameFlags flags) override;
     QRhi::FrameOpResult endFrame(QRhiSwapChain *swapChain, QRhi::EndFrameFlags flags) override;
@@ -395,6 +427,7 @@ public:
     void setScissor(QRhiCommandBuffer *cb, const QRhiScissor &scissor) override;
     void setBlendConstants(QRhiCommandBuffer *cb, const QColor &c) override;
     void setStencilRef(QRhiCommandBuffer *cb, quint32 refValue) override;
+    void setShadingRate(QRhiCommandBuffer *cb, const QSize &coarsePixelSize) override;
 
     void draw(QRhiCommandBuffer *cb, quint32 vertexCount,
               quint32 instanceCount, quint32 firstVertex, quint32 firstInstance) override;
@@ -402,6 +435,12 @@ public:
     void drawIndexed(QRhiCommandBuffer *cb, quint32 indexCount,
                      quint32 instanceCount, quint32 firstIndex,
                      qint32 vertexOffset, quint32 firstInstance) override;
+
+    void drawIndirect(QRhiCommandBuffer *cb, QRhiBuffer *indirectBuffer,
+                      quint32 indirectBufferOffset, quint32 drawCount, quint32 stride) override;
+
+    void drawIndexedIndirect(QRhiCommandBuffer *cb, QRhiBuffer *indirectBuffer,
+                             quint32 indirectBufferOffset, quint32 drawCount, quint32 stride) override;
 
     void debugMarkBegin(QRhiCommandBuffer *cb, const QByteArray &name) override;
     void debugMarkEnd(QRhiCommandBuffer *cb) override;
@@ -420,6 +459,7 @@ public:
     double lastCompletedGpuTime(QRhiCommandBuffer *cb) override;
 
     QList<int> supportedSampleCounts() const override;
+    QList<QSize> supportedShadingRates(int sampleCount) const override;
     int ubufAlignment() const override;
     bool isYUpInFramebuffer() const override;
     bool isYUpInNDC() const override;
@@ -432,6 +472,7 @@ public:
     QRhiDriverInfo driverInfo() const override;
     QRhiStats statistics() override;
     bool makeThreadLocalNativeContextCurrent() override;
+    void setQueueSubmitParams(QRhiNativeHandles *params) override;
     void releaseCachedResources() override;
     bool isDeviceLost() const override;
 
@@ -447,6 +488,8 @@ public:
     void enqueueResourceUpdates(QRhiCommandBuffer *cb, QRhiResourceUpdateBatch *resourceUpdates);
     void executeBufferHostWritesForSlot(QMetalBuffer *bufD, int slot);
     void executeBufferHostWritesForCurrentFrame(QMetalBuffer *bufD);
+    void finalizeDeferredStoreActions(QMetalCommandBuffer *cbD, bool passIsEnding);
+    void interruptRenderPass(QMetalCommandBuffer *cbD);
     static const int SUPPORTED_STAGES = 5;
     void enqueueShaderResourceBindings(QMetalShaderResourceBindings *srbD,
                                        QMetalCommandBuffer *cbD,
@@ -454,6 +497,8 @@ public:
                                        const QRhiCommandBuffer::DynamicOffset *dynamicOffsets,
                                        bool offsetOnlyChange,
                                        const QShader::NativeResourceBindingMap *nativeResourceBindingMaps[SUPPORTED_STAGES]);
+    void setDefaultScissor(QMetalCommandBuffer *cbD);
+
     struct TessDrawArgs {
         QMetalCommandBuffer *cbD;
         enum {
@@ -500,6 +545,9 @@ public:
         bool isAppleGPU = false;
         int maxThreadGroupSize = 512;
         bool multiView = false;
+        bool indirectCommandBuffers = false;
+        bool shadingRateMap = false;
+        bool depthClamp = true;
     } caps;
 
     QRhiMetalData *d = nullptr;

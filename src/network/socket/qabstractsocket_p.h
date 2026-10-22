@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTSOCKET_P_H
 #define QABSTRACTSOCKET_P_H
@@ -21,18 +22,21 @@
 #include "QtCore/qlist.h"
 #include "QtCore/qtimer.h"
 #include "private/qiodevice_p.h"
-#include "private/qabstractsocketengine_p.h"
+#include "private/qabstractsocketenginereceiver_p.h"
 #include "qnetworkproxy.h"
 
 QT_BEGIN_NAMESPACE
 
+class QAbstractSocketEngine;
 class QHostInfo;
+class QNetworkInterface;
 
-class QAbstractSocketPrivate : public QIODevicePrivate, public QAbstractSocketEngineReceiver
+class Q_NETWORK_EXPORT QAbstractSocketPrivate : public QIODevicePrivate,
+                                                public QAbstractSocketEngineReceiver
 {
     Q_DECLARE_PUBLIC(QAbstractSocket)
 public:
-    QAbstractSocketPrivate();
+    QAbstractSocketPrivate(decltype(QObjectPrivateVersion) version = QObjectPrivateVersion);
     virtual ~QAbstractSocketPrivate();
 
     // from QAbstractSocketEngineReceiver
@@ -48,7 +52,8 @@ public:
     }
 #endif
 
-    virtual bool bind(const QHostAddress &address, quint16 port, QAbstractSocket::BindMode mode);
+    virtual bool bind(const QHostAddress &address, quint16 port, QAbstractSocket::BindMode mode,
+                      const QNetworkInterface *iface = nullptr);
 
     virtual bool canReadNotification();
     bool canWriteNotification();
@@ -111,6 +116,8 @@ public:
     bool isBuffered = false;
     bool hasPendingData = false;
     bool hasPendingDatagram = false;
+
+    quint32 bytesWrittenEmissionCount = 0;
 
     QTimer *connectTimer = nullptr;
 

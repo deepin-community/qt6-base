@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Governikus GmbH & Co. KG.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsslellipticcurve.h"
 #include "qtlsbackend_p.h"
@@ -160,12 +161,9 @@ bool QSslEllipticCurve::isTlsNamedCurve() const noexcept
 */
 
 /*!
-    \fn size_t qHash(QSslEllipticCurve curve, size_t seed = 0)
+    \fn size_t qHash(QSslEllipticCurve key, size_t seed)
     \since 5.5
-    \relates QHash
-
-    Returns an hash value for the curve \a curve, using \a seed to seed
-    the calculation.
+    \qhashold{QHash}
 */
 
 #ifndef QT_NO_DEBUG_STREAM

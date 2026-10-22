@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDBUSMESSAGE_H
 #define QDBUSMESSAGE_H
@@ -31,6 +32,7 @@ public:
 
     QDBusMessage();
     QDBusMessage(const QDBusMessage &other);
+    QDBusMessage(QDBusMessage &&other) noexcept : d_ptr(std::exchange(other.d_ptr, nullptr)) {}
     QDBusMessage &operator=(QDBusMessage &&other) noexcept { swap(other); return *this; }
     QDBusMessage &operator=(const QDBusMessage &other);
     ~QDBusMessage();

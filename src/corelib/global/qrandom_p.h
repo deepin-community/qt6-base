@@ -1,5 +1,6 @@
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QRANDOM_P_H
 #define QRANDOM_P_H
@@ -24,8 +25,7 @@ QT_BEGIN_NAMESPACE
 enum QRandomGeneratorControl {
     UseSystemRNG = 1,
     SkipSystemRNG = 2,
-    SkipHWRNG = 4,
-    SetRandomData = 8,
+    SetRandomData = 4,
 
     // 28 bits
     RandomDataMask = 0xfffffff0

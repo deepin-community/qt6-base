@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOPENGLVERSIONPROFILE_H
 #define QOPENGLVERSIONPROFILE_H
@@ -8,7 +9,6 @@
 
 #include <QtGui/QSurfaceFormat>
 
-#include <QtCore/QPair>
 #include <QtCore/qhashfunctions.h>
 
 QT_BEGIN_NAMESPACE
@@ -26,7 +26,7 @@ public:
 
     QOpenGLVersionProfile &operator=(const QOpenGLVersionProfile &rhs);
 
-    QPair<int, int> version() const;
+    std::pair<int, int> version() const;
     void setVersion(int majorVersion, int minorVersion);
 
     QSurfaceFormat::OpenGLContextProfile profile() const;

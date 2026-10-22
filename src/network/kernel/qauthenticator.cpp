@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qauthenticator.h>
 #include <qauthenticator_p.h>
@@ -142,6 +143,32 @@ static QByteArray qGssapiContinue(QAuthenticatorPrivate *ctx, QByteArrayView cha
   Other operating systems use GSSAPI libraries. For that it is expected that
   KDC is set up, and the credentials can be fetched from it. The backend always
   uses \c {HTTPS@<hostname>} as an SPN.
+
+  \section1 Security Considerations
+
+  QAuthenticator stores credentials such as usernames and passwords
+  internally using general-purpose data types (QString, QByteArray)
+  that do not guarantee secure erasure of their contents from memory
+  on destruction. Credential material may persist in freed heap pages,
+  core dumps, swap files, or process memory after a QAuthenticator
+  object is destroyed or cleared.
+
+  When Basic authentication is negotiated, credentials are transmitted
+  using Base64 encoding, which is trivially reversible. Basic authentication
+  should only be used over TLS-encrypted connections. QAuthenticator does not
+  enforce this requirement; applications are responsible for ensuring
+  transport security when Basic authentication is in use.
+
+  QAuthenticator selects the strongest authentication method offered
+  by the server, using a fixed internal priority order: Negotiate
+  (Kerberos/SPNEGO), NTLM, Digest-MD5, and Basic. The application
+  cannot currently influence this selection or restrict which methods
+  are acceptable. If a server or proxy offers only a weak method, it
+  will be used without notification.
+
+  Applications with strict requirements for credential hygiene should
+  take this into account when deciding how and where to use
+  QAuthenticator.
 
   \sa QSslSocket
 */
@@ -357,6 +384,23 @@ bool QAuthenticator::isNull() const
     return !d;
 }
 
+/*!
+    \since 6.11
+
+    Clears all credentials and resets the object to its default uninitialized
+    state.
+*/
+
+void QAuthenticator::clear()
+{
+    if (!d)
+        d = new QAuthenticatorPrivate;
+    else
+        *d = QAuthenticatorPrivate();
+
+    d->phase = QAuthenticatorPrivate::Done;
+}
+
 #if QT_CONFIG(sspi) // SSPI
 class QSSPIWindowsHandles
 {
@@ -368,8 +412,19 @@ public:
 class QGssApiHandles
 {
 public:
+    Q_DISABLE_COPY_MOVE(QGssApiHandles)
+    QGssApiHandles() = default;
+    ~QGssApiHandles()
+    {
+        OM_uint32 ignored = 0;
+        if (targetName)
+            gss_release_name(&ignored, &targetName);
+        if (gssCtx)
+            gss_delete_sec_context(&ignored, &gssCtx, GSS_C_NO_BUFFER);
+    }
+
     gss_ctx_id_t gssCtx = nullptr;
-    gss_name_t targetName;
+    gss_name_t targetName = nullptr;
 };
 #endif // gssapi
 
@@ -445,6 +500,43 @@ static bool verifyDigestMD5(QByteArrayView value)
     return true; // assume it's ok if algorithm is not specified
 }
 
+/*
+   Security strength ordering of authentication methods:
+
+   Basic (1)       - password in reversible encoding
+   Digest-MD5 (2)  - challenge-response, but MD5 is "broken"
+   NTLM (3)        - HMAC-MD5 challenge-response with server + client nonce
+   Negotiate (4)   - ticket-based (Kerberos), no password material on wire,
+                     mutual authentication, modern ciphers
+*/
+
+static int methodStrength(QAuthenticatorPrivate::Method method)
+{
+    switch (method) {
+        case QAuthenticatorPrivate::None:      return 0;
+        case QAuthenticatorPrivate::Basic:     return 1;
+        case QAuthenticatorPrivate::DigestMd5: return 2;
+        case QAuthenticatorPrivate::Ntlm:      return 3;
+        case QAuthenticatorPrivate::Negotiate: return 4;
+    }
+
+    Q_UNREACHABLE_RETURN(0);
+}
+
+static const char *methodName(QAuthenticatorPrivate::Method method)
+{
+    switch (method) {
+        case QAuthenticatorPrivate::None:      return "None";
+        case QAuthenticatorPrivate::Basic:     return "Basic";
+        case QAuthenticatorPrivate::DigestMd5: return "Digest-MD5";
+        case QAuthenticatorPrivate::Ntlm:      return "NTLM";
+        case QAuthenticatorPrivate::Negotiate: return "Negotiate";
+    }
+
+    Q_UNREACHABLE_RETURN("Unknown");
+}
+
+
 void QAuthenticatorPrivate::parseHttpResponse(const QHttpHeaders &headers,
                                               bool isProxy, QStringView host)
 {
@@ -454,6 +546,8 @@ void QAuthenticatorPrivate::parseHttpResponse(const QHttpHeaders &headers,
     const auto search = isProxy ? QHttpHeaders::WellKnownHeader::ProxyAuthenticate
                                 : QHttpHeaders::WellKnownHeader::WWWAuthenticate;
 
+    const Method previousMethod = method;
+    const Phase previousPhase = phase;
     method = None;
     /*
       Fun from the HTTP 1.1 specs, that we currently ignore:
@@ -466,22 +560,27 @@ void QAuthenticatorPrivate::parseHttpResponse(const QHttpHeaders &headers,
     */
 
     QByteArrayView headerVal;
-    for (const auto &current : headers.values(search)) {
+    const QByteArrayList values = headers.values(search); // pinned for headerVal
+    for (const auto &current : values) {
         const QLatin1StringView str(current);
-        if (method < Basic && str.startsWith("basic"_L1, Qt::CaseInsensitive)) {
+        if (methodStrength(method) < methodStrength(Basic)
+                && str.startsWith("basic"_L1, Qt::CaseInsensitive)) {
             method = Basic;
             headerVal = QByteArrayView(current).mid(6);
-        } else if (method < Ntlm && str.startsWith("ntlm"_L1, Qt::CaseInsensitive)) {
+        } else if (methodStrength(method) < methodStrength(Ntlm)
+                && str.startsWith("ntlm"_L1, Qt::CaseInsensitive)) {
             method = Ntlm;
             headerVal = QByteArrayView(current).mid(5);
-        } else if (method < DigestMd5 && str.startsWith("digest"_L1, Qt::CaseInsensitive)) {
+        } else if (methodStrength(method) < methodStrength(DigestMd5)
+                && str.startsWith("digest"_L1, Qt::CaseInsensitive)) {
             // Make sure the algorithm is actually MD5 before committing to it:
             if (!verifyDigestMD5(QByteArrayView(current).sliced(7)))
                 continue;
 
             method = DigestMd5;
             headerVal = QByteArrayView(current).mid(7);
-        } else if (method < Negotiate && str.startsWith("negotiate"_L1, Qt::CaseInsensitive)) {
+        } else if (methodStrength(method) < methodStrength(Negotiate)
+                && str.startsWith("negotiate"_L1, Qt::CaseInsensitive)) {
 #if QT_CONFIG(sspi) || QT_CONFIG(gssapi) // if it's not supported then we shouldn't try to use it
 #if QT_CONFIG(gssapi)
             // For GSSAPI there needs to be a KDC set up for the host (afaict).
@@ -496,6 +595,22 @@ void QAuthenticatorPrivate::parseHttpResponse(const QHttpHeaders &headers,
         }
     }
 
+    // Method pinning: in the middle of a multi-round exchange (phase2)
+    // refuse to downgrade to a weaker method.
+    if (previousPhase == Phase2
+        && methodStrength(method) < methodStrength(previousMethod)) {
+        qCWarning(lcAuthenticator,
+                  "Authentication method downgrade from %s to %s refused "
+                  "during multi-round exchange (possible man-in-the-middle). "
+                  "Aborting authentication.",
+                  methodName(previousMethod), methodName(method));
+        method = None;
+        phase = Done;
+        hasFailed = true;
+        challenge = QByteArray();
+        return;
+    }
+
     // Reparse credentials since we know the method now
     updateCredentials();
     challenge = headerVal.trimmed().toByteArray();
@@ -507,7 +622,7 @@ void QAuthenticatorPrivate::parseHttpResponse(const QHttpHeaders &headers,
         if (newRealm != realm) {
             if (phase == Done)
                 phase = Start;
-            realm = newRealm;
+            realm = std::move(newRealm);
             this->options["realm"_L1] = realm;
         }
     };
@@ -532,7 +647,7 @@ void QAuthenticatorPrivate::parseHttpResponse(const QHttpHeaders &headers,
             phase = Done;
         break;
     }
-    default:
+    case None:
         realm.clear();
         challenge = QByteArray();
         phase = Invalid;
@@ -670,6 +785,8 @@ QAuthenticatorPrivate::parseDigestAuthenticationChallenge(QByteArrayView challen
         const char *start = d;
         while (d < end && *d != '=')
             ++d;
+        if (d >= end)
+            break;
         QByteArrayView key = QByteArrayView(start, d - start);
         ++d;
         if (d >= end)
@@ -700,7 +817,8 @@ QAuthenticatorPrivate::parseDigestAuthenticationChallenge(QByteArrayView challen
         }
         while (d < end && *d != ',')
             ++d;
-        ++d;
+        if (d < end)
+            ++d;
         options[key.toByteArray()] = std::move(value);
     }
 
@@ -986,6 +1104,8 @@ QByteArray QAuthenticatorPrivate::digestMd5Response(QByteArrayView challenge, QB
 const int blockSize = 64; //As per RFC2104 Block-size is 512 bits
 const quint8 respversion = 1;
 const quint8 hirespversion = 1;
+// FILETIME: two 32-bit values = 8 bytes (MS-DTYP section 2.3.3)
+static constexpr quint16 NtlmFileTimeSize = 8;
 
 /* usage:
    // fill up ctx with what we know.
@@ -996,12 +1116,6 @@ const quint8 hirespversion = 1;
    qNtlmDecodePhase2(response, pb);
    response = qNtlmPhase3(ctx, pb);
    // send response (b64 encoded??)
-*/
-
-/*
-   TODO:
-    - Fix unicode handling
-    - add v2 handling
 */
 
 class QNtlmBuffer {
@@ -1312,24 +1426,29 @@ static QByteArray clientChallenge(const QAuthenticatorPrivate *ctx)
 static QByteArray qExtractServerTime(const QByteArray& targetInfoBuff)
 {
     QByteArray timeArray;
-    QDataStream ds(targetInfoBuff);
-    ds.setByteOrder(QDataStream::LittleEndian);
-
+    const char *ptr = targetInfoBuff.constBegin();
+    const char *end = targetInfoBuff.constEnd();
     quint16 avId;
     quint16 avLen;
 
-    ds >> avId;
-    ds >> avLen;
-    while(avId != 0) {
+    while (end - ptr >= 4) {
+        avId = qFromLittleEndian<quint16>(ptr + 0);
+        avLen = qFromLittleEndian<quint16>(ptr + 2);
+        ptr += 4;
+
         if (avId == AVTIMESTAMP) {
-            timeArray.resize(avLen);
-            //avLen size of QByteArray is allocated
-            ds.readRawData(timeArray.data(), avLen);
+            if (avLen != NtlmFileTimeSize)
+                break;
+            if (end - ptr < NtlmFileTimeSize)
+                break;
+
+            timeArray.assign(ptr, ptr + NtlmFileTimeSize);
             break;
         }
-        ds.skipRawData(avLen);
-        ds >> avId;
-        ds >> avLen;
+
+        if (avLen > end - ptr)
+            break;
+        ptr += avLen;
     }
     return timeArray;
 }
@@ -1445,14 +1564,20 @@ static bool qNtlmDecodePhase2(const QByteArray& data, QNtlmPhase2Block& ch)
     ds >> ch.targetInfo;
 
     if (ch.targetName.len > 0) {
-        if (qsizetype(ch.targetName.len + ch.targetName.offset) > data.size())
+        qsizetype total;
+        if (qAddOverflow(qsizetype(ch.targetName.offset), qsizetype(ch.targetName.len), &total))
+            return false;
+        if (total > data.size())
             return false;
 
         ch.targetNameStr = qStringFromUcs2Le(data.mid(ch.targetName.offset, ch.targetName.len));
     }
 
     if (ch.targetInfo.len > 0) {
-        if (ch.targetInfo.len + ch.targetInfo.offset > (unsigned)data.size())
+        qsizetype total;
+        if (qAddOverflow(qsizetype(ch.targetInfo.offset), qsizetype(ch.targetInfo.len), &total))
+            return false;
+        if (total > data.size())
             return false;
 
         ch.targetInfoBuff = data.mid(ch.targetInfo.offset, ch.targetInfo.len);
@@ -1754,16 +1879,9 @@ static QByteArray qGssapiContinue(QAuthenticatorPrivate *ctx, QByteArrayView cha
         result = QByteArray(reinterpret_cast<const char*>(outBuf.value), outBuf.length);
     gss_release_buffer(&ignored, &outBuf);
 
-    if (majStat != GSS_S_COMPLETE && majStat != GSS_S_CONTINUE_NEEDED) {
-        q_GSSAPI_error("gss_init_sec_context error", majStat, minStat);
-        gss_release_name(&ignored, &ctx->gssApiHandles->targetName);
-        if (ctx->gssApiHandles->gssCtx)
-            gss_delete_sec_context(&ignored, &ctx->gssApiHandles->gssCtx, GSS_C_NO_BUFFER);
-        ctx->gssApiHandles.reset(nullptr);
-    }
-
-    if (majStat == GSS_S_COMPLETE) {
-        gss_release_name(&ignored, &ctx->gssApiHandles->targetName);
+    if (majStat != GSS_S_CONTINUE_NEEDED) {
+        if (majStat != GSS_S_COMPLETE)
+            q_GSSAPI_error("gss_init_sec_context error", majStat, minStat);
         ctx->gssApiHandles.reset(nullptr);
     }
 

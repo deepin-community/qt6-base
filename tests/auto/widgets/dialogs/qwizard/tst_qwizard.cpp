@@ -4,6 +4,7 @@
 
 #include <QFont>
 #include <QTest>
+#include <QApplication>
 #include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -389,6 +390,7 @@ void tst_QWizard::setPixmap()
     QPixmap p3(3, 3);
     QPixmap p4(4, 4);
     QPixmap p5(5, 5);
+    QPixmap p6(1024, 40);
 
     QWizard wizard;
     QWizardPage *page = new QWizardPage;
@@ -434,6 +436,28 @@ void tst_QWizard::setPixmap()
     QCOMPARE(page2->pixmap(QWizard::LogoPixmap).size(), p2.size());
     QCOMPARE(page2->pixmap(QWizard::WatermarkPixmap).size(), p3.size());
     QCOMPARE(page2->pixmap(QWizard::BackgroundPixmap).size(), p4.size());
+
+    wizard.setWizardStyle(QWizard::ModernStyle);
+    // Without subtitle QWizard considers there is no header...
+    page2->setSubTitle("SubTitle");
+    page2->setPixmap(QWizard::BannerPixmap, p6);
+    wizard.restart();
+    wizard.next();
+    wizard.show();
+    QCOMPARE(wizard.currentPage(), page2);
+    QCOMPARE(page2->pixmap(QWizard::BannerPixmap).size(), p6.size());
+    int oldWidth = wizard.width();
+    int newWidth = 1240;
+    wizard.resize(newWidth, 720);
+    QCOMPARE(wizard.width(), oldWidth);
+    wizard.setOption(QWizard::StretchBanner, true);
+    wizard.resize(newWidth, 720);
+    QCOMPARE(wizard.width(), newWidth);
+    wizard.setOption(QWizard::StretchBanner, false);
+    QCOMPARE(wizard.width(), oldWidth);
+    wizard.setOption(QWizard::StretchBanner, true);
+    wizard.resize(newWidth, 720);
+    QCOMPARE(wizard.width(), newWidth);
 }
 
 class MyPage1 : public QWizardPage
@@ -977,7 +1001,7 @@ void tst_QWizard::setOption_IgnoreSubTitles()
 
     wizard1.show();
     wizard2.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&wizard2));
+    QVERIFY(QTest::qWaitForWindowActive(&wizard2));
 
     // Check that subtitles are shown when they should (i.e.,
     // they're set and IgnoreSubTitles is off).
@@ -1046,34 +1070,21 @@ void tst_QWizard::setOption_ExtendedWatermarkPixmap()
     QPixmap watermarkPixmap(200, 400);
     watermarkPixmap.fill(Qt::black);
 
-    QWizard wizard1;
-    wizard1.setButtonLayout(QList<QWizard::WizardButton>() << QWizard::CancelButton);
-    QVERIFY(!wizard1.testOption(QWizard::ExtendedWatermarkPixmap));
-    QWizardPage *page11 = new QWizardPage;
-    page11->setTitle("Page X");
-    page11->setPixmap(QWizard::WatermarkPixmap, watermarkPixmap);
+    QWizard wizard;
+    wizard.setButtonLayout(QList<QWizard::WizardButton>() << QWizard::CancelButton);
+    QVERIFY(!wizard.testOption(QWizard::ExtendedWatermarkPixmap));
+    QWizardPage *page1 = new QWizardPage;
+    page1->setTitle("Page X");
+    page1->setPixmap(QWizard::WatermarkPixmap, watermarkPixmap);
 
-    QWizardPage *page12 = new QWizardPage;
-    page12->setTitle("Page X");
+    QWizardPage *page2 = new QWizardPage;
+    page2->setTitle("Page X");
 
-    wizard1.addPage(page11);
-    wizard1.addPage(page12);
+    wizard.addPage(page1);
+    wizard.addPage(page2);
 
-    QWizard wizard2;
-    wizard2.setButtonLayout(QList<QWizard::WizardButton>() << QWizard::CancelButton);
-    wizard2.setOption(QWizard::ExtendedWatermarkPixmap, true);
-    QWizardPage *page21 = new QWizardPage;
-    page21->setTitle("Page X");
-    page21->setPixmap(QWizard::WatermarkPixmap, watermarkPixmap);
-
-    QWizardPage *page22 = new QWizardPage;
-    page22->setTitle("Page X");
-
-    wizard2.addPage(page21);
-    wizard2.addPage(page22);
-
-    wizard1.show();
-    wizard2.show();
+    wizard.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&wizard));
 
     // Check the impact of watermark pixmaps on the rest of the layout.
 
@@ -1081,23 +1092,23 @@ void tst_QWizard::setOption_ExtendedWatermarkPixmap()
         QImage i1[2];
         QImage i2[2];
         for (int j = 0; j < 2; ++j) {
-            wizard1.setOption(QWizard::ExtendedWatermarkPixmap, j == 0);
+            wizard.setOption(QWizard::ExtendedWatermarkPixmap, j == 0);
 
-            wizard1.setWizardStyle(i == 0 ? QWizard::ClassicStyle
+            wizard.setWizardStyle(i == 0 ? QWizard::ClassicStyle
                                    : i == 1 ? QWizard::ModernStyle
                                             : QWizard::MacStyle);
-            wizard1.restart();
-            wizard1.setMaximumSize(1000, 1000);
-            wizard1.resize(600, 600);
-            i1[j] = grabWidget(&wizard1);
+            wizard.restart();
+            wizard.setMaximumSize(1000, 1000);
+            wizard.resize(600, 600);
+            i1[j] = grabWidget(&wizard);
 
-            wizard1.next();
-            wizard1.setMaximumSize(1000, 1000);
-            wizard1.resize(600, 600);
-            i2[j] = grabWidget(&wizard1);
+            wizard.next();
+            wizard.setMaximumSize(1000, 1000);
+            wizard.resize(600, 600);
+            i2[j] = grabWidget(&wizard);
         }
 
-        if (wizard1.wizardStyle() == QWizard::MacStyle) {
+        if (wizard.wizardStyle() == QWizard::MacStyle) {
             QCOMPARE(i1[0], i1[1]);
             QCOMPARE(i2[0], i2[1]);
             QCOMPARE(i1[0], i2[0]);
@@ -2065,6 +2076,8 @@ void tst_QWizard::combinations()
     wizard.applyOperations(operations);
     wizard.show(); // ### TODO: Required, but why? Should wizard.createImage() care?
 
+    QVERIFY(QTest::qWaitForWindowExposed(&wizard));
+
     static QImage refImage;
     static QSize refMinSize;
     static QString refDescr;
@@ -2245,6 +2258,12 @@ void tst_QWizard::setCommitPage()
     // ### test relabeling of the Cancel button to "Close" once this is implemented
 }
 
+static QWizard::WizardStyle defaultWizardStyle(const QWidget *w = nullptr)
+{
+    const QStyle *style = w != nullptr ? w->style() : QApplication::style();
+    return QWizard::WizardStyle(style->styleHint(QStyle::SH_WizardStyle, 0, w));
+}
+
 void tst_QWizard::setWizardStyle()
 {
     QWizard wizard;
@@ -2253,14 +2272,7 @@ void tst_QWizard::setWizardStyle()
     qApp->processEvents();
 
     // defaults
-    const bool styleHintMatch =
-        wizard.wizardStyle() ==
-        QWizard::WizardStyle(wizard.style()->styleHint(QStyle::SH_WizardStyle, 0, &wizard));
-#if !defined(QT_NO_STYLE_WINDOWSVISTA)
-    QVERIFY(styleHintMatch || wizard.wizardStyle() == QWizard::AeroStyle);
-#else
-    QVERIFY(styleHintMatch);
-#endif
+    QCOMPARE(wizard.wizardStyle(), defaultWizardStyle(&wizard));
 
     // set/get consistency
     for (int wstyle = 0; wstyle < QWizard::NStyles; ++wstyle) {
@@ -2421,7 +2433,10 @@ void tst_QWizard::objectNames_data()
     QTest::addColumn<QWizard::WizardButton>("wizardButton");
     QTest::addColumn<QString>("buttonName");
 
-    QTest::newRow("BackButton")    << QWizard::BackButton    << QStringLiteral("__qt__passive_wizardbutton0");
+    if (defaultWizardStyle() != QWizard::AeroStyle) {
+        QTest::newRow("BackButton") << QWizard::BackButton
+                                    << QStringLiteral("__qt__passive_wizardbutton0");
+    }
     QTest::newRow("NextButton")    << QWizard::NextButton    << QStringLiteral("__qt__passive_wizardbutton1");
     QTest::newRow("CommitButton")  << QWizard::CommitButton  << QStringLiteral("qt_wizard_commit");
     QTest::newRow("FinishButton")  << QWizard::FinishButton  << QStringLiteral("qt_wizard_finish");
@@ -2597,9 +2612,6 @@ void tst_QWizard::task177022_setFixedSize()
     int page1_id = wiz.addPage(&page1);
     int page2_id = wiz.addPage(&page2);
     wiz.setFixedSize(width, height);
-    if (wiz.wizardStyle() == QWizard::AeroStyle)
-        QEXPECT_FAIL("", "this probably relates to non-client area hack for AeroStyle titlebar "
-                     "effect; not sure if it qualifies as a bug or not", Continue);
     QCOMPARE(wiz.size(), QSize(width, height));
     QCOMPARE(wiz.minimumWidth(), width);
     QCOMPARE(wiz.minimumHeight(), height);

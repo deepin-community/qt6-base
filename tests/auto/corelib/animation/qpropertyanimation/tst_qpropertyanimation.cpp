@@ -7,10 +7,13 @@
 #include <QAnimationGroup>
 #include <QSequentialAnimationGroup>
 #include <QtCore/qpropertyanimation.h>
+#include <QtCore/qtimer.h>
 #include <QtCore/qvariantanimation.h>
 #include <private/qabstractanimation_p.h>
 #include <QtGui/qpointingdevice.h>
 #include <QtWidgets/qwidget.h>
+
+#include <math.h>
 
 Q_DECLARE_METATYPE(QAbstractAnimation::State)
 
@@ -170,6 +173,8 @@ private slots:
     void zeroLoopCount();
     void recursiveAnimations();
     void bindings();
+    void speedModifier_data();
+    void speedModifier();
 };
 
 void tst_QPropertyAnimation::initTestCase()
@@ -1401,6 +1406,102 @@ void tst_QPropertyAnimation::bindings()
     a.setTargetObject(o1.get());
     o1.reset();
     QCOMPARE(a.targetObject(), nullptr);
+}
+
+void tst_QPropertyAnimation::speedModifier_data()
+{
+    QTest::addColumn<int>("duration");
+    QTest::addColumn<qreal>("speedModifier");
+    QTest::addColumn<int>("waitDuration");
+
+    // It should progress at 50% of the ordinary animation speed. If the speedModifier
+    // was 1, it would be 0.5 after 200 milliseconds, so we expect (via the calculation for
+    // "expected") half of that.
+    QTest::newRow("0.5") << 400 << 0.5 << 200;
+
+    // It should progress at 200% of the ordinary animation speed, so should
+    // have already finished after 200 milliseconds.
+    QTest::newRow("2") << 400 << 2.0 << 200;
+}
+
+void tst_QPropertyAnimation::speedModifier()
+{
+    QFETCH(int, duration);
+    QFETCH(qreal, speedModifier);
+    QFETCH(int, waitDuration);
+
+    const qreal previousSpeedModifier = QUnifiedTimer::instance()->getSpeedModifier();
+    QUnifiedTimer::instance()->setSpeedModifier(speedModifier);
+    auto cleanup = qScopeGuard([previousSpeedModifier](){
+        QUnifiedTimer::instance()->setSpeedModifier(previousSpeedModifier);
+    });
+
+    MyObject targetObject;
+    QPropertyAnimation animation(&targetObject, "x");
+    animation.setStartValue(0.0);
+    animation.setEndValue(1.0);
+    animation.setDuration(duration);
+    animation.start();
+    QCOMPARE(animation.state(), QAbstractAnimation::Running);
+
+    constexpr qreal tiny = 0.025, close = 0.05, adequate = 0.5;
+    const qreal target = waitDuration * speedModifier / duration;
+    Q_ASSERT(target <= 1.0); // else: bad test-case, needs shorter waitDuration.
+    // How long does it take us to get within tiny of that target?
+    QElapsedTimer timer;
+    timer.start();
+    QTRY_VERIFY(targetObject.x() + tiny >= target);
+
+    // How much of the animation did that actually play ?
+    const qreal fractionPlayed = targetObject.x();
+    // How long did it in fact take ?
+    const qint64 nsecsTaken = timer.nsecsElapsed();
+    // Convert to float millis (use integer div/mod to retain ns precision):
+    const qreal msecsTaken
+        = double(nsecsTaken / 2048) * 2.048e-3 + double(nsecsTaken % 2048) * 1e-6;
+    // qint64 has 63 bits of precision; / 2048 cuts that to 52 that double
+    // faithfully represents; * 2.048e-3 then converts to millis. Remainder has
+    // only 11 bits, so is faithfully represented and * 1e-6 converts it to millis.
+    const qreal actualSpeedMod = qreal(duration) * fractionPlayed / msecsTaken;
+    // Ideally that'd == speedModifier, but it should at least be on the same side
+    // of 1; log has the same sign if that's true, so test the ratio of logs.
+    const qreal logExpected = log(speedModifier);
+
+    // We'll pass on a rather crude check, but produce this report unless
+    // logActual is quite close to logExpected.
+    auto report = qScopeGuard([actualSpeedMod, fractionPlayed, msecsTaken]() {
+        // Report naturally gives speedModifier as test-case name, implying durations.
+        qDebug("Actual speed modifier %.03f; completed %.03f of whole in %.1f ms",
+            actualSpeedMod, fractionPlayed, msecsTaken);
+    });
+
+    if (qAbs(logExpected) < tiny) {
+        // No test-case currently exercises this:
+        Q_ASSERT(!"Need to work out what to test in this case");
+        // We can't divide by logExpected, so need a different test
+        // for this case, if we ever add it.
+
+    } else if (fractionPlayed < 1.0 || logExpected < 0.0) {
+        const qreal logActual = log(actualSpeedMod);
+        // Same sign logs, with actual not too small compared to expected ?
+        QCOMPARE_GT(logActual / logExpected, adequate);
+        if (qAbs(logActual / logExpected - 1) < close)
+            report.dismiss();
+    } else {
+        // Animation played to completion, so msecsTaken is an upper bound;
+        // it may have finished before then, making actualSpeedMod a lower bound;
+        // it may have run faster. So accept if there's any a >= logActual for
+        // which the < 1 branch would have accepted had logActual been a.
+        // No such a would have helped for logExpected < 0, so it's handled above.
+        // For logExpected > 0, there is necessarily some a >= logActual for which
+        // a / logExpected > adequate. So all we can check, sensibly, is whether
+        // to dismiss the report.
+        // For that, we want an actual run close to what we asked for.
+        if (target >= 1.0) // matching fractionPlayed >= 1
+            report.dismiss();
+        else if (qAbs(actualSpeedMod / speedModifier - 1) < close)
+            report.dismiss();
+    }
 }
 
 QTEST_MAIN(tst_QPropertyAnimation)

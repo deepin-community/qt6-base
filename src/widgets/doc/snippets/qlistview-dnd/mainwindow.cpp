@@ -3,7 +3,7 @@
 
 #include <QtWidgets>
 
-#include "mainwindow.h"
+#include "../include/mainwindow.h"
 #include "model.h"
 
 MainWindow::MainWindow()
@@ -15,14 +15,13 @@ MainWindow::MainWindow()
 
     menuBar()->addMenu(fileMenu);
 
-//  For convenient quoting:
-//! [0]
-QListView *listView = new QListView(this);
-listView->setSelectionMode(QAbstractItemView::ExtendedSelection);
-listView->setDragEnabled(true);
-listView->setAcceptDrops(true);
-listView->setDropIndicatorShown(true);
-//! [0]
+    //! [0]
+    QListView *listView = new QListView(this);
+    listView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    listView->setDragEnabled(true);
+    listView->setAcceptDrops(true);
+    listView->setDropIndicatorShown(true);
+    //! [0]
 
     this->listView = listView;
 

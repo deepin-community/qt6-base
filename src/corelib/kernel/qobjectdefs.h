@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2019 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOBJECTDEFS_H
 #define QOBJECTDEFS_H
@@ -292,10 +293,32 @@ struct Q_CORE_EXPORT QMetaObject
     // internal slot-name based connect
     static void connectSlotsByName(QObject *o);
 
+#ifdef Q_QDOC
+    template<typename PointerToMemberFunction>
+    static QMetaObject::Connection connect(const QObject *sender, const QMetaMethod &signal, const QObject *receiver, PointerToMemberFunction method, Qt::ConnectionType type = Qt::AutoConnection);
+    template<typename Functor>
+    static QMetaObject::Connection connect(const QObject *sender, const QMetaMethod &signal, const QObject *context, Functor functor, Qt::ConnectionType type = Qt::AutoConnection);
+#else
+    template <typename Func>
+    static inline Connection
+        connect(const QObject *sender, const QMetaMethod &signal,
+                const typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *context, Func &&slot,
+                Qt::ConnectionType type = Qt::AutoConnection);
+#endif // Q_QDOC
+
     // internal index-based signal activation
     static void activate(QObject *sender, int signal_index, void **argv);
     static void activate(QObject *sender, const QMetaObject *, int local_signal_index, void **argv);
     static void activate(QObject *sender, int signal_offset, int local_signal_index, void **argv);
+    template <typename Ret, typename... Args> static inline void
+    activate(QObject *sender, const QMetaObject *mo, int local_signal_index, Ret *ret, const Args &... args)
+    {
+        void *_a[] = {
+            const_cast<void *>(reinterpret_cast<const volatile void *>(ret)),
+            const_cast<void *>(reinterpret_cast<const volatile void *>(std::addressof(args)))...
+        };
+        activate(sender, mo, local_signal_index, _a);
+    }
 
 #if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
     static bool invokeMethod(QObject *obj, const char *member,
@@ -618,11 +641,12 @@ private:
 
         auto h = QtPrivate::invokeMethodHelper(ret, std::forward<Args>(args)...);
 
-        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+        // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
         auto callable = new QtPrivate::QCallableObject<std::decay_t<Func>, ActualArguments,
                 typename Callable::ReturnType>(std::forward<Func>(function));
         return invokeMethodImpl(object, callable, type, h.parameterCount(), h.parameters.data(),
                 h.typeNames.data(), h.metaTypes.data());
+        // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
     }
 
     static bool invokeMethodImpl(QObject *object, const char *member, Qt::ConnectionType type,
@@ -638,11 +662,17 @@ private:
     static QObject *newInstanceImpl(const QMetaObject *mobj, qsizetype parameterCount,
                                     const void **parameters, const char **typeNames,
                                     const QtPrivate::QMetaTypeInterface **metaTypes);
+
+    static QMetaObject::Connection connectImpl(const QObject *sender, const QMetaMethod& signal,
+                                            const QObject *receiver, void **slotPtr,
+                                            QtPrivate::QSlotObjectBase *slot, Qt::ConnectionType type);
+
     friend class QTimer;
     friend class QChronoTimer;
 };
 
 class Q_CORE_EXPORT QMetaObject::Connection {
+    mutable // QTBUG-144929
     void *d_ptr; //QObjectPrivate::Connection*
     explicit Connection(void *data) : d_ptr(data) {  }
     friend class QObject;
@@ -651,7 +681,8 @@ class Q_CORE_EXPORT QMetaObject::Connection {
     bool isConnected_helper() const;
 public:
     ~Connection();
-    Connection();
+    QT_CORE_INLINE_SINCE(6, 12)
+    Connection() noexcept;
     Connection(const Connection &other);
     Connection &operator=(const Connection &other);
 #ifdef Q_QDOC
@@ -667,6 +698,39 @@ public:
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(Connection)
     void swap(Connection &other) noexcept { qt_ptr_swap(d_ptr, other.d_ptr); }
 };
+
+#if QT_CORE_INLINE_IMPL_SINCE(6, 12)
+QMetaObject::Connection::Connection() noexcept
+    : d_ptr(nullptr)
+{}
+#endif // QT_CORE_INLINE_IMPL_SINCE(6, 12)
+
+
+template <typename Func>
+QMetaObject::Connection
+    QMetaObject::connect(const QObject *sender, const QMetaMethod &signal,
+                         const typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *context, Func &&slot,
+                         Qt::ConnectionType type)
+{
+    using Slot = std::decay_t<Func>;
+    using FunctionSlotType = QtPrivate::FunctionPointer<Slot>;
+    void **pSlot = nullptr;
+    QtPrivate::QSlotObjectBase *slotObject;
+    if constexpr (FunctionSlotType::ArgumentCount != -1) {
+        slotObject = new QtPrivate::QCallableObject<Slot, typename FunctionSlotType::Arguments, typename FunctionSlotType::ReturnType>(std::forward<Func>(slot));
+        if constexpr (FunctionSlotType::IsPointerToMemberFunction) {
+            pSlot = const_cast<void **>(reinterpret_cast<void *const *>(&slot));
+        } else {
+            Q_ASSERT_X((type & Qt::UniqueConnection) == 0, "",
+                "QObject::connect: Unique connection requires the slot to be a pointer to "
+                "a member function of a QObject subclass.");
+        }
+    } else {
+        using FunctorSlotType = QtPrivate::FunctionPointer<decltype(&Slot::operator())>;
+        slotObject = new QtPrivate::QCallableObject<Slot, typename FunctorSlotType::Arguments, typename FunctorSlotType::ReturnType>(std::forward<Func>(slot));
+    }
+    return QMetaObject::connectImpl(sender, signal, context, pSlot, slotObject, type);
+}
 
 inline void swap(QMetaObject::Connection &lhs, QMetaObject::Connection &rhs) noexcept
 {
@@ -684,6 +748,24 @@ namespace QtPrivate {
         static int test(int (Object::*)(QMetaObject::Call, int, void **));
         enum { Value =  sizeof(test(&Object::qt_metacall)) == sizeof(int) };
     };
+
+    template <class TgtType, class SrcType>
+    inline TgtType qobject_cast_helper(SrcType *object)
+    {
+        using ObjType = std::remove_cv_t<std::remove_pointer_t<TgtType>> ;
+        static_assert(std::is_pointer_v<TgtType>,
+                "qobject_cast requires to cast towards a pointer type");
+        static_assert(HasQ_OBJECT_Macro<ObjType>::Value,
+                "qobject_cast requires the type to have a Q_OBJECT macro");
+
+        if constexpr (std::is_final_v<ObjType>) {
+            if (object && object->metaObject() == &ObjType::staticMetaObject)
+                return static_cast<TgtType>(object);
+            return nullptr;
+        } else {
+            return static_cast<TgtType>(ObjType::staticMetaObject.cast(object));
+        }
+    }
 }
 
 QT_END_NAMESPACE

@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSUIAMAINPROVIDER_H
 #define QWINDOWSUIAMAINPROVIDER_H
@@ -33,6 +34,7 @@ public:
     static void notifyStateChange(QAccessibleStateChangeEvent *event);
     static void notifyValueChange(QAccessibleValueChangeEvent *event);
     static void notifyNameChange(QAccessibleEvent *event);
+    static void notifyRoleChange(QAccessibleEvent *event);
     static void notifySelectionChange(QAccessibleEvent *event);
     static void notifyTextChange(QAccessibleEvent *event);
     static void raiseNotification(QAccessibleAnnouncementEvent *event);
@@ -59,6 +61,7 @@ public:
     HRESULT STDMETHODCALLTYPE GetFocus(IRawElementProviderFragment **pRetVal) override;
 
 private:
+    static void setLabelledBy(QAccessibleInterface *accessible, VARIANT *pRetVal);
     static void fillVariantArrayForRelation(QAccessibleInterface *accessible, QAccessible::Relation relation, VARIANT *pRetVal);
     static void setAriaProperties(QAccessibleInterface *accessible, VARIANT *pRetVal);
     static void setStyle(QAccessibleInterface *accessible, VARIANT *pRetVal);

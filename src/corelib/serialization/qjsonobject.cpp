@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qjsonobject.h>
 #include <qjsonvalue.h>
@@ -156,8 +157,7 @@ QJsonObject &QJsonObject::operator =(const QJsonObject &other) noexcept = defaul
 /*!
     \fn void QJsonObject::swap(QJsonObject &other)
     \since 5.10
-
-    Swaps the object \a other with this. This operation is very fast and never fails.
+    \memberswap{object}
 */
 
 #ifndef QT_NO_VARIANT
@@ -795,6 +795,15 @@ QJsonObject::const_iterator QJsonObject::constFindImpl(T key) const
     \overload
 */
 
+/*! \fn QJsonObject::const_iterator QJsonObject::cbegin() const
+    \since 6.12
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the first item
+    in the object.
+
+    \sa begin(), cend()
+*/
+
 /*! \fn QJsonObject::const_iterator QJsonObject::constBegin() const
 
     Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the first item
@@ -816,6 +825,15 @@ QJsonObject::const_iterator QJsonObject::constFindImpl(T key) const
     \overload
 */
 
+/*! \fn QJsonObject::const_iterator QJsonObject::cend() const
+    \since 6.12
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    item after the last item in the object.
+
+    \sa cbegin(), end()
+*/
+
 /*! \fn QJsonObject::const_iterator QJsonObject::constEnd() const
 
     Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
@@ -830,6 +848,107 @@ QJsonObject::const_iterator QJsonObject::constFindImpl(T key) const
     This function is provided for STL compatibility. It is equivalent
     to isEmpty(), returning \c true if the object is empty; otherwise
     returning \c false.
+*/
+
+/*! \typedef QJsonObject::const_key_value_iterator
+    \inmodule QtCore
+    \since 6.10
+    \brief The QJsonObject::const_key_value_iterator typedef provides an STL-style iterator for
+   QJsonObject.
+
+    QJsonObject::const_key_value_iterator is essentially the same as QJsonObject::const_iterator
+    with the difference that operator*() returns a key/value pair instead of a
+    value.
+
+    \sa QKeyValueIterator
+*/
+
+/*! \typedef QJsonObject::key_value_iterator
+    \inmodule QtCore
+    \since 6.10
+    \brief The QJsonObject::key_value_iterator typedef provides an STL-style iterator for
+   QJsonObject.
+
+    QJsonObject::key_value_iterator is essentially the same as QJsonObject::iterator
+    with the difference that operator*() returns a key/value pair instead of a
+    value.
+
+    \sa QKeyValueIterator
+*/
+
+/*! \fn QJsonObject::key_value_iterator QJsonObject::keyValueBegin()
+    \since 6.10
+
+    Returns an \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the object.
+
+    \sa keyValueEnd()
+*/
+
+/*! \fn QJsonObject::key_value_iterator QJsonObject::keyValueEnd()
+    \since 6.10
+
+    Returns an \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the object.
+
+    \sa keyValueBegin()
+*/
+
+/*! \fn QJsonObject::const_key_value_iterator QJsonObject::keyValueBegin() const
+    \since 6.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the object.
+
+    \sa keyValueEnd()
+*/
+
+/*! \fn QJsonObject::const_key_value_iterator QJsonObject::constKeyValueBegin() const
+    \since 6.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the object.
+
+    \sa keyValueBegin()
+*/
+
+/*! \fn QJsonObject::const_key_value_iterator QJsonObject::keyValueEnd() const
+    \since 6.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the object.
+
+    \sa keyValueBegin()
+*/
+
+/*! \fn QJsonObject::const_key_value_iterator QJsonObject::constKeyValueEnd() const
+    \since 6.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the ibject.
+
+    \sa constKeyValueBegin()
+*/
+
+/*! \fn auto QJsonObject::asKeyValueRange() &
+    \fn auto QJsonObject::asKeyValueRange() const &
+    \fn auto QJsonObject::asKeyValueRange() &&
+    \fn auto QJsonObject::asKeyValueRange() const &&
+    \since 6.10
+
+    Returns a range object that allows iteration over this object as
+    key/value pairs. For instance, this range object can be used in a
+    range-based for loop, in combination with a structured binding declaration:
+
+    \snippet code/src_corelib_serialization_qjsonobject.cpp 1
+
+    Note that the value obtained this way is a reference into the one in the
+    object. Specifically, mutating the value will modify the object itself.
+
+    When calling this method on rvalues (e.g. on a temporary created in the
+    inializer of a ranged for-loop), the object will be captured in this range.
+
+    \sa QKeyValueIterator
 */
 
 /*! \class QJsonObject::iterator
@@ -915,7 +1034,24 @@ QJsonObject::const_iterator QJsonObject::constFindImpl(T key) const
     iterator, although it can be done by calling QJsonObject::erase()
     followed by QJsonObject::insert().
 
-    \sa value()
+    \sa value(), keyView()
+*/
+
+/*!
+    \fn QAnyStringView QJsonObject::iterator::keyView() const
+    \since 6.10
+
+    Returns the current item's key as a QAnyStringView. This function does not
+    allocate memory.
+
+    Since QJsonObject stores keys in US-ASCII, UTF-8 or UTF-16, the returned
+    QAnyStringView may be in any of these encodings.
+
+    There is no direct way of changing an item's key through an
+    iterator, although it can be done by calling QJsonObject::erase()
+    followed by QJsonObject::insert().
+
+    \sa key(), value()
 */
 
 /*! \fn QJsonValueRef QJsonObject::iterator::value() const
@@ -931,7 +1067,7 @@ QJsonObject::const_iterator QJsonObject::constFindImpl(T key) const
     the assignment will apply to the element in the QJsonArray or QJsonObject
     from which you got the reference.
 
-    \sa key(), operator*()
+    \sa key(), keyView(), operator*()
 */
 
 /*! \fn QJsonValueRef QJsonObject::iterator::operator*() const
@@ -946,7 +1082,7 @@ QJsonObject::const_iterator QJsonObject::constFindImpl(T key) const
     the assignment will apply to the element in the QJsonArray or QJsonObject
     from which you got the reference.
 
-    \sa key()
+    \sa key(), keyView()
 */
 
 /*! \fn QJsonValueRef *QJsonObject::iterator::operator->()
@@ -1190,14 +1326,27 @@ QJsonObject::const_iterator QJsonObject::constFindImpl(T key) const
 
     Returns the current item's key.
 
-    \sa value()
+    \sa value(), keyView()
+*/
+
+/*!
+    \fn QAnyStringView QJsonObject::const_iterator::keyView() const
+    \since 6.10
+
+    Returns the current item's key as a QAnyStringView. This function does not
+    allocate.
+
+    Since QJsonObject stores keys in US-ASCII, UTF-8 or UTF-16, the returned
+    QAnyStringView may be in any of these encodings.
+
+    \sa value(), key()
 */
 
 /*! \fn QJsonValueConstRef QJsonObject::const_iterator::value() const
 
     Returns the current item's value.
 
-    \sa key(), operator*()
+    \sa key(), keyView(), operator*()
 */
 
 /*! \fn const QJsonValueConstRef QJsonObject::const_iterator::operator*() const
@@ -1206,7 +1355,7 @@ QJsonObject::const_iterator QJsonObject::constFindImpl(T key) const
 
     Same as value().
 
-    \sa key()
+    \sa key(), keyView()
 */
 
 /*! \fn const QJsonValueConstRef *QJsonObject::const_iterator::operator->() const
@@ -1416,7 +1565,7 @@ void QJsonObject::removeAt(qsizetype index)
 
 size_t qHash(const QJsonObject &object, size_t seed)
 {
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombine hash(seed);
     for (auto it = object.begin(), end = object.end(); it != end; ++it) {
         const QString key = it.key();
         const QJsonValue value = it.value();
@@ -1425,7 +1574,7 @@ size_t qHash(const QJsonObject &object, size_t seed)
     return seed;
 }
 
-#if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
+#if !defined(QT_NO_DEBUG_STREAM)
 QDebug operator<<(QDebug dbg, const QJsonObject &o)
 {
     QDebugStateSaver saver(dbg);

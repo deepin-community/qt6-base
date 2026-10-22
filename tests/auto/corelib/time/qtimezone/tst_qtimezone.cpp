@@ -3,8 +3,11 @@
 
 #include <QTest>
 #include <qtimezone.h>
-#include <private/qtimezoneprivate_p.h>
+#if QT_CONFIG(timezone)
+#  include <private/qtimezoneprivate_p.h>
+#endif
 #include <private/qcomparisontesthelper_p.h>
+#include <private/qtools_p.h>
 
 #include <qlocale.h>
 #include <qscopeguard.h>
@@ -13,7 +16,7 @@
 #include <QOperatingSystemVersion>
 #endif
 
-#if defined(Q_OS_WIN) && !QT_CONFIG(icu)
+#if defined(Q_OS_WIN) && !QT_CONFIG(icu) && !QT_CONFIG(timezone_tzdb)
 #  define USING_WIN_TZ
 #endif
 
@@ -51,34 +54,47 @@ private Q_SLOTS:
     void checkOffset();
     void stressTest();
     void windowsId();
-    void isValidId_data();
-    void isValidId();
     void serialize();
     void malformed();
-    // Backend tests
+    // Backend tests (see also ../qtimezonebackend/)
     void utcTest();
-    void icuTest();
-    void tzTest();
-    void macTest();
     void darwinTypes();
-    void winTest();
+    void wasmTypes();
     void localeSpecificDisplayName_data();
     void localeSpecificDisplayName();
+    // Compatibility with std::chrono::tzdb:
     void stdCompatibility_data();
     void stdCompatibility();
-#endif // timezone backends
+#endif // timezone backends exist
 
 private:
+#if QT_CONFIG(timezone)
     void printTimeZone(const QTimeZone &tz);
-#if defined(QT_BUILD_INTERNAL) && QT_CONFIG(timezone)
-    // Generic tests of privates, called by implementation-specific private tests:
-    void testCetPrivate(const QTimeZonePrivate &tzp);
-    void testEpochTranPrivate(const QTimeZonePrivate &tzp);
-#endif // QT_BUILD_INTERNAL && timezone backends
+    // Where tzdb contains a link between zones in different territories, CLDR
+    // doesn't treat those as aliases for one another. For details see "Links in
+    // the tz database" at:
+    // https://www.unicode.org/reports/tr35/#time-zone-identifiers
+    // Some of these could be identified as equivalent by looking at metazone
+    // histories but, for now, we stick with CLDR's notion of alias.
+    const std::set<QByteArrayView> unAliasedLinks = {
+        // By continent:
+        "America/Kralendijk", "America/Lower_Princes", "America/Marigot", "America/St_Barthelemy",
+        "Antarctica/South_Pole",
+        "Arctic/Longyearbyen",
+        "Asia/Choibalsan",
+        "Atlantic/Jan_Mayen",
+        "Europe/Bratislava", "Europe/Busingen", "Europe/Mariehamn",
+        "Europe/Podgorica", "Europe/San_Marino", "Europe/Vatican",
+        // Assorted legacy abbreviations and POSIX zones:
+        "CET", "EET", "EST", "HST", "MET", "MST", "WET",
+        "CST6CDT", "EST5EDT", "MST7MDT", "PST8PDT",
+    };
+#endif // timezone backends
     // Set to true to print debug output, test Display Names and run long stress tests
     static constexpr bool debug = false;
 };
 
+#if QT_CONFIG(timezone)
 void tst_QTimeZone::printTimeZone(const QTimeZone &tz)
 {
     QDateTime now = QDateTime::currentDateTime();
@@ -104,7 +120,7 @@ void tst_QTimeZone::printTimeZone(const QTimeZone &tz)
     qDebug() << "Name Short Generic      = " << tz.displayName(QTimeZone::GenericTime, QTimeZone::ShortName);
     qDebug() << "Name Offset Generic     = " << tz.displayName(QTimeZone::GenericTime, QTimeZone::OffsetName);
     qDebug() << "";
-    QLocale locale = QLocale(QStringLiteral("de_DE"));
+    QLocale locale = QLocale(u"de_DE");
     qDebug() << "Locale                  = " << locale.name();
     qDebug() << "Name Long               = " << tz.displayName(QTimeZone::StandardTime, QTimeZone::LongName, locale);
     qDebug() << "Name Short              = " << tz.displayName(QTimeZone::StandardTime, QTimeZone::ShortName, locale);
@@ -144,12 +160,14 @@ void tst_QTimeZone::printTimeZone(const QTimeZone &tz)
     qDebug() << "Transition before 1 Jun = " << tz.previousTransition(jun).atUtc;
     qDebug() << "";
 }
+#endif // feature timezone
 
 void tst_QTimeZone::createTest()
 {
+#if QT_CONFIG(timezone)
     const QTimeZone tz("Pacific/Auckland");
 
-    if (debug)
+    if constexpr (debug)
         printTimeZone(tz);
 
     // If the tz is not valid then skip as is probably using the UTC backend which is tested later
@@ -242,13 +260,16 @@ void tst_QTimeZone::createTest()
             QCOMPARE(result.at(i).daylightTimeOffset, expected.at(i).daylightTimeOffset);
         }
     }
+#else
+    QSKIP("Test depends on backends, enabled by feature timezone");
+#endif // feature timezone
 }
 
 void tst_QTimeZone::nullTest()
 {
     QTimeZone nullTz1;
     QTimeZone nullTz2;
-    QTimeZone utc("UTC");
+    QTimeZone utc(QTimeZone::UTC);
 
     // Validity tests
     QCOMPARE(nullTz1.isValid(), false);
@@ -267,6 +288,7 @@ void tst_QTimeZone::nullTest()
     utc = nullTz1;
     QCOMPARE(utc.isValid(), false);
 
+#if QT_CONFIG(timezone)
     QCOMPARE(nullTz1.id(), QByteArray());
     QCOMPARE(nullTz1.territory(), QLocale::AnyTerritory);
     QCOMPARE(nullTz1.comment(), QString());
@@ -312,6 +334,7 @@ void tst_QTimeZone::nullTest()
     QCOMPARE(data.offsetFromUtc, invalidOffset);
     QCOMPARE(data.standardTimeOffset, invalidOffset);
     QCOMPARE(data.daylightTimeOffset, invalidOffset);
+#endif // feature timezone
 }
 
 void tst_QTimeZone::assign()
@@ -464,28 +487,29 @@ void tst_QTimeZone::offset()
 
 void tst_QTimeZone::dataStreamTest()
 {
-#ifndef QT_NO_DATASTREAM
+#if QT_CONFIG(timezone) && !defined(QT_NO_DATASTREAM)
     // Test the OffsetFromUtc backend serialization. First with a custom timezone:
-    QTimeZone tz1("QST", 123456, "Qt Standard Time", "QST", QLocale::Norway, "Qt Testing");
+    QTimeZone tz1("QST"_ba, 23456,
+                  u"Qt Standard Time"_s, u"QST"_s, QLocale::Norway, u"Qt Testing"_s);
     QByteArray tmp;
     {
         QDataStream ds(&tmp, QIODevice::WriteOnly);
         ds << tz1;
+        QCOMPARE(ds.status(), QDataStream::Ok);
     }
-    QTimeZone tz2("UTC");
+    QTimeZone tz2("UTC-12:00"); // Shall be over-written.
     {
         QDataStream ds(&tmp, QIODevice::ReadOnly);
         ds >> tz2;
+        QCOMPARE(ds.status(), QDataStream::Ok);
     }
-    QCOMPARE(tz2.id(), QByteArray("QST"));
-    QCOMPARE(tz2.comment(), QString("Qt Testing"));
+    QCOMPARE(tz2.id(), "QST"_ba);
+    QCOMPARE(tz2.comment(), u"Qt Testing"_s);
     QCOMPARE(tz2.territory(), QLocale::Norway);
-    QCOMPARE(tz2.abbreviation(QDateTime::currentDateTime()), QString("QST"));
-    QCOMPARE(tz2.displayName(QTimeZone::StandardTime, QTimeZone::LongName, QLocale()),
-             QString("Qt Standard Time"));
-    QCOMPARE(tz2.displayName(QTimeZone::DaylightTime, QTimeZone::LongName, QLocale()),
-             QString("Qt Standard Time"));
-    QCOMPARE(tz2.offsetFromUtc(QDateTime::currentDateTime()), 123456);
+    QCOMPARE(tz2.abbreviation(QDateTime::currentDateTime()), u"QST"_s);
+    QCOMPARE(tz2.displayName(QTimeZone::StandardTime, QTimeZone::LongName), u"Qt Standard Time"_s);
+    QCOMPARE(tz2.displayName(QTimeZone::DaylightTime, QTimeZone::LongName), u"Qt Standard Time"_s);
+    QCOMPARE(tz2.offsetFromUtc(QDateTime::currentDateTime()), 23456);
 
     // And then with a standard IANA timezone (QTBUG-60595):
     tz1 = QTimeZone("UTC");
@@ -493,10 +517,12 @@ void tst_QTimeZone::dataStreamTest()
     {
         QDataStream ds(&tmp, QIODevice::WriteOnly);
         ds << tz1;
+        QCOMPARE(ds.status(), QDataStream::Ok);
     }
     {
         QDataStream ds(&tmp, QIODevice::ReadOnly);
         ds >> tz2;
+        QCOMPARE(ds.status(), QDataStream::Ok);
     }
     QCOMPARE(tz2.isValid(), true);
     QCOMPARE(tz2.id(), tz1.id());
@@ -511,14 +537,16 @@ void tst_QTimeZone::dataStreamTest()
     {
         QDataStream ds(&tmp, QIODevice::WriteOnly);
         ds << tz1;
+        QCOMPARE(ds.status(), QDataStream::Ok);
     }
     tz2 = QTimeZone("UTC");
     {
         QDataStream ds(&tmp, QIODevice::ReadOnly);
         ds >> tz2;
+        QCOMPARE(ds.status(), QDataStream::Ok);
     }
     QCOMPARE(tz2.id(), tz1.id());
-#endif
+#endif // feature timezone and enabled datastream
 }
 
 #if QT_CONFIG(timezone)
@@ -565,7 +593,8 @@ void tst_QTimeZone::isTimeZoneIdAvailable()
         QVERIFY2(QTimeZone::isTimeZoneIdAvailable(id), id);
         const QTimeZone zone(id);
         QVERIFY2(zone.isValid(), id);
-        QVERIFY2(zone.hasAlternativeName(id), zone.id() + " != " + id);
+        if (unAliasedLinks.find(id) == unAliasedLinks.end())
+            QVERIFY2(zone.hasAlternativeName(id), zone.id() + " != " + id);
     }
     // availableTimeZoneIds() doesn't list all possible offset IDs, but
     // isTimeZoneIdAvailable() should accept them.
@@ -640,14 +669,22 @@ void tst_QTimeZone::utcOffsetId_data()
     ROW("UTC-09", true, -32400);
     ROW("UTC-08", true, -28800);
     ROW("UTC-8", true, -28800);
-    ROW("UTC-2:5", true, -7500);
     ROW("UTC-02", true, -7200);
     ROW("UTC+2", true, 7200);
-    ROW("UTC+2:5", true, 7500);
     ROW("UTC+12", true, 43200);
     ROW("UTC+13", true, 46800);
     // Encountered in bug reports:
     ROW("UTC+10", true, 36000); // QTBUG-77738
+
+    // Minutes, if present, require two digits, but hour doesn't:
+    ROW("UTC+2:5", false, 0);
+    ROW("UTC+02:5", false, 0);
+    ROW("UTC+2:05", true, 7500);
+    ROW("UTC+02:05", true, 7500);
+    ROW("UTC-2:5", false, 0);
+    ROW("UTC-02:5", false, 0);
+    ROW("UTC-2:05", true, -7500);
+    ROW("UTC-02:05", true, -7500);
 
     // Bounds:
     ROW("UTC+23", true, 82800);
@@ -692,17 +729,23 @@ void tst_QTimeZone::utcOffsetId()
         QCOMPARE(zone.offsetFromUtc(epoch), offset);
         QVERIFY(!zone.hasDaylightTime());
 
-        // zone.id() will be an IANA ID with zero minutes field if original was
-        // a UTC offset by a whole number of hours. It will also zero-pad a
-        // single-digit hour or minute to two digits.
-        if (const qsizetype cut = id.indexOf(':'); cut >= 0) {
-            if (id.size() == cut + 2) // "...:m" -> "...:0m"
-                id.insert(cut + 1, '0');
-        } else if (zone.id().contains(':')) {
-            id += ":00";
+        if (zone.id() != id && zone.id().contains(':')) {
+            // If the backend handles the offset-form, it uses the ID passed to
+            // QTimeZone as its id(). Otherwise, it's picked up by the QTZ
+            // constructor's final fallback, which constructs a UTC-backend from
+            // the parsed offset, which canonicalises the ID. That'll include a
+            // zero minutes field if the original was offset by a whole number
+            // of hours from UTC. It'll also zero-pad a single-digit hour to two
+            // digits. (Single-digit minutes are not valid.)
+            qsizetype cut = id.indexOf(':');
+            if (cut < 0) {
+                cut = id.size();
+                id += ":00";
+            }
+            if (cut == 5)
+                id.insert(4, '0');
+            // else: the discrepancy makes no sense, let the QCOMPARE() fail.
         }
-        if (id.indexOf(':') == 5) // UTC±h:mm -> UTC±0h:mm
-            id.insert(4, '0');
 
         QCOMPARE(zone.id(), id);
     }
@@ -762,6 +805,13 @@ void tst_QTimeZone::hasAlternativeName()
 
 void tst_QTimeZone::specificTransition_data()
 {
+#if QT_CONFIG(timezone_tzdb) && defined(__GLIBCXX__)
+    QSKIP("libstdc++'s C++20 misreads the IANA DB for Moscow's transitions (among others).");
+#endif
+#if defined Q_OS_ANDROID && !QT_CONFIG(timezone_tzdb)
+    if (!QTimeZone("Europe/Moscow").hasTransitions())
+        QSKIP("Android time-zone back-end has no transition data");
+#endif
     QTest::addColumn<QByteArray>("zone");
     QTest::addColumn<QDate>("start");
     QTest::addColumn<QDate>("stop");
@@ -771,10 +821,6 @@ void tst_QTimeZone::specificTransition_data()
     QTest::addColumn<int>("offset");
     QTest::addColumn<int>("stdoff");
     QTest::addColumn<int>("dstoff");
-#ifdef Q_OS_ANDROID
-    if (!QTimeZone("Europe/Moscow").hasTransitions())
-        QSKIP("Android time-zone back-end has no transition data");
-#endif
 
     // Moscow ditched DST on 2010-10-31 but has since changed standard offset twice.
 #ifdef USING_WIN_TZ
@@ -958,7 +1004,7 @@ void tst_QTimeZone::checkOffset()
 
 void tst_QTimeZone::availableTimeZoneIds()
 {
-    if (debug) {
+    if constexpr (debug) {
         qDebug() << "";
         qDebug() << "Available Time Zones" ;
         qDebug() << QTimeZone::availableTimeZoneIds();
@@ -970,27 +1016,40 @@ void tst_QTimeZone::availableTimeZoneIds()
         qDebug() << QTimeZone::availableTimeZoneIds(0);
         qDebug() << "";
     } else {
-        //Just test the calls work, we cannot know what any test machine has available
+        // Test the calls work:
         QList<QByteArray> listAll = QTimeZone::availableTimeZoneIds();
-        QList<QByteArray> listUs = QTimeZone::availableTimeZoneIds(QLocale::UnitedStates);
-        QList<QByteArray> listZero = QTimeZone::availableTimeZoneIds(0);
+        QList<QByteArray> list001 = QTimeZone::availableTimeZoneIds(QLocale::World);
+        QList<QByteArray> listUsa = QTimeZone::availableTimeZoneIds(QLocale::UnitedStates);
+        QList<QByteArray> listGmt = QTimeZone::availableTimeZoneIds(0);
+        // We cannot know what any test machine has available, so can't test contents.
+        // But we can do a consistency check:
+        QCOMPARE_LT(list001.size(), listAll.size());
+        QCOMPARE_LT(listUsa.size(), listAll.size());
+        QCOMPARE_LT(listGmt.size(), listAll.size());
+        // And we do know CLDR data supplies some entries to each:
+        QCOMPARE_GT(listAll.size(), 0);
+        QCOMPARE_GT(list001.size(), 0);
+        QCOMPARE_GT(listUsa.size(), 0);
+        QCOMPARE_GT(listGmt.size(), 0);
     }
 }
 
 void tst_QTimeZone::stressTest()
 {
-    const auto UTC = QTimeZone::UTC;
+    constexpr auto UTC = QTimeZone::UTC;
     const QList<QByteArray> idList = QTimeZone::availableTimeZoneIds();
     for (const QByteArray &id : idList) {
         QTimeZone testZone = QTimeZone(id);
         QCOMPARE(testZone.isValid(), true);
-        QVERIFY2(testZone.hasAlternativeName(id), testZone.id() + " != " + id);
+        if (unAliasedLinks.find(id) == unAliasedLinks.end())
+            QVERIFY2(testZone.hasAlternativeName(id), testZone.id() + " != " + id);
         QDateTime testDate = QDateTime(QDate(2015, 1, 1), QTime(0, 0), UTC);
         testZone.territory();
         testZone.comment();
         testZone.displayName(testDate);
-        testZone.displayName(QTimeZone::DaylightTime);
-        testZone.displayName(QTimeZone::StandardTime);
+        (void)testZone.displayName(QTimeZone::GenericTime);
+        (void)testZone.displayName(QTimeZone::StandardTime);
+        (void)testZone.displayName(QTimeZone::DaylightTime);
         testZone.abbreviation(testDate);
         testZone.offsetFromUtc(testDate);
         testZone.standardTimeOffset(testDate);
@@ -1014,7 +1073,7 @@ void tst_QTimeZone::stressTest()
         testZone.nextTransition(highDate2);
         testZone.previousTransition(highDate1);
         testZone.previousTransition(highDate2);
-        if (debug) {
+        if constexpr (debug) {
             // This could take a long time, depending on platform and database
             qDebug() << "Stress test calculating transistions for" << testZone.id();
             testZone.transitions(lowDate1, highDate1);
@@ -1031,13 +1090,12 @@ void tst_QTimeZone::windowsId()
 /*
     Current Windows zones for "Central Standard Time":
     Region      IANA Id(s)
-    Default     "America/Chicago"
+    World       "America/Chicago" (the default)
     Canada      "America/Winnipeg America/Rankin_Inlet America/Resolute"
-    Mexico      "America/Matamoros"
+    Mexico      "America/Matamoros America/Ojinaga"
     USA         "America/Chicago America/Indiana/Knox America/Indiana/Tell_City America/Menominee"
                 "America/North_Dakota/Beulah America/North_Dakota/Center"
                 "America/North_Dakota/New_Salem"
-    AnyTerritory  "CST6CDT"
 */
     QCOMPARE(QTimeZone::ianaIdToWindowsId("America/Chicago"),
              QByteArray("Central Standard Time"));
@@ -1052,10 +1110,12 @@ void tst_QTimeZone::windowsId()
     // Check default value
     QCOMPARE(QTimeZone::windowsIdToDefaultIanaId("Central Standard Time"),
              QByteArray("America/Chicago"));
+    QCOMPARE(QTimeZone::windowsIdToDefaultIanaId("Central Standard Time", QLocale::World),
+             QByteArray("America/Chicago"));
     QCOMPARE(QTimeZone::windowsIdToDefaultIanaId("Central Standard Time", QLocale::Canada),
              QByteArray("America/Winnipeg"));
     QCOMPARE(QTimeZone::windowsIdToDefaultIanaId("Central Standard Time", QLocale::AnyTerritory),
-             QByteArray("CST6CDT"));
+             QByteArray());
     QCOMPARE(QTimeZone::windowsIdToDefaultIanaId(QByteArray()), QByteArray());
 
     {
@@ -1065,9 +1125,14 @@ void tst_QTimeZone::windowsId()
             "America/Matamoros", "America/Menominee", "America/North_Dakota/Beulah",
             "America/North_Dakota/Center", "America/North_Dakota/New_Salem",
             "America/Ojinaga", "America/Rankin_Inlet", "America/Resolute",
-            "America/Winnipeg", "CST6CDT"
+            "America/Winnipeg"
         };
         QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time"), list);
+    }
+    {
+        const QList<QByteArray> list = { "America/Chicago" };
+        QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::World),
+                 list);
     }
     {
         // Check country with no match returns empty list
@@ -1096,7 +1161,7 @@ void tst_QTimeZone::windowsId()
                  list);
     }
     {
-        const QList<QByteArray> list = { "CST6CDT" };
+        const QList<QByteArray> list;
         QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::AnyTerritory),
                  list);
     }
@@ -1106,120 +1171,6 @@ void tst_QTimeZone::windowsId()
         QCOMPARE(QTimeZone::windowsIdToIanaIds(QByteArray()), empty);
         QCOMPARE(QTimeZone::windowsIdToIanaIds(QByteArray(), QLocale::AnyTerritory), empty);
     }
-}
-
-void tst_QTimeZone::isValidId_data()
-{
-#ifdef QT_BUILD_INTERNAL
-    QTest::addColumn<QByteArray>("input");
-    QTest::addColumn<bool>("valid");
-
-    // a-z, A-Z, 0-9, '.', '-', '_' are valid chars
-    // Can't start with '-'
-    // Parts separated by '/', each part min 1 and max of 14 chars
-    // (Android has parts with lengths up to 17, so tolerates this as a special case.)
-#define TESTSET(name, section, valid) \
-    QTest::newRow(name " front")  << QByteArray(section "/xyz/xyz")    << valid; \
-    QTest::newRow(name " middle") << QByteArray("xyz/" section "/xyz") << valid; \
-    QTest::newRow(name " back")   << QByteArray("xyz/xyz/" section)    << valid
-
-    // a-z, A-Z, 0-9, '.', '-', '_' are valid chars
-    // Can't start with '-'
-    // Parts separated by '/', each part min 1 and max of 14 chars
-    TESTSET("empty", "", false);
-    TESTSET("minimal", "m", true);
-#if defined(Q_OS_ANDROID) || QT_CONFIG(icu)
-    TESTSET("maximal", "East-Saskatchewan", true); // Android actually uses this
-    TESTSET("too long", "North-Saskatchewan", false); // ... but thankfully not this.
-#else
-    TESTSET("maximal", "12345678901234", true);
-    TESTSET("maximal twice", "12345678901234/12345678901234", true);
-    TESTSET("too long", "123456789012345", false);
-    TESTSET("too-long/maximal", "123456789012345/12345678901234", false);
-    TESTSET("maximal/too-long", "12345678901234/123456789012345", false);
-#endif
-
-    TESTSET("bad hyphen", "-hyphen", false);
-    TESTSET("good hyphen", "hy-phen", true);
-
-    TESTSET("valid char _", "_", true);
-    TESTSET("valid char .", ".", true);
-    TESTSET("valid char :", ":", true);
-    TESTSET("valid char +", "+", true);
-    TESTSET("valid char A", "A", true);
-    TESTSET("valid char Z", "Z", true);
-    TESTSET("valid char a", "a", true);
-    TESTSET("valid char z", "z", true);
-    TESTSET("valid char 0", "0", true);
-    TESTSET("valid char 9", "9", true);
-
-    TESTSET("valid pair az", "az", true);
-    TESTSET("valid pair AZ", "AZ", true);
-    TESTSET("valid pair 09", "09", true);
-    TESTSET("valid pair .z", ".z", true);
-    TESTSET("valid pair _z", "_z", true);
-    TESTSET("invalid pair -z", "-z", false);
-
-    TESTSET("valid triple a/z", "a/z", true);
-    TESTSET("valid triple a.z", "a.z", true);
-    TESTSET("valid triple a-z", "a-z", true);
-    TESTSET("valid triple a_z", "a_z", true);
-    TESTSET("invalid triple a z", "a z", false);
-    TESTSET("invalid triple a\\z", "a\\z", false);
-    TESTSET("invalid triple a,z", "a,z", false);
-
-    TESTSET("invalid space", " ", false);
-    TESTSET("invalid char ^", "^", false);
-    TESTSET("invalid char \"", "\"", false);
-    TESTSET("invalid char $", "$", false);
-    TESTSET("invalid char %", "%", false);
-    TESTSET("invalid char &", "&", false);
-    TESTSET("invalid char (", "(", false);
-    TESTSET("invalid char )", ")", false);
-    TESTSET("invalid char =", "=", false);
-    TESTSET("invalid char -", "-", false);
-    TESTSET("invalid char ?", "?", false);
-    TESTSET("invalid char ß", "ß", false);
-    TESTSET("invalid char \\x01", "\x01", false);
-    TESTSET("invalid char ' '", " ", false);
-
-#undef TESTSET
-
-    QTest::newRow("az alone") << QByteArray("az") << true;
-    QTest::newRow("AZ alone") << QByteArray("AZ") << true;
-    QTest::newRow("09 alone") << QByteArray("09") << true;
-    QTest::newRow("a/z alone") << QByteArray("a/z") << true;
-    QTest::newRow("a.z alone") << QByteArray("a.z") << true;
-    QTest::newRow("a-z alone") << QByteArray("a-z") << true;
-    QTest::newRow("a_z alone") << QByteArray("a_z") << true;
-    QTest::newRow(".z alone") << QByteArray(".z") << true;
-    QTest::newRow("_z alone") << QByteArray("_z") << true;
-    QTest::newRow("a z alone") << QByteArray("a z") << false;
-    QTest::newRow("a\\z alone") << QByteArray("a\\z") << false;
-    QTest::newRow("a,z alone") << QByteArray("a,z") << false;
-    QTest::newRow("/z alone") << QByteArray("/z") << false;
-    QTest::newRow("-z alone") << QByteArray("-z") << false;
-#if defined(Q_OS_ANDROID) || QT_CONFIG(icu)
-    QTest::newRow("long alone") << QByteArray("12345678901234567") << true;
-    QTest::newRow("over-long alone") << QByteArray("123456789012345678") << false;
-#else
-    QTest::newRow("long alone") << QByteArray("12345678901234") << true;
-    QTest::newRow("over-long alone") << QByteArray("123456789012345") << false;
-#endif
-
-#else
-    QSKIP("This test requires a Qt -developer-build.");
-#endif // QT_BUILD_INTERNAL
-}
-
-void tst_QTimeZone::isValidId()
-{
-#ifdef QT_BUILD_INTERNAL
-    QFETCH(QByteArray, input);
-    QFETCH(bool, valid);
-
-    QCOMPARE(QTimeZonePrivate::isValidId(input), valid);
-#endif
 }
 
 void tst_QTimeZone::serialize()
@@ -1270,32 +1221,51 @@ void tst_QTimeZone::malformed()
 
 void tst_QTimeZone::utcTest()
 {
+#if QT_CONFIG(icu) // || hopefully various other cases, eventually
+    const QString utcLongName = u"Coordinated Universal Time"_s;
+#else
+    const QString utcLongName = u"UTC"_s;
+#endif
 #ifdef QT_BUILD_INTERNAL
     // Test default UTC constructor
     QUtcTimeZonePrivate tzp;
     QCOMPARE(tzp.isValid(),   true);
-    QCOMPARE(tzp.id(), QByteArray("UTC"));
+    QCOMPARE(tzp.id(), "UTC");
     QCOMPARE(tzp.territory(), QLocale::AnyTerritory);
-    QCOMPARE(tzp.abbreviation(0), QString("UTC"));
-    QCOMPARE(tzp.displayName(QTimeZone::StandardTime, QTimeZone::LongName, QLocale()), QString("UTC"));
+    QCOMPARE(tzp.abbreviation(0), u"UTC");
+    QCOMPARE(tzp.displayName(QTimeZone::StandardTime, QTimeZone::LongName, QLocale()), utcLongName);
     QCOMPARE(tzp.offsetFromUtc(0), 0);
     QCOMPARE(tzp.standardTimeOffset(0), 0);
     QCOMPARE(tzp.daylightTimeOffset(0), 0);
     QCOMPARE(tzp.hasDaylightTime(), false);
     QCOMPARE(tzp.hasTransitions(), false);
+#endif // QT_BUILD_INTERNAL
+
+    // Test UTC accessor
+    const QDateTime now = QDateTime::currentDateTime();
+    auto tz = QTimeZone::utc();
+    QCOMPARE(tz.isValid(), true);
+    QCOMPARE(tz.id(), "UTC");
+    QCOMPARE(tz.territory(), QLocale::AnyTerritory);
+    QCOMPARE(tz.abbreviation(now), u"UTC");
+    QCOMPARE(tz.displayName(QTimeZone::StandardTime, QTimeZone::LongName, QLocale()), utcLongName);
+    QCOMPARE(tz.offsetFromUtc(now), 0);
+    QCOMPARE(tz.standardTimeOffset(now), 0);
+    QCOMPARE(tz.daylightTimeOffset(now), 0);
+    QCOMPARE(tz.hasDaylightTime(), false);
+    QCOMPARE(tz.hasTransitions(), false);
 
     // Test create from UTC Offset:
-    QDateTime now = QDateTime::currentDateTime();
-    QTimeZone tz(36000);
+    tz = QTimeZone(36000);
     QVERIFY(tz.isValid());
-    QCOMPARE(tz.id(), QByteArray("UTC+10:00"));
+    QCOMPARE(tz.id(), "UTC+10:00");
     QCOMPARE(tz.offsetFromUtc(now), 36000);
     QCOMPARE(tz.standardTimeOffset(now), 36000);
     QCOMPARE(tz.daylightTimeOffset(now), 0);
 
     tz = QTimeZone(15 * 3600); // no IANA ID, so uses minimal id, skipping :00 minutes
     QVERIFY(tz.isValid());
-    QCOMPARE(tz.id(), QByteArray("UTC+15"));
+    QCOMPARE(tz.id(), "UTC+15:00");
     QCOMPARE(tz.offsetFromUtc(now), 15 * 3600);
     QCOMPARE(tz.standardTimeOffset(now), 15 * 3600);
     QCOMPARE(tz.daylightTimeOffset(now), 0);
@@ -1313,327 +1283,23 @@ void tst_QTimeZone::utcTest()
     // Test create from standard name (preserves :00 for minutes in id):
     tz = QTimeZone("UTC+10:00");
     QVERIFY(tz.isValid());
-    QCOMPARE(tz.id(), QByteArray("UTC+10:00"));
+    QCOMPARE(tz.id(), "UTC+10:00");
     QCOMPARE(tz.offsetFromUtc(now), 36000);
     QCOMPARE(tz.standardTimeOffset(now), 36000);
     QCOMPARE(tz.daylightTimeOffset(now), 0);
 
     // Test create custom zone
-    tz = QTimeZone("QST", 123456, "Qt Standard Time", "QST", QLocale::Norway, "Qt Testing");
+    tz = QTimeZone("QST", 23456,
+                   u"Qt Standard Time"_s, u"QST"_s, QLocale::Norway, u"Qt Testing"_s);
     QCOMPARE(tz.isValid(),   true);
-    QCOMPARE(tz.id(), QByteArray("QST"));
-    QCOMPARE(tz.comment(), QString("Qt Testing"));
+    QCOMPARE(tz.id(), "QST");
+    QCOMPARE(tz.comment(), u"Qt Testing");
     QCOMPARE(tz.territory(), QLocale::Norway);
-    QCOMPARE(tz.abbreviation(now), QString("QST"));
-    QCOMPARE(tz.displayName(QTimeZone::StandardTime, QTimeZone::LongName, QLocale()),
-             QString("Qt Standard Time"));
-    QCOMPARE(tz.offsetFromUtc(now), 123456);
-    QCOMPARE(tz.standardTimeOffset(now), 123456);
+    QCOMPARE(tz.abbreviation(now), u"QST");
+    QCOMPARE(tz.displayName(QTimeZone::StandardTime, QTimeZone::LongName), u"Qt Standard Time");
+    QCOMPARE(tz.offsetFromUtc(now), 23456);
+    QCOMPARE(tz.standardTimeOffset(now), 23456);
     QCOMPARE(tz.daylightTimeOffset(now), 0);
-#endif // QT_BUILD_INTERNAL
-}
-
-// Relies on local variable names: zone tzp and locale enUS.
-#define ZONE_DNAME_CHECK(type, name, val) \
-        QCOMPARE(tzp.displayName(QTimeZone::type, QTimeZone::name, enUS), \
-                 QStringLiteral(val));
-
-void tst_QTimeZone::icuTest()
-{
-#if defined(QT_BUILD_INTERNAL) && QT_CONFIG(icu) && !defined(Q_OS_UNIX)
-    // Known datetimes
-    qint64 std = QDateTime(QDate(2012, 1, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
-    qint64 dst = QDateTime(QDate(2012, 6, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
-
-    // Test default constructor
-    QIcuTimeZonePrivate tzpd;
-    QVERIFY(tzpd.isValid());
-
-    // Test invalid is not available:
-    QVERIFY(!tzpd.isTimeZoneIdAvailable("Gondwana/Erewhon"));
-    // and construction gives an invalid result:
-    QIcuTimeZonePrivate tzpi("Gondwana/Erewhon");
-    QCOMPARE(tzpi.isValid(), false);
-
-    // Test named constructor
-    QIcuTimeZonePrivate tzp("Europe/Berlin");
-    QVERIFY(tzp.isValid());
-
-    // Only test names in debug mode, names used can vary by ICU version installed
-    if (debug) {
-        // Test display names by type
-        QLocale enUS("en_US");
-        ZONE_DNAME_CHECK(StandardTime, LongName, "Central European Standard Time");
-        ZONE_DNAME_CHECK(StandardTime, ShortName, "GMT+01:00");
-        ZONE_DNAME_CHECK(StandardTime, OffsetName, "UTC+01:00");
-        ZONE_DNAME_CHECK(DaylightTime, LongName, "Central European Summer Time");
-        ZONE_DNAME_CHECK(DaylightTime, ShortName, "GMT+02:00");
-        ZONE_DNAME_CHECK(DaylightTime, OffsetName, "UTC+02:00");
-        // ICU C api does not support Generic Time yet, C++ api does
-        ZONE_DNAME_CHECK(GenericTime, LongName, "Central European Standard Time");
-        ZONE_DNAME_CHECK(GenericTime, ShortName, "GMT+01:00");
-        ZONE_DNAME_CHECK(GenericTime, OffsetName, "UTC+01:00");
-
-        // Test Abbreviations
-        QCOMPARE(tzp.abbreviation(std), QString("CET"));
-        QCOMPARE(tzp.abbreviation(dst), QString("CEST"));
-    }
-
-    testCetPrivate(tzp);
-    if (QTest::currentTestFailed())
-        return;
-    testEpochTranPrivate(QIcuTimeZonePrivate("America/Toronto"));
-#endif // ICU not on Unix
-}
-
-void tst_QTimeZone::tzTest()
-{
-#if defined QT_BUILD_INTERNAL && defined Q_OS_UNIX && !defined Q_OS_DARWIN && !defined Q_OS_ANDROID
-    const auto UTC = QTimeZone::UTC;
-    // Known datetimes
-    qint64 std = QDateTime(QDate(2012, 1, 1), QTime(0, 0), UTC).toMSecsSinceEpoch();
-    qint64 dst = QDateTime(QDate(2012, 6, 1), QTime(0, 0), UTC).toMSecsSinceEpoch();
-
-    // Test default constructor
-    QTzTimeZonePrivate tzpd;
-    QVERIFY(tzpd.isValid());
-
-    // Test invalid constructor
-    QTzTimeZonePrivate tzpi("Gondwana/Erewhon");
-    QVERIFY(!tzpi.isValid());
-
-    // Test named constructor
-    QTzTimeZonePrivate tzp("Europe/Berlin");
-    QVERIFY(tzp.isValid());
-
-    // Test POSIX-format value for $TZ:
-    QTimeZone tzposix("MET-1METDST-2,M3.5.0/02:00:00,M10.5.0/03:00:00");
-    QVERIFY(tzposix.isValid());
-    QVERIFY(tzposix.hasDaylightTime());
-
-    // RHEL has been seen with this as Africa/Casablanca's POSIX rule:
-    QTzTimeZonePrivate permaDst("<+00>0<+01>,0/0,J365/25");
-    const QTimeZone utcP1("UTC+01:00"); // Should always have same offset as permaDst
-    QVERIFY(permaDst.isValid());
-    QVERIFY(permaDst.hasDaylightTime());
-    QVERIFY(permaDst.isDaylightTime(QDate(2020, 1, 1).startOfDay(utcP1).toMSecsSinceEpoch()));
-    QVERIFY(permaDst.isDaylightTime(QDate(2020, 12, 31).endOfDay(utcP1).toMSecsSinceEpoch()));
-    // Note that the final /25 could be misunderstood as putting a fall-back at
-    // 1am on the next year's Jan 1st; check we don't do that:
-    QVERIFY(permaDst.isDaylightTime(
-                QDateTime(QDate(2020, 1, 1), QTime(1, 30), utcP1).toMSecsSinceEpoch()));
-    // It shouldn't have any transitions. QTimeZone::hasTransitions() only says
-    // whether the backend supports them, so ask for transitions in a wide
-    // enough interval that one would show up, if there are any:
-    QVERIFY(permaDst.transitions(QDate(2015, 1, 1).startOfDay(UTC).toMSecsSinceEpoch(),
-                                 QDate(2020, 1, 1).startOfDay(UTC).toMSecsSinceEpoch()
-                                ).isEmpty());
-
-    QTimeZone tzBrazil("BRT+3"); // parts of Northern Brazil, as a POSIX rule
-    QVERIFY(tzBrazil.isValid());
-    QCOMPARE(tzBrazil.offsetFromUtc(QDateTime(QDate(1111, 11, 11).startOfDay())), -10800);
-
-    // Test display names by type, either ICU or abbreviation only
-    QLocale enUS("en_US");
-    // Only test names in debug mode, names used can vary by ICU version installed
-    if (debug) {
-#if QT_CONFIG(icu)
-        ZONE_DNAME_CHECK(StandardTime, LongName, "Central European Standard Time");
-        ZONE_DNAME_CHECK(StandardTime, ShortName, "GMT+01:00");
-        ZONE_DNAME_CHECK(StandardTime, OffsetName, "UTC+01:00");
-        ZONE_DNAME_CHECK(DaylightTime, LongName, "Central European Summer Time");
-        ZONE_DNAME_CHECK(DaylightTime, ShortName, "GMT+02:00");
-        ZONE_DNAME_CHECK(DaylightTime, OffsetName, "UTC+02:00");
-        // ICU C api does not support Generic Time yet, C++ api does
-        ZONE_DNAME_CHECK(GenericTime, LongName, "Central European Standard Time");
-        ZONE_DNAME_CHECK(GenericTime, ShortName, "GMT+01:00");
-        ZONE_DNAME_CHECK(GenericTime, OffsetName, "UTC+01:00");
-#else
-        ZONE_DNAME_CHECK(StandardTime, LongName, "CET");
-        ZONE_DNAME_CHECK(StandardTime, ShortName, "CET");
-        ZONE_DNAME_CHECK(StandardTime, OffsetName, "CET");
-        ZONE_DNAME_CHECK(DaylightTime, LongName, "CEST");
-        ZONE_DNAME_CHECK(DaylightTime, ShortName, "CEST");
-        ZONE_DNAME_CHECK(DaylightTime, OffsetName, "CEST");
-        ZONE_DNAME_CHECK(GenericTime, LongName, "CET");
-        ZONE_DNAME_CHECK(GenericTime, ShortName, "CET");
-        ZONE_DNAME_CHECK(GenericTime, OffsetName, "CET");
-#endif // icu
-
-        // Test Abbreviations
-        QCOMPARE(tzp.abbreviation(std), QString("CET"));
-        QCOMPARE(tzp.abbreviation(dst), QString("CEST"));
-    }
-
-    testCetPrivate(tzp);
-    if (QTest::currentTestFailed())
-        return;
-    testEpochTranPrivate(QTzTimeZonePrivate("America/Toronto"));
-    if (QTest::currentTestFailed())
-        return;
-
-    // Test first and last transition rule
-    // Warning: This could vary depending on age of TZ file!
-
-    // Test low date uses first rule found
-    constexpr qint64 ancient = -Q_INT64_C(9999999999999);
-    // Note: Depending on the OS in question, the database may be carrying the
-    // Local Mean Time. which for Berlin is 0:53:28
-    QTimeZonePrivate::Data dat = tzp.data(ancient);
-    QCOMPARE(dat.atMSecsSinceEpoch, ancient);
-    QCOMPARE(dat.daylightTimeOffset, 0);
-    if (dat.abbreviation == "LMT") {
-        QCOMPARE(dat.standardTimeOffset, 3208);
-    } else {
-        QCOMPARE(dat.standardTimeOffset, 3600);
-
-        constexpr qint64 invalidTime = std::numeric_limits<qint64>::min();
-        constexpr int invalidOffset = std::numeric_limits<int>::min();
-        // Test previous to low value is invalid
-        dat = tzp.previousTransition(ancient);
-        QCOMPARE(dat.atMSecsSinceEpoch, invalidTime);
-        QCOMPARE(dat.standardTimeOffset, invalidOffset);
-        QCOMPARE(dat.daylightTimeOffset, invalidOffset);
-    }
-
-    dat = tzp.nextTransition(ancient);
-    QCOMPARE(QDateTime::fromMSecsSinceEpoch(dat.atMSecsSinceEpoch,
-                                            QTimeZone::fromSecondsAheadOfUtc(3600)),
-             QDateTime(QDate(1893, 4, 1), QTime(0, 6, 32),
-                       QTimeZone::fromSecondsAheadOfUtc(3600)));
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 0);
-
-    // Date-times late enough to exercise POSIX rules:
-    qint64 stdHi = QDate(2100, 1, 1).startOfDay(UTC).toMSecsSinceEpoch();
-    qint64 dstHi = QDate(2100, 6, 1).startOfDay(UTC).toMSecsSinceEpoch();
-    // Relevant last Sundays in October and March:
-    QCOMPARE(Qt::DayOfWeek(QDate(2099, 10, 25).dayOfWeek()), Qt::Sunday);
-    QCOMPARE(Qt::DayOfWeek(QDate(2100, 3, 28).dayOfWeek()), Qt::Sunday);
-    QCOMPARE(Qt::DayOfWeek(QDate(2100, 10, 31).dayOfWeek()), Qt::Sunday);
-
-    dat = tzp.data(stdHi);
-    QCOMPARE(dat.atMSecsSinceEpoch - stdHi, qint64(0));
-    QCOMPARE(dat.offsetFromUtc, 3600);
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 0);
-
-    dat = tzp.data(dstHi);
-    QCOMPARE(dat.atMSecsSinceEpoch - dstHi, qint64(0));
-    QCOMPARE(dat.offsetFromUtc, 7200);
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 3600);
-
-    dat = tzp.previousTransition(stdHi);
-    QCOMPARE(dat.abbreviation, QStringLiteral("CET"));
-    QCOMPARE(QDateTime::fromMSecsSinceEpoch(dat.atMSecsSinceEpoch, UTC),
-             QDateTime(QDate(2099, 10, 25), QTime(3, 0), QTimeZone::fromSecondsAheadOfUtc(7200)));
-    QCOMPARE(dat.offsetFromUtc, 3600);
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 0);
-
-    dat = tzp.previousTransition(dstHi);
-    QCOMPARE(dat.abbreviation, QStringLiteral("CEST"));
-    QCOMPARE(QDateTime::fromMSecsSinceEpoch(dat.atMSecsSinceEpoch, UTC),
-             QDateTime(QDate(2100, 3, 28), QTime(2, 0), QTimeZone::fromSecondsAheadOfUtc(3600)));
-    QCOMPARE(dat.offsetFromUtc, 7200);
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 3600);
-
-    dat = tzp.nextTransition(stdHi);
-    QCOMPARE(dat.abbreviation, QStringLiteral("CEST"));
-    QCOMPARE(QDateTime::fromMSecsSinceEpoch(dat.atMSecsSinceEpoch, UTC),
-             QDateTime(QDate(2100, 3, 28), QTime(2, 0), QTimeZone::fromSecondsAheadOfUtc(3600)));
-    QCOMPARE(dat.offsetFromUtc, 7200);
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 3600);
-
-    dat = tzp.nextTransition(dstHi);
-    QCOMPARE(dat.abbreviation, QStringLiteral("CET"));
-    QCOMPARE(QDateTime::fromMSecsSinceEpoch(dat.atMSecsSinceEpoch,
-                                            QTimeZone::fromSecondsAheadOfUtc(3600)),
-             QDateTime(QDate(2100, 10, 31), QTime(3, 0), QTimeZone::fromSecondsAheadOfUtc(7200)));
-    QCOMPARE(dat.offsetFromUtc, 3600);
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 0);
-
-    // Test TZ timezone vs UTC timezone for non-whole-hour negative offset:
-    QTzTimeZonePrivate  tztz1("America/Caracas");
-    QUtcTimeZonePrivate tzutc1("UTC-04:30");
-    QVERIFY(tztz1.isValid());
-    QVERIFY(tzutc1.isValid());
-    QTzTimeZonePrivate::Data datatz1 = tztz1.data(std);
-    QTzTimeZonePrivate::Data datautc1 = tzutc1.data(std);
-    QCOMPARE(datatz1.offsetFromUtc, datautc1.offsetFromUtc);
-
-    // Test TZ timezone vs UTC timezone for non-whole-hour positive offset:
-    QTzTimeZonePrivate tztz2k("Asia/Kolkata"); // New name
-    QTzTimeZonePrivate tztz2c("Asia/Calcutta"); // Legacy name
-    // Can't assign QtzTZP, so use a reference; prefer new name.
-    QTzTimeZonePrivate &tztz2 = tztz2k.isValid() ? tztz2k : tztz2c;
-    QUtcTimeZonePrivate tzutc2("UTC+05:30");
-    QVERIFY2(tztz2.isValid(), tztz2.id().constData());
-    QVERIFY(tzutc2.isValid());
-    QTzTimeZonePrivate::Data datatz2 = tztz2.data(std);
-    QTzTimeZonePrivate::Data datautc2 = tzutc2.data(std);
-    QCOMPARE(datatz2.offsetFromUtc, datautc2.offsetFromUtc);
-
-    // Test a timezone with an abbreviation that isn't all letters:
-    QTzTimeZonePrivate tzBarnaul("Asia/Barnaul");
-    if (tzBarnaul.isValid()) {
-        QCOMPARE(tzBarnaul.data(std).abbreviation, QString("+07"));
-
-        // first full day of the new rule (tzdata2016b)
-        QDateTime dt(QDate(2016, 3, 28), QTime(0, 0), UTC);
-        QCOMPARE(tzBarnaul.data(dt.toMSecsSinceEpoch()).abbreviation, QString("+07"));
-    }
-#endif // QT_BUILD_INTERNAL && Q_OS_UNIX && !Q_OS_DARWIN && !Q_OS_ANDROID
-}
-
-void tst_QTimeZone::macTest()
-{
-#if defined(QT_BUILD_INTERNAL) && defined(Q_OS_DARWIN)
-    // Known datetimes
-    qint64 std = QDateTime(QDate(2012, 1, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
-    qint64 dst = QDateTime(QDate(2012, 6, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
-
-    // Test default constructor
-    QMacTimeZonePrivate tzpd;
-    QVERIFY(tzpd.isValid());
-
-    // Test invalid constructor
-    QMacTimeZonePrivate tzpi("Gondwana/Erewhon");
-    QCOMPARE(tzpi.isValid(), false);
-
-    // Test named constructor
-    QMacTimeZonePrivate tzp("Europe/Berlin");
-    QVERIFY(tzp.isValid());
-
-    // Only test names in debug mode, names used can vary by version
-    if (debug) {
-        // Test display names by type
-        QLocale enUS("en_US");
-        ZONE_DNAME_CHECK(StandardTime, LongName, "Central European Standard Time");
-        ZONE_DNAME_CHECK(StandardTime, ShortName, "GMT+01:00");
-        ZONE_DNAME_CHECK(StandardTime, OffsetName, "UTC+01:00");
-        ZONE_DNAME_CHECK(DaylightTime, LongName, "Central European Summer Time");
-        ZONE_DNAME_CHECK(DaylightTime, ShortName, "GMT+02:00");
-        ZONE_DNAME_CHECK(DaylightTime, OffsetName, "UTC+02:00");
-        // ICU C api does not support Generic Time yet, C++ api does
-        ZONE_DNAME_CHECK(GenericTime, LongName, "Central European Time");
-        ZONE_DNAME_CHECK(GenericTime, ShortName, "Germany Time");
-        ZONE_DNAME_CHECK(GenericTime, OffsetName, "UTC+01:00");
-
-        // Test Abbreviations
-        QCOMPARE(tzp.abbreviation(std), QString("CET"));
-        QCOMPARE(tzp.abbreviation(dst), QString("CEST"));
-    }
-
-    testCetPrivate(tzp);
-    if (QTest::currentTestFailed())
-        return;
-    testEpochTranPrivate(QMacTimeZonePrivate("America/Toronto"));
-#endif // QT_BUILD_INTERNAL && Q_OS_DARWIN
 }
 
 void tst_QTimeZone::darwinTypes()
@@ -1646,90 +1312,57 @@ void tst_QTimeZone::darwinTypes()
 #endif
 }
 
-void tst_QTimeZone::winTest()
+void tst_QTimeZone::wasmTypes()
 {
-#if defined(QT_BUILD_INTERNAL) && defined(USING_WIN_TZ)
-    // Known datetimes
-    qint64 std = QDateTime(QDate(2012, 1, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
-    qint64 dst = QDateTime(QDate(2012, 6, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
+#ifndef Q_OS_WASM
+    QSKIP("This is a WebAssembly-only test");
+#else
+    const QByteArray sysId = QTimeZone::systemTimeZoneId();
+    QVERIFY(!sysId.isEmpty());
+    QVERIFY(sysId == "UTC" || sysId.startsWith("UTC+") || sysId.startsWith("UTC-"));
 
-    // Test default constructor
-    QWinTimeZonePrivate tzpd;
-    if (debug)
-        qDebug() << "System ID = " << tzpd.id()
-                 << tzpd.displayName(QTimeZone::StandardTime, QTimeZone::LongName, QLocale())
-                 << tzpd.displayName(QTimeZone::GenericTime, QTimeZone::LongName, QLocale());
-    QVERIFY(tzpd.isValid());
+    const QDateTime now = QDateTime::currentDateTimeUtc();
 
-    // Test invalid constructor
-    QWinTimeZonePrivate tzpi("Gondwana/Erewhon");
-    QCOMPARE(tzpi.isValid(), false);
+    const QTimeZone utcPlus2(7200); // UTC+02:00
+    QVERIFY(utcPlus2.isValid());
+    QCOMPARE(utcPlus2.id(), QByteArray("UTC+02:00"));
+    QCOMPARE(utcPlus2.offsetFromUtc(now), 7200);
 
-    // Test named constructor
-    QWinTimeZonePrivate tzp("Europe/Berlin");
-    QVERIFY(tzp.isValid());
-
-    // Only test names in debug mode, names used can vary by version
-    if (debug) {
-        // Test display names by type
-        QLocale enUS("en_US");
-        ZONE_DNAME_CHECK(StandardTime, LongName, "W. Europe Standard Time");
-        ZONE_DNAME_CHECK(StandardTime, ShortName, "W. Europe Standard Time");
-        ZONE_DNAME_CHECK(StandardTime, OffsetName, "UTC+01:00");
-        ZONE_DNAME_CHECK(DaylightTime, LongName, "W. Europe Daylight Time");
-        ZONE_DNAME_CHECK(DaylightTime, ShortName, "W. Europe Daylight Time");
-        ZONE_DNAME_CHECK(DaylightTime, OffsetName, "UTC+02:00");
-        ZONE_DNAME_CHECK(GenericTime, LongName,
-                         "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna");
-        ZONE_DNAME_CHECK(GenericTime, ShortName,
-                         "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna");
-        ZONE_DNAME_CHECK(GenericTime, OffsetName, "UTC+01:00");
-
-        // Test Abbreviations
-        QCOMPARE(tzp.abbreviation(std), QString("W. Europe Standard Time"));
-        QCOMPARE(tzp.abbreviation(dst), QString("W. Europe Daylight Time"));
-    }
-
-    testCetPrivate(tzp);
-    if (QTest::currentTestFailed())
-        return;
-    testEpochTranPrivate(QWinTimeZonePrivate("America/Toronto"));
-#endif // QT_BUILD_INTERNAL && USING_WIN_TZ
+    const QTimeZone local(QTimeZone::LocalTime);
+    const QTimeZone localBackend = local.asBackendZone();
+    QCOMPARE(local.offsetFromUtc(now), localBackend.offsetFromUtc(now));
+#endif
 }
-
-#undef ZONE_DNAME_CHECK
 
 void tst_QTimeZone::localeSpecificDisplayName_data()
 {
-#ifdef USING_WIN_TZ
-    QSKIP("MS backend does not use locale parameter");
-#endif
     QTest::addColumn<QByteArray>("zoneName");
     QTest::addColumn<QLocale>("locale");
     QTest::addColumn<QTimeZone::TimeType>("timeType");
     QTest::addColumn<QString>("expectedName");
+    QTest::addColumn<QDateTime>("when");
 
     QStringList names;
     QLocale locale;
     // Pick a non-system locale; German or French
     if (QLocale::system().language() != QLocale::German) {
         locale = QLocale(QLocale::German);
-        names << QString("Mitteleurop\u00e4ische Normalzeit")
-              << QString("Mitteleurop\u00e4ische Sommerzeit");
+        names << u"Mitteleurop\u00e4ische Normalzeit"_s
+              << u"Mitteleurop\u00e4ische Sommerzeit"_s;
     } else {
         locale = QLocale(QLocale::French);
-        names << QString("heure normale d\u2019Europe centrale")
-              << QString("heure d\u2019\u00E9t\u00E9 d\u2019Europe centrale");
+        names << u"heure normale d\u2019Europe centrale"_s
+              << u"heure d\u2019\u00E9t\u00E9 d\u2019Europe centrale"_s;
     }
 
     qsizetype index = 0;
     QTest::newRow("Berlin, standard time")
-            << QByteArray("Europe/Berlin") << locale << QTimeZone::StandardTime
-            << names.at(index++);
+            << "Europe/Berlin"_ba << locale << QTimeZone::StandardTime << names.at(index++)
+            << QDateTime(QDate(2024, 1, 1), QTime(12, 0));
 
     QTest::newRow("Berlin, summer time")
-            << QByteArray("Europe/Berlin") << locale << QTimeZone::DaylightTime
-            << names.at(index++);
+            << "Europe/Berlin"_ba << locale << QTimeZone::DaylightTime << names.at(index++)
+            << QDateTime(QDate(2024, 7, 1), QTime(12, 0));
 }
 
 void tst_QTimeZone::localeSpecificDisplayName()
@@ -1741,159 +1374,41 @@ void tst_QTimeZone::localeSpecificDisplayName()
     QFETCH(QTimeZone::TimeType, timeType);
     QFETCH(QString, expectedName);
 
-    QTimeZone zone(zoneName);
+    const QTimeZone zone(zoneName);
     QVERIFY(zone.isValid());
 
     const QString localeName = zone.displayName(timeType, QTimeZone::LongName, locale);
-    if (localeName.isEmpty()) // Backend doesn't know how to localize this zone's name
-        QEXPECT_FAIL("", "QTBUG-115158 zone name localization unknown", Continue);
     QCOMPARE(localeName, expectedName);
-}
-
 #ifdef QT_BUILD_INTERNAL
-// Test each private produces the same basic results for CET
-void tst_QTimeZone::testCetPrivate(const QTimeZonePrivate &tzp)
-{
-    // Known datetimes
-    const auto UTC = QTimeZone::UTC;
-    const auto eastOneHour = QTimeZone::fromSecondsAheadOfUtc(3600);
-    qint64 std = QDateTime(QDate(2012, 1, 1), QTime(0, 0), UTC).toMSecsSinceEpoch();
-    qint64 dst = QDateTime(QDate(2012, 6, 1), QTime(0, 0), UTC).toMSecsSinceEpoch();
-    qint64 prev = QDateTime(QDate(2011, 1, 1), QTime(0, 0), UTC).toMSecsSinceEpoch();
+    QFETCH(QDateTime, when);
+    // Check that round-trips:
+    auto match = QTimeZonePrivate::findLongNamePrefix(localeName, locale, when.toMSecsSinceEpoch());
+    QCOMPARE(match.nameLength, localeName.size());
+    auto report = qScopeGuard([=]() {
+        auto typeName = [](QTimeZone::TimeType type) {
+            return (type == QTimeZone::StandardTime ? "std"
+                    : type == QTimeZone::GenericTime ? "gen" : "dst");
+        };
+        qDebug("Long name round-tripped %s (%s) to %s (%s) via %s",
+               zoneName.constData(), typeName(timeType),
+               match.ianaId.constData(), typeName(match.timeType),
+               localeName.toUtf8().constData());
+    });
+    // We may have found a different zone in the same metazone.
+    // Ideally prefer canonical, but the ICU-based version doesn't.
+    // At least check offsets match:
+    const QTimeZone actual(match.ianaId);
+    if (when.isValid() && actual.isValid())
+        QCOMPARE(actual.offsetFromUtc(when), zone.offsetFromUtc(when));
+    // GenericTime gets preferred and may be a synonym for StandardTime:
+    if (timeType != QTimeZone::StandardTime || match.timeType != QTimeZone::GenericTime)
+        QCOMPARE(match.timeType, timeType);
 
-    QCOMPARE(tzp.offsetFromUtc(std), 3600);
-    QCOMPARE(tzp.offsetFromUtc(dst), 7200);
-
-    QCOMPARE(tzp.standardTimeOffset(std), 3600);
-    QCOMPARE(tzp.standardTimeOffset(dst), 3600);
-
-    QCOMPARE(tzp.daylightTimeOffset(std), 0);
-    QCOMPARE(tzp.daylightTimeOffset(dst), 3600);
-
-    QCOMPARE(tzp.hasDaylightTime(), true);
-    QCOMPARE(tzp.isDaylightTime(std), false);
-    QCOMPARE(tzp.isDaylightTime(dst), true);
-
-    QTimeZonePrivate::Data dat = tzp.data(std);
-    QCOMPARE(dat.atMSecsSinceEpoch, std);
-    QCOMPARE(dat.offsetFromUtc, 3600);
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 0);
-    QCOMPARE(dat.abbreviation, tzp.abbreviation(std));
-
-    dat = tzp.data(dst);
-    QCOMPARE(dat.atMSecsSinceEpoch, dst);
-    QCOMPARE(dat.offsetFromUtc, 7200);
-    QCOMPARE(dat.standardTimeOffset, 3600);
-    QCOMPARE(dat.daylightTimeOffset, 3600);
-    QCOMPARE(dat.abbreviation, tzp.abbreviation(dst));
-
-    // Only test transitions if host system supports them
-    if (tzp.hasTransitions()) {
-        QTimeZonePrivate::Data tran = tzp.nextTransition(std);
-        // 2012-03-25 02:00 CET, +1 -> +2
-        QCOMPARE(QDateTime::fromMSecsSinceEpoch(tran.atMSecsSinceEpoch, UTC),
-                 QDateTime(QDate(2012, 3, 25), QTime(2, 0), eastOneHour));
-        QCOMPARE(tran.offsetFromUtc, 7200);
-        QCOMPARE(tran.standardTimeOffset, 3600);
-        QCOMPARE(tran.daylightTimeOffset, 3600);
-
-        tran = tzp.nextTransition(dst);
-        // 2012-10-28 03:00 CEST, +2 -> +1
-        QCOMPARE(QDateTime::fromMSecsSinceEpoch(tran.atMSecsSinceEpoch, UTC),
-                 QDateTime(QDate(2012, 10, 28), QTime(3, 0),
-                           QTimeZone::fromSecondsAheadOfUtc(2 * 3600)));
-        QCOMPARE(tran.offsetFromUtc, 3600);
-        QCOMPARE(tran.standardTimeOffset, 3600);
-        QCOMPARE(tran.daylightTimeOffset, 0);
-
-        tran = tzp.previousTransition(std);
-        // 2011-10-30 03:00 CEST, +2 -> +1
-        QCOMPARE(QDateTime::fromMSecsSinceEpoch(tran.atMSecsSinceEpoch, UTC),
-                 QDateTime(QDate(2011, 10, 30), QTime(3, 0),
-                           QTimeZone::fromSecondsAheadOfUtc(2 * 3600)));
-        QCOMPARE(tran.offsetFromUtc, 3600);
-        QCOMPARE(tran.standardTimeOffset, 3600);
-        QCOMPARE(tran.daylightTimeOffset, 0);
-
-        tran = tzp.previousTransition(dst);
-        // 2012-03-25 02:00 CET, +1 -> +2 (again)
-        QCOMPARE(QDateTime::fromMSecsSinceEpoch(tran.atMSecsSinceEpoch, UTC),
-                 QDateTime(QDate(2012, 3, 25), QTime(2, 0), eastOneHour));
-        QCOMPARE(tran.offsetFromUtc, 7200);
-        QCOMPARE(tran.standardTimeOffset, 3600);
-        QCOMPARE(tran.daylightTimeOffset, 3600);
-
-        QTimeZonePrivate::DataList expected;
-        // 2011-03-27 02:00 CET, +1 -> +2
-        tran.atMSecsSinceEpoch = QDateTime(QDate(2011, 3, 27), QTime(2, 0),
-                                           eastOneHour).toMSecsSinceEpoch();
-        tran.offsetFromUtc = 7200;
-        tran.standardTimeOffset = 3600;
-        tran.daylightTimeOffset = 3600;
-        expected << tran;
-        // 2011-10-30 03:00 CEST, +2 -> +1
-        tran.atMSecsSinceEpoch = QDateTime(QDate(2011, 10, 30), QTime(3, 0),
-                                           QTimeZone::fromSecondsAheadOfUtc(2 * 3600)
-                                           ).toMSecsSinceEpoch();
-        tran.offsetFromUtc = 3600;
-        tran.standardTimeOffset = 3600;
-        tran.daylightTimeOffset = 0;
-        expected << tran;
-        QTimeZonePrivate::DataList result = tzp.transitions(prev, std);
-        QCOMPARE(result.size(), expected.size());
-        for (int i = 0; i < expected.size(); ++i) {
-            QCOMPARE(QDateTime::fromMSecsSinceEpoch(result.at(i).atMSecsSinceEpoch, eastOneHour),
-                     QDateTime::fromMSecsSinceEpoch(expected.at(i).atMSecsSinceEpoch, eastOneHour));
-            QCOMPARE(result.at(i).offsetFromUtc, expected.at(i).offsetFromUtc);
-            QCOMPARE(result.at(i).standardTimeOffset, expected.at(i).standardTimeOffset);
-            QCOMPARE(result.at(i).daylightTimeOffset, expected.at(i).daylightTimeOffset);
-        }
-    }
-}
-
-// Needs a zone with DST around the epoch; currently America/Toronto (EST5EDT)
-void tst_QTimeZone::testEpochTranPrivate(const QTimeZonePrivate &tzp)
-{
-    if (!tzp.hasTransitions())
-        return; // test only viable for transitions
-
-    const auto UTC = QTimeZone::UTC;
-    const auto hour = std::chrono::hours{1};
-    QTimeZonePrivate::Data tran = tzp.nextTransition(0); // i.e. first after epoch
-    // 1970-04-26 02:00 EST, -5 -> -4
-    const QDateTime after = QDateTime(QDate(1970, 4, 26), QTime(2, 0),
-                                      QTimeZone::fromDurationAheadOfUtc(-5 * hour));
-    const QDateTime found = QDateTime::fromMSecsSinceEpoch(tran.atMSecsSinceEpoch, UTC);
-#ifdef USING_WIN_TZ // MS gets the date wrong: 5th April instead of 26th.
-    QCOMPARE(found.toOffsetFromUtc(-5 * 3600).time(), after.time());
-#else
-    QCOMPARE(found, after);
+    // Let report happen when names don't match:
+    if (match.ianaId == zoneName)
+        report.dismiss();
 #endif
-    QCOMPARE(tran.offsetFromUtc, -4 * 3600);
-    QCOMPARE(tran.standardTimeOffset, -5 * 3600);
-    QCOMPARE(tran.daylightTimeOffset, 3600);
-
-    // Pre-epoch time-zones might not be supported at all:
-    tran = tzp.nextTransition(QDateTime(QDate(1601, 1, 1), QTime(0, 0), UTC).toMSecsSinceEpoch());
-    if (tran.atMSecsSinceEpoch != QTimeZonePrivate::invalidMSecs()
-        // Toronto *did* have a transition before 1970 (DST since 1918):
-        && tran.atMSecsSinceEpoch < 0) {
-        // ... but, if they are, we should be able to search back to them:
-        tran = tzp.previousTransition(0); // i.e. last before epoch
-        // 1969-10-26 02:00 EDT, -4 -> -5
-        QCOMPARE(QDateTime::fromMSecsSinceEpoch(tran.atMSecsSinceEpoch, UTC),
-                 QDateTime(QDate(1969, 10, 26), QTime(2, 0),
-                           QTimeZone::fromDurationAheadOfUtc(-4 * hour)));
-        QCOMPARE(tran.offsetFromUtc, -5 * 3600);
-        QCOMPARE(tran.standardTimeOffset, -5 * 3600);
-        QCOMPARE(tran.daylightTimeOffset, 0);
-    } else {
-        // Do not use QSKIP(): that would discard the rest of this sub-test's caller.
-        qDebug() << "No support for pre-epoch time-zone transitions";
-    }
 }
-#endif // QT_BUILD_INTERNAL
 
 #if __cpp_lib_chrono >= 201907L
 Q_DECLARE_METATYPE(const std::chrono::time_zone *);
@@ -1907,7 +1422,7 @@ void tst_QTimeZone::stdCompatibility_data()
     qDebug() << "Using tzdb version:" << QByteArrayView(tzdb.version);
 
     for (const std::chrono::time_zone &zone : tzdb.zones)
-        QTest::addRow(zone.name().data()) << &zone;
+        QTest::addRow("%s", zone.name().data()) << &zone;
 #else
     QSKIP("This test requires C++20's <chrono>.");
 #endif
@@ -1922,7 +1437,7 @@ void tst_QTimeZone::stdCompatibility()
     if (tz.isValid())
         QVERIFY2(tz.hasAlternativeName(zoneName), tz.id().constData());
     else
-        QVERIFY(!QTimeZone::isTimeZoneIdAvailable(zoneName.toByteArray()));
+        QVERIFY(!QTimeZone::isTimeZoneIdAvailable(zoneName));
 #else
     QSKIP("This test requires C++20's <chrono>.");
 #endif

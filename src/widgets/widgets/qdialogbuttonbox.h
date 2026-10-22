@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDIALOGBUTTONBOX_H
 #define QDIALOGBUTTONBOX_H
@@ -106,6 +107,11 @@ public:
 
     void setCenterButtons(bool center);
     bool centerButtons() const;
+
+    static QString standardButtonText(StandardButton button);
+#if QT_CONFIG(shortcut)
+    static QKeySequence standardButtonShortcut(StandardButton button);
+#endif
 
 Q_SIGNALS:
     void clicked(QAbstractButton *button);

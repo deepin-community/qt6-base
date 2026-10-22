@@ -17,17 +17,17 @@ protected:
 void MyWidget::paintEvent(QPaintEvent * /* event */)
 //! [0]
 {
-//! [2]
+    //! [2]
     QPainter painter(this);
-//! [2]
+    //! [2]
 
     QStyleOptionFocusRect option;
     option.initFrom(this);
-    option.backgroundColor = palette().color(QPalette::Background);
+    option.backgroundColor = palette().color(QPalette::Window);
 
-//! [3]
+    //! [3]
     style()->drawPrimitive(QStyle::PE_FrameFocusRect, &option, &painter, this);
-//! [3]
+    //! [3]
 }
 //! [1]
 
@@ -36,15 +36,15 @@ void MyWidget::paintEvent2(QPaintEvent * /* event */)
 {
 //! [4] //! [5] //! [6]
     QStylePainter painter(this);
-//! [5]
+    //! [5]
 
     QStyleOptionFocusRect option;
     option.initFrom(this);
-    option.backgroundColor = palette().color(QPalette::Background);
+    option.backgroundColor = palette().color(QPalette::Window);
 
-//! [7]
+    //! [7]
     painter.drawPrimitive(QStyle::PE_FrameFocusRect, option);
-//! [7]
+    //! [7]
 }
 //! [6]
 

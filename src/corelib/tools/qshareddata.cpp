@@ -49,6 +49,14 @@ QT_BEGIN_NAMESPACE
     \since 4.0
     \reentrant
 
+    \compares strong
+    \compareswith strong T* std::nullptr_t
+    \endcompareswith
+
+    QSharedDataPointer is a template class where the template parameter
+    \a T specifies the type of the shared data class that derives from
+    QSharedData.
+
     QSharedDataPointer\<T\> makes writing your own \l {implicitly
     shared} classes easy. QSharedDataPointer implements \l {thread-safe}
     reference counting, ensuring that adding QSharedDataPointers to your
@@ -309,8 +317,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*! \fn template <class T> void QSharedDataPointer<T>::swap(QSharedDataPointer &other)
-  Swap this instance's shared data pointer with the shared
-  data pointer in \a other.
+    \memberswap{shared data pointer}
  */
 
 /*!
@@ -331,13 +338,13 @@ QT_BEGIN_NAMESPACE
     \e{d pointer}. This function does \e not call detach().
 */
 
-/*! \fn template <class T> bool QSharedDataPointer<T>::operator==(const T *ptr, const QSharedDataPointer<T>& rhs)
-    Returns \c true if the \e{d pointer} of \a rhs is \a ptr.
+/*! \fn template <class T> bool QSharedDataPointer<T>::operator==(T* const &lhs, const QSharedDataPointer<T>& rhs)
+    Returns \c true if the \e{d pointer} of \a rhs is \a lhs.
     This function does \e not call detach().
 */
 
-/*! \fn template <class T> bool QSharedDataPointer<T>::operator!=(const T *ptr, const QSharedDataPointer<T>& rhs)
-    Returns \c true if the \e{d pointer} of \a rhs is \e not \a ptr.
+/*! \fn template <class T> bool QSharedDataPointer<T>::operator!=(T* const &lhs, const QSharedDataPointer<T>& rhs)
+    Returns \c true if the \e{d pointer} of \a rhs is \e not \a lhs.
     \e{d pointer}. This function does \e not call detach().
 */
 
@@ -417,7 +424,7 @@ QT_BEGIN_NAMESPACE
     Creates and returns a deep copy of the current data. This function
     is called by detach() when the reference count is greater than 1 in
     order to create the new copy. This function uses the \e {operator
-    new} and calls the copy constructor of the type T.
+    new} and calls the copy constructor of the type \a T.
 
     This function is provided so that you may support "virtual copy
     constructors" for your own types. In order to so, you should declare
@@ -438,6 +445,14 @@ QT_BEGIN_NAMESPACE
     \brief The QExplicitlySharedDataPointer class represents a pointer to an explicitly shared object.
     \since 4.4
     \reentrant
+
+    \compares strong
+    \compareswith strong T* std::nullptr_t
+    \endcompareswith
+
+    QExplicitlySharedDataPointer is a template class where the template
+    parameter \a T specifies the type of the shared data class that
+    derives from QSharedData.
 
     QExplicitlySharedDataPointer\<T\> makes writing your own explicitly
     shared classes easy. QExplicitlySharedDataPointer implements
@@ -500,8 +515,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*! \fn template <class T> void QExplicitlySharedDataPointer<T>::swap(QExplicitlySharedDataPointer &other)
-  Swap this instance's explicitly shared data pointer with
-  the explicitly shared data pointer in \a other.
+    \memberswap{explicitly-shared data pointer}
  */
 
 /*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator==(const QExplicitlySharedDataPointer<T>& lhs, const QExplicitlySharedDataPointer<T>& rhs)
@@ -516,8 +530,8 @@ QT_BEGIN_NAMESPACE
     \since 5.2
 */
 
-/*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator==(const T* ptr, const QExplicitlySharedDataPointer<T>& rhs)
-    Returns \c true if the \e{d pointer} of \a rhs is \a ptr.
+/*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator==(const T* const &lhs, const QExplicitlySharedDataPointer<T>& rhs)
+    Returns \c true if the \e{d pointer} of \a rhs is \a lhs.
  */
 
 /*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator!=(const QExplicitlySharedDataPointer<T>& lhs, const QExplicitlySharedDataPointer<T>& rhs)
@@ -525,8 +539,8 @@ QT_BEGIN_NAMESPACE
     \e{d pointer}.
 */
 
-/*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator!=(const T* ptr, const QExplicitlySharedDataPointer<T>& rhs)
-    Returns \c true if the \e{d pointer} of \a rhs is \e not \a ptr.
+/*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator!=(const T* const &lhs, const QExplicitlySharedDataPointer<T>& rhs)
+    Returns \c true if the \e{d pointer} of \a rhs is \e not \a lhs.
  */
 
 /*! \fn template <class T> QExplicitlySharedDataPointer<T>::QExplicitlySharedDataPointer()
@@ -566,33 +580,10 @@ QT_BEGIN_NAMESPACE
     a different type of explicitly shared data pointer but one that has
     a compatible shared data object.
 
-    By default, the \e{d pointer} of \a o (of type \c{X *}) gets
-    implicitly converted to the type \c{T *}; the result of this
+    By default, the \e{d pointer} of \a o (of type \c{\a X *}) gets
+    implicitly converted to the type \c{\a T *}; the result of this
     conversion is set as the \e{d pointer} of \e{this}, and the
     reference count of the shared data object is incremented.
-
-    However, if the macro
-    \c{QT_ENABLE_QEXPLICITLYSHAREDDATAPOINTER_STATICCAST} is defined
-    before including the \c{QExplicitlySharedDataPointer} header, then
-    the \e{d pointer} of \a o undergoes a \c{static_cast} to the
-    type \c{T *}. The result of the cast is then set as the
-    \e{d pointer} of \e{this}, and the reference count of the shared data
-    object is incremented.
-
-    \warning relying on such \c{static_cast} is potentially dangerous,
-    because it allows code like this to compile:
-
-    \snippet code/src_corelib_tools_qshareddata.cpp 2
-
-    Starting from Qt 5.4 the cast is disabled by default. It is
-    possible to enable it back by defining the
-    \c{QT_ENABLE_QEXPLICITLYSHAREDDATAPOINTER_STATICCAST} macro, and
-    therefore to allow old code (that relied on this feature) to
-    compile without modifications.
-
-    \note Usage of the
-    \c{QT_ENABLE_QEXPLICITLYSHAREDDATAPOINTER_STATICCAST} macro is
-    deprecated. The macro will be removed in a future version of Qt.
 */
 
 /*! \fn template <class T> QExplicitlySharedDataPointer<T>& QExplicitlySharedDataPointer<T>::operator=(const QExplicitlySharedDataPointer<T>& o)
@@ -659,7 +650,7 @@ QT_BEGIN_NAMESPACE
     Creates and returns a deep copy of the current data. This function
     is called by detach() when the reference count is greater than 1 in
     order to create the new copy. This function uses the \e {operator
-    new} and calls the copy constructor of the type T.
+    new} and calls the copy constructor of the type \a T.
 
     See QSharedDataPointer<T>::clone() for an explanation of how to use it.
 */

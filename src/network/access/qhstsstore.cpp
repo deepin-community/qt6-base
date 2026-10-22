@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhstsstore_p.h"
 #include "qhstspolicy.h"
@@ -128,12 +129,10 @@ bool QHstsStore::deserializePolicy(const QString &key, QHstsPolicy &policy)
     const QByteArray serializedData(data.toByteArray());
     QDataStream streamer(serializedData);
     qint64 expiryInMS = 0;
-    streamer >> expiryInMS;
-    if (streamer.status() != QDataStream::Ok)
+    if (!(streamer >> expiryInMS))
         return false;
     bool includesSubDomains = false;
-    streamer >> includesSubDomains;
-    if (streamer.status() != QDataStream::Ok)
+    if (!(streamer >> includesSubDomains))
         return false;
 
     policy.setExpiry(QDateTime::fromMSecsSinceEpoch(expiryInMS));

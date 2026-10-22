@@ -6,6 +6,8 @@
 
 #include <QMainWindow>
 
+QT_BEGIN_NAMESPACE
+
 class QTextDocument;
 class QTextEdit;
 
@@ -24,5 +26,7 @@ private:
     QTextEdit *editor = nullptr;
     QTextDocument *document = nullptr;
 };
+
+QT_END_NAMESPACE
 
 #endif

@@ -6,6 +6,7 @@
 #include <qdir.h>
 #include <qlibrary.h>
 #include <QtCore/QRegularExpression>
+#include <QtCore/private/qlibrary_p.h>
 
 
 // Helper macros to let us know if some suffixes and prefixes are valid
@@ -122,13 +123,13 @@ typedef int (*VersionFunction)(void);
 
 void tst_QLibrary::initTestCase()
 {
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
     const QStringList paths = QCoreApplication::libraryPaths();
     QVERIFY(!paths.isEmpty());
     directory = paths.first();
 #else
     // chdir to our testdata directory, and use relative paths in some tests.
-    QString testdatadir = QFileInfo(QFINDTESTDATA("library_path")).absolutePath();
+    QString testdatadir = QFileInfo(QFINDTESTDATA("lib")).absolutePath();
     QVERIFY2(QDir::setCurrent(testdatadir), qPrintable("Could not chdir to " + testdatadir));
     directory = QCoreApplication::applicationDirPath();
 #endif
@@ -154,7 +155,7 @@ void tst_QLibrary::cleanup()
 #if defined(Q_OS_WIN32)
         { directory + "/mylib.dl2" },
         { directory + "/system.qt.test.mylib.dll" },
-#elif !defined(Q_OS_ANDROID)
+#elif !defined(Q_OS_ANDROID) && !defined(Q_OS_HARMONY)
         // .so even on macOS
         { directory + "/libmylib.so2" },
         { directory + "/system.qt.test.mylib.so" },
@@ -162,14 +163,19 @@ void tst_QLibrary::cleanup()
 
     };
     for (const auto &entry : libs) {
-        do {} while (QLibrary(entry.name, entry.version).unload());
+        bool unloaded = false;
+        do {
+            QLibrary lib(entry.name, entry.version);
+            auto libPrivate = QLibraryPrivate::get(&lib);
+            unloaded = libPrivate->unload();
+        } while (unloaded);
     }
 }
 
 void tst_QLibrary::version_data()
 {
-#ifdef Q_OS_ANDROID
-    QSKIP("Versioned .so files are not generated for Android, so this test is not applicable.");
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QSKIP("Versioned .so files are not generated for this OS, so this test is not applicable.");
 #endif
     QTest::addColumn<QString>("lib");
     QTest::addColumn<int>("loadversion");
@@ -204,7 +210,7 @@ void tst_QLibrary::version()
 
 void tst_QLibrary::loadTwoVersions()
 {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN) || defined(Q_OS_HARMONY)
     QSKIP("Versioned files are not generated for this OS, so this test is not applicable.");
 #endif
 
@@ -271,7 +277,7 @@ void tst_QLibrary::archSpecificVersion()
 
 void tst_QLibrary::setFileNameAndVersionTwice()
 {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WIN) || defined(Q_OS_HARMONY)
     QSKIP("Versioned files are not generated for this OS, so this test is not applicable.");
 #endif
 
@@ -323,8 +329,8 @@ void tst_QLibrary::load_data()
     QTest::newRow( "ok03 (with many dots)" ) << appDir + "/system.qt.test.mylib.dll" << true;
 # elif defined Q_OS_UNIX
     QTest::newRow( "ok01 (with suffix)" ) << appDir + "/libmylib" SUFFIX << true;
-#ifndef Q_OS_ANDROID
-    // We do not support non-standard suffixes on Android
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_HARMONY)
+    // We do not support non-standard suffixes on Android and HarmonyOS
     QTest::newRow( "ok02 (with non-standard suffix)" ) << appDir + "/libmylib.so2" << true;
 #endif
     QTest::newRow( "ok03 (with many dots)" ) << appDir + "/system.qt.test.mylib.so" << true;
@@ -430,6 +436,9 @@ void tst_QLibrary::loadAfterFailedLoad()
 {
 #if defined(Q_OS_WIN) || defined(Q_OS_ANDROID)
     QSKIP("### FIXME: The helper libraries are currently messed up in the CMakeLists.txt");
+#endif
+#if defined(Q_OS_HARMONY)
+    QSKIP("Cannot dlopen from arbitrary temp paths due to dynamic linker namespace restrictions.");
 #endif
 
     QTemporaryDir dir;
@@ -616,8 +625,8 @@ void tst_QLibrary::loadHints_data()
     QTest::newRow( "ok03 (with many dots)" ) << appDir + "/system.qt.test.mylib.dll" << int(lh) << true;
 # elif defined Q_OS_UNIX
     QTest::newRow( "ok01 (with suffix)" ) << appDir + "/libmylib" SUFFIX << int(lh) << true;
-#ifndef Q_OS_ANDROID
-    // We do not support non-standard suffixes on Android
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_HARMONY)
+    // We do not support non-standard suffixes on Android and HarmonyOS
     QTest::newRow( "ok02 (with non-standard suffix)" ) << appDir + "/libmylib.so2" << int(lh) << true;
 #endif
     QTest::newRow( "ok03 (with many dots)" ) << appDir + "/system.qt.test.mylib.so" << int(lh) << true;

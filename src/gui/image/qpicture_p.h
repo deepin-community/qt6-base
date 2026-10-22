@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPICTURE_P_H
 #define QPICTURE_P_H
@@ -31,7 +32,7 @@ QT_BEGIN_NAMESPACE
 
 class QPaintEngine;
 
-extern const char  *qt_mfhdr_tag;
+extern const char *const qt_mfhdr_tag;
 
 class QPicturePrivate
 {
@@ -113,6 +114,7 @@ public:
     bool checkFormat();
     void resetFormat();
 
+    QByteArray pictbData;
     QBuffer pictb;
     int trecs;
     bool formatOk;

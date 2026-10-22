@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
@@ -35,7 +36,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     \ingroup network
     \inmodule QtNetwork
 
-    The QNetworkReply class contains the data and meta data related to
+    The QNetworkReply class contains the data and metadata related to
     a request posted with QNetworkAccessManager. Like QNetworkRequest,
     it contains a URL and headers (both in parsed and raw form), some
     information about the reply's state and the contents of the reply
@@ -205,7 +206,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     using the QNetworkReply::sslConfiguration() method.
 
     Internally, QNetworkAccessManager may open multiple connections
-    to a server, in order to allow it process requests in parallel.
+    to a server, in order to allow it to process requests in parallel.
     These connections may be reused, which means that the encrypted()
     signal would not be emitted. This means that you are only
     guaranteed to receive this signal for the first connection to a
@@ -267,7 +268,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     This signal is emitted if the QNetworkRequest::ManualRedirectPolicy was not
     set in the request and the server responded with a 3xx status (specifically
     301, 302, 303, 305, 307 or 308 status code) with a valid url in the location
-    header, indicating a HTTP redirect. The \a url parameter contains the new
+    header, indicating an HTTP redirect. The \a url parameter contains the new
     redirect url as returned by the server in the location header.
 
     \sa QNetworkRequest::RedirectPolicy
@@ -316,7 +317,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     This signal is emitted whenever the metadata in this reply
     changes. metadata is any information that is not the content
     (data) itself, including the network headers. In the majority of
-    cases, the metadata will be known fully by the time the first
+    cases, the metadata will be fully known by the time the first
     byte of data is received. However, it is possible to receive
     updates of headers or other metadata during the processing of the
     data.
@@ -331,7 +332,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     processing. After this signal is emitted, there will be no more
     updates to the reply's data or metadata.
 
-    Unless close() or abort() have been called, the reply will still be opened
+    Unless close() or abort() have been called, the reply will still be open
     for reading, so the data can be retrieved by calls to read() or
     readAll(). In particular, if no calls to read() were made as a
     result of readyRead(), a call to readAll() will retrieve the full
@@ -417,7 +418,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
 /*!
     \fn void QNetworkReply::abort()
 
-    Aborts the operation immediately and close down any network
+    Aborts the operation immediately and closes any network
     connections still open. Uploads still in progress are also
     aborted.
 
@@ -473,7 +474,7 @@ void QNetworkReply::close()
 }
 
 /*!
-    \internal
+    \reimp
 */
 bool QNetworkReply::isSequential() const
 {
@@ -524,7 +525,7 @@ QNetworkAccessManager *QNetworkReply::manager() const
 }
 
 /*!
-    Returns the request that was posted for this reply. In special,
+    Returns the request that was posted for this reply. In particular,
     note that the URL for the request may be different than that of
     the reply.
 
@@ -572,7 +573,7 @@ bool QNetworkReply::isFinished() const
     \since 4.6
 
     Returns \c true when the request is still processing and the
-    reply has not finished or was aborted yet.
+    reply has neither finished nor been aborted yet.
 
     \sa isFinished()
 */
@@ -609,7 +610,7 @@ QVariant QNetworkReply::header(QNetworkRequest::KnownHeaders header) const
 
 /*!
     Returns \c true if the raw header of name \a headerName was sent by
-    the remote server
+    the remote server.
 
     \sa rawHeader()
     \note In Qt versions prior to 6.7, this function took QByteArray only.
@@ -638,7 +639,7 @@ QByteArray QNetworkReply::rawHeader(QAnyStringView headerName) const
 
 /*! \typedef QNetworkReply::RawHeaderPair
 
-  RawHeaderPair is a QPair<QByteArray, QByteArray> where the first
+  RawHeaderPair is a std::pair<QByteArray, QByteArray> where the first
   QByteArray is the header name and the second is the header.
  */
 
@@ -665,9 +666,9 @@ QHttpHeaders QNetworkReply::headers() const
 }
 
 /*!
-    Returns a list of headers fields that were sent by the remote
+    Returns a list of header fields that were sent by the remote
     server, in the order that they were sent. Duplicate headers are
-    merged together and take place of the latter duplicate.
+    skipped.
 */
 QList<QByteArray> QNetworkReply::rawHeaderList() const
 {
@@ -779,7 +780,7 @@ void QNetworkReply::setSslConfigurationImplementation(const QSslConfiguration &)
 
   This virtual method is provided to enable overriding the behavior of
   ignoreSslErrors(). ignoreSslErrors() is a public wrapper for this method.
-  \a errors contains the errors the user wishes ignored.
+  \a errors contains the errors the user wants to ignore.
 
   \sa ignoreSslErrors()
 */
@@ -816,7 +817,7 @@ void QNetworkReply::ignoreSslErrors()
 }
 
 /*!
-    \internal
+    \reimp
 */
 qint64 QNetworkReply::writeData(const char *, qint64)
 {
@@ -873,7 +874,7 @@ void QNetworkReply::setError(NetworkError errorCode, const QString &errorString)
     \since 4.8
     Sets the reply as \a finished.
 
-    After having this set the replies data must not change.
+    After having this set the reply's data must not change.
 
     \sa isFinished()
 */

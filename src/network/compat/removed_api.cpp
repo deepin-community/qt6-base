@@ -67,6 +67,9 @@ QList<QNetworkCookie> QNetworkCookie::parseCookies(const QByteArray &cookieStrin
 
 #ifndef QT_NO_DEBUG_STREAM
 #if QT_CONFIG(ssl)
+
+#include "qdebug.h"
+
 QDebug operator<<(QDebug debug, const QSslError::SslError &error)
 {
     return print(std::move(debug), error);
@@ -79,3 +82,46 @@ QDebug operator<<(QDebug debug, const QSslError::SslError &error)
 // order sections alphabetically
 
 #endif // QT_NETWORK_REMOVED_SINCE(6, 8)
+
+#if QT_NETWORK_REMOVED_SINCE(6, 12)
+
+#ifndef QT_NO_DEBUG_STREAM
+#include "qdebug.h"
+
+#include "qabstractsocket.h"
+
+QDebug operator<<(QDebug debug, QAbstractSocket::SocketError error)
+{
+    return operator<< <QAbstractSocket::SocketError>(std::move(debug), error);
+}
+
+QDebug operator<<(QDebug debug, QAbstractSocket::SocketState state)
+{
+    return operator<< <QAbstractSocket::SocketState>(std::move(debug), state);
+}
+#endif // !QT_NO_DEBUG_STREAM
+
+#if QT_CONFIG(localserver)
+#include "qlocalsocket.h"
+
+#ifndef QT_NO_DEBUG_STREAM
+#include "qdebug.h"
+
+QDebug operator<<(QDebug debug, QLocalSocket::LocalSocketError error)
+{
+    return operator<< <QLocalSocket::LocalSocketError>(std::move(debug), error);
+}
+
+QDebug operator<<(QDebug debug, QLocalSocket::LocalSocketState state)
+{
+    return operator<< <QLocalSocket::LocalSocketState>(std::move(debug), state);
+}
+#endif // !QT_NO_DEBUG_STREAM
+#endif // QT_CONFIG(localserver)
+
+
+// #include "qotherheader.h"
+// // implement removed functions from qotherheader.h
+// order sections alphabetically
+
+#endif // QT_NETWORK_REMOVED_SINCE(6, 12)

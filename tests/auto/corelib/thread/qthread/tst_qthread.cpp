@@ -13,12 +13,14 @@
 #include <qcoreapplication.h>
 #include <qelapsedtimer.h>
 #include <qmutex.h>
+#include <qregularexpression.h>
 #include <qthread.h>
 #include <qtimer.h>
 #include <qwaitcondition.h>
 #include <qdebug.h>
 #include <qmetaobject.h>
 #include <qscopeguard.h>
+#include <private/qlatch_p.h>
 #include <private/qobject_p.h>
 #include <private/qthread_p.h>
 
@@ -36,9 +38,12 @@
 #include <exception>
 #endif
 
+#include <thread>
+
 #include <QtTest/private/qemulationdetector_p.h>
 
 using namespace std::chrono_literals;
+using namespace Qt::StringLiterals;
 
 class tst_QThread : public QObject
 {
@@ -81,6 +86,8 @@ private slots:
     void connectThreadFinishedSignalToObjectDeleteLaterSlot();
     void wait2();
     void wait3_slowDestructor();
+    void multiThreadWait_data();
+    void multiThreadWait();
     void destroyFinishRace();
     void startFinishRace();
     void startAndQuitCustomEventLoop();
@@ -103,6 +110,8 @@ private slots:
     void terminateSelfStressTest();
 
     void bindingListCleanupAfterDelete();
+
+    void qualityOfService();
 };
 
 enum { one_minute = 60 * 1000, five_minutes = 5 * one_minute };
@@ -460,6 +469,9 @@ void tst_QThread::start()
     };
     const int prio_count = sizeof(priorities) / sizeof(QThread::Priority);
 
+    // fail if start() emits a warning
+    QTest::failOnWarning(QRegularExpression{u"^QThread::start:"_s});
+
     for (int i = 0; i < prio_count; ++i) {
         Simple_Thread thread;
         QVERIFY(!thread.isFinished());
@@ -710,19 +722,18 @@ void noop(void*) { }
 class NativeThreadWrapper
 {
 public:
-    NativeThreadWrapper() : qthread(nullptr), waitForStop(false) {}
+    NativeThreadWrapper() : qthread(nullptr), stopSemaphore(1) {}
     void start(FunctionPointer functionPointer = noop, void *data = nullptr);
     void startAndWait(FunctionPointer functionPointer = noop, void *data = nullptr);
     void join();
-    void setWaitForStop() { waitForStop = true; }
+    void setWaitForStop() { stopSemaphore.acquire(); }
     void stop();
 
     ThreadHandle nativeThreadHandle;
     QThread *qthread;
-    QWaitCondition startCondition;
-    QMutex mutex;
-    bool waitForStop;
-    QWaitCondition stopCondition;
+    QSemaphore startSemaphore;
+    QSemaphore stopSemaphore;
+
 protected:
     static void *runUnix(void *data);
     static unsigned WIN_FIX_STDCALL runWin(void *data);
@@ -746,9 +757,8 @@ void NativeThreadWrapper::start(FunctionPointer functionPointer, void *data)
 
 void NativeThreadWrapper::startAndWait(FunctionPointer functionPointer, void *data)
 {
-    QMutexLocker locker(&mutex);
     start(functionPointer, data);
-    startCondition.wait(locker.mutex());
+    startSemaphore.acquire();
 }
 
 void NativeThreadWrapper::join()
@@ -769,20 +779,13 @@ void *NativeThreadWrapper::runUnix(void *that)
     nativeThreadWrapper->qthread = QThread::currentThread();
 
     // Release main thread.
-    {
-        QMutexLocker lock(&nativeThreadWrapper->mutex);
-        nativeThreadWrapper->startCondition.wakeOne();
-    }
+    nativeThreadWrapper->startSemaphore.release();
 
     // Run function.
     nativeThreadWrapper->functionPointer(nativeThreadWrapper->data);
 
     // Wait for stop.
-    {
-        QMutexLocker lock(&nativeThreadWrapper->mutex);
-        if (nativeThreadWrapper->waitForStop)
-            nativeThreadWrapper->stopCondition.wait(lock.mutex());
-    }
+    nativeThreadWrapper->stopSemaphore.acquire();
 
     return nullptr;
 }
@@ -795,9 +798,7 @@ unsigned WIN_FIX_STDCALL NativeThreadWrapper::runWin(void *data)
 
 void NativeThreadWrapper::stop()
 {
-    QMutexLocker lock(&mutex);
-    waitForStop = false;
-    stopCondition.wakeOne();
+    stopSemaphore.release();
 }
 
 static bool threadAdoptedOk = false;
@@ -987,13 +988,11 @@ void tst_QThread::adoptMultipleThreadsOverlap()
     for (int i = 0; i < numThreads; ++i) {
         nativeThreads.append(new NativeThreadWrapper());
         nativeThreads.at(i)->setWaitForStop();
-        nativeThreads.at(i)->mutex.lock();
         nativeThreads.at(i)->start();
     }
     for (int i = 0; i < numThreads; ++i) {
-        nativeThreads.at(i)->startCondition.wait(&nativeThreads.at(i)->mutex);
+        nativeThreads.at(i)->startSemaphore.acquire();
         QObject::connect(nativeThreads.at(i)->qthread, SIGNAL(finished()), &recorder, SLOT(slot()));
-        nativeThreads.at(i)->mutex.unlock();
     }
 
     QObject::connect(nativeThreads.at(numThreads - 1)->qthread, SIGNAL(finished()), &QTestEventLoop::instance(), SLOT(exitLoop()));
@@ -1017,7 +1016,7 @@ void tst_QThread::adoptedThreadBindingStatus()
     nativeThread.startAndWait();
     QVERIFY(nativeThread.qthread);
     auto privThread = static_cast<QThreadPrivate *>(QObjectPrivate::get(nativeThread.qthread));
-    QVERIFY(privThread->m_statusOrPendingObjects.bindingStatus());
+    QVERIFY(privThread->data->m_statusOrPendingObjects.bindingStatus());
 
     nativeThread.stop();
     nativeThread.join();
@@ -1195,6 +1194,193 @@ void tst_QThread::wait3_slowDestructor()
                  qPrintable(QString::fromLatin1("elapsed: %1").arg(elapsed)));
     }
     QVERIFY(thread.wait(one_minute));
+}
+
+void tst_QThread::multiThreadWait_data()
+{
+    QTest::addColumn<QList<int>>("deadlines");
+    auto addRow = [](auto &&... list) {
+        static_assert(sizeof...(list) <= 5,
+                "Limited by std::array in tst_QThread::multiThreadWait()");
+        QList<int> deadlines = { std::move(list)... };
+        QByteArrayList name;
+        for (int value : deadlines) {
+            if (value < 0)
+                name.append("Forever");
+            else
+                name.append(QByteArray::number(value));
+        }
+        QTest::newRow(name.join('-').constData()) << deadlines;
+    };
+
+    // control
+    addRow(-1);
+    addRow(0);
+    addRow(25);
+    addRow(250);
+
+    addRow(0, 0);
+    addRow(0, 0, 0, 0, 0);
+    addRow(-1, -1);
+    addRow(-1, -1, -1, -1, -1);
+
+    // this is probably too fast and the Forever gets in too quickly
+    addRow(0, -1);
+
+    // any positive time below 100ms (see below) is expected to timeout
+    addRow(25, -1);
+    addRow(25, 50, -1);
+    addRow(50, 25, -1);
+    addRow(-1, 25, 25, 25);
+    addRow(25, 2000);
+    addRow(25, 2000, 25, -1);
+}
+
+void tst_QThread::multiThreadWait()
+{
+    static constexpr auto TimeoutThreshold = 100ms;
+    auto isExpectedToTimeout = [](unsigned value) {
+        return value < TimeoutThreshold.count();
+    };
+
+    class TargetThread : public QThread {
+    public:
+        QSemaphore sync;
+        void run() override
+        {
+            sync.acquire();
+        }
+    };
+
+    // Design of this test:
+    //
+    // The WaiterThread class is used to test both threads that time out during
+    // QThread::wait() and those that succeed. Both the WaiterThread and the
+    // main thread operate two QElapsedTimers, each before and after the
+    // arriveAndWait() calls. The WaiterThread QElapsedTimer started after
+    // arriveAndWait() measures the time around QThread::wait().
+    //
+    // To avoid using QThread::wait() to wait on a thread that itself doing
+    // QThread::wait() in a test that is testing exactly that function, the
+    // main thread waits for the WaiterThreads first on a QSemaphore. If those
+    // tryAcquire() fail, there's a bug in QThread::wait().
+    //
+    // For wait() calls that are expected to timeout, the WaiterThread's
+    // QElapsedTimer around the wait() call will be compared against the
+    // QElapsedTimer from the main thread which was started before any thread
+    // was started (read: the main thread's starting time point is always
+    // earlier than that of the WaiterThreads). The main thread then waits for
+    // the WaiterThreads that time out, before ending measuring the
+    // QElapsedTimers. This implies the time measured around the
+    // QThread::wait() must strictly less than the time the main thread's
+    // QElapsedTimer.
+    //
+    // After this, the main thread causes the TargetThread to exit, which
+    // should cause QThread::wait() to return with success in the remaining
+    // WaiterThread.
+    //
+    // For wait() calls that are expected to succeed, the time measured around
+    // the QThread::wait() must be strictly less than or equal to the original
+    // timeout (though see note below). Additionally, we verify that
+    // QThread::wait() didn't return too soon (potentially before TargetThread
+    // had actually exited) by comparing the thread's total time to the
+    // QElapsedTimer on the main thread that was started after the
+    // arriveAndWait() (read: starting time point is strictly later than that
+    // of the WaiterThreads'). The threads must have waited a time greater than
+    // or equal to this time.
+    //
+    // Note on race condition: there's one race condition on a successful
+    // non-forever wait. It is possible the deadline calculated by the main
+    // thread has come and gone before QThread::wait() was called, meaning it
+    // is called with a deadline in the past and will thus return with failure.
+    // We mitigate this by only using a timeouts for success much greater than
+    // the expected runtime of the test (2s vs ~10 ms).
+    class WaiterThread : public QThread {
+    public:
+        QLatch *barrier;
+        QSemaphore *endSema;
+        QThread *target;
+        QDeadlineTimer deadline;
+        QElapsedTimer::Duration totalDuration = {};
+        QElapsedTimer::Duration waitedDuration = {};
+        int result = -1;
+        void run() override
+        {
+            QElapsedTimer total, waitOnly;
+            total.start();
+            barrier->arriveAndWait();
+            waitOnly.start();
+            result = target->wait(deadline);
+            waitedDuration = waitOnly.durationElapsed();
+            totalDuration = total.durationElapsed();
+            endSema->release();
+        }
+    };
+
+    QFETCH(QList<int>, deadlines);
+    TargetThread target;
+    target.start();
+
+    QLatch barrier(deadlines.size() + 1);      // plus the main thread
+    QSemaphore timeoutSema, successSema;
+    std::array<std::unique_ptr<WaiterThread>, 5> threads;   // 5 threads is enough
+    int expectedTimeoutCount = 0;
+    for (int i = 0; i < deadlines.size(); ++i) {
+        threads[i] = std::make_unique<WaiterThread>();
+        threads[i]->barrier = &barrier;
+        if (isExpectedToTimeout(deadlines.at(i))) {
+            ++expectedTimeoutCount;
+            threads[i]->endSema = &timeoutSema;
+        } else {
+            threads[i]->endSema = &successSema;
+        }
+        threads[i]->target = &target;
+    }
+    for (int i = 0; i < deadlines.size(); ++i)
+        threads[i]->deadline = QDeadlineTimer(deadlines.at(i));
+
+    // start the threads and synchronize everyone
+    QElapsedTimer timeoutTimer, waitTimer;
+    timeoutTimer.start();
+    for (int i = 0; i < deadlines.size(); ++i)
+        threads[i]->start();
+    barrier.arriveAndWait();
+    waitTimer.start();
+
+    // then wait for the threads that are expected to timeout to do so
+    QVERIFY(timeoutSema.tryAcquire(expectedTimeoutCount, QDeadlineTimer::Forever));
+
+    // compute the elapsed time for timing comparisons
+    std::this_thread::sleep_for(5ms);   // short, but long enough to avoid rounding errors
+    auto waitElapsed = waitTimer.durationElapsed();
+    auto timeoutElapsed = timeoutTimer.durationElapsed();
+    std::this_thread::sleep_for(5ms);
+
+    // cause the target thread to exit, so the successful threads do succeed
+    target.sync.release();
+    int expectedSuccessCount = deadlines.size() - expectedTimeoutCount;
+    QVERIFY(successSema.tryAcquire(expectedSuccessCount, QDeadlineTimer::Forever));
+
+    // wait for all the threads to end, before QVERIFY/QCOMPAREs
+    for (int i = 0; i < deadlines.size(); ++i)
+        threads[i]->wait();
+    target.wait();
+
+    for (int i = 0; i < deadlines.size(); ++i) {
+        auto printI = qScopeGuard([i] { qWarning("i = %i", i); });
+        if (isExpectedToTimeout(deadlines.at(i))) {
+            QCOMPARE_LT(threads[i]->waitedDuration, timeoutElapsed);
+            QCOMPARE(threads[i]->result, false);
+        } else {
+            // if it was a success, it must have waited less than the deadline
+            if (deadlines.at(i) >= 0)
+                QCOMPARE_LE(threads[i]->waitedDuration, deadlines.at(i) * 1ms);
+            QCOMPARE_GE(threads[i]->totalDuration, waitElapsed);
+            QCOMPARE(threads[i]->result, true);
+        }
+        printI.dismiss();
+        threads[i].reset();
+    }
 }
 
 void tst_QThread::destroyFinishRace()
@@ -1380,9 +1566,10 @@ void tst_QThread::customEventDispatcher()
 
     QSemaphore threadLocalSemaphore;
     QMetaObject::invokeMethod(&obj, [&]() {
-#ifndef Q_OS_WIN
+#if !QT_CONFIG(broken_threadlocal_dtors)
         // On Windows, the thread_locals are unsequenced between DLLs, so this
-        // could run after QThreadPrivate::finish()
+        // could run after QThreadPrivate::finish().
+        // On Unix, QThread doesn't use thread_local if support is broken.
         static thread_local
 #endif
                 ThreadLocalContent d(&obj, &threadLocalSemaphore);
@@ -1988,10 +2175,38 @@ void tst_QThread::bindingListCleanupAfterDelete()
     auto optr = std::make_unique<QObject>();
     optr->moveToThread(&t);
     auto threadPriv =  static_cast<QThreadPrivate *>(QObjectPrivate::get(&t));
-    auto list = threadPriv->m_statusOrPendingObjects.list();
+    auto list = threadPriv->data->m_statusOrPendingObjects.list();
     QVERIFY(list);
     optr.reset();
     QVERIFY(list->empty());
+}
+
+void tst_QThread::qualityOfService()
+{
+    QThread th;
+    QThread::currentThread()->setObjectName("Main thread");
+    th.setObjectName("test thread");
+    auto guard = qScopeGuard([&th](){ th.quit(); th.wait(); });
+    QCOMPARE(th.serviceLevel(), QThread::QualityOfService::Auto);
+    th.setServiceLevel(QThread::QualityOfService::High);
+    QCOMPARE(th.serviceLevel(), QThread::QualityOfService::High);
+    th.setServiceLevel(QThread::QualityOfService::Eco);
+    QCOMPARE(th.serviceLevel(), QThread::QualityOfService::Eco);
+
+    th.start();
+    auto obj = std::make_unique<QObject>();
+    obj->moveToThread(&th);
+
+    QThread::QualityOfService launchedThreadServiceLevel = {};
+    QMetaObject::invokeMethod(obj.get(), [](){
+        return QThread::currentThread()->serviceLevel();
+    }, Qt::BlockingQueuedConnection, qReturnArg(launchedThreadServiceLevel));
+
+    QCOMPARE(launchedThreadServiceLevel, QThread::QualityOfService::Eco);
+
+    QMetaObject::invokeMethod(obj.get(), [](){
+        QThread::currentThread()->setServiceLevel(QThread::QualityOfService::High);
+    }, Qt::BlockingQueuedConnection);
 }
 
 QTEST_MAIN(tst_QThread)

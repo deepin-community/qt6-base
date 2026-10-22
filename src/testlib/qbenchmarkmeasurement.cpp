@@ -16,9 +16,18 @@ void QBenchmarkTimeMeasurer::start()
     time.start();
 }
 
+void QBenchmarkTimeMeasurer::updateMeasurement()
+{
+    const qreal value = std::chrono::duration<qreal, std::milli>(time.durationElapsed()).count();
+    accumulator.update(value);
+    time.restart();
+}
+
 QList<QBenchmarkMeasurerBase::Measurement> QBenchmarkTimeMeasurer::stop()
 {
-    return { { qreal(time.elapsed()), QTest::WalltimeMilliseconds } };
+    return { { accumulator.total(),
+               accumulator.variance() / QBenchmarkTestMethodData::current->measurementBlockSize,
+               QTest::WalltimeMilliseconds } };
 }
 
 bool QBenchmarkTimeMeasurer::isMeasurementAccepted(Measurement measurement)
@@ -48,10 +57,18 @@ void QBenchmarkTickMeasurer::start()
     startTicks = getticks();
 }
 
+void QBenchmarkTickMeasurer::updateMeasurement()
+{
+    const qreal value = qreal(elapsed(getticks(), startTicks));
+    accumulator.update(value);
+    startTicks = getticks();
+}
+
 QList<QBenchmarkMeasurerBase::Measurement> QBenchmarkTickMeasurer::stop()
 {
-    CycleCounterTicks now = getticks();
-    return { { qreal(elapsed(now, startTicks)), QTest::CPUTicks } };
+    return { { accumulator.total(),
+               accumulator.variance() / QBenchmarkTestMethodData::current->measurementBlockSize,
+               QTest::CPUTicks } };
 }
 
 bool QBenchmarkTickMeasurer::isMeasurementAccepted(QBenchmarkMeasurerBase::Measurement)

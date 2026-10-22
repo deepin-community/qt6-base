@@ -20,10 +20,12 @@
 #include <QStyle>
 #include <QtGlobal>
 #include <QTemporaryDir>
+#include <QQueue>
 #include <QAbstractItemModelTester>
 #if defined(Q_OS_WIN)
 # include <qt_windows.h> // for SetFileAttributes
 #endif
+#include <private/qfileinfo_p.h>
 #include <private/qfilesystemengine_p.h>
 
 #include <algorithm>
@@ -32,21 +34,6 @@ using namespace Qt::StringLiterals;
 using namespace std::chrono;
 
 #define WAITTIME 1000
-
-// Will try to wait for the condition while allowing event processing
-// for a maximum of 5 seconds.
-#define TRY_WAIT(expr, timedOut) \
-    do { \
-        *timedOut = true; \
-        const int step = 50; \
-        for (int __i = 0; __i < 5000; __i += step) { \
-            if (expr) { \
-                *timedOut = false; \
-                break; \
-            } \
-            QTest::qWait(step); \
-        } \
-    } while(0)
 
 Q_DECLARE_METATYPE(QDir::Filters)
 Q_DECLARE_METATYPE(QFileDevice::Permissions)
@@ -109,9 +96,20 @@ private slots:
     void permissions();
 
     void doNotUnwatchOnFailedRmdir();
+    void noCorruptionAddNoSortRemove();
+    void noCorruptionAddNoSortHide();
     void specialFiles();
 
     void fileInfo();
+
+    void pathWithTrailingSpace_data();
+    void pathWithTrailingSpace();
+
+#ifdef Q_OS_WIN
+    void correctFileInfoForDriveRootPath();
+    void fileInfoPathNoDoubleSlashUNC();
+#endif
+    void fileInfoPathNoDoubleSlash();
 
 protected:
     bool createFiles(QFileSystemModel *model, const QString &test_path,
@@ -156,6 +154,9 @@ void tst_QFileSystemModel::indexPath()
     QAbstractItemModelTester tester(model.get());
     tester.setUseFetchMore(false);
     int depth = QDir::currentPath().count('/');
+    QVERIFY2(depth > 1, "currentPath() depth is too shallow; "
+                        "ensure the test is not run with '/' as PWD");
+
     model->setRootPath(QDir::currentPath());
     QString backPath;
     for (int i = 0; i <= depth * 2 + 1; ++i) {
@@ -330,8 +331,7 @@ bool tst_QFileSystemModel::createFiles(QFileSystemModel *model, const QString &t
 {
     qCDebug(lcFileSystemModel) << (model->rowCount(model->index(test_path))) << existingFileCount << initial_files;
     bool timedOut = false;
-    TRY_WAIT((model->rowCount(model->index(test_path)) == existingFileCount), &timedOut);
-    if (timedOut)
+    if (!QTest::qWaitFor([&]() { return model->rowCount(model->index(test_path)) == existingFileCount; }))
         return false;
 
     QDir dir(test_path);
@@ -397,8 +397,7 @@ QModelIndex tst_QFileSystemModel::prepareTestModelRoot(QFileSystemModel *model,
         return QModelIndex();
 
     bool timedOut = false;
-    TRY_WAIT(model->rowCount(root) == 5, &timedOut);
-    if (timedOut)
+    if (!QTest::qWaitFor([&]() { return model->rowCount(root) == 5; }))
         return QModelIndex();
 
     return root;
@@ -661,6 +660,9 @@ void tst_QFileSystemModel::filters()
 
 #ifdef Q_OS_LINUX
     if (files.size() >= 3 && rowCount >= 3 && rowCount != 5) {
+        if (::geteuid() == 0)
+            QSKIP("Running this test as root doesn't make sense");
+
         QString fileName1 = (tmp + '/' + files.at(0));
         QString fileName2 = (tmp + '/' + files.at(1));
         QString fileName3 = (tmp + '/' + files.at(2));
@@ -1052,11 +1054,18 @@ void tst_QFileSystemModel::caseSensitivity()
         indexes.append(index);
     }
 
-    if (!QFileSystemEngine::isCaseSensitive()) {
-        // QTBUG-31103, QTBUG-64147: Verify that files can be accessed by paths with fLipPeD case.
+    QFileInfo tmpInfo(tmp);
+    auto *tmpInfoPriv = QFileInfoPrivate::get(&tmpInfo);
+    if (!qt_isCaseSensitive(tmpInfoPriv->fileEntry, tmpInfoPriv->metaData)) {
+        // Verify that files can be accessed by paths with fLipPeD case.
         for (int i = 0; i < paths.size(); ++i) {
+            const QModelIndex normalCaseIndex = indexes.at(i);
             const QModelIndex flippedCaseIndex = model->index(flipCase(paths.at(i)));
-            QCOMPARE(indexes.at(i), flippedCaseIndex);
+#if !defined(Q_OS_WIN)
+            QEXPECT_FAIL("", "QFileSystemModelNodePathKey is hard-coded to be case"
+                " sensitive on non-Windows and case-insensitive on Windows (QTBUG-31103)", Abort);
+#endif
+            QCOMPARE(normalCaseIndex, flippedCaseIndex);
         }
     }
 }
@@ -1116,7 +1125,7 @@ void tst_QFileSystemModel::dirsBeforeFiles()
     for (int i = 1, count = model->rowCount(root); i < count; ++i) {
         const QFileInfo previous = model->fileInfo(model->index(i - 1, 0, root));
         const QFileInfo current = model->fileInfo(model->index(i, 0, root));
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         QVERIFY2(!(previous.isFile() && current.isDir()), diagnosticMsg(i, previous, current).constData());
 #else
         QVERIFY2(previous.fileName() < current.fileName(), diagnosticMsg(i, previous, current).constData());
@@ -1233,6 +1242,203 @@ void tst_QFileSystemModel::doNotUnwatchOnFailedRmdir()
     QTRY_COMPARE(model.rowCount(rootIndex), 2);
 }
 
+class SortDelayedFileSystemModel : public QFileSystemModel
+{
+    Q_OBJECT
+public:
+    void sort(int column, Qt::SortOrder order) override
+    {
+        if (!sorting_blocked)
+            QFileSystemModel::sort(column, order);
+        else
+            queue.enqueue({column, order});
+    }
+    void setSortingBlocked(bool blocked)
+    {
+        sorting_blocked = blocked;
+        if (!blocked) {
+            while (!queue.isEmpty()) {
+                auto sort_op = queue.dequeue();
+                sort(sort_op.column, sort_op.sortOrder);
+            }
+        }
+    }
+    bool isSortPending()
+    {
+        return !queue.isEmpty();
+    }
+private:
+    struct SortRequest {
+        int column;
+        Qt::SortOrder sortOrder;
+    };
+    QQueue<SortRequest> queue;
+    bool sorting_blocked = false;
+};
+
+void tst_QFileSystemModel::noCorruptionAddNoSortRemove()
+{
+    // This tests for the issue in QTBUG-143775
+    // This exact variant exercises QFileSystemModelPrivate::removeNode
+
+    const QString tmp = flatDirTestPath;
+
+    SortDelayedFileSystemModel model;
+
+    const QTemporaryDir tempDir(tmp + u'/' + "noCorruptionAddNoSortRemove-XXXXXX"_L1);
+    QVERIFY2(tempDir.isValid(), qPrintable(tempDir.errorString()));
+
+    const QModelIndex rootIndex = model.setRootPath(tempDir.path());
+
+    {
+        QFile file(tempDir.path() + u'/' + "file1"_L1);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+    }
+
+    {
+        QFile file(tempDir.path() + u'/' + "file2"_L1);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+    }
+
+    QTRY_COMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file1"_L1);
+    QTRY_COMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file2"_L1);
+
+    QPersistentModelIndex file1 = model.index(0, 0, rootIndex);
+    QPersistentModelIndex file2 = model.index(1, 0, rootIndex);
+
+    model.sort(0, Qt::DescendingOrder);
+
+    // Check that sorting successfully reordered:
+    QCOMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file2"_L1);
+    QCOMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file1"_L1);
+
+    // Check that persistent indexes still point to valid data:
+    QCOMPARE(file1.data(Qt::DisplayRole), "file1"_L1);
+    QCOMPARE(file2.data(Qt::DisplayRole), "file2"_L1);
+
+    model.setSortingBlocked(true);
+
+    {
+        QFile file(tempDir.path() + u'/' + "file3"_L1);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+    }
+
+    QTRY_COMPARE(model.rowCount(rootIndex), 3); // Wait for file addition to be seen by model
+
+    QCOMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file2"_L1);
+    QCOMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file1"_L1);
+    // with sorting blocked, file3 is added to the end
+    QCOMPARE(model.index(2, 0, rootIndex).data(Qt::DisplayRole), "file3"_L1);
+
+    model.remove(file2);
+
+    QTRY_COMPARE(model.rowCount(rootIndex), 2); // Wait for file removal to be seen by model
+
+    // Check that persistent indexes still point to valid data:
+    QCOMPARE(file1.data(Qt::DisplayRole), "file1"_L1);
+
+    // Sorting is still blocked, file2 should just go away
+    QCOMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file1"_L1);
+    QCOMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file3"_L1);
+
+    QTRY_VERIFY(model.isSortPending());
+    model.setSortingBlocked(false);
+
+    // Check that persistent indexes still point to valid data:
+    QCOMPARE(file1.data(Qt::DisplayRole), "file1"_L1);
+
+    QCOMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file3"_L1);
+    QCOMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file1"_L1);
+}
+
+void tst_QFileSystemModel::noCorruptionAddNoSortHide()
+{
+    // This tests for the issue in QTBUG-143775
+    // This exact variant exercises QFileSystemModelPrivate::removeVisibleFile
+
+    const QString tmp = flatDirTestPath;
+
+    SortDelayedFileSystemModel model;
+
+    const QTemporaryDir tempDir(tmp + u'/' + "noCorruptionAddNoSortHide-XXXXXX"_L1);
+    QVERIFY2(tempDir.isValid(), qPrintable(tempDir.errorString()));
+
+    const QModelIndex rootIndex = model.setRootPath(tempDir.path());
+
+    {
+        QFile file(tempDir.path() + u'/' + "file1keep"_L1);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+    }
+
+    {
+        QFile file(tempDir.path() + u'/' + "file2"_L1);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+    }
+
+    QTRY_COMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file1keep"_L1);
+    QTRY_COMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file2"_L1);
+
+    QPersistentModelIndex file1 = model.index(0, 0, rootIndex);
+    QPersistentModelIndex file2 = model.index(1, 0, rootIndex);
+
+    model.sort(0, Qt::DescendingOrder);
+
+    // Check that sorting successfully reordered:
+    QCOMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file2"_L1);
+    QCOMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file1keep"_L1);
+
+    // Check that persistent indexes still point to valid data:
+    QCOMPARE(file1.data(Qt::DisplayRole), "file1keep"_L1);
+    QCOMPARE(file2.data(Qt::DisplayRole), "file2"_L1);
+
+    model.setSortingBlocked(true);
+
+    {
+        QFile file(tempDir.path() + u'/' + "file3keep"_L1);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+    }
+
+    QTRY_COMPARE(model.rowCount(rootIndex), 3); // Wait for file addition to be seen by model
+
+    QCOMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file2"_L1);
+    QCOMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file1keep"_L1);
+    // with sorting blocked, file3 is added to the end
+    QCOMPARE(model.index(2, 0, rootIndex).data(Qt::DisplayRole), "file3keep"_L1);
+
+    model.setNameFilterDisables(false);
+    model.setNameFilters(QStringList(u"*keep*"_s));
+    {
+        // change the size of file2, so that the code in fileSystemChanged
+        // considers again whether it should be visible or not
+        QFile file(tempDir.path() + u'/' + "file2"_L1);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+        file.write("hello world!\n");
+    }
+    {
+        // here we create a 4th file to trigger the filesystem watcher
+        QFile file(tempDir.path() + u'/' + "file4"_L1);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+    }
+
+    QTRY_COMPARE(model.rowCount(rootIndex), 2); // Wait for file removal to be seen by model
+
+    // Check that persistent indexes still point to valid data:
+    QCOMPARE(file1.data(Qt::DisplayRole), "file1keep"_L1);
+
+    // Sorting is still blocked, file2 should just go away
+    QCOMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file1keep"_L1);
+    QCOMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file3keep"_L1);
+
+    QTRY_VERIFY(model.isSortPending());
+    model.setSortingBlocked(false);
+
+    // Check that persistent indexes still point to valid data:
+    QCOMPARE(file1.data(Qt::DisplayRole), "file1keep"_L1);
+
+    QCOMPARE(model.index(0, 0, rootIndex).data(Qt::DisplayRole), "file3keep"_L1);
+    QCOMPARE(model.index(1, 0, rootIndex).data(Qt::DisplayRole), "file1keep"_L1);
+}
+
 static QSet<QString> fileListUnderIndex(const QFileSystemModel *model, const QModelIndex &parent)
 {
     QSet<QString> fileNames;
@@ -1247,8 +1453,8 @@ void tst_QFileSystemModel::specialFiles()
 #ifndef Q_OS_UNIX
      QSKIP("Not implemented");
 #endif
-#ifdef Q_OS_ANDROID
-     QSKIP("Android does not allow access to root filesystem");
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+     QSKIP("This platform does not allow access to the root filesystem");
 #endif
 
     QFileSystemModel model;
@@ -1286,6 +1492,142 @@ void tst_QFileSystemModel::fileInfo()
     QCOMPARE(model.fileInfo(idx), QFileInfo(subdirPath));
     idx = model.setRootPath(dirPath);
     QCOMPARE(model.fileInfo(idx), QFileInfo(dirPath));
+}
+
+void tst_QFileSystemModel::pathWithTrailingSpace_data()
+{
+    QTest::addColumn<QString>("input");
+    QTest::addColumn<QString>("foundAs");
+
+    static constexpr bool windows =
+#ifdef Q_OS_WIN
+        true;
+#else
+        false;
+#endif
+    // Cover the various cases as documented at
+    // https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/file-folder-name-whitespace-characters
+
+    QTest::addRow("trailing space") << "space "
+        << (windows ? "space" : "space ");
+    QTest::addRow("leading space") << " leadingspace"
+        << (windows ? "leadingspace" : " leadingspace");
+    QTest::addRow("trailing dot") << "dot."
+        << (windows ? "dot" : "dot.");
+    QTest::addRow("leading dot") << ".dot" << ".dot";
+
+    QTest::addRow("spacedot .") << "spacedot ."
+        << (windows ? "spacedot" : "spacedot .");
+    QTest::addRow("dotspace. ") << "dotspace. "
+        << (windows ? "dotspace" : "dotspace. ");
+    QTest::addRow("invisible") << "      "
+        << (windows ? "" : "      ");
+
+    QTest::addRow("leading 0x3000") << "\u3000-x3000" << "\u3000-x3000";
+    QTest::addRow("trailing 0x3000") << "x3000-\u3000" << "x3000-\u3000";
+}
+
+void tst_QFileSystemModel::pathWithTrailingSpace()
+{
+    QFETCH(const QString, input);
+    QFETCH(const QString, foundAs);
+
+    const bool validInput = !foundAs.isEmpty();
+
+    QTemporaryDir temp;
+
+    QFileSystemModel model;
+    model.setReadOnly(false);
+    const QModelIndex rootIndex = model.setRootPath(temp.path());
+    const QDir rootDir = model.rootDirectory();
+    const QString absoluteInput = rootDir.absoluteFilePath(input);
+    const QString absoluteFoundAs = validInput ? rootDir.absoluteFilePath(foundAs)
+                                               : rootDir.absolutePath();
+
+    const QModelIndex createdIndex = model.mkdir(rootIndex, input);
+    QCOMPARE(createdIndex.isValid(), validInput);
+    if (createdIndex.isValid())
+        QCOMPARE(model.filePath(createdIndex), absoluteFoundAs);
+    const QModelIndex foundIndex = model.index(absoluteInput);
+    QVERIFY(foundIndex.isValid());
+    QCOMPARE(model.filePath(foundIndex), absoluteFoundAs);
+
+    if (createdIndex.isValid())
+        QVERIFY(model.rmdir(createdIndex));
+
+    const QPersistentModelIndex newFolder = model.mkdir(rootIndex, "New Folder");
+    QVERIFY(newFolder.isValid());
+    QVERIFY(model.flags(newFolder) & Qt::ItemIsEditable);
+    QCOMPARE(model.setData(newFolder, input, Qt::EditRole), validInput);
+    if (validInput) {
+        const QModelIndex renamedIndex = model.index(absoluteInput);
+        QVERIFY(renamedIndex.isValid());
+    }
+}
+
+#ifdef Q_OS_WIN
+void tst_QFileSystemModel::correctFileInfoForDriveRootPath()
+{
+    const QString current = QDir::currentPath();
+    const qsizetype firstSlash = current.indexOf(u'/');
+    const QString drive = current.left(firstSlash);
+    QCOMPARE(drive.length(), 2);
+
+    // Obtaining the drive root path's file info must not result in the current directory's file
+    // info (QTBUG-133746)
+    const QString slashDrive = drive + u'/';
+    const QString backslashDrive = drive + u'\\';
+    QFileSystemModel model;
+    QFileInfo info = model.fileInfo(model.index(slashDrive, 0));
+    QCOMPARE(info.absoluteFilePath(), slashDrive);
+    QCOMPARE(info.absolutePath(), slashDrive);
+    info = model.fileInfo(model.index(backslashDrive, 0));
+    QCOMPARE(info.absoluteFilePath(), slashDrive);
+    QCOMPARE(info.absolutePath(), slashDrive);
+
+    const qsizetype secondSlash = current.indexOf(u'/', firstSlash + 1);
+    if (secondSlash == -1)
+        return;
+
+    const QString rootChild = current.left(secondSlash);
+    QModelIndex childIndex = model.index(rootChild, 0);
+    info = model.fileInfo(childIndex.parent());
+    QCOMPARE(info.absoluteFilePath(), slashDrive);
+    QCOMPARE(info.absolutePath(), slashDrive);
+}
+
+void tst_QFileSystemModel::fileInfoPathNoDoubleSlashUNC()
+{
+    // Verify that UNC paths are not affected by the double slash fix.
+    // UNC paths are handled before the loop in QFileSystemModelPrivate::node(),
+    // so the fix should have no impact on them.
+    QFileSystemModel model;
+    const QModelIndex idx = model.setRootPath(u"//localhost/c$"_s);
+    if (!idx.isValid())
+        QSKIP("UNC path //localhost/c$ is not accessible on this machine");
+
+    const QString resultPath = model.fileInfo(idx).filePath();
+    QVERIFY2(!resultPath.startsWith("///"_L1),
+             qPrintable("fileInfo() returned UNC path with triple slash: " + resultPath));
+    QCOMPARE(resultPath, u"//localhost/c$"_s);
+}
+#endif
+
+void tst_QFileSystemModel::fileInfoPathNoDoubleSlash()
+{
+    const QString dirPath = flatDirTestPath;
+    QDir dir(dirPath);
+    const QString subdir = QStringLiteral("subdir");
+    QVERIFY(dir.mkdir(subdir));
+    const QString subdirPath = dir.absoluteFilePath(subdir);
+
+    QFileSystemModel model;
+    const QModelIndex idx = model.setRootPath(subdirPath);
+
+    const QString resultPath = model.fileInfo(idx).filePath();
+    QVERIFY2(!resultPath.startsWith("//"_L1),
+             qPrintable("fileInfo() returned path with double slash: " + resultPath));
+    QCOMPARE(resultPath, subdirPath);
 }
 
 QTEST_MAIN(tst_QFileSystemModel)

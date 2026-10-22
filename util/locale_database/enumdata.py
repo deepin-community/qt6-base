@@ -408,11 +408,51 @@ language_map = {
     343: ("Venetian",                    "vec"),
     # added in CLDR v45
     344: ("Kuvi",                        "kxv"),
+    # added in CLDR v46
+    345: ("Kara-Kalpak",                 "kaa"),
+    346: ("Swampy Cree",                 "csw"),
+    # added in CLDR v48
+    347: ("Ladin",                       "lld"), # very minority (in Italy)
+    348: ("Shan",                        "shn"),
 }
 # Don't add languages just because they exist; check CLDR does provide
 # substantial data for locales using it; and check, once added, they
-# don't show up in cldr2qlocalexmo.py's unused listing. Do also check
+# don't show up in cldr2qlocalexml.py's unused listing. Do also check
 # the data's draft status; if it's (nearly) all unconfirmed, leave it.
+
+# Known, but omitted because too little that isn't draft="unconfirmed",
+# at least at v48:
+# ("Betawi",                      "bew"),
+# ("Bakhtiari",                   "bqi"),
+# ("Buriat",                      "bua"),
+# ("Caddo",                       "cad"),
+# ("Choctaw",                     "cho"),
+# ("Hakka",                       "hak"), # or Hakka Chinese
+# ("Hmong Njua",                  "hnj"),
+# ("Qʼeqchiʼ",                    "kek"),
+# ("Lombard",                     "lmo"),
+# ("Latgalian",                   "ltg"),
+# ("Laz",                         "lzz"),
+# ("Hassaniyya",                  "mey"),
+# ("Mócheno",                     "mhn"),
+# ("Mi'kmaw",                     "mic"),
+# ("Hmong Daw",                   "mww"),
+# ("Min Nan",                     "nan"), # or Min Nan Chinese
+# ("Okanagan",                    "oka"),
+# ("Piedmontese",                 "pms"),
+# ("Pontic",                      "pnt"),
+# ("Riffian",                     "rif"), # getting there !
+# ("Samogitian",                  "sgs"),
+# ("Saraiki",                     "skr"),
+# ("Samtao",                      "stu"),
+# ("Sunwar",                      "suz"),
+# ("Tuvinian",                    "tyv"), # not far short of adequate
+# ("Mundari",                     "unr"),
+# ("Makhuwa",                     "vmw"),
+
+# It can be helpful to look in supplemental/supplementalData.xml for
+# languagePopulation entries for codes not translated in en.xml (the
+# source used by these scripts) to map them to names.
 
 language_aliases = {
     # Renamings prior to Qt 6.0 (CLDR v37):
@@ -885,6 +925,10 @@ script_map = {
     # Added at CLDR v43
     142: ("Hanifi",                 "Rohg"), # Used for Rohingya
 }
+# Omitted for want of data (see similar after language_map):
+# ("Nyiakeng Puachue Hmong", "Hmnp"),
+# ("Sunuwar",                "Sunu"),
+
 
 script_aliases = {
     # Renamings prior to Qt 6.0 (CLDR v37):

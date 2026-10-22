@@ -106,7 +106,7 @@ QByteArray composePreprocessorOutput(const Symbols &symbols) {
                 output.chop(2);
             else
                 break;
-            output += sym.lexem().mid(1);
+            output += sym.lexemView().mid(1);
             secondlast = last;
             last = PP_STRING_LITERAL;
             continue;
@@ -171,6 +171,8 @@ int runMoc(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationVersion(QString::fromLatin1(QT_VERSION_STR));
+    // let moc identify itself as moc, even if the binary has been renamed
+    QCoreApplication::setApplicationName(QString::fromLatin1("moc"));
 
     bool autoInclude = true;
     bool defaultInclude = true;
@@ -279,6 +281,14 @@ int runMoc(int argc, char **argv)
     noNotesWarningsCompatOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(noNotesWarningsCompatOption);
 
+    QCommandLineOption activeQtMode(QStringLiteral("active-qt"));
+    activeQtMode.setFlags(QCommandLineOption::HiddenFromHelp);
+    parser.addOption(activeQtMode);
+
+    QCommandLineOption qmlMacroWarningIsFatal(QStringLiteral("fatal-qml-macro-warning"));
+    qmlMacroWarningIsFatal.setFlags(QCommandLineOption::HiddenFromHelp);
+    parser.addOption(qmlMacroWarningIsFatal);
+
     QCommandLineOption noNotesOption(QStringLiteral("no-notes"));
     noNotesOption.setDescription(QStringLiteral("Do not display notes."));
     parser.addOption(noNotesOption);
@@ -337,6 +347,9 @@ int runMoc(int argc, char **argv)
 
     parser.process(arguments);
 
+    // used by ActiveQt's dumpcpp to suppress some functions
+    moc.activeQtMode = parser.isSet(activeQtMode);
+
     const QStringList files = parser.positionalArguments();
     output = parser.value(outputOption);
     if (parser.isSet(collectOption))
@@ -376,8 +389,22 @@ int runMoc(int argc, char **argv)
     }
 
     const auto includePaths = parser.values(includePathOption);
-    for (const QString &path : includePaths)
-        pp.includes += Preprocessor::IncludePath(QFile::encodeName(path));
+    for (const QString &path : includePaths) {
+#if defined(Q_OS_APPLE)
+        if (path.endsWith(".framework"_L1)) {
+            // Treat -I$DIR/QtModule.framework as -F $DIR, to match CMake's AUTOMOC
+            // logic, and avoid accidentally treating an umbrella #include <QtModule>
+            // as an include of the library binary at $DIR/QtModule.framework/QtModule
+            auto frameworkPath = path.sliced(0, path.lastIndexOf(QDir::separator()));
+            Preprocessor::IncludePath p(QFile::encodeName(frameworkPath));
+            p.isFrameworkPath = true;
+            pp.includes += p;
+        } else
+#endif
+        {
+            pp.includes += Preprocessor::IncludePath(QFile::encodeName(path));
+        }
+    }
     QString compilerFlavor = parser.value(compilerFlavorOption);
     if (compilerFlavor.isEmpty() || compilerFlavor == "unix"_L1) {
         // traditional Unix compilers use both CPATH and CPLUS_INCLUDE_PATH
@@ -439,6 +466,8 @@ int runMoc(int argc, char **argv)
         moc.displayNotes = false;
     if (parser.isSet(noWarningsOption) || noNotesCompatValues.contains("w"_L1))
         moc.displayWarnings = moc.displayNotes = false;
+    if (parser.isSet(qmlMacroWarningIsFatal))
+        moc.qmlMacroWarningIsFatal = true;
 
     if (autoInclude) {
         qsizetype spos = filename.lastIndexOf(QDir::separator());
@@ -571,11 +600,17 @@ int runMoc(int argc, char **argv)
 
     if (pp.preprocessOnly) {
         fprintf(out.get(), "%s\n", composePreprocessorOutput(moc.symbols).constData());
+    } else if (moc.classList.isEmpty()) {
+        moc.note("No relevant classes found. No output generated.");
+        if (jsonOutput) {
+            const QJsonDocument jsonDoc(QJsonObject {
+                    { "outputRevision"_L1, mocOutputRevision },
+                    { "inputFile"_L1, QLatin1StringView(moc.strippedFileName()) }
+            });
+            fputs(jsonDoc.toJson().constData(), jsonOutput.get());
+        }
     } else {
-        if (moc.classList.isEmpty())
-            moc.note("No relevant classes found. No output generated.");
-        else
-            moc.generate(out.get(), jsonOutput.get());
+        moc.generate(out.get(), jsonOutput.get());
     }
 
     out.reset();
