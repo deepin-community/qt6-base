@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qopenglshaderprogram.h"
 #include "qopenglextrafunctions.h"
@@ -102,13 +103,24 @@ using namespace Qt::StringLiterals;
     enable this, switch to using addCacheableShaderFromSourceCode() and
     addCacheableShaderFromSourceFile(). With an OpenGL ES 3.x context or support
     for \c{GL_ARB_get_program_binary}, this will transparently cache program
-    binaries under QStandardPaths::GenericCacheLocation or
-    QStandardPaths::CacheLocation. When support is not available, calling the
-    cacheable function variants is equivalent to the normal ones.
+    binaries under QStandardPaths::CacheLocation. When support is not
+    available, calling the cacheable function variants is equivalent to the
+    normal ones.
 
     \note Some drivers do not have any binary formats available, even though
     they advertise the extension or offer OpenGL ES 3.0. In this case program
     binary support will be disabled.
+
+    \section1 Security Considerations
+
+    All data consumed by QOpenGLShaderProgram is expected to be trusted content.
+    Shader source code is passed, possibly after minimal modifications, on to
+    the underlying OpenGL implementation's compiler, which is a black box from
+    Qt's perspective.
+
+    \warning Application developers are advised to carefully consider the
+    potential implications before passing in user-provided content to functions
+    such as addShaderFromSourceFile().
 
     \sa QOpenGLShader
 */
@@ -125,6 +137,15 @@ using namespace Qt::StringLiterals;
 
     QOpenGLShader and QOpenGLShaderProgram shelter the programmer from the details of
     compiling and linking vertex and fragment shaders.
+
+    All data consumed by QOpenGLShader is expected to be trusted content. Shader
+    source code is passed, possibly after minimal modifications, on to the
+    underlying OpenGL implementation's compiler, which is a black box from Qt's
+    perspective.
+
+    \warning Application developers are advised to carefully consider the
+    potential implications before passing in user-provided content to functions
+    such as compileSourceFile().
 
     \sa QOpenGLShaderProgram
 */
@@ -183,18 +204,18 @@ static inline bool isFormatGLES(const QSurfaceFormat &f)
 
 static inline bool supportsGeometry(const QSurfaceFormat &f)
 {
-    return f.version() >= qMakePair(3, 2);
+    return f.version() >= std::pair(3, 2);
 }
 
 static inline bool supportsCompute(const QSurfaceFormat &f)
 {
 #if !QT_CONFIG(opengles2)
     if (!isFormatGLES(f))
-        return f.version() >= qMakePair(4, 3);
+        return f.version() >= std::pair(4, 3);
     else
-        return f.version() >= qMakePair(3, 1);
+        return f.version() >= std::pair(3, 1);
 #else
-    return f.version() >= qMakePair(3, 1);
+    return f.version() >= std::pair(3, 1);
 #endif
 }
 
@@ -202,11 +223,11 @@ static inline bool supportsTessellation(const QSurfaceFormat &f)
 {
 #if !QT_CONFIG(opengles2)
     if (!isFormatGLES(f))
-        return f.version() >= qMakePair(4, 0);
+        return f.version() >= std::pair(4, 0);
     else
-        return f.version() >= qMakePair(3, 2);
+        return f.version() >= std::pair(3, 2);
 #else
-    return f.version() >= qMakePair(3, 2);
+    return f.version() >= std::pair(3, 2);
 #endif
 }
 
@@ -863,7 +884,7 @@ bool QOpenGLShaderProgram::init()
     d->glfuncs->initializeOpenGLFunctions();
 
 #if !QT_CONFIG(opengles2)
-    if (!context->isOpenGLES() && context->format().version() >= qMakePair(4, 0)) {
+    if (!context->isOpenGLES() && context->format().version() >= std::pair(4, 0)) {
         d->tessellationFuncs = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_4_0_Core>(context);
         d->tessellationFuncs->initializeOpenGLFunctions();
     }

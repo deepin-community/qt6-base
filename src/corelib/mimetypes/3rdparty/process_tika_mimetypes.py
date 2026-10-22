@@ -12,6 +12,7 @@
 # This script fixes all that.
 
 # Usage: download tika-mimetypes.xml as tika-mimetypes.xml.orig and run this script to produce Qt's version of tika-mimetypes.xml
+# This is automated by update_tika_from_upstream.sh
 
 import sys, re
 
@@ -40,11 +41,100 @@ def open_input_file(inputfile):
     except OSError as e:
         sys.exit(f"OS error when opening {inputfile}: {e}")
 
+# Remove the commented-out parts of a line, so that disabled elements are ignored.
+def strip_comments(line, in_comment):
+    out = ''
+    while line:
+        if in_comment:
+            end = line.find('-->')
+            if end < 0:
+                return out, True
+            line = line[end + 3:]
+            in_comment = False
+        else:
+            start = line.find('<!--')
+            if start < 0:
+                return out + line, False
+            out += line[:start]
+            line = line[start + 4:]
+            in_comment = True
+    return out, in_comment
+
+
+# The spec says a magic rule for a generic type should use a lower priority than
+# the rules of its subtypes, so that the subtype wins. Tika does not do that: many
+# types share the default priority 50 with their sub-class-of children (e.g.
+# application/xml and image/svg+xml, or application/x-elf and application/x-sharedlib),
+# which makes magic matching pick either one. Lower each parent below its children.
+def lower_generic_priorities(lines):
+    magic_re = re.compile(r'<magic(?:\s+priority\s*=\s*"(\d+)")?\s*>')
+    type_re = re.compile(r'<mime-type type="([^"]+)"')
+    parent_re = re.compile(r'<sub-class-of type="([^"]+)"')
+    alias_re = re.compile(r'<alias type="([^"]+)"')
+
+    # Qt additions are appended as one multi-line string, re-split to index by line
+    lines = ''.join(lines).splitlines(keepends=True)
+
+    magics = {}   # mime type -> line indexes of its <magic> elements
+    parents = {}  # mime type -> parent types
+    aliases = {}  # alias -> mime type
+    priority = {} # line index -> priority
+    current = ''
+    in_comment = False
+    for i, full_line in enumerate(lines):
+        line, in_comment = strip_comments(full_line, in_comment)
+        match = type_re.search(line)
+        if match:
+            current = match.group(1)
+        match = alias_re.search(line)
+        if match:
+            aliases[match.group(1)] = current
+        match = parent_re.search(line)
+        if match:
+            parents.setdefault(current, []).append(match.group(1))
+        match = magic_re.search(line)
+        if match:
+            magics.setdefault(current, []).append(i)
+            priority[i] = int(match.group(1)) if match.group(1) else 50
+
+    children = {}
+    for mime_type, mime_parents in parents.items():
+        for parent in mime_parents:
+            children.setdefault(aliases.get(parent, parent), []).append(mime_type)
+
+    def max_priority(mime_type):
+        return max((priority[i] for i in magics.get(mime_type, [])), default=None)
+
+    changed = True
+    while changed:
+        changed = False
+        for mime_type, indexes in magics.items():
+            child_priorities = [max_priority(c) for c in children.get(mime_type, [])]
+            child_priorities = [p for p in child_priorities if p is not None]
+            if not child_priorities:
+                continue
+            cap = max(min(child_priorities) - 1, 0)
+            for i in indexes:
+                if priority[i] > cap:
+                    priority[i] = cap
+                    changed = True
+
+    for i, prio in priority.items():
+        match = magic_re.search(lines[i])
+        if (int(match.group(1)) if match.group(1) else 50) == prio:
+            continue
+        lines[i] = magic_re.sub('<magic priority="%d"> <!-- priority lowered by Qt -->' % prio,
+                                lines[i], count=1)
+    return lines
+
+
 with open_input_file(inputfile) as f:
     with open(file, "w") as out:
 
+        lines = []
         current_mime_type = ''
-        skip_until = ''
+        skip_until = None
+        skip_indent = None
         for line in f:
 
             line = line.replace('\t', '  ') # Untabify
@@ -61,14 +151,22 @@ with open_input_file(inputfile) as f:
 
             if 'be a bit more flexible, but require one from each of these' in line:
               skip_until = '</magic>'
-            if skip_until == "" and 'minShouldMatch="' in line:
-                skip_until = '</magic>'
+            if skip_until is None and 'minShouldMatch="' in line:
+                skip_until = '</match>'
+                skip_indent = len(line) - len(line.lstrip())
             if 'value="OggS\\000' in line: # off by one in mask length, it seems (audio/x-oggflac and following)
                 skip_until = '</magic>'
 
-            if skip_until != "":
+            if skip_until is not None:
                 if skip_until in line:
-                    skip_until = ""
+                    if skip_indent is not None: # Indentation tracking for nested elements
+                        indent = len(line) - len(line.lstrip())
+                        if indent <= skip_indent: # Match closing tag at same or outer indentation level
+                            skip_indent = None
+                            skip_until = None
+                        line = wrap_with_comment(line)
+                    else: # No indentation tracking
+                        skip_until = None
                 else:
                     line = wrap_with_comment(line)
 
@@ -116,6 +214,10 @@ with open_input_file(inputfile) as f:
                 # Tika supports 0x syntax for strings, shared-mime-info requires escaping each char with \x
                 if 'value="0x' in line and 'type="string"' in line:
                     line = transform_hex_value(line)
+
+                # Need more tolerance in SVG magic
+                if '&lt;svg' in line and 'offset="0"' in line:
+                    line = line.replace('offset="0"', 'offset="0:100"')
 
             if '<mime-info xmlns' in line:
                 line += """
@@ -169,5 +271,7 @@ with open_input_file(inputfile) as f:
 
   <!-- Qt additions END -->
 """
-            out.write(line)
+            lines.append(line)
 
+        for line in lower_generic_priorities(lines):
+            out.write(line)

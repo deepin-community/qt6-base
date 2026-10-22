@@ -2,6 +2,7 @@
 // Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstorageinfo_p.h"
 
@@ -50,7 +51,7 @@
 #  if !defined(_STATFS_F_FLAGS) && !defined(Q_OS_NETBSD)
 #    define _STATFS_F_FLAGS 1
 #  endif
-#elif defined(Q_OS_HAIKU)
+#elif defined(Q_OS_HAIKU) || defined(Q_OS_CYGWIN)
 #  define QT_STATFSBUF struct statvfs
 #  define QT_STATFS    ::statvfs
 #else
@@ -98,7 +99,7 @@ private:
 #elif defined(Q_OS_HURD)
     FILE *fp;
     QByteArray buffer;
-    mountinfoent mnt;
+    struct mntent mnt;
 #elif defined(Q_OS_HAIKU)
     BVolumeRoster m_volumeRoster;
 
@@ -390,6 +391,7 @@ static inline QString retrieveLabel(const QByteArray &device)
 
 void QStorageInfoPrivate::doStat()
 {
+    valid = ready = false;
     initRootPath();
     if (rootPath.isEmpty())
         return;
@@ -403,10 +405,8 @@ void QStorageInfoPrivate::retrieveVolumeInfo()
     QT_STATFSBUF statfs_buf;
     int result;
     QT_EINTR_LOOP(result, QT_STATFS(QFile::encodeName(rootPath).constData(), &statfs_buf));
-    if (result == 0) {
-        valid = true;
-        ready = true;
-
+    valid = ready = (result == 0);
+    if (valid) {
 #if defined(Q_OS_INTEGRITY) || (defined(Q_OS_BSD4) && !defined(Q_OS_NETBSD)) || defined(Q_OS_RTEMS)
         bytesTotal = statfs_buf.f_blocks * statfs_buf.f_bsize;
         bytesFree = statfs_buf.f_bfree * statfs_buf.f_bsize;

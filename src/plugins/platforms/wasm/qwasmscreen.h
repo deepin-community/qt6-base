@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWASMSCREEN_H
 #define QWASMSCREEN_H
@@ -22,10 +23,9 @@ class QPlatformOpenGLContext;
 class QWasmWindow;
 class QWasmBackingStore;
 class QWasmCompositor;
-class QWasmDeadKeySupport;
 class QOpenGLContext;
 
-class QWasmScreen : public QObject, public QPlatformScreen, public QWasmWindowTreeNode
+class QWasmScreen : public QObject, public QPlatformScreen, public QWasmWindowTreeNode<>
 {
     Q_OBJECT
 public:
@@ -36,15 +36,13 @@ public:
     static QWasmScreen *get(QPlatformScreen *screen);
     static QWasmScreen *get(QScreen *screen);
     emscripten::val element() const;
-    QString eventTargetId() const;
     QString outerScreenId() const;
     QPointingDevice *touchDevice() { return m_touchDevice.get(); }
     QPointingDevice *tabletDevice() { return m_tabletDevice.get(); }
 
     QWasmCompositor *compositor();
-    QWasmDeadKeySupport *deadKeySupport() { return m_deadKeySupport.get(); }
 
-    QList<QWasmWindow *> allWindows();
+    QList<QWasmWindow *> allWindows() const;
 
     QRect geometry() const override;
     int depth() const override;
@@ -66,7 +64,7 @@ public:
     QPointF clipPoint(const QPointF &p) const;
 
     void invalidateSize();
-    void updateQScreenAndCanvasRenderSize();
+    void updateQScreenSize();
     void installCanvasResizeObserver();
     static void canvasResizeObserverCallback(emscripten::val entries, emscripten::val);
 
@@ -84,7 +82,6 @@ private:
     std::unique_ptr<QWasmCompositor> m_compositor;
     std::unique_ptr<QPointingDevice> m_touchDevice;
     std::unique_ptr<QPointingDevice> m_tabletDevice;
-    std::unique_ptr<QWasmDeadKeySupport> m_deadKeySupport;
     QRect m_geometry = QRect(0, 0, 100, 100);
     int m_depth = 32;
     QImage::Format m_format = QImage::Format_RGB32;

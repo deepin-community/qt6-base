@@ -31,7 +31,7 @@ private slots:
     void urlConvenience_data();
     void urlConvenience();
 
-    void addStatics();
+    void addAndRemoveStatics();
 };
 
 void tst_QFileSelector::basicTest_data()
@@ -71,7 +71,8 @@ void tst_QFileSelector::basicTest_data()
     expectedPlatform2File = QString(":/platforms/test2");
 #else
     QString distributionName;
-#  if (defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)) || defined(Q_OS_FREEBSD)
+#  if (defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID) && !defined(Q_OS_HARMONY)) \
+      || defined(Q_OS_FREEBSD)
     distributionName = QSysInfo::productType();
 #  endif
     const auto platformSelectors = QFileSelectorPrivate::platformSelectors();
@@ -213,13 +214,16 @@ void tst_QFileSelector::urlConvenience()
     QCOMPARE(fs.select(testUrl), expectedUrl);
 }
 
-void tst_QFileSelector::addStatics()
+void tst_QFileSelector::addAndRemoveStatics()
 {
     QFileSelector fs;
     QCOMPARE(fs.select(QStringLiteral(":/extras/test")), QStringLiteral(":/extras/test"));
 
     QFileSelectorPrivate::addStatics(QStringList() << QStringLiteral("custom1"));
     QCOMPARE(fs.select(QStringLiteral(":/extras/test")), QStringLiteral(":/extras/+custom1/test"));
+
+    QCOMPARE(QFileSelectorPrivate::removeStatics(QStringList() << QStringLiteral("custom1")), 1);
+    QCOMPARE(fs.select(QStringLiteral(":/extras/test")), QStringLiteral(":/extras/test"));
 }
 
 QTEST_MAIN(tst_QFileSelector)

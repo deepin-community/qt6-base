@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QASSERT_H
 #define QASSERT_H
@@ -28,7 +29,7 @@ Q_CORE_EXPORT void qt_assert(const char *assertion, const char *file, int line) 
 #  if defined(QT_NO_DEBUG) && !defined(QT_FORCE_ASSERTS)
 #    define Q_ASSERT(cond) static_cast<void>(false && (cond))
 #  else
-#    define Q_ASSERT(cond) ((cond) ? static_cast<void>(0) : qt_assert(#cond, __FILE__, __LINE__))
+#    define Q_ASSERT(cond) ((cond) ? static_cast<void>(0) : QT_PREPEND_NAMESPACE(qt_assert)(#cond, __FILE__, __LINE__))
 #  endif
 #endif
 
@@ -38,13 +39,25 @@ Q_NORETURN
 Q_DECL_COLD_FUNCTION
 Q_CORE_EXPORT
 void qt_assert_x(const char *where, const char *what, const char *file, int line) noexcept;
+inline bool qt_no_assert_x(bool, const char *, const char *) noexcept { return false; }
 
 #if !defined(Q_ASSERT_X)
 #  if defined(QT_NO_DEBUG) && !defined(QT_FORCE_ASSERTS)
-#    define Q_ASSERT_X(cond, where, what) static_cast<void>(false && (cond))
+#    define Q_ASSERT_X(cond, where, what) \
+        static_cast<void>(false && QT_PREPEND_NAMESPACE(qt_no_assert_x)(bool(cond), where, what))
 #  else
-#    define Q_ASSERT_X(cond, where, what) ((cond) ? static_cast<void>(0) : qt_assert_x(where, what, __FILE__, __LINE__))
+#    define Q_ASSERT_X(cond, where, what) ((cond) ? static_cast<void>(0) : QT_PREPEND_NAMESPACE(qt_assert_x)(where, what, __FILE__, __LINE__))
 #  endif
+#endif
+
+#ifndef Q_PRE
+# define Q_PRE(cond) \
+    Q_ASSERT(cond) /* for now... */
+#endif
+
+#ifndef Q_PRE_X
+# define Q_PRE_X(cond, what) \
+    Q_ASSERT_X(cond, Q_FUNC_INFO, what) /* for now... */
 #endif
 
 Q_NORETURN Q_CORE_EXPORT void qt_check_pointer(const char *, int) noexcept;
@@ -55,10 +68,10 @@ Q_CORE_EXPORT void qBadAlloc();
 #  if defined(QT_NO_DEBUG) && !defined(QT_FORCE_ASSERTS)
 #    define Q_CHECK_PTR(p) qt_noop()
 #  else
-#    define Q_CHECK_PTR(p) do {if (!(p)) qt_check_pointer(__FILE__,__LINE__);} while (false)
+#    define Q_CHECK_PTR(p) do {if (!(p)) QT_PREPEND_NAMESPACE(qt_check_pointer)(__FILE__,__LINE__);} while (false)
 #  endif
 #else
-#  define Q_CHECK_PTR(p) do { if (!(p)) qBadAlloc(); } while (false)
+#  define Q_CHECK_PTR(p) do { if (!(p)) QT_PREPEND_NAMESPACE(qBadAlloc)(); } while (false)
 #endif
 
 template <typename T>
@@ -87,6 +100,26 @@ inline bool qt_assume_is_deprecated(bool cond) noexcept { return cond; }
         Q_ASSERT_X(valueOfExpression, "Q_ASSUME()", "Assumption in Q_ASSUME(\"" #Expr "\") was not correct");\
         Q_ASSUME_IMPL(valueOfExpression);\
     }(qt_assume_is_deprecated(Expr))
+
+
+#if __has_builtin(__builtin_assume)
+// Clang has this intrinsic and won't warn about its use in C++20 mode
+#  define Q_PRESUME_IMPL(assumption) __builtin_assume(assumption)
+#elif defined(Q_CC_MSVC)
+// MSVC claims to support [[assume]], but optimizations do not seem to be applied
+#  define Q_PRESUME_IMPL(assumption) __assume(assumption)
+#elif __has_cpp_attribute(assume)
+// GCC has implemented this attribute and allows its use in C++20 mode
+#  define Q_PRESUME_IMPL(assumption) [[assume(assumption)]]
+#else
+#  define Q_PRESUME_IMPL(assumption) (void)0
+#endif
+
+#define Q_PRESUME(assumption)       \
+    [&] {                            \
+        Q_ASSERT(assumption);       \
+        Q_PRESUME_IMPL(assumption); \
+    }()
 
 // Don't use these in C++ mode, use static_assert directly.
 // These are here only to keep old code compiling.

@@ -9,6 +9,7 @@
 */
 
 #include <QtGui>
+#include <QtWidgets>
 
 //! [0] //! [1]
 int main(int argc, char *argv[])
@@ -16,27 +17,27 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QSplitter *splitter = new QSplitter;
 
-//! [2] //! [3]
+    //! [2] //! [3]
     QFileSystemModel *model = new QFileSystemModel;
     model->setRootPath(QDir::currentPath());
-//! [0] //! [2] //! [4] //! [5]
+    //! [0] //! [2] //! [4] //! [5]
     QTreeView *tree = new QTreeView(splitter);
-//! [3] //! [6]
+    //! [3] //! [6]
     tree->setModel(model);
-//! [4] //! [6] //! [7]
+    //! [4] //! [6] //! [7]
     tree->setRootIndex(model->index(QDir::currentPath()));
-//! [7]
+    //! [7]
 
     QListView *list = new QListView(splitter);
     list->setModel(model);
     list->setRootIndex(model->index(QDir::currentPath()));
 
-//! [5]
+    //! [5]
     QItemSelectionModel *selection = new QItemSelectionModel(model);
     tree->setSelectionModel(selection);
     list->setSelectionModel(selection);
 
-//! [8]
+    //! [8]
     splitter->setWindowTitle("Two views onto the same file system model");
     splitter->show();
     return app.exec();

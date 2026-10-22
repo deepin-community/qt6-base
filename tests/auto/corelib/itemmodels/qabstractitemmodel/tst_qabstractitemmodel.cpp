@@ -5,6 +5,7 @@
 
 #include <QtTest/private/qcomparisontesthelper_p.h>
 
+#include <QtCore/QCollator>
 #include <QtCore/QCoreApplication>
 #if QT_CONFIG(sortfilterproxymodel)
 #include <QtCore/QSortFilterProxyModel>
@@ -13,6 +14,7 @@
 #include <QtGui/QStandardItemModel>
 
 #include "dynamictreemodel.h"
+#include <QtCore/private/qabstractitemmodel_p.h>
 
 // for testing QModelRoleDataSpan construction
 #include <QVarLengthArray>
@@ -106,6 +108,9 @@ private slots:
     void modelRoleDataSpan();
 
     void multiData();
+
+    void compareData_data();
+    void compareData();
 private:
     DynamicTreeModel *m_model;
 };
@@ -197,6 +202,8 @@ bool QtTestModel::setData(const QModelIndex &idx, const QVariant &value, int)
 
 bool QtTestModel::insertRows(int row, int count, const QModelIndex &parent)
 {
+    if (parent.isValid()) // it's a table, not a tree
+        return false;
     QAbstractItemModel::beginInsertRows(parent, row, row + count - 1);
     int cc = columnCount(parent);
     table.insert(row, count, QList<QString>(cc));
@@ -207,6 +214,8 @@ bool QtTestModel::insertRows(int row, int count, const QModelIndex &parent)
 
 bool QtTestModel::insertColumns(int column, int count, const QModelIndex &parent)
 {
+    if (parent.isValid()) // it's a table, not a tree
+        return false;
     QAbstractItemModel::beginInsertColumns(parent, column, column + count - 1);
     int rc = rowCount(parent);
     for (int i = 0; i < rc; ++i)
@@ -223,6 +232,9 @@ void QtTestModel::setPersistent(const QModelIndex &from, const QModelIndex &to)
 
 bool QtTestModel::removeRows( int row, int count, const QModelIndex & parent)
 {
+    if (parent.isValid()) // it's a table, not a tree
+        return false;
+
     QAbstractItemModel::beginRemoveRows(parent, row, row + count - 1);
 
     for (int r = row+count-1; r >= row; --r)
@@ -235,6 +247,9 @@ bool QtTestModel::removeRows( int row, int count, const QModelIndex & parent)
 
 bool QtTestModel::removeColumns(int column, int count, const QModelIndex & parent)
 {
+    if (parent.isValid()) // it's a table, not a tree
+        return false;
+
     QAbstractItemModel::beginRemoveColumns(parent, column, column + count - 1);
 
     for (int c = column+count-1; c > column; --c)
@@ -250,6 +265,9 @@ bool QtTestModel::removeColumns(int column, int count, const QModelIndex & paren
 bool QtTestModel::moveRows(const QModelIndex &sourceParent, int src, int cnt,
                            const QModelIndex &destinationParent, int dst)
 {
+    if (sourceParent.isValid() || destinationParent.isValid()) // it's a table, not a tree
+        return false;
+
     if (!QAbstractItemModel::beginMoveRows(sourceParent, src, src + cnt - 1,
                                            destinationParent, dst))
         return false;
@@ -278,6 +296,9 @@ bool QtTestModel::moveRows(const QModelIndex &sourceParent, int src, int cnt,
 bool QtTestModel::moveColumns(const QModelIndex &sourceParent, int src, int cnt,
                               const QModelIndex &destinationParent, int dst)
 {
+    if (sourceParent.isValid() || destinationParent.isValid()) // it's a table, not a tree
+        return false;
+
     if (!QAbstractItemModel::beginMoveColumns(sourceParent, src, src + cnt - 1,
                                               destinationParent, dst))
         return false;
@@ -514,8 +535,8 @@ void tst_QAbstractItemModel::match()
     QCOMPARE(res.size(), 3);
 }
 
-typedef QPair<int, int> Position;
-typedef QList<QPair<int, int> > Selection;
+using Position = std::pair<int, int>;
+using Selection = QList<Position>;
 typedef QList<QList<QString> > StringTable;
 typedef QList<QString> StringTableRow;
 
@@ -1990,13 +2011,13 @@ void tst_QAbstractItemModel::testReset()
 class CustomRoleModel : public QStringListModel
 {
     Q_OBJECT
-    Q_ENUMS(Roles)
 public:
     enum Roles {
         Custom1 = Qt::UserRole + 1,
         Custom2,
         UserRole
     };
+    Q_ENUM(Roles)
 
     CustomRoleModel(QObject *parent = nullptr)
       : QStringListModel(QStringList() << "a" << "b" << "c", parent)
@@ -2581,6 +2602,161 @@ void tst_QAbstractItemModel::multiData()
 
     model.multiData(index, span);
     check();
+}
+
+template <typename Val>
+QVariant fromValue(const Val &v)
+{
+    if constexpr (std::is_same_v<Val, QVariant>)
+        return v;
+    else
+        return QVariant::fromValue(v);
+}
+
+template <typename LHS, typename RHS>
+static void addCompareDataRow(const char *lhsName, const LHS &lhs,
+                              const char *rhsName, const RHS &rhs, bool expectedLessThan,
+                              const QCollator &collator = QCollator(QLocale::C))
+{
+    const QVariant lhsVar = fromValue(lhs);
+    const QVariant rhsVar = fromValue(rhs);
+
+    QTest::addRow("%s%s%s:true", lhsName, expectedLessThan ? "<" : ">=", rhsName)
+        << lhsVar << rhsVar
+        << expectedLessThan << collator;
+    if (expectedLessThan) {
+        QTest::addRow("%s%s%s:false", rhsName, ">=", lhsName)
+            << rhsVar << lhsVar << !expectedLessThan << collator;
+    }
+}
+
+template <typename LHS, typename RHS>
+static void addCompareDataRow(const LHS &lhs, const RHS &rhs, bool expected,
+                              const QCollator &collator = QCollator(QLocale::C))
+{
+    const QVariant lhsVar = fromValue(lhs);
+    const QVariant rhsVar = fromValue(rhs);
+    auto makeName = [](const QVariant &var) -> QByteArray
+    {
+        if (!var.isValid())
+            return "invalid";
+        QByteArray name = var.toString().toLatin1();
+        if (name.isEmpty())
+            name = var.metaType().name();
+        Q_ASSERT(!name.isEmpty());
+        return name;
+    };
+    const QByteArray lhsName = makeName(lhsVar);
+    const QByteArray rhsName = makeName(rhsVar);
+    addCompareDataRow(lhsName.constData(), lhsVar, rhsName.constData(), rhsVar, expected, collator);
+}
+
+void tst_QAbstractItemModel::compareData_data()
+{
+    using namespace std::chrono_literals;
+    using namespace Qt::StringLiterals;
+
+    QTest::addColumn<QVariant>("lhs");
+    QTest::addColumn<QVariant>("rhs");
+    QTest::addColumn<bool>("expected");
+    QTest::addColumn<QCollator>("collator");
+
+    // numerical types
+    addCompareDataRow(1, 2, true);
+    addCompareDataRow(2, 2, false);
+
+    addCompareDataRow("e", 2.71828, "π", 3.14159, true);
+
+    addCompareDataRow("π", 3.14159, "3", 3, false); // double < int -> double
+    addCompareDataRow("4", 4, "4.1", 4.1, true); // int and double -> int
+
+    addCompareDataRow("2.7", 2.7f, "2", 2, false); // float < int -> double
+    addCompareDataRow("3", 3, "3.1", 3.1f, true); // int and float -> int
+
+    // QChar is a numerical type
+    addCompareDataRow("<nul>", QChar(), "a", QChar('a'), true);
+    addCompareDataRow("a", QChar('a'), "b char", 'b', true);
+    addCompareDataRow("Á", uchar('\xC0'), "π", QChar(u'π'), true);
+
+    // invalid is always sorted to the end of an ascending series.
+    addCompareDataRow(QVariant(), 2, false);
+    addCompareDataRow(2, QVariant(), true);
+    addCompareDataRow(QVariant(), QVariant(), false);
+
+    // user types are compared as QString if possible
+    struct UserType {};
+    struct UserType2 {};
+
+    addCompareDataRow(UserType{}, 2, true);
+    addCompareDataRow(2, UserType{}, false);
+    addCompareDataRow(UserType{}, UserType{}, false);
+    addCompareDataRow(UserType{}, UserType2{}, false);
+    addCompareDataRow(UserType2{}, UserType{}, false);
+
+    QDate today = QDate::currentDate();
+    addCompareDataRow("today", today, "yesterday", today.addDays(-1), false);
+    addCompareDataRow("today", today, "tomorrow", today.addDays(1), true);
+
+    addCompareDataRow("01:00", QTime(1, 0, 0), "02:00", QTime(2, 0, 0), true);
+    addCompareDataRow("midnight", QTime(), "01:00", QTime(1, 0, 0), true);
+
+    QDateTime now = QDateTime::currentDateTime();
+    if (now.time() == QTime()) // (un)lucky!
+        now = now.addDuration(1s);
+    today = now.date();
+    addCompareDataRow("now", now, "today", today, false);
+    addCompareDataRow("today", today, "now", now, true);
+    addCompareDataRow("now", now, "later", now.addDuration(1h), true);
+
+    addCompareDataRow(u"abc"_s, u"def"_s, true);
+    addCompareDataRow(u"ABC"_s, u"abc"_s, true);
+
+    // locale aware compare
+    addCompareDataRow("umlaut", u"äöü"_s, "xyz", u"xyz"_s, false);
+    if (QCollator german(QLocale::German); german.compare("äöü", "xyz") < 0)
+        addCompareDataRow("German umlaut", u"äöü"_s, "xzy", u"xyz"_s, true, german);
+    else
+        qInfo("German locale not sorting as expected.");
+
+    // locale awareness implies case insensitive sorting on some platforms
+    addCompareDataRow(u"Beta"_s, u"alpha"_s, true);
+    QCollator english(QLocale::English);
+    addCompareDataRow("English a", u"alpha"_s, "B", u"Beta"_s,
+                      english.compare("a", "B") < 0, english);
+
+    // not locale-aware, but case insensitive
+    addCompareDataRow("any-case a", u"alpha"_s, "B", u"Beta"_s, true, []{
+        QCollator collator(QLocale::C);
+        collator.setCaseSensitivity(Qt::CaseInsensitive);
+        return collator;
+    }());
+
+    addCompareDataRow("green", QColor(Qt::green), "red", QColor(Qt::red), true);
+
+    QPixmap greenIcon(16, 16);
+    greenIcon.fill(Qt::green);
+    QPixmap redIcon(16, 16);
+    redIcon.fill(Qt::red);
+    addCompareDataRow("green icon", greenIcon, "red icon", redIcon, false);
+    addCompareDataRow("red icon", redIcon, "green icon", greenIcon, false);
+}
+
+void tst_QAbstractItemModel::compareData()
+{
+    struct OrderingModel : QAbstractItemModel
+    {
+        using QAbstractItemModel::compareData;
+    };
+
+    QFETCH(QVariant, lhs);
+    QFETCH(QVariant, rhs);
+    QFETCH(bool, expected);
+    QFETCH(QCollator, collator);
+
+    bool lessThan = OrderingModel::compareData(lhs, rhs, collator) < 0;
+
+    QEXPECT_FAIL("today<now:true", "Comparing QDate with QDateTime compares only QDate", Continue);
+    QCOMPARE(lessThan, expected);
 }
 
 QTEST_MAIN(tst_QAbstractItemModel)

@@ -10,7 +10,9 @@
 #include <QMouseEvent>
 #include <qmath.h>
 
-const int animationInterval = 15; // update every 16 ms = ~60FPS
+using namespace std::chrono_literals;
+
+const auto animationInterval = 15ms; // update every 16 ms = ~60FPS
 
 CompositionWidget::CompositionWidget(QWidget *parent)
     : QWidget(parent)
@@ -87,12 +89,6 @@ CompositionWidget::CompositionWidget(QWidget *parent)
     circleAlphaSlider->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     connect(circleAlphaSlider, &QAbstractSlider::valueChanged, view, &CompositionRenderer::setCircleAlpha);
 
-    QPushButton *showSourceButton = new QPushButton(mainGroup);
-    showSourceButton->setText(tr("Show Source"));
-    QPushButton *whatsThisButton = new QPushButton(mainGroup);
-    whatsThisButton->setText(tr("What's This?"));
-    whatsThisButton->setCheckable(true);
-
     QPushButton *animateButton = new QPushButton(mainGroup);
     animateButton->setText(tr("Animated"));
     animateButton->setCheckable(true);
@@ -108,8 +104,6 @@ CompositionWidget::CompositionWidget(QWidget *parent)
     mainGroupLayout->addWidget(modesGroup);
     mainGroupLayout->addStretch();
     mainGroupLayout->addWidget(animateButton);
-    mainGroupLayout->addWidget(whatsThisButton);
-    mainGroupLayout->addWidget(showSourceButton);
 
     QGridLayout *modesLayout = new QGridLayout(modesGroup);
     modesLayout->addWidget(rbClear, 0, 0);
@@ -145,12 +139,6 @@ CompositionWidget::CompositionWidget(QWidget *parent)
     QVBoxLayout *circleAlphaLayout = new QVBoxLayout(circleAlphaGroup);
     circleAlphaLayout->addWidget(circleAlphaSlider);
 
-    view->loadDescription(":res/composition/composition.html");
-    view->loadSourceFile(":res/composition/composition.cpp");
-
-    connect(whatsThisButton, &QAbstractButton::clicked, view, &ArthurFrame::setDescriptionEnabled);
-    connect(view, &ArthurFrame::descriptionEnabledChanged, whatsThisButton, &QAbstractButton::setChecked);
-    connect(showSourceButton, &QAbstractButton::clicked, view, &ArthurFrame::showSource);
     connect(animateButton, &QAbstractButton::toggled, view, &CompositionRenderer::setAnimationEnabled);
 
     circleColorSlider->setValue(270);
@@ -189,7 +177,7 @@ CompositionRenderer::CompositionRenderer(QWidget *parent)
     : ArthurFrame(parent)
 {
     m_animation_enabled = true;
-    m_animationTimer = startTimer(animationInterval);
+    m_animationTimer.start(animationInterval, this);
     m_image = QImage(":res/composition/flower.jpg");
     m_image.setAlphaChannel(QImage(":res/composition/flower_alpha.jpg"));
     m_circle_alpha = 127;
@@ -219,11 +207,10 @@ void CompositionRenderer::setAnimationEnabled(bool enabled)
         return;
     m_animation_enabled = enabled;
     if (enabled) {
-        Q_ASSERT(!m_animationTimer);
-        m_animationTimer = startTimer(animationInterval);
+        Q_ASSERT(!m_animationTimer.isActive());
+        m_animationTimer.start(animationInterval, this);
     } else {
-        killTimer(m_animationTimer);
-        m_animationTimer = 0;
+        m_animationTimer.stop();
     }
 }
 
@@ -315,8 +302,6 @@ void CompositionRenderer::paint(QPainter *painter)
 
 void CompositionRenderer::mousePressEvent(QMouseEvent *e)
 {
-    setDescriptionEnabled(false);
-
     QRectF circle = rectangle_around(m_circle_pos);
 
     if (circle.contains(e->pos())) {
@@ -326,8 +311,7 @@ void CompositionRenderer::mousePressEvent(QMouseEvent *e)
         m_current_object = NoObject;
     }
     if (m_animation_enabled) {
-        killTimer(m_animationTimer);
-        m_animationTimer = 0;
+        m_animationTimer.stop();
     }
 }
 
@@ -342,14 +326,14 @@ void CompositionRenderer::mouseReleaseEvent(QMouseEvent *)
     m_current_object = NoObject;
 
     if (m_animation_enabled) {
-        Q_ASSERT(!m_animationTimer);
-        m_animationTimer = startTimer(animationInterval);
+        Q_ASSERT(!m_animationTimer.isActive());
+        m_animationTimer.start(animationInterval, this);
     }
 }
 
 void CompositionRenderer::timerEvent(QTimerEvent *event)
 {
-    if (event->timerId() == m_animationTimer)
+    if (event->matches(m_animationTimer))
         updateCirclePos();
 }
 

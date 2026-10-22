@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "androidbackendregister.h"
 
@@ -14,8 +15,14 @@ Q_DECLARE_JNI_CLASS(BackendRegister, "org/qtproject/qt/android/BackendRegister")
 bool AndroidBackendRegister::registerNatives()
 {
     return QtJniTypes::BackendRegister::registerNativeMethods(
-            { Q_JNI_NATIVE_SCOPED_METHOD(registerBackend, AndroidBackendRegister),
+            { Q_JNI_NATIVE_SCOPED_METHOD(isNull, AndroidBackendRegister),
+              Q_JNI_NATIVE_SCOPED_METHOD(registerBackend, AndroidBackendRegister),
               Q_JNI_NATIVE_SCOPED_METHOD(unregisterBackend, AndroidBackendRegister) });
+}
+
+jboolean AndroidBackendRegister::isNull(JNIEnv *, jclass)
+{
+    return QtAndroid::backendRegister() == nullptr;
 }
 
 void AndroidBackendRegister::registerBackend(JNIEnv *, jclass, jclass interfaceClass,

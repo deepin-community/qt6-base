@@ -12,6 +12,9 @@
 #include <qshareddata.h>
 
 QT_REQUIRE_CONFIG(dom);
+
+#include <QtCore/qxpfunctional.h>
+
 QT_BEGIN_NAMESPACE
 
 //
@@ -109,7 +112,9 @@ public:
 
     virtual QDomNode::NodeType nodeType() const { return QDomNode::BaseNode; }
 
-    virtual void save(QTextStream &, int, int) const;
+    void saveSubTree(const QDomNodePrivate *n, QTextStream &s, int depth, int indent) const;
+    virtual void save(QTextStream &, int, int) const {}
+    virtual void afterSave(QTextStream &, int, int) const {}
 
     void setLocation(int lineNumber, int columnNumber);
 
@@ -140,13 +145,17 @@ public:
     QDomNodeListPrivate(QDomNodePrivate *, const QString &, const QString &);
     ~QDomNodeListPrivate();
 
-    bool operator==(const QDomNodeListPrivate &) const;
-    bool operator!=(const QDomNodeListPrivate &) const;
+    bool operator==(const QDomNodeListPrivate &) const noexcept;
 
     void createList() const;
+    bool checkNode(QDomNodePrivate* p) const;
+    QDomNodePrivate *findNextInOrder(QDomNodePrivate* p) const;
+    QDomNodePrivate *findPrevInOrder(QDomNodePrivate* p) const;
+    void forEachNode(qxp::function_ref<void(QDomNodePrivate*)> yield) const;
     bool maybeCreateList() const;
     QDomNodePrivate *item(int index);
     int length() const;
+    int noexceptLength() const noexcept;
 
     QAtomicInt ref;
     /*
@@ -318,17 +327,18 @@ public:
     QDomAttrPrivate *setAttributeNode(QDomAttrPrivate *newAttr);
     QDomAttrPrivate *setAttributeNodeNS(QDomAttrPrivate *newAttr);
     QDomAttrPrivate *removeAttributeNode(QDomAttrPrivate *oldAttr);
-    bool hasAttribute(const QString &name);
-    bool hasAttributeNS(const QString &nsURI, const QString &localName);
+    bool hasAttribute(const QString &name) const;
+    bool hasAttributeNS(const QString &nsURI, const QString &localName) const;
 
-    QString text();
+    QString text() const;
 
     // Reimplemented from QDomNodePrivate
     QDomNamedNodeMapPrivate *attributes() { return m_attr; }
-    bool hasAttributes() { return (m_attr->length() > 0); }
+    bool hasAttributes() const { return (m_attr->length() > 0); }
     QDomNode::NodeType nodeType() const override { return QDomNode::ElementNode; }
     QDomNodePrivate *cloneNode(bool deep = true) override;
     virtual void save(QTextStream &s, int, int) const override;
+    virtual void afterSave(QTextStream &s, int, int) const override;
 
     // Variables
     QDomNamedNodeMapPrivate *m_attr;

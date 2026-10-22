@@ -12,8 +12,9 @@ QT_BEGIN_NAMESPACE
     \since 4.8
     \ingroup misc
 
-    The QScopedValueRollback class can be used to revert state when an
-    exception is thrown without needing to write try-catch blocks.
+    QScopedValueRollback\<T\> is a template class where \a T is the type of the
+    variable being managed. The QScopedValueRollback class can be used to revert
+    state when an exception is thrown without needing to write try-catch blocks.
 
     It can also be used to manage variables that are temporarily set,
     such as reentrancy guards. By using this class, the variable will

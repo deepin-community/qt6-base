@@ -1,6 +1,7 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOMPARE_H
 #define QCOMPARE_H
@@ -11,6 +12,7 @@
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qcompare_impl.h>
+#include <QtCore/qstdlibdetection.h>
 
 #ifdef __cpp_lib_bit_cast
 #include <bit>
@@ -23,6 +25,7 @@ QT_BEGIN_NAMESPACE
 
 namespace QtPrivate {
 using CompareUnderlyingType = qint8;
+constexpr CompareUnderlyingType LegacyUncomparableValue = -127; // historic Qt value
 
 // [cmp.categories.pre] / 1
 enum class Ordering : CompareUnderlyingType
@@ -35,19 +38,55 @@ enum class Ordering : CompareUnderlyingType
 
 enum class Uncomparable : CompareUnderlyingType
 {
+    // We choose the value of our Uncomparable to be the same that the C++
+    // Standard Library chooses for its own std::partial_ordering::unordered,
+    // so we can convert from their type to ours via simple std::bit_cast.
+#if 0
+    // GCC 16 broke ABI, so we cannot use the std::*_ordering types
+    // in our ABI until we drop support for GCC 15 and earlier. When that
+    // happens and std::bit_cast is guaranteed, this can be simplified to:
+    Unordered = std::bit_cast<CompareUnderlyingType>(std::partial_ordering::unordered);
+#else
     Unordered =
-        #if defined(_LIBCPP_VERSION) // libc++
+        #if   defined(Q_STL_LIBCPP)
                 -127
-        #elif defined(__GLIBCXX__)   // libstdc++
+        #elif defined(Q_STL_LIBSTDCPP) && QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+        // GCC 10 to 15 ABI
                    2
-        #else                        // assume MSSTL
+        #elif defined(Q_STL_LIBSTDCPP)
                 -128
+        #elif defined(Q_STL_MSSTL)
+                -128
+        #elif defined(Q_STL_DINKUMWARE) || \
+              defined(Q_STL_ROGUEWAVE)  || \
+              defined(Q_STL_STLPORT)    || \
+              defined(Q_STL_SGI)
+                QtPrivate::LegacyUncomparableValue
+        // We haven't seen C++20 of these libraries, so we haven't chosen a value yet.
+        # ifdef __cpp_lib_three_way_comparison
+        #  error Please report the numeric value of std::partial_ordering::unordered in your STL in a bug report.
+        # endif
+        #else
+        #   error Please handle any newly-added Q_STL_ checks in the above ifdef-ery.
         #endif
+#endif // future Qt
 };
-
 } // namespace QtPrivate
 
 namespace QtOrderingPrivate {
+
+using QtPrivate::Ordering;
+using QtPrivate::Uncomparable;
+
+#if defined(__cpp_lib_bit_cast) && defined(__cpp_lib_three_way_comparison)
+inline constexpr bool OrderingValuesAreEqual =
+        std::bit_cast<Ordering>(std::weak_ordering::equivalent) == Ordering::Equivalent &&
+        std::bit_cast<Ordering>(std::strong_ordering::equal) == Ordering::Equal &&
+        std::bit_cast<Ordering>(std::strong_ordering::less) == Ordering::Less &&
+        std::bit_cast<Ordering>(std::strong_ordering::greater) == Ordering::Greater;
+inline constexpr bool UnorderedValueIsEqual =
+        std::bit_cast<Uncomparable>(std::partial_ordering::unordered) == Uncomparable::Unordered;
+#endif
 
 template <typename O>
 constexpr O reversed(O o) noexcept
@@ -58,7 +97,16 @@ constexpr O reversed(O o) noexcept
            /*else*/ o ;
 }
 
+template <typename O> constexpr auto toUnderlying(O o) noexcept;
+
 } // namespace QtOrderingPrivate
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_MSVC(4702)   // unreachable code
+
+// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100903
+QT_WARNING_DISABLE_GCC("-Wzero-as-null-pointer-constant")
+QT_WARNING_DISABLE_CLANG("-Wzero-as-null-pointer-constant")
 
 namespace Qt {
 
@@ -142,26 +190,41 @@ public:
 
 #ifdef __cpp_lib_three_way_comparison
     constexpr Q_IMPLICIT partial_ordering(std::partial_ordering stdorder) noexcept
+        : m_order{} // == equivalent
     {
-        if (stdorder == std::partial_ordering::less)
+#ifdef __cpp_lib_bit_cast
+        if constexpr (QtOrderingPrivate::OrderingValuesAreEqual) {
+            m_order = std::bit_cast<QtPrivate::CompareUnderlyingType>(stdorder);
+            if constexpr (!QtOrderingPrivate::UnorderedValueIsEqual) {
+                if (stdorder == std::partial_ordering::unordered)
+                    m_order = qToUnderlying(QtPrivate::Uncomparable::Unordered);
+            }
+            return;
+        }
+#endif // __cpp_lib_bit_cast
+        if (stdorder < 0)
             m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Less);
-        else if (stdorder == std::partial_ordering::equivalent)
-            m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Equivalent);
-        else if (stdorder == std::partial_ordering::greater)
+        else if (stdorder > 0)
             m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Greater);
-        else if (stdorder == std::partial_ordering::unordered)
+        else if (stdorder != 0)
             m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Uncomparable::Unordered);
     }
 
     constexpr Q_IMPLICIT operator std::partial_ordering() const noexcept
     {
         static_assert(sizeof(*this) == sizeof(std::partial_ordering));
-#ifdef __cpp_lib_bit_cast
-        return std::bit_cast<std::partial_ordering>(*this);
-#else
         using O = QtPrivate::Ordering;
         using U = QtPrivate::Uncomparable;
         using R = std::partial_ordering;
+#ifdef __cpp_lib_bit_cast
+        if constexpr (QtOrderingPrivate::OrderingValuesAreEqual) {
+            if constexpr (!QtOrderingPrivate::UnorderedValueIsEqual) {
+                if (m_order == qToUnderlying(U::Unordered))
+                    return R::unordered;
+            }
+            return std::bit_cast<R>(*this);
+        }
+#endif // __cpp_lib_bit_cast
         switch (m_order) {
         case qToUnderlying(O::Less):        return R::less;
         case qToUnderlying(O::Greater):     return R::greater;
@@ -169,7 +232,6 @@ public:
         case qToUnderlying(U::Unordered):   return R::unordered;
         }
         Q_UNREACHABLE_RETURN(R::unordered);
-#endif // __cpp_lib_bit_cast
     }
 
     friend constexpr bool operator==(partial_ordering lhs, std::partial_ordering rhs) noexcept
@@ -212,6 +274,7 @@ public:
 private:
     friend class weak_ordering;
     friend class strong_ordering;
+    template <typename O> friend constexpr auto QtOrderingPrivate::toUnderlying(O o) noexcept;
 
     constexpr explicit partial_ordering(QtPrivate::Ordering order) noexcept
         : m_order(static_cast<QtPrivate::CompareUnderlyingType>(order))
@@ -220,16 +283,12 @@ private:
         : m_order(static_cast<QtPrivate::CompareUnderlyingType>(order))
     {}
 
-    QT_WARNING_PUSH
-    // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100903
-    QT_WARNING_DISABLE_GCC("-Wzero-as-null-pointer-constant")
     friend constexpr bool is_eq  (partial_ordering o) noexcept { return o == 0; }
     friend constexpr bool is_neq (partial_ordering o) noexcept { return o != 0; }
     friend constexpr bool is_lt  (partial_ordering o) noexcept { return o <  0; }
     friend constexpr bool is_lteq(partial_ordering o) noexcept { return o <= 0; }
     friend constexpr bool is_gt  (partial_ordering o) noexcept { return o >  0; }
     friend constexpr bool is_gteq(partial_ordering o) noexcept { return o >= 0; }
-    QT_WARNING_POP
 
     // instead of the exposition only is_ordered member in [cmp.partialord],
     // use a private function
@@ -335,30 +394,35 @@ public:
 
 #ifdef __cpp_lib_three_way_comparison
     constexpr Q_IMPLICIT weak_ordering(std::weak_ordering stdorder) noexcept
+        : m_order{} // == equivalent
     {
-        if (stdorder == std::weak_ordering::less)
+#ifdef __cpp_lib_bit_cast
+        if constexpr (QtOrderingPrivate::OrderingValuesAreEqual) {
+            m_order = std::bit_cast<QtPrivate::CompareUnderlyingType>(stdorder);
+            return;
+        }
+#endif // __cpp_lib_bit_cast
+        if (stdorder < 0)
             m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Less);
-        else if (stdorder == std::weak_ordering::equivalent)
-            m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Equivalent);
-        else if (stdorder == std::weak_ordering::greater)
+        else if (stdorder > 0)
             m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Greater);
     }
 
     constexpr Q_IMPLICIT operator std::weak_ordering() const noexcept
     {
         static_assert(sizeof(*this) == sizeof(std::weak_ordering));
-#ifdef __cpp_lib_bit_cast
-        return std::bit_cast<std::weak_ordering>(*this);
-#else
         using O = QtPrivate::Ordering;
         using R = std::weak_ordering;
+#ifdef __cpp_lib_bit_cast
+        if constexpr (QtOrderingPrivate::OrderingValuesAreEqual)
+            return std::bit_cast<R>(*this);
+#endif // __cpp_lib_bit_cast
         switch (m_order) {
         case qToUnderlying(O::Less):          return R::less;
         case qToUnderlying(O::Greater):       return R::greater;
         case qToUnderlying(O::Equivalent):    return R::equivalent;
         }
         Q_UNREACHABLE_RETURN(R::equivalent);
-#endif // __cpp_lib_bit_cast
     }
 
     friend constexpr bool operator==(weak_ordering lhs, std::weak_ordering rhs) noexcept
@@ -400,21 +464,18 @@ public:
 
 private:
     friend class strong_ordering;
+    template <typename O> friend constexpr auto QtOrderingPrivate::toUnderlying(O o) noexcept;
 
     constexpr explicit weak_ordering(QtPrivate::Ordering order) noexcept
         : m_order(static_cast<QtPrivate::CompareUnderlyingType>(order))
     {}
 
-    QT_WARNING_PUSH
-    // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100903
-    QT_WARNING_DISABLE_GCC("-Wzero-as-null-pointer-constant")
     friend constexpr bool is_eq  (weak_ordering o) noexcept { return o == 0; }
     friend constexpr bool is_neq (weak_ordering o) noexcept { return o != 0; }
     friend constexpr bool is_lt  (weak_ordering o) noexcept { return o <  0; }
     friend constexpr bool is_lteq(weak_ordering o) noexcept { return o <= 0; }
     friend constexpr bool is_gt  (weak_ordering o) noexcept { return o >  0; }
     friend constexpr bool is_gteq(weak_ordering o) noexcept { return o >= 0; }
-    QT_WARNING_POP
 
     QtPrivate::CompareUnderlyingType m_order;
 };
@@ -530,32 +591,35 @@ public:
 
 #ifdef __cpp_lib_three_way_comparison
     constexpr Q_IMPLICIT strong_ordering(std::strong_ordering stdorder) noexcept
+        : m_order{} // == equivalent
     {
-        if (stdorder == std::strong_ordering::less)
+#ifdef __cpp_lib_bit_cast
+        if constexpr (QtOrderingPrivate::OrderingValuesAreEqual) {
+            m_order = std::bit_cast<QtPrivate::CompareUnderlyingType>(stdorder);
+            return;
+        }
+#endif // __cpp_lib_bit_cast
+        if (stdorder < 0)
             m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Less);
-        else if (stdorder == std::strong_ordering::equivalent)
-            m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Equivalent);
-        else if (stdorder == std::strong_ordering::equal)
-            m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Equal);
-        else if (stdorder == std::strong_ordering::greater)
+        else if (stdorder > 0)
             m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Greater);
     }
 
     constexpr Q_IMPLICIT operator std::strong_ordering() const noexcept
     {
         static_assert(sizeof(*this) == sizeof(std::strong_ordering));
-#ifdef __cpp_lib_bit_cast
-        return std::bit_cast<std::strong_ordering>(*this);
-#else
         using O = QtPrivate::Ordering;
         using R = std::strong_ordering;
+#ifdef __cpp_lib_bit_cast
+        if constexpr (QtOrderingPrivate::OrderingValuesAreEqual)
+            return std::bit_cast<R>(*this);
+#endif // __cpp_lib_bit_cast
         switch (m_order) {
         case qToUnderlying(O::Less):    return R::less;
         case qToUnderlying(O::Greater): return R::greater;
         case qToUnderlying(O::Equal):   return R::equal;
         }
         Q_UNREACHABLE_RETURN(R::equal);
-#endif // __cpp_lib_bit_cast
     }
 
     friend constexpr bool operator==(strong_ordering lhs, std::strong_ordering rhs) noexcept
@@ -595,21 +659,19 @@ public:
     { return lhs != static_cast<std::strong_ordering>(rhs); }
 #endif // __cpp_lib_three_way_comparison
 
-    private:
+private:
+    template <typename O> friend constexpr auto QtOrderingPrivate::toUnderlying(O o) noexcept;
+
     constexpr explicit strong_ordering(QtPrivate::Ordering order) noexcept
         : m_order(static_cast<QtPrivate::CompareUnderlyingType>(order))
     {}
 
-    QT_WARNING_PUSH
-    // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100903
-    QT_WARNING_DISABLE_GCC("-Wzero-as-null-pointer-constant")
     friend constexpr bool is_eq  (strong_ordering o) noexcept { return o == 0; }
     friend constexpr bool is_neq (strong_ordering o) noexcept { return o != 0; }
     friend constexpr bool is_lt  (strong_ordering o) noexcept { return o <  0; }
     friend constexpr bool is_lteq(strong_ordering o) noexcept { return o <= 0; }
     friend constexpr bool is_gt  (strong_ordering o) noexcept { return o >  0; }
     friend constexpr bool is_gteq(strong_ordering o) noexcept { return o >= 0; }
-    QT_WARNING_POP
 
     QtPrivate::CompareUnderlyingType m_order;
 };
@@ -621,6 +683,19 @@ inline constexpr strong_ordering strong_ordering::greater(QtPrivate::Ordering::G
 
 } // namespace Qt
 
+QT_WARNING_POP
+
+namespace QtOrderingPrivate {
+template<> constexpr auto toUnderlying<Qt::partial_ordering>(Qt::partial_ordering o) noexcept
+{ return o.m_order; }
+
+template<> constexpr auto toUnderlying<Qt::weak_ordering>(Qt::weak_ordering o) noexcept
+{ return o.m_order; }
+
+template<> constexpr auto toUnderlying<Qt::strong_ordering>(Qt::strong_ordering o) noexcept
+{ return o.m_order; }
+}
+
 QT_BEGIN_INCLUDE_NAMESPACE
 
 // This is intentionally included after Qt::*_ordering types and before
@@ -628,42 +703,6 @@ QT_BEGIN_INCLUDE_NAMESPACE
 #include <QtCore/qcomparehelpers.h>
 
 QT_END_INCLUDE_NAMESPACE
-
-namespace QtPrivate {
-
-namespace CompareThreeWayTester {
-
-    using Qt::compareThreeWay;
-
-    // Check if compareThreeWay is implemented for the (LT, RT) argument
-    // pair.
-    template <typename LT, typename RT, typename = void>
-    constexpr bool hasCompareThreeWay = false;
-
-    template <typename LT, typename RT>
-    constexpr bool hasCompareThreeWay<
-            LT, RT, std::void_t<decltype(compareThreeWay(std::declval<LT>(), std::declval<RT>()))>
-    > = true;
-
-    // Check if the operation is noexcept. We have two different overloads,
-    // depending on the available compareThreeWay() implementation.
-    // Both are declared, but not implemented. To be used only in unevaluated
-    // context.
-
-    template <typename LT, typename RT,
-             std::enable_if_t<hasCompareThreeWay<LT, RT>, bool> = true>
-    constexpr bool compareThreeWayNoexcept() noexcept
-    { return noexcept(compareThreeWay(std::declval<LT>(), std::declval<RT>())); }
-
-    template <typename LT, typename RT,
-             std::enable_if_t<!hasCompareThreeWay<LT, RT> && hasCompareThreeWay<RT, LT>,
-                              bool> = true>
-    constexpr bool compareThreeWayNoexcept() noexcept
-    { return noexcept(compareThreeWay(std::declval<RT>(), std::declval<LT>())); }
-
-} // namespace CompareThreeWayTester
-
-} // namespace QtPrivate
 
 #if defined(Q_QDOC)
 
@@ -673,14 +712,16 @@ auto qCompareThreeWay(const LeftType &lhs, const RightType &rhs);
 #else
 
 template <typename LT, typename RT,
-          std::enable_if_t<QtPrivate::CompareThreeWayTester::hasCompareThreeWay<LT, RT>
-                            || QtPrivate::CompareThreeWayTester::hasCompareThreeWay<RT, LT>,
-                           bool> = true>
+          std::enable_if_t<
+                  std::disjunction_v<
+                          QtOrderingPrivate::CompareThreeWayTester::HasCompareThreeWay<LT, RT>,
+                          QtOrderingPrivate::CompareThreeWayTester::HasCompareThreeWay<RT, LT>>,
+                  bool> = true>
 auto qCompareThreeWay(const LT &lhs, const RT &rhs)
-        noexcept(QtPrivate::CompareThreeWayTester::compareThreeWayNoexcept<LT, RT>())
+        noexcept(QtOrderingPrivate::CompareThreeWayTester::compareThreeWayNoexcept<LT, RT>())
 {
     using Qt::compareThreeWay;
-    if constexpr (QtPrivate::CompareThreeWayTester::hasCompareThreeWay<LT, RT>) {
+    if constexpr (QtOrderingPrivate::CompareThreeWayTester::hasCompareThreeWay_v<LT, RT>) {
         return compareThreeWay(lhs, rhs);
     } else {
         const auto retval = compareThreeWay(rhs, lhs);
@@ -697,7 +738,7 @@ auto qCompareThreeWay(const LT &lhs, const RT &rhs)
 namespace QtPrivate {
 enum class LegacyUncomparable : CompareUnderlyingType
 {
-    Unordered = -127
+    Unordered = QtPrivate::LegacyUncomparableValue
 };
 }
 
@@ -832,16 +873,7 @@ public:
 
 #ifdef __cpp_lib_three_way_comparison
     constexpr Q_IMPLICIT QPartialOrdering(std::partial_ordering stdorder) noexcept
-    {
-        if (stdorder == std::partial_ordering::less)
-            m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Less);
-        else if (stdorder == std::partial_ordering::equivalent)
-            m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Equivalent);
-        else if (stdorder == std::partial_ordering::greater)
-            m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::Ordering::Greater);
-        else if (stdorder == std::partial_ordering::unordered)
-            m_order = static_cast<QtPrivate::CompareUnderlyingType>(QtPrivate::LegacyUncomparable::Unordered);
-    }
+        : QPartialOrdering(Qt::partial_ordering(stdorder)) {}
 
     constexpr Q_IMPLICIT QPartialOrdering(std::weak_ordering stdorder) noexcept
         : QPartialOrdering(std::partial_ordering(stdorder)) {}
@@ -887,6 +919,7 @@ private:
     QT_WARNING_PUSH
     // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100903
     QT_WARNING_DISABLE_GCC("-Wzero-as-null-pointer-constant")
+    QT_WARNING_DISABLE_CLANG("-Wzero-as-null-pointer-constant")
     friend constexpr bool is_eq  (QPartialOrdering o) noexcept { return o == 0; }
     friend constexpr bool is_neq (QPartialOrdering o) noexcept { return o != 0; }
     friend constexpr bool is_lt  (QPartialOrdering o) noexcept { return o <  0; }

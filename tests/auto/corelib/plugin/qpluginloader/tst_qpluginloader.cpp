@@ -10,12 +10,21 @@
 #include <qpluginloader.h>
 #include <qtemporaryfile.h>
 #include <QScopeGuard>
+#include <QStandardPaths>
 #include "theplugin/plugininterface.h"
 
 #include <QtCore/private/qsimd_p.h>
 
 #if defined(QT_BUILD_INTERNAL) && defined(Q_OF_MACH_O)
 #  include <QtCore/private/qmachparser_p.h>
+#endif
+
+#ifdef Q_OS_ANDROID
+#include <private/qjnihelpers_p.h>
+#endif
+
+#ifdef Q_OS_HARMONY
+#include <QStandardPaths>
 #endif
 
 using namespace Qt::StringLiterals;
@@ -59,11 +68,11 @@ using namespace Qt::StringLiterals;
 #elif defined(Q_OS_WIN)
 # undef dll_VALID
 # define dll_VALID      true
-//# ifdef QT_NO_DEBUG
+# if !defined(QT_NO_DEBUG) && defined(Q_CC_MSVC)
+#  define SUFFIX         "d.dll"
+# else
 #  define SUFFIX         ".dll"
-//# else
-//#  define SUFFIX         "d.dll"
-//# endif
+# endif
 # define PREFIX         ""
 
 #else  // all other Unix
@@ -132,7 +141,7 @@ static std::unique_ptr<QTemporaryFile> patchElf(const QString &source, ElfPatche
         const char *basename = QTest::currentDataTag();
         if (!basename)
             basename = QTest::currentTestFunction();
-        tmplib.reset(new QTemporaryFile(QDir::currentPath() + u'/' + basename + u".XXXXXX" SUFFIX ""_s));
+        tmplib.reset(new QTemporaryFile(QStandardPaths::writableLocation(QStandardPaths::TempLocation) + u'/' + basename + u".XXXXXX" SUFFIX ""_s));
         QVERIFY2(tmplib->open(), qPrintable(tmplib->errorString()));
 
         // sanity-check
@@ -170,6 +179,17 @@ static QString sys_qualifiedLibraryName(const QString &fileName)
     if (!paths.isEmpty()) {
         return QLatin1String("%1/%2%3_%4%5").arg(paths.first(), PREFIX, fileName,
                                                  ANDROID_ARCH, SUFFIX);
+    }
+    return fileName;
+#elif defined(Q_OS_HARMONY)
+    // On HarmonyOS all the libraries are bundled flat into the HAP's libs subdir,
+    // which is one of the library paths
+    const QString name = QLatin1String(PREFIX) + fileName + QLatin1String(SUFFIX);
+    const QStringList paths = QCoreApplication::libraryPaths();
+    for (const QString &path : paths) {
+        const QFileInfo fi(path + u'/' + name);
+        if (fi.exists())
+            return fi.canonicalFilePath();
     }
     return fileName;
 #else
@@ -285,7 +305,7 @@ void tst_QPluginLoader::errorString()
 
 // A bug in QNX causes the test to crash on exit after attempting to load
 // a shared library with undefined symbols (tracked as QTBUG-114682).
-#if !defined(Q_OS_WIN) && !defined(Q_OS_DARWIN) && !defined(Q_OS_HPUX) && !defined(Q_OS_QNX)
+#if defined(Q_OF_ELF) && !defined(Q_OS_QNX)
     {
     QPluginLoader loader( sys_qualifiedLibraryName("almostplugin"));     //a plugin with unresolved symbols
     loader.setLoadHints(QLibrary::ResolveAllSymbolsHint);
@@ -724,6 +744,12 @@ static void loadCorruptElf_helper(const QString &origLibrary)
     QFETCH(QString, snippet);
     QFETCH(ElfPatcher, patcher);
 
+#ifdef Q_OS_ANDROID
+    // patchElf() tries to map with private mode
+    if (QtAndroidPrivate::isUncompressedNativeLibs())
+        QSKIP("Mapping in-APK libraries with private mode is not supported on Android");
+#endif
+
     std::unique_ptr<QTemporaryFile> tmplib = patchElf(origLibrary, patcher);
 
     QPluginLoader lib(tmplib->fileName());
@@ -948,6 +974,10 @@ void tst_QPluginLoader::relativePath()
     // already set.
     // But we need to use ARCH suffix in pulgin name
     const QString pluginName("theplugin_" ANDROID_ARCH SUFFIX);
+#elif defined(Q_OS_HARMONY)
+    // On HarmonyOS we do not need to explicitly set library paths either, as the
+    // plugins are bundled flat into a directory that is already one of them.
+    const QString pluginName("theplugin" SUFFIX);
 #else
     // Windows binaries run from release and debug subdirs, so we can't rely on the current dir.
     const QString binDir = QFINDTESTDATA("bin");
@@ -975,6 +1005,13 @@ void tst_QPluginLoader::absolutePath()
     QVERIFY(!libraryPaths.isEmpty());
     QCoreApplication::setLibraryPaths(QStringList());
     const QString pluginPath(libraryPaths.first() + "/" PREFIX "theplugin_" ANDROID_ARCH SUFFIX);
+#elif defined(Q_OS_HARMONY)
+    // On HarmonyOS we need to clear library paths too, but the plugin has to be
+    // located before that, as it lives in one of them
+    const QStringList libraryPaths = QCoreApplication::libraryPaths();
+    QVERIFY(!libraryPaths.isEmpty());
+    const QString pluginPath = sys_qualifiedLibraryName("theplugin");
+    QCoreApplication::setLibraryPaths(QStringList());
 #else
     // Windows binaries run from release and debug subdirs, so we can't rely on the current dir.
     const QString binDir = QFINDTESTDATA("bin");
@@ -985,7 +1022,7 @@ void tst_QPluginLoader::absolutePath()
     QPluginLoader loader(pluginPath);
     loader.load(); // not recommended, instance() should do the job.
     PluginInterface *instance = qobject_cast<PluginInterface*>(loader.instance());
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
     // Restore library paths
     QCoreApplication::setLibraryPaths(libraryPaths);
 #endif
@@ -1024,9 +1061,12 @@ void tst_QPluginLoader::reloadPlugin()
 
 void tst_QPluginLoader::loadSectionTableStrippedElf()
 {
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID)
     if (QNativeInterface::QAndroidApplication::sdkVersion() >= 24)
         QSKIP("Android 7+ (API 24+) linker doesn't allow missing or bad section header");
+#elif defined(Q_OS_HARMONY)
+    QSKIP("HarmonyOS linker fails to load section-header-stripped ELFs "
+          "(LOAD_ORDER_RANDOMIZATION depends on e_shoff/e_shnum)");
 #endif
 #if !defined(QT_SHARED)
     QSKIP("This test requires a shared build of Qt, as QPluginLoader::setFileName is a no-op in static builds");
@@ -1150,12 +1190,12 @@ void tst_QPluginLoader::staticPlugins()
 void tst_QPluginLoader::reregisteredStaticPlugins()
 {
     // the Q_IMPORT_PLUGIN macro will have already done this
-    qRegisterStaticPluginFunction(qt_static_plugin_StaticPlugin());
+    qRegisterStaticPluginFunction(QT_MANGLE_NAMESPACE(qt_static_plugin_StaticPlugin)());
     staticPlugins();
     if (QTest::currentTestFailed())
         return;
 
-    qRegisterStaticPluginFunction(qt_static_plugin_StaticPlugin());
+    qRegisterStaticPluginFunction(QT_MANGLE_NAMESPACE(qt_static_plugin_StaticPlugin)());
     staticPlugins();
 }
 

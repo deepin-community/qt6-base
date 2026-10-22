@@ -37,7 +37,10 @@ public:
     QCoreTextFontEngine(CGFontRef font, const QFontDef &def);
     ~QCoreTextFontEngine();
 
+    int glyphCount() const override;
     glyph_t glyphIndex(uint ucs4) const override;
+    QString glyphName(glyph_t index) const override;
+    glyph_t findGlyph(QLatin1StringView name) const override;
     int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
     void recalcAdvances(QGlyphLayout *, ShaperFlags) const override;
 
@@ -74,13 +77,15 @@ public:
     void doKerning(QGlyphLayout *g, ShaperFlags flags) const override;
 
     bool supportsTransformation(const QTransform &transform) const override;
-    bool expectsGammaCorrectedBlending() const override;
+    bool expectsGammaCorrectedBlending(QFontEngine::GlyphFormat format = QFontEngine::Format_None) const override;
 
     QFontEngine *cloneWithSize(qreal pixelSize) const override;
     Qt::HANDLE handle() const override;
     int glyphMargin(QFontEngine::GlyphFormat format) override { Q_UNUSED(format); return 0; }
 
     QFontEngine::Properties properties() const override;
+
+    QList<QFontVariableAxis> variableAxes() const override;
 
     enum FontSmoothing { Disabled, Subpixel, Grayscale };
     Q_ENUM(FontSmoothing);
@@ -112,6 +117,7 @@ protected:
     QFixed underlinePos;
     QFontEngine::FaceId face_id;
     mutable bool kerningPairsLoaded;
+    QList<QFontVariableAxis> variableAxisList;
 };
 
 CGAffineTransform Q_GUI_EXPORT qt_transform_from_fontdef(const QFontDef &fontDef);

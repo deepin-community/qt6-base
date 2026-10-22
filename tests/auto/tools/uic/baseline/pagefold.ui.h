@@ -81,22 +81,22 @@ public:
         centralwidget = new QWidget(MainWindow);
         centralwidget->setObjectName("centralwidget");
         vboxLayout = new QVBoxLayout(centralwidget);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout->setObjectName("vboxLayout");
         mainFrame = new QFrame(centralwidget);
         mainFrame->setObjectName("mainFrame");
-        mainFrame->setFrameShape(QFrame::StyledPanel);
-        mainFrame->setFrameShadow(QFrame::Raised);
+        mainFrame->setFrameShape(QFrame::Shape::StyledPanel);
+        mainFrame->setFrameShadow(QFrame::Shadow::Raised);
         gridLayout = new QGridLayout(mainFrame);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         gridLayout->setObjectName("gridLayout");
@@ -153,8 +153,8 @@ public:
 
         buttonBox = new QDialogButtonBox(mainFrame);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::NoButton|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         gridLayout->addWidget(buttonBox, 7, 2, 1, 2);
 
@@ -165,14 +165,17 @@ public:
 
         passwordEdit = new QLineEdit(mainFrame);
         passwordEdit->setObjectName("passwordEdit");
-        passwordEdit->setEchoMode(QLineEdit::Password);
+        passwordEdit->setEchoMode(QLineEdit::EchoMode::Password);
 
         gridLayout->addWidget(passwordEdit, 3, 1, 1, 3);
 
         professionList = new QListWidget(mainFrame);
-        new QListWidgetItem(professionList);
-        new QListWidgetItem(professionList);
-        new QListWidgetItem(professionList);
+        QListWidgetItem *__qlistwidgetitem = new QListWidgetItem(professionList);
+        __qlistwidgetitem->setTextAlignment(Qt::AlignCenter);
+        QListWidgetItem *__qlistwidgetitem1 = new QListWidgetItem(professionList);
+        __qlistwidgetitem1->setTextAlignment(Qt::AlignmentFlag::AlignCenter);
+        QListWidgetItem *__qlistwidgetitem2 = new QListWidgetItem(professionList);
+        __qlistwidgetitem2->setTextAlignment(Qt::AlignCenter);
         professionList->setObjectName("professionList");
 
         gridLayout->addWidget(professionList, 5, 1, 1, 3);
@@ -205,7 +208,7 @@ public:
         MainWindow->setCentralWidget(centralwidget);
         menubar = new QMenuBar(MainWindow);
         menubar->setObjectName("menubar");
-        menubar->setGeometry(QRect(0, 0, 392, 25));
+        menubar->setGeometry(QRect(0, 0, 392, 26));
         menu_File = new QMenu(menubar);
         menu_File->setObjectName("menu_File");
         menu_Help = new QMenu(menubar);

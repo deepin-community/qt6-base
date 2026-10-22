@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 #include "qguiapplication.h"
@@ -82,6 +83,10 @@ void *QKeyMapper::resolveInterface(const char *name, int revision) const
 
 #if QT_CONFIG(evdev)
     QT_NATIVE_INTERFACE_RETURN_IF(QEvdevKeyMapper, QGuiApplicationPrivate::platformIntegration());
+#endif
+
+#if QT_CONFIG(vxworksevdev)
+    QT_NATIVE_INTERFACE_RETURN_IF(QVxKeyMapper, QGuiApplicationPrivate::platformIntegration());
 #endif
 
     return nullptr;

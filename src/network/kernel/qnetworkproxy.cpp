@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 /*!
@@ -450,8 +451,8 @@ template<> void QSharedDataPointer<QNetworkProxyPrivate>::detach()
                                : new QNetworkProxyPrivate);
     x->ref.ref();
     if (d && !d->ref.deref())
-        delete d;
-    d = x;
+        delete d.get();
+    d.reset(x);
 }
 
 /*!
@@ -538,9 +539,7 @@ QNetworkProxy &QNetworkProxy::operator=(const QNetworkProxy &other)
 /*!
     \fn void QNetworkProxy::swap(QNetworkProxy &other)
     \since 5.0
-
-    Swaps this network proxy instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{network proxy instance}
 */
 
 /*!
@@ -937,8 +936,8 @@ template<> void QSharedDataPointer<QNetworkProxyQueryPrivate>::detach()
                                     : new QNetworkProxyQueryPrivate);
     x->ref.ref();
     if (d && !d->ref.deref())
-        delete d;
-    d = x;
+        delete d.get();
+    d.reset(x);
 }
 
 /*!
@@ -1161,9 +1160,7 @@ QNetworkProxyQuery &QNetworkProxyQuery::operator=(const QNetworkProxyQuery &othe
 /*!
     \fn void QNetworkProxyQuery::swap(QNetworkProxyQuery &other)
     \since 5.0
-
-    Swaps this network proxy query instance with \a other. This
-    function is very fast and never fails.
+    \memberswap{network proxy query instance}
 */
 
 /*!

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKREPLYIMPL_P_H
 #define QNETWORKREPLYIMPL_P_H
@@ -15,16 +16,16 @@
 // We mean it.
 //
 
-#include <QtNetwork/private/qtnetworkglobal_p.h>
+#include <QtNetwork/private/qbytedatabuffer_p.h>
 #include "qnetworkreply.h"
 #include "qnetworkreply_p.h"
 #include "qnetworkaccessmanager.h"
 #include "qnetworkproxy.h"
+
 #include "QtCore/qmap.h"
 #include "QtCore/qqueue.h"
 #include "QtCore/qbuffer.h"
 #include "private/qringbuffer_p.h"
-#include "private/qbytedata_p.h"
 #include <QSharedPointer>
 
 #include <memory>

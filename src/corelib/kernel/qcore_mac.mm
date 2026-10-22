@@ -12,6 +12,8 @@
 #include <UIKit/UIKit.h>
 #endif
 
+#include <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+
 #include <new>
 #include <execinfo.h>
 #include <dlfcn.h>
@@ -22,6 +24,10 @@
 #include <spawn.h>
 
 #include <qdebug.h>
+#include <qpoint.h>
+#include <qsize.h>
+#include <qrect.h>
+#include <qmargins.h>
 
 #include "qendian.h"
 #include "qhash.h"
@@ -49,6 +55,8 @@ extern char **environ;
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // --------------------------------------------------------------------------
 
@@ -174,6 +182,7 @@ os_log_type_t AppleUnifiedLogger::logTypeForMessageType(QtMsgType msgType)
 
 #endif // QT_USE_APPLE_UNIFIED_LOGGING
 
+#ifndef QT_NO_DEBUG_STREAM
 // -------------------------------------------------------------------------
 
 QDebug operator<<(QDebug dbg, id obj)
@@ -206,6 +215,14 @@ QDebug operator<<(QDebug dbg, const NSObject *nsObject)
         : "NSObject(0x0)");
 }
 
+QDebug operator<<(QDebug dbg, const NSString *nsString)
+{
+    if (!nsString)
+        return dbg << "NSString(0x0)";
+    else
+        return dbg << (__bridge CFStringRef)nsString;
+}
+
 QDebug operator<<(QDebug dbg, CFStringRef stringRef)
 {
     if (!stringRef)
@@ -219,6 +236,34 @@ QDebug operator<<(QDebug dbg, CFStringRef stringRef)
     return dbg;
 }
 
+QDebug operator<<(QDebug dbg, CGPoint point)
+{
+    dbg << QPointF::fromCGPoint(point);
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, CGSize size)
+{
+    dbg << QSizeF::fromCGSize(size);
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, CGRect rect)
+{
+    dbg << QRectF::fromCGRect(rect);
+    return dbg;
+}
+
+#if defined(Q_OS_MACOS)
+QDebug operator<<(QDebug dbg, NSEdgeInsets insets)
+#else
+QDebug operator<<(QDebug dbg, UIEdgeInsets insets)
+#endif
+{
+    dbg << QMargins(insets.left, insets.top, insets.right, insets.bottom);
+    return dbg;
+}
+
 // Prevents breaking the ODR in case we introduce support for more types
 // later on, and lets the user override our default QDebug operators.
 #define QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE(CFType) \
@@ -228,6 +273,7 @@ QT_FOR_EACH_CORE_FOUNDATION_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE);
 QT_FOR_EACH_MUTABLE_CORE_FOUNDATION_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE);
 QT_FOR_EACH_CORE_GRAPHICS_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE);
 QT_FOR_EACH_MUTABLE_CORE_GRAPHICS_TYPE(QT_DECLARE_WEAK_QDEBUG_OPERATOR_FOR_CF_TYPE);
+#endif // QT_NO_DEBUG_STREAM
 
 // -------------------------------------------------------------------------
 
@@ -320,14 +366,7 @@ QDebug operator<<(QDebug debug, const QCFString &string)
 }
 #endif // !QT_NO_DEBUG_STREAM
 
-#ifdef Q_OS_MACOS
-bool qt_mac_applicationIsInDarkMode()
-{
-    auto appearance = [NSApp.effectiveAppearance bestMatchFromAppearancesWithNames:
-            @[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
-    return [appearance isEqualToString:NSAppearanceNameDarkAqua];
-}
-
+#if defined(Q_OS_MACOS) && !defined(QT_BOOTSTRAPPED)
 bool qt_mac_runningUnderRosetta()
 {
     int translated = 0;
@@ -335,6 +374,34 @@ bool qt_mac_runningUnderRosetta()
     if (sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) == 0)
         return translated;
     return false;
+}
+
+bool qt_apple_runningWithLiquidGlass()
+{
+    static const bool runningWithLiquidGlass = []{
+        QMacAutoReleasePool pool;
+
+        if (QMacVersion::buildSDK(QMacVersion::ApplicationBinary).majorVersion() < 26)
+            return false;
+
+        if (QMacVersion::currentRuntime().majorVersion() < 26)
+            return false;
+
+        // Word on the street is that the opt out will only work for
+        // macOS 26, but it's not clear whether building against the
+        // Xcode 27 SDK is what will disable it, or simply running on
+        // macOS 27. Let's go with the latter for now.
+        if (QMacVersion::currentRuntime().majorVersion() < 27) {
+            const id liquidGlassOptOut = [NSBundle.mainBundle
+                objectForInfoDictionaryKey:@"UIDesignRequiresCompatibility"];
+            if (liquidGlassOptOut && [liquidGlassOptOut boolValue])
+                return false;
+        }
+
+        return true;
+    }();
+
+    return runningWithLiquidGlass;
 }
 
 std::optional<uint32_t> qt_mac_sipConfiguration()
@@ -358,13 +425,15 @@ std::optional<uint32_t> qt_mac_sipConfiguration()
             return {}; // SIP config is not available
 
         if (auto type = CFGetTypeID(csrConfig); type != CFDataGetTypeID()) {
+#ifndef QT_NO_DEBUG_STREAM
             qWarning() << "Unexpected SIP config type" << CFCopyTypeIDDescription(type);
+#endif
             return {};
         }
 
         QByteArray data = QByteArray::fromRawCFData(csrConfig.as<CFDataRef>());
         if (data.size() != sizeof(uint32_t)) {
-            qWarning() << "Unexpected SIP config size" << data.size();
+            qWarning("Unexpected SIP config size %td", ptrdiff_t(data.size()));
             return {};
         }
 
@@ -373,8 +442,23 @@ std::optional<uint32_t> qt_mac_sipConfiguration()
     return configuration;
 }
 
+bool qt_mac_processHasEntitlement(const QString &entitlement)
+{
+    if (QCFType<SecTaskRef> task = SecTaskCreateFromSelf(kCFAllocatorDefault)) {
+        if (QCFType<CFTypeRef> value = SecTaskCopyValueForEntitlement(task,
+            entitlement.toCFString(), nullptr)) {
+
+            if (CFGetTypeID(value) != CFBooleanGetTypeID())
+                return false;
+
+            return CFBooleanGetValue(value.as<CFBooleanRef>());
+        }
+    }
+    return false;
+}
+
 #define CHECK_SPAWN(expr) \
-    if (int err = (expr)) { \
+    if ((expr) != 0) { \
         posix_spawnattr_destroy(&attr); \
         return; \
     }
@@ -427,6 +511,34 @@ bool qt_apple_isApplicationExtension()
     return isExtension;
 }
 
+/*!
+    \internal
+
+    Returns the bundle type of the item at \a path, or \c std::nullopt if it is
+    not a bundle.
+
+    Whether an item is a bundle is determined by its uniform type conforming to
+    com.apple.bundle, covering applications (.app), app extensions (.appex),
+    frameworks, and generic bundles. It is not determined by the mere presence
+    of a \c Contents directory or similar structure.
+
+    Directories whose extension is not a recognized bundle type, such as audio
+    unit components (.component), are still resolved as bundles when they carry
+    bundle metadata (a \c PkgInfo or \c Info.plist declaring the package type),
+    as the system then classifies them as a generic bundle. A bare directory
+    without such metadata is not considered a bundle.
+*/
+std::optional<UTType *> qt_apple_bundleType(const QString &path)
+{
+    NSURL *url = [NSURL fileURLWithPath:path.toNSString() isDirectory:YES];
+    UTType *type = nil;
+    if (![url getResourceValue:&type forKey:NSURLContentTypeKey error:nil] || !type)
+        return std::nullopt;
+    if (![type conformsToType:UTTypeBundle])
+        return std::nullopt;
+    return type;
+}
+
 #if !defined(QT_BOOTSTRAPPED) && !defined(Q_OS_WATCHOS)
 AppleApplication *qt_apple_sharedApplication()
 {
@@ -451,55 +563,11 @@ AppleApplication *qt_apple_sharedApplication()
 
 #if !defined(QT_BOOTSTRAPPED)
 
-#if defined(Q_OS_MACOS)
-namespace {
-struct SandboxChecker
-{
-    SandboxChecker() : m_thread([this]{
-            m_isSandboxed = []{
-                QCFType<SecStaticCodeRef> staticCode = nullptr;
-                NSURL *executableUrl = NSBundle.mainBundle.executableURL;
-                if (SecStaticCodeCreateWithPath((__bridge CFURLRef)executableUrl,
-                    kSecCSDefaultFlags, &staticCode) != errSecSuccess)
-                    return false;
-
-                QCFType<SecRequirementRef> sandboxRequirement;
-                if (SecRequirementCreateWithString(CFSTR("entitlement[\"com.apple.security.app-sandbox\"] exists"),
-                    kSecCSDefaultFlags, &sandboxRequirement) != errSecSuccess)
-                    return false;
-
-                if (SecStaticCodeCheckValidityWithErrors(staticCode,
-                    kSecCSBasicValidateOnly, sandboxRequirement, nullptr) != errSecSuccess)
-                    return false;
-
-                return true;
-            }();
-        })
-    {}
-    ~SandboxChecker() {
-        std::scoped_lock lock(m_mutex);
-        if (m_thread.joinable())
-            m_thread.detach();
-    }
-    bool isSandboxed() const {
-        std::scoped_lock lock(m_mutex);
-        if (m_thread.joinable())
-            m_thread.join();
-        return m_isSandboxed;
-    }
-private:
-    bool m_isSandboxed;
-    mutable std::thread m_thread;
-    mutable std::mutex m_mutex;
-};
-} // namespace
-static SandboxChecker sandboxChecker;
-#endif // Q_OS_MACOS
-
 bool qt_apple_isSandboxed()
 {
 #if defined(Q_OS_MACOS)
-    return sandboxChecker.isSandboxed();
+    static bool isSandboxed = qt_mac_processHasEntitlement(u"com.apple.security.app-sandbox"_s);
+    return isSandboxed;
 #else
     return true; // All other Apple platforms
 #endif
@@ -559,6 +627,7 @@ QMacRootLevelAutoReleasePool::~QMacRootLevelAutoReleasePool()
 
 // -------------------------------------------------------------------------
 
+#ifndef QT_BOOTSTRAPPED
 void qt_apple_check_os_version()
 {
 #if defined(__WATCH_OS_VERSION_MIN_REQUIRED)
@@ -606,6 +675,7 @@ void qt_apple_check_os_version()
     }
 }
 Q_CONSTRUCTOR_FUNCTION(qt_apple_check_os_version);
+#endif // QT_BOOTSTRAPPED
 
 // -------------------------------------------------------------------------
 
@@ -652,6 +722,7 @@ QT_BEGIN_NAMESPACE
 
 // -------------------------------------------------------------------------
 
+#ifndef QT_BOOTSTRAPPED
 QOperatingSystemVersion QMacVersion::buildSDK(VersionTarget target)
 {
     switch (target) {
@@ -770,6 +841,43 @@ QMacVersion::VersionTuple QMacVersion::libraryVersion()
         return versionsForImage(static_cast<mach_header*>(qtCoreImage.dli_fbase));
     }();
     return version;
+}
+#endif // QT_BOOTSTRAPPED
+
+// -------------------------------------------------------------------------
+
+QObjCWeakPointerBase::QObjCWeakPointerBase(NSObject *object)
+    : m_weakReference(object)
+{
+}
+
+QObjCWeakPointerBase::QObjCWeakPointerBase(const QObjCWeakPointerBase &other)
+{
+    QMacAutoReleasePool pool;
+    m_weakReference = other.m_weakReference;
+}
+
+QObjCWeakPointerBase &QObjCWeakPointerBase::operator=(const QObjCWeakPointerBase &other)
+{
+    QMacAutoReleasePool pool;
+    m_weakReference = other.m_weakReference;
+    return *this;
+}
+
+QObjCWeakPointerBase::~QObjCWeakPointerBase()
+{
+    QMacAutoReleasePool pool;
+    m_weakReference = nil;
+}
+
+NSObject *QObjCWeakPointerBase::get() const
+{
+    // Loading from a __weak variable will retain and auto-release (in non-ARC).
+    // Unlike cases above, we want the object to stay alive until the outer
+    // auto-release pool is drained, so that consumers of QObjCWeakPointer
+    // can trust that the variable they get back will be alive, similar to
+    // the semantics of loading from __weak.
+    return m_weakReference;
 }
 
 // -------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QRHI_H
 #define QRHI_H
@@ -39,6 +40,7 @@ class QRhiCommandBuffer;
 class QRhiResourceUpdateBatch;
 class QRhiResourceUpdateBatchPrivate;
 class QRhiSwapChain;
+class QRhiShadingRateMap;
 
 class Q_GUI_EXPORT QRhiDepthStencilClearValue
 {
@@ -68,7 +70,7 @@ private:
 
     friend size_t qHash(const QRhiDepthStencilClearValue &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_d);
         seed = hash(seed, v.m_s);
         return seed;
@@ -117,7 +119,7 @@ private:
 
     friend size_t qHash(const QRhiViewport &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_rect[0]);
         seed = hash(seed, v.m_rect[1]);
         seed = hash(seed, v.m_rect[2]);
@@ -160,7 +162,7 @@ private:
 
     friend size_t qHash(const QRhiScissor &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_rect[0]);
         seed = hash(seed, v.m_rect[1]);
         seed = hash(seed, v.m_rect[2]);
@@ -214,7 +216,7 @@ private:
 
     friend size_t qHash(const QRhiVertexInputBinding &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_stride);
         seed = hash(seed, v.m_classification);
         seed = hash(seed, v.m_instanceStepRate);
@@ -302,7 +304,7 @@ private:
 
     friend size_t qHash(const QRhiVertexInputAttribute &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_binding);
         seed = hash(seed, v.m_location);
         seed = hash(seed, v.m_format);
@@ -362,7 +364,7 @@ private:
 
     friend size_t qHash(const QRhiVertexInputLayout &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_bindings);
         seed = hash(seed, v.m_attributes);
         return seed;
@@ -419,7 +421,7 @@ private:
 
     friend size_t qHash(const QRhiShaderStage &v, size_t seed = 0) noexcept
     {
-        QtPrivate::QHashCombine hash;
+        QtPrivate::QHashCombine hash(seed);
         seed = hash(seed, v.m_type);
         seed = hash(seed, v.m_shader);
         seed = hash(seed, v.m_shaderVariant);
@@ -642,14 +644,22 @@ public:
     QRhiTexture *depthTexture() const { return m_depthTexture; }
     void setDepthTexture(QRhiTexture *texture) { m_depthTexture = texture; }
 
+    int depthLayer() const { return m_depthLayer; }
+    void setDepthLayer(int depthLayer) { m_depthLayer = depthLayer; }
+
     QRhiTexture *depthResolveTexture() const { return m_depthResolveTexture; }
     void setDepthResolveTexture(QRhiTexture *tex) { m_depthResolveTexture = tex; }
+
+    QRhiShadingRateMap *shadingRateMap() const { return m_shadingRateMap; }
+    void setShadingRateMap(QRhiShadingRateMap *map) { m_shadingRateMap = map; }
 
 private:
     QVarLengthArray<QRhiColorAttachment, 8> m_colorAttachments;
     QRhiRenderBuffer *m_depthStencilBuffer = nullptr;
     QRhiTexture *m_depthTexture = nullptr;
     QRhiTexture *m_depthResolveTexture = nullptr;
+    QRhiShadingRateMap *m_shadingRateMap = nullptr;
+    int m_depthLayer = -1;
 };
 
 class Q_GUI_EXPORT QRhiTextureSubresourceUploadDescription
@@ -788,10 +798,14 @@ public:
     int level() const { return m_level; }
     void setLevel(int level) { m_level = level; }
 
+    QRect rect() const { return m_rect; }
+    void setRect(const QRect &rectangle) { m_rect = rectangle; }
+
 private:
     QRhiTexture *m_texture = nullptr;
     int m_layer = 0;
     int m_level = 0;
+    QRect m_rect;
 };
 
 Q_DECLARE_TYPEINFO(QRhiReadbackDescription, Q_RELOCATABLE_TYPE);
@@ -815,7 +829,8 @@ public:
         GraphicsPipeline,
         SwapChain,
         ComputePipeline,
-        CommandBuffer
+        CommandBuffer,
+        ShadingRateMap
     };
 
     virtual ~QRhiResource();
@@ -855,7 +870,8 @@ public:
         VertexBuffer = 1 << 0,
         IndexBuffer = 1 << 1,
         UniformBuffer = 1 << 2,
-        StorageBuffer = 1 << 3
+        StorageBuffer = 1 << 3,
+        IndirectBuffer = 1 << 4,
     };
     Q_DECLARE_FLAGS(UsageFlags, UsageFlag)
 
@@ -881,7 +897,7 @@ public:
 
     virtual char *beginFullDynamicBufferUpdateForCurrentFrame();
     virtual void endFullDynamicBufferUpdateForCurrentFrame();
-    virtual void fullDynamicBufferUpdateForCurrentFrame(const void *data);
+    virtual void fullDynamicBufferUpdateForCurrentFrame(const void *data, quint32 size = 0);
 
 protected:
     QRhiBuffer(QRhiImplementation *rhi, Type type_, UsageFlags usage_, quint32 size_);
@@ -908,7 +924,8 @@ public:
         ThreeDimensional = 1 << 10,
         TextureRectangleGL = 1 << 11,
         TextureArray = 1 << 12,
-        OneDimensional = 1 << 13
+        OneDimensional = 1 << 13,
+        UsedAsShadingRateMap = 1 << 14
     };
     Q_DECLARE_FLAGS(Flags, Flag)
 
@@ -930,10 +947,21 @@ public:
 
         RGB10A2,
 
+        R8SI,
+        R32SI,
+        RG32SI,
+        RGBA32SI,
+
+        R8UI,
+        R32UI,
+        RG32UI,
+        RGBA32UI,
+
         D16,
         D24,
         D24S8,
         D32F,
+        D32FS8,
 
         BC1,
         BC2,
@@ -1139,6 +1167,22 @@ protected:
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QRhiRenderBuffer::Flags)
 
+class Q_GUI_EXPORT QRhiShadingRateMap : public QRhiResource
+{
+public:
+    struct NativeShadingRateMap {
+        quint64 object;
+    };
+
+    QRhiResource::Type resourceType() const override;
+
+    virtual bool createFrom(NativeShadingRateMap src);
+    virtual bool createFrom(QRhiTexture *src);
+
+protected:
+    QRhiShadingRateMap(QRhiImplementation *rhi);
+};
+
 class Q_GUI_EXPORT QRhiRenderPassDescriptor : public QRhiResource
 {
 public:
@@ -1274,7 +1318,9 @@ public:
         UsesBlendConstants = 1 << 0,
         UsesStencilRef = 1 << 1,
         UsesScissor = 1 << 2,
-        CompileShadersWithDebugInfo = 1 << 3
+        CompileShadersWithDebugInfo = 1 << 3,
+        UsesShadingRate = 1 << 4,
+        UsesIndirectDraws = 1 << 5
     };
     Q_DECLARE_FLAGS(Flags, Flag)
 
@@ -1414,6 +1460,9 @@ public:
     bool hasDepthWrite() const { return m_depthWrite; }
     void setDepthWrite(bool enable) { m_depthWrite = enable; }
 
+    bool hasDepthClamp() const { return m_depthClamp; }
+    void setDepthClamp(bool enable) { m_depthClamp = enable; }
+
     CompareOp depthOp() const { return m_depthOp; }
     void setDepthOp(CompareOp op) { m_depthOp = op; }
 
@@ -1485,6 +1534,7 @@ protected:
     QVarLengthArray<TargetBlend, 8> m_targetBlends;
     bool m_depthTest = false;
     bool m_depthWrite = false;
+    bool m_depthClamp = false;
     CompareOp m_depthOp = Less;
     bool m_stencilTest = false;
     StencilOpState m_stencilFront;
@@ -1594,6 +1644,9 @@ public:
     QRhiRenderPassDescriptor *renderPassDescriptor() const { return m_renderPassDesc; }
     void setRenderPassDescriptor(QRhiRenderPassDescriptor *desc) { m_renderPassDesc = desc; }
 
+    QRhiShadingRateMap *shadingRateMap() const { return m_shadingRateMap; }
+    void setShadingRateMap(QRhiShadingRateMap *map) { m_shadingRateMap = map; }
+
     QSize currentPixelSize() const { return m_currentPixelSize; }
 
     virtual QRhiCommandBuffer *currentFrameCommandBuffer() = 0;
@@ -1615,6 +1668,7 @@ protected:
     QRhiRenderPassDescriptor *m_renderPassDesc = nullptr;
     QSize m_currentPixelSize;
     QRhiSwapChainProxyData m_proxyData;
+    QRhiShadingRateMap *m_shadingRateMap = nullptr;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QRhiSwapChain::Flags)
@@ -1648,6 +1702,27 @@ protected:
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QRhiComputePipeline::Flags)
 
+struct QRhiIndirectDrawCommand
+{
+    quint32 vertexCount;
+    quint32 instanceCount = 1;
+    quint32 firstVertex = 0;
+    quint32 firstInstance = 0;
+};
+
+struct QRhiIndexedIndirectDrawCommand
+{
+    quint32 indexCount;
+    quint32 instanceCount = 1;
+    quint32 firstIndex = 0;
+    qint32  vertexOffset = 0;
+    quint32 firstInstance = 0;
+};
+
+// Check that the compiler isn't doing anything nasty.
+static_assert(sizeof(QRhiIndirectDrawCommand) == 16);
+static_assert(sizeof(QRhiIndexedIndirectDrawCommand) == 20);
+
 class Q_GUI_EXPORT QRhiCommandBuffer : public QRhiResource
 {
 public:
@@ -1674,11 +1749,11 @@ public:
     void endPass(QRhiResourceUpdateBatch *resourceUpdates = nullptr);
 
     void setGraphicsPipeline(QRhiGraphicsPipeline *ps);
-    using DynamicOffset = QPair<int, quint32>; // binding, offset
+    using DynamicOffset = std::pair<int, quint32>; // binding, offset
     void setShaderResources(QRhiShaderResourceBindings *srb = nullptr,
                             int dynamicOffsetCount = 0,
                             const DynamicOffset *dynamicOffsets = nullptr);
-    using VertexInput = QPair<QRhiBuffer *, quint32>; // buffer, offset
+    using VertexInput = std::pair<QRhiBuffer *, quint32>; // buffer, offset
     void setVertexInput(int startBinding, int bindingCount, const VertexInput *bindings,
                         QRhiBuffer *indexBuf = nullptr, quint32 indexOffset = 0,
                         IndexFormat indexFormat = IndexUInt16);
@@ -1687,6 +1762,7 @@ public:
     void setScissor(const QRhiScissor &scissor);
     void setBlendConstants(const QColor &c);
     void setStencilRef(quint32 refValue);
+    void setShadingRate(const QSize &coarsePixelSize);
 
     void draw(quint32 vertexCount,
               quint32 instanceCount = 1,
@@ -1698,6 +1774,16 @@ public:
                      quint32 firstIndex = 0,
                      qint32 vertexOffset = 0,
                      quint32 firstInstance = 0);
+
+    void drawIndirect(QRhiBuffer *indirectBuffer,
+                      quint32 indirectBufferOffset,
+                      quint32 drawCount,
+                      quint32 stride = sizeof(QRhiIndirectDrawCommand));
+
+    void drawIndexedIndirect(QRhiBuffer *indirectBuffer,
+                             quint32 indirectBufferOffset,
+                             quint32 drawCount,
+                             quint32 stride = sizeof(QRhiIndexedIndirectDrawCommand));
 
     void debugMarkBegin(const QByteArray &name);
     void debugMarkEnd();
@@ -1739,8 +1825,11 @@ public:
     bool hasOptimalCapacity() const;
 
     void updateDynamicBuffer(QRhiBuffer *buf, quint32 offset, quint32 size, const void *data);
+    void updateDynamicBuffer(QRhiBuffer *buf, quint32 offset, QByteArray data);
     void uploadStaticBuffer(QRhiBuffer *buf, quint32 offset, quint32 size, const void *data);
+    void uploadStaticBuffer(QRhiBuffer *buf, quint32 offset, QByteArray data);
     void uploadStaticBuffer(QRhiBuffer *buf, const void *data);
+    void uploadStaticBuffer(QRhiBuffer *buf, QByteArray data);
     void readBackBuffer(QRhiBuffer *buf, quint32 offset, quint32 size, QRhiReadbackResult *result);
     void uploadTexture(QRhiTexture *tex, const QRhiTextureUploadDescription &desc);
     void uploadTexture(QRhiTexture *tex, const QImage &image);
@@ -1796,6 +1885,13 @@ Q_DECLARE_TYPEINFO(QRhiStats, Q_RELOCATABLE_TYPE);
 #ifndef QT_NO_DEBUG_STREAM
 Q_GUI_EXPORT QDebug operator<<(QDebug, const QRhiStats &);
 #endif
+
+class Q_GUI_EXPORT QRhiAdapter
+{
+public:
+    virtual ~QRhiAdapter();
+    virtual QRhiDriverInfo info() const = 0;
+};
 
 struct Q_GUI_EXPORT QRhiInitParams
 {
@@ -1872,7 +1968,17 @@ public:
         ThreeDimensionalTextureMipmaps,
         MultiView,
         TextureViewFormat,
-        ResolveDepthStencil
+        ResolveDepthStencil,
+        VariableRateShading,
+        VariableRateShadingMap,
+        VariableRateShadingMapWithTexture,
+        PerRenderTargetBlending,
+        SampleVariables,
+        InstanceIndexIncludesBaseInstance,
+        DepthClamp,
+        DrawIndirect,
+        DrawIndirectMulti,
+        ShaderDrawParameters,
     };
 
     enum BeginFrameFlag {
@@ -1898,7 +2004,8 @@ public:
         TextureArraySizeMax,
         MaxUniformBufferRange,
         MaxVertexInputs,
-        MaxVertexOutputs
+        MaxVertexOutputs,
+        ShadingRateImageTileSize
     };
 
     ~QRhi();
@@ -1907,7 +2014,16 @@ public:
                         QRhiInitParams *params,
                         Flags flags = {},
                         QRhiNativeHandles *importDevice = nullptr);
+    static QRhi *create(Implementation impl,
+                        QRhiInitParams *params,
+                        Flags flags,
+                        QRhiNativeHandles *importDevice,
+                        QRhiAdapter *adapter);
     static bool probe(Implementation impl, QRhiInitParams *params);
+    using AdapterList = QVector<QRhiAdapter *>;
+    static AdapterList enumerateAdapters(Implementation impl,
+                                         QRhiInitParams *params,
+                                         QRhiNativeHandles *nativeHandles = nullptr);
 
     Implementation backend() const;
     const char *backendName() const;
@@ -1919,7 +2035,6 @@ public:
     void addCleanupCallback(const CleanupCallback &callback);
     void addCleanupCallback(const void *key, const CleanupCallback &callback);
     void removeCleanupCallback(const void *key);
-    void runCleanup();
 
     QRhiGraphicsPipeline *newGraphicsPipeline();
     QRhiComputePipeline *newComputePipeline();
@@ -1958,6 +2073,8 @@ public:
                             QRhiSampler::AddressMode addressV,
                             QRhiSampler::AddressMode addressW = QRhiSampler::Repeat);
 
+    QRhiShadingRateMap *newShadingRateMap();
+
     QRhiTextureRenderTarget *newTextureRenderTarget(const QRhiTextureRenderTargetDescription &desc,
                                                     QRhiTextureRenderTarget::Flags flags = {});
 
@@ -1994,6 +2111,7 @@ public:
 
     const QRhiNativeHandles *nativeHandles();
     bool makeThreadLocalNativeContextCurrent();
+    void setQueueSubmitParams(QRhiNativeHandles *params);
 
     static constexpr int MAX_MIP_LEVELS = 16; // -> max width or height is 65536
 
@@ -2007,6 +2125,8 @@ public:
     QRhiStats statistics() const;
 
     static QRhiSwapChainProxyData updateSwapChainProxyData(Implementation impl, QWindow *window);
+
+    QList<QSize> supportedShadingRates(int sampleCount) const;
 
 protected:
     QRhi();

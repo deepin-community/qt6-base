@@ -1,13 +1,19 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-//! [0]
-QFile file;
-QDir::setCurrent("/tmp");
-file.setFileName("readme.txt");
-QDir::setCurrent("/home");
-file.open(QIODevice::ReadOnly);      // opens "/home/readme.txt" under Unix
-//! [0]
+#include <QFile>
+#include <QDir>
+
+void example()
+{
+    //! [0]
+    QFile file;
+    QDir::setCurrent("/tmp");
+    file.setFileName("readme.txt");
+    QDir::setCurrent("/home");
+    file.open(QIODevice::ReadOnly);      // opens "/home/readme.txt" under Unix
+    //! [0]
+}
 
 
 //! [3]
@@ -23,6 +29,8 @@ void printError(const char* msg)
 //! [3]
 
 
+#if 0
 //! [4]
 CONFIG += console
 //! [4]
+#endif

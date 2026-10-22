@@ -1,3 +1,5 @@
+# Copyright (C) 2024 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 #####################################################################
 ## BundledHarfbuzz Generic Library:
 #####################################################################
@@ -13,6 +15,7 @@ qt_internal_add_3rdparty_library(BundledHarfbuzz
         src/hb-aat-map.cc
         src/hb-algs.hh
         src/hb-atomic.hh
+        src/hb-bit-vector.hh
         src/hb-blob.cc src/hb-blob.h
         src/hb-buffer.cc src/hb-buffer.h src/hb-buffer.hh
         src/hb-buffer-deserialize-json.hh
@@ -23,6 +26,9 @@ qt_internal_add_3rdparty_library(BundledHarfbuzz
         src/hb-cache.hh
         src/hb-common.h
         src/hb-debug.hh
+        src/hb-decycler.hh
+        src/hb-depend-data.hh
+        src/hb-depend.cc src/hb-depend.hh
         src/hb-deprecated.h
         src/hb-draw.cc src/hb-draw.h src/hb-draw.hh
         src/hb-face.cc src/hb-face.h src/hb-face.hh
@@ -40,9 +46,12 @@ qt_internal_add_3rdparty_library(BundledHarfbuzz
         src/hb-open-type.hh
         src/hb-outline.cc src/hb-outline.hh
         src/hb-paint.cc src/hb-paint.h src/hb-paint.hh
+        src/hb-paint-bounded.cc src/hb-paint-bounded.hh
         src/hb-paint-extents.cc src/hb-paint-extents.hh
         src/hb-priority-queue.hh
         src/hb-repacker.hh
+        src/hb-result.hh
+        src/hb-script-list.h
         src/hb-set.cc src/hb-set.h src/hb-set.hh
         src/hb-set-digest.hh
         src/hb-shape.cc src/hb-shape.h
@@ -56,12 +65,20 @@ qt_internal_add_3rdparty_library(BundledHarfbuzz
         src/hb-subset-cff-common.cc
         src/hb-subset-cff1.cc
         src/hb-subset-cff2.cc
+        src/hb-subset-depend.h
         src/hb-subset-input.cc
         src/hb-subset-instancer-iup.cc src/hb-subset-instancer-iup.hh
         src/hb-subset-instancer-solver.cc
         src/hb-subset-plan.cc
+        src/hb-subset-plan-layout.cc
         src/hb-subset-plan-member-list.hh
-        src/hb-subset-repacker.cc src/hb-subset-repacker.h
+        src/hb-subset-serialize.cc src/hb-subset-serialize.h
+        src/hb-subset-table-cff.cc
+        src/hb-subset-table-color.cc
+        src/hb-subset-table-layout.cc
+        src/hb-subset-table-other.cc
+        src/hb-subset-table-var.cc src/hb-subset-table.hh
+        src/hb-subset-plan-var.cc
         src/hb-unicode.cc src/hb-unicode.h src/hb-unicode.hh
         src/hb-utf.hh
         src/hb-version.h
@@ -73,8 +90,8 @@ qt_internal_add_3rdparty_library(BundledHarfbuzz
         HB_NO_UNICODE_FUNCS
         QT_NO_VERSION_TAGGING
     INCLUDE_DIRECTORIES
-        $<TARGET_PROPERTY:Core,INCLUDE_DIRECTORIES>
         "${CMAKE_CURRENT_SOURCE_DIR}"
+        $<TARGET_PROPERTY:Core,INCLUDE_DIRECTORIES>
     PUBLIC_INCLUDE_DIRECTORIES
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/harfbuzz>
 )
@@ -113,6 +130,7 @@ qt_internal_extend_target(BundledHarfbuzz CONDITION TRUE
         src/hb-ot-cmap-table.hh
         src/hb-ot-color.cc
         src/hb-ot-face.cc
+        src/hb-ot-fetch.cc src/hb-ot-fetch.h
         src/hb-ot-font.cc src/hb-ot-font.h
         src/hb-ot-glyf-table.hh
         src/hb-ot-head-table.hh
@@ -181,6 +199,7 @@ qt_internal_extend_target(BundledHarfbuzz CONDITION TRUE
         src/OT/name/name.hh
         src/OT/Var/VARC/coord-setter.hh
         src/OT/Var/VARC/VARC.cc src/OT/Var/VARC/VARC.hh
+        src/OT/Var/VARC/VARC-subset.hh
     DEFINES
         HAVE_OT
 )

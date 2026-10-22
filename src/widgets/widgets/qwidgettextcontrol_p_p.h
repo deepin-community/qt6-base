@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWIDGETTEXTCONTROL_P_P_H
 #define QWIDGETTEXTCONTROL_P_P_H
@@ -99,34 +100,33 @@ public:
     { return selectionRect(this->cursor); }
 
     QString anchorForCursor(const QTextCursor &anchor) const;
+    void updateHighlightedAnchor(QPointF mousePos);
+    void resetHighlightedAnchor();
 
     void keyPressEvent(QKeyEvent *e);
     void mousePressEvent(QEvent *e, Qt::MouseButton button, const QPointF &pos,
                          Qt::KeyboardModifiers modifiers,
                          Qt::MouseButtons buttons,
-                         const QPoint &globalPos);
+                         const QPointF &globalPos);
     void mouseMoveEvent(QEvent *e, Qt::MouseButton button, const QPointF &pos,
                         Qt::KeyboardModifiers modifiers,
                         Qt::MouseButtons buttons,
-                        const QPoint &globalPos);
+                        const QPointF &globalPos);
     void mouseReleaseEvent(QEvent *e, Qt::MouseButton button, const QPointF &pos,
                            Qt::KeyboardModifiers modifiers,
                            Qt::MouseButtons buttons,
-                           const QPoint &globalPos);
+                           const QPointF &globalPos);
     void mouseDoubleClickEvent(QEvent *e, Qt::MouseButton button, const QPointF &pos,
                                Qt::KeyboardModifiers modifiers,
                                Qt::MouseButtons buttons,
-                               const QPoint &globalPos);
+                               const QPointF &globalPos);
     bool sendMouseEventToInputContext(QEvent *e,  QEvent::Type eventType, Qt::MouseButton button,
                                       const QPointF &pos,
                                       Qt::KeyboardModifiers modifiers,
                                       Qt::MouseButtons buttons,
-                                      const QPoint &globalPos);
-    void contextMenuEvent(const QPoint &screenPos, const QPointF &docPos, QWidget *contextWidget);
+                                      const QPointF &globalPos);
+    void contextMenuEvent(const QPointF &screenPos, const QPointF &docPos, QWidget *contextWidget);
     void focusEvent(QFocusEvent *e);
-#ifdef QT_KEYPAD_NAVIGATION
-    void editFocusEvent(QEvent *e);
-#endif
     bool dragEnterEvent(QEvent *e, const QMimeData *mimeData);
     void dragLeaveEvent();
     bool dragMoveEvent(QEvent *e, const QMimeData *mimeData, const QPointF &pos);
@@ -166,7 +166,7 @@ public:
     bool mousePressed;
 
     bool mightStartDrag;
-    QPoint mousePressPos;
+    QPointF mousePressPos;
     QPointer<QWidget> contextWidget;
 
     int lastSelectionPosition;
@@ -187,9 +187,6 @@ public:
 
     QPalette palette;
     bool hasFocus;
-#ifdef QT_KEYPAD_NAVIGATION
-    bool hasEditFocus;
-#endif
     bool isEnabled;
 
     QString highlightedAnchor; // Anchor below cursor

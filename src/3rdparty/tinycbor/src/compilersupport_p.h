@@ -44,14 +44,28 @@
 #  include <stdbool.h>
 #endif
 
-#if __STDC_VERSION__ >= 201112L || (defined(__cplusplus) && __cplusplus >= 201103L) || (defined(__cpp_static_assert) && __cpp_static_assert >= 200410)
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || (defined(__cplusplus) && __cplusplus >= 201103L) || (defined(__cpp_static_assert) && __cpp_static_assert >= 200410)
 #  define cbor_static_assert(x)         static_assert(x, #x)
 #elif !defined(__cplusplus) && defined(__GNUC__) && (__GNUC__ * 100 + __GNUC_MINOR__ >= 406) && (__STDC_VERSION__ > 199901L)
 #  define cbor_static_assert(x)         _Static_assert(x, #x)
 #else
 #  define cbor_static_assert(x)         ((void)sizeof(char[2*!!(x) - 1]))
 #endif
-#if __STDC_VERSION__ >= 199901L || defined(__cplusplus)
+
+#if defined(__has_cpp_attribute)    // C23 and C++17
+#  if __has_cpp_attribute(fallthrough)
+#    define CBOR_FALLTHROUGH            [[fallthrough]]
+#  endif
+#endif
+#ifndef CBOR_FALLTHROUGH
+#  ifdef __GNUC__
+#    define CBOR_FALLTHROUGH            __attribute__((fallthrough))
+#  else
+#    define CBOR_FALLTHROUGH            do { } while (0)
+#  endif
+#endif
+
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) || defined(__cplusplus)
 /* inline is a keyword */
 #else
 /* use the definition from cbor.h */
@@ -128,6 +142,23 @@
 #  define cbor_htonl        _byteswap_ulong
 #  define cbor_ntohs        _byteswap_ushort
 #  define cbor_htons        _byteswap_ushort
+#elif defined(__ICCARM__)
+#  if __LITTLE_ENDIAN__ == 1
+#    include <intrinsics.h>
+#    define ntohll(x)       ((__REV((uint32_t)(x)) * UINT64_C(0x100000000)) + (__REV((x) >> 32)))
+#    define htonll          ntohll
+#    define cbor_ntohl     __REV
+#    define cbor_htonl     __REV
+#    define cbor_ntohs     __REVSH
+#    define cbor_htons     __REVSH
+#  else
+#    define cbor_ntohll
+#    define cbor_htonll
+#    define cbor_ntohl
+#    define cbor_htonl
+#    define cbor_ntohs
+#    define cbor_htons
+#  endif
 #endif
 #ifndef cbor_ntohs
 #  include <arpa/inet.h>
@@ -156,7 +187,7 @@
     (defined(BYTE_ORDER) && defined(LITTLE_ENDIAN) && BYTE_ORDER == LITTLE_ENDIAN) || \
     defined(_LITTLE_ENDIAN) || defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) || defined(__MIPSEL__) || \
     defined(__i386) || defined(__i386__) || defined(__x86_64) || defined(__x86_64__) || defined(__amd64)
-#      define ntohll(x)       ((ntohl((uint32_t)(x)) * UINT64_C(0x100000000)) + (ntohl((x) >> 32)))
+#      define ntohll(x)       ((cbor_ntohl((uint32_t)(x)) * UINT64_C(0x100000000)) + (cbor_ntohl((x) >> 32)))
 #      define htonll          ntohll
 #    else
 #      error "Unable to determine byte order!"
@@ -172,22 +203,30 @@
 #  define CONST_CAST(t, v)  (t)(uintptr_t)(v)
 #endif
 
-#ifdef __GNUC__
-#ifndef likely
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311
+#  define CBOR_NULLPTR nullptr
+#else
+#  define CBOR_NULLPTR NULL
+#endif
+
+#ifdef likely
+/* something has already defined likely(), accept it */
+#elif defined(__GNUC__)
 #  define likely(x)     __builtin_expect(!!(x), 1)
-#endif
-#ifndef unlikely
 #  define unlikely(x)   __builtin_expect(!!(x), 0)
-#endif
-#  define unreachable() __builtin_unreachable()
-#elif defined(_MSC_VER)
-#  define likely(x)     (x)
-#  define unlikely(x)   (x)
-#  define unreachable() __assume(0)
 #else
 #  define likely(x)     (x)
 #  define unlikely(x)   (x)
-#  define unreachable() do {} while (0)
+#endif
+
+#ifdef unreachable
+/* C23 has unreachable() */
+#elif defined(__GNUC__)
+#  define unreachable() __builtin_unreachable()
+#elif defined(_MSC_VER)
+#  define unreachable() __assume(0)
+#else
+#  define unreachable()
 #endif
 
 static inline bool add_check_overflow(size_t v1, size_t v2, size_t *r)
@@ -201,5 +240,15 @@ static inline bool add_check_overflow(size_t v1, size_t v2, size_t *r)
 #endif
 }
 
-#endif /* COMPILERSUPPORT_H */
+static inline bool mul_check_overflow(size_t v1, size_t v2, size_t *r)
+{
+#if ((defined(__GNUC__) && (__GNUC__ >= 5)) && !defined(__INTEL_COMPILER)) || __has_builtin(__builtin_add_overflow)
+    return __builtin_mul_overflow(v1, v2, r);
+#else
+    /* unsigned multiplications are well-defined */
+    *r = v1 * v2;
+    return *r > v1 && *r > v2;
+#endif
+}
 
+#endif /* COMPILERSUPPORT_H */

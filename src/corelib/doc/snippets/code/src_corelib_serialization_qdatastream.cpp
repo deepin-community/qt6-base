@@ -1,6 +1,12 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#include <QDataStream>
+#include <QImage>
+
+class QXxx
+{ };
+
 //! [0]
 QDataStream &operator<<(QDataStream &, const QXxx &);
 QDataStream &operator>>(QDataStream &, QXxx &);

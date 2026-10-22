@@ -8,10 +8,12 @@
 #include <QPushButton>
 #include <QMainWindow>
 #include <QMenuBar>
+#include <QPlainTextEdit>
 #include <QToolBar>
 #include <QToolButton>
 #include <QStatusBar>
 #include <QListWidget>
+#include <QVBoxLayout>
 #include <QWidgetAction>
 #include <QScreen>
 #include <QSpinBox>
@@ -71,6 +73,7 @@ private slots:
     void overrideMenuAction();
     void statusTip();
     void widgetActionFocus();
+    void widgetActionFocusReason();
     void mouseActivation();
     void tearOff();
     void submenuTearOffDontClose();
@@ -96,10 +99,12 @@ private slots:
     void QTBUG_89082_actionTipsHide();
     void QTBUG8122_widgetActionCrashOnClose();
     void widgetActionTriggerClosesMenu();
+    void widgetActionContextMenu();
+
     void transientParent();
 
     void QTBUG_10735_crashWithDialog();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     void QTBUG_37933_ampersands_data();
     void QTBUG_37933_ampersands();
 #else
@@ -116,6 +121,13 @@ private slots:
     void deleteWhenTriggered();
 
     void nestedTearOffDetached();
+    void closeMenuOnClickIfMouseHasntMoved();
+#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN)
+    void dontSelectDisabledActionByShortcut();
+#endif
+
+    void invisibleActions();
+    void execReturnsWidgetAction();
 
 protected slots:
     void onActivated(QAction*);
@@ -445,11 +457,11 @@ void tst_QMenu::keyboardNavigation()
 
     QTest::keyClick(lastMenu, key, modifiers);
     if (expected_activated) {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         QEXPECT_FAIL("shortcut0", "Shortcut navication fails, see QTBUG-23684", Continue);
 #endif
         QCOMPARE(activated, builtins[expected_action]);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         QEXPECT_FAIL("shortcut0", "QTBUG-22449: QMenu doesn't remove highlight if a menu item is activated by a shortcut", Abort);
 #endif
         QCOMPARE(menus[expected_menu]->activeAction(), nullptr);
@@ -463,7 +475,7 @@ void tst_QMenu::keyboardNavigation()
         QCOMPARE(highlighted, nullptr);
 }
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 QT_BEGIN_NAMESPACE
 extern bool qt_tab_all_widgets(); // from qapplication.cpp
 QT_END_NAMESPACE
@@ -476,7 +488,7 @@ void tst_QMenu::focus()
     menu.addAction("Two");
     menu.addAction("Three");
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     if (!qt_tab_all_widgets())
         QSKIP("Computer is currently set up to NOT tab to all widgets,"
              " this test assumes you can tab to all widgets");
@@ -649,6 +661,63 @@ void tst_QMenu::widgetActionFocus()
     QTest::keyClick(QApplication::focusWidget(), Qt::Key_Up);
     QVERIFY(l->hasFocus());
     QCOMPARE(m.activeAction(), (QAction *)wa);
+}
+
+void tst_QMenu::widgetActionFocusReason()
+{
+    class FocusReasonWidget : public QWidget
+    {
+    public:
+        explicit FocusReasonWidget(QWidget *parent = nullptr)
+            : QWidget(parent)
+        {
+            setFocusPolicy(Qt::StrongFocus);
+            // Give it some size so it doesn't skip over it.
+            setFixedSize(QSize(10, 10));
+        }
+        Qt::FocusReason focusInEventReason = Qt::NoFocusReason;
+
+    protected:
+        void focusInEvent(QFocusEvent *event) override
+        {
+            QWidget::focusInEvent(event);
+            focusInEventReason = event->reason();
+        }
+    };
+
+    // test if the backtab/tab focus reason is correctly handled when going down and up.
+    QWidget widget;
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowActive(&widget));
+    QMenu *menu = new QMenu(&widget);
+
+    auto *w = new FocusReasonWidget(menu);
+
+    QWidgetAction *wa = new QWidgetAction(menu);
+    wa->setDefaultWidget(w);
+
+    menu->setActiveAction(menu->addAction("Top"));
+    menu->addAction(wa);
+    menu->addAction("Bottom");
+
+    menu->popup(QPoint());
+
+    QVERIFY(menu->isVisible());
+    QVERIFY(!w->hasFocus());
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Down);
+    QVERIFY(w->hasFocus());
+    QCOMPARE(w->focusInEventReason, Qt::TabFocusReason);
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Down);
+    QVERIFY(!w->hasFocus());
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Up);
+    QVERIFY(w->hasFocus());
+    QCOMPARE(w->focusInEventReason, Qt::BacktabFocusReason);
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Up);
+    QVERIFY(!w->hasFocus());
 }
 
 static QMenu *getTornOffMenu()
@@ -1040,11 +1109,12 @@ public:
 // Mouse move related signals for Windows Mobile unavailable
 void tst_QMenu::task258920_mouseBorder()
 {
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::MouseCursorPositioning))
+        QSKIP("Platform does not support cursor positioning");
     const QRect screenGeometry = QGuiApplication::primaryScreen()->availableGeometry();
     Menu258920 menu;
     QCursor::setPos(screenGeometry.topLeft());
-    if (!QTest::qWaitFor([screenGeometry]{ return QCursor::pos() == screenGeometry.topLeft(); }))
-        QSKIP("Can't move cursor out of the way");
+    QTRY_COMPARE(QCursor::pos(), screenGeometry.topLeft());
     // For styles which inherit from QWindowsStyle, styleHint(QStyle::SH_Menu_MouseTracking) is true.
     menu.setMouseTracking(true);
     QAction *action = menu.addAction("test");
@@ -1584,6 +1654,36 @@ void tst_QMenu::widgetActionTriggerClosesMenu()
     QCOMPARE(actionTriggered, &widgetAction);
 }
 
+void tst_QMenu::widgetActionContextMenu() // QTBUG-134757
+{
+    QPushButton openButton("open");
+    QMenu *menu = new QMenu(&openButton);
+    QVBoxLayout *layout = new QVBoxLayout;
+    QWidgetAction widgetAction(menu);
+    QWidget menuWidget(menu);
+    QPlainTextEdit edit;
+    openButton.setMenu(menu);
+    menuWidget.setLayout(layout);
+    widgetAction.setDefaultWidget(&menuWidget);
+    menu->addAction(&widgetAction);
+    layout->addWidget(&edit);
+
+    openButton.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&openButton));
+
+    // Click the QPushButton to open its menu
+    QTest::mouseClick(&openButton, Qt::LeftButton);
+    QVERIFY(QTest::qWaitForWindowExposed(&menuWidget));
+    QWindow *popupWindow = edit.window()->windowHandle();
+    QVERIFY(popupWindow);
+    QCOMPARE(QApplication::activePopupWidget(), menu);
+
+    // Right-click the QPlainTextEdit to open its context menu
+    QTest::mouseClick(popupWindow, Qt::RightButton);
+    QVERIFY(qobject_cast<QMenu *>(QApplication::activePopupWidget()));
+    QCOMPARE_NE(QApplication::activePopupWidget(), menu);
+}
+
 void tst_QMenu::transientParent()
 {
     QMainWindow window;
@@ -1591,12 +1691,12 @@ void tst_QMenu::transientParent()
     window.menuBar()->setNativeMenuBar(false);
     centerOnScreen(&window);
 
-    QMenu *fileMenu = new QMenu("&File");
-    QAction *exitAct = new QAction("Exit");
+    QMenu *fileMenu = new QMenu("&File", &window);
+    QAction *exitAct = new QAction("Exit", &window);
     fileMenu->addAction(exitAct);
 
-    QMenu *editMenu = new QMenu("&Edit");
-    QAction *undoAct = new QAction("Undo");
+    QMenu *editMenu = new QMenu("&Edit", &window);
+    QAction *undoAct = new QAction("Undo", &window);
     editMenu->addAction(undoAct);
 
     QMenuBar *menuBar = new QMenuBar;
@@ -1604,31 +1704,64 @@ void tst_QMenu::transientParent()
     menuBar->addMenu(editMenu);
     window.setMenuBar(menuBar);
 
-    // On Mac, we need to create native key events to test menu
-    // action activation, so skip this part of the test.
-#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN)
+    QMenu *bookmarksMenu = new QMenu(&window);
+    bookmarksMenu->addAction("This is KDE!");
+
+    QMenu *contextMenu = new QMenu(&window);
+    QAction *bookmarksAction = contextMenu->addAction("&Bookmarks");
+    bookmarksAction->setMenu(bookmarksMenu);
+
     window.show();
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QWindow *topLevel = window.windowHandle();
     QVERIFY(topLevel);
 
+    // Show the standalone bookmarks menu. It should be a child of the main window.
+    bookmarksMenu->popup(window.geometry().center());
+    QTRY_VERIFY(QTest::qWaitForWindowExposed(bookmarksMenu));
+    QVERIFY(bookmarksMenu->windowHandle());
+    QCOMPARE(bookmarksMenu->windowHandle()->transientParent(), topLevel);
+    bookmarksMenu->close();
+
+    // Show the bookmarks menu attached to the context menu. Even though the bookmarks menu is
+    // a child of the main window, its transient parent will be the context menu.
+    contextMenu->popup(window.geometry().center());
+    QTRY_VERIFY(QTest::qWaitForWindowExposed(contextMenu));
+    QVERIFY(contextMenu->windowHandle());
+    QCOMPARE(contextMenu->windowHandle()->transientParent(), topLevel);
+
+    contextMenu->setActiveAction(bookmarksAction);
+    QTRY_VERIFY(QTest::qWaitForWindowExposed(bookmarksMenu));
+    QVERIFY(bookmarksMenu->windowHandle());
+    QCOMPARE(bookmarksMenu->windowHandle()->transientParent(), contextMenu->windowHandle());
+    contextMenu->close();
+
+    // Show the standalone bookmarks menu. Its transient parent will be the main window again.
+    bookmarksMenu->popup(window.geometry().center());
+    QTRY_VERIFY(QTest::qWaitForWindowExposed(bookmarksMenu));
+    QVERIFY(bookmarksMenu->windowHandle());
+    QCOMPARE(bookmarksMenu->windowHandle()->transientParent(), topLevel);
+    bookmarksMenu->close();
+
+    // On Mac, we need to create native key events to test menu
+    // action activation, so skip this part of the test.
+#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN)
     window.setFocus();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QVERIFY(QTest::qWaitForWindowFocused(&window));
     QVERIFY(window.hasFocus());
 
     QTest::keyPress(&window, Qt::Key_F, Qt::AltModifier);
     QTRY_VERIFY(QTest::qWaitForWindowExposed(fileMenu));
-    if (fileMenu->isWindow() && fileMenu->window() && fileMenu->window()->windowHandle())
-        QVERIFY(fileMenu->window()->windowHandle()->transientParent());
+    QVERIFY(fileMenu->windowHandle());
+    QCOMPARE(fileMenu->windowHandle()->transientParent(), topLevel);
     QTest::keyRelease(fileMenu, Qt::Key_F, Qt::AltModifier);
 
     QTest::keyPress(fileMenu, Qt::Key_E, Qt::AltModifier);
     QTRY_VERIFY(QTest::qWaitForWindowExposed(editMenu));
-    if (editMenu->isWindow() && editMenu->window() && editMenu->window()->windowHandle())
-        QVERIFY(editMenu->window()->windowHandle()->transientParent());
+    QVERIFY(editMenu->windowHandle());
+    QCOMPARE(editMenu->windowHandle()->transientParent(), topLevel);
     QTest::keyRelease(editMenu, Qt::Key_E, Qt::AltModifier);
 #endif // QT_CONFIG(shortcut) && !Q_OS_DARWIN
-
 }
 
 class MyMenu : public QMenu
@@ -1679,7 +1812,7 @@ void tst_QMenu::QTBUG_10735_crashWithDialog()
     menu.activateAction(0);
 }
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 void tst_QMenu::QTBUG_37933_ampersands_data()
 {
     QTest::addColumn<QString>("title");
@@ -1976,11 +2109,13 @@ void tst_QMenu::QTBUG_61039_menu_shortcuts()
     if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
         QSKIP("Window activation is not supported");
 
-    QAction *actionKamen = new QAction("Action Kamen");
+    QObject reaper;
+
+    QAction *actionKamen = new QAction("Action Kamen", &reaper);
 #if QT_CONFIG(shortcut)
     actionKamen->setShortcut(QKeySequence(QLatin1String("K")));
 #endif
-    QAction *actionJoe = new QAction("Action Joe");
+    QAction *actionJoe = new QAction("Action Joe", &reaper);
 #if QT_CONFIG(shortcut)
     actionJoe->setShortcut(QKeySequence(QLatin1String("Ctrl+J")));
 #endif
@@ -2111,6 +2246,116 @@ void tst_QMenu::nestedTearOffDetached()
     QTest::mouseMove(menuTorn, menuTorn->actionGeometry(subSubMenu->menuAction()).center());
     QTRY_VERIFY(subSubMenu->isVisible());
     QTest::mouseClick(subSubMenu, Qt::LeftButton, {}, QPoint(subSubMenu->width() / 2, tearOffOffset));
+}
+
+/*!
+    Test that a menu will close if you do a mouse click on top of
+    it without having moved the mouse.
+    (QTBUG-128359).
+*/
+void tst_QMenu::closeMenuOnClickIfMouseHasntMoved()
+{
+    QWidget w;
+    w.resize(100, 100);
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+
+    QMenu contextMenu;
+    for (int i = 0; i < 5; ++i) {
+        QAction *action = contextMenu.addAction(QStringLiteral("action"));
+        connect(action, &QAction::triggered, []{ QFAIL("No menu item should trigger"); });
+    }
+
+    const QPoint pos = w.rect().center();
+    const QPoint globalPos = w.mapToGlobal(pos);
+    // Move the mouse inside the window
+    QTest::mouseMove(&w, pos);
+    // Move the menu a bit up, so that a menu item falls underneath the
+    // mouse (similar to the code attached to the bug report: QTBUG-128359).
+    contextMenu.popup(globalPos - QPoint(0, 20));
+    QVERIFY(QTest::qWaitForWindowExposed(&contextMenu));
+    // Do a mouse click without having moved the cursor. This
+    // should close the menu, even if it's underneath the mouse.
+    QTest::mouseClick(&contextMenu, Qt::RightButton, {}, contextMenu.mapFromGlobal(pos));
+}
+
+void tst_QMenu::invisibleActions()
+{
+    QWidget window;
+    window.resize(100, 100);
+    window.show();
+
+    const QPoint globalPos = window.mapToGlobal(window.rect().center());
+
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QMenu contextMenu;
+    QList<QAction *> actions;
+    for (int i = 0; i < 5; ++i)
+        actions << contextMenu.addAction("action");
+    QVERIFY(contextMenu.sizeHint().isValid());
+
+    contextMenu.popup(globalPos);
+    QVERIFY(contextMenu.isVisible());
+
+    contextMenu.close();
+
+    for (const auto &action : actions)
+        action->setVisible(false);
+
+    contextMenu.popup(globalPos);
+    QVERIFY(!contextMenu.isVisible());
+    QVERIFY(!contextMenu.exec());
+
+    // a QMenu might not have any (visible) actions, but still have contents
+    QPushButton *buttonInMenu = new QPushButton(&contextMenu);
+    buttonInMenu->show();
+
+    contextMenu.popup(globalPos);
+    QVERIFY(contextMenu.isVisible());
+}
+
+#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN)
+void tst_QMenu::dontSelectDisabledActionByShortcut()
+{
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+        QSKIP("Window activation is not supported");
+
+    QMainWindow w;
+    auto mb = w.menuBar();
+    auto m = mb->addMenu("me&nu");
+    auto first = m->addAction("disabled &o");
+    auto second = m->addAction(QStringLiteral("enabled &o"));
+
+    QSignalSpy spy(second, &QAction::triggered);
+    first->setDisabled(true);
+    w.show();
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+    QTest::keyClick(&w, Qt::Key_N, Qt::AltModifier);
+    QTest::keyClick(m, Qt::Key_O, Qt::NoModifier);
+    QCOMPARE(spy.count(), 1);
+}
+#endif
+
+void tst_QMenu::execReturnsWidgetAction()
+{
+    QWidget window;
+
+    QMenu menu(&window);
+    QWidgetAction *widgetAction = new QWidgetAction(&menu);
+    QPushButton *menuButton = new QPushButton("Button", &menu);
+    widgetAction->setDefaultWidget(menuButton);
+    QObject::connect(menuButton, &QPushButton::clicked, widgetAction, &QAction::trigger);
+
+    menu.addAction("First");
+    menu.addAction(widgetAction);
+    menu.addAction("Last");
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    QTimer::singleShot(0, menuButton, &QPushButton::click);
+    QCOMPARE(menu.exec(window.geometry().center()), widgetAction);
 }
 
 QTEST_MAIN(tst_QMenu)

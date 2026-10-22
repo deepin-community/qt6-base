@@ -4,7 +4,6 @@
 #include <QtWidgets>
 
 typedef QDialog WordCountDialog;
-typedef QDialog FindDialog;
 
 #define this 0
 #define setWordCount(x) isVisible()
@@ -14,11 +13,23 @@ QString tr(const char *text)
     return QApplication::translate(text, text);
 }
 
+class FindDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    FindDialog(QWidget *parent = nullptr)
+        : QDialog(parent) {}
+
+signals:
+    void findNext();
+};
+
 class EditorWindow : public QMainWindow
 {
 public:
     void find();
     void countWords();
+    void findNext();
 
 private:
     FindDialog *findDialog;
@@ -48,6 +59,7 @@ void EditorWindow::countWords()
 }
 //! [1]
 
+#if QT_DEPRECATED_SINCE(6, 2)
 inline bool boo()
 {
     QMessageBox::information(this, "Application name",
@@ -152,7 +164,7 @@ inline bool boo()
 
     {
         // hardware failure
-//! [2]
+        //! [2]
         QMessageBox mb("Application Name",
                        "Hardware failure.\n\nDisk error detected\nDo you want to stop?",
                        QMessageBox::Question,
@@ -161,15 +173,16 @@ inline bool boo()
                        QMessageBox::NoButton);
         if (mb.exec() == QMessageBox::No) {
             // try again
-//! [2]
+        //! [2]
         }
     }
 }
+#endif // QT_DEPRECATED_SINCE(6, 2)
 
 inline void moo()
 {
     int numFiles;
-//! [3]
+    //! [3]
     QProgressDialog progress("Copying files...", "Abort Copy", 0, numFiles, this);
     progress.setWindowModality(Qt::WindowModal);
 
@@ -181,7 +194,7 @@ inline void moo()
         //... copy one file
     }
     progress.setValue(numFiles);
-//! [3]
+    //! [3]
 }
 
 class Operation : public QObject
@@ -190,6 +203,7 @@ public:
     Operation(QObject *parent);
     void perform();
     void cancel();
+    void extension();
 
 private:
     int steps;
@@ -227,7 +241,7 @@ void Operation::cancel()
 }
 //! [6]
 
-void extension()
+void Operation::extension()
 {
     using ExtendedControls = QWidget;
     QPushButton *findButton;
@@ -235,7 +249,7 @@ void extension()
     QWidget *extension;
     QVBoxLayout *mainLayout;
 
-//! [extension]
+    //! [extension]
     mainLayout->setSizeConstraint(QLayout::SetFixedSize);
 
     findButton = new QPushButton(tr("&Find"));
@@ -247,13 +261,13 @@ void extension()
     extension->hide();
 
     connect(moreButton, &QAbstractButton::toggled, extension, &QWidget::setVisible);
-//! [extension]
+    //! [extension]
 
-//! [buttonbox]
+    //! [buttonbox]
     QDialogButtonBox *buttonBox = new QDialogButtonBox(Qt::Vertical);
     buttonBox->addButton(findButton, QDialogButtonBox::ActionRole);
     buttonBox->addButton(moreButton, QDialogButtonBox::ActionRole);
-//! [buttonbox]
+    //! [buttonbox]
 }
 
 int main()

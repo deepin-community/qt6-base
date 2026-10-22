@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/private/qandroiditemmodelproxy_p.h>
 #include <QtCore/private/qandroidmodelindexproxy_p.h>
@@ -11,9 +12,13 @@ QT_BEGIN_NAMESPACE
 
 using namespace QtJniTypes;
 
+std::map<const QAbstractItemModel *, QRecursiveMutex> QAndroidItemModelProxy::s_mutexes =
+        std::map<const QAbstractItemModel *, QRecursiveMutex>{};
+
 jint QAndroidItemModelProxy::columnCount(const QModelIndex &parent) const
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
     auto parentIndex = QAndroidModelIndexProxy::jInstance(parent);
     return jInstance.callMethod<jint>("columnCount", parentIndex);
 }
@@ -21,6 +26,7 @@ jint QAndroidItemModelProxy::columnCount(const QModelIndex &parent) const
 bool QAndroidItemModelProxy::canFetchMore(const QModelIndex &parent) const
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
     auto parentIndex = QAndroidModelIndexProxy::jInstance(parent);
     return jInstance.callMethod<jboolean>("canFetchMore", parentIndex);
 }
@@ -33,6 +39,7 @@ bool QAndroidItemModelProxy::canFetchMoreDefault(const QModelIndex &parent) cons
 QVariant QAndroidItemModelProxy::data(const QModelIndex &index, int role) const
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
     auto jIndex = QAndroidModelIndexProxy::jInstance(index);
     QJniObject jData = jInstance.callMethod<jobject>("data", jIndex, role);
     return QAndroidTypeConverter::toQVariant(jData);
@@ -41,6 +48,7 @@ QVariant QAndroidItemModelProxy::data(const QModelIndex &index, int role) const
 QModelIndex QAndroidItemModelProxy::index(int row, int column, const QModelIndex &parent) const
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
     JQtModelIndex jIndex = jInstance.callMethod<JQtModelIndex>(
             "index", row, column, QAndroidModelIndexProxy::jInstance(parent));
     return QAndroidModelIndexProxy::qInstance(jIndex);
@@ -49,6 +57,7 @@ QModelIndex QAndroidItemModelProxy::index(int row, int column, const QModelIndex
 QModelIndex QAndroidItemModelProxy::parent(const QModelIndex &index) const
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
 
     auto jIndex = QAndroidModelIndexProxy::jInstance(index);
     return QAndroidModelIndexProxy::qInstance(
@@ -57,6 +66,7 @@ QModelIndex QAndroidItemModelProxy::parent(const QModelIndex &index) const
 int QAndroidItemModelProxy::rowCount(const QModelIndex &parent) const
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
 
     auto parentIndex = QAndroidModelIndexProxy::jInstance(parent);
     return jInstance.callMethod<int>("rowCount", parentIndex);
@@ -65,13 +75,14 @@ int QAndroidItemModelProxy::rowCount(const QModelIndex &parent) const
 QHash<int, QByteArray> QAndroidItemModelProxy::roleNames() const
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
 
     QHash<int, QByteArray> roleNames;
     HashMap hashMap = jInstance.callMethod<HashMap>("roleNames");
     Set set = hashMap.callMethod<Set>("keySet");
-    QJniArray<jobject> keyArray = set.callMethod<QJniArray<jobject>>("toArray");
+    const QJniArray keyArray = set.callMethod<jobject[]>("toArray");
 
-    for (auto key : keyArray) {
+    for (const auto &key : keyArray) {
         const QJniObject roleName = hashMap.callMethod<jobject>("get", key);
         const int intKey = QJniObject(key).callMethod<jint>("intValue");
         const QByteArray roleByteArray = String(roleName).toString().toLatin1();
@@ -88,6 +99,7 @@ QHash<int, QByteArray> QAndroidItemModelProxy::defaultRoleNames() const
 void QAndroidItemModelProxy::fetchMore(const QModelIndex &parent)
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
     auto parentIndex = QAndroidModelIndexProxy::jInstance(parent);
     jInstance.callMethod<void>("fetchMore", parentIndex);
 }
@@ -100,6 +112,7 @@ void QAndroidItemModelProxy::fetchMoreDefault(const QModelIndex &parent)
 bool QAndroidItemModelProxy::hasChildren(const QModelIndex &parent) const
 {
     Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
     auto parentIndex = QAndroidModelIndexProxy::jInstance(parent);
     return jInstance.callMethod<jboolean>("hasChildren", parentIndex);
 }
@@ -112,13 +125,29 @@ bool QAndroidItemModelProxy::hasChildrenDefault(const QModelIndex &parent) const
 QModelIndex QAndroidItemModelProxy::sibling(int row, int column, const QModelIndex &parent) const
 {
     Q_ASSERT(jInstance.isValid());
-    return QAndroidModelIndexProxy::qInstance(jInstance.callMethod<jobject>(
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
+    return QAndroidModelIndexProxy::qInstance(jInstance.callMethod<JQtModelIndex>(
             "sibling", row, column, QAndroidModelIndexProxy::jInstance(parent)));
 }
 
 QModelIndex QAndroidItemModelProxy::siblingDefault(int row, int column, const QModelIndex &parent)
 {
     return QAbstractItemModel::sibling(row, column, parent);
+}
+
+bool QAndroidItemModelProxy::setData(const QModelIndex &index, const QVariant &value, int role)
+{
+    Q_ASSERT(jInstance.isValid());
+    const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(this);
+    auto jIndex = QAndroidModelIndexProxy::jInstance(index);
+    auto jValue = QAndroidTypeConverter::toJavaObject(value, QJniEnvironment::getJniEnv());
+    return jInstance.callMethod<jboolean>("setData", jIndex, jValue, role);
+}
+
+bool QAndroidItemModelProxy::setDataDefault(const QModelIndex &index, const QVariant &value,
+                                            int role)
+{
+    return QAbstractItemModel::setData(index, value, role);
 }
 
 Q_REQUIRED_RESULT QAbstractItemModel *
@@ -143,9 +172,25 @@ QAndroidItemModelProxy::createNativeProxy(QJniObject itemModel)
         itemModel.callMethod<void>("setNativeReference", reinterpret_cast<jlong>(nativeProxy));
         connect(nativeProxy, &QAndroidItemModelProxy::destroyed, nativeProxy, [](QObject *obj) {
             auto proxy = qobject_cast<QAndroidItemModelProxy *>(obj);
-            if (proxy)
+            if (proxy) {
+                const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(proxy);
                 proxy->jInstance.callMethod<void>("detachFromNative");
+            }
         });
+
+        connect(nativeProxy, &QAndroidItemModelProxy::dataChanged, nativeProxy,
+                [nativeProxy](const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                              const QList<int> &roles) {
+                    auto proxy = qobject_cast<QAndroidItemModelProxy *>(nativeProxy);
+                    if (proxy) {
+                        QJniObject jInstance = proxy->jInstance;
+                        const QMutexLocker<QRecursiveMutex> lock = getMutexLocker(proxy);
+                        jInstance.callMethod<void>("handleDataChanged",
+                                                    QAndroidModelIndexProxy::jInstance(topLeft),
+                                                    QAndroidModelIndexProxy::jInstance(bottomRight),
+                                                    QJniArray<jint>(roles));
+                    }
+                });
     }
     return nativeProxy;
 }
@@ -201,8 +246,7 @@ jobject QAndroidItemModelProxy::jni_roleNames(JNIEnv *env, jobject object)
     HashMap jRoleNames{};
     for (auto [role, roleName] : roleNames.asKeyValueRange()) {
         const Integer jRole(role);
-        const QJniObject jRoleName = QJniObject::fromString(roleName);
-        jRoleNames.callMethod<jobject>("put", jRole.object(), jRoleName.object());
+        jRoleNames.callMethod<jobject>("put", jRole.object(), QString::fromUtf8(roleName));
     }
     return env->NewLocalRef(jRoleNames.object());
 }
@@ -346,6 +390,26 @@ jobject QAndroidItemModelProxy::jni_sibling(JNIEnv *env, jobject object, jint ro
     return env->NewLocalRef(QAndroidModelIndexProxy::jInstance(index).object());
 }
 
+jboolean QAndroidItemModelProxy::jni_setData(JNIEnv *env, jobject object, JQtModelIndex index,
+                                             jobject value, jint role)
+{
+    const QModelIndex nativeIndex = QAndroidModelIndexProxy::qInstance(index);
+    const QVariant qValue = QAndroidTypeConverter::toQVariant(QJniObject(value));
+    return invokeNativeImpl(env, object, &QAndroidItemModelProxy::setDataDefault,
+                            &QAbstractItemModel::setData, nativeIndex, qValue, role);
+}
+
+void QAndroidItemModelProxy::jni_dataChanged(JNIEnv *env, jobject object, JQtModelIndex topLeft,
+                                             JQtModelIndex bottomRight, QJniArray<jint> roles)
+{
+    const QModelIndex nativeTopLeft = QAndroidModelIndexProxy::qInstance(topLeft);
+    const QModelIndex nativeBottomRight = QAndroidModelIndexProxy::qInstance(bottomRight);
+    const QList<int> nativeRoles = roles.toContainer();
+    invokeNativeImpl(env, object, &QAndroidItemModelProxy::dataChanged,
+                     &QAbstractItemModel::dataChanged, nativeTopLeft, nativeBottomRight,
+                     nativeRoles);
+}
+
 bool QAndroidItemModelProxy::registerAbstractNatives(QJniEnvironment &env)
 {
     return env.registerNativeMethods(
@@ -370,7 +434,9 @@ bool QAndroidItemModelProxy::registerAbstractNatives(QJniEnvironment &env)
               Q_JNI_NATIVE_SCOPED_METHOD(jni_endRemoveColumns, QAndroidItemModelProxy),
               Q_JNI_NATIVE_SCOPED_METHOD(jni_endRemoveRows, QAndroidItemModelProxy),
               Q_JNI_NATIVE_SCOPED_METHOD(jni_endResetModel, QAndroidItemModelProxy),
-              Q_JNI_NATIVE_SCOPED_METHOD(jni_sibling, QAndroidItemModelProxy) });
+              Q_JNI_NATIVE_SCOPED_METHOD(jni_sibling, QAndroidItemModelProxy),
+              Q_JNI_NATIVE_SCOPED_METHOD(jni_setData, QAndroidItemModelProxy),
+              Q_JNI_NATIVE_SCOPED_METHOD(jni_dataChanged, QAndroidItemModelProxy) });
 }
 
 bool QAndroidItemModelProxy::registerProxyNatives(QJniEnvironment &env)

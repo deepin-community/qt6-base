@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qradiobutton.h"
 #include "qapplication.h"
@@ -23,6 +24,7 @@ class QRadioButtonPrivate : public QAbstractButtonPrivate
 public:
     QRadioButtonPrivate() : QAbstractButtonPrivate(QSizePolicy::RadioButton), hovering(true) {}
     void init();
+    QStyle::State styleButtonState(QStyle::State state) const override;
     uint hovering : 1;
 };
 
@@ -40,6 +42,16 @@ void QRadioButtonPrivate::init()
     setLayoutItemMargins(QStyle::SE_RadioButtonLayoutItem);
 }
 
+QStyle::State QRadioButtonPrivate::styleButtonState(QStyle::State state) const
+{
+    Q_Q(const QRadioButton);
+    state = QAbstractButtonPrivate::styleButtonState(state);
+    state |= (checked ? QStyle::State_On : QStyle::State_Off);
+    if (q->testAttribute(Qt::WA_Hover) && q->underMouse())
+        state.setFlag(QStyle::State_MouseOver, hovering);
+    return state;
+}
+
 /*!
     \class QRadioButton
     \brief The QRadioButton widget provides a radio button with a text label.
@@ -47,7 +59,7 @@ void QRadioButtonPrivate::init()
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-radiobutton.png
+    \image fusion-radiobutton.png {Two radio buttons representing two options}
 
     A QRadioButton is an option button that can be switched on (checked) or
     off (unchecked). Radio buttons typically present the user with a "one
@@ -135,12 +147,7 @@ void QRadioButton::initStyleOption(QStyleOptionButton *option) const
     option->text = d->text;
     option->icon = d->icon;
     option->iconSize = iconSize();
-    if (d->down)
-        option->state |= QStyle::State_Sunken;
-    option->state |= (d->checked) ? QStyle::State_On : QStyle::State_Off;
-    if (testAttribute(Qt::WA_Hover) && underMouse()) {
-        option->state.setFlag(QStyle::State_MouseOver, d->hovering);
-    }
+    option->state = d->styleButtonState(option->state);
 }
 
 /*!
@@ -215,7 +222,7 @@ bool QRadioButton::event(QEvent *e)
 {
     Q_D(QRadioButton);
     if (e->type() == QEvent::StyleChange
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
             || e->type() == QEvent::MacSizeChange
 #endif
             )

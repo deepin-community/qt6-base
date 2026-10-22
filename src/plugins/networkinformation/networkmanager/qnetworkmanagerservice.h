@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKMANAGERSERVICE_H
 #define QNETWORKMANAGERSERVICE_H
@@ -72,7 +73,7 @@ public:
         NM_STATE_CONNECTED_SITE = 60,
         NM_STATE_CONNECTED_GLOBAL = 70
     };
-    Q_ENUM(NMState);
+    Q_ENUM(NMState)
     // Matches 'NMConnectivityState' from
     // https://developer.gnome.org/NetworkManager/stable/nm-dbus-types.html#NMConnectivityState
     enum NMConnectivityState {
@@ -82,7 +83,7 @@ public:
         NM_CONNECTIVITY_LIMITED = 3,
         NM_CONNECTIVITY_FULL = 4,
     };
-    Q_ENUM(NMConnectivityState);
+    Q_ENUM(NMConnectivityState)
     // Matches 'NMDeviceType' from
     // https://developer-old.gnome.org/NetworkManager/stable/nm-dbus-types.html#NMDeviceType
     enum NMDeviceType {

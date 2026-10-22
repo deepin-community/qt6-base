@@ -148,6 +148,11 @@ void registerCustomTypeConversions()
 
 void tst_QMetaType::convertCustomType_data()
 {
+    static bool calledOnce = false;
+    if (calledOnce)
+        QSKIP("convertCustomType can only run once");
+    calledOnce = true;
+
     customTypeNotYetConvertible();
     registerCustomTypeConversions();
 
@@ -363,6 +368,11 @@ void tst_QMetaType::compareCustomEqualOnlyType()
 
 void tst_QMetaType::customDebugStream()
 {
+    static bool calledOnce = false;
+    if (calledOnce)
+        QSKIP("customDebugStream can only run once");
+    calledOnce = true;
+
     MessageHandlerCustom handler(::qMetaTypeId<CustomDebugStreamableType>());
     QVariant v1 = QVariant::fromValue(CustomDebugStreamableType());
     handler.expectedMessage = "QVariant(CustomDebugStreamableType, string-content)";
@@ -627,6 +637,12 @@ void tst_QMetaType::typeNameNormalization()
     CHECK_TYPE_NORMALIZATION("qulonglong", __int64 unsigned);
 #endif
     CHECK_TYPE_NORMALIZATION("std::pair<const QString&&,short>", QPair<const QString &&, signed short>);
+    CHECK_TYPE_NORMALIZATION("std::pair<int,std::pair<int,int>>",
+                             std::pair<int, std::pair<int, int>>);
+    CHECK_TYPE_NORMALIZATION("std::pair<std::pair<int,int>,int>",
+                             std::pair<std::pair<int, int>, int>);
+    CHECK_TYPE_NORMALIZATION("std::pair<std::pair<int,int>,std::pair<int,int>>",
+                             std::pair<std::pair<int, int>, std::pair<int, int>>);
 
     // The string based normalization doesn't handle aliases, QMetaType::fromType() does
 //    CHECK_TYPE_NORMALIZATION("qulonglong", quint64);

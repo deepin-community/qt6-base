@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:header-decls-only
 
 #ifndef QABSTRACTEVENTDISPATCHER_H
 #define QABSTRACTEVENTDISPATCHER_H
@@ -25,9 +26,13 @@ public:
         int timerId;
         int interval;
         Qt::TimerType timerType;
-
+#ifndef Q_QDOC
+#ifndef __cpp_aggregate_paren_init
+        TimerInfo() = default;
         inline TimerInfo(int id, int i, Qt::TimerType t)
             : timerId(id), interval(i), timerType(t) { }
+#endif
+#endif
     };
     struct TimerInfoV2
     {
@@ -114,12 +119,16 @@ protected:
     QAbstractEventDispatcherV2(QAbstractEventDispatcherPrivate &, QObject *parent);
 
 private:
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Woverloaded-virtual")
+QT_WARNING_DISABLE_CLANG("-Woverloaded-virtual")
     // final overrides from V1
     void registerTimer(int timerId, qint64 interval, Qt::TimerType timerType,
                        QObject *object) final;
     bool unregisterTimer(int timerId) final;
     QList<TimerInfo> registeredTimers(QObject *object) const final;
     int remainingTime(int timerId) final;
+QT_WARNING_POP
 };
 #else
 using QAbstractEventDispatcherV2 = QAbstractEventDispatcher;

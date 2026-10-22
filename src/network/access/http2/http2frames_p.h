@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #ifndef HTTP2FRAMES_P_H
 #define HTTP2FRAMES_P_H
@@ -19,8 +20,6 @@
 #include "hpack_p.h"
 
 #include <QtCore/qendian.h>
-#include <QtCore/qglobal.h>
-
 #include <algorithm>
 #include <vector>
 
@@ -42,6 +41,8 @@ struct Q_AUTOTEST_EXPORT Frame
     FrameFlags flags() const;
     quint32 payloadSize() const;
     uchar padding() const;
+    bool supportsPaddedFlag() const;
+    bool isPadded() const;
     // In HTTP/2 a stream's priority is specified by its weight and a stream
     // (id) it depends on:
     bool priority(quint32 *streamID = nullptr,
@@ -74,6 +75,7 @@ public:
 private:
     bool readHeader(QIODevice &socket);
     bool readPayload(QIODevice &socket);
+    bool discardPayload(QIODevice &socket);
 
     quint32 offset = 0;
     Frame frame;

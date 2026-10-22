@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //
 //  W A R N I N G
@@ -253,6 +254,10 @@ QImage QGtk3Interface::standardPixmap(QPlatformTheme::StandardPixmap standardPix
     case QPlatformTheme::RestoreDefaultsButton:
     case QPlatformTheme::TabCloseButton:
     case QPlatformTheme::NStandardPixmap:
+    case QPlatformTheme::TabScrollLeftButton:
+    case QPlatformTheme::TabScrollRightButton:
+    case QPlatformTheme::TabScrollUpButton:
+    case QPlatformTheme::TabScrollDownButton:
         return QImage();
     }
     Q_UNREACHABLE();

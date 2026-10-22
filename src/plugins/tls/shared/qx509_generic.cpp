@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <QtNetwork/private/qsslcertificate_p.h>
 #include <QtNetwork/private/qssl_p.h>
@@ -305,7 +306,7 @@ bool X509CertificateGeneric::parse(const QByteArray &data)
                                     break;
                                 }
                             }
-                            extension.value = extValue;
+                            extension.value = std::move(extValue);
                             extension.supported = true;
                         }
                     }
@@ -371,7 +372,7 @@ bool X509CertificateGeneric::parseExtension(const QByteArray &data, X509Certific
                 break;
             }
         }
-        value = result;
+        value = std::move(result);
     } else if (oid == "2.5.29.14") {
         // subjectKeyIdentifier
         if (!val.read(valElem.value()) || val.type() != QAsn1Element::OctetStringType)
@@ -396,7 +397,7 @@ bool X509CertificateGeneric::parseExtension(const QByteArray &data, X509Certific
             if (!ok)
                 return false;
         }
-        value = result;
+        value = std::move(result);
     } else if (oid == "2.5.29.35") {
         // authorityKeyIdentifier
         if (!val.read(valElem.value()) || val.type() != QAsn1Element::SequenceType)
@@ -412,7 +413,7 @@ bool X509CertificateGeneric::parseExtension(const QByteArray &data, X509Certific
                 result[serial] = colonSeparatedHex(el.value());
             }
         }
-        value = result;
+        value = std::move(result);
     } else {
         supported = false;
         value = valElem.value();

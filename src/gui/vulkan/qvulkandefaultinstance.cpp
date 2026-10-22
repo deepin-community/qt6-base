@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qvulkandefaultinstance_p.h"
 #include <rhi/qrhi.h>
@@ -17,9 +18,11 @@ QVulkanDefaultInstance::Flags QVulkanDefaultInstance::flags()
     return s_vulkanInstanceFlags;
 }
 
-// As always, calling this when hasInstance() is already true has no effect. (unless cleanup() is called)
 void QVulkanDefaultInstance::setFlag(Flag flag, bool on)
 {
+    if (hasInstance())
+        qWarning("QVulkanDefaultInstance::setFlag called when Vulkan instance is already created; this has no effect");
+
     s_vulkanInstanceFlags.setFlag(flag, on);
 }
 
@@ -36,8 +39,8 @@ QVulkanInstance *QVulkanDefaultInstance::instance()
     s_vulkanInstance = new QVulkanInstance;
 
     // With a Vulkan implementation >= 1.1 we can check what
-    // vkEnumerateInstanceVersion() says and request 1.3/1.2/1.1 based on the
-    // result. To prevent future surprises, be conservative and ignore any > 1.3
+    // vkEnumerateInstanceVersion() says and request 1.4-1.1 based on the
+    // result. To prevent future surprises, be conservative and ignore any > 1.4
     // versions for now. For 1.0 implementations nothing will be requested, the
     // default 0 in VkApplicationInfo means 1.0.
     //
@@ -52,7 +55,9 @@ QVulkanInstance *QVulkanDefaultInstance::instance()
     // be able to make an appropriate setApiVersion() call on it.
 
     const QVersionNumber supportedVersion = s_vulkanInstance->supportedApiVersion();
-    if (supportedVersion >= QVersionNumber(1, 3))
+    if (supportedVersion >= QVersionNumber(1, 4))
+        s_vulkanInstance->setApiVersion(QVersionNumber(1, 4));
+    else if (supportedVersion >= QVersionNumber(1, 3))
         s_vulkanInstance->setApiVersion(QVersionNumber(1, 3));
     else if (supportedVersion >= QVersionNumber(1, 2))
         s_vulkanInstance->setApiVersion(QVersionNumber(1, 2));

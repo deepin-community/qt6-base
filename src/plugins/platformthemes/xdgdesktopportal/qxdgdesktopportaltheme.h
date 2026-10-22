@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QXDGDESKTOPPORTALTHEME_H
 #define QXDGDESKTOPPORTALTHEME_H
@@ -35,6 +36,8 @@ public:
     QVariant themeHint(ThemeHint hint) const override;
 
     Qt::ColorScheme colorScheme() const override;
+    Qt::ContrastPreference contrastPreference() const override;
+    Qt::MotionPreference motionPreference() const override;
 
     QPixmap standardPixmap(StandardPixmap sp, const QSizeF &size) const override;
     QIcon fileIcon(const QFileInfo &fileInfo,
@@ -47,6 +50,8 @@ public:
 #endif
 
     QString standardButtonText(int button) const override;
+
+    static bool isXdgPlugin(const QString &key);
 
 private:
     QScopedPointer<QXdgDesktopPortalThemePrivate> d_ptr;

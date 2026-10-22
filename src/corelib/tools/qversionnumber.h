@@ -2,6 +2,7 @@
 // Copyright (C) 2022 Intel Corporation.
 // Copyright (C) 2015 Keith Gardner <kreios4004@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QVERSIONNUMBER_H
 #define QVERSIONNUMBER_H
@@ -192,6 +193,8 @@ class QVersionNumber
 
         Q_CORE_EXPORT void setVector(int len, int maj, int min, int mic);
     } m_segments;
+
+    friend class QTypeInfo<SegmentStorage>;
 
     class It
     {
@@ -400,6 +403,7 @@ private:
     friend Q_CORE_EXPORT size_t qHash(const QVersionNumber &key, size_t seed);
 };
 
+Q_DECLARE_TYPEINFO(QVersionNumber::SegmentStorage, Q_RELOCATABLE_TYPE);
 Q_DECLARE_TYPEINFO(QVersionNumber, Q_RELOCATABLE_TYPE);
 
 #ifndef QT_NO_DEBUG_STREAM

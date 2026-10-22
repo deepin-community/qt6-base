@@ -17,6 +17,8 @@
 #include "qtexttable.h"
 #include "qtextengine_p.h"
 
+#include <QtCore/q20utility.h>
+
 #include <stdlib.h>
 
 QT_BEGIN_NAMESPACE
@@ -202,7 +204,10 @@ void QTextDocumentPrivate::clear()
 {
     Q_Q(QTextDocument);
 
+    QVarLengthArray<QTextCursor, 4> changedCursors;
     for (QTextCursorPrivate *curs : std::as_const(cursors)) {
+        if (!editBlock && curs->position != 0)
+            changedCursors.append(QTextCursor(curs));
         curs->setPosition(0);
         curs->currentCharFormat = -1;
         curs->anchor = 0;
@@ -251,6 +256,9 @@ void QTextDocumentPrivate::clear()
         cursors = oldCursors; // at least recover the cursors
         QT_RETHROW;
     }
+
+    for (const QTextCursor &cursor : std::as_const(changedCursors))
+        emit q->cursorPositionChanged(cursor);
 }
 
 QTextDocumentPrivate::~QTextDocumentPrivate()
@@ -333,7 +341,7 @@ int QTextDocumentPrivate::insert_block(int pos, uint strPos, int format, int blo
     int n = blocks.findNode(block_pos);
     int key = n ? blocks.position(n) : blocks.length();
 
-    Q_ASSERT(n || (!n && block_pos == blocks.length()));
+    Q_ASSERT(n || block_pos == blocks.length());
     if (key != block_pos) {
         Q_ASSERT(key < block_pos);
         int oldSize = blocks.size(n);
@@ -461,13 +469,13 @@ int QTextDocumentPrivate::remove_string(int pos, uint length, QTextUndoCommand::
 {
     Q_ASSERT(pos >= 0);
     Q_ASSERT(blocks.length() == fragments.length());
-    Q_ASSERT(blocks.length() >= pos+(int)length);
+    Q_ASSERT(q20::cmp_greater_equal(blocks.length(), pos+length));
 
     int b = blocks.findNode(pos);
     uint x = fragments.findNode(pos);
 
     Q_ASSERT(blocks.size(b) > length);
-    Q_ASSERT(x && fragments.position(x) == (uint)pos && fragments.size(x) == length);
+    Q_ASSERT(x && q20::cmp_equal(fragments.position(x), pos) && fragments.size(x) == length);
     Q_ASSERT(noBlockInString(QStringView{text}.mid(fragments.fragment(x)->stringPosition, length)));
 
     blocks.setSize(b, blocks.size(b)-length);
@@ -725,7 +733,7 @@ void QTextDocumentPrivate::setCharFormat(int pos, int length, const QTextCharFor
         appendUndoItem(c);
 
         pos += length;
-        Q_ASSERT(pos == (int)(it.position() + fragment->size_array[0]) || pos >= endPos);
+        Q_ASSERT(q20::cmp_equal(pos, (it.position() + fragment->size_array[0])) || pos >= endPos);
     }
 
     int n = fragments.findNode(startPos - 1);
@@ -1004,6 +1012,7 @@ int QTextDocumentPrivate::undoRedo(bool undo)
 }
 
 /*!
+    \internal
     Appends a custom undo \a item to the undo stack.
 */
 void QTextDocumentPrivate::appendUndoItem(QAbstractUndoItem *item)
@@ -1036,7 +1045,7 @@ void QTextDocumentPrivate::appendUndoItem(const QTextUndoCommand &c)
         clearUndoRedoStacks(QTextDocument::RedoStack);
 
     if (editBlock != 0 && editBlockCursorPosition >= 0) { // we had a beginEditBlock() with a cursor position
-        if (c.pos != (quint32) editBlockCursorPosition) { // and that cursor position is different from the command
+        if (q20::cmp_not_equal(c.pos, editBlockCursorPosition)) { // and that cursor position is different from the command
             // generate a CursorMoved undo item
             QT_INIT_TEXTUNDOCOMMAND(cc, QTextUndoCommand::CursorMoved, true, QTextUndoCommand::MoveCursor,
                                     0, 0, editBlockCursorPosition, 0, 0);

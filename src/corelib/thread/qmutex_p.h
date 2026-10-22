@@ -2,6 +2,7 @@
 // Copyright (C) 2016 Intel Corporation.
 // Copyright (C) 2012 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMUTEX_P_H
 #define QMUTEX_P_H
@@ -25,9 +26,7 @@
 
 #include "qplatformdefs.h" // _POSIX_VERSION
 
-#if defined(Q_OS_DARWIN)
-# include <mach/semaphore.h>
-#elif defined(Q_OS_UNIX)
+#if defined(Q_OS_UNIX)
 #  include <semaphore.h>
 #endif
 
@@ -35,6 +34,7 @@ struct timespec;
 
 QT_BEGIN_NAMESPACE
 
+// ### Qt7 remove this comment block
 // We manipulate the pointer to this class in inline, atomic code,
 // so syncqt mustn't mark them as private, so ELFVERSION:ignore-next
 class QMutexPrivate
@@ -82,9 +82,7 @@ public:
     void derefWaiters(int value) noexcept;
 
     //platform specific stuff
-#if defined(Q_OS_DARWIN)
-    semaphore_t mach_semaphore;
-#elif defined(Q_OS_UNIX)
+#if defined(Q_OS_UNIX)
     sem_t semaphore;
 #endif
 };

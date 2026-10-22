@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcocoamessagedialog.h"
 
@@ -86,6 +87,11 @@ bool QCocoaMessageDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality w
         qCWarning(lcQpaDialogs, "Cannot run window modal dialog without parent window");
         return false;
     }
+
+    // Tahoe has issues with window-modal alert buttons not responding to mouse
+    if (windowModality == Qt::WindowModal
+        && QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSTahoe)
+        return false;
 
     // And without options we don't know what to show
     if (!options())

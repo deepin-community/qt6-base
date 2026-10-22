@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qwindowsfontengine_p.h"
 #include "qwindowsnativeimage_p.h"
@@ -958,6 +959,9 @@ QWindowsNativeImage *QWindowsFontEngine::drawGDIGlyph(HFONT font, glyph_t glyph,
         xform.eDy += tgm.gmptGlyphOrigin.y;
     }
 
+    if (glyphBoundingBoxExceedsLimit(iw, ih, effectivePixelSizeSquared(t)))
+        return nullptr;
+
     // The padding here needs to be kept in sync with the values in alphaMapBoundingBox.
     QWindowsNativeImage *ni = new QWindowsNativeImage(iw + 2 * margin,
                                                       ih + 2 * margin,
@@ -1097,7 +1101,7 @@ QImage QWindowsFontEngine::alphaRGBMapForGlyph(glyph_t glyph,
 QFontEngine *QWindowsFontEngine::cloneWithSize(qreal pixelSize) const
 {
     QFontDef request = fontDef;
-    QString actualFontName = request.families.constFirst();
+    QString actualFontName = request.family();
     if (!uniqueFamilyName.isEmpty())
         request.families = QStringList(uniqueFamilyName);
     request.pixelSize = pixelSize;

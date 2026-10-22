@@ -1,7 +1,10 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // This file is included from qnsview.mm, and only used to organize the code
+
+#include <QtGui/qdrag.h>
 
 @implementation QNSView (Dragging)
 
@@ -45,8 +48,8 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
 - (NSDragOperation)draggingSession:(NSDraggingSession *)session sourceOperationMaskForDraggingContext:(NSDraggingContext)context
 {
     Q_UNUSED(session);
+    Q_UNUSED(context);
 
-    m_lastSeenContext = context;
     QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
     return qt_mac_mapDropActions(nativeDrag->currentDrag()->supportedActions());
 }
@@ -61,11 +64,8 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     //
     // Since Qt already takes care of tracking the keyboard modifiers, we
     // don't need (or want) Cocoa to filter anything. Instead, we'll let
-    // the application do the actual filtering. But only while dragging
-    // within application, otherwise ignored modifiers may end up in a
-    // wrong drop operation executed.
-
-    return m_lastSeenContext == NSDraggingContextWithinApplication;
+    // the application do the actual filtering.
+    return YES;
 }
 
 - (BOOL)wantsPeriodicDraggingUpdates
@@ -164,7 +164,7 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     if (!target)
         return NSDragOperationNone;
 
-    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSApp.currentEvent.modifierFlags);
+    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSEvent.modifierFlags);
     const auto buttons = currentlyPressedMouseButtons();
     const auto point = mapWindowCoordinates(m_platformWindow->window(), target, windowPoint);
 
@@ -228,7 +228,7 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
 
     QPlatformDropQtResponse response(false, Qt::IgnoreAction);
     QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
-    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSApp.currentEvent.modifierFlags);
+    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSEvent.modifierFlags);
     const auto buttons = currentlyPressedMouseButtons();
     const auto point = mapWindowCoordinates(m_platformWindow->window(), target, windowPoint);
 
@@ -253,8 +253,6 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     Q_UNUSED(screenPoint);
     Q_UNUSED(operation);
 
-    m_lastSeenContext = NSDraggingContextWithinApplication;
-
     if (!m_platformWindow)
         return;
 
@@ -273,7 +271,7 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     // this case won't send the matching release event, so we have to
     // synthesize it here.
     m_buttons = currentlyPressedMouseButtons();
-    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSApp.currentEvent.modifierFlags);
+    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSEvent.modifierFlags);
 
     NSPoint windowPoint = [self.window convertRectFromScreen:NSMakeRect(screenPoint.x, screenPoint.y, 1, 1)].origin;
     NSPoint nsViewPoint = [self convertPoint: windowPoint fromView: nil];

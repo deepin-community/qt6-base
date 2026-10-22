@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 #include "qpassworddigestor.h"
 
@@ -61,9 +62,7 @@ Q_NETWORK_EXPORT QByteArray deriveKeyPbkdf1(QCryptographicHash::Algorithm algori
     // https://tools.ietf.org/html/rfc8018#section-5.1
 
     if (algorithm != QCryptographicHash::Sha1
-#ifndef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
         && algorithm != QCryptographicHash::Md5
-#endif
     ) {
         qWarning("The only supported algorithms for pbkdf1 are SHA-1 and MD5!");
         return QByteArray();

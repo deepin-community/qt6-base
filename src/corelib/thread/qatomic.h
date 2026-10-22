@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QATOMIC_H
 #define QATOMIC_H
@@ -45,6 +46,7 @@ public:
     static constexpr bool isReferenceCountingWaitFree();
 
     bool ref();
+    void refRelaxed();
     bool deref();
 
     static constexpr bool isTestAndSetNative();
@@ -149,6 +151,11 @@ public:
     bool testAndSetAcquire(T *expectedValue, T *newValue);
     bool testAndSetRelease(T *expectedValue, T *newValue);
     bool testAndSetOrdered(T *expectedValue, T *newValue);
+
+    bool testAndSetRelaxed(T *expectedValue, T *newValue, T *&currentValue);
+    bool testAndSetAcquire(T *expectedValue, T *newValue, T *&currentValue);
+    bool testAndSetRelease(T *expectedValue, T *newValue, T *&currentValue);
+    bool testAndSetOrdered(T *expectedValue, T *newValue, T *&currentValue);
 
     static constexpr bool isFetchAndStoreNative();
     static constexpr bool isFetchAndStoreWaitFree();

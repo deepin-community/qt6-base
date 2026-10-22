@@ -66,6 +66,7 @@
     value after calling write(), it is most likely caused by a bug in
     QImageWriter.
 */
+// Qt-Security score:significant reason:default
 
 #include "qimagewriter.h"
 
@@ -76,6 +77,7 @@
 #include <qimageiohandler.h>
 #include <qset.h>
 #include <qvariant.h>
+#include <qloggingcategory.h>
 
 // factory loader
 #include <qcoreapplication.h>
@@ -96,6 +98,8 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_STATIC_LOGGING_CATEGORY(lcImageWriter, "qt.gui.imageio.writer")
+
 using namespace Qt::StringLiterals;
 
 static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
@@ -105,6 +109,8 @@ static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
     QByteArray suffix;
     QImageIOHandler *handler = nullptr;
 
+    qCDebug(lcImageWriter) << "Finding write handler for" << device << "and format" << format;
+
 #ifndef QT_NO_IMAGEFORMATPLUGIN
     typedef QMultiMap<int, QString> PluginKeyMap;
 
@@ -112,6 +118,8 @@ static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
     auto l = QImageReaderWriterHelpers::pluginLoader();
     const PluginKeyMap keyMap = l->keyMap();
     int suffixPluginIndex = -1;
+
+    qCDebug(lcImageWriter) << keyMap.uniqueKeys().size() << "plugins available:" << keyMap.values();
 #endif
 
     if (device && format.isEmpty()) {
@@ -120,6 +128,7 @@ static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
         // this allows plugins to override our built-in handlers.
         if (QFileDevice *file = qobject_cast<QFileDevice *>(device)) {
             if (!(suffix = QFileInfo(file->fileName()).suffix().toLower().toLatin1()).isEmpty()) {
+                qCDebug(lcImageWriter) << "Resolved format" << suffix << "from file name suffix";
 #ifndef QT_NO_IMAGEFORMATPLUGIN
                 const int index = keyMap.key(QString::fromLatin1(suffix), -1);
                 if (index != -1)
@@ -135,17 +144,23 @@ static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
     if (suffixPluginIndex != -1) {
         // when format is missing, check if we can find a plugin for the
         // suffix.
+        qCDebug(lcImageWriter) << "Checking if any plugins have explicitly declared support"
+                               << "for the format" << testFormat;
         const int index = keyMap.key(QString::fromLatin1(suffix), -1);
         if (index != -1) {
             QImageIOPlugin *plugin = qobject_cast<QImageIOPlugin *>(l->instance(index));
-            if (plugin && (plugin->capabilities(device, suffix) & QImageIOPlugin::CanWrite))
+            if (plugin && (plugin->capabilities(device, suffix) & QImageIOPlugin::CanWrite)) {
                 handler = plugin->create(device, suffix);
+                qCDebug(lcImageWriter) << plugin << "can write the format" << testFormat;
+            }
         }
     }
 #endif // QT_NO_IMAGEFORMATPLUGIN
 
     // check if any built-in handlers can write the image
     if (!handler && !testFormat.isEmpty()) {
+        qCDebug(lcImageWriter) << "Checking if any built in handlers recognize the format"
+                               << testFormat;
         if (false) {
 #ifndef QT_NO_IMAGEFORMAT_PNG
         } else if (testFormat == "png") {
@@ -173,24 +188,30 @@ static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
             handler->setOption(QImageIOHandler::SubType, testFormat);
 #endif
         }
+
+        if (handler)
+            qCDebug(lcImageWriter) << "Using the built-in handler for format" << testFormat;
     }
 
 #ifndef QT_NO_IMAGEFORMATPLUGIN
-    if (!testFormat.isEmpty()) {
+    if (!handler && !testFormat.isEmpty()) {
+        qCDebug(lcImageWriter) << "Checking if any plugins recognize the format" << testFormat;
         const int keyCount = keyMap.size();
         for (int i = 0; i < keyCount; ++i) {
             QImageIOPlugin *plugin = qobject_cast<QImageIOPlugin *>(l->instance(i));
             if (plugin && (plugin->capabilities(device, testFormat) & QImageIOPlugin::CanWrite)) {
-                delete handler;
                 handler = plugin->create(device, testFormat);
+                qCDebug(lcImageWriter) << plugin << "can write the format" << testFormat;
                 break;
             }
         }
     }
 #endif // QT_NO_IMAGEFORMATPLUGIN
 
-    if (!handler)
+    if (!handler) {
+        qCDebug(lcImageWriter, "No handlers found. Giving up.");
         return nullptr;
+    }
 
     handler->setDevice(device);
     if (!testFormat.isEmpty())
@@ -352,7 +373,7 @@ QByteArray QImageWriter::format() const
     otherwise left unchanged.
 
     If the device is not already open, QImageWriter will attempt to
-    open the device in \l QIODevice::WriteOnly mode by calling
+    open the device in \l QIODeviceBase::WriteOnly mode by calling
     open(). Note that this does not work for certain devices, such as
     QProcess, QTcpSocket and QUdpSocket, where more logic is required
     to open the device.
@@ -441,11 +462,33 @@ int QImageWriter::quality() const
     of an image. For image formats that do not support setting the
     compression, this value is ignored.
 
-    The value range of \a compression depends on the image format. For
-    example, the "tiff" format supports two values, 0(no compression) and
-    1(LZW-compression).
+    The value range of \a compression depends on the image format:
+    \table
+    \header
+        \li Image Format
+        \li Supported Values
+    \row
+        \li PNG
+        \li Values in the range from 0 (no compression) to 100 (low visual
+            quality, maximum compression). This value is the inverse to
+            \e quality in setQuality. The two options are mutually exclusive.
+    \row
+        \li TGA
+        \li
+        0 - No compression \br
+        1 - RLE compression
+    \row
+        \li TIFF
+        \li
+        0 - No compression \br
+        1 - LZW compression \br
+        2 - RLE compression \br
+        3 - CCITT Group 3 fax encoding \br
+        4 - CCITT Group 4 fax encoding \br
+        5 - JPEG compression
+    \endtable
 
-    \sa compression()
+    \sa compression(), setQuality()
 */
 void QImageWriter::setCompression(int compression)
 {

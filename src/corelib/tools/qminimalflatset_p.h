@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTCORE_QMINIMALFLATSET_P_H
 #define QTCORE_QMINIMALFLATSET_P_H
@@ -29,7 +30,7 @@
 # define QMINIMAL_FLAT_SET_PRINT_AT_END
 #endif
 
-#include <algorithm> // for std::lower_bound
+#include <algorithm> // for std::lower_bound, std::sort
 #include <functional> // for std::less, std::ref
 
 QT_BEGIN_NAMESPACE
@@ -52,6 +53,24 @@ class QMinimalFlatSet : QtPrivate::CompactStorage<Compare>
 public:
     QMinimalFlatSet() = default;
     explicit QMinimalFlatSet(const Compare &cmp) : CompareStorage{cmp} {}
+    explicit QMinimalFlatSet(std::initializer_list<T> init, const Compare &cmp = Compare())
+        : QMinimalFlatSet(init.begin(), init.end(), cmp)
+    {
+    }
+    explicit QMinimalFlatSet(Container init, const Compare &cmp = Compare())
+        : CompareStorage{cmp}, c(std::move(init))
+    {
+        std::sort(c.begin(), c.end(), comparisonObject());
+        c.erase(std::unique(c.begin(), c.end()), c.end());
+    }
+    template <typename InputIt>
+    QMinimalFlatSet(InputIt first, InputIt last, const Compare &cmp = Compare())
+        : CompareStorage{cmp}, c(first, last)
+    {
+        std::sort(c.begin(), c.end(), comparisonObject());
+        c.erase(std::unique(c.begin(), c.end()), c.end());
+    }
+
     // Rule Of Zero applies
 
     using const_iterator = typename Container::const_iterator;
@@ -68,7 +87,7 @@ public:
     iterator begin() const { return c.cbegin(); }
     iterator end() const { return c.cend(); }
     iterator cbegin() const { return begin(); }
-    iterator cend() const { return cend(); }
+    iterator cend() const { return end(); }
 
     reverse_iterator rbegin() const { return c.crbegin(); }
     reverse_iterator rend() const { return c.crend(); }
@@ -121,6 +140,8 @@ public:
     Container values() && { return std::move(c); }
 
 private:
+    auto comparisonObject() const { return std::cref(this->object()); }
+
     auto lookup(const value_type &v) const
     {
         struct R {
@@ -128,10 +149,8 @@ private:
             bool exists;
         };
 
-        auto cmp = std::ref(this->object()); // don't let std::lower_bound copy it
-
-        const auto it = std::lower_bound(c.cbegin(), c.cend(), v, cmp);
-        return R{it, it != c.cend() && !cmp(v, *it)};
+        const auto it = std::lower_bound(c.cbegin(), c.cend(), v, comparisonObject());
+        return R{it, it != c.cend() && !comparisonObject()(v, *it)};
     }
 
 #ifdef QMINIMAL_FLAT_SET_DEBUG
@@ -148,8 +167,8 @@ private:
 
 #undef QMINIMAL_FLAT_SET_PRINT_AT_END
 
-template <typename T, qsizetype N = QVarLengthArrayDefaultPrealloc>
-using QMinimalVarLengthFlatSet = QMinimalFlatSet<T, QVarLengthArray<T, N>>;
+template <typename T, qsizetype N = QVarLengthArrayDefaultPrealloc, typename Compare = std::less<T>>
+using QMinimalVarLengthFlatSet = QMinimalFlatSet<T, QVarLengthArray<T, N>, Compare>;
 
 QT_END_NAMESPACE
 

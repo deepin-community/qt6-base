@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbustrayicon_p.h"
 
@@ -78,6 +79,26 @@ static inline QString tempFileTemplate()
 {
     static const QString TempFileTemplate = iconTempPath() + "/qt-trayicon-XXXXXX.png"_L1;
     return TempFileTemplate;
+}
+
+QDBusArgument &operator<<(QDBusArgument &argument, const QDBusTrayImage &img)
+{
+    QImage image = img.ico.pixmap(QSize(64, 64), img.dpr).toImage();
+    const bool hasAlpha = image.hasAlphaChannel();
+    image = image.convertToFormat(hasAlpha ? QImage::Format_RGBA8888 : QImage::Format_RGB888);
+
+    argument.beginStructure();
+    argument << image.width() << image.height()
+             << image.bytesPerLine() << hasAlpha
+             << 8 << (hasAlpha ? 4 : 3)
+             << QByteArray((const char *)image.constBits(), image.sizeInBytes());
+    argument.endStructure();
+    return argument;
+}
+const QDBusArgument &operator>>(const QDBusArgument &argument, QDBusTrayImage &)
+{
+    Q_ASSERT_X(false, __FUNCTION__, "Not implemented");
+    return argument;
 }
 
 /*!
@@ -191,7 +212,8 @@ QTemporaryFile *QDBusTrayIcon::tempIcon(const QIcon &icon)
             // Accessing to process name might be not allowed if the application
             // is confined, thus we can just rely on the current desktop in use
             const QPlatformServices *services = QGuiApplicationPrivate::platformIntegration()->services();
-            necessary = services->desktopEnvironment().split(':').contains("UNITY");
+            if (services)
+                necessary = services->desktopEnvironment().split(':').contains("UNITY");
         }
         necessity_checked = true;
     }
@@ -202,7 +224,8 @@ QTemporaryFile *QDBusTrayIcon::tempIcon(const QIcon &icon)
         delete ret;
         return nullptr;
     }
-    icon.pixmap(QSize(22, 22)).save(ret);
+    const qreal dpr = qGuiApp->devicePixelRatio();
+    icon.pixmap(QSize(22, 22), dpr).save(ret);
     ret->close();
     return ret;
 }
@@ -316,18 +339,31 @@ void QDBusTrayIcon::showMessage(const QString &title, const QString &msg, const 
     if (urgency < 0) // no icon
         urgency = 0;
     hints.insert("urgency"_L1, QVariant(urgency));
-    m_notifier->notify(QCoreApplication::applicationName(), 0,
+    if (m_attentionIconName.isEmpty()) {
+        qDBusRegisterMetaType<QDBusTrayImage>();
+        const QDBusTrayImage img = {icon, qGuiApp->devicePixelRatio()};
+        hints.insert("image_data"_L1, QVariant::fromValue(img));
+    }
+    const uint id = m_notifier->notify(QCoreApplication::applicationName(), 0,
                        m_attentionIconName, title, msg, notificationActions, hints, msecs);
+    if (id > 0)
+        m_ownMessageIDs.insert(id);
 }
 
 void QDBusTrayIcon::actionInvoked(uint id, const QString &action)
 {
+    if (!m_ownMessageIDs.contains(id))
+        return; // not one of ours
     qCDebug(qLcTray) << id << action;
     emit messageClicked();
 }
 
 void QDBusTrayIcon::notificationClosed(uint id, uint reason)
 {
+    const auto it = m_ownMessageIDs.constFind(id);
+    if (it == m_ownMessageIDs.cend())
+        return; // not one of ours
+    m_ownMessageIDs.erase(it);
     qCDebug(qLcTray) << id << reason;
 }
 

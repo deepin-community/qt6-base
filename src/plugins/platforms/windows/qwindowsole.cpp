@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsole.h"
 #include "qwindowsmimeregistry.h"
@@ -61,7 +62,7 @@ DWORD QWindowsOleDataObject::reportedPerformedEffect() const
 }
 
 STDMETHODIMP
-QWindowsOleDataObject::GetData(LPFORMATETC pformatetc, LPSTGMEDIUM pmedium)
+QWindowsOleDataObject::GetData(LPFORMATETC pformatetc, LPSTGMEDIUM pmedium) noexcept
 {
     HRESULT hr = ResultFromScode(DATA_E_FORMATETC);
 
@@ -79,13 +80,13 @@ QWindowsOleDataObject::GetData(LPFORMATETC pformatetc, LPSTGMEDIUM pmedium)
 }
 
 STDMETHODIMP
-QWindowsOleDataObject::GetDataHere(LPFORMATETC, LPSTGMEDIUM)
+QWindowsOleDataObject::GetDataHere(LPFORMATETC, LPSTGMEDIUM) noexcept
 {
     return ResultFromScode(DATA_E_FORMATETC);
 }
 
 STDMETHODIMP
-QWindowsOleDataObject::QueryGetData(LPFORMATETC pformatetc)
+QWindowsOleDataObject::QueryGetData(LPFORMATETC pformatetc) noexcept
 {
     HRESULT hr = ResultFromScode(DATA_E_FORMATETC);
 
@@ -103,14 +104,14 @@ QWindowsOleDataObject::QueryGetData(LPFORMATETC pformatetc)
 }
 
 STDMETHODIMP
-QWindowsOleDataObject::GetCanonicalFormatEtc(LPFORMATETC, LPFORMATETC pformatetcOut)
+QWindowsOleDataObject::GetCanonicalFormatEtc(LPFORMATETC, LPFORMATETC pformatetcOut) noexcept
 {
     pformatetcOut->ptd = nullptr;
     return ResultFromScode(E_NOTIMPL);
 }
 
 STDMETHODIMP
-QWindowsOleDataObject::SetData(LPFORMATETC pFormatetc, STGMEDIUM *pMedium, BOOL fRelease)
+QWindowsOleDataObject::SetData(LPFORMATETC pFormatetc, STGMEDIUM *pMedium, BOOL fRelease) noexcept
 {
     if (QWindowsContext::verbose > 1)
         qCDebug(lcQpaMime) << __FUNCTION__;
@@ -118,9 +119,12 @@ QWindowsOleDataObject::SetData(LPFORMATETC pFormatetc, STGMEDIUM *pMedium, BOOL 
     HRESULT hr = ResultFromScode(E_NOTIMPL);
 
     if (pFormatetc->cfFormat == CF_PERFORMEDDROPEFFECT && pMedium->tymed == TYMED_HGLOBAL) {
-        auto * val = (DWORD*)GlobalLock(pMedium->hGlobal);
-        performedEffect = *val;
-        GlobalUnlock(pMedium->hGlobal);
+        if (GlobalSize(pMedium->hGlobal) >= sizeof(DWORD)) {
+            if (const auto *val = static_cast<const DWORD *>(GlobalLock(pMedium->hGlobal))) {
+                performedEffect = *val;
+                GlobalUnlock(pMedium->hGlobal);
+            }
+        }
         if (fRelease)
             ReleaseStgMedium(pMedium);
         hr = ResultFromScode(S_OK);
@@ -132,7 +136,7 @@ QWindowsOleDataObject::SetData(LPFORMATETC pFormatetc, STGMEDIUM *pMedium, BOOL 
 
 
 STDMETHODIMP
-QWindowsOleDataObject::EnumFormatEtc(DWORD dwDirection, LPENUMFORMATETC FAR* ppenumFormatEtc)
+QWindowsOleDataObject::EnumFormatEtc(DWORD dwDirection, LPENUMFORMATETC FAR* ppenumFormatEtc) noexcept
 {
      if (QWindowsContext::verbose > 1)
          qCDebug(lcQpaMime) << __FUNCTION__ << "dwDirection=" << dwDirection;
@@ -169,20 +173,20 @@ QWindowsOleDataObject::EnumFormatEtc(DWORD dwDirection, LPENUMFORMATETC FAR* ppe
 
 STDMETHODIMP
 QWindowsOleDataObject::DAdvise(FORMATETC FAR*, DWORD,
-                       LPADVISESINK, DWORD FAR*)
+                       LPADVISESINK, DWORD FAR*) noexcept
 {
     return ResultFromScode(OLE_E_ADVISENOTSUPPORTED);
 }
 
 
 STDMETHODIMP
-QWindowsOleDataObject::DUnadvise(DWORD)
+QWindowsOleDataObject::DUnadvise(DWORD) noexcept
 {
     return ResultFromScode(OLE_E_ADVISENOTSUPPORTED);
 }
 
 STDMETHODIMP
-QWindowsOleDataObject::EnumDAdvise(LPENUMSTATDATA FAR*)
+QWindowsOleDataObject::EnumDAdvise(LPENUMSTATDATA FAR*) noexcept
 {
     return ResultFromScode(OLE_E_ADVISENOTSUPPORTED);
 }
@@ -252,7 +256,7 @@ bool QWindowsOleEnumFmtEtc::isNull() const
 
 // IEnumFORMATETC methods
 STDMETHODIMP
-QWindowsOleEnumFmtEtc::Next(ULONG celt, LPFORMATETC rgelt, ULONG FAR* pceltFetched)
+QWindowsOleEnumFmtEtc::Next(ULONG celt, LPFORMATETC rgelt, ULONG FAR* pceltFetched) noexcept
 {
     ULONG i=0;
     ULONG nOffset;
@@ -264,7 +268,12 @@ QWindowsOleEnumFmtEtc::Next(ULONG celt, LPFORMATETC rgelt, ULONG FAR* pceltFetch
         nOffset = m_nIndex + i;
 
         if (nOffset < ULONG(m_lpfmtetcs.count())) {
-            copyFormatEtc(rgelt + i, m_lpfmtetcs.at(int(nOffset)));
+            if (!copyFormatEtc(rgelt + i, m_lpfmtetcs.at(int(nOffset)))) {
+                m_nIndex += i;
+                if (pceltFetched != nullptr)
+                    *pceltFetched = i;
+                return ResultFromScode(E_OUTOFMEMORY);
+            }
             i++;
         } else {
             break;
@@ -283,7 +292,7 @@ QWindowsOleEnumFmtEtc::Next(ULONG celt, LPFORMATETC rgelt, ULONG FAR* pceltFetch
 }
 
 STDMETHODIMP
-QWindowsOleEnumFmtEtc::Skip(ULONG celt)
+QWindowsOleEnumFmtEtc::Skip(ULONG celt) noexcept
 {
     ULONG i=0;
     ULONG nOffset;
@@ -307,14 +316,14 @@ QWindowsOleEnumFmtEtc::Skip(ULONG celt)
 }
 
 STDMETHODIMP
-QWindowsOleEnumFmtEtc::Reset()
+QWindowsOleEnumFmtEtc::Reset() noexcept
 {
     m_nIndex = 0;
     return NOERROR;
 }
 
 STDMETHODIMP
-QWindowsOleEnumFmtEtc::Clone(LPENUMFORMATETC FAR* newEnum)
+QWindowsOleEnumFmtEtc::Clone(LPENUMFORMATETC FAR* newEnum) noexcept
 {
     if (newEnum == nullptr)
         return ResultFromScode(E_INVALIDARG);
@@ -339,14 +348,23 @@ bool QWindowsOleEnumFmtEtc::copyFormatEtc(LPFORMATETC dest, const FORMATETC *src
     *dest = *src;
 
     if (src->ptd) {
-        LPMALLOC pmalloc;
-
-        if (CoGetMalloc(MEMCTX_TASK, &pmalloc) != NOERROR)
+        if (src->ptd->tdSize < sizeof(DVTARGETDEVICE)) {
+            dest->ptd = nullptr;
             return false;
+        }
 
-        pmalloc->Alloc(src->ptd->tdSize);
+        LPMALLOC pmalloc;
+        if (CoGetMalloc(MEMCTX_TASK, &pmalloc) != NOERROR) {
+            dest->ptd = nullptr;
+            return false;
+        }
+
+        dest->ptd = static_cast<DVTARGETDEVICE *>(pmalloc->Alloc(src->ptd->tdSize));
+        if (!dest->ptd) {
+            pmalloc->Release();
+            return false;
+        }
         memcpy(dest->ptd, src->ptd, size_t(src->ptd->tdSize));
-
         pmalloc->Release();
     }
 

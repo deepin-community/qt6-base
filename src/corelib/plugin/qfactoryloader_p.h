@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFACTORYLOADER_P_H
 #define QFACTORYLOADER_P_H
@@ -20,48 +21,27 @@
 #ifndef QT_NO_QOBJECT
 
 #include "QtCore/private/qplugin_p.h"
-#include "QtCore/qcbormap.h"
-#include "QtCore/qcborvalue.h"
+#include "QtCore/private/qduplicatetracker_p.h"
+#include "QtCore/qcoreapplication.h"
 #include "QtCore/qmap.h"
+#include "QtCore/qmutex.h"
 #include "QtCore/qobject.h"
 #include "QtCore/qplugin.h"
+
+#if QT_CONFIG(library)
+#  include "QtCore/private/qlibrary_p.h"
+#endif
+
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
 class QJsonObject;
 class QLibraryPrivate;
 
-class QPluginParsedMetaData
+class Q_CORE_EXPORT QFactoryLoader
 {
-    QCborValue data;
-    bool setError(const QString &errorString) Q_DECL_COLD_FUNCTION
-    {
-        data = errorString;
-        return false;
-    }
-public:
-    QPluginParsedMetaData() = default;
-    QPluginParsedMetaData(QByteArrayView input)     { parse(input); }
-
-    bool isError() const                            { return !data.isMap(); }
-    QString errorString() const                     { return data.toString(); }
-
-    bool parse(QByteArrayView input);
-    bool parse(QPluginMetaData metaData)
-    { return parse(QByteArrayView(reinterpret_cast<const char *>(metaData.data), metaData.size)); }
-
-    QJsonObject toJson() const;     // only for QLibrary & QPluginLoader
-
-    // if data is not a map, toMap() returns empty, so shall these functions
-    QCborMap toCbor() const                         { return data.toMap(); }
-    QCborValue value(QtPluginMetaDataKeys k) const  { return data[int(k)]; }
-};
-
-class QFactoryLoaderPrivate;
-class Q_CORE_EXPORT QFactoryLoader : public QObject
-{
-    Q_OBJECT
-    Q_DECLARE_PRIVATE(QFactoryLoader)
+    Q_DECLARE_TR_FUNCTIONS(QFactoryLoader);
 
 public:
     explicit QFactoryLoader(const char *iid,
@@ -71,6 +51,7 @@ public:
 #if QT_CONFIG(library)
     ~QFactoryLoader();
 
+    void setLoadHints(QLibrary::LoadHints hints);
     void update();
     static void refreshAll();
 
@@ -88,6 +69,30 @@ public:
     MetaDataList metaData() const;
     QList<QCborArray> metaDataKeys() const;
     QObject *instance(int index) const;
+
+private:
+    struct Private {
+        QByteArray iid;
+        mutable QMutex mutex;
+        mutable QList<QtPluginInstanceFunction> usedStaticInstances;
+#if QT_CONFIG(library)
+        std::optional<QDuplicateTracker<QString>> loadedPaths{std::in_place};
+        std::vector<QLibraryPrivate::UniquePtr> libraries;
+        mutable QList<bool> loadedLibraries;
+        std::map<QString, QLibraryPrivate*> keyMap;
+        QString suffix;
+        QString extraSearchPath;
+        Qt::CaseSensitivity cs;
+        QLibrary::LoadHints loadHints;
+        void updateSinglePath(const QString &pluginDir);
+#endif
+
+        // for compat when we d was a pointer
+        auto operator->() { return this; }
+        auto operator->() const { return this; }
+    } d;
+
+    inline QObject *instanceHelper_locked(int index) const;
 };
 
 template <class PluginInterface, class FactoryInterface, typename ...Args>

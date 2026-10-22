@@ -1,12 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qrasterbackingstore_p.h"
 
 #include <QtGui/qbackingstore.h>
 #include <QtGui/qpainter.h>
 
-#include <private/qhighdpiscaling_p.h>
 #include <qpa/qplatformwindow.h>
 
 QT_BEGIN_NAMESPACE
@@ -46,7 +46,7 @@ QImage QRasterBackingStore::toImage() const
 
 bool QRasterBackingStore::scroll(const QRegion &region, int dx, int dy)
 {
-    if (!QPlatformSurface::isRasterSurface(window()))
+    if (window()->surfaceType() != QSurface::RasterSurface)
         return false;
 
     extern void qt_scrollRectInImage(QImage &, const QRect &, const QPoint &);

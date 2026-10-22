@@ -1,7 +1,10 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qbackingstoredefaultcompositor_p.h"
+#include <QtGui/qtransform.h>
+#include <QtGui/private/qmath_p.h>
 #include <QtGui/private/qwindow_p.h>
 #include <qpa/qplatformgraphicsbuffer.h>
 #include <QtCore/qfile.h>
@@ -107,7 +110,12 @@ QRhiTexture *QBackingStoreDefaultCompositor::toTexture(const QImage &sourceImage
             m_texture.reset(rhi->newTexture(QRhiTexture::RGBA8, image.size()));
         else
             m_texture->setPixelSize(image.size());
-        m_texture->create();
+        if (!m_texture->create()) {
+            // Typically a lost device. Make sure to reset the null native resource
+            qWarning("QBackingStoreDefaultCompositor: Failed to create backing store texture");
+            m_texture.reset();
+            return nullptr;
+        }
         resourceUpdates->uploadTexture(m_texture.get(), image);
     } else {
         QRect imageRect = image.rect();
@@ -125,7 +133,7 @@ QRhiTexture *QBackingStoreDefaultCompositor::toTexture(const QImage &sourceImage
 
 static inline QRect scaledRect(const QRect &rect, qreal factor)
 {
-    return QRect(rect.topLeft() * factor, rect.size() * factor);
+    return qt_mapFillRect(rect, QTransform::fromScale(factor, factor));
 }
 
 static inline QPoint scaledOffset(const QPoint &pt, qreal factor)
@@ -133,19 +141,14 @@ static inline QPoint scaledOffset(const QPoint &pt, qreal factor)
     return pt * factor;
 }
 
-static QRegion scaledRegion(const QRegion &region, qreal factor, const QPoint &offset)
+static QRegion scaledDirtyRegion(const QRegion &region, qreal factor, const QPoint &offset)
 {
     if (offset.isNull() && factor <= 1)
         return region;
 
-    QVarLengthArray<QRect, 4> rects;
-    rects.reserve(region.rectCount());
-    for (const QRect &rect : region)
-        rects.append(scaledRect(rect.translated(offset), factor));
-
-    QRegion deviceRegion;
-    deviceRegion.setRects(rects.constData(), rects.size());
-    return deviceRegion;
+    QTransform xf = QTransform::fromScale(factor, factor);
+    xf.translate(offset.x(), offset.y());
+    return xf.map(region);
 }
 
 static QMatrix4x4 targetTransform(const QRectF &target, const QRect &viewport, bool invertY)
@@ -385,12 +388,24 @@ void QBackingStoreDefaultCompositor::updatePerQuadData(PerQuadData *d, QRhiTextu
     d->lastUsedFilter = filter;
 
     if (textureExtra) {
+        // The PerQuadData slot may be reused for a stereo (two-texture) widget
+        // after having been created for a non-stereo (single-texture) one, in
+        // which case srbExtra was never allocated.
+        const bool needsCreate = !d->srbExtra;
+        if (needsCreate)
+            d->srbExtra = m_rhi->newShaderResourceBindings();
+
         d->srbExtra->setBindings({
             QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, d->ubuf, 0, UBUF_SIZE),
             QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, textureExtra, sampler)
         });
 
-        d->srbExtra->updateResources(QRhiShaderResourceBindings::BindingsAreSorted);
+        if (needsCreate) {
+            if (!d->srbExtra->create())
+                qWarning("QBackingStoreDefaultCompositor: Failed to create srb");
+        } else {
+            d->srbExtra->updateResources(QRhiShaderResourceBindings::BindingsAreSorted);
+        }
         d->lastUsedTextureExtra = textureExtra;
     }
 }
@@ -460,10 +475,19 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
                                                                          const QRegion &region,
                                                                          const QPoint &offset,
                                                                          QPlatformTextureList *textures,
-                                                                         bool translucentBackground)
+                                                                         bool translucentBackground,
+                                                                         qreal sourceTransformFactor)
 {
-    if (!rhi)
+    if (!rhi || !swapchain)
         return QPlatformBackingStore::FlushFailed;
+
+    // Note, the sourceTransformFactor is different from the sourceDevicePixelRatio,
+    // as the former may reflect the fact that the region and offset is pre-transformed,
+    // in which case we don't need to do a full transform here based on the source DPR.
+    // In the default case where no explicit source transform has been passed, we fall
+    // back to the source device pixel ratio.
+    if (!sourceTransformFactor)
+        sourceTransformFactor = sourceDevicePixelRatio;
 
     Q_ASSERT(textures); // may be empty if there are no render-to-texture widgets at all, but null it cannot be
 
@@ -483,8 +507,12 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
 
     QWindowPrivate::get(window)->lastComposeTime.start();
 
-    if (swapchain->currentPixelSize() != swapchain->surfacePixelSize())
-        swapchain->createOrResize();
+    if (swapchain->currentPixelSize() != swapchain->surfacePixelSize()) {
+        if (!swapchain->createOrResize()) {
+            return rhi->isDeviceLost() ? QPlatformBackingStore::FlushFailedDueToLostDevice
+                                       : QPlatformBackingStore::FlushFailed;
+        }
+    }
 
     // Start recording a new frame.
     QRhi::FrameOpResult frameResult = rhi->beginFrame(swapchain);
@@ -502,13 +530,14 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
     QRhiResourceUpdateBatch *resourceUpdates = rhi->nextResourceUpdateBatch();
     QPlatformBackingStore::TextureFlags flags;
 
+    const QRegion dirtyRegion = scaledDirtyRegion(region, sourceTransformFactor, offset);
     bool gotTextureFromGraphicsBuffer = false;
     if (QPlatformGraphicsBuffer *graphicsBuffer = backingStore->graphicsBuffer()) {
         if (graphicsBuffer->lock(QPlatformGraphicsBuffer::SWReadAccess)) {
             const QImage::Format format = QImage::toImageFormat(graphicsBuffer->format());
             const QSize size = graphicsBuffer->size();
             QImage wrapperImage(graphicsBuffer->data(), size.width(), size.height(), graphicsBuffer->bytesPerLine(), format);
-            toTexture(wrapperImage, rhi, resourceUpdates, scaledRegion(region, sourceDevicePixelRatio, offset), &flags);
+            toTexture(wrapperImage, rhi, resourceUpdates, dirtyRegion, &flags);
             gotTextureFromGraphicsBuffer = true;
             graphicsBuffer->unlock();
             if (graphicsBuffer->origin() == QPlatformGraphicsBuffer::OriginBottomLeft)
@@ -516,7 +545,7 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
         }
     }
     if (!gotTextureFromGraphicsBuffer)
-        toTexture(backingStore, rhi, resourceUpdates, scaledRegion(region, sourceDevicePixelRatio, offset), &flags);
+        toTexture(backingStore, rhi, resourceUpdates, dirtyRegion, &flags);
 
     ensureResources(resourceUpdates, swapchain->renderPassDescriptor());
 
@@ -549,7 +578,7 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
         // The backingstore is for the entire tlw. In case of native children, offset tells the position
         // relative to the tlw. The window rect is scaled by the source device pixel ratio to get
         // the source rect.
-        const QPoint sourceWindowOffset = scaledOffset(offset, sourceDevicePixelRatio);
+        const QPoint sourceWindowOffset = scaledOffset(offset, sourceTransformFactor);
         const QRect srcRect = toBottomLeftRect(sourceWindowRect.translated(sourceWindowOffset), m_texture->pixelSize().height());
         const QMatrix3x3 source = sourceTransform(srcRect, m_texture->pixelSize(), origin);
         QMatrix4x4 target; // identity
@@ -668,7 +697,11 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
     } else
         render();
 
-    rhi->endFrame(swapchain);
+    const QRhi::FrameOpResult endResult = rhi->endFrame(swapchain);
+    if (endResult == QRhi::FrameOpDeviceLost)
+        return QPlatformBackingStore::FlushFailedDueToLostDevice;
+    if (endResult != QRhi::FrameOpSuccess)
+        return QPlatformBackingStore::FlushFailed;
 
     return QPlatformBackingStore::FlushSuccess;
 }

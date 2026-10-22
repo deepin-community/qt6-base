@@ -5,7 +5,6 @@
 package org.qtproject.qt.android;
 
 import android.app.Activity;
-import android.content.Context;
 import android.graphics.Point;
 import android.util.Log;
 import android.view.View;
@@ -58,7 +57,14 @@ class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.OnLayout
         Point viewSize = m_view.getCalculatedSize();
 
         final int[] layoutLocation = new int[2];
-        m_editText.getLocationOnScreen(layoutLocation);
+
+        // Since QtEditText doesn't match the QtWindow size, we should use its parent for
+        // EditPopupMenu positioning. However, there may be cases where the parent is
+        // not set. In such cases, we need to use QtEditText instead.
+        View positioningView = (View) m_editText.getParent();
+        if (positioningView == null)
+            positioningView = m_editText;
+        positioningView.getLocationOnScreen(layoutLocation);
 
         // These values are used for handling split screen case
         final int[] activityLocation = new int[2];
@@ -82,11 +88,14 @@ class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.OnLayout
             } catch (ClassCastException e) {
                 Log.w(QtNative.QtTAG, "QtEditText " + m_editText + " parent is not a QtLayout, " +
                                       "requestLayout() skipped");
+            } catch (NullPointerException e) {
+                Log.w(QtNative.QtTAG, "QtEditText " + m_editText + " does not have a parent, " +
+                                      "requestLayout() skipped");
             }
         }
 
-        if (m_editText.getWidth() < x + viewSize.x / 2)
-            x2 = m_editText.getWidth() - viewSize.x;
+        if (positioningView.getWidth() < x + viewSize.x / 2)
+            x2 = positioningView.getWidth() - viewSize.x;
 
         if (x2 < 0)
             x2 = 0;
@@ -94,7 +103,7 @@ class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.OnLayout
         if (m_popup.isShowing())
             m_popup.update(x2, y2, -1, -1);
         else
-            m_popup.showAtLocation(m_editText, 0, x2, y2);
+            m_popup.showAtLocation(positioningView, 0, x2, y2);
 
         m_posX = x;
         m_posY = y;

@@ -1,10 +1,15 @@
 // Copyright (C) 2012 Research In Motion
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qqnxnativeinterface.h"
 
 #if !defined(QT_NO_OPENGL)
 #include "qqnxglcontext.h"
+#endif
+
+#if QT_CONFIG(vulkan)
+#include "qqnxvulkanwindow.h"
 #endif
 
 #include "qqnxscreen.h"
@@ -33,6 +38,14 @@ QQnxNativeInterface::QQnxNativeInterface(QQnxIntegration *integration)
 
 void *QQnxNativeInterface::nativeResourceForWindow(const QByteArray &resource, QWindow *window)
 {
+#if QT_CONFIG(vulkan)
+    if (resource == "vkSurface") {
+        if (window && window->surfaceType() == QSurface::VulkanSurface && window->handle())
+            return static_cast<QQnxVulkanWindow *>(window->handle())->surface();
+        return nullptr;
+    }
+#endif
+
     if (resource == "windowGroup" && window && window->screen()) {
         QQnxScreen * const screen = static_cast<QQnxScreen *>(window->screen()->handle());
         if (screen) {

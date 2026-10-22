@@ -14,10 +14,6 @@
 #include <QtWidgets/private/qabstractbutton_p.h>
 #include <limits.h>
 
-Q_DECLARE_METATYPE(QDialogButtonBox::ButtonRole)
-Q_DECLARE_METATYPE(QDialogButtonBox::StandardButton)
-Q_DECLARE_METATYPE(QDialogButtonBox::StandardButtons)
-
 class tst_QDialogButtonBox : public QObject
 {
     Q_OBJECT
@@ -113,71 +109,69 @@ void tst_QDialogButtonBox::testConstructor1()
 
 void tst_QDialogButtonBox::layoutReuse()
 {
-    QDialogButtonBox *box = new QDialogButtonBox(QDialogButtonBox::Ok);
+    std::unique_ptr<QDialogButtonBox> box(std::make_unique<QDialogButtonBox>(QDialogButtonBox::Ok));
     QPointer<QLayout> layout = box->layout();
     box->setCenterButtons(!box->centerButtons());
     QCOMPARE(layout.data(), box->layout());
     QEvent event(QEvent::StyleChange);
-    QApplication::sendEvent(box, &event);
+    QApplication::sendEvent(box.get(), &event);
     QCOMPARE(layout.data(), box->layout());
     box->setOrientation(box->orientation() == Qt::Horizontal ? Qt::Vertical : Qt::Horizontal);
     QVERIFY(layout.isNull());
     QVERIFY(layout != box->layout());
-    delete box;
 }
 
 void tst_QDialogButtonBox::testConstructor2_data()
 {
-    QTest::addColumn<int>("orientation");
+    QTest::addColumn<Qt::Orientation>("orientation");
 
-    QTest::newRow("horizontal") << int(Qt::Horizontal);
-    QTest::newRow("vertical") << int(Qt::Vertical);
+    QTest::newRow("horizontal") << Qt::Horizontal;
+    QTest::newRow("vertical") << Qt::Vertical;
 }
 
 void tst_QDialogButtonBox::testConstructor2()
 {
-    QFETCH(int, orientation);
-    Qt::Orientation orient = Qt::Orientation(orientation);
-    QDialogButtonBox buttonBox(orient);
+    QFETCH(Qt::Orientation, orientation);
+    QDialogButtonBox buttonBox(orientation);
 
-    QCOMPARE(buttonBox.orientation(), orient);
+    QCOMPARE(buttonBox.orientation(), orientation);
     QCOMPARE(buttonBox.buttons().size(), 0);
 }
 
 void tst_QDialogButtonBox::testConstructor3_data()
 {
-    QTest::addColumn<int>("orientation");
+    QTest::addColumn<Qt::Orientation>("orientation");
     QTest::addColumn<QDialogButtonBox::StandardButtons>("buttons");
     QTest::addColumn<int>("buttonCount");
 
-    QTest::newRow("nothing") << int(Qt::Horizontal) << QDialogButtonBox::StandardButtons{} << 0;
-    QTest::newRow("only 1") << int(Qt::Horizontal) << QDialogButtonBox::StandardButtons(QDialogButtonBox::Ok) << 1;
-    QTest::newRow("only 1.. twice") << int(Qt::Horizontal)
+    QTest::newRow("nothing") << Qt::Horizontal << QDialogButtonBox::StandardButtons{} << 0;
+    QTest::newRow("only 1") << Qt::Horizontal << QDialogButtonBox::StandardButtons(QDialogButtonBox::Ok) << 1;
+    QTest::newRow("only 1.. twice") << Qt::Horizontal
                         << (QDialogButtonBox::Ok | QDialogButtonBox::Ok)
                         << 1;
-    QTest::newRow("only 2") << int(Qt::Horizontal)
+    QTest::newRow("only 2") << Qt::Horizontal
             << (QDialogButtonBox::Ok | QDialogButtonBox::Cancel)
             << 2;
-    QTest::newRow("two different things") << int(Qt::Horizontal)
+    QTest::newRow("two different things") << Qt::Horizontal
             << (QDialogButtonBox::Save | QDialogButtonBox::Close)
             << 2;
-    QTest::newRow("three") << int(Qt::Horizontal)
+    QTest::newRow("three") << Qt::Horizontal
             << (QDialogButtonBox::Ok
                     | QDialogButtonBox::Cancel
                     | QDialogButtonBox::Help)
             << 3;
-    QTest::newRow("everything") << int(Qt::Vertical)
+    QTest::newRow("everything") << Qt::Vertical
             << (QDialogButtonBox::StandardButtons)UINT_MAX
             << 18;
 }
 
 void tst_QDialogButtonBox::testConstructor3()
 {
-    QFETCH(int, orientation);
+    QFETCH(Qt::Orientation, orientation);
     QFETCH(QDialogButtonBox::StandardButtons, buttons);
 
-    QDialogButtonBox buttonBox(buttons, (Qt::Orientation)orientation);
-    QCOMPARE(int(buttonBox.orientation()), orientation);
+    QDialogButtonBox buttonBox(buttons, orientation);
+    QCOMPARE(buttonBox.orientation(), orientation);
     QTEST(int(buttonBox.buttons().size()), "buttonCount");
 }
 
@@ -218,20 +212,19 @@ void tst_QDialogButtonBox::testConstructor4()
 
 void tst_QDialogButtonBox::setOrientation_data()
 {
-    QTest::addColumn<int>("orientation");
+    QTest::addColumn<Qt::Orientation>("orientation");
 
-    QTest::newRow("Horizontal") << int(Qt::Horizontal);
-    QTest::newRow("Vertical") << int(Qt::Vertical);
+    QTest::newRow("Horizontal") << Qt::Horizontal;
+    QTest::newRow("Vertical") << Qt::Vertical;
 }
 
 void tst_QDialogButtonBox::setOrientation()
 {
-    QFETCH(int, orientation);
+    QFETCH(Qt::Orientation, orientation);
     QDialogButtonBox buttonBox;
-    QCOMPARE(int(buttonBox.orientation()), int(Qt::Horizontal));
-
-    buttonBox.setOrientation(Qt::Orientation(orientation));
-    QCOMPARE(int(buttonBox.orientation()), orientation);
+    QCOMPARE(buttonBox.orientation(), Qt::Horizontal);
+    buttonBox.setOrientation(orientation);
+    QCOMPARE(buttonBox.orientation(), orientation);
 }
 
 /*
@@ -386,16 +379,16 @@ void tst_QDialogButtonBox::removeButton()
 #ifdef QT_BUILD_INTERNAL
 void tst_QDialogButtonBox::hideAndShowButton()
 {
-    if (QGuiApplication::styleHints()->tabFocusBehavior() == Qt::NoTabFocus)
-        QSKIP("Test skipped with Qt::NoTabFocus");
+    if (QGuiApplication::styleHints()->tabFocusBehavior() != Qt::TabFocusAllControls)
+        QSKIP("Test requires Qt::TabFocusAllControls tab focus behavior");
 
+    QWidget widget;
     QDialogButtonBox buttonBox;
     QDialogButtonBoxPrivate *d = static_cast<QDialogButtonBoxPrivate *>(QObjectPrivate::get(&buttonBox));
     auto *apply = buttonBox.addButton( "Apply", QDialogButtonBox::ApplyRole );
     auto *accept = buttonBox.addButton( "Accept", QDialogButtonBox::AcceptRole );
     buttonBox.addButton( "Reject", QDialogButtonBox::RejectRole );
-    auto *widget = new QWidget();
-    auto *layout = new QHBoxLayout(widget);
+    auto *layout = new QHBoxLayout(&widget);
     layout->addWidget(&buttonBox);
 
     // apply button shows first on macOS. accept button on all other OSes.
@@ -409,8 +402,8 @@ void tst_QDialogButtonBox::hideAndShowButton()
 #endif
 
     hideButton->hide();
-    widget->show();
-    QVERIFY(QTest::qWaitForWindowExposed(widget));
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
     QTRY_VERIFY(buttonBox.focusWidget()); // QTBUG-114377: Without fixing, focusWidget() == nullptr
     QCOMPARE(d->visibleButtons().count(), 2);
     QCOMPARE(d->hiddenButtons.count(), 1);

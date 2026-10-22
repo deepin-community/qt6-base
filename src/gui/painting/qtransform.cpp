@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #include "qtransform.h"
 
 #include "qdatastream.h"
@@ -117,6 +118,7 @@ void QTransform::do_map(qreal x, qreal y, qreal &nx, qreal &ny) const
     \table 100%
     \row
     \li \inlineimage qtransform-simpletransformation.png
+                     {Text rotated 45 degrees}
     \li
     \snippet transform/main.cpp 0
     \endtable
@@ -129,13 +131,15 @@ void QTransform::do_map(qreal x, qreal y, qreal &nx, qreal &ny) const
     \table 100%
     \row
     \li \inlineimage qtransform-combinedtransformation.png
+                     {Text scaled, rotated, and translated}
     \li
     \snippet transform/main.cpp 1
     \endtable
 
     \section1 Basic Matrix Operations
 
-    \image qtransform-representation.png
+    \image qtransform-representation.png {Illustration showing an object that
+           contains a 3x3 matrix where every row is a different element}
 
     A QTransform object contains a 3 x 3 matrix.  The \c m31 (\c dx) and
     \c m32 (\c dy) elements specify horizontal and vertical translation.
@@ -180,6 +184,7 @@ void QTransform::do_map(qreal x, qreal y, qreal &nx, qreal &ny) const
     \table 100%
     \row
     \li \inlineimage qtransform-combinedtransformation2.png
+                     {Text with combined matrix transformation}
     \li
     \snippet transform/main.cpp 2
     \endtable
@@ -318,10 +323,6 @@ QTransform QTransform::inverted(bool *invertible) const
             invert.m_matrix[2][1] = -m_matrix[2][1] * invert.m_matrix[1][1];
         }
         break;
-//    case TxRotate:
-//    case TxShear:
-//        invert.affine = affine.inverted(&inv);
-//        break;
     default:
         // general case
         qreal det = determinant();
@@ -784,14 +785,11 @@ bool QTransform::operator==(const QTransform &o) const
 
 /*!
     \since 5.6
-    \relates QTransform
-
-    Returns the hash value for \a key, using
-    \a seed to seed the calculation.
+    \qhashold{QTransform}
 */
 size_t qHash(const QTransform &key, size_t seed) noexcept
 {
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombineWithSeed hash(seed);
     seed = hash(seed, key.m11());
     seed = hash(seed, key.m12());
     seed = hash(seed, key.m21());
@@ -1288,7 +1286,7 @@ QPolygonF QTransform::map(const QPolygonF &a) const
     QPointF *dp = p.data();
 
     for(i = 0; i < size; ++i) {
-        do_map(da[i].xp, da[i].yp, dp[i].xp, dp[i].yp);
+        do_map(da[i].x(), da[i].y(), dp[i].rx(), dp[i].ry());
     }
     return p;
 }
@@ -1316,9 +1314,9 @@ QPolygon QTransform::map(const QPolygon &a) const
 
     for(i = 0; i < size; ++i) {
         qreal nx = 0, ny = 0;
-        do_map(da[i].xp, da[i].yp, nx, ny);
-        dp[i].xp = qRound(nx);
-        dp[i].yp = qRound(ny);
+        do_map(da[i].x(), da[i].y(), nx, ny);
+        dp[i].rx() = qRound(nx);
+        dp[i].ry() = qRound(ny);
     }
     return p;
 }
@@ -1332,7 +1330,7 @@ QPolygon QTransform::map(const QPolygon &a) const
     \sa QTransform::map()
 */
 
-extern QPainterPath qt_regionToPath(const QRegion &region);
+Q_GUI_EXPORT extern QPainterPath qt_regionToPath(const QRegion &region);
 
 /*!
     \fn QRegion QTransform::map(const QRegion &region) const
@@ -1533,7 +1531,7 @@ QPainterPath QTransform::map(const QPainterPath &path) const
     if (t == TxTranslate) {
         copy.translate(m_matrix[2][0], m_matrix[2][1]);
     } else {
-        copy.detach();
+        copy.setDirty(true);
         // Full xform
         for (int i=0; i<path.elementCount(); ++i) {
             QPainterPath::Element &e = copy.d_ptr->elements[i];
@@ -1616,7 +1614,7 @@ QPolygon QTransform::mapToPolygon(const QRect &rect) const
 */
 bool QTransform::squareToQuad(const QPolygonF &quad, QTransform &trans)
 {
-    if (quad.size() != 4)
+    if (quad.size() != (quad.isClosed() ? 5 : 4))
         return false;
 
     qreal dx0 = quad[0].x();

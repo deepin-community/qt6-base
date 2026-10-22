@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOCOAACCESIBILITY_H
 #define QCOCOAACCESIBILITY_H
@@ -11,6 +12,8 @@
 #include <qpa/qplatformaccessibility.h>
 
 #include "qcocoaaccessibilityelement.h"
+
+#include <functional>
 
 QT_BEGIN_NAMESPACE
 
@@ -49,7 +52,9 @@ namespace QCocoaAccessible {
 NSString *macRole(QAccessibleInterface *interface);
 NSString *macSubrole(QAccessibleInterface *interface);
 bool shouldBeIgnored(QAccessibleInterface *interface);
-NSArray<QMacAccessibilityElement *> *unignoredChildren(QAccessibleInterface *interface);
+bool defaultUnignored(QAccessibleInterface *interface);
+NSArray<QMacAccessibilityElement *> *unignoredChildren(QAccessibleInterface *interface,
+                        const std::function<bool(QAccessibleInterface *)> &p = defaultUnignored);
 NSString *getTranslatedAction(const QString &qtAction);
 QString translateAction(NSString *nsAction, QAccessibleInterface *interface);
 bool hasValueAttribute(QAccessibleInterface *interface);

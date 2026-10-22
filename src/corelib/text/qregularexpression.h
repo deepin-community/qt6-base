@@ -2,6 +2,7 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-impl-only
 
 #ifndef QREGULAREXPRESSION_H
 #define QREGULAREXPRESSION_H
@@ -190,6 +191,11 @@ Q_CORE_EXPORT QDataStream &operator>>(QDataStream &in, QRegularExpression &re);
 Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QRegularExpression &re);
 Q_CORE_EXPORT QDebug operator<<(QDebug debug, QRegularExpression::PatternOptions patternOptions);
 #endif
+
+[[nodiscard]] inline qsizetype QStringView::count(const QRegularExpression &re) const
+{
+    return QtPrivate::count(*this, re);
+}
 
 struct QRegularExpressionMatchPrivate;
 QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QRegularExpressionMatchPrivate, Q_CORE_EXPORT)

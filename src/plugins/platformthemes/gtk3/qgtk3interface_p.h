@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGTK3INTERFACE_H
 #define QGTK3INTERFACE_H
@@ -53,6 +54,7 @@ class QGtk3Storage;
 class QGtk3Interface
 {
     Q_GADGET
+    Q_DISABLE_COPY_MOVE(QGtk3Interface)
 public:
     QGtk3Interface(QGtk3Storage *);
     ~QGtk3Interface();

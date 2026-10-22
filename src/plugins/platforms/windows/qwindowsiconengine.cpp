@@ -1,7 +1,10 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsiconengine.h"
+
+#ifndef QT_NO_ICON
 
 #include <QtCore/qoperatingsystemversion.h>
 #include <QtGui/qguiapplication.h>
@@ -12,11 +15,8 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-QString QWindowsIconEngine::glyphs() const
+static QString getGlyphs(QStringView iconName)
 {
-    if (!QFontInfo(m_iconFont).exactMatch())
-        return {};
-
     static constexpr std::pair<QLatin1StringView, QStringView> glyphMap[] = {
         {"address-book-new"_L1, u"\ue780"},
         {"application-exit"_L1, u"\ue8bb"},
@@ -52,8 +52,8 @@ QString QWindowsIconEngine::glyphs() const
         //{"format-justify-fill"_L1, u"\ue235"},
         {"format-justify-left"_L1, u"\ue8e4"},
         {"format-justify-right"_L1, u"\ue8e2"},
-        //{"format-text-direction-ltr"_L1, u"\ue247"},
-        //{"format-text-direction-rtl"_L1, u"\ue248"},
+        {"format-text-direction-ltr"_L1, u"\ue9aa"},
+        {"format-text-direction-rtl"_L1, u"\ue9ab"},
         {"format-text-bold"_L1, u"\ue8dd"},
         {"format-text-italic"_L1, u"\ue8db"},
         {"format-text-underline"_L1, u"\ue8dc"},
@@ -64,8 +64,8 @@ QString QWindowsIconEngine::glyphs() const
         {"go-home"_L1, u"\ue80f"},
         // {"go-jump"_L1, u"\uf719"},
         //{"go-last"_L1, u"\ue5dd"},
-        {"go-next"_L1, u"\ue893"},
-        {"go-previous"_L1, u"\ue892"},
+        {"go-next"_L1, u"\ue72a"},
+        {"go-previous"_L1, u"\ue72b"},
         //{"go-top"_L1, u"\ue25a"},
         {"go-up"_L1, u"\ue74a"},
         {"help-about"_L1, u"\ue946"},
@@ -101,7 +101,7 @@ QString QWindowsIconEngine::glyphs() const
         //{"object-flip-vertical"_L1, u"\u"},
         {"object-rotate-left"_L1, u"\ue80c"},
         {"object-rotate-right"_L1, u"\ue80d"},
-        //{"process-stop"_L1, u"\ue5c9"},
+        {"process-stop"_L1, u"\uf140"},
         {"system-lock-screen"_L1, u"\uee3f"},
         {"system-log-out"_L1, u"\uf3b1"},
         //{"system-run"_L1, u"\u"},
@@ -118,7 +118,7 @@ QString QWindowsIconEngine::glyphs() const
         {"window-new"_L1, u"\ue78b"},
         {"zoom-fit-best"_L1, u"\ue9a6"},
         {"zoom-in"_L1, u"\ue8a3"},
-        //{"zoom-original"_L1, u"\u"},
+        {"zoom-original"_L1, u"\ue71e"},
         {"zoom-out"_L1, u"\ue71f"},
 
         {"process-working"_L1, u"\ue9f3"},
@@ -141,7 +141,7 @@ QString QWindowsIconEngine::glyphs() const
         //{"system-software-install"_L1, u"\ueb71"},
         {"system-software-update"_L1, u"\uecc5"},
         {"utilities-system-monitor"_L1, u"\ue7f4"},
-        //{"utilities-terminal"_L1, u"\ueb8e"},
+        {"utilities-terminal"_L1, u"\ue756"},
 
         //{"applications-accessories"_L1, u"\u"},
         {"applications-development"_L1, u"\uec7a"},
@@ -277,120 +277,51 @@ QString QWindowsIconEngine::glyphs() const
         //{"weather-storm"_L1, u"\uf070"},
     };
 
-    const auto it = std::find_if(std::begin(glyphMap), std::end(glyphMap), [this](const auto &c){
-        return c.first == m_iconName;
+    const auto it = std::find_if(std::begin(glyphMap),
+                                 std::end(glyphMap), [iconName](const auto &c){
+        return c.first == iconName;
     });
 
     return it != std::end(glyphMap) ? it->second.toString()
-                                    : (m_iconName.length() == 1 ? m_iconName : QString());
+                                    : (iconName.length() == 1 ? iconName.toString() : QString());
 }
 
 namespace {
-auto iconFontFamily()
+static auto iconFont()
 {
     static const bool isWindows11 = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11;
-    return isWindows11 ? u"Segoe Fluent Icons"_s
-                       : u"Segoe MDL2 Assets"_s;
+    QFont font(isWindows11 ? u"Segoe Fluent Icons"_s
+                           : u"Segoe MDL2 Assets"_s);
+    font.setStyleStrategy(QFont::NoFontMerging);
+    return font;
 }
 }
 
 QWindowsIconEngine::QWindowsIconEngine(const QString &iconName)
-    : m_iconName(iconName), m_iconFont(iconFontFamily())
-    , m_glyphs(glyphs())
+    : QFontIconEngine(iconName, iconFont())
+    , m_glyphs(getGlyphs(iconName))
 {
 }
 
 QWindowsIconEngine::~QWindowsIconEngine()
 {}
 
-QIconEngine *QWindowsIconEngine::clone() const
-{
-    return new QWindowsIconEngine(m_iconName);
-}
-
 QString QWindowsIconEngine::key() const
 {
     return u"QWindowsIconEngine"_s;
 }
 
-QString QWindowsIconEngine::iconName()
+QIconEngine *QWindowsIconEngine::clone() const
 {
-    return m_iconName;
+    QWindowsIconEngine *that = const_cast<QWindowsIconEngine *>(this);
+    return new QWindowsIconEngine(that->iconName());
 }
 
-bool QWindowsIconEngine::isNull()
+QString QWindowsIconEngine::string() const
 {
-    if (m_glyphs.isEmpty())
-        return true;
-
-    const QChar c0 = m_glyphs.at(0);
-    const QFontMetrics fontMetrics(m_iconFont);
-    if (c0.category() == QChar::Other_Surrogate && m_glyphs.size() > 1)
-        return !fontMetrics.inFontUcs4(QChar::surrogateToUcs4(c0, m_glyphs.at(1)));
-    return !fontMetrics.inFont(c0);
-}
-
-QList<QSize> QWindowsIconEngine::availableSizes(QIcon::Mode, QIcon::State)
-{
-    return {{16, 16}, {24, 24}, {48, 48}, {128, 128}};
-}
-
-QSize QWindowsIconEngine::actualSize(const QSize &size, QIcon::Mode mode, QIcon::State state)
-{
-    return QIconEngine::actualSize(size, mode, state);
-}
-
-QPixmap QWindowsIconEngine::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
-{
-    return scaledPixmap(size, mode, state, 1.0);
-}
-
-QPixmap QWindowsIconEngine::scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
-{
-    const quint64 cacheKey = calculateCacheKey(mode, state);
-    if (cacheKey != m_cacheKey || m_pixmap.size() != size || m_pixmap.devicePixelRatio() != scale) {
-        m_pixmap = QPixmap(size * scale);
-        m_pixmap.fill(Qt::transparent);
-        m_pixmap.setDevicePixelRatio(scale);
-
-        if (!m_pixmap.isNull()) {
-            QPainter painter(&m_pixmap);
-            paint(&painter, QRect(QPoint(), size), mode, state);
-        }
-
-        m_cacheKey = cacheKey;
-    }
-
-    return m_pixmap;
-}
-
-void QWindowsIconEngine::paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state)
-{
-    Q_UNUSED(state);
-
-    painter->save();
-    QFont renderFont(m_iconFont);
-    renderFont.setPixelSize(rect.height());
-    painter->setFont(renderFont);
-
-    QPalette palette;
-    switch (mode) {
-    case QIcon::Active:
-        painter->setPen(palette.color(QPalette::Active, QPalette::Text));
-        break;
-    case QIcon::Normal:
-        painter->setPen(palette.color(QPalette::Active, QPalette::Text));
-        break;
-    case QIcon::Disabled:
-        painter->setPen(palette.color(QPalette::Disabled, QPalette::Text));
-        break;
-    case QIcon::Selected:
-        painter->setPen(palette.color(QPalette::Active, QPalette::HighlightedText));
-        break;
-    }
-
-    painter->drawText(rect, Qt::AlignCenter, m_glyphs);
-    painter->restore();
+    return m_glyphs;
 }
 
 QT_END_NAMESPACE
+
+#endif //QT_NO_ICON

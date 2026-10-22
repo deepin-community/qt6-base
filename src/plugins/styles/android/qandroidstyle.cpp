@@ -1,5 +1,6 @@
 // Copyright (C) 2013 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qandroidstyle_p.h"
 
@@ -30,7 +31,6 @@ QAndroidStyle::QAndroidStyle()
     : QFusionStyle()
 {
     QPixmapCache::clear();
-    checkBoxControl = NULL;
     QPlatformNativeInterface *nativeInterface = QGuiApplication::platformNativeInterface();
     QPalette *standardPalette = reinterpret_cast<QPalette *>(nativeInterface->nativeResourceForIntegration("AndroidStandardPalette"));
     if (standardPalette)
@@ -64,8 +64,8 @@ QAndroidStyle::QAndroidStyle()
 
         switch (itemType) {
         case QC_Checkbox:
-            checkBoxControl = new AndroidCompoundButtonControl(item.toVariantMap(), itemType);
-            m_androidControlsHash[int(itemType)] = checkBoxControl;
+            m_checkBoxControl = new AndroidCompoundButtonControl(item.toVariantMap(), itemType);
+            m_androidControlsHash[int(itemType)] = m_checkBoxControl;
             break;
         case QC_RadioButton:
             m_androidControlsHash[int(itemType)] = new AndroidCompoundButtonControl(item.toVariantMap(),
@@ -374,6 +374,10 @@ void QAndroidStyle::drawComplexControl(ComplexControl cc,
         return;
     }
     if (cc == CC_GroupBox) {
+        if (!m_checkBoxControl) {
+            QFusionStyle::drawComplexControl(cc, opt, p, widget);
+            return;
+        }
         if (const QStyleOptionGroupBox *groupBox = qstyleoption_cast<const QStyleOptionGroupBox *>(opt)) {
             // Draw frame
             QRect textRect = subControlRect(CC_GroupBox, opt, SC_GroupBoxLabel, widget);
@@ -431,7 +435,7 @@ void QAndroidStyle::drawComplexControl(ComplexControl cc,
                 QStyleOptionButton box;
                 box.QStyleOption::operator=(*groupBox);
                 box.rect = checkBoxRect;
-                checkBoxControl->drawControl(&box, p, widget);
+                m_checkBoxControl->drawControl(&box, p, widget);
             }
         }
         return;
@@ -474,6 +478,9 @@ QRect QAndroidStyle::subControlRect(ComplexControl cc,
                                     SubControl sc,
                                     const QWidget *widget) const
 {
+    if (cc == CC_GroupBox && !m_checkBoxControl)
+        return QFusionStyle::subControlRect(cc, opt, sc, widget);
+
     const ItemType itemType = qtControl(cc);
     AndroidControlsHash::const_iterator it = itemType != QC_UnknownType
                                              ? m_androidControlsHash.find(itemType)
@@ -485,7 +492,7 @@ QRect QAndroidStyle::subControlRect(ComplexControl cc,
         case CC_GroupBox: {
             if (const QStyleOptionGroupBox *groupBox = qstyleoption_cast<const QStyleOptionGroupBox *>(opt)) {
                 QSize textSize = opt->fontMetrics.boundingRect(groupBox->text).size() + QSize(2, 2);
-                QSize checkBoxSize = checkBoxControl->size(opt);
+                QSize checkBoxSize = m_checkBoxControl->size(opt);
                 int indicatorWidth = checkBoxSize.width();
                 int indicatorHeight = checkBoxSize.height();
                 QRect checkBoxRect;
@@ -542,9 +549,13 @@ int QAndroidStyle::pixelMetric(PixelMetric metric, const QStyleOption *option,
     case PM_ScrollBarExtent:
         return 0;
     case PM_IndicatorWidth:
-        return checkBoxControl->size(option).width();
+        if (m_checkBoxControl)
+            return m_checkBoxControl->size(option).width();
+        return QFusionStyle::pixelMetric(metric, option, widget);
     case PM_IndicatorHeight:
-        return checkBoxControl->size(option).height();
+        if (m_checkBoxControl)
+            return m_checkBoxControl->size(option).height();
+        return QFusionStyle::pixelMetric(metric, option, widget);
     default:
         return QFusionStyle::pixelMetric(metric, option, widget);
     }
@@ -561,7 +572,7 @@ QSize QAndroidStyle::sizeFromContents(ContentsType ct,
         if (const QStyleOptionHeader *hdr = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
             bool nullIcon = hdr->icon.isNull();
             int margin = pixelMetric(QStyle::PM_HeaderMargin, hdr, w);
-            int iconSize = nullIcon ? 0 : checkBoxControl->size(opt).width();
+            int iconSize = nullIcon ? 0 : pixelMetric(QStyle::PM_IndicatorWidth, opt, w);
             QSize txt;
 /*
  * These next 4 lines are a bad hack to fix a bug in case a QStyleSheet is applied at QApplication level.
@@ -592,10 +603,10 @@ QSize QAndroidStyle::sizeFromContents(ContentsType ct,
                                              : m_androidControlsHash.end();
     if (it != m_androidControlsHash.end())
         return it.value()->sizeFromContents(opt, sz, w);
-    if (ct == CT_GroupBox) {
+    if (ct == CT_GroupBox && m_checkBoxControl) {
         if (const QStyleOptionGroupBox *groupBox = qstyleoption_cast<const QStyleOptionGroupBox *>(opt)) {
             QSize textSize = opt->fontMetrics.boundingRect(groupBox->text).size() + QSize(2, 2);
-            QSize checkBoxSize = checkBoxControl->size(opt);
+            QSize checkBoxSize = m_checkBoxControl->size(opt);
             int indicatorWidth = checkBoxSize.width();
             int indicatorHeight = checkBoxSize.height();
             QRect checkBoxRect;
@@ -808,6 +819,8 @@ int QAndroidStyle::Android9PatchDrawable::calculateStretch(int boundsLimit,
 {
     int spaceRemaining = boundsLimit - startingPoint;
     int stretchySpaceRemaining = spaceRemaining - numFixedPixelsRemaining;
+    if (numStrechyPixelsRemaining == 0)
+        return 0;
     return (float(srcSpace) * stretchySpaceRemaining / numStrechyPixelsRemaining + .5);
 }
 
@@ -847,6 +860,14 @@ void QAndroidStyle::Android9PatchDrawable::draw(QPainter *painter, const QStyleO
     QRectF dst;
     QRectF src;
 
+    // Malformed chunk data (empty division arrays) would read out of bounds
+    // below, so fall back to drawing the pixmap stretched into the bounds.
+    if (m_chunkData.xDivs.isEmpty() || m_chunkData.yDivs.isEmpty()) {
+        painter->drawPixmap(bounds, pixmap);
+        painter->setRenderHints(savedHints);
+        return;
+    }
+
     const qint32 x0 = m_chunkData.xDivs[0];
     const qint32 y0 = m_chunkData.yDivs[0];
     const quint8 numXDivs = m_chunkData.xDivs.size();
@@ -865,12 +886,12 @@ void QAndroidStyle::Android9PatchDrawable::draw(QPainter *painter, const QStyleO
     bool dstRightsHaveBeenCached = false;
 
     int numStretchyXPixelsRemaining = 0;
-    for (i = 0; i < numXDivs; i += 2)
+    for (i = 0; i + 1 < numXDivs; i += 2)
         numStretchyXPixelsRemaining += m_chunkData.xDivs[i + 1] - m_chunkData.xDivs[i];
 
     int numFixedXPixelsRemaining = bitmapWidth - numStretchyXPixelsRemaining;
     int numStretchyYPixelsRemaining = 0;
-    for (i = 0; i < numYDivs; i += 2)
+    for (i = 0; i + 1 < numYDivs; i += 2)
         numStretchyYPixelsRemaining += m_chunkData.yDivs[i + 1] - m_chunkData.yDivs[i];
 
     int numFixedYPixelsRemaining = bitmapHeight - numStretchyYPixelsRemaining;
@@ -921,7 +942,9 @@ void QAndroidStyle::Android9PatchDrawable::draw(QPainter *painter, const QStyleO
         for (i = xIsStretchable ? 1 : 0;
               i <= numXDivs && src.left() < bitmapWidth;
               i++, xIsStretchable = !xIsStretchable) {
-            color = m_chunkData.colors[colorIndex++];
+            color = colorIndex < m_chunkData.colors.size() ? m_chunkData.colors[colorIndex]
+                                                           : NO_COLOR;
+            ++colorIndex;
             if (color != TRANSPARENT_COLOR)
                 color = NO_COLOR;
             if (i == numXDivs) {

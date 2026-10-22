@@ -55,6 +55,7 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/uikit/GLES2/gl2.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/uikit/clang.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/uikit/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/unix.conf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/vxworks/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/watchos.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/windows-desktop.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/windows-vulkan.conf
@@ -155,6 +156,7 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/android/sdk.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/android/spec_post.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/benchmark.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/build_pass.prf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/ccache.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/cmake_functions.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/cmdline.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/configure.prf
@@ -167,7 +169,6 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/ctest_testcase_installed.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/data/configure.json
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/data/dummy.cpp
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/data/dumpvcvars.bat
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/data/mac/objc_namespace.sh
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/data/macros.cpp
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/data/testserver/Dockerfile
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/data/testserver/docker-compose-common.yml
@@ -205,7 +206,6 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/mac/rez.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/mac/sdk.mk
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/mac/sdk.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/mac/toolchain.prf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/mac/unsupported/objc_namespace.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/metatypes.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/moc.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/no_debug_info.prf
@@ -255,7 +255,6 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/uikit/watchos_coretext.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/uikit/xcodebuild.mk
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/uikit/xcodebuild.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/unix/bsymbolic_functions.prf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/unix/ccache.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/unix/hide_symbols.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/unix/largefile.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/unix/no_direct_extern_access.prf
@@ -268,7 +267,6 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/unix/x11lib.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/unix/x11sm.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/unsupported/testserver.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/use_c_linker.prf
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/vxworks.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/warn_off.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/warn_on.prf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/wasm/default_pre.prf
@@ -361,6 +359,11 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/Info.plist.lib
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/LaunchScreen.storyboard
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-ios-clang/qplatformdefs.h
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/Info.plist.app
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/Info.plist.dSYM.in
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/Info.plist.lib
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/qmake.conf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-xcode/QtTest.plist
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-xcode/WorkspaceSettings.xcsettings
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-xcode/default.xcscheme
@@ -407,6 +410,7 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/vxworks-simpentium-dcc/qma
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/vxworks-simpentium-dcc/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/vxworks-simpentium-g++/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/unsupported/vxworks-simpentium-g++/qplatformdefs.h
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/vxworks-clang/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/wasm-emscripten/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/wasm-emscripten/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/win32-arm64-msvc/qmake.conf
@@ -423,4 +427,3 @@ usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/win32-icc/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/win32-icc/qplatformdefs.h
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/win32-msvc/qmake.conf
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/win32-msvc/qplatformdefs.h
-usr/lib/${DEB_HOST_MULTIARCH}/qt6/qt6.conf

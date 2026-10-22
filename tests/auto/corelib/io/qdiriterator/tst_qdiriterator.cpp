@@ -13,7 +13,7 @@
 
 #include <QtCore/private/qfsfileengine_p.h>
 
-#if defined(Q_OS_VXWORKS)
+#if defined(Q_OS_VXWORKS) || defined(Q_OS_HARMONY)
 #define Q_NO_SYMLINKS
 #endif
 
@@ -31,6 +31,8 @@ Q_DECLARE_METATYPE(QDir::Filters)
 class tst_QDirIterator : public QObject
 {
     Q_OBJECT
+
+    bool uncServerAvailable = false;
 
 private: // convenience functions
     QStringList createdDirectories;
@@ -78,6 +80,8 @@ private slots:
     void longPath();
     void dirorder();
     void relativePaths();
+    void dotNameFilters_data();
+    void dotNameFilters();
 #if defined(Q_OS_WIN)
     void uncPaths_data();
     void uncPaths();
@@ -85,6 +89,8 @@ private slots:
 #ifndef Q_OS_WIN
     void hiddenDirs_hiddenFiles();
 #endif
+
+    void hasNextFalseNoCrash();
 
 private:
     QSharedPointer<QTemporaryDir> m_dataDir;
@@ -150,20 +156,20 @@ void tst_QDirIterator::initTestCase()
 #  if defined(Q_OS_WIN)
     // ### Sadly, this is a platform difference right now.
     createLink("entrylist/file", "entrylist/linktofile.lnk");
-#    ifndef Q_NO_SYMLINKS_TO_DIRS
     createLink("entrylist/directory", "entrylist/linktodirectory.lnk");
-#    endif
     createLink("entrylist/nothing", "entrylist/brokenlink.lnk");
 #  else
     createLink("file", "entrylist/linktofile.lnk");
-#    ifndef Q_NO_SYMLINKS_TO_DIRS
     createLink("directory", "entrylist/linktodirectory.lnk");
-#    endif
     createLink("nothing", "entrylist/brokenlink.lnk");
 #  endif
 #endif
 
-#if !defined(Q_OS_WIN)
+#ifdef Q_OS_WIN
+    // "When used with directories, _access determines only whether the specified directory exists"
+    if (_waccess(qUtf16Printable("//" + QTest::uncServerName() + "/testshare"), 0) == 0)
+        uncServerAvailable = true;
+#else
     createDirectory("hiddenDirs_hiddenFiles");
     createFile("hiddenDirs_hiddenFiles/normalFile");
     createFile("hiddenDirs_hiddenFiles/.hiddenFile");
@@ -199,7 +205,7 @@ void tst_QDirIterator::iterateRelativeDirectory_data()
                    "entrylist/linktofile.lnk,"
 #endif
                    "entrylist/directory,"
-#if !defined(Q_NO_SYMLINKS) && !defined(Q_NO_SYMLINKS_TO_DIRS)
+#ifndef Q_NO_SYMLINKS
                    "entrylist/linktodirectory.lnk,"
 #endif
                    "entrylist/writable").split(',');
@@ -214,7 +220,7 @@ void tst_QDirIterator::iterateRelativeDirectory_data()
                    "entrylist/linktofile.lnk,"
 #endif
                    "entrylist/directory,"
-#if !defined(Q_NO_SYMLINKS) && !defined(Q_NO_SYMLINKS_TO_DIRS)
+#ifndef Q_NO_SYMLINKS
                    "entrylist/linktodirectory.lnk,"
 #endif
                    "entrylist/writable").split(',');
@@ -229,7 +235,7 @@ void tst_QDirIterator::iterateRelativeDirectory_data()
                    "entrylist/linktofile.lnk,"
 #endif
                    "entrylist/directory,"
-#if !defined(Q_NO_SYMLINKS) && !defined(Q_NO_SYMLINKS_TO_DIRS)
+#ifndef Q_NO_SYMLINKS
                    "entrylist/linktodirectory.lnk,"
 #endif
                    "entrylist/writable").split(',');
@@ -243,7 +249,7 @@ void tst_QDirIterator::iterateRelativeDirectory_data()
                    "entrylist/linktofile.lnk,"
 #endif
                    "entrylist/directory,"
-#if !defined(Q_NO_SYMLINKS) && !defined(Q_NO_SYMLINKS_TO_DIRS)
+#ifndef Q_NO_SYMLINKS
                    "entrylist/linktodirectory.lnk,"
 #endif
                    "entrylist/writable").split(',');
@@ -262,7 +268,7 @@ void tst_QDirIterator::iterateRelativeDirectory_data()
 #endif
                    "entrylist/directory,"
                    "entrylist/directory/dummy,"
-#if !defined(Q_NO_SYMLINKS) && !defined(Q_NO_SYMLINKS_TO_DIRS)
+#ifndef Q_NO_SYMLINKS
                    "entrylist/linktodirectory.lnk,"
 #endif
                    "entrylist/writable").split(',');
@@ -437,7 +443,7 @@ public:
     { }
 
     IteratorUniquePtr
-    beginEntryList(const QString &, QDir::Filters, const QStringList &) override
+    beginEntryList(const QString &, QDirListing::IteratorFlags, const QStringList &) override
     { return nullptr; }
 };
 
@@ -584,9 +590,51 @@ void tst_QDirIterator::relativePaths()
     }
 }
 
+void tst_QDirIterator::dotNameFilters_data()
+{
+    QTest::addColumn<QStringList>("nameFilters");
+    QTest::addColumn<QDir::Filters>("dirFilters");
+    QTest::addColumn<QStringList>("expected");
+
+    QTest::newRow("NoDotAndDotDot")
+        << QStringList{u"."_s}
+        << QDir::Filters(QDir::AllEntries | QDir::NoDotAndDotDot)
+        << QStringList{};
+
+    QTest::newRow("default-dirfilters")
+        << QStringList{u"."_s}
+        << QDir::Filters(QDir::AllEntries)
+        << QStringList{u"."_s};
+
+    QTest::newRow("glob-everything")
+        << QStringList{u".*"_s}
+        << QDir::Filters(QDir::AllEntries)
+        << QStringList{u"."_s, u".."_s};
+}
+
+void tst_QDirIterator::dotNameFilters()
+{
+    QFETCH(QStringList, nameFilters);
+    QFETCH(QDir::Filters, dirFilters);
+    QFETCH(QStringList, expected);
+
+    const auto dirPath = u"empty"_s;
+    QVERIFY(QFileInfo(dirPath).isDir());
+
+    QDirIterator dit(dirPath, nameFilters, dirFilters);
+    QStringList entries;
+    while (dit.hasNext())
+        entries.append(dit.nextFileInfo().fileName());
+    entries.sort();
+    QCOMPARE_EQ(entries, expected);
+}
+
 #if defined(Q_OS_WIN)
 void tst_QDirIterator::uncPaths_data()
 {
+    if (!uncServerAvailable)
+        QSKIP("UNC server not available");
+
     QTest::addColumn<QString>("dirName");
     QTest::newRow("uncserver")
             <<QString("//" + QTest::uncServerName());
@@ -641,6 +689,23 @@ void tst_QDirIterator::hiddenDirs_hiddenFiles()
     }
 }
 #endif // Q_OS_WIN
+
+void tst_QDirIterator::hasNextFalseNoCrash()
+{
+    QVERIFY(QFileInfo(u"empty"_s).exists());
+    QDirIterator iter(u"empty"_s);
+    int count = 0;
+    while (iter.hasNext()) {
+        iter.next();
+        ++count;
+    }
+    QVERIFY(count > 0);
+    QVERIFY(!iter.hasNext());
+    // QTBUG-130142
+    // When the iteration reaches the end, calling next() returns an empty string
+    // and no crash happens
+    QVERIFY(iter.next().isEmpty());
+}
 
 QTEST_MAIN(tst_QDirIterator)
 

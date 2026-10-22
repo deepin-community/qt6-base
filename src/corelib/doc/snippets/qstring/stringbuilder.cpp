@@ -3,9 +3,11 @@
 
 #include <QString>
 
-using namespace Qt::StringLiterals;
-
 //! [0]
+// Required for using the '_L1' string literal.
+using namespace Qt::StringLiterals;
+// ...
+
     QString foo;
     QString type = "long";
 
@@ -19,9 +21,8 @@ using namespace Qt::StringLiterals;
     #include <QStringBuilder>
 
     QString hello("hello");
-    QStringView el = QStringView{ hello }.mid(2, 3);
-    QLatin1StringView world("world");
-    QString message =  hello % el % world % QChar('!');
+    QStringView el = QStringView{ hello }.sliced(2, 3);
+    QString message =  hello % el % "world"_L1 % QChar('!');
 //! [5]
 
 //! [6]

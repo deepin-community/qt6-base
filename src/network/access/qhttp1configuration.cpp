@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhttp1configuration.h"
 
@@ -107,9 +108,7 @@ qsizetype QHttp1Configuration::numberOfConnectionsPerHost() const
 
 /*!
     \fn void QHttp1Configuration::swap(QHttp1Configuration &other)
-
-    Swaps this HTTP/1 configuration with \a other. This operation is very fast
-    and never fails.
+    \memberswap{HTTP/1 configuration}
 */
 
 /*!
@@ -131,8 +130,7 @@ qsizetype QHttp1Configuration::numberOfConnectionsPerHost() const
 /*!
     \fn size_t QHttp1Configuration::qHash(const QHttp1Configuration &key, size_t seed)
     \since 6.5
-
-    Returns the hash value for the \a key, using \a seed to seed the calculation.
+    \qhash{QHttp1Configuration}
 */
 
 /*!

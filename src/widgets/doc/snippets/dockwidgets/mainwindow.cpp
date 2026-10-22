@@ -3,7 +3,7 @@
 
 #include <QtWidgets>
 
-#include "mainwindow.h"
+#include "../include/mainwindow.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -40,6 +40,7 @@ void MainWindow::setupContents()
         QString fileName = parts[1];
 
         QFile chapterFile(fileName);
+        headingList = new QListWidget();
 
         chapterFile.open(QFile::ReadOnly);
         QListWidgetItem *item = new QListWidgetItem(chapterTitle, headingList);
@@ -56,7 +57,7 @@ void MainWindow::setupContents()
 
 void MainWindow::setupDockWindow()
 {
-//! [0]
+    //! [0]
     contentsWindow = new QDockWidget(tr("Table of Contents"), this);
     contentsWindow->setAllowedAreas(Qt::LeftDockWidgetArea
                                   | Qt::RightDockWidgetArea);
@@ -64,7 +65,7 @@ void MainWindow::setupDockWindow()
 
     headingList = new QListWidget(contentsWindow);
     contentsWindow->setWidget(headingList);
-//! [0]
+    //! [0]
 }
 
 void MainWindow::setupMenus()

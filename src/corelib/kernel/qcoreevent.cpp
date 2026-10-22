@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcoreevent.h"
 #include "qcoreevent_p.h"
@@ -79,8 +80,8 @@ Q_TRACE_POINT(qtcore, QEvent_dtor, QEvent *event, QEvent::Type type);
     \value ChildAdded                       An object gets a child (QChildEvent).
     \value ChildPolished                    A widget child gets polished (QChildEvent).
     \value ChildRemoved                     An object loses a child (QChildEvent).
-    \value [since 6.7] ChildWindowAdded     A child window was added to the window.
-    \value [since 6.7] ChildWindowRemoved   A child window was removed from the window.
+    \value [since 6.7] ChildWindowAdded     A child window was added to the window (QChildWindowEvent).
+    \value [since 6.7] ChildWindowRemoved   A child window was removed from the window (QChildWindowEvent).
     \value Clipboard                        The clipboard contents have changed.
     \value Close                            Widget was closed (QCloseEvent).
     \value CloseSoftwareInputPanel          A widget wants to close the software input panel (SIP).
@@ -97,7 +98,6 @@ Q_TRACE_POINT(qtcore, QEvent_dtor, QEvent *event, QEvent::Type type);
     \value DynamicPropertyChange            A dynamic property was added, changed, or removed from the object.
     \value EnabledChange                    Widget's enabled state has changed.
     \value Enter                            Mouse enters widget's boundaries (QEnterEvent).
-    \value EnterEditFocus                   An editor widget gains focus for editing. \c QT_KEYPAD_NAVIGATION must be defined.
     \value EnterWhatsThisMode               Send to toplevel widgets when the application enters "What's This?" mode.
     \value Expose                           Sent to a window when its on-screen contents are invalidated and need to be flushed from the backing store.
     \value FileOpen                         File open request (QFileOpenEvent).
@@ -142,7 +142,6 @@ Q_TRACE_POINT(qtcore, QEvent_dtor, QEvent *event, QEvent::Type type);
     \value LayoutDirectionChange            The direction of layouts changed.
     \value LayoutRequest                    Widget layout needs to be redone.
     \value Leave                            Mouse leaves widget's boundaries.
-    \value LeaveEditFocus                   An editor widget loses focus for editing. QT_KEYPAD_NAVIGATION must be defined.
     \value LeaveWhatsThisMode               Send to toplevel widgets when the application leaves "What's This?" mode.
     \value LocaleChange                     The system locale has changed.
     \value NonClientAreaMouseButtonDblClick A mouse double click occurred outside the client area (QMouseEvent).
@@ -230,6 +229,8 @@ Q_TRACE_POINT(qtcore, QEvent_dtor, QEvent *event, QEvent::Type type);
     \value WindowUnblocked                  The window is unblocked after a modal dialog exited.
     \value WinIdChange                      The window system identifier for this native widget has changed.
     \value ZOrderChange                     The widget's z-order has changed. This event is never sent to top level windows.
+    \value [since 6.9] SafeAreaMarginsChange
+                                            The window's safe area margins have changed.
 
     User events should have values between \c User and \c{MaxUser}:
 
@@ -327,7 +328,7 @@ QEvent::QEvent(Type type)
 
 QEvent::~QEvent()
 {
-    if (m_posted && QCoreApplication::instance())
+    if (m_posted && QCoreApplication::instanceExists())
         QCoreApplicationPrivate::removePostedEvent(this);
 }
 
@@ -520,7 +521,7 @@ int QEvent::registerEventType(int hint) noexcept
     timer is started with QObject::startTimer().
 
     The QChronoTimer class provides a high-level programming interface that
-    uses signals instead of events. It also provides single-shot timers.
+    uses signals instead of events.
 
     The event handler QObject::timerEvent() receives timer events.
 
@@ -564,6 +565,14 @@ Q_IMPL_EVENT_COMMON(QTimerEvent)
     Returns the Qt::TimerId of the timer associated with this event, which
     is the same identifier returned by QObject::startTimer() cast to
     Qt::TimerId.
+*/
+
+/*!
+    \fn QTimerEvent::matches(const QBasicTimer &timer) const
+    \since 6.9
+
+    Returns \c true if this timer event and \a timer have the same ID,
+    otherwise returns \c false.
 */
 
 /*!

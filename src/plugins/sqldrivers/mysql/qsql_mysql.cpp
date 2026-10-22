@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qsql_mysql_p.h"
 
@@ -53,7 +54,7 @@ struct QT_MYSQL_TIME
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcMysql, "qt.sql.mysql")
+Q_STATIC_LOGGING_CATEGORY(lcMysql, "qt.sql.mysql")
 
 using namespace Qt::StringLiterals;
 
@@ -587,7 +588,7 @@ QVariant QMYSQLResult::data(int field)
             else if (f.type.id() == QMetaType::Char)
                 return variant.toInt();
             return variant;
-        } else if (qIsTimeOrDate(f.myField->type) && f.bufLength >= sizeof(QT_MYSQL_TIME)) {
+        } else if (qIsTimeOrDate(f.myField->type)) {
             auto t = reinterpret_cast<const QT_MYSQL_TIME *>(f.outField);
             QDate date;
             QTime time;
@@ -1094,14 +1095,14 @@ static void qLibraryInit()
     }
 #endif // Q_NO_MYSQL_EMBEDDED
 
-#if defined(MARIADB_BASE_VERSION) || defined(MARIADB_VERSION_ID)
+#if defined(MARIADB_PACKAGE_VERSION_ID)
     qAddPostRoutine([]() { mysql_server_end(); });
 #endif
 }
 
 static void qLibraryEnd()
 {
-#if !defined(MARIADB_BASE_VERSION) && !defined(MARIADB_VERSION_ID)
+#if !defined(MARIADB_PACKAGE_VERSION_ID)
 # if !defined(Q_NO_MYSQL_EMBEDDED)
     mysql_library_end();
 # endif
@@ -1300,11 +1301,14 @@ bool QMYSQLDriver::open(const QString &db,
         {"MYSQL_OPT_SSL_CIPHER"_L1,      MYSQL_OPT_SSL_CIPHER,      setOptionString},
         {"MYSQL_OPT_SSL_CRL"_L1,         MYSQL_OPT_SSL_CRL,         setOptionString},
         {"MYSQL_OPT_SSL_CRLPATH"_L1,     MYSQL_OPT_SSL_CRLPATH,     setOptionString},
-#if defined(MYSQL_VERSION_ID) && MYSQL_VERSION_ID >= 50710
+#if defined(MYSQL_VERSION_ID) && MYSQL_VERSION_ID >= 50710 || defined(MARIADB_VERSION_ID)
         {"MYSQL_OPT_TLS_VERSION"_L1,     MYSQL_OPT_TLS_VERSION,     setOptionString},
 #endif
 #if defined(MYSQL_VERSION_ID) && MYSQL_VERSION_ID >= 50711 && !defined(MARIADB_VERSION_ID)
         {"MYSQL_OPT_SSL_MODE"_L1,        MYSQL_OPT_SSL_MODE,        setOptionSslMode},
+#endif
+#if defined(MYSQL_VERSION_ID) && MYSQL_VERSION_ID >= 50711 && MYSQL_VERSION_ID < 80000 || defined(MARIADB_VERSION_ID)
+        {"MYSQL_OPT_SSL_VERIFY_SERVER_CERT"_L1, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, setOptionBool},
 #endif
         {"MYSQL_OPT_CONNECT_TIMEOUT"_L1, MYSQL_OPT_CONNECT_TIMEOUT, setOptionInt},
         {"MYSQL_OPT_READ_TIMEOUT"_L1,    MYSQL_OPT_READ_TIMEOUT,    setOptionInt},
@@ -1360,7 +1364,7 @@ bool QMYSQLDriver::open(const QString &db,
 
     // try utf8 with non BMP first, utf8 (BMP only) if that fails
     static const char wanted_charsets[][8] = { "utf8mb4", "utf8" };
-#ifdef MARIADB_VERSION_ID
+#if defined(MARIADB_PACKAGE_VERSION_ID)
     MARIADB_CHARSET_INFO *cs = nullptr;
     for (const char *p : wanted_charsets) {
         cs = mariadb_get_charset_by_name(p);
@@ -1512,14 +1516,14 @@ QSqlRecord QMYSQLDriver::record(const QString &tablename) const
             + d->dbName + "' AND table_name = '%1'"_L1;
     const auto baTableName = tablename.toUtf8();
     QVarLengthArray<char> tableNameQuoted(baTableName.size() * 2 + 1);
-#if defined(MARIADB_VERSION_ID)
+#if defined(MARIADB_PACKAGE_VERSION_ID)
     const auto len = mysql_real_escape_string(d->mysql, tableNameQuoted.data(),
                                               baTableName.data(), baTableName.size());
 #else
     const auto len = mysql_real_escape_string_quote(d->mysql, tableNameQuoted.data(),
                                                     baTableName.data(), baTableName.size(), '\'');
 #endif
-    if (i.exec(stmt.arg(QString::fromUtf8(tableNameQuoted.data(), len)))) {
+    if (i.exec(stmt.arg(QUtf8StringView(tableNameQuoted.data(), len)))) {
         while (i.next()) {
             const auto colName = i.value(0).toString();
             const auto recordIdx = r.indexOf(colName);
@@ -1614,7 +1618,7 @@ QString QMYSQLDriver::formatValue(const QSqlField &field, bool trimStrings) cons
             }
             Q_FALLTHROUGH();
         case QMetaType::QDateTime:
-            if (QDateTime dt = field.value().toDateTime(); dt.isValid()) {
+            if (QDateTime dt = field.value().toDateTime().toUTC(); dt.isValid()) {
                 // MySQL format doesn't like the "Z" at the end, but does allow
                 // "+00:00" starting in version 8.0.19. However, if we got here,
                 // it's because the MySQL server is too old for prepared queries
@@ -1622,7 +1626,7 @@ QString QMYSQLDriver::formatValue(const QSqlField &field, bool trimStrings) cons
                 r = u'\'' +
                         dt.date().toString(Qt::ISODate) +
                         u'T' +
-                        dt.time().toString(Qt::ISODate) +
+                        dt.time().toString(Qt::ISODateWithMs) +
                         u'\'';
             }
             break;

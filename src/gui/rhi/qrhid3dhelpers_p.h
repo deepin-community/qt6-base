@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QRHID3DHELPERS_P_H
 #define QRHID3DHELPERS_P_H
@@ -17,8 +18,6 @@
 
 #include <rhi/qrhi.h>
 
-#include <QtGui/qwindow.h>
-
 #include <dxgi1_6.h>
 #include <dcomp.h>
 #include <d3dcompiler.h>
@@ -28,13 +27,12 @@
 #define QRHI_D3D12_HAS_DXC
 #endif
 
+#include "qdxgivsyncservice_p.h"
+#include "qdxgihdrinfo_p.h"
+
 QT_BEGIN_NAMESPACE
 
 namespace QRhiD3D {
-
-bool output6ForWindow(QWindow *w, IDXGIAdapter1 *adapter, IDXGIOutput6 **result);
-bool outputDesc1ForWindow(QWindow *w, IDXGIAdapter1 *adapter, DXGI_OUTPUT_DESC1 *result);
-float sdrWhiteLevelInNits(const DXGI_OUTPUT_DESC1 &outputDesc);
 
 pD3DCompile resolveD3DCompile();
 

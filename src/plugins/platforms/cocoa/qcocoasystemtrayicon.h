@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2012 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Christoph Schleifenbaum <christoph.schleifenbaum@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOCOASYSTEMTRAYICON_P_H
 #define QCOCOASYSTEMTRAYICON_P_H
@@ -28,7 +29,7 @@ Q_FORWARD_DECLARE_OBJC_CLASS(NSStatusItem);
 
 QT_BEGIN_NAMESPACE
 
-class Q_GUI_EXPORT QCocoaSystemTrayIcon : public QPlatformSystemTrayIcon
+class QCocoaSystemTrayIcon : public QPlatformSystemTrayIcon
 {
 public:
     QCocoaSystemTrayIcon() {}

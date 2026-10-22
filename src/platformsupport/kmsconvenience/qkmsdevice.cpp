@@ -19,7 +19,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(qLcKmsDebug, "qt.qpa.eglfs.kms")
+Q_STATIC_LOGGING_CATEGORY(qLcKmsDebug, "qt.qpa.eglfs.kms")
 
 enum OutputConfiguration {
     OutputConfigOff,
@@ -34,6 +34,10 @@ int QKmsDevice::crtcForConnector(drmModeResPtr resources, drmModeConnectorPtr co
 {
     int candidate = -1;
 
+    // m_crtc_allocator is a 32 bit mask, so CRTCs past the first 32 cannot be
+    // tracked and are not considered.
+    const int crtcCount = qMin(resources->count_crtcs, 32);
+
     for (int i = 0; i < connector->count_encoders; i++) {
         drmModeEncoderPtr encoder = drmModeGetEncoder(m_dri_fd, connector->encoders[i]);
         if (!encoder) {
@@ -46,9 +50,9 @@ int QKmsDevice::crtcForConnector(drmModeResPtr resources, drmModeConnectorPtr co
         quint32 possibleCrtcs = encoder->possible_crtcs;
         drmModeFreeEncoder(encoder);
 
-        for (int j = 0; j < resources->count_crtcs; j++) {
-            bool isPossible = possibleCrtcs & (1 << j);
-            bool isAvailable = !(m_crtc_allocator & (1 << j));
+        for (int j = 0; j < crtcCount; j++) {
+            bool isPossible = possibleCrtcs & (1u << j);
+            bool isAvailable = !(m_crtc_allocator & (1u << j));
             // Preserve the existing CRTC -> encoder -> connector routing if
             // any. It makes the initialization faster, and may be better
             // since we have a very dumb picking algorithm.
@@ -105,13 +109,12 @@ static bool parseModeline(const QByteArray &text, drmModeModeInfoPtr mode)
     char vsync[16];
     float fclock;
 
+    // Zero everything, not just the fields set below: the mode is handed to the
+    // kernel as a property blob, name included.
+    memset(mode, 0, sizeof(*mode));
     mode->type = DRM_MODE_TYPE_USERDEF;
-    mode->hskew = 0;
-    mode->vscan = 0;
-    mode->vrefresh = 0;
-    mode->flags = 0;
 
-    if (sscanf(text.constData(), "%f %hd %hd %hd %hd %hd %hd %hd %hd %15s %15s",
+    if (sscanf(text.constData(), "%f %hu %hu %hu %hu %hu %hu %hu %hu %15s %15s",
                &fclock,
                &mode->hdisplay,
                &mode->hsync_start,
@@ -151,17 +154,45 @@ static inline void assignPlane(QKmsOutput *output, QKmsPlane *plane)
     output->eglfs_plane = plane;
 }
 
-QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
-                                                      drmModeConnectorPtr connector,
-                                                      ScreenInfo *vinfo)
+static bool orderedScreenLessThan(const QKmsDevice::OrderedScreen &a,
+                                  const QKmsDevice::OrderedScreen &b)
 {
-    Q_ASSERT(vinfo);
+    return a.vinfo.virtualIndex < b.vinfo.virtualIndex;
+}
+
+QKmsDevice::OrderedScreen::OrderedScreen() : screen(nullptr) { }
+
+QKmsDevice::OrderedScreen::OrderedScreen(QPlatformScreen *screen,
+                                         const QKmsDevice::ScreenInfo &vinfo)
+    : screen(screen), vinfo(vinfo)
+{
+}
+
+QDebug operator<<(QDebug dbg, const QPlatformScreen *screen)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace() << "QPlatformScreen=" << (const void *)screen << " ("
+                  << (screen ? screen->name() : QString()) << ")";
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, const QKmsDevice::OrderedScreen &s)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace() << "OrderedScreen(" << s.screen << ") : " << s.vinfo.virtualIndex << " / "
+                  << s.vinfo.virtualPos << " / primary: " << s.vinfo.isPrimary << ")";
+    return dbg;
+}
+
+bool QKmsDevice::createScreenInfoForConnector(drmModeResPtr resources,
+                                              drmModeConnectorPtr connector, ScreenInfo &vinfo)
+{
     const QByteArray connectorName = nameForConnector(connector);
 
     const int crtc = crtcForConnector(resources, connector);
     if (crtc < 0) {
         qWarning() << "No usable crtc/encoder pair for connector" << connectorName;
-        return nullptr;
+        return false;
     }
 
     OutputConfiguration configuration;
@@ -195,45 +226,54 @@ QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
         configuration = OutputConfigPreferred;
     }
 
-    *vinfo = ScreenInfo();
-    vinfo->virtualIndex = userConnectorConfig.value(QStringLiteral("virtualIndex"), INT_MAX).toInt();
+    vinfo.virtualIndex = userConnectorConfig.value(QStringLiteral("virtualIndex"), INT_MAX).toInt();
     if (userConnectorConfig.contains(QStringLiteral("virtualPos"))) {
         const QByteArray vpos = userConnectorConfig.value(QStringLiteral("virtualPos")).toByteArray();
         const QByteArrayList vposComp = vpos.split(',');
-        if (vposComp.size() == 2)
-            vinfo->virtualPos = QPoint(vposComp[0].trimmed().toInt(), vposComp[1].trimmed().toInt());
+        if (vposComp.count() == 2) {
+            vinfo.virtualPos = QPoint(vposComp[0].trimmed().toInt(), vposComp[1].trimmed().toInt());
+            qCDebug(qLcKmsDebug) << "Parsing virtualPos to: " << vinfo.virtualPos;
+        } else {
+            vinfo.virtualPos = QPoint(-1, -1);
+            qCDebug(qLcKmsDebug) << "Could not parse virtualPos,"
+                                 << "will be calculated based on virtualIndex";
+        }
+    } else {
+        vinfo.virtualPos = QPoint(-1, -1);
     }
+
     if (userConnectorConfig.value(QStringLiteral("primary")).toBool())
-        vinfo->isPrimary = true;
+        vinfo.isPrimary = true;
 
     const uint32_t crtc_id = resources->crtcs[crtc];
 
     if (configuration == OutputConfigOff) {
         qCDebug(qLcKmsDebug) << "Turning off output" << connectorName;
         drmModeSetCrtc(m_dri_fd, crtc_id, 0, 0, 0, 0, 0, nullptr);
-        return nullptr;
+        return false;
     }
 
     // Skip disconnected output
     if (configuration == OutputConfigPreferred && connector->connection == DRM_MODE_DISCONNECTED) {
         qCDebug(qLcKmsDebug) << "Skipping disconnected output" << connectorName;
-        return nullptr;
+        return false;
     }
 
     if (configuration == OutputConfigSkip) {
         qCDebug(qLcKmsDebug) << "Skipping output" << connectorName;
-        return nullptr;
+        return false;
     }
 
     // Get the current mode on the current crtc
     drmModeModeInfo crtc_mode;
     memset(&crtc_mode, 0, sizeof crtc_mode);
     if (drmModeEncoderPtr encoder = drmModeGetEncoder(m_dri_fd, connector->encoder_id)) {
+
         drmModeCrtcPtr crtc = drmModeGetCrtc(m_dri_fd, encoder->crtc_id);
         drmModeFreeEncoder(encoder);
 
         if (!crtc)
-            return nullptr;
+            return false;
 
         if (crtc->mode_valid)
             crtc_mode = crtc->mode;
@@ -303,7 +343,7 @@ QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
 
     if (selected_mode < 0) {
         qWarning() << "No modes available for output" << connectorName;
-        return nullptr;
+        return false;
     } else {
         int width = modes[selected_mode].hdisplay;
         int height = modes[selected_mode].vdisplay;
@@ -425,7 +465,7 @@ QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
 
     QString planeListStr;
     for (QKmsPlane &plane : m_planes) {
-        if (plane.possibleCrtcs & (1 << output.crtc_index)) {
+        if (plane.possibleCrtcs & (1u << output.crtc_index)) {
             output.available_planes.append(plane);
             planeListStr.append(QString::number(plane.id));
             planeListStr.append(u' ');
@@ -502,11 +542,10 @@ QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
     }
 #endif
 
-    m_crtc_allocator |= (1 << output.crtc_index);
+    m_crtc_allocator |= (1u << output.crtc_index);
 
-    vinfo->output = output;
-
-    return createScreen(output);
+    vinfo.output = output;
+    return true;
 }
 
 drmModePropertyPtr QKmsDevice::connectorProperty(drmModeConnectorPtr connector, const QByteArray &name)
@@ -566,29 +605,233 @@ QKmsDevice::~QKmsDevice()
 #endif
 }
 
-struct OrderedScreen
+void QKmsDevice::checkConnectedScreens()
 {
-    OrderedScreen() : screen(nullptr) { }
-    OrderedScreen(QPlatformScreen *screen, const QKmsDevice::ScreenInfo &vinfo)
-        : screen(screen), vinfo(vinfo) { }
-    QPlatformScreen *screen;
-    QKmsDevice::ScreenInfo vinfo;
-};
+    if (m_screenConfig->headless())
+        return;
 
-QDebug operator<<(QDebug dbg, const OrderedScreen &s)
-{
-    QDebugStateSaver saver(dbg);
-    dbg.nospace() << "OrderedScreen(QPlatformScreen=" << s.screen << " (" << s.screen->name() << ") : "
-                  << s.vinfo.virtualIndex
-                  << " / " << s.vinfo.virtualPos
-                  << " / primary: " << s.vinfo.isPrimary
-                  << ")";
-    return dbg;
+    drmModeResPtr resources = drmModeGetResources(m_dri_fd);
+    if (!resources) {
+        qErrnoWarning(errno, "drmModeGetResources failed");
+        return;
+    }
+
+    QList<uint32_t> newConnects;
+    QList<uint32_t> newDisconnects;
+    const QMap<QString, QVariantMap> userConfig = m_screenConfig->outputSettings();
+
+    for (int i = 0; i < resources->count_connectors; i++) {
+        drmModeConnectorPtr connector = drmModeGetConnector(m_dri_fd, resources->connectors[i]);
+        if (!connector) {
+            qErrnoWarning(errno, "drmModeGetConnector failed");
+            continue;
+        }
+
+        const uint32_t id = connector->connector_id;
+
+        const QByteArray connectorName = nameForConnector(connector);
+        const QVariantMap userCConfig = userConfig.value(QString::fromUtf8(connectorName));
+        const QByteArray mode = userCConfig.value(QStringLiteral("mode")).toByteArray().toLower();
+        if (mode == "off" || mode == "skip")
+            continue;
+
+        if (connector->connection == DRM_MODE_CONNECTED) {
+            if (!m_registeredScreens.contains(id))
+                newConnects.append(id);
+            else
+                qCDebug(qLcKmsDebug) << "Connected screen already registered: connector id=" << id;
+        }
+
+        if (connector->connection == DRM_MODE_DISCONNECTED) {
+            if (m_registeredScreens.contains(id))
+                newDisconnects.append(id);
+            else
+                qCDebug(qLcKmsDebug) << "Disconnected screen not registered: connector id=" << id;
+        }
+
+        drmModeFreeConnector(connector);
+    }
+
+    if (newConnects.isEmpty() && newDisconnects.isEmpty()) {
+        qCDebug(qLcKmsDebug) << "EGLFS/KMS: KMS-device-change but no new connects or disconnects "
+                             << "to process - exiting";
+        return;
+    } else {
+        qCDebug(qLcKmsDebug) << "EGLFS/KMS: KMS-device-change, new connects:" << newConnects
+                             << ", and disconnected: " << newDisconnects;
+    }
+
+    const int remainingScreenCount = m_registeredScreens.count() - newDisconnects.count();
+    if (remainingScreenCount == 0 && m_headlessScreen == nullptr) {
+        qCDebug(qLcKmsDebug) << "EGLFS/KMS: creating headless screen before"
+                             << "unregistering screens to avoid having no screens";
+        m_headlessScreen = createHeadlessScreen();
+        registerScreen(m_headlessScreen, true, QPoint(),
+                       QList<QPlatformScreen *>() << m_headlessScreen);
+    }
+
+    for (uint32_t connectorId : std::as_const(newDisconnects)) {
+        OrderedScreen orderedScreen = m_registeredScreens.take(connectorId);
+        QPlatformScreen *screen = orderedScreen.screen;
+
+        // Clear active crtc of the plane associated with the screen output
+        // and, if applicable, disassociate it from the eglfs plane.
+        uint32_t crtcId = (orderedScreen.vinfo.output.eglfs_plane != nullptr)   // if we have an assigned plan
+                ? orderedScreen.vinfo.output.eglfs_plane->activeCrtcId          // we use the active crtc_id to disable everything
+                : orderedScreen.vinfo.output.crtc_id;                           // if not, we use the default crtc_id
+
+        if (orderedScreen.vinfo.output.eglfs_plane != nullptr)
+            orderedScreen.vinfo.output.eglfs_plane->activeCrtcId = 0;
+
+        // Clear crtc allocator bit for screen
+        const int crtcIdx = orderedScreen.vinfo.output.crtc_index;
+        m_crtc_allocator &= ~(1u << crtcIdx);
+
+        const int ret = drmModeSetCrtc(m_dri_fd, crtcId, 0, 0, 0, nullptr, 0, nullptr);
+
+        if (ret != 0) {
+            qCWarning(qLcKmsDebug) << "Could not disable CRTC" << crtcId
+                                   << "on connector" << connectorId << "removal:" << ret;
+        } else {
+            qCDebug(qLcKmsDebug) << "Disabled CRTC" << crtcId
+                                 << "for connector " << connectorId << "disconnected";
+        }
+
+        // As we've already turned the crtc off, we don't want to restore the saved_crtc
+        if (orderedScreen.vinfo.output.saved_crtc) {
+            drmModeFreeCrtc(orderedScreen.vinfo.output.saved_crtc);
+            orderedScreen.vinfo.output.saved_crtc = nullptr;
+            updateScreenOutput(orderedScreen.screen, orderedScreen.vinfo.output);
+        }
+
+        unregisterScreen(screen);
+    }
+
+    for (uint32_t connectorId : std::as_const(newConnects)) {
+        drmModeConnectorPtr connector = drmModeGetConnector(m_dri_fd, connectorId);
+        if (!connector) {
+            qErrnoWarning(errno, "drmModeGetConnector failed");
+            continue;
+        }
+
+        ScreenInfo vinfo;
+        bool succ = createScreenInfoForConnector(resources, connector, vinfo);
+        drmModeFreeConnector(connector);
+        if (!succ)
+            continue;
+
+        QPlatformScreen *screen = createScreen(vinfo.output);
+        if (!screen)
+            continue;
+
+        OrderedScreen orderedScreen(screen, vinfo);
+        m_registeredScreens[connectorId] = orderedScreen;
+    }
+
+    drmModeFreeResources(resources);
+
+    registerScreens(newConnects);
 }
 
-static bool orderedScreenLessThan(const OrderedScreen &a, const OrderedScreen &b)
+void QKmsDevice::updateScreens()
 {
-    return a.vinfo.virtualIndex < b.vinfo.virtualIndex;
+    if (m_screenConfig->headless())
+        return;
+
+    drmModeResPtr resources = drmModeGetResources(m_dri_fd);
+    if (!resources) {
+        qErrnoWarning(errno, "drmModeGetResources failed");
+        return;
+    }
+
+    QList<uint32_t> newConnects;
+    QList<OrderedScreen> newDisconnects;
+
+    for (int i = 0; i < resources->count_connectors; i++) {
+        drmModeConnectorPtr connector = drmModeGetConnector(m_dri_fd, resources->connectors[i]);
+        if (!connector)
+            continue;
+
+        if (m_registeredScreens.contains(connector->connector_id)) {
+            OrderedScreen &os = m_registeredScreens[connector->connector_id];
+
+            // As we're currently *re*creating the information of an used connector,
+            // we have to "fake" it being not in use at two places:
+            // (note: the only thing we'll restore is, in case of failure, the eglfs_plane
+            //  probably not necessary but good practice)
+
+            // 1) crtc_allocator for the crtc
+            const int crtcIdx = os.vinfo.output.crtc_index;
+            m_crtc_allocator &= ~(1u << crtcIdx);
+
+            // 2) the plane itself
+            if (os.vinfo.output.eglfs_plane)
+                os.vinfo.output.eglfs_plane->activeCrtcId = 0;
+
+            // We also save the saved crtc to restore it in case of success
+            // (otherwise QKmsOutput::restoreMode would restore to a second-latest crtc,
+            //  rather then the original one)
+            drmModeCrtcPtr saved_saved_crtc = nullptr;
+            if (os.vinfo.output.saved_crtc)
+                saved_saved_crtc = os.vinfo.output.saved_crtc;
+
+            ScreenInfo vinfo;
+            bool succ = createScreenInfoForConnector(resources, connector, vinfo);
+            if (!succ) {
+                // Here we either failed the recreate, or the config turns the screen off.
+                // In either case, we'll treat it as a disconnect
+
+                // Either this connector is disconnected, broken or turned off
+                // In all those cases we don't need or want to restore the previous mode
+                if (os.vinfo.output.saved_crtc) {
+                    drmModeFreeCrtc(os.vinfo.output.saved_crtc);
+                    os.vinfo.output.saved_crtc = nullptr;
+                    updateScreenOutput(os.screen, os.vinfo.output);
+                }
+
+                // move from one container to another - we don't want registerScreens
+                // to deal with this, but need to call registerScreens before the disconnects
+                newDisconnects.append(m_registeredScreens.take(connector->connector_id));
+                drmModeFreeConnector(connector);
+                continue;
+            }
+            drmModeFreeConnector(connector);
+
+            drmModeFreeCrtc(vinfo.output.saved_crtc);
+            vinfo.output.saved_crtc = saved_saved_crtc; // This is vital as config changes should
+                                                        // never override the original saved_crtc
+            os.vinfo = vinfo;
+            updateScreenOutput(os.screen, os.vinfo.output);
+
+        } else {
+            ScreenInfo vinfo;
+            bool succ = createScreenInfoForConnector(resources, connector, vinfo);
+            if (!succ) // If we fail here we do nothing, as there is nothing to restore or cleanup
+                continue;
+
+            QPlatformScreen *screen = createScreen(vinfo.output);
+            OrderedScreen orderedScreen(screen, vinfo);
+            m_registeredScreens[connector->connector_id] = orderedScreen;
+            newConnects.append(connector->connector_id);
+        }
+    }
+
+    // In case we end up with zero screen, we do the fallback first
+    if (m_registeredScreens.count() == 0 && m_headlessScreen == nullptr) {
+        // Create headless screen before unregistering screens to avoid having no screens
+        m_headlessScreen = createHeadlessScreen();
+        registerScreen(m_headlessScreen, true, QPoint(),
+                       QList<QPlatformScreen *>() << m_headlessScreen);
+    }
+
+    // Register new and updates existing screens
+    registerScreens(newConnects);
+
+    // Last we unregister the disconncted ones
+    for (const OrderedScreen &os : newDisconnects)
+        unregisterScreen(os.screen);
+
+    drmModeFreeResources(resources);
 }
 
 void QKmsDevice::createScreens()
@@ -599,7 +842,8 @@ void QKmsDevice::createScreens()
         QPlatformScreen *screen = createHeadlessScreen();
         if (screen) {
             qCDebug(qLcKmsDebug, "Headless mode enabled");
-            registerScreen(screen, true, QPoint(0, 0), QList<QPlatformScreen *>());
+            registerScreen(screen, true, QPoint(0, 0),
+                           QList<QPlatformScreen *>() << screen);
             return;
         } else {
             qWarning("QKmsDevice: Requested headless mode without support in the backend. Request is ignored.");
@@ -630,8 +874,7 @@ void QKmsDevice::createScreens()
 
     discoverPlanes();
 
-    QList<OrderedScreen> screens;
-
+    QList<uint32_t> newConnects;
     int wantedConnectorIndex = -1;
     bool ok;
     int idx = qEnvironmentVariableIntValue("QT_QPA_EGLFS_KMS_CONNECTOR_INDEX", &ok);
@@ -647,18 +890,46 @@ void QKmsDevice::createScreens()
             continue;
 
         drmModeConnectorPtr connector = drmModeGetConnector(m_dri_fd, resources->connectors[i]);
-        if (!connector)
+        if (!connector) {
+            qErrnoWarning(errno, "drmModeGetConnector failed");
             continue;
+        }
 
         ScreenInfo vinfo;
-        QPlatformScreen *screen = createScreenForConnector(resources, connector, &vinfo);
-        if (screen)
-            screens.append(OrderedScreen(screen, vinfo));
-
+        bool succ = createScreenInfoForConnector(resources, connector, vinfo);
+        uint32_t connectorId = connector->connector_id;
         drmModeFreeConnector(connector);
+        if (!succ)
+            continue;
+
+        QPlatformScreen *screen = createScreen(vinfo.output);
+        if (!screen)
+            continue;
+
+        OrderedScreen orderedScreen(screen, vinfo);
+        m_registeredScreens[connectorId] = orderedScreen;
+        newConnects.append(connectorId);
     }
 
     drmModeFreeResources(resources);
+
+    if (!qEnvironmentVariable("QT_QPA_EGLFS_HOTPLUG_ENABLED").isEmpty()
+        && newConnects.empty() && m_headlessScreen == nullptr) {
+        qCDebug(qLcKmsDebug) << "'QT_QPA_EGLFS_HOTPLUG_ENABLED' was set and no screen was connected/found during start-up."
+                             << "In order for Qt to operate properly a qt_headless screen will be created."
+                             << "It will be automatically removed as soon as the first screen is connected";
+        // Create headless screen before unregistering screens to avoid having no screens
+        m_headlessScreen = createHeadlessScreen();
+        registerScreen(m_headlessScreen, true, QPoint(),
+                       QList<QPlatformScreen *>() << m_headlessScreen);
+    }
+
+    registerScreens(newConnects);
+}
+
+void QKmsDevice::registerScreens(QList<uint32_t> newConnects)
+{
+    QList<OrderedScreen> screens = m_registeredScreens.values();
 
     // Use stable sort to preserve the original (DRM connector) order
     // for outputs with unspecified indices.
@@ -667,15 +938,15 @@ void QKmsDevice::createScreens()
 
     // The final list of screens is available, so do the second phase setup.
     // Hook up clone sources and targets.
-    for (const OrderedScreen &orderedScreen : screens) {
+    for (const OrderedScreen &orderedScreen : std::as_const(screens)) {
         QList<QPlatformScreen *> screensCloningThisScreen;
-        for (const OrderedScreen &s : screens) {
+        for (const OrderedScreen &s : std::as_const(screens)) {
             if (s.vinfo.output.clone_source == orderedScreen.vinfo.output.name)
                 screensCloningThisScreen.append(s.screen);
         }
         QPlatformScreen *screenThisScreenClones = nullptr;
         if (!orderedScreen.vinfo.output.clone_source.isEmpty()) {
-            for (const OrderedScreen &s : screens) {
+            for (const OrderedScreen &s : std::as_const(screens)) {
                 if (s.vinfo.output.name == orderedScreen.vinfo.output.clone_source) {
                     screenThisScreenClones = s.screen;
                     break;
@@ -692,44 +963,129 @@ void QKmsDevice::createScreens()
 
     // Figure out the virtual desktop and register the screens to QPA/QGuiApplication.
     QPoint pos(0, 0);
-    QList<QPlatformScreen *> siblings;
+    QList<OrderedScreen> siblings;
     QList<QPoint> virtualPositions;
     int primarySiblingIdx = -1;
+    QRegion deskRegion;
 
-    for (const OrderedScreen &orderedScreen : screens) {
+    for (const OrderedScreen &orderedScreen : std::as_const(screens)) {
         QPlatformScreen *s = orderedScreen.screen;
         QPoint virtualPos(0, 0);
         // set up a horizontal or vertical virtual desktop
-        if (orderedScreen.vinfo.virtualPos.isNull()) {
-            virtualPos = pos;
-            if (m_screenConfig->virtualDesktopLayout() == QKmsScreenConfig::VirtualDesktopLayoutVertical)
-                pos.ry() += s->geometry().height();
-            else
-                pos.rx() += s->geometry().width();
+        if (orderedScreen.vinfo.virtualPos.x() == -1 || orderedScreen.vinfo.virtualPos.y() == -1) {
+            if (orderedScreen.vinfo.output.clone_source.isEmpty()) {
+                virtualPos = pos;
+                if (m_screenConfig->virtualDesktopLayout() == QKmsScreenConfig::VirtualDesktopLayoutVertical)
+                    pos.ry() += s->geometry().height();
+                else
+                    pos.rx() += s->geometry().width();
+            } else {
+                for (int i = 0; i < screens.count(); i++) {
+                    const OrderedScreen &os = screens[i];
+                    if (os.vinfo.output.name == orderedScreen.vinfo.output.clone_source) {
+                        if (i >= virtualPositions.count()) {
+                            qCWarning(qLcKmsDebug)
+                                    << "WARNING: When using clone on kms config,"
+                                    << "you have to either order your screens (virtualIndex),"
+                                    << "so clones come after their source,"
+                                    << "or specify 'virtualPos' for each clone."
+                                    << "Otherwise desktop-geomerty might not work properly!";
+                            virtualPos = pos;
+                        } else {
+                            virtualPos = virtualPositions[i];
+                        }
+                        break;
+                    }
+                }
+            }
         } else {
             virtualPos = orderedScreen.vinfo.virtualPos;
         }
-        qCDebug(qLcKmsDebug) << "Adding QPlatformScreen" << s << "(" << s->name() << ")"
-                             << "to QPA with geometry" << s->geometry()
-                             << "and isPrimary=" << orderedScreen.vinfo.isPrimary;
+
         // The order in qguiapp's screens list will match the order set by
         // virtualIndex. This is not only handy but also required since for instance
         // evdevtouch relies on it when performing touch device - screen mapping.
         if (!m_screenConfig->separateScreens()) {
-            qCDebug(qLcKmsDebug) << "  virtual position is" << virtualPos;
-            siblings.append(s);
+            siblings.append(orderedScreen);
             virtualPositions.append(virtualPos);
             if (orderedScreen.vinfo.isPrimary)
                 primarySiblingIdx = siblings.size() - 1;
         } else {
-            registerScreen(s, orderedScreen.vinfo.isPrimary, virtualPos, QList<QPlatformScreen *>() << s);
+            const bool isNewScreen = newConnects.contains(orderedScreen.vinfo.output.connector_id);
+            if (isNewScreen) {
+                qCDebug(qLcKmsDebug) << "Adding QPlatformScreen" << s << "(" << s->name() << ")"
+                                     << "to QPA with geometry" << s->geometry()
+                                     << ", virtual position" << virtualPos
+                                     << "and isPrimary=" << orderedScreen.vinfo.isPrimary;
+                registerScreen(s, orderedScreen.vinfo.isPrimary, virtualPos,
+                               QList<QPlatformScreen *>() << s);
+                deskRegion += s->geometry();
+            } else {
+                qCDebug(qLcKmsDebug) << "Updating QPlatformScreen" << s << "(" << s->name() << ")"
+                                     << "to QPA with geometry" << s->geometry()
+                                     << ", virtual position" << virtualPos
+                                     << "and isPrimary=" << orderedScreen.vinfo.isPrimary;
+                updateScreen(s, virtualPos, QList<QPlatformScreen *>() << s);
+                deskRegion += s->geometry();
+            }
         }
     }
 
     if (!m_screenConfig->separateScreens()) {
+        QList<QPlatformScreen *> platformScreenSiblings;
+        for (int i = 0; i < siblings.count(); ++i) {
+            platformScreenSiblings.append(siblings[i].screen);
+        }
+
         // enable the virtual desktop
-        for (int i = 0; i < siblings.size(); ++i)
-            registerScreen(siblings[i], i == primarySiblingIdx, virtualPositions[i], siblings);
+        for (int i = 0; i < siblings.count(); ++i) {
+            QPlatformScreen *screen = platformScreenSiblings[i];
+            const OrderedScreen &orderedScreen = siblings[i];
+            const bool isNewScreen = newConnects.contains(orderedScreen.vinfo.output.connector_id);
+            if (isNewScreen) {
+                qCDebug(qLcKmsDebug) << "Adding QPlatformScreen" << screen
+                                     << "(" << screen->name() << ")"
+                                     << "to QPA with geometry" << screen->geometry()
+                                     << ", virtual position" << virtualPositions[i]
+                                     << "and isPrimary=" << orderedScreen.vinfo.isPrimary;
+                registerScreen(screen, i == primarySiblingIdx, virtualPositions[i],
+                               platformScreenSiblings);
+                deskRegion += screen->geometry();
+            } else {
+                qCDebug(qLcKmsDebug) << "Updating QPlatformScreen" << screen
+                                     << "(" << screen->name() << ")"
+                                     << "to QPA with geometry" << screen->geometry()
+                                     << ", virtual position" << virtualPositions[i]
+                                     << "and isPrimary=" << orderedScreen.vinfo.isPrimary;
+                updateScreen(screen, virtualPositions[i], platformScreenSiblings);
+                deskRegion += screen->geometry();
+            }
+        }
+    }
+
+    // Remove headless screen if other screens have become available
+    if (!m_registeredScreens.empty() && m_headlessScreen) {
+        unregisterScreen(m_headlessScreen);
+        m_headlessScreen = nullptr;
+    }
+
+    // Due to layout changes it's possible that we have to reset/bound
+    // the cursor into the available space (otherwise the cursor might vanish)
+    QPoint currCPos = QCursor::pos();
+    if (!deskRegion.contains(currCPos)) {
+
+        // We try boudingRect first
+        QRect deskRect = deskRegion.boundingRect();
+        currCPos.setX(qMin(currCPos.x(), deskRect.width()) - 1);
+        currCPos.setY(qMin(currCPos.y(), deskRect.height()) - 1);
+
+        // If boudingRect isn't good enough, we go to 0
+        if (!deskRegion.contains(currCPos))
+            currCPos = QPoint(0,0);
+
+        qCDebug(qLcKmsDebug) << "Due to desktop layout change, overriding cursor pos."
+                             << "Is: " << QCursor::pos() << ", will be: " << currCPos;
+        QCursor::setPos(currCPos);
     }
 }
 
@@ -747,6 +1103,25 @@ void QKmsDevice::registerScreenCloning(QPlatformScreen *screen,
     Q_UNUSED(screen);
     Q_UNUSED(screenThisScreenClones);
     Q_UNUSED(screensCloningThisScreen);
+}
+
+void QKmsDevice::unregisterScreen(QPlatformScreen *screen)
+{
+    Q_UNUSED(screen);
+}
+
+void QKmsDevice::updateScreen(QPlatformScreen *screen, const QPoint &virtualPos,
+                              const QList<QPlatformScreen *> &virtualSiblings)
+{
+    Q_UNUSED(screen);
+    Q_UNUSED(virtualPos);
+    Q_UNUSED(virtualSiblings);
+}
+
+void QKmsDevice::updateScreenOutput(QPlatformScreen *screen, const QKmsOutput &output)
+{
+    Q_UNUSED(screen);
+    Q_UNUSED(output);
 }
 
 // drm_property_type_is is not available in old headers
@@ -1000,6 +1375,14 @@ QKmsScreenConfig::QKmsScreenConfig()
     , m_pbuffers(false)
     , m_virtualDesktopLayout(VirtualDesktopLayoutHorizontal)
 {
+    if (qEnvironmentVariableIntValue("QT_QPA_KMS_DISABLE_HWCURSOR"))
+        m_hwCursor = false;
+}
+
+void QKmsScreenConfig::refreshConfig()
+{
+    m_outputSettings.clear();
+    loadConfig();
 }
 
 void QKmsScreenConfig::loadConfig()
@@ -1039,19 +1422,25 @@ void QKmsScreenConfig::loadConfig()
         m_headless = false;
     }
 
+    const QString headlessSizeStr = object.value(QLatin1String("headlessSize")).toString();
+    if (sscanf(headlessSizeStr.toUtf8().constData(), "%dx%d", &headlessSize.rwidth(),
+               &headlessSize.rheight()) == 2)
+        m_headlessSize = headlessSize;
+
     m_hwCursor = object.value("hwcursor"_L1).toBool(m_hwCursor);
     m_pbuffers = object.value("pbuffers"_L1).toBool(m_pbuffers);
     m_devicePath = object.value("device"_L1).toString();
     m_separateScreens = object.value("separateScreens"_L1).toBool(m_separateScreens);
 
-    const QString vdOriString = object.value("virtualDesktopLayout"_L1).toString();
+    const auto vdOriString = object.value("virtualDesktopLayout"_L1).toStringView();
     if (!vdOriString.isEmpty()) {
         if (vdOriString == "horizontal"_L1)
             m_virtualDesktopLayout = VirtualDesktopLayoutHorizontal;
         else if (vdOriString == "vertical"_L1)
             m_virtualDesktopLayout = VirtualDesktopLayoutVertical;
         else
-            qCWarning(qLcKmsDebug) << "Unknown virtualDesktopOrientation value" << vdOriString;
+            qCWarning(qLcKmsDebug, "Unknown virtualDesktopOrientation value %ls",
+                      qUtf16Printable(vdOriString.toString()));
     }
 
     const QJsonArray outputs = object.value("outputs"_L1).toArray();

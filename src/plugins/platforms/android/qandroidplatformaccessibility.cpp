@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 #include "qandroidplatformaccessibility.h"
@@ -7,12 +8,10 @@
 
 QT_BEGIN_NAMESPACE
 QAndroidPlatformAccessibility::QAndroidPlatformAccessibility()
-{
-    QtAndroidAccessibility::initialize();
-}
+{ }
 
 QAndroidPlatformAccessibility::~QAndroidPlatformAccessibility()
-{}
+{ }
 
 void QAndroidPlatformAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
 {
@@ -34,9 +33,22 @@ void QAndroidPlatformAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *
         QtAndroidAccessibility::notifyObjectFocus(event->uniqueId());
     } else if (event->type() == QAccessible::ValueChanged) {
         QtAndroidAccessibility::notifyValueChanged(event->uniqueId());
-    } else if (event->type() == QAccessible::ScrollingEnd) {
+    } else if (event->type() == QAccessible::ScrollingEnd
+               || event->type() == QAccessible::ScrollingPositionChanged) {
         QtAndroidAccessibility::notifyScrolledEvent(event->uniqueId());
+    } else if (event->type() == QAccessible::NameChanged
+               || event->type() == QAccessible::DescriptionChanged) {
+        QtAndroidAccessibility::notifyDescriptionOrNameChanged(event->uniqueId());
+    } else if (event->type() == QAccessible::Announcement) {
+        auto *announcementEvent = static_cast<QAccessibleAnnouncementEvent *>(event);
+        QtAndroidAccessibility::notifyAnnouncementEvent(announcementEvent->uniqueId(),
+                                                        announcementEvent->message());
     }
+    // Text-change events are intentionally not forwarded from here: typed and
+    // programmatic edits are announced from the IME chokepoints in
+    // QAndroidInputContext, which also cover the input-method and key-event
+    // paths that emit no QAccessible event. Forwarding TextInserted/Removed/
+    // Updated here too would double-announce programmatic changes.
 }
 
 void QAndroidPlatformAccessibility::setRootObject(QObject *obj)

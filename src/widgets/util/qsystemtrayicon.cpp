@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsystemtrayicon.h"
 #include "qsystemtrayicon_p.h"
@@ -28,6 +29,8 @@
 
 #include <private/qhighdpiscaling_p.h>
 #include <qpa/qplatformscreen.h>
+
+using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
 
@@ -460,7 +463,6 @@ QBalloonTip::QBalloonTip(const QIcon &icon, const QString &title,
                          const QString &message, QSystemTrayIcon *ti)
     : QWidget(nullptr, Qt::ToolTip),
       trayIcon(ti),
-      timerId(-1),
       showArrow(true)
 {
     setAttribute(Qt::WA_DeleteOnClose);
@@ -519,7 +521,7 @@ QBalloonTip::QBalloonTip(const QIcon &icon, const QString &title,
 #if QT_CONFIG(label)
     if (!icon.isNull()) {
         QLabel *iconLabel = new QLabel;
-        iconLabel->setPixmap(icon.pixmap(iconSize, iconSize));
+        iconLabel->setPixmap(icon.pixmap(QSize(iconSize, iconSize), devicePixelRatio()));
         iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         iconLabel->setMargin(2);
         layout->addWidget(iconLabel, 0, 0);
@@ -650,7 +652,7 @@ void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
     painter2.drawPath(path);
 
     if (msecs > 0)
-        timerId = startTimer(msecs);
+        timer.start(msecs * 1ms, this);
     show();
 }
 
@@ -663,8 +665,8 @@ void QBalloonTip::mousePressEvent(QMouseEvent *e)
 
 void QBalloonTip::timerEvent(QTimerEvent *e)
 {
-    if (e->timerId() == timerId) {
-        killTimer(timerId);
+    if (e->id() == timer.id()) {
+        timer.stop();
         if (!underMouse())
             close();
         return;

@@ -25,6 +25,7 @@
 #include "../shared/tlshelpers.h"
 
 #include <algorithm>
+#include <memory>
 
 using namespace std::chrono_literals;
 
@@ -38,7 +39,7 @@ bool dtlsErrorIsCleared(const QDtls &dtls)
     return dtls.dtlsError() == QDtlsError::NoError && dtls.dtlsErrorString().isEmpty();
 }
 
-using DtlsPtr = QScopedPointer<QDtls>;
+using DtlsPtr = std::unique_ptr<QDtls>;
 
 bool dtlsErrorIsCleared(DtlsPtr &dtls)
 {
@@ -207,9 +208,9 @@ void tst_QDtls::init()
     clientDropDgram = false;
     clientReceivedPlainText.clear();
 
-    connect(clientCrypto.data(), &QDtls::handshakeTimeout,
+    connect(clientCrypto.get(), &QDtls::handshakeTimeout,
             this, &tst_QDtls::handleHandshakeTimeout);
-    connect(serverCrypto.data(), &QDtls::handshakeTimeout,
+    connect(serverCrypto.get(), &QDtls::handshakeTimeout,
             this, &tst_QDtls::handleHandshakeTimeout);
 }
 
@@ -232,11 +233,7 @@ void tst_QDtls::construction()
 
     const auto params = dtls.cookieGeneratorParameters();
     QVERIFY(params.secret.size() > 0);
-#ifdef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
-    QCOMPARE(params.hash, QCryptographicHash::Sha1);
-#else
     QCOMPARE(params.hash, QCryptographicHash::Sha256);
-#endif
 
     QCOMPARE(dtls.dtlsConfiguration(), QSslConfiguration::defaultDtlsConfiguration());
 
@@ -384,8 +381,8 @@ void tst_QDtls::handshake()
     auto clientConfig = QSslConfiguration::defaultDtlsConfiguration();
 
     if (!withCertificate) {
-        connect(serverCrypto.data(), &QDtls::pskRequired, this, &tst_QDtls::pskRequested);
-        connect(clientCrypto.data(), &QDtls::pskRequired, this, &tst_QDtls::pskRequested);
+        connect(serverCrypto.get(), &QDtls::pskRequired, this, &tst_QDtls::pskRequested);
+        connect(clientCrypto.get(), &QDtls::pskRequired, this, &tst_QDtls::pskRequested);
         clientConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
         QVERIFY(clientConfig.peerCertificate().isNull());
     } else {
@@ -621,8 +618,8 @@ void tst_QDtls::protocolVersionMatching()
 
     connectHandshakeReadingSlots();
 
-    connect(serverCrypto.data(), &QDtls::pskRequired, this, &tst_QDtls::pskRequested);
-    connect(clientCrypto.data(), &QDtls::pskRequired, this, &tst_QDtls::pskRequested);
+    connect(serverCrypto.get(), &QDtls::pskRequired, this, &tst_QDtls::pskRequested);
+    connect(clientCrypto.get(), &QDtls::pskRequired, this, &tst_QDtls::pskRequested);
 
     auto serverConfig = defaultServerConfig;
     serverConfig.setProtocol(serverProtocol);
@@ -1309,7 +1306,7 @@ void tst_QDtls::connectEncryptedReadingSlots()
 
 bool tst_QDtls::verificationErrorDetected(QSslError::SslError code) const
 {
-    Q_ASSERT(clientCrypto.data());
+    Q_ASSERT(clientCrypto.get());
 
     const auto errors = clientCrypto->peerVerificationErrors();
     for (const QSslError &error : errors) {

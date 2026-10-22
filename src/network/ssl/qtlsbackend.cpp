@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtlsbackend_p.h"
 
@@ -1122,7 +1123,7 @@ void QTlsBackend::storePeerCertificateChain(QSslSocketPrivate *d,
 
     \note In Qt 6.1 it's only used on Windows, during so called 'CA fetch'.
 */
-void QTlsBackend::addTustedRoot(QSslSocketPrivate *d, const QSslCertificate &rootCert)
+void QTlsBackend::addTrustedRoot(QSslSocketPrivate *d, const QSslCertificate &rootCert)
 {
     Q_ASSERT(d);
     if (!d->configuration.caCertificates.contains(rootCert))
@@ -1387,7 +1388,7 @@ QByteArray TlsKey::pemHeader() const
         return QByteArrayLiteral("-----BEGIN DSA PRIVATE KEY-----");
     else if (algorithm() == QSsl::Ec)
         return QByteArrayLiteral("-----BEGIN EC PRIVATE KEY-----");
-    else if (algorithm() == QSsl::Dh)
+    else if (algorithm() == QSsl::Dh || algorithm() == QSsl::MlDsa)
         return QByteArrayLiteral("-----BEGIN PRIVATE KEY-----");
 
     Q_UNREACHABLE_RETURN({});
@@ -1408,7 +1409,7 @@ QByteArray TlsKey::pemFooter() const
         return QByteArrayLiteral("-----END DSA PRIVATE KEY-----");
     else if (algorithm() == QSsl::Ec)
         return QByteArrayLiteral("-----END EC PRIVATE KEY-----");
-    else if (algorithm() == QSsl::Dh)
+    else if (algorithm() == QSsl::Dh || algorithm() == QSsl::MlDsa)
         return QByteArrayLiteral("-----END PRIVATE KEY-----");
 
     Q_UNREACHABLE_RETURN({});

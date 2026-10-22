@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qiosplatformaccessibility.h"
 #include "quiaccessibilityelement.h"
@@ -13,8 +14,8 @@
     if (!iface || iface->state().invisible || (iface->text(QAccessible::Name).isEmpty() && iface->text(QAccessible::Value).isEmpty() && iface->text(QAccessible::Description).isEmpty()))
         return;
     QAccessible::Id accessibleId = QAccessible::uniqueId(iface);
-    UIAccessibilityElement *elem = [QT_MANGLE_NAMESPACE(QMacAccessibilityElement) elementWithId:accessibleId];
-    [m_accessibleElements addObject:elem];
+    if (UIAccessibilityElement *elem = [QT_MANGLE_NAMESPACE(QMacAccessibilityElement) elementWithId:accessibleId])
+        [m_accessibleElements addObject:elem];
 }
 
 - (void)createAccessibleContainer:(QAccessibleInterface *)iface

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "hpacktable_p.h"
 
@@ -207,6 +208,16 @@ quint32 FieldLookupTable::dynamicDataSize() const
     return dataSize;
 }
 
+quint32 FieldLookupTable::dynamicDataCapacity() const
+{
+    return tableCapacity;
+}
+
+quint32 FieldLookupTable::maxDynamicDataCapacity() const
+{
+    return maxTableSize;
+}
+
 void FieldLookupTable::clearDynamicTable()
 {
     searchIndex.clear();
@@ -385,6 +396,7 @@ bool FieldLookupTable::updateDynamicTableSize(quint32 size)
 {
     if (!size) {
         clearDynamicTable();
+        tableCapacity = 0;
         return true;
     }
 
@@ -403,10 +415,10 @@ void FieldLookupTable::setMaxDynamicTableSize(quint32 size)
     // This is for an external user, for example, HTTP2 protocol
     // layer that can receive SETTINGS frame from its peer.
     // No validity checks here, up to this external user.
-    // We update max size and capacity (this can also result in
-    // items evicted or even dynamic table completely cleared).
+    // We update max size only, the capacity will be updated
+    // later through the Dynamic Table Size Update mechanism
+    // in HPack.
     maxTableSize = size;
-    updateDynamicTableSize(size);
 }
 
 // This data is from the HPACK's specs and it's quite conveniently sorted,

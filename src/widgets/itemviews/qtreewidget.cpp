@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtreewidget.h"
 
@@ -42,7 +43,6 @@ public:
 
 /*!
     \enum QTreeWidgetItem::ChildIndicatorPolicy
-    \since 4.3
 
     \value ShowIndicator     The controls for expanding and collapsing will be shown for this item even if there are no children.
     \value DontShowIndicator   The controls for expanding and collapsing will never be shown even if there are children.  If the node is forced open the user will not be able to expand or collapse the item.
@@ -51,7 +51,6 @@ public:
 
 /*!
     \fn void QTreeWidgetItem::setDisabled(bool disabled)
-    \since 4.3
 
     Disables the item if \a disabled is true; otherwise enables the item.
 
@@ -60,7 +59,6 @@ public:
 
 /*!
     \fn bool QTreeWidgetItem::isDisabled() const
-    \since 4.3
 
     Returns \c true if the item is disabled; otherwise returns \c false.
 
@@ -525,6 +523,12 @@ bool QTreeModel::setHeaderData(int section, Qt::Orientation orientation,
 }
 
 /*!
+    \class QTreeModel
+    \inmodule QtWidgets
+    \internal
+*/
+
+/*!
   \reimp
 
   Returns the flags for the item referred to the given \a index.
@@ -581,7 +585,7 @@ void QTreeModel::ensureSorted(int column, Qt::SortOrder order,
     QList<QTreeWidgetItem*> lst = itm->children;
 
     int count = end - start + 1;
-    QList<QPair<QTreeWidgetItem *, int>> sorting(count);
+    QList<std::pair<QTreeWidgetItem *, int>> sorting(count);
     for (int i = 0; i < count; ++i) {
         sorting[i].first = lst.at(start + i);
         sorting[i].second = start + i;
@@ -661,8 +665,8 @@ void QTreeModel::ensureSorted(int column, Qt::SortOrder order,
   Used by the sorting functions.
 */
 
-bool QTreeModel::itemLessThan(const QPair<QTreeWidgetItem*,int> &left,
-                              const QPair<QTreeWidgetItem*,int> &right)
+bool QTreeModel::itemLessThan(const std::pair<QTreeWidgetItem*,int> &left,
+                              const std::pair<QTreeWidgetItem*,int> &right)
 {
     return *(left.first) < *(right.first);
 }
@@ -676,8 +680,8 @@ bool QTreeModel::itemLessThan(const QPair<QTreeWidgetItem*,int> &left,
   Used by the sorting functions.
 */
 
-bool QTreeModel::itemGreaterThan(const QPair<QTreeWidgetItem*,int> &left,
-                                 const QPair<QTreeWidgetItem*,int> &right)
+bool QTreeModel::itemGreaterThan(const std::pair<QTreeWidgetItem*,int> &left,
+                                 const std::pair<QTreeWidgetItem*,int> &right)
 {
     return *(right.first) < *(left.first);
 }
@@ -740,8 +744,19 @@ Qt::DropActions QTreeModel::supportedDropActions() const
     return view()->supportedDropActions();
 }
 
+Qt::DropActions QTreeModel::supportedDragActions() const
+{
+#if QT_CONFIG(draganddrop)
+    return view()->supportedDragActions();
+#else
+    return Qt::DropActions(Qt::IgnoreAction);
+#endif
+}
+
 void QTreeModel::itemChanged(QTreeWidgetItem *item)
 {
+    if (item->columnCount() <= 0)
+        return;
     SkipSorting skipSorting(this); //this is kind of wrong, but not doing this would kill performance
     QModelIndex left = index(item, 0);
     QModelIndex right = index(item, item->columnCount() - 1);
@@ -826,7 +841,7 @@ void QTreeModel::sortItems(QList<QTreeWidgetItem*> *items, int column, Qt::SortO
         return;
 
     // store the original order of indexes
-    QList<QPair<QTreeWidgetItem *, int>> sorting(items->size());
+    QList<std::pair<QTreeWidgetItem *, int>> sorting(items->size());
     for (int i = 0; i < sorting.size(); ++i) {
         sorting[i].first = items->at(i);
         sorting[i].second = i;
@@ -952,7 +967,6 @@ void QTreeModel::timerEvent(QTimerEvent *ev)
 
 /*!
     \fn void QTreeWidgetItem::sortChildren(int column, Qt::SortOrder order)
-    \since 4.2
 
     Sorts the children of the item using the given \a order,
     by the values in the given \a column.
@@ -969,7 +983,6 @@ void QTreeModel::timerEvent(QTimerEvent *ev)
 
 /*!
   \fn void QTreeWidgetItem::setSelected(bool select)
-  \since 4.2
 
   Sets the selected state of the item to \a select.
 
@@ -989,7 +1002,6 @@ void QTreeWidgetItem::setSelected(bool select)
 
 /*!
   \fn bool QTreeWidgetItem::isSelected() const
-  \since 4.2
 
   Returns \c true if the item is selected, otherwise returns \c false.
 
@@ -1002,7 +1014,6 @@ bool QTreeWidgetItem::isSelected() const
 
 /*!
   \fn void QTreeWidgetItem::setHidden(bool hide)
-  \since 4.2
 
   Hides the item if \a hide is true, otherwise shows the item.
   \note A call to this function has no effect if the item is not currently in a view. In particular,
@@ -1028,7 +1039,6 @@ void QTreeWidgetItem::setHidden(bool hide)
 
 /*!
   \fn bool QTreeWidgetItem::isHidden() const
-  \since 4.2
 
   Returns \c true if the item is hidden, otherwise returns \c false.
 
@@ -1050,7 +1060,6 @@ bool QTreeWidgetItem::isHidden() const
 
 /*!
   \fn void QTreeWidgetItem::setExpanded(bool expand)
-  \since 4.2
 
   Expands the item if \a expand is true, otherwise collapses the item.
   \warning The QTreeWidgetItem must be added to the QTreeWidget before calling this function.
@@ -1068,7 +1077,6 @@ void QTreeWidgetItem::setExpanded(bool expand)
 
 /*!
   \fn bool QTreeWidgetItem::isExpanded() const
-  \since 4.2
 
   Returns \c true if the item is expanded, otherwise returns \c false.
 
@@ -1085,7 +1093,6 @@ bool QTreeWidgetItem::isExpanded() const
 
 /*!
   \fn void QTreeWidgetItem::setFirstColumnSpanned(bool span)
-  \since 4.3
 
   Sets the first section to span all columns if \a span is true;
   otherwise all item sections are shown.
@@ -1103,7 +1110,6 @@ void QTreeWidgetItem::setFirstColumnSpanned(bool span)
 
 /*!
   \fn bool QTreeWidgetItem::isFirstColumnSpanned() const
-  \since 4.3
 
   Returns \c true if the item is spanning all the columns in a row; otherwise returns \c false.
 
@@ -1218,7 +1224,6 @@ bool QTreeWidgetItem::isFirstColumnSpanned() const
 
 /*!
     \fn QBrush QTreeWidgetItem::background(int column) const
-    \since 4.2
 
     Returns the brush used to render the background of the specified \a column.
 
@@ -1227,7 +1232,6 @@ bool QTreeWidgetItem::isFirstColumnSpanned() const
 
 /*!
     \fn void QTreeWidgetItem::setBackground(int column, const QBrush &brush)
-    \since 4.2
 
     Sets the background brush of the label in the given \a column to the
     specified \a brush.
@@ -1243,7 +1247,6 @@ bool QTreeWidgetItem::isFirstColumnSpanned() const
 
 /*!
     \fn QBrush QTreeWidgetItem::foreground(int column) const
-    \since 4.2
 
     Returns the brush used to render the foreground (e.g. text) of the
     specified \a column.
@@ -1255,7 +1258,6 @@ bool QTreeWidgetItem::isFirstColumnSpanned() const
 
 /*!
     \fn void QTreeWidgetItem::setForeground(int column, const QBrush &brush)
-    \since 4.2
 
     Sets the foreground brush of the label in the given \a column to the
     specified \a brush.
@@ -1281,7 +1283,6 @@ bool QTreeWidgetItem::isFirstColumnSpanned() const
 
 /*!
   \fn QSize QTreeWidgetItem::sizeHint(int column) const
-  \since 4.1
 
   Returns the size hint set for the tree item in the given
   \a column (see \l{QSize}).
@@ -1289,7 +1290,6 @@ bool QTreeWidgetItem::isFirstColumnSpanned() const
 
 /*!
   \fn void QTreeWidgetItem::setSizeHint(int column, const QSize &size)
-  \since 4.1
 
   Sets the size hint for the tree item in the given \a column to be \a size.
   If no size hint is set or \a size is invalid, the item
@@ -1895,8 +1895,6 @@ void QTreeWidgetItem::write(QDataStream &out) const
 #endif // QT_NO_DATASTREAM
 
 /*!
-    \since 4.1
-
     Constructs a copy of \a other. Note that type() and treeWidget()
     are not copied.
 
@@ -2032,8 +2030,6 @@ QTreeWidgetItem *QTreeWidgetItem::takeChild(int index)
 }
 
 /*!
-  \since 4.1
-
   Appends the given list of \a children to the item.
 
   \sa insertChildren(), takeChildren()
@@ -2044,8 +2040,6 @@ void QTreeWidgetItem::addChildren(const QList<QTreeWidgetItem*> &children)
 }
 
 /*!
-  \since 4.1
-
   Inserts the given list of \a children into the list of the item children at \a index .
 
   Children that have already been inserted somewhere else won't be inserted.
@@ -2099,8 +2093,6 @@ void QTreeWidgetItem::insertChildren(int index, const QList<QTreeWidgetItem*> &c
 }
 
 /*!
-  \since 4.1
-
   Removes the list of children and returns it, otherwise returns an empty list.
 */
 QList<QTreeWidgetItem*> QTreeWidgetItem::takeChildren()
@@ -2221,8 +2213,6 @@ QVariant QTreeWidgetItem::childrenCheckState(int column) const
 }
 
 /*!
-  \since 4.5
-
   Causes the model associated with this item to emit a
   \l{QAbstractItemModel::dataChanged()}{dataChanged}() signal for this
   item.
@@ -2302,7 +2292,7 @@ QDataStream &operator>>(QDataStream &in, QTreeWidgetItem &item)
 
 void QTreeWidgetPrivate::clearConnections()
 {
-    for (const QMetaObject::Connection &connection : connections)
+    for (QMetaObject::Connection &connection : connections)
         QObject::disconnect(connection);
 }
 
@@ -2417,7 +2407,7 @@ void QTreeWidgetPrivate::dataChanged(const QModelIndex &topLeft,
   \ingroup model-view
   \inmodule QtWidgets
 
-  \image windows-treeview.png
+  \image fusion-treeview.png {Directory displaying its contents as a tree}
 
   The QTreeWidget class is a convenience class that provides a standard
   tree widget with a classic item-based interface similar to that used by
@@ -2562,8 +2552,6 @@ void QTreeWidgetPrivate::dataChanged(const QModelIndex &topLeft,
 */
 
 /*!
-  \since 4.3
-
   \fn void QTreeWidget::removeItemWidget(QTreeWidgetItem *item, int column)
 
   Removes the widget set in the given \a item in the given \a column.
@@ -2643,8 +2631,6 @@ void QTreeWidget::setColumnCount(int columns)
 }
 
 /*!
-  \since 4.2
-
   Returns the tree widget's invisible root item.
 
   The invisible root item provides access to the tree widget's top-level items
@@ -2702,8 +2688,6 @@ void QTreeWidget::insertTopLevelItem(int index, QTreeWidgetItem *item)
 }
 
 /*!
-    \since 4.1
-
     Appends the \a item as a top-level item in the widget.
 
     \sa insertTopLevelItem()
@@ -2740,8 +2724,6 @@ int QTreeWidget::indexOfTopLevelItem(QTreeWidgetItem *item) const
 }
 
 /*!
-  \since 4.1
-
   Inserts the list of \a items at \a index in the top level in the view.
 
   Items that have already been inserted somewhere else won't be inserted.
@@ -2827,7 +2809,6 @@ void QTreeWidget::setHeaderLabels(const QStringList &labels)
 
 /*!
     \fn void QTreeWidget::setHeaderLabel(const QString &label)
-    \since 4.2
 
     Same as setHeaderLabels(QStringList(\a label)).
 */
@@ -2844,7 +2825,6 @@ QTreeWidgetItem *QTreeWidget::currentItem() const
 }
 
 /*!
-    \since 4.1
     Returns the current column in the tree widget.
 
     \sa setCurrentItem(), columnCount()
@@ -2868,7 +2848,6 @@ void QTreeWidget::setCurrentItem(QTreeWidgetItem *item)
 }
 
 /*!
-  \since 4.1
   Sets the current \a item in the tree widget and the current column to \a column.
 
   \sa currentItem()
@@ -2880,7 +2859,6 @@ void QTreeWidget::setCurrentItem(QTreeWidgetItem *item, int column)
 }
 
 /*!
-  \since 4.4
   Sets the current \a item in the tree widget and the current column to \a column,
   using the given \a command.
 
@@ -2933,8 +2911,6 @@ QRect QTreeWidget::visualItemRect(const QTreeWidgetItem *item) const
 }
 
 /*!
-  \since 4.1
-
   Returns the column used to sort the contents of the widget.
 
   \sa sortItems()
@@ -3014,8 +2990,6 @@ bool QTreeWidget::isPersistentEditorOpen(QTreeWidgetItem *item, int column) cons
 }
 
 /*!
-    \since 4.1
-
     Returns the widget displayed in the cell specified by \a item and the given \a column.
 
     \sa setItemWidget(), removeItemWidget()
@@ -3027,8 +3001,6 @@ QWidget *QTreeWidget::itemWidget(QTreeWidgetItem *item, int column) const
 }
 
 /*!
-    \since 4.1
-
     Sets the given \a widget to be displayed in the cell specified by the given
     \a item and \a column.
 
@@ -3094,8 +3066,6 @@ QList<QTreeWidgetItem*> QTreeWidget::findItems(const QString &text, Qt::MatchFla
 
 
 /*!
-  \since 4.3
-
   Returns the item above the given \a item.
 */
 QTreeWidgetItem *QTreeWidget::itemAbove(const QTreeWidgetItem *item) const
@@ -3109,8 +3079,6 @@ QTreeWidgetItem *QTreeWidget::itemAbove(const QTreeWidgetItem *item) const
 }
 
 /*!
-  \since 4.3
-
   Returns the item visually below the given \a item.
 */
 QTreeWidgetItem *QTreeWidget::itemBelow(const QTreeWidgetItem *item) const
@@ -3241,7 +3209,7 @@ QMimeData *QTreeWidget::mimeData(const QList<QTreeWidgetItem *> &items) const
     successfully handled by decoding the mime data and inserting it
     into the model; otherwise it returns \c false.
 
-    \sa supportedDropActions()
+    \sa supportedDropActions(), supportedDragActions
 */
 bool QTreeWidget::dropMimeData(QTreeWidgetItem *parent, int index,
                                const QMimeData *data, Qt::DropAction action)
@@ -3254,12 +3222,33 @@ bool QTreeWidget::dropMimeData(QTreeWidgetItem *parent, int index,
 /*!
   Returns the drop actions supported by this view.
 
-  \sa Qt::DropActions
+  \sa Qt::DropActions, supportedDragActions, dropMimeData()
 */
 Qt::DropActions QTreeWidget::supportedDropActions() const
 {
     return model()->QAbstractItemModel::supportedDropActions() | Qt::MoveAction;
 }
+
+#if QT_CONFIG(draganddrop)
+/*!
+    \property QTreeWidget::supportedDragActions
+    \brief the drag actions supported by this view
+
+    \since 6.10
+    \sa Qt::DropActions, supportedDropActions()
+*/
+Qt::DropActions QTreeWidget::supportedDragActions() const
+{
+    Q_D(const QTreeWidget);
+    return d->supportedDragActions.value_or(supportedDropActions());
+}
+
+void QTreeWidget::setSupportedDragActions(Qt::DropActions actions)
+{
+    Q_D(QTreeWidget);
+    d->supportedDragActions = actions;
+}
+#endif // QT_CONFIG(draganddrop)
 
 /*!
     Returns the QModelIndex associated with the given \a item in the given \a column.

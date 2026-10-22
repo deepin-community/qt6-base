@@ -1,7 +1,10 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
+#include "kernel/qwidget_p.h"
 #include <QtWidgets/qtwidgetsglobal.h>
+#include <utility>
 #if QT_CONFIG(colordialog)
 #include "qcolordialog.h"
 #endif
@@ -149,6 +152,16 @@ void QDialogPrivate::close(int resultCode)
     resetModalitySetByOpen();
 }
 
+void QDialogPrivate::recreate()
+{
+    // Calling destroy while having the eventLoop pointer in place would cause the
+    // event loop to exit - however, with recreate, we do not actually want this behavior
+    // but want to keep the QDialog alive, just with a different RHI configuration
+    QPointer<QEventLoop> existingEventLoop = std::exchange(eventLoop, nullptr);
+    QWidgetPrivate::recreate();
+    eventLoop = existingEventLoop;
+}
+
 QWindow *QDialogPrivate::transientParentWindow() const
 {
     Q_Q(const QDialog);
@@ -230,22 +243,30 @@ QVariant QDialogPrivate::styleHint(QPlatformDialogHelper::StyleHint hint) const
     the user to continue to use other windows in an application.
 
     The most common way to display a modal dialog is to call its
-    exec() function. When the user closes the dialog, exec() will
-    provide a useful \l{#return}{return value}. To close the dialog
-    and return the appropriate value, you must connect a default button,
-    e.g. an \uicontrol OK button to the accept() slot and a
-    \uicontrol Cancel button to the reject() slot. Alternatively, you
-    can call the done() slot with \c Accepted or \c Rejected.
+    \l open() function. Alternatively, you can call \l{setModal()}{setModal(true)} or
+    \l setWindowModality(), and then \l show(). In both cases, once the dialog is
+    displayed, the control is immediately returned to the caller. You must connect
+    to the \l finished() signal to know when the dialog is closed and what its
+    \l {#return} {return value} is. Alternatively, you can connect to the
+    \l accepted() and \l rejected() signals.
 
-    An alternative is to call setModal(true) or setWindowModality(),
-    then show(). Unlike exec(), show() returns control to the caller
-    immediately. Calling setModal(true) is especially useful for
-    progress dialogs, where the user must have the ability to interact
-    with the dialog, e.g.  to cancel a long running operation. If you
-    use show() and setModal(true) together to perform a long operation,
-    you must call QCoreApplication::processEvents() periodically during
-    processing to enable the user to interact with the dialog. (See
-    QProgressDialog.)
+    When implementing a custom dialog, to close the dialog and return an
+    appropriate value, connect a default button, for example, an OK button, to the
+    \l accept() slot, and a Cancel button to the \l reject() slot. Alternatively,
+    you can call the \l done() slot with \c Accepted or \c Rejected.
+
+    If you show the modal dialog to perform a long-running operation, it is
+    recommended to perform the operation in a background worker thread, so that
+    it does not interfere with the GUI thread.
+
+    \warning When using \l open() or \l show(), the modal dialog should not be
+    created on the stack, so that it does not get destroyed as soon as the control
+    returns to the caller.
+
+    \note There is a way to show a modal dialog in a blocking mode by calling
+    \l exec(). In this case, the control returns to the GUI thread only when the
+    dialog is closed. However, such approach is discouraged, because it creates a
+    nested event loop, which is not fully supported by some platforms.
 
     \section1 Modeless Dialogs
 
@@ -454,7 +475,7 @@ void QDialogPrivate::resetModalitySetByOpen()
         // open() changed the window modality and the user didn't touch it afterwards; restore it
         q->setWindowModality(Qt::WindowModality(resetModalityTo));
         q->setAttribute(Qt::WA_SetWindowModality, wasModalitySet);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         Q_ASSERT(resetModalityTo != Qt::WindowModal);
         q->setParent(q->parentWidget(), Qt::Dialog);
 #endif
@@ -508,7 +529,7 @@ void QDialog::open()
         d->wasModalitySet = testAttribute(Qt::WA_SetWindowModality);
         setWindowModality(Qt::WindowModal);
         setAttribute(Qt::WA_SetWindowModality, false);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         setParent(parentWidget(), Qt::Sheet);
 #endif
     }
@@ -741,12 +762,7 @@ void QDialog::closeEvent(QCloseEvent *e)
 
 void QDialog::setVisible(bool visible)
 {
-    Q_D(QDialog);
-
-    if (testAttribute(Qt::WA_WState_ExplicitShowHide) && testAttribute(Qt::WA_WState_Hidden) != visible)
-        return;
-
-    d->setVisible(visible);
+    QWidget::setVisible(visible);
 }
 
 void QDialogPrivate::setVisible(bool visible)

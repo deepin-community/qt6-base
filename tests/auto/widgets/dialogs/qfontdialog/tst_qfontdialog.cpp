@@ -44,8 +44,10 @@ private slots:
 #ifndef QT_NO_STYLE_STYLESHEET
     void qtbug_41513_stylesheetStyle();
 #endif
+    void noCrashWhenParentIsDeleted();
 
     void hideNativeByDestruction();
+    void optionsEmptyByDefault();
 
 private:
     void runSlotWithFailsafeTimer(const char *member);
@@ -88,7 +90,7 @@ void tst_QFontDialog::postKeyReturn() {
 
 void tst_QFontDialog::testGetFont()
 {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QEXPECT_FAIL("", "Sending QTest::keyClick to OSX font dialog helper fails, see QTBUG-24321", Continue);
 #endif
     bool ok = false;
@@ -211,6 +213,37 @@ void tst_QFontDialog::qtbug_41513_stylesheetStyle()
 }
 #endif // QT_NO_STYLE_STYLESHEET
 
+void tst_QFontDialog::noCrashWhenParentIsDeleted()
+{
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        bool accepted = false;
+        const QFont testFont = QFont(QStringLiteral("QtsSpecialTestFont1"));
+        QFontDialog::getFont(&accepted, testFont,
+                             mainWindow.get(),
+                             QLatin1String("QFontDialog - crash parent test"),
+                             QFontDialog::DontUseNativeDialog);
+        QVERIFY(!accepted);
+        QVERIFY(!mainWindow.get());
+    }
+
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        bool accepted = false;
+        const QFont testFont = QFont(QStringLiteral("QtsSpecialTestFont2"));
+        QFontDialog::getFont(&accepted, testFont,
+                             mainWindow.get(),
+                             QLatin1String("QFontDialog - crash parent test"),
+                             QFontDialog::NoButtons | QFontDialog::DontUseNativeDialog);
+        QVERIFY(accepted);
+        QVERIFY(!mainWindow.get());
+    }
+}
+
 void tst_QFontDialog::testNonStandardFontSize()
 {
     QList<int> standardSizesList = QFontDatabase::standardSizes();
@@ -264,6 +297,43 @@ void tst_QFontDialog::hideNativeByDestruction()
     // active
     window.activateWindow();
     QVERIFY(QTest::qWaitFor(windowActive));
+}
+
+class FontDialog : public QFontDialog
+{
+    Q_OBJECT
+protected:
+    bool event(QEvent *e) override
+    {
+        if (e->type() == QEvent::Polish) {
+            const bool result = QFontDialog::event(e);
+            polished = true;
+            return result;
+        }
+        return QFontDialog::event(e);
+    }
+public:
+    bool polished = false;
+};
+
+void tst_QFontDialog::optionsEmptyByDefault()
+{
+    FontDialog fd;
+    QCOMPARE(fd.options(), QFontDialog::FontDialogOptions());
+    QVERIFY(!fd.testOption(QFontDialog::DontUseNativeDialog));
+
+    {
+        FontDialog subclassed;
+        QCOMPARE(subclassed.options(), QFontDialog::FontDialogOptions());
+        QTRY_VERIFY(subclassed.testOption(QFontDialog::DontUseNativeDialog));
+    }
+    {
+        FontDialog subclassed;
+        subclassed.setOption(QFontDialog::DontUseNativeDialog, false);
+        QCOMPARE(subclassed.options(), QFontDialog::FontDialogOptions());
+        QTRY_VERIFY(subclassed.polished);
+        QVERIFY(!subclassed.testOption(QFontDialog::DontUseNativeDialog));
+    }
 }
 
 QTEST_MAIN(tst_QFontDialog)

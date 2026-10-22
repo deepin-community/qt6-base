@@ -12,21 +12,13 @@ int main(int argc, char **argv)
     bool smallScreen = QApplication::arguments().contains("-small-screen");
 
     PathStrokeWidget pathStrokeWidget(smallScreen);
-    QStyle *arthurStyle = new ArthurStyle();
-    pathStrokeWidget.setStyle(arthurStyle);
     const QList<QWidget *> widgets = pathStrokeWidget.findChildren<QWidget *>();
-    for (QWidget *w : widgets) {
-        w->setStyle(arthurStyle);
+    for (QWidget *w : widgets)
         w->setAttribute(Qt::WA_AcceptTouchEvents);
-    }
 
     if (smallScreen)
         pathStrokeWidget.showFullScreen();
     else
         pathStrokeWidget.show();
-
-#ifdef QT_KEYPAD_NAVIGATION
-    QApplication::setNavigationMode(Qt::NavigationModeCursorAuto);
-#endif
     return app.exec();
 }

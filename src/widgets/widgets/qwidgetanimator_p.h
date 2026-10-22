@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWIDGET_ANIMATOR_P_H
 #define QWIDGET_ANIMATOR_P_H
@@ -31,16 +32,17 @@ class QWidgetAnimator : public QObject
 {
     Q_OBJECT
 public:
+    enum class AnimationRule {
+        Run,
+        Stop,
+    };
+    Q_ENUM(AnimationRule)
+
     QWidgetAnimator(QMainWindowLayout *layout);
-    void animate(QWidget *widget, const QRect &final_geometry, bool animate);
+    void animate(QWidget *widget, const QRect &final_geometry, AnimationRule rule);
     bool animating() const;
 
     void abort(QWidget *widget);
-
-#if QT_CONFIG(animation)
-private Q_SLOTS:
-    void animationFinished();
-#endif
 
 private:
     typedef QHash<QWidget*, QPointer<QPropertyAnimation> > AnimationMap;

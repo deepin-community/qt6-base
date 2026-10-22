@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef Q20ITERATOR_H
 #define Q20ITERATOR_H
 
@@ -39,7 +40,7 @@ namespace q20 {
 #endif
 } // namespace q20
 
-// like q20::iter_reference_t
+// like std::iter_reference_t
 namespace q20 {
 #ifdef __cpp_lib_ranges
     using std::iter_reference_t;

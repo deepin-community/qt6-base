@@ -6,14 +6,14 @@
 \ingroup cmake-commands-qtcore
 
 \title qt_android_generate_deployment_settings
-\keyword qt6_android_generate_deployment_settings
+\keyword qt_android_generate_deployment_settings()
 
 \summary {Generates the deployment settings file needed by androiddeployqt.}
 
 \include cmake-find-package-core.qdocinc
 
 \cmakecommandsince 6.0
-\warning This command is deprecated since Qt 6.5. Use \l qt_add_executable instead.
+\warning This command is deprecated since Qt 6.5. Use \l qt_add_executable() instead.
 \cmakecommandandroidonly
 
 \section1 Synopsis
@@ -50,10 +50,10 @@ Some are provided by Qt, others by CMake or the Android NDK.
 
 The properties below will be read from the specified \c{target}. Note that this
 command is called as part of target finalization (see
-\l{qt6_finalize_target}{qt_finalize_target()}). If you are using
-\l{qt6_add_executable}{qt_add_executable()} to create the target and you need to
+\l qt_finalize_target()). If you are using
+\l qt_add_executable() to create the target and you need to
 modify some of these target properties, you need to ensure that target
-finalization is deferred. See \l{qt6_add_executable}{qt_add_executable()} for
+finalization is deferred. See \l qt_add_executable() for
 how to accomplish this.
 
 \list
@@ -63,19 +63,23 @@ how to accomplish this.
 \li \l{cmake-target-property-QT_ANDROID_MIN_SDK_VERSION}{QT_ANDROID_MIN_SDK_VERSION}
 \li \l{cmake-target-property-QT_ANDROID_PACKAGE_SOURCE_DIR}{QT_ANDROID_PACKAGE_SOURCE_DIR}
 \li \l{cmake-target-property-QT_ANDROID_TARGET_SDK_VERSION}{QT_ANDROID_TARGET_SDK_VERSION}
+\li \l{cmake-target-property-QT_ANDROID_COMPILE_SDK_VERSION}{QT_ANDROID_COMPILE_SDK_VERSION}
 \li \l{cmake-target-property-QT_ANDROID_PACKAGE_NAME}{QT_ANDROID_PACKAGE_NAME}
+\li \l{cmake-target-property-QT_ANDROID_APP_NAME}{QT_ANDROID_APP_NAME}
+\li \l{cmake-target-property-QT_ANDROID_APP_ICON}{QT_ANDROID_APP_ICON}
 \li \l{cmake-target-property-QT_ANDROID_VERSION_NAME}{QT_ANDROID_VERSION_NAME}
 \li \l{cmake-target-property-QT_ANDROID_VERSION_CODE}{QT_ANDROID_VERSION_CODE}
+\li \l{cmake-target-property-QT_ANDROID_LEGACY_PACKAGING}{QT_ANDROID_LEGACY_PACKAGING}
 \li \l{cmake-target-property-QT_QML_IMPORT_PATH}{QT_QML_IMPORT_PATH}
 \li \l{cmake-target-property-QT_QML_ROOT_PATH}{QT_QML_ROOT_PATH}
-\li \l{cmake-target-property-qt_no_entrypoint}{qt_no_entrypoint}
+\li \l{cmake-target-property-QT_NO_ENTRYPOINT}{QT_NO_ENTRYPOINT}
 \endlist
 
 Upon return, the \c{QT_ANDROID_DEPLOYMENT_SETTINGS_FILE} target property will
 contain the location of the generated deployment settings file.
 
-\sa {qt6_android_add_apk_target}{qt_android_add_apk_target()},
-    {qt6_finalize_target}{qt_finalize_target()}
+\sa qt_android_add_apk_target(),
+    qt_finalize_target()
 
 \section1 Example
 

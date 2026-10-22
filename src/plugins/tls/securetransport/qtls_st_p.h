@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Jeremy Lainé <jeremy.laine@m4x.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTLS_ST_P_H
 #define QTLS_ST_P_H
@@ -27,9 +28,9 @@
 #include <QtNetwork/qabstractsocket.h>
 #include <QtNetwork/private/qsslsocket_p.h>
 
-#warning SecureTransport was deprecated in macOS 10.15 and iOS 13, \
-and is no longer supported. We should be using Network.framework instead. \
-See QTBUG-85231 for more information.
+// SecureTransport was deprecated in macOS 10.15 and iOS 13, and is no
+// longer supported. We should be using Network.framework instead.
+// See QTBUG-119171 for more information.
 QT_WARNING_DISABLE_DEPRECATED
 
 #include <Security/Security.h>

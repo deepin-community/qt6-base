@@ -62,6 +62,7 @@ private slots:
     void task197996_visibility();
 
     void extraCpuConsumption(); // QTBUG-54676
+    void iconSizeStyleSheet();
 };
 
 
@@ -1000,7 +1001,7 @@ void tst_QToolBar::widgetAction()
     delete a;
 }
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 QT_BEGIN_NAMESPACE
 extern void qt_set_sequence_auto_mnemonic(bool b);
 QT_END_NAMESPACE
@@ -1011,7 +1012,7 @@ void tst_QToolBar::accel()
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This fails. Figure out why.");
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     qt_set_sequence_auto_mnemonic(true);
 #endif
     QMainWindow mw;
@@ -1027,7 +1028,7 @@ void tst_QToolBar::accel()
     QTest::keyClick(&mw, Qt::Key_T, Qt::AltModifier);
 
     QTRY_COMPARE(spy.size(), 1);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     qt_set_sequence_auto_mnemonic(false);
 #endif
 }
@@ -1162,6 +1163,46 @@ void tst_QToolBar::extraCpuConsumption()
     QCOMPARE(eventCounter->showEventsCount(), eventCounter->hideEventsCount());
     QCOMPARE(eventCounter->showEventsCount(), uint(1));
     QCOMPARE(eventCounter->hideEventsCount(), uint(1));
+}
+
+void tst_QToolBar::iconSizeStyleSheet()
+{
+    auto resetStyleSheet = qScopeGuard([]{
+        qApp->setStyleSheet({});
+    });
+
+    QMainWindow mw;
+    QToolBar tb1;
+    QToolBar tb2;
+    mw.addToolBar(&tb1);
+    mw.addToolBar(&tb2);
+
+    const QString styleSheet = "QToolBar { icon-size: %1px; }";
+
+    const int targetIconSize1 = 48;
+    const int targetIconSize2 = 58;
+    const int targetIconSize3 = 68;
+    const int targetIconSize4 = 78;
+
+    // Set iconSize via stylesheet using icon-size property first time
+    qApp->setStyleSheet(styleSheet.arg(targetIconSize1));
+    QTRY_COMPARE(tb1.iconSize(), QSize(targetIconSize1, targetIconSize1));
+    QTRY_COMPARE(tb2.iconSize(), QSize(targetIconSize1, targetIconSize1));
+
+    qApp->setStyleSheet(styleSheet.arg(targetIconSize2));
+    QTRY_COMPARE(tb1.iconSize(), QSize(targetIconSize2, targetIconSize2));
+    QTRY_COMPARE(tb2.iconSize(), QSize(targetIconSize2, targetIconSize2));
+
+    // Set tb2's icon size explicitly via setIconSize()
+    tb2.setIconSize(QSize(targetIconSize3, targetIconSize3));
+    QCOMPARE(tb1.iconSize(), QSize(targetIconSize2, targetIconSize2));
+    QCOMPARE(tb2.iconSize(), QSize(targetIconSize3, targetIconSize3));
+
+    // Set iconSize via stylesheet using icon-size property after setting using setIconSize()
+    qApp->setStyleSheet(styleSheet.arg(targetIconSize4));
+    // setIconSize has precedence over iconSize set via stylesheet using icon-size property
+    QTRY_COMPARE(tb1.iconSize(), QSize(targetIconSize4, targetIconSize4));
+    QCOMPARE(tb2.iconSize(), QSize(targetIconSize3, targetIconSize3));
 }
 
 QTEST_MAIN(tst_QToolBar)

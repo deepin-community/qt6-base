@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qgesturerecognizer.h"
 
@@ -131,7 +132,7 @@ QGestureRecognizer::~QGestureRecognizer()
     Reimplement this function to create a custom QGesture-derived gesture
     object if necessary.
 
-    The application takes ownership of the created gesture object.
+    QApplication takes ownership of the created gesture object.
 */
 QGesture *QGestureRecognizer::create(QObject *target)
 {
@@ -140,7 +141,7 @@ QGesture *QGestureRecognizer::create(QObject *target)
 }
 
 /*!
-    This function is called by the framework to reset a given \a gesture.
+    This function is called by Qt to reset a given \a gesture.
 
     Reimplement this function to implement additional requirements for custom QGesture
     objects. This may be necessary if you implement a custom QGesture whose properties
@@ -176,11 +177,11 @@ void QGestureRecognizer::reset(QGesture *gesture)
     Registers the given \a recognizer in the gesture framework and returns a gesture ID
     for it.
 
-    The application takes ownership of the \a recognizer and returns the gesture type
-    ID associated with it. For gesture recognizers which handle custom QGesture
-    objects (i.e., those which return Qt::CustomGesture in a QGesture::gestureType()
-    function) the return value is a generated gesture ID with the Qt::CustomGesture
-    flag set.
+    QApplication takes ownership of the \a recognizer, and this function
+    returns the gesture type ID associated with it. For gesture recognizers
+    that handle custom QGesture objects (those that return Qt::CustomGesture in
+    a QGesture::gestureType() function), the return value is a generated
+    gesture ID with the Qt::CustomGesture flag set.
 
     \sa unregisterRecognizer(), QGestureRecognizer::create(), QGesture
 */

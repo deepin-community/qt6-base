@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "private/qbmphandler_p.h"
 
@@ -174,8 +175,7 @@ static inline uint apply_scale(uint value, uint scale)
 static bool read_dib_fileheader(QDataStream &s, BMP_FILEHDR &bf)
 {
     // read BMP file header
-    s >> bf;
-    if (s.status() != QDataStream::Ok)
+    if (!(s >> bf))
         return false;
 
     // check header
@@ -187,8 +187,7 @@ static bool read_dib_fileheader(QDataStream &s, BMP_FILEHDR &bf)
 
 static bool read_dib_infoheader(QDataStream &s, BMP_INFOHDR &bi)
 {
-    s >> bi;                                        // read BMP info header
-    if (s.status() != QDataStream::Ok)
+    if (!(s >> bi))                                       // read BMP info header
         return false;
 
     int nbits = bi.biBitCount;
@@ -300,6 +299,7 @@ static bool read_dib_body(QDataStream &s, const BMP_INFOHDR &bi, qint64 datapos,
 
     if (!QImageIOHandler::allocateImage(QSize(w, h), format, &image))
         return false;
+    image.fill(0);
     if (ncols > 0) {                                // read color table
         image.setColorCount(ncols);
         uchar rgb[4];
@@ -401,7 +401,7 @@ static bool read_dib_body(QDataStream &s, const BMP_INFOHDR &bi, qint64 datapos,
                             break;
                         case 2:                        // delta (jump)
                         {
-                            quint8 tmp;
+                            quint8 tmp = 0;
                             d->getChar((char *)&tmp);
                             x += tmp;
                             d->getChar((char *)&tmp);
@@ -428,7 +428,7 @@ static bool read_dib_body(QDataStream &s, const BMP_INFOHDR &bi, qint64 datapos,
                                 *p++ = b & 0x0f;
                             }
                             if (c & 1) {
-                                unsigned char tmp;
+                                unsigned char tmp = 0;
                                 d->getChar((char *)&tmp);
                                 *p++ = tmp >> 4;
                             }
@@ -453,7 +453,6 @@ static bool read_dib_body(QDataStream &s, const BMP_INFOHDR &bi, qint64 datapos,
                 }
             }
         } else if (comp == BMP_RGB) {                // no compression
-            memset(data, 0, h*bpl);
             while (--h >= 0) {
                 if (d->read((char*)buf,buflen) != buflen)
                     break;
@@ -490,7 +489,7 @@ static bool read_dib_body(QDataStream &s, const BMP_INFOHDR &bi, qint64 datapos,
                             break;
                         case 2:                        // delta (jump)
                             {
-                                quint8 tmp;
+                                quint8 tmp = 0;
                                 d->getChar((char *)&tmp);
                                 x += tmp;
                                 d->getChar((char *)&tmp);
@@ -522,7 +521,7 @@ static bool read_dib_body(QDataStream &s, const BMP_INFOHDR &bi, qint64 datapos,
                     if (p + b > endp)
                         b = endp-p;
 
-                    char tmp;
+                    char tmp = 0;
                     d->getChar(&tmp);
                     memset(p, tmp, b); // repeat pixel
                     x += b;
@@ -541,7 +540,7 @@ static bool read_dib_body(QDataStream &s, const BMP_INFOHDR &bi, qint64 datapos,
         QRgb *p;
         QRgb  *end;
         uchar *buf24 = new uchar[bpl];
-        int    bpl24 = ((w*nbits+31)/32)*4;
+        qint64 bpl24 = ((qint64(w)*nbits+31)/32)*4;
         uchar *b;
         int c;
 
@@ -588,7 +587,7 @@ bool qt_write_dib(QDataStream &s, const QImage &image, int bpl, int bpl_bmp, int
     if (!d->isWritable())
         return false;
 
-    BMP_INFOHDR bi;
+    BMP_INFOHDR bi = { };
     bi.biSize               = BMP_WIN;                // build info header
     bi.biWidth               = image.width();
     bi.biHeight               = image.height();
@@ -601,8 +600,7 @@ bool qt_write_dib(QDataStream &s, const QImage &image, int bpl, int bpl_bmp, int
     bi.biYPelsPerMeter = image.dotsPerMeterY() ? image.dotsPerMeterY() : 2834;
     bi.biClrUsed       = image.colorCount();
     bi.biClrImportant  = image.colorCount();
-    s << bi;                                        // write info header
-    if (s.status() != QDataStream::Ok)
+    if (!(s << bi))                                        // write info header
         return false;
 
     if (image.depth() != 32) {                // write color table

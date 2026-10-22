@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTLSBACKEND_P_H
 #define QTLSBACKEND_P_H
@@ -33,7 +34,6 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
-#include <QtCore/qglobal.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qmap.h>
@@ -387,7 +387,7 @@ public:
     static void setNegotiatedProtocol(QSslSocketPrivate *d, const QByteArray &protocol);
     static void storePeerCertificate(QSslSocketPrivate *d, const QSslCertificate &peerCert);
     static void storePeerCertificateChain(QSslSocketPrivate *d, const QList<QSslCertificate> &peerChain);
-    static void addTustedRoot(QSslSocketPrivate *d, const QSslCertificate &rootCert);// TODO: "addTrusted..."
+    static void addTrustedRoot(QSslSocketPrivate *d, const QSslCertificate &rootCert);
     // The next one - is a "very important" feature! Kidding ...
     static void setEphemeralKey(QSslSocketPrivate *d, const QSslKey &key);
 

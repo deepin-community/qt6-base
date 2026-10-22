@@ -13,5 +13,7 @@ qt_internal_add_plugin(QGlibNetworkInformationPlugin
         GLIB2::GOBJECT
         GLIB2::GIO
     DEFINES
+        "QT_ENABLE_STRICT_MODE_UP_TO=QT_VERSION_CHECK(6,11,0)"
+        QT_NO_CAST_FROM_ASCII
         QT_NO_SIGNALS_SLOTS_KEYWORDS
 )

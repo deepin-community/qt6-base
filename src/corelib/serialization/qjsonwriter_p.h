@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:header-decls-only
 
 #ifndef QJSONWRITER_P_H
 #define QJSONWRITER_P_H
@@ -28,6 +29,7 @@ class Writer
 public:
     static void objectToJson(const QCborContainerPrivate *o, QByteArray &json, int indent, bool compact = false);
     static void arrayToJson(const QCborContainerPrivate *a, QByteArray &json, int indent, bool compact = false);
+    static void valueToJson(const QCborValue &v, QByteArray &json, int indent, bool compact = false);
 };
 
 }

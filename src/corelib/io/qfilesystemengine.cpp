@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qfilesystemengine_p.h"
 #include <QtCore/qdir.h>
@@ -12,6 +13,32 @@
 #include <QtCore/private/qduplicatetracker_p.h>
 
 QT_BEGIN_NAMESPACE
+
+bool qCheckFileNameFail(const char *msg, const char *file, int line, const char *function)
+{
+#ifdef QT_NO_WARNING_OUTPUT
+    Q_UNUSED(msg); Q_UNUSED(file); Q_UNUSED(line); Q_UNUSED(function);
+#else
+    QMessageLogger(file, line, function).warning("%s", msg);
+#endif
+    errno = EINVAL;
+    return false;
+}
+
+/*! \class QFileSystemEngine
+    \internal
+
+    QFileSystemEngine offers OS-independent API for native system library
+    methods, which work with files on physical disk drives; using such methods
+    directly is faster than using a custom file engine (see QAbstractFileEngine
+    and its sub-classes). Typically, you need a custom file engine when working
+    with virtual file systems (for example QResource). Various Qt classes,
+    for example QDir, QFile, and QFileInfo, can handle both types of files by
+    detecting the file path scheme, for example, \c file:///, \c :/someresource
+    (QResource).
+
+    \sa QAbstractFileEngine, QAbstractFileEngineHandler, QFSFileEngine, QResourceFileEngine
+*/
 
 /*!
     \internal
@@ -143,6 +170,12 @@ static bool _q_createLegacyEngine_recursive(QFileSystemEntry &entry, QFileSystem
     return _q_checkEntry(entry, data, resolvingEntry);
 }
 
+Q_CORE_EXPORT bool qt_isCaseSensitive(const QFileSystemEntry &entry, QFileSystemMetaData &data)
+{
+    // called from QtGui (QFileSystemModel, QFileInfoGatherer)
+    return QFileSystemEngine::isCaseSensitive(entry, data);
+}
+
 /*!
     \internal
 
@@ -166,6 +199,14 @@ QFileSystemEngine::createLegacyEngine(QFileSystemEntry &entry, QFileSystemMetaDa
         data.clear();
 
     return engine;
+}
+
+std::unique_ptr<QAbstractFileEngine>
+QFileSystemEngine::createLegacyEngine(const QString &fileName)
+{
+    QFileSystemEntry entry(fileName);
+    QFileSystemMetaData metaData;
+    return createLegacyEngine(entry, metaData);
 }
 
 //static

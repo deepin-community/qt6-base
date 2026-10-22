@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // Experimental DRM dumb buffer backend.
 //
@@ -82,8 +83,14 @@ private:
     QList<Output> m_outputs;
 };
 
+static QString drmDevicePath(QKmsScreenConfig *screenConfig)
+{
+    const QString path = screenConfig->devicePath();
+    return path.isEmpty() ? QStringLiteral("/dev/dri/card0") : path;
+}
+
 QLinuxFbDevice::QLinuxFbDevice(QKmsScreenConfig *screenConfig)
-    : QKmsDevice(screenConfig, QStringLiteral("/dev/dri/card0"))
+    : QKmsDevice(screenConfig, drmDevicePath(screenConfig))
 {
 }
 
@@ -369,6 +376,10 @@ bool QLinuxFbDrmScreen::initialize()
 
     // Discover outputs. Calls back Device::createScreen().
     m_device->createScreens();
+    if (m_device->outputCount() == 0) {
+        qWarning("linuxfb: No usable DRM output found");
+        return false;
+    }
     // Now off to dumb buffer specifics.
     m_device->createFramebuffers();
     // Do the modesetting.

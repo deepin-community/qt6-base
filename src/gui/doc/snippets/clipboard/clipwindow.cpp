@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtWidgets>
+#include <QGuiApplication>
 #include <QMimeData>
+#include <QClipboard>
 
 #include "clipwindow.h"
 
 ClipWindow::ClipWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    clipboard = QApplication::clipboard();
+    clipboard = QGuiApplication::clipboard();
 
     QWidget *centralWidget = new QWidget(this);
     QWidget *currentItem = new QWidget(centralWidget);

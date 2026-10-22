@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWASMFONTDATABASE_H
 #define QWASMFONTDATABASE_H
@@ -20,7 +21,7 @@ public:
     QFontEngine *fontEngine(const QFontDef &fontDef, void *handle) override;
     QStringList fallbacksForFamily(const QString &family, QFont::Style style,
                                    QFont::StyleHint styleHint,
-                                   QChar::Script script) const override;
+                                   QFontDatabasePrivate::ExtendedScript script) const override;
     void releaseHandle(void *handle) override;
     QFont defaultFont() const override;
 
@@ -28,8 +29,6 @@ public:
     void populateLocalFontFamilies(emscripten::val families);
     void populateLocalFontFamilies(const QStringList &famliies, bool allFamilies);
 
-    static void beginFontDatabaseStartupTask();
-    static void endFontDatabaseStartupTask();
     static void refFontFileLoading();
     static void derefFontFileLoading();
     static void endAllFontFileLoading();

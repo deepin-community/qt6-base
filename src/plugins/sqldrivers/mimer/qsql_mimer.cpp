@@ -1,6 +1,8 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Mimer Information Technology
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
+
 #include <qcoreapplication.h>
 #include <qvariant.h>
 #include <qmetatype.h>
@@ -31,7 +33,7 @@ Q_DECLARE_METATYPE(MimerStatement)
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcMimer, "qt.sql.mimer")
+Q_STATIC_LOGGING_CATEGORY(lcMimer, "qt.sql.mimer")
 
 enum class MimerColumnTypes {
     Binary,
@@ -845,7 +847,7 @@ QVariant QMimerSQLResult::data(int i)
                                         err, QSqlError::StatementError, d->drv_d_func()));
                 return QVariant(QMetaType(type), nullptr);
             }
-            const QByteArray uuidByteArray = QByteArray(reinterpret_cast<char *>(uuidChar), 16);
+            const auto uuidByteArray = QByteArrayView(reinterpret_cast<char *>(uuidChar), 16);
             return QUuid::fromRfc4122(uuidByteArray);
         }
         case MimerColumnTypes::Unknown:
@@ -1084,8 +1086,7 @@ bool QMimerSQLResult::exec()
             break;
         }
         case MimerColumnTypes::Uuid: {
-            const QByteArray uuidArray =
-                    QByteArray::fromHex(val.toUuid().toString(QUuid::WithoutBraces).toLatin1());
+            const QByteArray uuidArray = val.toUuid().toRfc4122();
             const unsigned char *uuid =
                     reinterpret_cast<const unsigned char *>(uuidArray.constData());
             err = MimerSetUUID(d->statementhandle, i + 1, uuid);
@@ -1152,7 +1153,7 @@ bool QMimerSQLResult::exec()
             break;
         }
         case MimerColumnTypes::Blob: {
-            QByteArray blobArr = val.toByteArray();
+            const QByteArray blobArr = val.toByteArray();
             const char *blobData = blobArr.constData();
             qsizetype size = blobArr.size();
             err = MimerSetLob(d->statementhandle, i + 1, size, &d->lobhandle);

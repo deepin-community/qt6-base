@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpalette_p.h"
 #include "qguiapplication_p.h"
@@ -10,6 +11,9 @@
 #include <QtCore/qmetaobject.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_CONSTINIT QAtomicInt QPalettePrivate::qt_palette_count = Q_BASIC_ATOMIC_INITIALIZER(0);
+Q_CONSTINIT QAtomicInt QPalettePrivate::qt_palette_private_count = Q_BASIC_ATOMIC_INITIALIZER(0);
 
 static_assert(QPalettePrivate::bitPosition(QPalette::ColorGroup(QPalette::NColorGroups - 1),
                               QPalette::ColorRole(QPalette::NColorRoles - 1))
@@ -715,9 +719,7 @@ QPalette &QPalette::operator=(const QPalette &p)
 /*!
     \fn void QPalette::swap(QPalette &other)
     \since 5.0
-
-    Swaps this palette instance with \a other. This function is very
-    fast and never fails.
+    \memberswap{palette instance}
 */
 
 /*!

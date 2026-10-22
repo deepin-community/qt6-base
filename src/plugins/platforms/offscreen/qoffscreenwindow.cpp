@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qoffscreenwindow.h"
 #include "qoffscreencommon.h"
@@ -71,6 +72,10 @@ void QOffscreenWindow::setGeometryImpl(const QRect &rect)
 
     QPlatformWindow::setGeometry(adjusted);
 
+    QPlatformScreen *newScreen = screenForGeometry(rect);
+    if (newScreen != screen())
+        QWindowSystemInterface::handleWindowScreenChanged(window(), newScreen->screen());
+
     if (m_visible) {
         QWindowSystemInterface::handleGeometryChange(window(), adjusted);
         QWindowSystemInterface::handleExposeEvent(window(), QRect(QPoint(), adjusted.size()));
@@ -128,6 +133,11 @@ void QOffscreenWindow::requestActivateWindow()
 WId QOffscreenWindow::winId() const
 {
     return m_winId;
+}
+
+QSurfaceFormat QOffscreenWindow::format() const
+{
+    return window()->requestedFormat();
 }
 
 QMargins QOffscreenWindow::frameMargins() const

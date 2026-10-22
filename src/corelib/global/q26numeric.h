@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef Q26NUMERIC_H
 #define Q26NUMERIC_H
 
@@ -29,12 +30,12 @@ QT_BEGIN_NAMESPACE
 
 namespace q26 {
 
-// Like std::saturate_cast
-#ifdef __cpp_lib_saturation_arithmetic
-using std::saturate_cast;
+// Like std::saturating_cast
+#if defined(__cpp_lib_saturation_arithmetic) && __cpp_lib_saturation_arithmetic >= 202603L
+using std::saturating_cast;
 #else
 template <typename To, typename From>
-constexpr auto saturate_cast(From x)
+constexpr auto saturating_cast(From x)
 {
     static_assert(std::is_integral_v<To>);
     static_assert(std::is_integral_v<From>);
@@ -61,6 +62,12 @@ constexpr auto saturate_cast(From x)
     }
 }
 #endif // __cpp_lib_saturation_arithmetic
+
+template <typename To, typename From>
+constexpr auto saturate_cast(From x)
+{
+    return q26::saturating_cast<To>(x);
+}
 
 } // namespace q26
 

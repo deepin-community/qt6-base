@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qprogressbar.h"
 
@@ -54,7 +55,14 @@ QProgressBarPrivate::QProgressBarPrivate()
 
 void QProgressBarPrivate::initDefaultFormat()
 {
-    if (defaultFormat)
+    if (defaultFormat) {
+        //: %p is the percent value, % is the percent sign. When translated
+        //: to the identical %p%, then the second % symbol will be replaced
+        //: by the percentage-symbol from the user's locale.
+        format = QProgressBar::tr("%p%");
+    }
+
+    if (format == "%p%"_L1)
         format = "%p"_L1 + locale.percent();
 }
 
@@ -111,29 +119,34 @@ bool QProgressBarPrivate::repaintRequired() const
     if (value == lastPaintedValue)
         return false;
 
-    const auto valueDifference = qAbs(qint64(value) - lastPaintedValue);
-    // Check if the text needs to be repainted
+    const qint64 valueDifference = qAbs(qint64(value) - qint64(lastPaintedValue));
+
     if (value == minimum || value == maximum)
         return true;
 
-    const auto totalSteps = qint64(maximum) - minimum;
+    const int totalSteps = maximum - minimum;
+
+    const int currentPercentage = totalSteps ? (value - minimum) * 100 / totalSteps : 0;
+    const int lastPaintedPercentage = totalSteps ? (lastPaintedValue - minimum) * 100 / totalSteps
+                                                 : 0;
+
+    const int percentageChangeConstant = 1;
+    const bool percentageChanged = (qAbs(currentPercentage - lastPaintedPercentage) >= percentageChangeConstant);
+
     if (textVisible) {
         if (format.contains("%v"_L1))
             return true;
-        if (format.contains("%p"_L1) && valueDifference >= qAbs(totalSteps / 100))
+        if (format.contains("%p"_L1) && percentageChanged)
             return true;
     }
 
-    // Check if the bar needs to be repainted
+    // Check if the bar needs to be repainted based on pixel-level differences
     QStyleOptionProgressBar opt;
     q->initStyleOption(&opt);
-    int cw = q->style()->pixelMetric(QStyle::PM_ProgressBarChunkWidth, &opt, q);
     QRect groove = q->style()->subElementRect(QStyle::SE_ProgressBarGroove, &opt, q);
-    // This expression is basically
-    // (valueDifference / (maximum - minimum) > cw / groove.width())
-    // transformed to avoid integer division.
     int grooveBlock = (q->orientation() == Qt::Horizontal) ? groove.width() : groove.height();
-    return valueDifference * grooveBlock > cw * totalSteps;
+    const double pixelSize = static_cast<double>(totalSteps) / grooveBlock;
+    return valueDifference > pixelSize;
 }
 
 /*!
@@ -143,7 +156,7 @@ bool QProgressBarPrivate::repaintRequired() const
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-progressbar.png
+    \image fusion-progressbar.png {Progress bar showing 42%}
 
     A progress bar is used to give the user an indication of the
     progress of an operation and to reassure them that the application
@@ -535,7 +548,7 @@ bool QProgressBar::event(QEvent *e)
     Q_D(QProgressBar);
     switch (e->type()) {
     case QEvent::StyleChange:
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     case QEvent::MacSizeChange:
 #endif
         d->resetLayoutItemMargins();

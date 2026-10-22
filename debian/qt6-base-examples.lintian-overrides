@@ -1,0 +1,8 @@
+# Example/demo-specific documentation
+package-contains-documentation-outside-usr-share-doc [usr/lib/*/qt6/examples/**/*.html]
+
+# CMake listfiles and textual resources for examples
+package-contains-documentation-outside-usr-share-doc [usr/lib/*/qt6/examples/**/*.txt]
+
+# The path of the python script is arch-dependend, so it is Multi-Arch safe
+multi-arch-same-package-calls-pycompile [postinst:*]

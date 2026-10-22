@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qglobal.h"
 
@@ -295,7 +296,7 @@ void QGridLayoutRowData::calculateGeometries(int start, int end, qreal targetSiz
                         ultimateSumSizes = ultimateSumSizes * 3 / 2;
 
                         qreal beta = ultimateSumSizes - sumSizes;
-                        if (!beta) {
+                        if (qFuzzyIsNull(beta)) {
                             factors[i] = 1;
                         } else {
                             qreal alpha = qMin(sumCurrentAvailable, beta);
@@ -471,6 +472,7 @@ void QGridLayoutRowData::dump(int indent) const
         qDebug("%*s Multi-cell entry <%d, %d> (stretch %d)", indent, "", it.key().first,
                it.key().second, it.value().q_stretch);
         it.value().q_box.dump(indent + 2);
+        ++it;
     }
 }
 #endif
@@ -1070,8 +1072,8 @@ QRectF QGridLayoutEngine::cellRect(const QRectF &contentsGeometry, int row, int 
 
     ensureGeometries(contentsGeometry.size(), styleInfo);
 
-    int lastColumn = qMax(column + columnSpan, columnCount()) - 1;
-    int lastRow = qMax(row + rowSpan, rowCount()) - 1;
+    int lastColumn = qMin(column + columnSpan, columnCount()) - 1;
+    int lastRow = qMin(row + rowSpan, rowCount()) - 1;
 
     qreal x = q_xx[column];
     qreal y = q_yy[row];
@@ -1413,7 +1415,7 @@ void QGridLayoutEngine::fillRowData(QGridLayoutRowData *rowData,
                             rowStretch = qMax(rowStretch, itemStretch);
                     } else {
                         QGridLayoutMultiCellData &multiCell =
-                                rowData->multiCellMap[qMakePair(row, itemRowSpan)];
+                                rowData->multiCellMap[std::pair(row, itemRowSpan)];
                         box = &multiCell.q_box;
                         multiCell.q_stretch = itemStretch;
                     }

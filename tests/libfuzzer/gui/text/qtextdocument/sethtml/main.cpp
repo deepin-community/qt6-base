@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QGuiApplication>
+#include <QByteArray>
+#include <QFont>
 #include <QTextDocument>
 #include <QtGlobal>
 
@@ -17,5 +19,6 @@ extern "C" int LLVMFuzzerTestOneInput(const char *Data, size_t Size) {
     static char *argv[] = {arg1, arg2, arg3, nullptr};
     static QGuiApplication qga(argc, argv);
     QTextDocument().setHtml(QByteArray::fromRawData(Data, Size));
+    QFont::cleanup(); // avoid memleaks, QTBUG-140076
     return 0;
 }

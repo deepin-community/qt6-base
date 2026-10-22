@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkinterface.h"
 #include "qnetworkinterface_p.h"
@@ -16,9 +17,6 @@ QT_BEGIN_NAMESPACE
 QT_IMPL_METATYPE_EXTERN(QNetworkAddressEntry)
 QT_IMPL_METATYPE_EXTERN(QNetworkInterface)
 
-static_assert(QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
-           && sizeof(QScopedPointer<QNetworkAddressEntryPrivate>) == sizeof(std::unique_ptr<QNetworkAddressEntryPrivate>));
-
 static QList<QNetworkInterfacePrivate *> postProcess(QList<QNetworkInterfacePrivate *> list)
 {
     // Some platforms report a netmask but don't report a broadcast address
@@ -29,8 +27,8 @@ static QList<QNetworkInterfacePrivate *> postProcess(QList<QNetworkInterfacePriv
     // The math is:
     //    broadcast = IP | ~netmask
 
-    for (QNetworkInterfacePrivate *interface : list) {
-        for (QNetworkAddressEntry &address : interface->addressEntries) {
+    for (QNetworkInterfacePrivate *iface : list) {
+        for (QNetworkAddressEntry &address : iface->addressEntries) {
             if (address.ip().protocol() != QAbstractSocket::IPv4Protocol)
                 continue;
 
@@ -62,11 +60,11 @@ QSharedDataPointer<QNetworkInterfacePrivate> QNetworkInterfaceManager::interface
     bool ok;
     uint index = name.toUInt(&ok);
 
-    for (const auto &interface : interfaceList) {
-        if (ok && interface->index == int(index))
-            return interface;
-        else if (interface->name == name)
-            return interface;
+    for (const auto &iface : interfaceList) {
+        if (ok && iface->index == int(index))
+            return iface;
+        else if (iface->name == name)
+            return iface;
     }
 
     return empty;
@@ -75,9 +73,9 @@ QSharedDataPointer<QNetworkInterfacePrivate> QNetworkInterfaceManager::interface
 QSharedDataPointer<QNetworkInterfacePrivate> QNetworkInterfaceManager::interfaceFromIndex(int index)
 {
     const auto interfaceList = allInterfaces();
-    for (const auto &interface : interfaceList) {
-        if (interface->index == index)
-            return interface;
+    for (const auto &iface : interfaceList) {
+        if (iface->index == index)
+            return iface;
     }
 
     return empty;
@@ -190,9 +188,7 @@ QNetworkAddressEntry &QNetworkAddressEntry::operator=(const QNetworkAddressEntry
 /*!
     \fn void QNetworkAddressEntry::swap(QNetworkAddressEntry &other)
     \since 5.0
-
-    Swaps this network address entry instance with \a other. This
-    function is very fast and never fails.
+    \memberswap{network address entry instance}
 */
 
 /*!
@@ -512,7 +508,12 @@ bool QNetworkAddressEntry::isPermanent() const
     Not all operating systems support reporting all features. Only the
     IPv4 addresses are guaranteed to be listed by this class in all
     platforms. In particular, IPv6 address listing is only supported
-    on Windows, Linux, \macos and the BSDs.
+    on Windows, Linux, \macos and the BSDs. Similarly, the interface
+    type reported by type() may not be available on all platforms.
+
+    \note On Android, the interface type is always reported as \l Unknown,
+    as the platform does not expose hardware type information for physical
+    interfaces.
 
     \sa QNetworkAddressEntry
 */
@@ -632,9 +633,7 @@ QNetworkInterface &QNetworkInterface::operator=(const QNetworkInterface &other)
 /*!
     \fn void QNetworkInterface::swap(QNetworkInterface &other)
     \since 5.0
-
-    Swaps this network interface instance with \a other. This function
-    is very fast and never fails.
+    \memberswap{network interface instance}
 */
 
 /*!

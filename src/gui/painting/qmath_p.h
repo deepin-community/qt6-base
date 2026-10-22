@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMATH_P_H
 #define QMATH_P_H
@@ -34,6 +35,10 @@ inline QRect qt_mapFillRect(const QRectF &rect, const QTransform &xf)
     // as that can sometimes be slightly off around the .5 point, leading to wrong rounding
     QPoint pt1 = xf.map(rect.topLeft()).toPoint();
     QPoint pt2 = xf.map(rect.bottomRight()).toPoint();
+    // cut short if the result will be an empty QRect anyway
+    // side effect: avoids overflows in the calculations below
+    if (Q_UNLIKELY(pt1.x() == pt2.x() || pt1.y() == pt2.y()))
+        return QRect();
     // Normalize and adjust for the QRect vs. QRectF bottomright
     return QRect::span(pt1, pt2).adjusted(0, 0, -1, -1);
 }

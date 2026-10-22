@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLOGGINGREGISTRY_P_H
 #define QLOGGINGREGISTRY_P_H
@@ -15,8 +16,7 @@
 // We mean it.
 //
 
-#include <QtCore/private/qglobal_p.h>
-#include <QtCore/qloggingcategory.h>
+#include <QtCore/private/qloggingcategory_p.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qmutex.h>
@@ -29,7 +29,7 @@ class tst_QLoggingRegistry;
 
 QT_BEGIN_NAMESPACE
 
-#define Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(name, env, categoryName) \
+#define Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE_IMPL(name, env, categoryName) \
     const QLoggingCategory &name() \
     { \
         static constexpr char cname[] = categoryName;                               \
@@ -38,6 +38,17 @@ QT_BEGIN_NAMESPACE
         static const QLoggingCategoryWithEnvironmentOverride category(cname, env);  \
         return category;                                                            \
     }
+
+#define Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(name, env, categoryName) \
+    inline namespace QtPrivateLogging { \
+    Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE_IMPL(name, env, categoryName) \
+    } \
+    Q_WEAK_OVERLOAD \
+    Q_DECL_DEPRECATED_X("Logging categories should either be static or declared in a header") \
+    const QLoggingCategory &name() { return QtPrivateLogging::name(); }
+
+#define Q_STATIC_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(name, env, categoryName) \
+    static Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE_IMPL(name, env, categoryName)
 
 class Q_AUTOTEST_EXPORT QLoggingRule
 {
@@ -71,8 +82,8 @@ class Q_AUTOTEST_EXPORT QLoggingSettingsParser
 public:
     void setImplicitRulesSection(bool inRulesSection) { m_inRulesSection = inRulesSection; }
 
-    void setContent(QStringView content);
-    void setContent(QTextStream &stream);
+    void setContent(QStringView content, char16_t separator = u'\n');
+    void setContent(FILE *stream);
 
     QList<QLoggingRule> rules() const { return _rules; }
 
@@ -84,31 +95,33 @@ private:
     QList<QLoggingRule> _rules;
 };
 
-class Q_AUTOTEST_EXPORT QLoggingRegistry
+class QLoggingRegistry
 {
     Q_DISABLE_COPY_MOVE(QLoggingRegistry)
 public:
     QLoggingRegistry();
 
-    void initializeRules();
+    Q_AUTOTEST_EXPORT void initializeRules();
 
     void registerCategory(QLoggingCategory *category, QtMsgType enableForLevel);
     void unregisterCategory(QLoggingCategory *category);
 
-#ifndef QT_BUILD_INTERNAL
-    Q_CORE_EXPORT   // always export from QtCore
-#endif
-    void registerEnvironmentOverrideForCategory(const char *categoryName, const char *environment);
+    Q_CORE_EXPORT void registerEnvironmentOverrideForCategory(const char *categoryName,
+                                                              const char *environment);
 
     void setApiRules(const QString &content);
 
     QLoggingCategory::CategoryFilter
     installFilter(QLoggingCategory::CategoryFilter filter);
 
-    static QLoggingRegistry *instance();
+    Q_CORE_EXPORT static QLoggingRegistry *instance();
+
+    static constexpr const char defaultCategoryName[] = "default";
+    static QLoggingCategory *defaultCategory();
 
 private:
-    void updateRules();
+    Q_AUTOTEST_EXPORT void updateRules();
+    static inline QLoggingRegistry *self = nullptr;
 
     static void defaultCategoryFilter(QLoggingCategory *category);
 

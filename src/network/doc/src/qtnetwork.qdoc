@@ -4,7 +4,7 @@
 /*!
     \page qtnetwork-index.html
     \title Qt Network
-    \brief Provides networking capabilities
+    \brief Provides networking capabilities.
 
     The Qt Network module provides a set of APIs for programming
     applications that use TCP/IP. Operations such as requests, cookies, and
@@ -54,7 +54,7 @@
     Furthermore, Qt Network in Qt \QtVersion may contain third-party
     modules under the following permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtnetwork}
+    \annotatedlist attributions-qtnetwork
 
     Qt Network can make use of the \l{OpenSSL Toolkit} as a back end.
     The library is then

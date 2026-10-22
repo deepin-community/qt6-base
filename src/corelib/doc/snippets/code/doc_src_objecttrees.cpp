@@ -1,23 +1,31 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-//![0]
+#include <QPushButton>
+
+//![open]
 int main()
 {
-    QWidget window;
-    QPushButton quit("Quit", &window);
-    ...
+//![open]
+
+    {
+        //![example1]
+            QWidget window;
+            QPushButton quit("Quit", &window);
+            //...
+        //![example1]
+    }
+
+    {
+        //![example2]
+            QPushButton quit("Quit");
+            QWidget window;
+
+            quit.setParent(&window);
+            //...
+        //![example2]
+    }
+
+//![close]
 }
-//![0]
-
-
-//![1]
-int main()
-{
-    QPushButton quit("Quit");
-    QWidget window;
-
-    quit.setParent(&window);
-    ...
-}
-//![1]
+//![close]

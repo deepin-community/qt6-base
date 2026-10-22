@@ -5,16 +5,22 @@
 #include <QtGui/QVulkanFunctions>
 #include <QtGui/QVulkanWindow>
 #include <QtCore/qvarlengtharray.h>
+#include <QtCore/qelapsedtimer.h>
 
 #include <QTest>
 
 #include <QSignalSpy>
+
+#ifdef Q_OS_ANDROID
+#include <android/api-level.h>
+#endif
 
 class tst_QVulkan : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void init();
     void vulkanInstance();
     void vulkanCheckSupported();
     void vulkanPlainWindow();
@@ -24,6 +30,21 @@ private slots:
     void vulkanWindowRenderer();
     void vulkanWindowGrab();
 };
+
+void tst_QVulkan::init()
+{
+    if (QSysInfo::productType() == QLatin1String("rhel") && QSysInfo::productVersion() == QLatin1String("10.0")) {
+        const char *testName = QTest::currentTestFunction();
+        if (!testName)
+            return;
+
+        if (qstrcmp(testName, "vulkanWindow") == 0 ||
+            qstrcmp(testName, "vulkanWindowRenderer") == 0 ||
+            qstrcmp(testName, "vulkanWindowGrab") == 0) {
+                QSKIP("Vulkan/Wayland crash on RHEL 10.0 (QTBUG-146206)");
+        }
+    }
+}
 
 void tst_QVulkan::vulkanInstance()
 {
@@ -81,17 +102,13 @@ void tst_QVulkan::vulkanCheckSupported()
 
     if (inst.create()) { // skip the rest when Vulkan is not supported at all
         QVERIFY(!ve.isEmpty());
-        QVERIFY(ve == inst.supportedExtensions());
-        QVERIFY(supportedApiVersion.majorVersion() >= 1);
+        QCOMPARE(ve, inst.supportedExtensions());
+        QCOMPARE_GE(supportedApiVersion.majorVersion(), 1);
     }
 }
 
 void tst_QVulkan::vulkan11()
 {
-#ifdef Q_OS_ANDROID
-    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
-        QSKIP("Fails on Android 12 (QTBUG-105739)");
-#endif
 #if VK_VERSION_1_1
     QVulkanInstance inst;
     if (inst.supportedApiVersion() < QVersionNumber(1, 1))
@@ -117,6 +134,15 @@ void tst_QVulkan::vulkan11()
         err = f->vkEnumeratePhysicalDeviceGroups(inst.vkInstance(), &count, groupProperties.data()); // 1.1 API
         QCOMPARE(err, VK_SUCCESS);
         for (const VkPhysicalDeviceGroupProperties &gp : groupProperties) {
+#if defined(Q_OS_ANDROID)
+            QEXPECT_FAIL("",
+                "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES check fails on Android",
+                Continue);
+#elif defined(Q_OS_QNX)
+            QEXPECT_FAIL("",
+                "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES check fails on QNX (Mesa V3D does not populate sType)",
+                Continue);
+#endif
             QCOMPARE(gp.sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES);
             for (uint32_t i = 0; i != gp.physicalDeviceCount; ++i) {
                 VkPhysicalDevice physDev = gp.physicalDevices[i];
@@ -167,9 +193,9 @@ void tst_QVulkan::vulkan11()
 void tst_QVulkan::vulkanPlainWindow()
 {
 #ifdef Q_OS_ANDROID
-    QSKIP("Fails on Android 7 emulator (QTBUG-108328)");
+    if (QNativeInterface::QAndroidApplication::sdkVersion() < __ANDROID_API_Q__)
+        QSKIP ("Versions prior to Android 10 didn't have full Vulkan support.");
 #endif
-
     QVulkanInstance inst;
     if (!inst.create())
         QSKIP("Vulkan init failed; skip");
@@ -252,6 +278,10 @@ static void waitForUnexposed(QWindow *w)
 
 void tst_QVulkan::vulkanWindow()
 {
+#if defined(Q_OS_QNX)
+    QSKIP("Mesa V3D driver state corruption on QNX: destroy/recreate cycle corrupts "
+          "internal driver state, causing subsequent Vulkan tests to crash (SIGSEGV)");
+#endif
     QVulkanInstance inst;
     if (!inst.create())
         QSKIP("Vulkan init failed; skip");
@@ -298,7 +328,7 @@ void tst_QVulkan::vulkanWindow()
     QVERIFY(w.graphicsCommandPool() != VK_NULL_HANDLE);
     QVERIFY(w.defaultRenderPass() != VK_NULL_HANDLE);
 
-    QVERIFY(w.concurrentFrameCount() > 0);
+    QCOMPARE_GT(w.concurrentFrameCount(), 0);
     QVERIFY(w.concurrentFrameCount() <= QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT);
 }
 
@@ -390,7 +420,7 @@ void TestVulkanRenderer::startNextFrame()
 {
     ++testVulkan.startNextFrameCount;
 
-    VkClearColorValue clearColor = { 0, 1, 0, 1 };
+    VkClearColorValue clearColor = { { 0, 1, 0, 1 } };
     VkClearDepthStencilValue clearDS = { 1, 0 };
     VkClearValue clearValues[2];
     memset(clearValues, 0, sizeof(clearValues));
@@ -439,28 +469,24 @@ void tst_QVulkan::vulkanWindowRenderer()
     if (w.availablePhysicalDevices().isEmpty())
         QSKIP("No Vulkan physical devices; skip");
 
-    QVERIFY(testVulkan.preInitResCount == 1);
-    QVERIFY(testVulkan.initResCount == 1);
-    QVERIFY(testVulkan.initSwcResCount == 1);
+    QCOMPARE(testVulkan.preInitResCount, 1);
+    QCOMPARE(testVulkan.initResCount, 1);
+    QCOMPARE(testVulkan.initSwcResCount, 1);
     // this has to be QTRY due to the async update in QVulkanWindowPrivate::ensureStarted()
     QTRY_VERIFY(testVulkan.startNextFrameCount >= 1);
 
     QVERIFY(!w.swapChainImageSize().isEmpty());
-    QVERIFY(w.colorFormat() != VK_FORMAT_UNDEFINED);
-    QVERIFY(w.depthStencilFormat() != VK_FORMAT_UNDEFINED);
+    QCOMPARE_NE(w.colorFormat(), VK_FORMAT_UNDEFINED);
+    QCOMPARE_NE(w.depthStencilFormat(), VK_FORMAT_UNDEFINED);
 
     w.destroy();
     waitForUnexposed(&w);
-    QVERIFY(testVulkan.releaseSwcResCount == 1);
-    QVERIFY(testVulkan.releaseResCount == 1);
+    QCOMPARE(testVulkan.releaseSwcResCount, 1);
+    QCOMPARE(testVulkan.releaseResCount, 1);
 }
 
 void tst_QVulkan::vulkanWindowGrab()
 {
-#ifdef Q_OS_ANDROID
-    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
-        QSKIP("Fails on Android 12 (QTBUG-105739)");
-#endif
     QVulkanInstance inst;
     inst.setLayers(QByteArrayList() << "VK_LAYER_KHRONOS_validation");
     if (!inst.create())
@@ -506,9 +532,9 @@ void tst_QVulkan::vulkanWindowGrab()
     int greenFuzz = qAbs(qGreen(a) - qGreen(refPixel));
     int blueFuzz = qAbs(qBlue(a) - qBlue(refPixel));
 
-    QVERIFY(redFuzz <= 1);
-    QVERIFY(blueFuzz <= 1);
-    QVERIFY(greenFuzz <= 1);
+    QCOMPARE_LE(redFuzz, 1);
+    QCOMPARE_LE(blueFuzz, 1);
+    QCOMPARE_LE(greenFuzz, 1);
 
     w.destroy();
 }

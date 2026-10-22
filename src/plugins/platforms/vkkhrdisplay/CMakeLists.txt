@@ -1,7 +1,7 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-qt_find_package(WrapFreetype PROVIDED_TARGETS WrapFreetype::WrapFreetype)
+qt_find_package(WrapFreetype MODULE PROVIDED_TARGETS WrapFreetype::WrapFreetype)
 
 qt_internal_add_plugin(QVkKhrDisplayIntegrationPlugin
     OUTPUT_NAME qvkkhrdisplay
@@ -11,8 +11,6 @@ qt_internal_add_plugin(QVkKhrDisplayIntegrationPlugin
         main.cpp
         qvkkhrdisplayintegration.cpp qvkkhrdisplayintegration.h
         qvkkhrdisplayvulkaninstance.cpp qvkkhrdisplayvulkaninstance.h
-    DEFINES
-        QT_NO_FOREACH
     LIBRARIES
         Qt::Core
         Qt::CorePrivate

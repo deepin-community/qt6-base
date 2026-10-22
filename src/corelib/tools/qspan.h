@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSPAN_H
 #define QSPAN_H
@@ -43,6 +44,10 @@ constexpr inline bool enable_view<QT_PREPEND_NAMESPACE(QSpan)<T, E>> = true;
 QT_END_INCLUDE_NAMESPACE
 
 namespace QSpanPrivate {
+
+template <typename From, typename To>
+std::conditional_t<std::is_const_v<From>, const To &, To &> // like [forward]/6.1 COPY_CONST
+const_propagated(To &in) { return in; }
 
 template <typename T, std::size_t E> class QSpanBase;
 
@@ -187,7 +192,7 @@ public:
     explicit constexpr QSpanBase(It first, qsizetype count)
         : m_data{q20::to_address(first)}
     {
-        Q_ASSERT(count == m_size);
+        Q_PRE(count == m_size);
     }
 
     template <typename It, typename End, typename Base::template if_compatible_iterator_and_sentinel<It, End> = true>
@@ -208,7 +213,7 @@ public:
 
     template <typename Range, typename Base::template if_compatible_range<Range> = true>
     Q_IMPLICIT constexpr QSpanBase(Range &&r)
-        : QSpanBase(QSpanPrivate::adl_data(r),  // no forward<>() here (std doesn't have it, either)
+        : QSpanBase(QSpanPrivate::adl_data(QSpanPrivate::const_propagated<T>(r)), // no forward<>() here (std doesn't have it, either)
                     qsizetype(QSpanPrivate::adl_size(r))) // ditto, no forward<>()
     {}
 
@@ -260,7 +265,10 @@ public:
 
     template <typename It, typename Base::template if_compatible_iterator<It> = true>
     Q_IMPLICIT constexpr QSpanBase(It first, qsizetype count)
-        : m_data{q20::to_address(first)}, m_size{count} {}
+        : m_data{q20::to_address(first)}, m_size{count}
+    {
+        Q_PRE(count >= 0);
+    }
 
     template <typename It, typename End, typename Base::template if_compatible_iterator_and_sentinel<It, End> = true>
     Q_IMPLICIT constexpr QSpanBase(It first, End last)
@@ -280,7 +288,7 @@ public:
 
     template <typename Range, typename Base::template if_compatible_range<Range> = true>
     Q_IMPLICIT constexpr QSpanBase(Range &&r)
-        : QSpanBase(QSpanPrivate::adl_data(r),  // no forward<>() here (std doesn't have it, either)
+        : QSpanBase(QSpanPrivate::adl_data(QSpanPrivate::const_propagated<T>(r)), // no forward<>() here (std doesn't have it, either)
                     qsizetype(QSpanPrivate::adl_size(r))) // ditto, no forward<>()
     {}
 
@@ -425,10 +433,32 @@ public:
     [[nodiscard]] constexpr QSpan<T> subspan(size_type pos, size_type n) const { return subspan(pos).first(n); }
 
     // Qt-compatibility API:
-    [[nodiscard]] bool isEmpty() const noexcept { return empty(); }
+    [[nodiscard]] constexpr bool isEmpty() const noexcept { return empty(); }
     // nullary first()/last() clash with first<>() and last<>(), so they're not provided for QSpan
     [[nodiscard]] constexpr QSpan<T> sliced(size_type pos) const { return subspan(pos); }
     [[nodiscard]] constexpr QSpan<T> sliced(size_type pos, size_type n) const { return subspan(pos, n); }
+    [[nodiscard]] constexpr QSpan<T> chopped(size_type n) const { verify(0, n); return first(size() - n); }
+
+#ifdef __cpp_concepts
+#  define QT_ONLY_IF_DYNAMIC_SPAN(DECL) \
+    DECL requires(E == q20::dynamic_extent)
+#else
+#  define QT_ONLY_IF_DYNAMIC_SPAN(DECL) \
+    template <size_t M = E, typename = std::enable_if_t<M == q20::dynamic_extent>> DECL
+#endif
+    QT_ONLY_IF_DYNAMIC_SPAN(
+    constexpr void slice(size_type pos)
+    )
+    { *this = sliced(pos); }
+    QT_ONLY_IF_DYNAMIC_SPAN(
+    constexpr void slice(size_type pos, size_type n)
+    )
+    { *this = sliced(pos, n); }
+    QT_ONLY_IF_DYNAMIC_SPAN(
+    constexpr void chop(size_type n)
+    )
+    { *this = chopped(n); }
+#undef QT_ONLY_IF_DYNAMIC_SPAN
 
 private:
     // [span.objectrep]

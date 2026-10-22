@@ -11,6 +11,7 @@
 #include "qtexttable_p.h"
 #include "qtextengine_p.h"
 #include "qabstracttextdocumentlayout.h"
+#include "qfontdatabase_p.h"
 
 #include <qtextlayout.h>
 #include <qdebug.h>
@@ -311,7 +312,13 @@ bool QTextCursorPrivate::movePosition(QTextCursor::MoveOperation op, QTextCursor
     if (!blockIt.isValid())
         return false;
 
-    if (blockIt.textDirection() == Qt::RightToLeft) {
+    const QTextLayout *layout = blockLayout(blockIt);
+
+    Qt::LayoutDirection blockDirection = layout->textOption().textDirection();
+    if (blockDirection == Qt::LayoutDirectionAuto)
+        blockDirection = blockIt.textDirection();
+
+    if (blockDirection == Qt::RightToLeft) {
         if (op == QTextCursor::WordLeft)
             op = QTextCursor::NextWord;
         else if (op == QTextCursor::WordRight)
@@ -325,7 +332,6 @@ bool QTextCursorPrivate::movePosition(QTextCursor::MoveOperation op, QTextCursor
         }
     }
 
-    const QTextLayout *layout = blockLayout(blockIt);
     int relativePos = position - blockIt.position();
     QTextLine line;
     if (!priv->isInEditBlock())
@@ -960,7 +966,8 @@ QTextLayout *QTextCursorPrivate::blockLayout(QTextBlock &block) const{
     \value EndOfWord Move to the end of the current word.
     \value EndOfBlock Move to the end of the current block.
     \value NextBlock Move to the beginning of the next block.
-    \value NextCharacter Move to the next character.
+    \value NextCharacter Move to the next character. If text is selected, the first call
+    to \c{movePosition(NextCharacter, MoveAnchor)} deselects the text without moving the cursor.
     \value NextWord Move to the next word.
     \value Down Move down one line.
     \value Right Move right one character.
@@ -1083,9 +1090,7 @@ QTextCursor &QTextCursor::operator=(const QTextCursor &cursor)
 /*!
     \fn void QTextCursor::swap(QTextCursor &other)
     \since 5.0
-
-    Swaps this text cursor instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{text cursor instance}
 */
 
 /*!
@@ -1508,18 +1513,46 @@ void QTextCursor::deletePreviousChar()
 
     if (d->anchor < 1 || !d->canDelete(d->anchor-1))
         return;
-    d->anchor--;
 
-    QTextDocumentPrivate::FragmentIterator fragIt = d->priv->find(d->anchor);
-    const QTextFragmentData * const frag = fragIt.value();
-    int fpos = fragIt.position();
-    QChar uc = d->priv->buffer().at(d->anchor - fpos + frag->stringPosition);
-    if (d->anchor > fpos && uc.isLowSurrogate()) {
-        // second half of a surrogate, check if we have the first half as well,
-        // if yes delete both at once
-        uc = d->priv->buffer().at(d->anchor - 1 - fpos + frag->stringPosition);
-        if (uc.isHighSurrogate())
+    // For emoji sequences, backspace deletes the entire grapheme cluster,
+    // since individual codepoints are meaningless to the user.
+    // For other clusters (e.g. Devanagari consonant+vowel), we delete
+    // only one codepoint at a time, matching the behavior of other major
+    // text editors.
+    const int clusterStart =
+            d->priv->previousCursorPosition(d->anchor, QTextLayout::SkipCharacters);
+    const int clusterCodeUnits = d->anchor - clusterStart;
+
+    if (clusterCodeUnits > 1) {
+        // Multi-code-unit cluster: use QTextEngine's script analysis
+        // to determine if this is an emoji sequence. The emoji segmenter
+        // (run during itemization) tags emoji sequences with Script_Emoji.
+        // Note: if Qt is built with QT_NO_EMOJISEGMENTER, Script_Emoji is
+        // never assigned, and we fall through to the per-codepoint path.
+        QTextBlock block = d->block();
+        const int posInBlock = clusterStart - block.position();
+        Q_ASSERT(posInBlock >= 0 && posInBlock < block.length());
+
+        QTextEngine *engine = d->blockLayout(block)->engine();
+        const int itemIndex = engine->findItem(posInBlock);
+
+        if (itemIndex >= 0
+            && engine->layoutData->items[itemIndex].analysis.script
+                    == QFontDatabasePrivate::Script_Emoji) {
+            d->anchor = clusterStart;
+        } else {
             --d->anchor;
+            // Step over the high surrogate if we landed on a low surrogate
+            const QStringView text = engine->layoutData->string;
+            const int idx = d->anchor - block.position();
+            if (idx > 0 && text.at(idx).isLowSurrogate()
+                && text.at(idx - 1).isHighSurrogate()) {
+                --d->anchor;
+            }
+        }
+    } else {
+        // Single code unit (ASCII/BMP): just step back one position
+        --d->anchor;
     }
 
     d->adjusted_anchor = d->anchor;

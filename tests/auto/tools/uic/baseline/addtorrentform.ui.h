@@ -61,7 +61,7 @@ public:
         AddTorrentFile->setSizeGripEnabled(false);
         AddTorrentFile->setModal(true);
         vboxLayout = new QVBoxLayout(AddTorrentFile);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
         vboxLayout->setContentsMargins(8, 8, 8, 8);
@@ -72,7 +72,7 @@ public:
         widget->setObjectName("widget");
         widget->setGeometry(QRect(10, 40, 364, 33));
         gridLayout = new QGridLayout(groupBox);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
         gridLayout->setContentsMargins(8, 8, 8, 8);
@@ -99,7 +99,7 @@ public:
 
         label_5 = new QLabel(groupBox);
         label_5->setObjectName("label_5");
-        label_5->setAlignment(Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop);
+        label_5->setAlignment(Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop);
 
         gridLayout->addWidget(label_5, 5, 0, 1, 1);
 
@@ -115,16 +115,16 @@ public:
 
         torrentContents = new QTextEdit(groupBox);
         torrentContents->setObjectName("torrentContents");
-        torrentContents->setFocusPolicy(Qt::NoFocus);
+        torrentContents->setFocusPolicy(Qt::FocusPolicy::NoFocus);
         torrentContents->setTabChangesFocus(true);
-        torrentContents->setLineWrapMode(QTextEdit::NoWrap);
+        torrentContents->setLineWrapMode(QTextEdit::LineWrapMode::NoWrap);
         torrentContents->setReadOnly(true);
 
         gridLayout->addWidget(torrentContents, 5, 1, 1, 3);
 
         destinationFolder = new QLineEdit(groupBox);
         destinationFolder->setObjectName("destinationFolder");
-        destinationFolder->setFocusPolicy(Qt::StrongFocus);
+        destinationFolder->setFocusPolicy(Qt::FocusPolicy::StrongFocus);
 
         gridLayout->addWidget(destinationFolder, 6, 1, 1, 2);
 
@@ -167,7 +167,7 @@ public:
         vboxLayout->addWidget(groupBox);
 
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);

@@ -18,22 +18,24 @@ Forwarded: not-needed
 --- a/cmake/QtPlugins.cmake.in
 +++ b/cmake/QtPlugins.cmake.in
 @@ -6,7 +6,7 @@ include_guard(DIRECTORY)
- 
+
  # Distributions should probably change this default.
  if(NOT DEFINED QT_SKIP_AUTO_PLUGIN_INCLUSION)
 -    set(QT_SKIP_AUTO_PLUGIN_INCLUSION OFF)
 +    set(QT_SKIP_AUTO_PLUGIN_INCLUSION ON)
  endif()
+
+ if(__qt_@QT_MODULE@_targets_file_included AND NOT QT_SKIP_AUTO_PLUGIN_INCLUSION)
+diff --git a/cmake/QtPublicPluginHelpers.cmake b/cmake/QtPublicPluginHelpers.cmake
+index 749e40e3f2a..912808814fe 100644
+--- a/cmake/QtPublicPluginHelpers.cmake
++++ b/cmake/QtPublicPluginHelpers.cmake
+@@ -607,7 +607,7 @@ macro(__qt_internal_include_qml_plugin_packages)
  
- if(QT_REPO_MODULE_VERSION)
---- a/cmake/QtPostProcessHelpers.cmake
-+++ b/cmake/QtPostProcessHelpers.cmake
-@@ -507,7 +507,7 @@ function(qt_internal_create_plugins_auto
+     # Distributions should probably change this default.
+     if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
+-        set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION OFF)
++        set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION ON)
+     endif()
  
- # Distributions should probably change this default.
- if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
--    set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION OFF)
-+    set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION ON)
- endif()
- 
- if(QT_REPO_MODULE_VERSION)
+     set(__qt_qml_plugins_config_file_list "")

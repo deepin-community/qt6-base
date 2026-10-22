@@ -450,6 +450,8 @@ static QString xcodeFiletypeForFilename(const QString &filename)
         return QStringLiteral("sourcecode.c.objc");
     if (filename.endsWith(QLatin1String(".framework")))
         return QStringLiteral("wrapper.framework");
+    if (filename.endsWith(QLatin1String(".xcframework")))
+        return QStringLiteral("wrapper.xcframework");
     if (filename.endsWith(QLatin1String(".a")))
         return QStringLiteral("archive.ar");
     if (filename.endsWith(QLatin1String(".pro")) || filename.endsWith(QLatin1String(".qrc")))
@@ -470,18 +472,15 @@ static QList<QVariantMap> provisioningTeams()
     const QSettings xcodeSettings(
         QDir::homePath() + QLatin1String("/Library/Preferences/com.apple.dt.Xcode.plist"),
         QSettings::NativeFormat);
-    const QVariantMap teamMap = xcodeSettings.value(QLatin1String("IDEProvisioningTeams")).toMap();
-    QList<QVariantMap> flatTeams;
-    for (QVariantMap::const_iterator it = teamMap.begin(), end = teamMap.end(); it != end; ++it) {
-        const QString emailAddress = it.key();
-        const QVariantList emailTeams = it.value().toList();
 
-        for (QVariantList::const_iterator teamIt = emailTeams.begin(),
-             teamEnd = emailTeams.end(); teamIt != teamEnd; ++teamIt) {
-            QVariantMap team = teamIt->toMap();
-            team[QLatin1String("emailAddress")] = emailAddress;
-            flatTeams.append(team);
-        }
+    QVariantMap teamMap = xcodeSettings.value(QLatin1String("IDEProvisioningTeamByIdentifier")).toMap();
+    if (teamMap.isEmpty())
+        teamMap = xcodeSettings.value(QLatin1String("IDEProvisioningTeams")).toMap();
+
+    QList<QVariantMap> flatTeams;
+    for (const auto &[accountIdentifier, associatedTeams] : teamMap.asKeyValueRange()) {
+        for (const auto &team : associatedTeams.toList())
+            flatTeams.append(team.toMap());
     }
 
     // Sort teams so that Free Provisioning teams come last
@@ -967,15 +966,18 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                     library = fileFixify(library, FileFixifyFromOutdir | FileFixifyAbsolute);
                     QString key = keyFor(library);
                     if (!project->values("QMAKE_PBX_LIBRARIES").contains(key)) {
-                        bool is_frmwrk = (library.endsWith(".framework"));
+                        const QString fileType = xcodeFiletypeForFilename(library);
+                        bool is_frmwrk = fileType.endsWith("framework");
                         t << "\t\t" << key << " = {\n"
                           << "\t\t\t" << writeSettings("isa", "PBXFileReference", SettingsNoQuote) << ";\n"
                           << "\t\t\t" << writeSettings("name", name) << ";\n"
                           << "\t\t\t" << writeSettings("path", library) << ";\n"
                           << "\t\t\t" << writeSettings("refType", QString::number(reftypeForFile(library)), SettingsNoQuote) << ";\n"
                           << "\t\t\t" << writeSettings("sourceTree", "<absolute>") << ";\n";
-                        if (is_frmwrk)
-                            t << "\t\t\t" << writeSettings("lastKnownFileType", "wrapper.framework") << ";\n";
+                        if (is_frmwrk) {
+                            t << "\t\t\t" << writeSettings("lastKnownFileType", fileType)
+                              << ";\n";
+                        }
                         t << "\t\t};\n";
                         project->values("QMAKE_PBX_LIBRARIES").append(key);
                         QString build_key = keyFor(library + ".BUILDABLE");
@@ -1679,6 +1681,8 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                     t << "\t\t\t\t" << writeSettings("APPLETVOS_DEPLOYMENT_TARGET", project->first("QMAKE_TVOS_DEPLOYMENT_TARGET")) << ";\n";
                 if (!project->isEmpty("QMAKE_WATCHOS_DEPLOYMENT_TARGET"))
                     t << "\t\t\t\t" << writeSettings("WATCHOS_DEPLOYMENT_TARGET", project->first("QMAKE_WATCHOS_DEPLOYMENT_TARGET")) << ";\n";
+                if (!project->isEmpty("QMAKE_VISIONOS_DEPLOYMENT_TARGET"))
+                    t << "\t\t\t\t" << writeSettings("XROS_DEPLOYMENT_TARGET", project->first("QMAKE_VISIONOS_DEPLOYMENT_TARGET")) << ";\n";
 
                 if (!project->isEmpty("QMAKE_XCODE_CODE_SIGN_IDENTITY"))
                     t << "\t\t\t\t" << writeSettings("CODE_SIGN_IDENTITY", project->first("QMAKE_XCODE_CODE_SIGN_IDENTITY")) << ";\n";

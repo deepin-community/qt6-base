@@ -1,0 +1,2 @@
+qt6-base-dev-tools: no-manual-page [usr/bin/androiddeployqt6]
+qt6-base-dev-tools: no-manual-page [usr/bin/wasmdeployqt6]

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformdialoghelper.h"
 
@@ -8,10 +9,6 @@
 #if QT_CONFIG(regularexpression)
 #include <QtCore/QRegularExpression>
 #endif
-#if QT_CONFIG(settings)
-#include <QtCore/QSettings>
-#endif
-#include <QtCore/QSharedData>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
 #include <QtGui/QColor>
@@ -145,7 +142,7 @@ QVariant  QPlatformDialogHelper::defaultStyleHint(QPlatformDialogHelper::StyleHi
 
 // Font dialog
 
-class QFontDialogOptionsPrivate : public QSharedData
+class QFontDialogOptionsPrivate
 {
 public:
     QFontDialogOptionsPrivate() = default;
@@ -242,8 +239,6 @@ public:
     enum { CustomColorCount = 16, StandardColorCount = 6 * 8 };
 
     QColorDialogStaticData();
-    inline void readSettings();
-    inline void writeSettings() const;
 
     QRgb customRgb[CustomColorCount];
     QRgb standardRgb[StandardColorCount];
@@ -258,41 +253,18 @@ QColorDialogStaticData::QColorDialogStaticData() : customSet(false)
             for (int b = 0; b < 3; ++b)
                 standardRgb[i++] = qRgb(r * 255 / 3, g * 255 / 3, b * 255 / 2);
     std::fill(customRgb, customRgb + CustomColorCount, 0xffffffff);
-    readSettings();
-}
-
-void QColorDialogStaticData::readSettings()
-{
-#if QT_CONFIG(settings)
-    const QSettings settings(QSettings::UserScope, QStringLiteral("QtProject"));
-    for (int i = 0; i < int(CustomColorCount); ++i) {
-        const QVariant v = settings.value("Qt/customColors/"_L1 + QString::number(i));
-        if (v.isValid())
-            customRgb[i] = v.toUInt();
-    }
-#endif
-}
-
-void QColorDialogStaticData::writeSettings() const
-{
-#if QT_CONFIG(settings)
-    if (customSet) {
-        const_cast<QColorDialogStaticData*>(this)->customSet = false;
-        QSettings settings(QSettings::UserScope, QStringLiteral("QtProject"));
-        for (int i = 0; i < int(CustomColorCount); ++i)
-            settings.setValue("Qt/customColors/"_L1 + QString::number(i), customRgb[i]);
-    }
-#endif
 }
 
 Q_GLOBAL_STATIC(QColorDialogStaticData, qColorDialogStaticData)
 
-class QColorDialogOptionsPrivate : public QSharedData
+class QColorDialogOptionsPrivate
 {
 public:
     QColorDialogOptionsPrivate() = default;
-    // Write out settings around destruction of dialogs
-    ~QColorDialogOptionsPrivate() { qColorDialogStaticData()->writeSettings(); }
+    QColorDialogOptionsPrivate(const QColorDialogOptionsPrivate &) = default;
+    QColorDialogOptionsPrivate(QColorDialogOptionsPrivate &&) = default;
+    QColorDialogOptionsPrivate &operator=(const QColorDialogOptionsPrivate &) = delete;
+    QColorDialogOptionsPrivate &operator=(QColorDialogOptionsPrivate &&) = delete;
 
     QColorDialogOptions::ColorDialogOptions options;
     QString windowTitle;
@@ -424,7 +396,7 @@ void QPlatformColorDialogHelper::setOptions(const QSharedPointer<QColorDialogOpt
 
 // File dialog
 
-class QFileDialogOptionsPrivate : public QSharedData
+class QFileDialogOptionsPrivate
 {
 public:
     QFileDialogOptions::FileDialogOptions options;
@@ -758,7 +730,7 @@ QStringList QPlatformFileDialogHelper::cleanFilterList(const QString &filter)
 
 // Message dialog
 
-class QMessageDialogOptionsPrivate : public QSharedData
+class QMessageDialogOptionsPrivate
 {
 public:
     QMessageDialogOptionsPrivate() :

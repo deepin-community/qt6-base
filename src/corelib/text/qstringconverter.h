@@ -1,11 +1,11 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #if 0
 // keep existing syncqt header working after the move of the class
 // into qstringconverter_base
 #pragma qt_class(QStringConverter)
-#pragma qt_class(QStringConverterBase)
 #endif
 
 #ifndef QSTRINGCONVERTER_H
@@ -62,21 +62,30 @@ public:
         }
         return iface->fromUtf16(out, in, &state);
     }
+
+    using FinalizeResult = FinalizeResultChar<char>;
+    [[nodiscard]] Q_CORE_EXPORT FinalizeResult finalize(char *out, qsizetype maxlen);
+    [[nodiscard]] FinalizeResult finalize() { return finalize(nullptr, 0); }
+
 private:
-    QByteArray encodeAsByteArray(QStringView in)
+    QByteArray invalidateAndReturnNull()
     {
-        if (!iface) {
-            // ensure that hasError returns true
-            state.invalidChars = 1;
-            return {};
-        }
+        // ensure that hasError returns true
+        state.invalidChars = 1;
+        return QByteArray();
+    }
+    QByteArray encodeAsByteArrayImpl(QStringView in)
+    {
         QByteArray result(iface->fromUtf16Len(in.size()), Qt::Uninitialized);
         char *out = result.data();
         out = iface->fromUtf16(out, in, &state);
         result.truncate(out - result.constData());
         return result;
     }
-
+    QByteArray encodeAsByteArray(QStringView in)
+    {
+        return iface ? encodeAsByteArrayImpl(in) : invalidateAndReturnNull();
+    }
 };
 
 class QStringDecoder : public QStringConverter
@@ -127,20 +136,39 @@ public:
     char16_t *appendToBuffer(char16_t *out, QByteArrayView ba)
     { return reinterpret_cast<char16_t *>(appendToBuffer(reinterpret_cast<QChar *>(out), ba)); }
 
+
+    using FinalizeResult = FinalizeResultChar<char16_t>;
+    using FinalizeResultQChar = FinalizeResultChar<QChar>;
+    [[nodiscard]] FinalizeResultQChar finalize(QChar *out, qsizetype maxlen)
+    {
+        auto r = finalize(reinterpret_cast<char16_t *>(out), maxlen);
+        return {reinterpret_cast<QChar *>(r.next), r.invalidChars, r.error};
+    }
+    [[nodiscard]] Q_CORE_EXPORT FinalizeResult finalize(char16_t *out, qsizetype maxlen);
+    [[nodiscard]] FinalizeResult finalize()
+    {
+        return finalize(static_cast<char16_t *>(nullptr), 0);
+    }
+
     Q_CORE_EXPORT static QStringDecoder decoderForHtml(QByteArrayView data);
 
 private:
-    QString decodeAsString(QByteArrayView in)
+    QString invalidateAndReturnNull()
     {
-        if (!iface) {
-            // ensure that hasError returns true
-            state.invalidChars = 1;
-            return {};
-        }
+        // ensure that hasError returns true
+        state.invalidChars = 1;
+        return QString();
+    }
+    QString decodeAsStringImpl(QByteArrayView in)
+    {
         QString result(iface->toUtf16Len(in.size()), Qt::Uninitialized);
         const QChar *out = iface->toUtf16(result.data(), in, &state);
         result.truncate(out - result.constData());
         return result;
+    }
+    QString decodeAsString(QByteArrayView in)
+    {
+        return iface ? decodeAsStringImpl(in) : invalidateAndReturnNull();
     }
 };
 

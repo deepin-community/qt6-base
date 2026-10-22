@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 /****************************************************************************
 **
@@ -109,7 +110,7 @@ QT_BEGIN_NAMESPACE
         funcret _q_##func(a, b, c, d, e); \
     }
 
-// ret func(arg1, arg2, arg3, arg4, arg6)
+// ret func(arg1, arg2, arg3, arg4, arg5, arg6)
 #  define DEFINEFUNC6(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, arg6, f, err, funcret) \
     typedef ret (*_q_PTR_##func)(arg1, arg2, arg3, arg4, arg5, arg6);   \
     static _q_PTR_##func _q_##func = nullptr;                           \
@@ -121,7 +122,7 @@ QT_BEGIN_NAMESPACE
         funcret _q_##func(a, b, c, d, e, f); \
     }
 
-// ret func(arg1, arg2, arg3, arg4, arg6, arg7)
+// ret func(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
 #  define DEFINEFUNC7(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, arg6, f, arg7, g, err, funcret) \
     typedef ret (*_q_PTR_##func)(arg1, arg2, arg3, arg4, arg5, arg6, arg7);   \
     static _q_PTR_##func _q_##func = nullptr;                                 \
@@ -133,7 +134,19 @@ QT_BEGIN_NAMESPACE
         funcret _q_##func(a, b, c, d, e, f, g); \
     }
 
-// ret func(arg1, arg2, arg3, arg4, arg6, arg7, arg8, arg9)
+// ret func(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
+#  define DEFINEFUNC8(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, arg6, f, arg7, g, arg8, h, err, funcret) \
+    typedef ret (*_q_PTR_##func)(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);   \
+    static _q_PTR_##func _q_##func = nullptr;                                 \
+    ret q_##func(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) { \
+        if (Q_UNLIKELY(!_q_##func)) { \
+            qsslSocketUnresolvedSymbolWarning(#func); \
+            err; \
+        } \
+        funcret _q_##func(a, b, c, d, e, f, g, h); \
+    }
+
+// ret func(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
 #  define DEFINEFUNC9(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, arg6, f, arg7, g, arg8, h, arg9, i, err, funcret) \
     typedef ret (*_q_PTR_##func)(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);   \
     static _q_PTR_##func _q_##func = nullptr;                                             \
@@ -170,13 +183,17 @@ QT_BEGIN_NAMESPACE
 #  define DEFINEFUNC5(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, err, funcret) \
     ret q_##func(arg1, arg2, arg3, arg4, arg5) { funcret func(a, b, c, d, e); }
 
-// ret func(arg1, arg2, arg3, arg4, arg6)
+// ret func(arg1, arg2, arg3, arg4, arg5, arg6)
 #  define DEFINEFUNC6(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, arg6, f, err, funcret) \
     ret q_##func(arg1, arg2, arg3, arg4, arg5, arg6) { funcret func(a, b, c, d, e, f); }
 
-// ret func(arg1, arg2, arg3, arg4, arg6, arg7)
+// ret func(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
 #  define DEFINEFUNC7(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, arg6, f, arg7, g, err, funcret) \
     ret q_##func(arg1, arg2, arg3, arg4, arg5, arg6, arg7) { funcret func(a, b, c, d, e, f, g); }
+
+// ret func(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
+#  define DEFINEFUNC8(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, arg6, f, arg7, g, arg8, h, err, funcret) \
+    ret q_##func(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) { funcret func(a, b, c, d, e, f, g, h); }
 
 // ret func(arg1, arg2, arg3, arg4, arg6, arg7, arg8, arg9)
 #  define DEFINEFUNC9(ret, func, arg1, a, arg2, b, arg3, c, arg4, d, arg5, e, arg6, f, arg7, g, arg8, h, arg9, i, err, funcret) \
@@ -333,8 +350,8 @@ void q_SSL_set_psk_use_session_callback(SSL *s, q_SSL_psk_use_session_cb_func_t)
 bool q_resolveOpenSslSymbols();
 long q_ASN1_INTEGER_get(ASN1_INTEGER *a);
 int q_ASN1_INTEGER_cmp(const ASN1_INTEGER *x, const ASN1_INTEGER *y);
-int q_ASN1_STRING_length(ASN1_STRING *a);
-int q_ASN1_STRING_to_UTF8(unsigned char **a, ASN1_STRING *b);
+int q_ASN1_STRING_length(const ASN1_STRING *a);
+int q_ASN1_STRING_to_UTF8(unsigned char **a, const ASN1_STRING *b);
 int q_ASN1_TIME_to_tm(const ASN1_TIME *s, struct tm *tm);
 long q_BIO_ctrl(BIO *a, int b, long c, void *d);
 int q_BIO_free(BIO *a);
@@ -385,7 +402,7 @@ const char *q_OBJ_nid2ln(int a);
 int q_OBJ_sn2nid(const char *s);
 int q_OBJ_ln2nid(const char *s);
 int q_i2t_ASN1_OBJECT(char *buf, int buf_len, ASN1_OBJECT *obj);
-int q_OBJ_obj2txt(char *buf, int buf_len, ASN1_OBJECT *obj, int no_name);
+int q_OBJ_obj2txt(char *buf, int buf_len, const ASN1_OBJECT *obj, int no_name);
 int q_OBJ_obj2nid(const ASN1_OBJECT *a);
 #define q_EVP_get_digestbynid(a) q_EVP_get_digestbyname(q_OBJ_nid2sn(a))
 EVP_PKEY *q_PEM_read_bio_PrivateKey(BIO *a, EVP_PKEY **b, pem_password_cb *c, void *d);
@@ -464,29 +481,29 @@ int q_X509_cmp(X509 *a, X509 *b);
 X509 *q_X509_dup(X509 *a);
 void q_X509_print(BIO *a, X509*b);
 int q_X509_digest(const X509 *x509, const EVP_MD *type, unsigned char *md, unsigned int *len);
-ASN1_OBJECT *q_X509_EXTENSION_get_object(X509_EXTENSION *a);
+QT_OPENSSL4_CONST ASN1_OBJECT *q_X509_EXTENSION_get_object(QT_OPENSSL4_CONST X509_EXTENSION *a);
 void q_X509_free(X509 *a);
 ASN1_TIME *q_X509_gmtime_adj(ASN1_TIME *s, long adj);
 void q_ASN1_TIME_free(ASN1_TIME *t);
-X509_EXTENSION *q_X509_get_ext(X509 *a, int b);
+QT_OPENSSL4_CONST X509_EXTENSION *q_X509_get_ext(X509 *a, int b);
 int q_X509_get_ext_count(X509 *a);
 void *q_X509_get_ext_d2i(X509 *a, int b, int *c, int *d);
-const X509V3_EXT_METHOD *q_X509V3_EXT_get(X509_EXTENSION *a);
-void *q_X509V3_EXT_d2i(X509_EXTENSION *a);
-int q_X509_EXTENSION_get_critical(X509_EXTENSION *a);
-ASN1_OCTET_STRING *q_X509_EXTENSION_get_data(X509_EXTENSION *a);
+const X509V3_EXT_METHOD *q_X509V3_EXT_get(QT_OPENSSL4_CONST X509_EXTENSION *a);
+void *q_X509V3_EXT_d2i(QT_OPENSSL4_CONST X509_EXTENSION *a);
+int q_X509_EXTENSION_get_critical(const X509_EXTENSION *a);
+QT_OPENSSL4_CONST ASN1_OCTET_STRING *q_X509_EXTENSION_get_data(QT_OPENSSL4_CONST X509_EXTENSION *a);
 void q_BASIC_CONSTRAINTS_free(BASIC_CONSTRAINTS *a);
 void q_AUTHORITY_KEYID_free(AUTHORITY_KEYID *a);
 int q_ASN1_STRING_print(BIO *a, const ASN1_STRING *b);
 int q_X509_check_issued(X509 *a, X509 *b);
-X509_NAME *q_X509_get_issuer_name(X509 *a);
-X509_NAME *q_X509_get_subject_name(X509 *a);
+QT_OPENSSL4_CONST X509_NAME *q_X509_get_issuer_name(X509 *a);
+QT_OPENSSL4_CONST X509_NAME *q_X509_get_subject_name(X509 *a);
 ASN1_INTEGER *q_X509_get_serialNumber(X509 *a);
 int q_X509_verify_cert(X509_STORE_CTX *ctx);
-int q_X509_NAME_entry_count(X509_NAME *a);
-X509_NAME_ENTRY *q_X509_NAME_get_entry(X509_NAME *a,int b);
-ASN1_STRING *q_X509_NAME_ENTRY_get_data(X509_NAME_ENTRY *a);
-ASN1_OBJECT *q_X509_NAME_ENTRY_get_object(X509_NAME_ENTRY *a);
+int q_X509_NAME_entry_count(const X509_NAME *a);
+QT_OPENSSL4_CONST X509_NAME_ENTRY *q_X509_NAME_get_entry(const X509_NAME *a, int b);
+QT_OPENSSL4_CONST ASN1_STRING *q_X509_NAME_ENTRY_get_data(const X509_NAME_ENTRY *a);
+QT_OPENSSL4_CONST ASN1_OBJECT *q_X509_NAME_ENTRY_get_object(const X509_NAME_ENTRY *a);
 EVP_PKEY *q_X509_PUBKEY_get(X509_PUBKEY *a);
 void q_X509_STORE_free(X509_STORE *store);
 X509_STORE *q_X509_STORE_new();
@@ -517,6 +534,8 @@ DH *q_PEM_read_bio_DHparams(BIO *a, DH **b, pem_password_cb *c, void *d);
 BIGNUM *q_BN_bin2bn(const unsigned char *s, int len, BIGNUM *ret);
 #define q_SSL_CTX_set_tmp_dh(ctx, dh) q_SSL_CTX_ctrl((ctx), SSL_CTRL_SET_TMP_DH, 0, (char *)dh)
 #define q_SSL_CTX_set_dh_auto(ctx, onoff) q_SSL_CTX_ctrl(ctx,SSL_CTRL_SET_DH_AUTO,onoff,NULL)
+
+int q_SSL_export_keying_material(SSL *s, unsigned char *out, size_t olen, const char *label, size_t llen, const unsigned char *context, size_t contextlen, int use_context);
 
 #ifndef OPENSSL_NO_EC
 // EC Diffie-Hellman support
@@ -681,8 +700,11 @@ void q_SSL_CTX_set_security_level(SSL_CTX *ctx, int level);
 X509 *q_SSL_get1_peer_certificate(SSL *a);
 #define q_SSL_get_peer_certificate q_SSL_get1_peer_certificate
 int q_EVP_PKEY_get_bits(const EVP_PKEY *pkey);
+int q_EVP_PKEY_get_security_bits(const EVP_PKEY *pkey);
 int q_EVP_PKEY_get_base_id(const EVP_PKEY *pkey);
 #define q_EVP_PKEY_base_id q_EVP_PKEY_get_base_id
+const char *q_EVP_PKEY_get0_type_name(const EVP_PKEY *pkey);
+#define q_EVP_PKEY_type_name q_EVP_PKEY_get0_type_name
 #else
 X509 *q_SSL_get_peer_certificate(SSL *a);
 int q_EVP_PKEY_base_id(EVP_PKEY *a);

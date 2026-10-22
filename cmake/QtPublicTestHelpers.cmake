@@ -68,7 +68,10 @@ is not specified")
         # It's necessary to call actual test inside 'cmd.exe', because 'execute_process' uses
         # SW_HIDE to avoid showing a console window, it affects other GUI as well.
         # See https://gitlab.kitware.com/cmake/cmake/-/issues/17690 for details.
-        set(extra_runner "cmd /c")
+        #
+        # Run the command using the proxy 'call' command to avoid issues related to invalid
+        # processing of quotes and spaces in cmd.exe arguments.
+        set(extra_runner "cmd /c call")
     endif()
 
     if(arg_PRE_RUN)
@@ -84,20 +87,32 @@ is not specified")
         set(command_echo "COMMAND_ECHO ${arg_COMMAND_ECHO}")
     endif()
 
+    set(command_escaped "")
+    foreach(command_arg IN LISTS arg_COMMAND)
+        if(NOT command_arg MATCHES "^\\\${[^}]+}$" AND NOT command_arg MATCHES "^\".+\"$")
+            string(REPLACE "\"" "\\\"" command_arg "${command_arg}")
+            string(APPEND command_escaped " \"${command_arg}\"")
+        else()
+            # Assume that all arguments that passed as escaped variables can be empty when
+            # unwrapped during the script execution.
+            string(APPEND command_escaped " ${command_arg}")
+        endif()
+    endforeach()
+
     file(GENERATE OUTPUT "${arg_OUTPUT_FILE}" CONTENT
 "#!${CMAKE_COMMAND} -P
 # Qt generated command wrapper
 
 ${environment_extras}
 ${pre_run}
-execute_process(COMMAND ${extra_runner} ${arg_COMMAND}
+execute_process(COMMAND ${extra_runner} ${command_escaped}
                 WORKING_DIRECTORY \"${arg_WORKING_DIRECTORY}\"
                 ${command_echo}
                 RESULT_VARIABLE result
 )
 ${post_run}
 if(NOT result EQUAL 0)
-    string(JOIN \" \" full_command ${extra_runner} ${arg_COMMAND})
+    string(JOIN \" \" full_command ${extra_runner} ${command_escaped})
     message(FATAL_ERROR \"\${full_command} execution failed with exit code \${result}.\")
 endif()"
     )
@@ -105,4 +120,36 @@ endfunction()
 
 function(_qt_internal_test_batch_target_name out)
     set(${out} "test_batch" PARENT_SCOPE)
+endfunction()
+
+# Create a *_check target of the ctest execution for alternative execution
+# Arguments:
+# : CTEST_TEST_NAME: (default: ${testname})
+#     name of the ctest test used
+function(_qt_internal_make_check_target testname)
+    set(options "")
+    set(singleOpts CTEST_TEST_NAME)
+    set(multiOpts "")
+
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+            "${options}" "${singleOpts}" "${multiOpts}"
+    )
+    if(NOT arg_CTEST_TEST_NAME)
+        set(arg_CTEST_TEST_NAME ${testname})
+    endif()
+
+    set(test_config_options "")
+    get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
+    if(is_multi_config)
+        set(test_config_options -C $<CONFIG>)
+    endif()
+    # Note: By default the working directory here is CMAKE_CURRENT_BINARY_DIR, which will
+    #   work as long as this is called anywhere up or down the path where the equivalent
+    #   `add_test` is called (not down a different branch path).
+    add_custom_target(${testname}_check
+        VERBATIM
+        COMMENT "Running ctest -V -R \"^${arg_CTEST_TEST_NAME}$\" ${test_config_options}"
+        COMMAND
+            "${CMAKE_CTEST_COMMAND}" -V -R "^${arg_CTEST_TEST_NAME}$" ${test_config_options}
+    )
 endfunction()

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSSCREEN_H
 #define QWINDOWSSCREEN_H
@@ -10,6 +11,8 @@
 #include <QtCore/qscopedpointer.h>
 #include <qpa/qplatformscreen.h>
 #include <QtGui/qscreen_platform.h>
+#include <QtGui/qcolorspace.h>
+#include <private/qwinregistry_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -39,6 +42,8 @@ struct QWindowsScreenData
     QString deviceName;
     QString devicePath;
     std::optional<int> deviceIndex = std::nullopt;
+    QColorSpace colorSpace;
+
 };
 
 class QWindowsScreen : public QPlatformScreen, public QNativeInterface::QWindowsScreen
@@ -64,6 +69,7 @@ public:
     QString model() const override { return m_data.model; }
     QString serialNumber() const override { return m_data.serialNumber; }
     Qt::ScreenOrientation orientation() const override { return m_data.orientation; }
+    QColorSpace colorSpace() const override { return m_data.colorSpace; }
     QList<QPlatformScreen *> virtualSiblings() const override;
     QWindow *topLevelAt(const QPoint &point) const override;
     static QWindow *windowAt(const QPoint &point, unsigned flags);
@@ -115,13 +121,18 @@ public:
 
     const QWindowsScreen *screenAtDp(const QPoint &p) const;
     const QWindowsScreen *screenForHwnd(HWND hwnd) const;
+    const QWindowsScreen *screenForRect(const RECT *rect) const;
 
     static bool isSingleScreen();
 
 private:
+    void addScreen(const QWindowsScreenData &screenData);
     void removeScreen(int index);
+    const QWindowsScreen *screenForMonitor(HMONITOR monitor) const;
 
     HWND m_displayChangeObserver = nullptr;
+    std::unique_ptr<QWinRegistryNotifier> m_perUserColorProfileAssociationNotifier;
+    std::unique_ptr<QWinRegistryNotifier> m_systemWideColorProfileAssociationNotifier;
     WindowsScreenList m_screens;
 };
 

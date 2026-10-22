@@ -9,6 +9,8 @@
 #include <QPoint>
 #include <QSize>
 
+QT_BEGIN_NAMESPACE
+
 class QGridLayout;
 class QLabel;
 class QMouseEvent;
@@ -36,5 +38,7 @@ private:
     QLabel *nameLabel;
     QPoint dragStartPosition;
 };
+
+QT_END_NAMESPACE
 
 #endif

@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
+// Qt-Security score:critical reason:data-parser
 
 #define QT_NO_CAST_FROM_ASCII
 
@@ -35,7 +35,7 @@ static constexpr auto magicRuleTypes = qOffsetStringArray(
 QMimeMagicRule::Type QMimeMagicRule::type(const QByteArray &theTypeName)
 {
     for (int i = String; i <= Byte; ++i) {
-        if (theTypeName == magicRuleTypes.at(i))
+        if (theTypeName == magicRuleTypes.viewAt(i))
             return Type(i);
     }
     return Invalid;
@@ -60,22 +60,34 @@ bool QMimeMagicRule::operator==(const QMimeMagicRule &other) const
 }
 
 // Used by both providers
-bool QMimeMagicRule::matchSubstring(const char *dataPtr, qsizetype dataSize, int rangeStart, int rangeLength,
-                                    qsizetype valueLength, const char *valueData, const char *mask)
+bool QMimeMagicRule::matchSubstring(const char *dataPtr, qsizetype dataSize, quint64 rangeStart,
+                                    quint64 rangeLength, quint64 valueLength, const char *valueData,
+                                    const char *mask)
 {
+    // The range and the value length can come straight out of the binary mime.cache, so
+    // nothing can be assumed about them: rangeStart can point past the data, and the value
+    // read at the last position of the range has to stay inside it, too.
+    const quint64 size = quint64(dataSize);
+    if (rangeStart >= size || valueLength == 0 || rangeLength == 0
+        || valueLength > size - rangeStart)
+        return false;
+    // Clamp the range to the data that is actually there, so that rangeStart + rangeLength
+    // neither overflows nor points past the end.
+    rangeLength = qMin(rangeLength, size - rangeStart);
+
     // Size of searched data.
     // Example: value="ABC", rangeLength=3 -> we need 3+3-1=5 bytes (ABCxx,xABCx,xxABC would match)
-    const qsizetype dataNeeded = qMin(rangeLength + valueLength - 1, dataSize - rangeStart);
+    const quint64 dataNeeded = qMin(rangeLength + valueLength - 1, size - rangeStart);
 
     if (!mask) {
         // callgrind says QByteArray::indexOf is much slower, since our strings are typically too
         // short for be worth Boyer-Moore matching (1 to 71 bytes, 11 bytes on average).
         bool found = false;
-        for (int i = rangeStart; i < rangeStart + rangeLength; ++i) {
-            if (i + valueLength > dataSize)
+        for (quint64 i = rangeStart; i < rangeStart + rangeLength; ++i) {
+            if (i + valueLength > size)
                 break;
 
-            if (memcmp(valueData, dataPtr + i, valueLength) == 0) {
+            if (memcmp(valueData, dataPtr + i, size_t(valueLength)) == 0) {
                 found = true;
                 break;
             }
@@ -89,18 +101,20 @@ bool QMimeMagicRule::matchSubstring(const char *dataPtr, qsizetype dataSize, int
         // deviceSize is 4, so dataNeeded was max'ed to 4.
         // maxStartPos = 4 - 3 + 1 = 2, and indeed
         // we need to check for a match a positions 0 and 1 (ABCx and xABC).
-        const qsizetype maxStartPos = dataNeeded - valueLength + 1;
-        for (int i = 0; i < maxStartPos; ++i) {
+        const quint64 maxStartPos = dataNeeded - valueLength + 1;
+        for (quint64 i = 0; i < maxStartPos; ++i) {
             const char *d = readDataBase + i;
             bool valid = true;
-            for (int idx = 0; idx < valueLength; ++idx) {
+            for (quint64 idx = 0; idx < valueLength; ++idx) {
                 if (((*d++) & mask[idx]) != (valueData[idx] & mask[idx])) {
                     valid = false;
                     break;
                 }
             }
-            if (valid)
+            if (valid) {
                 found = true;
+                break;
+            }
         }
         if (!found)
             return false;
@@ -205,6 +219,12 @@ QMimeMagicRule::QMimeMagicRule(const QString &type,
     const QStringView endPosStr   = QStringView{offsets}.mid(colonIndex + 1);// / unchanged when colonIndex == -1
     if (Q_UNLIKELY(!QMimeTypeParserBase::parseNumber(startPosStr, &m_startPos, errorString)) ||
         Q_UNLIKELY(!QMimeTypeParserBase::parseNumber(endPosStr, &m_endPos, errorString))) {
+        m_type = Invalid;
+        return;
+    }
+    if (m_startPos < 0 || m_endPos < 0 || m_endPos < m_startPos) {
+        if (errorString)
+            *errorString = "Invalid offset range \""_L1 + offsets + u'"';
         m_type = Invalid;
         return;
     }

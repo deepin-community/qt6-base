@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLOGGINGCATEGORY_H
 #define QLOGGINGCATEGORY_H
@@ -38,10 +39,8 @@ public:
     static void setFilterRules(const QString &rules);
 
 private:
-    void init(const char *category, QtMsgType severityLevel);
-
-    Q_DECL_UNUSED_MEMBER void *d; // reserved for future use
-    const char *name;
+    Q_DECL_UNUSED_MEMBER void *d = nullptr; // reserved for future use
+    const char *name = nullptr;
 
     struct AtomicBools {
         QBasicAtomicInteger<bool> enabledDebug;
@@ -54,6 +53,10 @@ private:
         QBasicAtomicInt enabled;
     };
     Q_DECL_UNUSED_MEMBER bool placeholder[4]; // reserved for future use
+
+    QT_DEFINE_TAG_STRUCT(UnregisteredInitialization);
+    explicit constexpr QLoggingCategory(UnregisteredInitialization, const char *category) noexcept;
+    friend class QLoggingRegistry;
 };
 
 namespace { // allow different TUs to have different QT_NO_xxx_OUTPUT
@@ -103,6 +106,38 @@ template <> const bool QLoggingCategoryMacroHolder<QtWarningMsg>::IsOutputEnable
 #endif
 } // unnamed namespace
 
+#define QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(name, export_macro) \
+    inline namespace QtPrivateLogging { export_macro const QLoggingCategory &name(); }
+
+#ifdef QT_BUILDING_QT
+#define Q_DECLARE_LOGGING_CATEGORY(name) \
+    inline namespace QtPrivateLogging { const QLoggingCategory &name(); }
+
+#define Q_DECLARE_EXPORTED_LOGGING_CATEGORY(name, export_macro) \
+    inline namespace QtPrivateLogging { \
+    Q_DECL_DEPRECATED_X("Use QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY in Qt") \
+    export_macro const QLoggingCategory &name(); \
+    }
+
+#define Q_LOGGING_CATEGORY_IMPL(name, ...) \
+    const QLoggingCategory &name() \
+    { \
+        static const QLoggingCategory category(__VA_ARGS__); \
+        return category; \
+    }
+
+#define Q_LOGGING_CATEGORY(name, ...) \
+    inline namespace QtPrivateLogging { Q_LOGGING_CATEGORY_IMPL(name, __VA_ARGS__) } \
+    Q_WEAK_OVERLOAD \
+    Q_DECL_DEPRECATED_X("Use Q_STATIC_LOGGING_CATEGORY or add " \
+                        "either Q_DECLARE_LOGGING_CATEGORY or " \
+                        "QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY in a header") \
+    const QLoggingCategory &name() { return QtPrivateLogging::name(); }
+
+#define Q_STATIC_LOGGING_CATEGORY(name, ...) \
+    static Q_LOGGING_CATEGORY_IMPL(name, __VA_ARGS__)
+
+#else
 #define Q_DECLARE_LOGGING_CATEGORY(name) \
     const QLoggingCategory &name();
 
@@ -115,6 +150,10 @@ template <> const bool QLoggingCategoryMacroHolder<QtWarningMsg>::IsOutputEnable
         static const QLoggingCategory category(__VA_ARGS__); \
         return category; \
     }
+
+#define Q_STATIC_LOGGING_CATEGORY(name, ...) \
+    static Q_LOGGING_CATEGORY(name, __VA_ARGS__)
+#endif
 
 #define QT_MESSAGE_LOGGER_COMMON(category, level) \
     for (QLoggingCategoryMacroHolder<level> qt_category((category)()); qt_category; qt_category.control = false) \

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTREEVIEW_P_H
 #define QTREEVIEW_P_H
@@ -16,8 +17,10 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include "qtreeview.h"
 #include "private/qabstractitemview_p.h"
 #include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qbasictimer.h>
 #include <QtCore/qlist.h>
 #if QT_CONFIG(animation)
 #include <QtCore/qvariantanimation.h>
@@ -50,6 +53,8 @@ class Q_WIDGETS_EXPORT QTreeViewPrivate : public QAbstractItemViewPrivate
 {
     Q_DECLARE_PUBLIC(QTreeView)
 public:
+    enum class ExpandItems { AllLevels, RootOnly };
+    enum class InitializeNewItems { Initialize, DontInitialize };
 
     QTreeViewPrivate()
         : QAbstractItemViewPrivate(),
@@ -58,7 +63,7 @@ public:
           itemsExpandable(true), sortingEnabled(false),
           expandsOnDoubleClick(true),
           allColumnsShowFocus(false), customIndent(false), current(0), spanning(false),
-          animationsEnabled(false), columnResizeTimerID(0),
+          animationsEnabled(false),
           autoExpandDelay(-1), hoverBranch(-1), geometryRecursionBlock(false), hasRemovedItems(false),
           treePosition(0) {}
 
@@ -104,7 +109,8 @@ public:
     void modelDestroyed() override;
     QRect intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const override;
 
-    void layout(int item, bool recusiveExpanding = false, bool afterIsUninitialized = false);
+    void layout(int item, ExpandItems expandItems, InitializeNewItems initializeNewItems);
+    void doItemsLayout(ExpandItems expandItems, InitializeNewItems initializeNewItems);
 
     int pageUp(int item) const;
     int pageDown(int item) const;
@@ -121,9 +127,6 @@ public:
 
     void insertViewItems(int pos, int count, const QTreeViewItem &viewItem);
     void removeViewItems(int pos, int count);
-#if 0
-    bool checkViewItems() const;
-#endif
 
     int firstVisibleItem(int *offset = nullptr) const;
     int lastVisibleItem(int firstVisual = -1, int offset = -1) const;
@@ -137,11 +140,11 @@ public:
     int itemDecorationAt(const QPoint &pos) const;
     QRect itemDecorationRect(const QModelIndex &index) const;
 
-    QList<QPair<int, int>> columnRanges(const QModelIndex &topIndex,
+    QList<std::pair<int, int>> columnRanges(const QModelIndex &topIndex,
                                         const QModelIndex &bottomIndex) const;
     void select(const QModelIndex &start, const QModelIndex &stop, QItemSelectionModel::SelectionFlags command);
 
-    QPair<int,int> startAndEndColumns(const QRect &rect) const;
+    std::pair<int,int> startAndEndColumns(const QRect &rect) const;
 
     void updateChildCount(const int parentItem, const int delta);
 
@@ -183,7 +186,7 @@ public:
     bool customIndent;
 
     // used for drawing
-    mutable QPair<int,int> leftAndRight;
+    mutable std::pair<int,int> leftAndRight;
     mutable int current;
     mutable bool spanning;
 
@@ -231,7 +234,9 @@ public:
         return (viewIndex(index) + (header ? 1 : 0)) * model->columnCount()+index.column();
     }
 
-    int accessibleTree2Index(const QModelIndex &index) const;
+#if QT_CONFIG(accessibility)
+    int accessibleChildIndex(const QModelIndex &index) const override;
+#endif
 
     void updateIndentationFromStyle();
 
@@ -239,7 +244,7 @@ public:
     QSet<QPersistentModelIndex> spanningIndexes;
 
     // used for updating resized columns
-    int columnResizeTimerID;
+    QBasicTimer columnResizeTimer;
     QList<int> columnsToUpdate;
 
     // used for the automatic opening of nodes during DND

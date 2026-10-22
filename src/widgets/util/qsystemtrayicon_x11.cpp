@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtwidgetsglobal.h"
 #if QT_CONFIG(label)
@@ -14,7 +15,6 @@
 #if QT_CONFIG(menu)
 #include "qmenu.h"
 #endif
-#include "qtimer.h"
 #include "qsystemtrayicon_p.h"
 #include "qpaintengine.h"
 #include <qwindow.h>
@@ -86,12 +86,11 @@ QRect QSystemTrayIconSys::globalGeometry() const
 
 void QSystemTrayIconSys::mousePressEvent(QMouseEvent *ev)
 {
-    QPoint globalPos = ev->globalPosition().toPoint();
 #ifndef QT_NO_CONTEXTMENU
-    if (ev->button() == Qt::RightButton && q->contextMenu())
+    if (ev->button() == Qt::RightButton && q->contextMenu()) {
+        const QPoint globalPos = ev->globalPosition().toPoint();
         q->contextMenu()->popup(globalPos);
-#else
-    Q_UNUSED(globalPos);
+    }
 #endif // QT_NO_CONTEXTMENU
 
     if (QBalloonTip::isBalloonVisible()) {

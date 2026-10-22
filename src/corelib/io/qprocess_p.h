@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #ifndef QPROCESS_P_H
 #define QPROCESS_P_H
@@ -110,22 +111,16 @@ public:
     inline QString nameToString(const Key &name) const { return name; }
     inline Value prepareValue(const QString &value) const { return value; }
     inline QString valueToString(const Value &value) const { return value; }
+    struct MutexLocker {
+        MutexLocker(const QProcessEnvironmentPrivate *) {}
+    };
+    struct OrderedMutexLocker {
+        OrderedMutexLocker(const QProcessEnvironmentPrivate *,
+                           const QProcessEnvironmentPrivate *) {}
+    };
 #else
-    struct NameMapMutexLocker : public QMutexLocker<QMutex>
-    {
-        NameMapMutexLocker(const QProcessEnvironmentPrivate *d) : QMutexLocker(&d->nameMapMutex) {}
-    };
-    struct OrderedNameMapMutexLocker : public QOrderedMutexLocker
-    {
-        OrderedNameMapMutexLocker(const QProcessEnvironmentPrivate *d1,
-                                  const QProcessEnvironmentPrivate *d2)
-            : QOrderedMutexLocker(&d1->nameMapMutex, &d2->nameMapMutex)
-        {}
-    };
-
     inline Key prepareName(const QString &name) const
     {
-        const NameMapMutexLocker locker(this);
         Key &ent = nameMap[name];
         if (ent.isEmpty())
             ent = name.toLocal8Bit();
@@ -134,27 +129,40 @@ public:
     inline QString nameToString(const Key &name) const
     {
         const QString sname = QString::fromLocal8Bit(name);
-        {
-            const NameMapMutexLocker locker(this);
-            nameMap[sname] = name;
-        }
+        nameMap[sname] = name;
         return sname;
     }
     inline Value prepareValue(const QString &value) const { return Value(value); }
     inline QString valueToString(const Value &value) const { return value.string(); }
 
+    struct MutexLocker : public QMutexLocker<QMutex>
+    {
+        MutexLocker(const QProcessEnvironmentPrivate *d) : QMutexLocker(&d->mutex) {}
+    };
+    struct OrderedMutexLocker : public QOrderedMutexLocker
+    {
+        OrderedMutexLocker(const QProcessEnvironmentPrivate *d1,
+                           const QProcessEnvironmentPrivate *d2) :
+            QOrderedMutexLocker(&d1->mutex, &d2->mutex)
+        {}
+    };
+
     QProcessEnvironmentPrivate() : QSharedData() {}
     QProcessEnvironmentPrivate(const QProcessEnvironmentPrivate &other) :
-        QSharedData(), vars(other.vars)
+        QSharedData()
     {
+        // This being locked ensures that the functions that only assign
+        // d pointers don't need explicit locking.
         // We don't need to lock our own mutex, as this object is new and
         // consequently not shared. For the same reason, non-const methods
         // do not need a lock, as they detach objects (however, we need to
         // ensure that they really detach before using prepareName()).
-        NameMapMutexLocker locker(&other);
+        MutexLocker locker(&other);
+        vars = other.vars;
         nameMap = other.nameMap;
-        // We need to detach our nameMap, so that our mutex can protect it.
-        // As we are being detached, it likely would be detached a moment later anyway.
+        // We need to detach our members, so that our mutex can protect them.
+        // As we are being detached, they likely would be detached a moment later anyway.
+        vars.detach();
         nameMap.detach();
     }
 #endif
@@ -165,7 +173,8 @@ public:
 #ifdef Q_OS_UNIX
     typedef QHash<QString, Key> NameHash;
     mutable NameHash nameMap;
-    mutable QMutex nameMapMutex;
+
+    mutable QMutex mutex;
 #endif
 
     static QProcessEnvironment fromList(const QStringList &list);
@@ -182,8 +191,8 @@ template<> Q_INLINE_TEMPLATE void QSharedDataPointer<QProcessEnvironmentPrivate>
                                      : new QProcessEnvironmentPrivate);
     x->ref.ref();
     if (d && !d->ref.deref())
-        delete d;
-    d = x;
+        delete d.get();
+    d.reset(x);
 }
 
 #if QT_CONFIG(process)

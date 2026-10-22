@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMSERVICES_H
 #define QPLATFORMSERVICES_H
@@ -15,8 +16,11 @@
 
 #include <QtGui/qtguiglobal.h>
 #include <QtCore/qobject.h>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaServices, Q_GUI_EXPORT)
 
 class QUrl;
 class QWindow;

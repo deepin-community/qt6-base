@@ -16,8 +16,23 @@ function(qt_internal_setup_public_platform_target)
         $<BUILD_INTERFACE:${build_interface_definition_dir}>
         $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:${install_interface_definition_dir}>
-        $<INSTALL_INTERFACE:${INSTALL_INCLUDEDIR}>
         )
+
+    if(QT_FEATURE_framework)
+        # For framework builds the frameworks themselves are the primary route to Qt's headers
+        # (via -F/-iframework). The non-framework include dir only holds forwarding headers and
+        # a few header-only modules, so it must be searched *after* the frameworks and the system
+        # dirs; otherwise a prefixed include like <QtCore/qstring.h> would resolve to a forwarding
+        # header instead of directly to the framework. Emit it as -idirafter (the compiler's
+        # "after" group) which is guaranteed to be searched last, while still being considered
+        # a system include directory.
+        target_compile_options(Platform INTERFACE
+            "$<INSTALL_INTERFACE:SHELL:-idirafter $<INSTALL_PREFIX>/${INSTALL_INCLUDEDIR}>")
+    else()
+        target_include_directories(Platform INTERFACE
+            $<INSTALL_INTERFACE:${INSTALL_INCLUDEDIR}>)
+    endif()
+
     target_compile_definitions(Platform INTERFACE ${QT_PLATFORM_DEFINITIONS})
 
     set_target_properties(Platform PROPERTIES
@@ -31,6 +46,9 @@ function(qt_internal_setup_public_platform_target)
     # in order to satisfy linker dependencies. Both of these libraries are part of
     # the NDK.
     if (ANDROID)
+        if(QT_FEATURE_android_16kb_pages)
+            target_link_options(Platform INTERFACE "-Wl,-z,max-page-size=16384")
+        endif()
         target_link_libraries(Platform INTERFACE log)
     endif()
 
@@ -42,9 +60,18 @@ function(qt_internal_setup_public_platform_target)
         endif()
         target_link_options(Platform INTERFACE "${libc_link_option}")
     endif()
-    if (QT_FEATURE_no_direct_extern_access)
-        target_compile_options(Platform INTERFACE "$<$<CXX_COMPILER_ID:GNU>:-mno-direct-extern-access>")
-        target_compile_options(Platform INTERFACE "$<$<CXX_COMPILER_ID:Clang>:-fno-direct-access-external-data>")
+    if(QT_FEATURE_no_direct_extern_access)
+        # Swift compiler doesn't understand these options on Linux.
+        set(not_swift_cond "$<NOT:$<COMPILE_LANGUAGE:Swift>>")
+
+        set(no_direct_extern_gnu "$<$<CXX_COMPILER_ID:GNU>:-mno-direct-extern-access>")
+        set(no_direct_extern_gnu_wrapped "$<${not_swift_cond}:${no_direct_extern_gnu}>")
+
+        set(no_direct_extern_clang "$<$<CXX_COMPILER_ID:Clang>:-fno-direct-access-external-data>")
+        set(no_direct_extern_clang_wrapped "$<${not_swift_cond}:${no_direct_extern_clang}>")
+
+        target_compile_options(Platform INTERFACE "${no_direct_extern_gnu_wrapped}")
+        target_compile_options(Platform INTERFACE "${no_direct_extern_clang_wrapped}")
     endif()
 
     qt_set_msvc_cplusplus_options(Platform INTERFACE)
@@ -63,8 +90,10 @@ function(qt_internal_setup_public_platform_target)
     qt_internal_generate_pkg_config_file(Platform)
 
     qt_internal_add_sbom(Platform
-        TYPE QT_MODULE
-        IMMEDIATE_FINALIZATION
+        SBOM_ENTITY_TYPE QT_MODULE
+        ATTRIBUTION_FILE_DIR_PATHS
+            "${PROJECT_SOURCE_DIR}/cmake/3rdparty/extra-cmake-modules"
+            "${PROJECT_SOURCE_DIR}/cmake/3rdparty/kwin"
     )
 endfunction()
 

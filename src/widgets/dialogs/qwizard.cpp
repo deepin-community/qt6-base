@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwizard.h"
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
@@ -33,7 +34,6 @@
 #include <QtGui/private/qcoregraphics_p.h>
 #elif QT_CONFIG(style_windowsvista)
 #include "qwizard_win_p.h"
-#include "qtimer.h"
 #endif
 
 #include "private/qdialog_p.h"
@@ -246,16 +246,20 @@ bool QWizardLayoutInfo::operator==(const QWizardLayoutInfo &other) const
 
 class QWizardHeader : public QWidget
 {
-public:
+protected:
     enum RulerType { Ruler };
 
+    explicit
     inline QWizardHeader(RulerType /* ruler */, QWidget *parent = nullptr)
         : QWidget(parent) { setFixedHeight(2); }
+public:
+    explicit
     QWizardHeader(QWidget *parent = nullptr);
 
     void setup(const QWizardLayoutInfo &info, const QString &title,
                const QString &subTitle, const QPixmap &logo, const QPixmap &banner,
-               Qt::TextFormat titleFormat, Qt::TextFormat subTitleFormat);
+               Qt::TextFormat titleFormat, Qt::TextFormat subTitleFormat,
+               QWizard::WizardOptions wizardOptions);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -269,6 +273,7 @@ private:
     QLabel *logoLabel;
     QGridLayout *layout;
     QPixmap bannerPixmap;
+    QWizard::WizardOptions wizardOptions;
 };
 
 QWizardHeader::QWizardHeader(QWidget *parent)
@@ -323,14 +328,15 @@ bool QWizardHeader::vistaDisabled() const
 
 void QWizardHeader::setup(const QWizardLayoutInfo &info, const QString &title,
                           const QString &subTitle, const QPixmap &logo, const QPixmap &banner,
-                          Qt::TextFormat titleFormat, Qt::TextFormat subTitleFormat)
+                          Qt::TextFormat titleFormat, Qt::TextFormat subTitleFormat,
+                          QWizard::WizardOptions options)
 {
     bool modern = ((info.wizStyle == QWizard::ModernStyle)
 #if QT_CONFIG(style_windowsvista)
         || vistaDisabled()
 #endif
     );
-
+    wizardOptions = options;
     layout->setRowMinimumHeight(0, modern ? ModernHeaderTopMargin : 0);
     layout->setRowMinimumHeight(1, modern ? info.topLevelMarginTop - ModernHeaderTopMargin - 1 : 0);
     layout->setRowMinimumHeight(6, (modern ? 3 : GapBetweenLogoAndRightEdge) + 2);
@@ -356,7 +362,7 @@ void QWizardHeader::setup(const QWizardLayoutInfo &info, const QString &title,
         bannerPixmap = QPixmap();
     }
 
-    if (bannerPixmap.isNull()) {
+    if (bannerPixmap.isNull() || wizardOptions.testFlag(QWizard::StretchBanner)) {
         /*
             There is no widthForHeight() function, so we simulate it with a loop.
         */
@@ -384,16 +390,32 @@ void QWizardHeader::setup(const QWizardLayoutInfo &info, const QString &title,
 void QWizardHeader::paintEvent(QPaintEvent * /* event */)
 {
     QStylePainter painter(this);
-    painter.drawPixmap(0, 0, bannerPixmap);
+    if (wizardOptions.testFlag(QWizard::StretchBanner)) {
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.drawPixmap(0, 0, width(), height(), bannerPixmap);
+    } else {
+        painter.drawPixmap(0, 0, bannerPixmap);
+    }
 
-    int x = width() - 2;
-    int y = height() - 2;
+    // With fractional scaling the 1px difference in y-coordinate can map to
+    // the same pixel, so make sure that we take DPR into account when drawing
+    // the lines.
+    const qreal dpr = devicePixelRatio();
+    const int devHeight = qRound(height() * dpr);
+    const int devWidth = qRound(width() * dpr);
+
+    const qreal x = (devWidth - 2) / dpr;
+    const qreal y = (devHeight - 2) / dpr;
+
+    const qreal x1 = (devWidth - 1) / dpr;
+    const qreal y1 = (devHeight - 1) / dpr;
+
     const QPalette &pal = palette();
     painter.setPen(pal.mid().color());
-    painter.drawLine(0, y, x, y);
+    painter.drawLine(QLineF(0, y, x, y));
     painter.setPen(pal.base().color());
-    painter.drawPoint(x + 1, y);
-    painter.drawLine(0, y + 1, x + 1, y + 1);
+    painter.drawPoint(QPointF(x1, y));
+    painter.drawLine(QLineF(0, y1, x1, y1));
 }
 
 // We save one vtable by basing QWizardRuler on QWizardHeader
@@ -600,7 +622,7 @@ public:
 #  if QT_CONFIG(shortcut)
     QPointer<QShortcut> vistaNextShortcut;
 #  endif
-    bool vistaInitPending = true;
+    bool vistaInitPending = false;
     bool vistaDirty = true;
     bool vistaStateChanged = false;
     bool inHandleAeroStyleChange = false;
@@ -647,10 +669,19 @@ void QWizardPrivate::init()
 
     antiFlickerWidget = new QWizardAntiFlickerWidget(q, this);
     wizStyle = QWizard::WizardStyle(q->style()->styleHint(QStyle::SH_WizardStyle, nullptr, q));
-    if (wizStyle == QWizard::MacStyle) {
-        opts = (QWizard::NoDefaultButton | QWizard::NoCancelButton);
-    } else if (wizStyle == QWizard::ModernStyle) {
+    switch (wizStyle) {
+    case QWizard::ModernStyle:
         opts = QWizard::HelpButtonOnRight;
+        break;
+    case QWizard::MacStyle:
+        opts = (QWizard::NoDefaultButton | QWizard::NoCancelButton);
+        break;
+#if QT_CONFIG(style_windowsvista)
+    case QWizard::AeroStyle:
+        vistaInitPending = true;
+#endif
+    default:
+        break;
     }
 
 #if QT_CONFIG(style_windowsvista)
@@ -1221,7 +1252,7 @@ void QWizardPrivate::updateLayout()
         Q_ASSERT(page);
         headerWidget->setup(info, page->title(), page->subTitle(),
                             page->pixmap(QWizard::LogoPixmap), page->pixmap(QWizard::BannerPixmap),
-                            titleFmt, subTitleFmt);
+                            titleFmt, subTitleFmt, opts);
     }
 
     if (info.watermark || info.sideWidget) {
@@ -1790,14 +1821,14 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
             \li ModernStyle
             \li MacStyle
             \li AeroStyle
-    \row    \li \inlineimage qtwizard-classic1.png
-            \li \inlineimage qtwizard-modern1.png
-            \li \inlineimage qtwizard-mac1.png
-            \li \inlineimage qtwizard-aero1.png
-    \row    \li \inlineimage qtwizard-classic2.png
-            \li \inlineimage qtwizard-modern2.png
-            \li \inlineimage qtwizard-mac2.png
-            \li \inlineimage qtwizard-aero2.png
+    \row    \li \inlineimage qtwizard-classic1.png {Wizard with ClassicStyle}
+            \li \inlineimage qtwizard-modern1.png {Wizard with ModernStyle}
+            \li \inlineimage qtwizard-mac1.png {Wizard with MacStyle}
+            \li \inlineimage qtwizard-aero1.png {Wizard with AeroStyle}
+    \row    \li \inlineimage qtwizard-classic2.png {Wizard with ClassicStyle}
+            \li \inlineimage qtwizard-modern2.png {Wizard with ModernStyle}
+            \li \inlineimage qtwizard-mac2.png {Wizard with MacStyle}
+            \li \inlineimage qtwizard-aero2.png {Wizard with AeroStyle}
     \endtable
 
     Note: AeroStyle has effect only on a Windows Vista system with alpha compositing enabled.
@@ -1841,7 +1872,7 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     The diagram belows shows how QWizard renders these attributes,
     assuming they are all present and ModernStyle is used:
 
-    \image qtwizard-nonmacpage.png
+    \image qtwizard-nonmacpage.png {Attributes on a wizard page}
 
     When a \l{QWizardPage::}{subTitle} is set, QWizard displays it
     in a header, in which case it also uses the BannerPixmap and the
@@ -1858,7 +1889,7 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     If the wizard's style is MacStyle, the page looks radically
     different:
 
-    \image qtwizard-macpage.png
+    \image qtwizard-macpage.png {Attributes on a wizard page using MacStyle}
 
     The watermark, banner, and logo pixmaps are ignored by the
     MacStyle. If the BackgroundPixmap is set, it is used as the
@@ -1972,10 +2003,10 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     Some wizards are more complex in that they allow different
     traversal paths based on the information provided by the user.
     The \l{dialogs/licensewizard}{License Wizard} example illustrates this.
-    It provides five wizard pages; depending on which options are
+    It provides several wizard pages; depending on which options are
     selected, the user can reach different pages.
 
-    \image licensewizard-flow.png
+    \image licensewizard-flow.png {Complex wizard page flow chart}
 
     In complex wizards, pages are identified by IDs. These IDs are
     typically defined using an enum. For example:
@@ -2108,6 +2139,8 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     \value HaveCustomButton2  Show the second user-defined button (CustomButton2).
     \value HaveCustomButton3  Show the third user-defined button (CustomButton3).
     \value NoCancelButtonOnLastPage   Don't show the \uicontrol Cancel button on the last page.
+    \value StretchBanner    If there is a \l{QWizard::WizardPixmap}{banner}, stretch it across
+                            the entire width of the wizard.
 
     \sa setOptions(), setOption(), testOption()
 */
@@ -2388,9 +2421,6 @@ QWizardPage *QWizard::currentPage() const
 /*!
     \property QWizard::currentId
     \brief the ID of the current page
-
-    This property cannot be set directly. To change the current page,
-    call next(), back(), or restart().
 
     By default, this property has a value of -1, indicating that no page is
     currently shown.

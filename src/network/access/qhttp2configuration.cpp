@@ -1,7 +1,9 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhttp2configuration.h"
+#include "qhttp2configuration_p.h"
 
 #include "private/http2protocol_p.h"
 #include "private/hpack_p.h"
@@ -58,19 +60,6 @@ QT_BEGIN_NAMESPACE
     \sa QNetworkRequest::setHttp2Configuration(), QNetworkRequest::http2Configuration(), QNetworkAccessManager
 */
 
-class QHttp2ConfigurationPrivate : public QSharedData
-{
-public:
-    unsigned sessionWindowSize = Http2::defaultSessionWindowSize;
-    unsigned streamWindowSize = Http2::defaultSessionWindowSize;
-
-    unsigned maxFrameSize = Http2::minPayloadLimit; // Initial (default) value of 16Kb.
-
-    bool pushEnabled = false;
-    // TODO: for now those two below are noop.
-    bool huffmanCompressionEnabled = true;
-};
-
 /*!
     Default constructs a QHttp2Configuration object.
 
@@ -81,6 +70,7 @@ public:
         \li Window size for connection-level flow control is 65535 octets
         \li Window size for stream-level flow control is 65535 octets
         \li Frame size is 16384 octets
+        \li Maximum accepted header list size is 262144 octets (256 KiB)
     \endlist
 */
 QHttp2Configuration::QHttp2Configuration()
@@ -254,7 +244,32 @@ unsigned QHttp2Configuration::maxFrameSize() const
 }
 
 /*!
-    Swaps this configuration with the \a other configuration.
+    \since 6.9
+
+    Sets \a value as the maximum number of concurrent streams that
+    will be advertised to the peer when sending SETTINGS frame.
+
+    \sa maxConcurrentStreams()
+*/
+void QHttp2Configuration::setMaxConcurrentStreams(unsigned value)
+{
+    d->maxConcurrentStreams = value;
+}
+
+/*!
+    \since 6.9
+
+    Returns the maximum number of concurrent streams.
+
+    \sa setMaxConcurrentStreams()
+*/
+unsigned QHttp2Configuration::maxConcurrentStreams() const
+{
+    return d->maxConcurrentStreams;
+}
+
+/*!
+    \memberswap{configuration}
 */
 void QHttp2Configuration::swap(QHttp2Configuration &other) noexcept
 {
@@ -284,7 +299,9 @@ bool QHttp2Configuration::isEqual(const QHttp2Configuration &other) const noexce
     return d->pushEnabled == other.d->pushEnabled
            && d->huffmanCompressionEnabled == other.d->huffmanCompressionEnabled
            && d->sessionWindowSize == other.d->sessionWindowSize
-           && d->streamWindowSize == other.d->streamWindowSize;
+           && d->streamWindowSize == other.d->streamWindowSize
+           && d->maxConcurrentStreams == other.d->maxConcurrentStreams
+           && d->maxHeaderListSize == other.d->maxHeaderListSize;
 }
 
 QT_END_NAMESPACE

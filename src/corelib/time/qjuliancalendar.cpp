@@ -1,9 +1,9 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qglobal.h"
 #include "qjuliancalendar_p.h"
-#include "qromancalendar_data_p.h"
 #include "qcalendarmath_p.h"
 
 #include <QtCore/qdatetime.h>
@@ -14,6 +14,7 @@ using namespace QRoundingDown;
 
 /*!
     \since 5.14
+    \internal
 
     \class QJulianCalendar
     \inmodule QtCore

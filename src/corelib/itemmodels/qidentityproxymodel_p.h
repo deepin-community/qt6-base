@@ -1,5 +1,6 @@
 // Copyright (C) 2021 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QIDENTITYPROXYMODEL_P_H
 #define QIDENTITYPROXYMODEL_P_H
@@ -19,6 +20,8 @@
 #include <QtCore/private/qabstractproxymodel_p.h>
 #include <QtCore/qidentityproxymodel.h>
 
+#include <array>
+
 QT_BEGIN_NAMESPACE
 
 class Q_CORE_EXPORT QIdentityProxyModelPrivate : public QAbstractProxyModelPrivate
@@ -26,9 +29,8 @@ class Q_CORE_EXPORT QIdentityProxyModelPrivate : public QAbstractProxyModelPriva
     Q_DECLARE_PUBLIC(QIdentityProxyModel)
 
 public:
-    QIdentityProxyModelPrivate()
-    {
-    }
+    QIdentityProxyModelPrivate();
+    ~QIdentityProxyModelPrivate() override;
 
     QList<QPersistentModelIndex> layoutChangePersistentIndexes;
     QModelIndexList proxyIndexes;
@@ -65,7 +67,7 @@ public:
 private:
     bool m_handleLayoutChanges = true;
     bool m_handleDataChanges = true;
-    QVarLengthArray<QMetaObject::Connection, 18> m_sourceModelConnections;
+    std::array<QMetaObject::Connection, 18> m_sourceModelConnections;
 };
 
 QT_END_NAMESPACE

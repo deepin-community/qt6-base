@@ -14,6 +14,9 @@
 #endif
 #include <private/qmetaobject_p.h>
 
+#include <deque>
+#include <vector>
+
 Q_DECLARE_METATYPE(const QMetaObject *)
 
 #include "forwarddeclared.h"
@@ -37,6 +40,17 @@ Q_DECLARE_METATYPE(const QMetaObject *)
 
 using namespace Qt::StringLiterals;
 
+#if QT_DEPRECATED_SINCE(6, 10)
+static void eatIndexOfNonNormalizedWarning()
+{
+    static const QRegularExpression rx(R"(QMetaObject::indexOf(Constructor|Method|Signal|Slot): )"
+                                       R"(argument ".+" is not normalized, )"
+                                       R"(because it contains "QVector<"\.)"_L1);
+    QTest::ignoreMessage(QtWarningMsg, rx);
+}
+#define NORMALIZES_QVECTOR_QLIST
+#endif
+
 struct MyStruct
 {
     int i;
@@ -47,6 +61,28 @@ class MyGadget
     Q_GADGET
 public:
     Q_INVOKABLE MyGadget() {}
+};
+
+template <typename T>
+class MyQList
+{
+    std::vector<T> m_data;
+public:
+    MyQList(std::initializer_list<T> il) : m_data{il} {}
+
+    const std::vector<T> &data() const { return m_data; }
+    std::vector<T> &data() { return m_data; }
+};
+
+template <typename T>
+class MyQVector
+{
+    std::deque<T> m_data;
+public:
+    MyQVector(std::initializer_list<T> il) : m_data{il} {}
+
+    const std::deque<T> &data() const { return m_data; }
+    std::deque<T> &data() { return m_data; }
 };
 
 namespace MyNamespace {
@@ -110,6 +146,7 @@ namespace MyNamespace {
     Q_DECLARE_OPERATORS_FOR_FLAGS(MyClass::MyFlags)
 
 
+#if QT_DEPRECATED_SINCE(6, 12)
     // test the old Q_ENUMS macro
     class MyClass2 : public QObject
     {
@@ -147,12 +184,16 @@ namespace MyNamespace {
               m_flags(MyFlag1|MyFlag2)
         { }
     private:
+        QT_WARNING_PUSH
+        QT_WARNING_DISABLE_DEPRECATED
         Q_ENUMS(MyEnum MyAnotherEnum)
         Q_FLAGS(MyFlags)
+        QT_WARNING_POP
 
         MyEnum m_enum;
         MyFlags m_flags;
     };
+#endif // QT_DEPRECATED_SINCE(6, 12)
 
     // Test inherits
     class MyClassSubclass : public MyClass
@@ -160,10 +201,12 @@ namespace MyNamespace {
         Q_OBJECT
     };
 
+#if QT_DEPRECATED_SINCE(6, 12)
     class MyClassSubclass2 : public MyClass2
     {
         Q_OBJECT
     };
+#endif // QT_DEPRECATED_SINCE(6, 12)
 
     class MyClass2Subclass : public MyClass
     {
@@ -255,6 +298,8 @@ class tst_QMetaObject : public QObject
     Q_PROPERTY(int value8 READ value8)
     Q_PROPERTY(int value9 READ value9 CONSTANT)
     Q_PROPERTY(int value10 READ value10 FINAL)
+    Q_PROPERTY(int value11 READ value10 VIRTUAL)
+    Q_PROPERTY(int value12 READ value10 OVERRIDE)
 
 public:
     enum EnumType { EnumType1 };
@@ -316,11 +361,14 @@ private slots:
     void normalizedType_data();
     void normalizedType();
     void customPropertyType();
+    void customQVectorSuffix();
     void keysToValue_data();
     void keysToValue(); // Also keyToValue()
     void propertyNotify();
     void propertyConstant();
     void propertyFinal();
+    void propertyVirtual();
+    void propertyOverride();
 
     void metaType();
 
@@ -354,9 +402,15 @@ private slots:
 
     void notifySignalsInParentClass();
 
+    void connectByMetaMethodToPMF();
+    void connectByMetaMethodToFunctor();
+    void connectByMetaMethodToFreeFunction();
+
 signals:
     void value6Changed();
     void value7Changed(const QString &);
+    void myQListChanged(const MyQList<int> &);
+    void myQVectorChanged(const MyQVector<double> &); // needs different template arg from MyQList!
 };
 
 void tst_QMetaObject::stdSet()
@@ -497,6 +551,8 @@ public:
     Q_INVOKABLE QtTestObject(QObject *parent);
     Q_INVOKABLE QtTestObject(QObject *parent, int, int);
     Q_INVOKABLE QtTestObject(QObject *parent, int);
+    Q_INVOKABLE QtTestObject(QList<int>, QObject *parent) : QtTestObject(parent) {}
+    Q_INVOKABLE QtTestObject(QObject *parent, QVector<int>) : QtTestObject(parent) {}
 
 public slots:
     void sl0();
@@ -516,6 +572,8 @@ public slots:
     QObject *sl11();
     const char *sl12();
     QList<QString> sl13(QList<QString> l1);
+    // check Qt 6 QVector/QList alias:
+    QVector<QString> sl13v(QVector<QString> v1);
     qint64 sl14();
     qlonglong *sl15(qlonglong *);
     MyForwardDeclaredType *sl16(MyForwardDeclaredType *);
@@ -561,6 +619,7 @@ signals:
     QString sig1(QString s1);
     void sig10(QString s1, QString s2, QString s3, QString s4, QString s5, QString s6, QString s7,
                QString s8, QString s9, QString s10);
+    void sigWithOneUnregisteredParameterType(QString a1, const MyForwardDeclaredType &a2);
 
 protected:
     QtTestObject(QVariant) {}
@@ -623,6 +682,8 @@ const char *QtTestObject::sl12()
 { slotResult = "sl12"; return "foo"; }
 QList<QString> QtTestObject::sl13(QList<QString> l1)
 { slotResult = "sl13"; return l1; }
+QVector<QString> QtTestObject::sl13v(QVector<QString> v1)
+{ slotResult = "sl13v"; return v1; }
 qint64 QtTestObject::sl14()
 { slotResult = "sl14"; return Q_INT64_C(123456789)*123456789; }
 qlonglong *QtTestObject::sl15(qlonglong *ptr)
@@ -791,6 +852,51 @@ void tst_QMetaObject::invokeMetaMember()
                                       Q_ARG(QList<QString>, argument)));
     QCOMPARE(returnValue, argument);
     QCOMPARE(obj.slotResult, QString("sl13"));
+    // same, testing the QList/QVector aliasing:
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13",
+                                      Q_RETURN_ARG(QVector<QString>, returnValue),
+                                      Q_ARG(QVector<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, QString("sl13"));
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13",
+                                      Q_RETURN_ARG(QList<QString>, returnValue),
+                                      Q_ARG(QVector<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13"_L1);
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13",
+                                      Q_RETURN_ARG(QVector<QString>, returnValue),
+                                      Q_ARG(QList<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13"_L1);
+    returnValue.clear();
+
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13v",
+                                      Q_RETURN_ARG(QList<QString>, returnValue),
+                                      Q_ARG(QList<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13v"_L1);
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13v",
+                                      Q_RETURN_ARG(QVector<QString>, returnValue),
+                                      Q_ARG(QVector<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13v"_L1);
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13v",
+                                      Q_RETURN_ARG(QList<QString>, returnValue),
+                                      Q_ARG(QVector<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13v"_L1);
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13v",
+                                      Q_RETURN_ARG(QVector<QString>, returnValue),
+                                      Q_ARG(QList<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13v"_L1);
+    returnValue.clear();
 
     // return qint64
     qint64 return64;
@@ -959,6 +1065,12 @@ void tst_QMetaObject::invokeMetaMemberNoMacros()
                                       argument));
     QCOMPARE(returnValue, argument);
     QCOMPARE(obj.slotResult, QString("sl13"));
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13v",
+                                      qReturnArg(returnValue),
+                                      argument));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13v"_L1);
 
     // return qint64
     qint64 return64;
@@ -1578,6 +1690,25 @@ void tst_QMetaObject::invokeBlockingQueuedMetaMember()
                                       Q_ARG(QList<QString>, argument)));
     QCOMPARE(returnValue, argument);
     QCOMPARE(obj.slotResult, QString("sl13"));
+    returnValue.clear();
+    // same, testing QVector/QList aliasing:
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13", Qt::BlockingQueuedConnection,
+                                      Q_RETURN_ARG(QVector<QString>, returnValue),
+                                      Q_ARG(QVector<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, QString("sl13"));
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13v", Qt::BlockingQueuedConnection,
+                                      Q_RETURN_ARG(QList<QString>, returnValue),
+                                      Q_ARG(QList<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13v"_L1);
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13v", Qt::BlockingQueuedConnection,
+                                      Q_RETURN_ARG(QVector<QString>, returnValue),
+                                      Q_ARG(QVector<QString>, argument)));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13v"_L1);
 
     // return qint64
     qint64 return64;
@@ -1751,6 +1882,12 @@ void tst_QMetaObject::invokeBlockingQueuedMetaMemberNoMacros()
                                       argument));
     QCOMPARE(returnValue, argument);
     QCOMPARE(obj.slotResult, QString("sl13"));
+    returnValue.clear();
+    QVERIFY(QMetaObject::invokeMethod(&obj, "sl13v", Qt::BlockingQueuedConnection,
+                                      qReturnArg(returnValue),
+                                      argument));
+    QCOMPARE(returnValue, argument);
+    QCOMPARE(obj.slotResult, "sl13v"_L1);
 
     // return qint64
     qint64 return64;
@@ -2117,7 +2254,7 @@ void tst_QMetaObject::invokeQueuedAutoRegister()
         &obj, "slotWithRegistrableArgument", Qt::QueuedConnection,
         Q_ARG(QtTestObject *, shared.data()), Q_ARG(QPointer<QtTestObject>, shared.data()),
         Q_ARG(QSharedPointer<QtTestObject>, shared), Q_ARG(QWeakPointer<QtTestObject>, shared),
-        Q_ARG(QList<QtTestObject *>, QList<QtTestObject *>()),
+        Q_ARG(QVector<QtTestObject *>, QVector<QtTestObject *>()), // check QVector/QList aliasing
         Q_ARG(QList<QtTestObject *>, QList<QtTestObject *>())));
     QVERIFY(obj.slotResult.isEmpty());
     qApp->processEvents(QEventLoop::AllEvents);
@@ -2185,8 +2322,10 @@ void tst_QMetaObject::normalizedSignature_data()
     QTest::addColumn<QString>("signature");
     QTest::addColumn<QString>("result");
 
+    QTest::newRow("empty") << "" << "";
+    QTest::newRow("null") << QString{} << QString{};
     QTest::newRow("function") << "void foo()" << "void foo()";
-    QTest::newRow("spaces") << " void  foo( ) " << "void foo()";
+    QTest::newRow("spaces") << "   void  foo( )   " << "void foo()";
     QTest::newRow("void") << "void foo(void)" << "void foo()";
     QTest::newRow("void spaces") << "void foo( void )" << "void foo()";
     QTest::newRow("void*") << "void foo(void*)" << "void foo(void*)";
@@ -2201,6 +2340,22 @@ void tst_QMetaObject::normalizedSignature_data()
                                    << "void foo(Foo<void>,Bar<void>)";
     QTest::newRow("void* template args") << " void  foo( Foo<void*>, Bar<void *> ) "
                                    << "void foo(Foo<void*>,Bar<void*>)";
+
+    QTest::newRow("template-args-void-function-ptr") << " void  foo( QList<void * (*)(void)>) "
+                                                     << "void foo(QList<void*(*)(void)>)";
+
+    QTest::newRow("template-args-nested-1")
+        << " void  foo( QMap<a, QList<std::unique_ptr< a  >>>,  QList<b  >) "
+        << "void foo(QMap<a,QList<std::unique_ptr<a>>>,QList<b>)";
+
+    QTest::newRow("template-args-nested-2")
+        << " void  foo( QMap<a, QList<int const>>, QList<b>) "
+        << "void foo(QMap<a,QList<const int>>,QList<b>)";
+
+    QTest::newRow("template-args-nested-3")
+        << " void  foo( QMap<std::vector<char const *>, QList<int const>>, QList<b>) "
+        << "void foo(QMap<std::vector<const char*>,QList<const int>>,QList<b>)";
+
     QTest::newRow("rettype") << "QList<int, int> foo()" << "QList<int,int>foo()";
     QTest::newRow("rettype void template") << "Foo<void> foo()" << "Foo<void>foo()";
     QTest::newRow("const rettype") << "const QString *foo()" << "const QString*foo()";
@@ -2222,11 +2377,18 @@ void tst_QMetaObject::normalizedSignature_data()
     QTest::newRow("const13") << "void foo(const Foo<Bar>&)" << "void foo(Foo<Bar>)";
     QTest::newRow("const14") << "void foo(Foo<Bar>const&)" << "void foo(Foo<Bar>)";
     QTest::newRow("QVector") << "void foo(QVector<int>)" << "void foo(QList<int>)";
-    QTest::newRow("QVector1") << "void foo(const Template<QVector, MyQList const>)"
-                            << "void foo(Template<QList,const MyQList>)";
+    QTest::newRow("QVector1") << "void foo(const Template<QVector, MyQList<int> const>)"
+                            << "void foo(Template<QList,const MyQList<int>>)";
+    QTest::newRow("MyQVector") << "void foo(MyQVector<int>)" << "void foo(MyQVector<int>)";
+    QTest::newRow("MyQVector1") << "void foo(const Template<QVector, MyQVector<int> const>)"
+                                << "void foo(Template<QList,const MyQVector<int>>)";
 
     QTest::newRow("refref") << "const char* foo(const X &&,X const &&, const X* &&) && "
                             << "const char*foo(const X&&,const X&&,const X*&&)&&";
+
+    QTest::newRow("char-star-star") << "char * const * foo(const X)"
+                                    << "char*const*foo(X)";
+
 
     QTest::newRow("invalid1") << "a( b" << "a(b";
 }
@@ -2244,6 +2406,9 @@ void tst_QMetaObject::normalizedType_data()
     QTest::addColumn<QString>("type");
     QTest::addColumn<QString>("result");
 
+    QTest::newRow("null") << QString() << QString();
+    QTest::newRow("empty") << "" << "";
+    QTest::newRow("all_whitespaces") << "   " << "";
     QTest::newRow("simple") << "int" << "int";
     QTest::newRow("white") << "  int  " << "int";
     QTest::newRow("const1") << "int const *" << "const int*";
@@ -2314,7 +2479,15 @@ void tst_QMetaObject::normalizedType()
     QFETCH(QString, type);
     QFETCH(QString, result);
 
-    QCOMPARE(QMetaObject::normalizedType(type.toLatin1()), result.toLatin1());
+    QByteArray latin1Type = type.toLatin1();
+
+    const char *typePtr;
+    if (type.isNull())
+        typePtr = nullptr;
+    else
+        typePtr = latin1Type.constData();
+
+    QCOMPARE(QMetaObject::normalizedType(typePtr), result.toLatin1());
     QCOMPARE(QMetaObject::normalizedType(result.toLatin1()), result.toLatin1());
 }
 
@@ -2340,9 +2513,22 @@ void tst_QMetaObject::customPropertyType()
     prop = metaObject()->property(metaObject()->indexOfProperty("value4"));
     QCOMPARE(prop.metaType().id(), QMetaType::QVariantList);
     QCOMPARE(prop.metaType(), QMetaType::fromType<QList<QVariant>>());
+    QCOMPARE(prop.metaType(), QMetaType::fromType<QVector<QVariant>>());
 
     prop = metaObject()->property(metaObject()->indexOfProperty("value5"));
     QCOMPARE(prop.metaType().id(), QMetaType::QVariantList);
+}
+
+void tst_QMetaObject::customQVectorSuffix()
+{
+    QObject ctx;
+    QVERIFY(connect(this, SIGNAL(myQListChanged(MyQList<int>)),
+                    &ctx, SLOT(deleteLater()))); // just some compatible slot...
+
+    // QMetaObject used to internally s/QVector</QList</ indiscriminently, so the
+    // existing signal was not found:
+    QVERIFY(connect(this, SIGNAL(myQVectorChanged(MyQVector<double>)),
+                    &ctx, SLOT(deleteLater()))); // just some compatible slot...
 }
 
 void tst_QMetaObject::keysToValue_data()
@@ -2351,10 +2537,14 @@ void tst_QMetaObject::keysToValue_data()
     QTest::addColumn<QByteArray>("name");
 
     static MyNamespace::MyClass obj1;
+#if QT_DEPRECATED_SINCE(6, 12)
     static MyNamespace::MyClass2 obj2;
+#endif // QT_DEPRECATED_SINCE(6, 12)
 
     QTest::newRow("MyClass") << static_cast<QObject*>(&obj1) << QByteArray("MyClass");
+#if QT_DEPRECATED_SINCE(6, 12)
     QTest::newRow("MyClass2") << static_cast<QObject*>(&obj2) << QByteArray("MyClass2");
+#endif // QT_DEPRECATED_SINCE(6, 12)
 
 }
 
@@ -2371,16 +2561,22 @@ void tst_QMetaObject::keysToValue()
     QVERIFY(me.isValid());
     QVERIFY(!me.isFlag());
     QCOMPARE(QByteArray(me.scope()), QByteArray("MyNamespace::" + name));
+    QCOMPARE(me.keyToValue64("MyNamespace::" + name + "::MyEnum2"), 1U);
     QCOMPARE(me.keyToValue("MyNamespace::" + name + "::MyEnum2", &ok), 1);
     // Fully qualified unscoped enumerator
+    QCOMPARE(me.keyToValue64("MyNamespace::" + name + "::MyEnum::MyEnum2"), 1U);
     QCOMPARE(me.keyToValue("MyNamespace::" + name + "::MyEnum::MyEnum2", &ok), 1);
     QCOMPARE(ok, true);
+    QCOMPARE(me.keyToValue64(name + "::MyEnum2"), std::nullopt);
     QCOMPARE(me.keyToValue(name + "::MyEnum2", &ok), -1);
     QCOMPARE(ok, false);
+    QCOMPARE(me.keyToValue64("MyNamespace::MyEnum2"), std::nullopt);
     QCOMPARE(me.keyToValue("MyNamespace::MyEnum2", &ok), -1);
     QCOMPARE(ok, false);
+    QCOMPARE(me.keyToValue64("MyEnum2"), 1U);
     QCOMPARE(me.keyToValue("MyEnum2", &ok), 1);
     QCOMPARE(ok, true);
+    QCOMPARE(me.keyToValue64("MyEnum"), std::nullopt);
     QCOMPARE(me.keyToValue("MyEnum", &ok), -1);
     QCOMPARE(ok, false);
     QCOMPARE(QLatin1String(me.valueToKey(1)), QLatin1String("MyEnum2"));
@@ -2388,12 +2584,16 @@ void tst_QMetaObject::keysToValue()
     QMetaEnum me2 = mo->enumerator(mo->indexOfEnumerator("MyAnotherEnum"));
     QVERIFY(me2.isValid());
     QVERIFY(!me2.isFlag());
+    QCOMPARE(me2.keyToValue64("MyAnotherEnum1"), 1U);
     QCOMPARE(me2.keyToValue("MyAnotherEnum1", &ok), 1);
     QCOMPARE(ok, true);
+    QCOMPARE(me2.keyToValue64("MyAnotherEnum2"), 2U);
     QCOMPARE(me2.keyToValue("MyAnotherEnum2", &ok), 2);
     QCOMPARE(ok, true);
+    QCOMPARE(me2.keyToValue64("MyAnotherEnum3"), quint64(-1));
     QCOMPARE(me2.keyToValue("MyAnotherEnum3", &ok), -1);
     QCOMPARE(ok, true);
+    QCOMPARE(me2.keyToValue64("MyAnotherEnum"), std::nullopt);
     QCOMPARE(me2.keyToValue("MyAnotherEnum", &ok), -1);
     QCOMPARE(ok, false);
 
@@ -2401,62 +2601,87 @@ void tst_QMetaObject::keysToValue()
     QVERIFY(mf.isValid());
     QVERIFY(mf.isFlag());
     QCOMPARE(QByteArray(mf.scope()), QByteArray("MyNamespace::" + name));
+    QCOMPARE(mf.keysToValue64("MyNamespace::" + name + "::MyFlag2"), 2U);
     QCOMPARE(mf.keysToValue("MyNamespace::" + name + "::MyFlag2", &ok), 2);
     QCOMPARE(ok, true);
     // Fully qualified
+    QCOMPARE(mf.keysToValue64("MyNamespace::" + name + "::MyFlag::MyFlag2"), 2U);
     QCOMPARE(mf.keysToValue("MyNamespace::" + name + "::MyFlag::MyFlag2", &ok), 2);
     QCOMPARE(ok, true);
+    QCOMPARE(mf.keysToValue64(name + "::MyFlag2"), std::nullopt);
     QCOMPARE(mf.keysToValue(name + "::MyFlag2", &ok), -1);
     QCOMPARE(ok, false);
+    QCOMPARE(mf.keysToValue64("MyNamespace::MyFlag2"), std::nullopt);
     QCOMPARE(mf.keysToValue("MyNamespace::MyFlag2", &ok), -1);
     QCOMPARE(ok, false);
+    QCOMPARE(mf.keysToValue64("MyFlag2"), 2U);
     QCOMPARE(mf.keysToValue("MyFlag2", &ok), 2);
     QCOMPARE(ok, true);
+    QCOMPARE(mf.keysToValue64("MyFlag"), std::nullopt);
     QCOMPARE(mf.keysToValue("MyFlag", &ok), -1);
     QCOMPARE(ok, false);
     QCOMPARE(QLatin1String(mf.valueToKey(2)), QLatin1String("MyFlag2"));
 
     const QByteArray prefix = "MyNamespace::" + name;
+    QCOMPARE(mf.keysToValue64(prefix + "::MyFlag1|" + prefix + "::MyFlag2"), 3U);
     QCOMPARE(mf.keysToValue(prefix + "::MyFlag1|" + prefix + "::MyFlag2", &ok), 3);
     QCOMPARE(ok, true);
     // Fully qualified
+    QCOMPARE(mf.keysToValue64(prefix + "::MyFlag::MyFlag1|" + prefix + "::MyFlag::MyFlag2"), 3U);
     QCOMPARE(mf.keysToValue(prefix + "::MyFlag::MyFlag1|" + prefix + "::MyFlag::MyFlag2", &ok), 3);
     QCOMPARE(ok, true);
+    QCOMPARE(mf.keysToValue64(name + "::MyFlag1|" + name + "::MyFlag2"), std::nullopt);
     QCOMPARE(mf.keysToValue(name + "::MyFlag1|" + name + "::MyFlag2", &ok), -1);
     QCOMPARE(ok, false);
+    QCOMPARE(mf.keysToValue64("MyNamespace::MyFlag1|MyNamespace::MyFlag2"), std::nullopt);
     QCOMPARE(mf.keysToValue("MyNamespace::MyFlag1|MyNamespace::MyFlag2", &ok), -1);
     QCOMPARE(ok, false);
+    QCOMPARE(mf.keysToValue64("MyFlag1|MyFlag2"), 3U);
     QCOMPARE(mf.keysToValue("MyFlag1|MyFlag2", &ok), 3);
     QCOMPARE(ok, true);
+    QCOMPARE(mf.keysToValue64("MyFlag2|MyFlag2"), 2U);
     QCOMPARE(mf.keysToValue("MyFlag2|MyFlag2", &ok), 2);
     QCOMPARE(ok, true);
+    QCOMPARE(mf.keysToValue64("MyFlag1|MyNamespace::" + name + "::MyFlag2"), 3U);
     QCOMPARE(mf.keysToValue("MyFlag1|MyNamespace::" + name + "::MyFlag2", &ok), 3);
     QCOMPARE(ok, true);
+    QCOMPARE(mf.keysToValue64(prefix + "::MyFlag2|" + prefix + "::MyFlag2"), 2U);
     QCOMPARE(mf.keysToValue(prefix + "::MyFlag2|" + prefix + "::MyFlag2", &ok), 2);
     QCOMPARE(ok, true);
     // Fully qualified
+    QCOMPARE(mf.keysToValue64(prefix + "::MyFlag::MyFlag2|" + prefix + "::MyFlag::MyFlag2"), 2U);
     QCOMPARE(mf.keysToValue(prefix + "::MyFlag::MyFlag2|" + prefix + "::MyFlag::MyFlag2", &ok), 2);
     QCOMPARE(ok, true);
     QCOMPARE(QLatin1String(mf.valueToKeys(3)), QLatin1String("MyFlag1|MyFlag2"));
 
     // Test flags with extra '|'
-    QTest::ignoreMessage(QtWarningMsg,
-        QRegularExpression(u"QMetaEnum::keysToValue: malformed keys string, ends with '|'.+"_s));
+    static const QRegularExpression endsWithBar(
+        R"(QMetaEnum::keysToValue: malformed keys string, ends with '\|'.+)"_L1);
+    QTest::ignoreMessage(QtWarningMsg, endsWithBar);
+    QCOMPARE(mf.keysToValue64("MyFlag1|MyFlag2|"), std::nullopt);
+    QTest::ignoreMessage(QtWarningMsg, endsWithBar);
     QCOMPARE(mf.keysToValue("MyFlag1|MyFlag2|", &ok), -1);
     QCOMPARE(ok, false);
 
-    QTest::ignoreMessage(QtWarningMsg,
-        QRegularExpression(u"QMetaEnum::keysToValue: malformed keys string, starts with '|'.+"_s));
+    static const QRegularExpression startsWithBar(
+        R"(QMetaEnum::keysToValue: malformed keys string, starts with '\|'.+)"_L1);
+    QTest::ignoreMessage(QtWarningMsg, startsWithBar);
+    QCOMPARE(mf.keysToValue64("|MyFlag1|MyFlag2|"), std::nullopt);
+    QTest::ignoreMessage(QtWarningMsg, startsWithBar);
     QCOMPARE(mf.keysToValue("|MyFlag1|MyFlag2|", &ok), -1);
     QCOMPARE(ok, false);
 
-    QTest::ignoreMessage(QtWarningMsg,
-        QRegularExpression(
-            u"QMetaEnum::keysToValue: malformed keys string, has two consecutive '|'.+"_s));
+    static const QRegularExpression doubleBar(
+        R"(QMetaEnum::keysToValue: malformed keys string, has two consecutive '\|'.+)"_L1);
+    QTest::ignoreMessage(QtWarningMsg, doubleBar);
+    QCOMPARE(mf.keysToValue64("MyFlag1||MyFlag2"), std::nullopt);
+    QTest::ignoreMessage(QtWarningMsg, doubleBar);
     QCOMPARE(mf.keysToValue("MyFlag1||MyFlag2", &ok), -1);
     QCOMPARE(ok, false);
 
     // Test empty string
+    QTest::ignoreMessage(QtWarningMsg, "QMetaEnum::keysToValue: empty keys string.");
+    QCOMPARE(mf.keysToValue64(""), std::nullopt);
     QTest::ignoreMessage(QtWarningMsg, "QMetaEnum::keysToValue: empty keys string.");
     QCOMPARE(mf.keysToValue("", &ok), -1);
     QCOMPARE(ok, false);
@@ -2515,6 +2740,32 @@ void tst_QMetaObject::propertyFinal()
     prop = mo->property(mo->indexOfProperty("value9"));
     QVERIFY(prop.isValid());
     QVERIFY(!prop.isFinal());
+}
+
+void tst_QMetaObject::propertyVirtual()
+{
+    const QMetaObject *mo = metaObject();
+
+    QMetaProperty prop = mo->property(mo->indexOfProperty("value11"));
+    QVERIFY(prop.isValid());
+    QVERIFY(prop.isVirtual());
+
+    prop = mo->property(mo->indexOfProperty("value9"));
+    QVERIFY(prop.isValid());
+    QVERIFY(!prop.isVirtual());
+}
+
+void tst_QMetaObject::propertyOverride()
+{
+    const QMetaObject *mo = metaObject();
+
+    QMetaProperty prop = mo->property(mo->indexOfProperty("value12"));
+    QVERIFY(prop.isValid());
+    QVERIFY(prop.isOverride());
+
+    prop = mo->property(mo->indexOfProperty("value9"));
+    QVERIFY(prop.isValid());
+    QVERIFY(!prop.isOverride());
 }
 
 void tst_QMetaObject::metaType()
@@ -2586,6 +2837,19 @@ void tst_QMetaObject::metaMethod()
     QVERIFY(method.invoke(&obj, Q_ARG(QString, "1"), Q_ARG(QString, "2"), Q_ARG(QString, "3"), Q_ARG(QString, "4"), Q_ARG(QString, "5")));
     QCOMPARE(obj.slotResult, QString("sl5:12345"));
 
+    // check Qt 6 QVector/QList alias:
+#ifdef NORMALIZES_QVECTOR_QLIST
+    eatIndexOfNonNormalizedWarning();
+    index = QtTestObject::staticMetaObject.indexOfMethod("sl13v(QVector<QString>)");
+    QVERIFY(index > 0);
+#endif
+    index = QtTestObject::staticMetaObject.indexOfMethod("sl13v(QList<QString>)");
+    QVERIFY(index > 0);
+#ifdef NORMALIZES_QVECTOR_QLIST
+    eatIndexOfNonNormalizedWarning();
+    index = QtTestObject::staticMetaObject.indexOfMethod("sl13(QVector<QString>)");
+    QVERIFY(index > 0);
+#endif
     index = QtTestObject::staticMetaObject.indexOfMethod("sl13(QList<QString>)");
     QVERIFY(index > 0);
     QMetaMethod sl13 = QtTestObject::staticMetaObject.method(index);
@@ -2593,12 +2857,31 @@ void tst_QMetaObject::metaMethod()
     argument << QString("one") << QString("two") << QString("three");
     //wrong object
     //QVERIFY(!sl13.invoke(this, Q_RETURN_ARG(QList<QString>, returnValue), Q_ARG(QList<QString>, argument)));
-    QVERIFY(!sl13.invoke(0,  Q_RETURN_ARG(QList<QString>, returnValue), Q_ARG(QList<QString>, argument)));
+    QVERIFY(!sl13.invoke(0,  Q_RETURN_ARG(QVector<QString>, returnValue), Q_ARG(QList<QString>, argument)));
     QVERIFY(returnValue.isEmpty());
 
-    QVERIFY(sl13.invoke(&obj, Q_RETURN_ARG(QList<QString>, returnValue), Q_ARG(QList<QString>, argument)));
+    QVERIFY(sl13.invoke(&obj, Q_RETURN_ARG(QList<QString>, returnValue), Q_ARG(QVector<QString>, argument)));
     QCOMPARE(returnValue, argument);
     QCOMPARE(obj.slotResult, QString("sl13"));
+
+    index = QtTestObject::staticMetaObject.indexOfConstructor("QtTestObject(QObject*,QList<int>)");
+    QVERIFY(index > 0);
+#ifdef NORMALIZES_QVECTOR_QLIST
+    eatIndexOfNonNormalizedWarning();
+    index = QtTestObject::staticMetaObject.indexOfConstructor("QtTestObject(QObject*,QVector<int>)");
+    QVERIFY(index > 0);
+#endif
+    QCOMPARE(QtTestObject::staticMetaObject.constructor(index).methodSignature(),
+             "QtTestObject(QObject*,QList<int>)");
+    index = QtTestObject::staticMetaObject.indexOfConstructor("QtTestObject(QList<int>,QObject*)");
+    QVERIFY(index > 0);
+#ifdef NORMALIZES_QVECTOR_QLIST
+    eatIndexOfNonNormalizedWarning();
+    index = QtTestObject::staticMetaObject.indexOfConstructor("QtTestObject(QVector<int>,QObject*)");
+    QVERIFY(index > 0);
+#endif
+    QCOMPARE(QtTestObject::staticMetaObject.constructor(index).methodSignature(),
+             "QtTestObject(QList<int>,QObject*)");
 }
 
 // this is a copy-paste-adapt of the above
@@ -2639,6 +2922,12 @@ void tst_QMetaObject::metaMethodNoMacro()
     QVERIFY(method.invoke(&obj, QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"), QStringLiteral("4"), QStringLiteral("5")));
     QCOMPARE(obj.slotResult, QString("sl5:12345"));
 
+    // check Qt 6 QVector/QList alias:
+#ifdef NORMALIZES_QVECTOR_QLIST
+    eatIndexOfNonNormalizedWarning();
+    index = QtTestObject::staticMetaObject.indexOfMethod("sl13(QVector<QString>)");
+    QVERIFY(index > 0);
+#endif
     index = QtTestObject::staticMetaObject.indexOfMethod("sl13(QList<QString>)");
     QVERIFY(index > 0);
     QMetaMethod sl13 = QtTestObject::staticMetaObject.method(index);
@@ -2659,12 +2948,22 @@ void tst_QMetaObject::indexOfMethod_data()
     QTest::addColumn<QObject *>("object");
     QTest::addColumn<QByteArray>("name");
     QTest::addColumn<bool>("isSignal");
-    QTest::newRow("indexOfMethod_data") << (QObject*)this << QByteArray("indexOfMethod_data()") << false;
-    QTest::newRow("deleteLater") << (QObject*)this << QByteArray("deleteLater()") << false;
-    QTest::newRow("value6changed") << (QObject*)this << QByteArray("value6Changed()") << true;
-    QTest::newRow("value7changed") << (QObject*)this << QByteArray("value7Changed(QString)") << true;
-    QTest::newRow("destroyed") << (QObject*)this << QByteArray("destroyed()") << true;
-    QTest::newRow("destroyed2") << (QObject*)this << QByteArray("destroyed(QObject*)") << true;
+    QTest::addColumn<bool>("found");
+
+    auto row = [this] (const char *fun, bool sig, bool found = true) {
+        QObject *o = this;
+        QTest::addRow("%s", fun) << o << QByteArray(fun) << sig << found;
+    };
+
+    row("indexOfMethod_data()", false);
+    row("deleteLater()", false);
+    row("value6Changed()",  true);
+    row("value7Changed(QString)",  true);
+    row("destroyed()",  true);
+    row("destroyed(QObject*)",  true);
+    row("myQListChanged(MyQList<int>)", true);
+    row("myQListChanged(MyQVector<int>)", true, false);
+    row("myQVectorChanged(MyQVector<double>)", true);
 }
 
 void tst_QMetaObject::indexOfMethod()
@@ -2672,9 +2971,19 @@ void tst_QMetaObject::indexOfMethod()
     QFETCH(QObject *, object);
     QFETCH(QByteArray, name);
     QFETCH(bool, isSignal);
+    QFETCH(const bool, found);
+#ifdef NORMALIZES_QVECTOR_QLIST
+    QEXPECT_FAIL("myQListChanged(MyQVector<int>)", "Qt 6 QVector -> QList kludge getting in the way", Abort);
+    if (qstrcmp(QTest::currentDataTag(), "myQListChanged(MyQVector<int>)") == 0)
+        eatIndexOfNonNormalizedWarning();
+#endif
     int idx = object->metaObject()->indexOfMethod(name);
-    QVERIFY(idx >= 0);
-    QCOMPARE(object->metaObject()->method(idx).methodSignature(), name);
+    if (found)
+        QVERIFY(idx >= 0);
+    else
+        QVERIFY(idx < 0);
+    if (found)
+        QCOMPARE(object->metaObject()->method(idx).methodSignature(), name);
     QCOMPARE(object->metaObject()->indexOfSlot(name), isSignal ? -1 : idx);
     QCOMPARE(object->metaObject()->indexOfSignal(name), !isSignal ? -1 : idx);
 }
@@ -2873,7 +3182,7 @@ void tst_QMetaObject::enumDebugStream_data()
     QTest::newRow("verbosity=0") << 0
         << "hello MyEnum2 world"
         << "hello MyScopedEnum::Enum3 scoped world"
-        << "WindowTitleHint Window Desktop WindowSystemMenuHint"
+        << "WindowTitleHint Window SubWindow WindowSystemMenuHint"
         << "hello MyFlag1 world"
         << "MyFlag1 MyFlag2|MyFlag3"
         << "MyScopedFlag(MyFlag2)"
@@ -2883,32 +3192,34 @@ void tst_QMetaObject::enumDebugStream_data()
     QTest::newRow("verbosity=1") << 1
         << "hello MyEnum::MyEnum2 world"
         << "hello MyScopedEnum::Enum3 scoped world"
-        << "WindowType::WindowTitleHint WindowType::Window WindowType::Desktop WindowType::WindowSystemMenuHint"
+        << "WindowType(WindowTitleHint) WindowType(Window) WindowType(SubWindow) WindowType(WindowSystemMenuHint)"
         << "hello MyFlag(MyFlag1) world"
         << "MyFlag(MyFlag1) MyFlag(MyFlag2|MyFlag3)"
         << "MyScopedFlag(MyFlag2)"
         << "MyScopedFlag(MyFlag2|MyFlag3)"
-        << "MyFlag::MyFlag1";
+        << "MyFlag(MyFlag1)";
 
     QTest::newRow("verbosity=2") << 2
         << "hello MyNamespace::MyClass::MyEnum2 world"
         << "hello MyNamespace::MyClass::MyScopedEnum::Enum3 scoped world"
-        << "Qt::WindowTitleHint Qt::Window Qt::Desktop Qt::WindowSystemMenuHint"
+        << "QFlags<Qt::WindowType>(WindowTitleHint) QFlags<Qt::WindowType>(Window) "
+           "QFlags<Qt::WindowType>(SubWindow) QFlags<Qt::WindowType>(WindowSystemMenuHint)"
         << "hello QFlags<MyNamespace::MyClass::MyFlag>(MyFlag1) world"
         << "QFlags<MyNamespace::MyClass::MyFlag>(MyFlag1) QFlags<MyNamespace::MyClass::MyFlag>(MyFlag2|MyFlag3)"
         << "QFlags<MyNamespace::MyClass::MyScopedFlag>(MyFlag2)"
         << "QFlags<MyNamespace::MyClass::MyScopedFlag>(MyFlag2|MyFlag3)"
-        << "MyNamespace::MyClass::MyFlag1";
+        << "QFlags<MyNamespace::MyClass::MyFlag>(MyFlag1)";
 
     QTest::newRow("verbosity=3") << 3
         << "hello MyNamespace::MyClass::MyEnum::MyEnum2 world"
         << "hello MyNamespace::MyClass::MyScopedEnum::Enum3 scoped world"
-        << "Qt::WindowType::WindowTitleHint Qt::WindowType::Window Qt::WindowType::Desktop Qt::WindowType::WindowSystemMenuHint"
+        << "QFlags<Qt::WindowType>(WindowTitleHint) QFlags<Qt::WindowType>(Window) "
+           "QFlags<Qt::WindowType>(SubWindow) QFlags<Qt::WindowType>(WindowSystemMenuHint)"
         << "hello QFlags<MyNamespace::MyClass::MyFlag>(MyFlag1) world"
         << "QFlags<MyNamespace::MyClass::MyFlag>(MyFlag1) QFlags<MyNamespace::MyClass::MyFlag>(MyFlag2|MyFlag3)"
         << "QFlags<MyNamespace::MyClass::MyScopedFlag>(MyFlag2)"
         << "QFlags<MyNamespace::MyClass::MyScopedFlag>(MyFlag2|MyFlag3)"
-        << "MyNamespace::MyClass::MyFlag::MyFlag1";
+        << "QFlags<MyNamespace::MyClass::MyFlag>(MyFlag1)";
 }
 
 void tst_QMetaObject::enumDebugStream()
@@ -2933,7 +3244,7 @@ void tst_QMetaObject::enumDebugStream()
     qDebug().verbosity(verbosity) << "hello" << MyNamespace::MyClass::MyScopedEnum::Enum3 << "scoped world";
 
     QTest::ignoreMessage(QtDebugMsg, qPrintable(globalEnumMsg));
-    qDebug().verbosity(verbosity) << Qt::WindowTitleHint << Qt::Window << Qt::Desktop << Qt::WindowSystemMenuHint;
+    qDebug().verbosity(verbosity) << Qt::WindowTitleHint << Qt::Window << Qt::SubWindow << Qt::WindowSystemMenuHint;
 
     // Flags
     QTest::ignoreMessage(QtDebugMsg, qPrintable(normalFlagMsg));
@@ -2972,10 +3283,12 @@ void tst_QMetaObject::inherits_data()
         << &MyNamespace::MyClass::staticMetaObject << &MyNamespace::MyClass::staticMetaObject << true;
     QTest::newRow("MyClassSubclass inherits QObject")
         << &MyNamespace::MyClassSubclass::staticMetaObject << &QObject::staticMetaObject << true;
+#if QT_DEPRECATED_SINCE(6, 12)
     QTest::newRow("MyClassSubclass2 inherits QObject")
         << &MyNamespace::MyClassSubclass2::staticMetaObject << &QObject::staticMetaObject << true;
     QTest::newRow("MyClassSubclass2 inherits MyClass2")
         << &MyNamespace::MyClassSubclass2::staticMetaObject << &MyNamespace::MyClass2Subclass::staticMetaObject << false;
+#endif // QT_DEPRECATED_SINCE(6, 12)
 }
 
 void tst_QMetaObject::inherits()
@@ -2999,6 +3312,129 @@ void tst_QMetaObject::notifySignalsInParentClass()
     QTest::ignoreMessage(QtWarningMsg, "QMetaProperty::notifySignal: cannot find the NOTIFY signal thisIsNotASignal in class MyNamespace::ClassWithChangedSignalNewValue for property 'value3'");
     obj2.metaObject()->property(obj2.metaObject()->indexOfProperty("value3")).notifySignal();
 }
+
+void tst_QMetaObject::connectByMetaMethodToPMF()
+{
+    QtTestObject o;
+    QObject::disconnect(&o, nullptr, nullptr, nullptr);
+    QMetaMethod sig0Signal = QMetaMethod::fromSignal(&QtTestObject::sig0);
+
+    QMetaObject::Connection connection = QMetaObject::connect(&o, sig0Signal, &o, &QtTestObject::sl0);
+    QVERIFY(connection);
+
+    QVERIFY(o.slotResult.isEmpty());
+    emit o.sig0();
+    QCOMPARE(o.slotResult, u"sl0"_s);
+
+    QVERIFY(QObject::disconnect(connection));
+    o.slotResult = QString();
+    emit o.sig0();
+    QVERIFY(o.slotResult.isEmpty());
+
+    QMetaMethod sig1Signal = QMetaMethod::fromSignal(&QtTestObject::sig1);
+    connection = QMetaObject::connect(&o, sig1Signal, &o, &QtTestObject::sl1);
+    QVERIFY(connection);
+    QCOMPARE(emit o.sig1(u"toto"_s), u"yessir"_s);
+    QCOMPARE(o.slotResult, u"sl1:toto"_s);
+
+    QVERIFY(QObject::disconnect(connection));
+    o.slotResult = QString();
+    QCOMPARE(emit o.sig1(u"tata"_s), QString());
+    QVERIFY(o.slotResult.isEmpty());
+
+    connection = QMetaObject::connect(&o, sig0Signal, &o, qOverload<>(&QtTestObject::overloadedSlot));
+    QVERIFY(connection);
+    emit o.sig0();
+    QCOMPARE(o.slotResult, u"overloadedSlot"_s);
+
+    o.slotResult = QString();
+    connection = QMetaObject::connect(&o, sig1Signal, &o, &QtTestObject::sl1, Qt::QueuedConnection);
+    QVERIFY(connection);
+    QCOMPARE(emit o.sig1(u"titi"_s), QString());
+    QVERIFY(o.slotResult.isEmpty());
+
+    qApp->processEvents(QEventLoop::AllEvents);
+    QCOMPARE(o.slotResult, u"sl1:titi"_s);
+    QVERIFY(QObject::disconnect(connection));
+
+    QMetaMethod sigWithOneUnregisteredParameterTypeSignal = QMetaMethod::fromSignal(&QtTestObject::sigWithOneUnregisteredParameterType);
+    connection = QMetaObject::connect(&o, sigWithOneUnregisteredParameterTypeSignal, &o, &QtTestObject::slotWithOneUnregisteredParameterType);
+    QVERIFY(connection);
+    emit o.sigWithOneUnregisteredParameterType(u"tutu"_s, getForwardDeclaredType());
+    QCOMPARE(o.slotResult, u"slotWithUnregisteredReturnType-tutu"_s);
+    QVERIFY(QObject::disconnect(connection));
+}
+
+void tst_QMetaObject::connectByMetaMethodToFunctor()
+{
+    QtTestObject o;
+    QObject::disconnect(&o, nullptr, nullptr, nullptr);
+    QMetaMethod sig0Signal = QMetaMethod::fromSignal(&QtTestObject::sig0);
+
+    int called = 0;
+
+    QMetaObject::Connection connection = QMetaObject::connect(&o, sig0Signal, &o, [&called]() { ++called; });
+    QVERIFY(connection);
+
+    emit o.sig0();
+    QCOMPARE(called, 1);
+
+    QVERIFY(QObject::disconnect(connection));
+
+    emit o.sig0();
+    QCOMPARE(called, 1);
+
+    QMetaMethod sig1Signal = QMetaMethod::fromSignal(&QtTestObject::sig1);
+    QString receivedValue;
+    connection = QMetaObject::connect(&o, sig1Signal, &o, [&receivedValue](QString s1) { receivedValue = s1; return s1; });
+    QVERIFY(connection);
+    QString returnValue = emit o.sig1(u"foo"_s);
+    QCOMPARE(receivedValue, u"foo"_s);
+    QCOMPARE(returnValue, u"foo"_s);
+
+    QVERIFY(QObject::disconnect(connection));
+    receivedValue = QString();
+    returnValue = emit o.sig1(u"bar"_s);
+    QVERIFY(receivedValue.isEmpty());
+    QVERIFY(returnValue.isEmpty());
+
+    connection = QMetaObject::connect(&o, sig1Signal, &o, [&receivedValue](QString s1) { receivedValue = s1; return s1; }, Qt::QueuedConnection);
+    QVERIFY(connection);
+    returnValue = emit o.sig1(u"baz"_s);
+    QVERIFY(receivedValue.isEmpty());
+    QVERIFY(returnValue.isEmpty());
+
+    qApp->processEvents(QEventLoop::AllEvents);
+    QCOMPARE(receivedValue, u"baz"_s);
+}
+
+QString freeFunction(const QString &s)
+{
+    return s + s;
+}
+
+void tst_QMetaObject::connectByMetaMethodToFreeFunction()
+{
+    QtTestObject o;
+    QObject::disconnect(&o, nullptr, nullptr, nullptr);
+    QMetaMethod sig0Signal = QMetaMethod::fromSignal(&QtTestObject::sig0);
+
+    QMetaObject::Connection connection = QMetaObject::connect(&o, sig0Signal, &o, &QtTestObject::staticFunction0);
+    QVERIFY(connection);
+
+    emit o.sig0();
+    QCOMPARE(o.staticResult, u"staticFunction0"_s);
+    QVERIFY(QObject::disconnect(connection));
+
+    QMetaMethod sig1Signal = QMetaMethod::fromSignal(&QtTestObject::sig1);
+    connection = QMetaObject::connect(&o, sig1Signal, &o, freeFunction);
+    QVERIFY(connection);
+    QCOMPARE(emit o.sig1(u"foo"_s), u"foofoo"_s);
+}
+
+#ifdef NORMALIZES_QVECTOR_QLIST
+# undef NORMALIZES_QVECTOR_QLIST
+#endif
 
 QTEST_MAIN(tst_QMetaObject)
 #include "tst_qmetaobject.moc"

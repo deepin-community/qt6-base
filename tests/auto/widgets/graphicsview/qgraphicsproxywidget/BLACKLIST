@@ -1,11 +1,13 @@
 [scrollUpdate]
 android
 b2qt
-[windowOpacity]
-macos ci
 [wheelEventPropagation]
 android
 [forwardTouchEvent]
 android
 [touchEventPropagation]
 android
+[windowOpacity]
+macos # QTBUG-139950
+[bypassGraphicsProxyWidget]
+wayland

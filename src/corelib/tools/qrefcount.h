@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QREFCOUNT_H
 #define QREFCOUNT_H
@@ -50,6 +51,7 @@ public:
 }
 
 #define Q_REFCOUNT_INITIALIZE_STATIC { Q_BASIC_ATOMIC_INITIALIZER(-1) }
+#define Q_REFCOUNT_INITIALIZE_OWNED { Q_BASIC_ATOMIC_INITIALIZER(1) }
 
 QT_END_NAMESPACE
 

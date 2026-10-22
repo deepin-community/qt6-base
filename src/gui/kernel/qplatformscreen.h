@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMSCREEN_H
 #define QPLATFORMSCREEN_H
@@ -37,7 +38,7 @@ class QPlatformCursor;
 class QScreen;
 class QSurfaceFormat;
 
-typedef QPair<qreal, qreal> QDpi;
+typedef std::pair<qreal, qreal> QDpi;
 
 
 class Q_GUI_EXPORT QPlatformScreen

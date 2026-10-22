@@ -1,6 +1,7 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // Copyright (C) 2019 Mail.ru Group.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 #ifndef QSTRINGVIEW_H
 #define QSTRINGVIEW_H
 
@@ -8,7 +9,7 @@
 #include <QtCore/qcompare.h>
 #include <QtCore/qcontainerfwd.h>
 #include <QtCore/qbytearray.h>
-#include <QtCore/qstringliteral.h>
+#include <QtCore/qstringfwd.h>
 #include <QtCore/qstringalgorithms.h>
 
 #include <string>
@@ -22,13 +23,8 @@ Q_FORWARD_DECLARE_OBJC_CLASS(NSString);
 
 QT_BEGIN_NAMESPACE
 
-class QString;
-class QStringView;
 class QRegularExpression;
 class QRegularExpressionMatch;
-#ifdef Q_QDOC
-class QUtf8StringView;
-#endif
 
 namespace QtPrivate {
 template <typename Char>
@@ -68,6 +64,8 @@ struct IsContainerCompatibleWithQStringView<T, std::enable_if_t<std::conjunction
 
             // These need to be treated specially due to the empty vs null distinction
             std::negation<std::is_same<std::decay_t<T>, QString>>,
+#define QSTRINGVIEW_REFUSES_QSTRINGREF 1
+            std::negation<std::is_same<q20::remove_cvref_t<T>, QStringRef>>, // QStringRef::op QStringView()
 
             // Don't make an accidental copy constructor
             std::negation<std::is_same<std::decay_t<T>, QStringView>>
@@ -132,9 +130,9 @@ public:
     constexpr QStringView(const Char *str, qsizetype len)
 #if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
         : m_data(castHelper(str)),
-          m_size((Q_ASSERT(len >= 0), Q_ASSERT(str || !len), len))
+          m_size((Q_PRE(len >= 0), Q_PRE(str || !len), len))
 #else
-        : m_size((Q_ASSERT(len >= 0), Q_ASSERT(str || !len), len)),
+        : m_size((Q_PRE(len >= 0), Q_PRE(str || !len), len)),
           m_data(castHelper(str))
 #endif
     {}
@@ -150,10 +148,13 @@ public:
     template <typename Char>
     constexpr QStringView(const Char *str) noexcept;
 #else
-
     template <typename Pointer, if_compatible_pointer<Pointer> = true>
     constexpr QStringView(const Pointer &str) noexcept
         : QStringView(str, str ? lengthHelperPointer(str) : 0) {}
+
+    template <typename Char, if_compatible_char<Char> = true>
+    constexpr QStringView(const Char (&str)[]) noexcept // array of unknown bounds
+        : QStringView{&*str} {} // decay to pointer
 #endif
 
 #ifdef Q_QDOC
@@ -165,7 +166,7 @@ public:
 #endif
 
     template <typename Container, if_compatible_container<Container> = true>
-    constexpr Q_ALWAYS_INLINE QStringView(const Container &c) noexcept
+    Q_ALWAYS_INLINE constexpr QStringView(const Container &c) noexcept
         : QStringView(std::data(c), QtPrivate::lengthHelperContainer(c)) {}
 
     template <typename Char, size_t Size, if_compatible_char<Char> = true>
@@ -179,7 +180,17 @@ public:
     [[nodiscard]] Q_CORE_EXPORT NSString *toNSString() const Q_DECL_NS_RETURNS_AUTORELEASED;
 #endif
 
-    [[nodiscard]] constexpr qsizetype size() const noexcept { return m_size; }
+    [[nodiscard]] static constexpr qsizetype maxSize() noexcept
+    {
+        // -1 to deal with the pointer one-past-the-end;
+        return QtPrivate::MaxAllocSize / sizeof(storage_type) - 1;
+    }
+    [[nodiscard]] constexpr qsizetype size() const noexcept
+    {
+        constexpr size_t MaxSize = maxSize();
+        Q_PRESUME(size_t(m_size) <= MaxSize);
+        return m_size;
+    }
     [[nodiscard]] const_pointer data() const noexcept { return reinterpret_cast<const_pointer>(m_data); }
     [[nodiscard]] const_pointer constData() const noexcept { return data(); }
     [[nodiscard]] constexpr const storage_type *utf16() const noexcept { return m_data; }
@@ -250,40 +261,82 @@ public:
     { return qTokenize(*this, std::forward<Needle>(needle), flags...); }
 
     [[nodiscard]] int compare(QStringView other, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::compareStrings(*this, other, cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(other.m_size) && other.size() == 1)
+            return compare(other.front(), cs);
+#endif
+        return QtPrivate::compareStrings(*this, other, cs);
+    }
     [[nodiscard]] inline int compare(QLatin1StringView other, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
     [[nodiscard]] inline int compare(QUtf8StringView other, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
     [[nodiscard]] constexpr int compare(QChar c) const noexcept
     { return size() >= 1 ? compare_single_char_helper(*utf16() - c.unicode()) : -1; }
     [[nodiscard]] int compare(QChar c, Qt::CaseSensitivity cs) const noexcept
-    { return QtPrivate::compareStrings(*this, QStringView(&c, 1), cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(cs) && cs == Qt::CaseSensitive)
+            return compare(c);
+#endif
+        return QtPrivate::compareStrings(*this, QStringView(&c, 1), cs);
+    }
 
     [[nodiscard]] inline int localeAwareCompare(QStringView other) const;
 
     [[nodiscard]] bool startsWith(QStringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::startsWith(*this, s, cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(s.m_size) && s.size() == 1)
+            return startsWith(s.front(), cs);
+#endif
+        return QtPrivate::startsWith(*this, s, cs);
+    }
     [[nodiscard]] inline bool startsWith(QLatin1StringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
     [[nodiscard]] bool startsWith(QChar c) const noexcept
     { return !empty() && front() == c; }
     [[nodiscard]] bool startsWith(QChar c, Qt::CaseSensitivity cs) const noexcept
-    { return QtPrivate::startsWith(*this, QStringView(&c, 1), cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(cs) && cs == Qt::CaseSensitive)
+            return startsWith(c);
+#endif
+        return QtPrivate::startsWith(*this, QStringView(&c, 1), cs);
+    }
 
     [[nodiscard]] bool endsWith(QStringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::endsWith(*this, s, cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(s.m_size) && s.size() == 1)
+            return endsWith(s.front(), cs);
+#endif
+        return QtPrivate::endsWith(*this, s, cs);
+    }
     [[nodiscard]] inline bool endsWith(QLatin1StringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
     [[nodiscard]] bool endsWith(QChar c) const noexcept
     { return !empty() && back() == c; }
     [[nodiscard]] bool endsWith(QChar c, Qt::CaseSensitivity cs) const noexcept
-    { return QtPrivate::endsWith(*this, QStringView(&c, 1), cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(cs) && cs == Qt::CaseSensitive)
+            return endsWith(c);
+#endif
+        return QtPrivate::endsWith(*this, QStringView(&c, 1), cs);
+    }
 
     [[nodiscard]] qsizetype indexOf(QChar c, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return QtPrivate::findString(*this, from, c.unicode(), cs); }
     [[nodiscard]] qsizetype indexOf(QStringView s, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::findString(*this, from, s, cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(s.m_size) && s.size() == 1)
+            return indexOf(s.front(), from, cs);
+#endif
+        return QtPrivate::findString(*this, from, s, cs);
+    }
     [[nodiscard]] inline qsizetype indexOf(QLatin1StringView s, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
 
     [[nodiscard]] bool contains(QChar c, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return indexOf(QStringView(&c, 1), 0, cs) != qsizetype(-1); }
+    { return indexOf(c, 0, cs) != qsizetype(-1); }
     [[nodiscard]] bool contains(QStringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return indexOf(s, 0, cs) != qsizetype(-1); }
     [[nodiscard]] inline bool contains(QLatin1StringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
@@ -291,7 +344,13 @@ public:
     [[nodiscard]] qsizetype count(QChar c, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return QtPrivate::count(*this, c, cs); }
     [[nodiscard]] qsizetype count(QStringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::count(*this, s, cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(s.m_size) && s.size() == 1)
+            return count(s.front(), cs);
+#endif
+        return QtPrivate::count(*this, s, cs);
+    }
     [[nodiscard]] inline qsizetype count(QLatin1StringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const;
 
     [[nodiscard]] qsizetype lastIndexOf(QChar c, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
@@ -301,7 +360,13 @@ public:
     [[nodiscard]] qsizetype lastIndexOf(QStringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return lastIndexOf(s, size(), cs); }
     [[nodiscard]] qsizetype lastIndexOf(QStringView s, qsizetype from, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::lastIndexOf(*this, from, s, cs); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(s.m_size) && s.size() == 1)
+            return lastIndexOf(s.front(), from, cs);
+#endif
+        return QtPrivate::lastIndexOf(*this, from, s, cs);
+    }
     [[nodiscard]] inline qsizetype lastIndexOf(QLatin1StringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
     [[nodiscard]] inline qsizetype lastIndexOf(QLatin1StringView s, qsizetype from, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
 
@@ -328,10 +393,7 @@ public:
     {
         return QtPrivate::contains(*this, re, rmatch);
     }
-    [[nodiscard]] qsizetype count(const QRegularExpression &re) const
-    {
-        return QtPrivate::count(*this, re);
-    }
+    [[nodiscard]] qsizetype count(const QRegularExpression &re) const; // defined in qregularexpression.h
 #endif
 
     [[nodiscard]] bool isRightToLeft() const noexcept
@@ -403,10 +465,10 @@ public:
     [[nodiscard]] const_reverse_iterator crend()   const noexcept { return rend(); }
 
     [[nodiscard]] constexpr bool empty() const noexcept { return size() == 0; }
-    [[nodiscard]] constexpr QChar front() const { return Q_ASSERT(!empty()), QChar(m_data[0]); }
-    [[nodiscard]] constexpr QChar back()  const { return Q_ASSERT(!empty()), QChar(m_data[m_size - 1]); }
+    [[nodiscard]] constexpr QChar front() const { return Q_PRE(!empty()), QChar(m_data[0]); }
+    [[nodiscard]] constexpr QChar back()  const { return Q_PRE(!empty()), QChar(m_data[m_size - 1]); }
 
-    [[nodiscard]] Q_IMPLICIT operator std::u16string_view() const noexcept
+    [[nodiscard]] constexpr Q_IMPLICIT operator std::u16string_view() const noexcept
     { return std::u16string_view(m_data, size_t(m_size)); }
 
     [[nodiscard]] constexpr qsizetype max_size() const noexcept { return maxSize(); }
@@ -422,12 +484,6 @@ public:
     { return size(); }
     [[nodiscard]] constexpr QChar first() const { return front(); }
     [[nodiscard]] constexpr QChar last()  const { return back(); }
-
-    [[nodiscard]] static constexpr qsizetype maxSize() noexcept
-    {
-        // -1 to deal with the pointer one-past-the-end;
-        return QtPrivate::MaxAllocSize / sizeof(storage_type) - 1;
-    }
 private:
 #if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
     const storage_type *m_data = nullptr;
@@ -440,10 +496,10 @@ private:
     Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos = 0,
                                           [[maybe_unused]] qsizetype n = 1) const
     {
-        Q_ASSERT(pos >= 0);
-        Q_ASSERT(pos <= size());
-        Q_ASSERT(n >= 0);
-        Q_ASSERT(n <= size() - pos);
+        Q_PRE(pos >= 0);
+        Q_PRE(pos <= size());
+        Q_PRE(n >= 0);
+        Q_PRE(n <= size() - pos);
     }
 
     constexpr int compare_single_char_helper(int diff) const noexcept
@@ -474,22 +530,6 @@ template <typename QStringLike, typename std::enable_if<
 inline QStringView qToStringViewIgnoringNull(const QStringLike &s) noexcept
 { return QStringView(s.begin(), s.size()); }
 
-// QChar inline functions:
-
-[[nodiscard]] constexpr auto QChar::fromUcs4(char32_t c) noexcept
-{
-    struct R {
-        char16_t chars[2];
-        [[nodiscard]] constexpr operator QStringView() const noexcept { return {begin(), end()}; }
-        [[nodiscard]] constexpr qsizetype size() const noexcept { return chars[1] ? 2 : 1; }
-        [[nodiscard]] constexpr const char16_t *begin() const noexcept { return chars; }
-        [[nodiscard]] constexpr const char16_t *end() const noexcept { return begin() + size(); }
-    };
-    return requiresSurrogates(c) ? R{{QChar::highSurrogate(c),
-                                      QChar::lowSurrogate(c)}} :
-                                   R{{char16_t(c), u'\0'}} ;
-}
-
 qsizetype QtPrivate::findString(QStringView str, qsizetype from, QChar ch, Qt::CaseSensitivity cs) noexcept
 {
     if (from < -str.size()) // from < 0 && abs(from) > str.size(), avoiding overflow
@@ -510,6 +550,17 @@ qsizetype QtPrivate::findString(QStringView str, qsizetype from, QChar ch, Qt::C
     }
     return -1;
 }
+
+namespace Qt {
+inline namespace Literals {
+inline namespace StringLiterals {
+constexpr QStringView operator""_sv(const char16_t *str, size_t size) noexcept
+{
+    return QStringView(str, qsizetype(size));
+}
+} // StringLiterals
+} // Literals
+} // Qt
 
 QT_END_NAMESPACE
 

@@ -7,9 +7,6 @@ cmake_minimum_required(VERSION @min_new_policy_version@...@max_new_policy_versio
 
 include(CMakeFindDependencyMacro)
 
-get_filename_component(_import_prefix "${CMAKE_CURRENT_LIST_FILE}" PATH)
-get_filename_component(_import_prefix "${_import_prefix}" REALPATH)
-
 # Extra cmake code begin
 @extra_cmake_code@
 # Extra cmake code end
@@ -27,12 +24,67 @@ if(NOT DEFINED "@INSTALL_CMAKE_NAMESPACE@@target@_FOUND")
     set("@INSTALL_CMAKE_NAMESPACE@@target@_FOUND" TRUE)
 endif()
 
-if (NOT QT_NO_CREATE_TARGETS AND @INSTALL_CMAKE_NAMESPACE@@target@_FOUND)
+# Do the checks inside Targets.cmake even when the file is still being generated
+include("${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@TargetsPrecheck.cmake")
+
+if(NOT __qt_@target@_skip_include_targets_file AND @INSTALL_CMAKE_NAMESPACE@@target@_FOUND)
     include("${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@Targets.cmake")
-    include("${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@AdditionalTargetInfo.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@AdditionalTargetInfo.cmake"
+        OPTIONAL)
     include("${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@ExtraProperties.cmake"
         OPTIONAL)
+    set(__qt_@target@_targets_file_included ON)
+endif()
 
+# Find the private module counterpart.
+set(__qt_@target@_always_load_private_module @always_load_private_module@)
+include("${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@-build.cmake" OPTIONAL)
+if (@INSTALL_CMAKE_NAMESPACE@@target@_FOUND
+        AND NOT @INSTALL_CMAKE_NAMESPACE@@target_private@_FOUND
+        AND NOT @arg_NO_PRIVATE_MODULE@
+        AND (
+            __qt_@target@_always_load_private_module
+            OR DEFINED QT_REPO_MODULE_VERSION
+            OR QT_FIND_PRIVATE_MODULES
+        )
+    )
+    if("${_qt_cmake_dir}" STREQUAL "")
+        set(_qt_cmake_dir "${QT_TOOLCHAIN_RELOCATABLE_CMAKE_DIR}")
+    endif()
+    set(__qt_use_no_default_path_for_qt_packages "NO_DEFAULT_PATH")
+    if(QT_DISABLE_NO_DEFAULT_PATH_IN_QT_PACKAGES)
+        set(__qt_use_no_default_path_for_qt_packages "")
+    endif()
+    find_package(@INSTALL_CMAKE_NAMESPACE@@target_private@ "@PROJECT_VERSION@" EXACT
+        QUIET
+        CONFIG
+        PATHS
+            ${QT_BUILD_CMAKE_PREFIX_PATH}
+            "${CMAKE_CURRENT_LIST_DIR}/.."
+            "${_qt_cmake_dir}"
+            ${_qt_additional_packages_prefix_paths}
+        ${__qt_use_no_default_path_for_qt_packages}
+    )
+
+    if(NOT @INSTALL_CMAKE_NAMESPACE@@target_private@_FOUND)
+        get_property(@INSTALL_CMAKE_NAMESPACE@@target_private@_warning_shown GLOBAL PROPERTY
+            @INSTALL_CMAKE_NAMESPACE@@target_private@_warning_shown
+        )
+        if(NOT @INSTALL_CMAKE_NAMESPACE@@target_private@_warning_shown)
+            message(VERBOSE
+                "The private module package '@INSTALL_CMAKE_NAMESPACE@@target_private@' "
+                "could not be found. It possibly needs to be installed separately with your "
+                "package manager."
+            )
+            set_property(GLOBAL PROPERTY
+                @INSTALL_CMAKE_NAMESPACE@@target_private@_warning_shown ON
+            )
+        endif()
+    endif()
+endif()
+unset(__qt_@target@_always_load_private_module)
+
+if(__qt_@target@_targets_file_included)
     # DEPRECATED
     # Provide old style variables for includes, compile definitions, etc.
     # These variables are deprecated and only provided on a best-effort basis to facilitate porting.
@@ -120,17 +172,27 @@ if (TARGET @QT_CMAKE_EXPORT_NAMESPACE@::@target@)
         include("${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@Plugins.cmake")
     endif()
 
-    list(APPEND QT_ALL_MODULES_FOUND_VIA_FIND_PACKAGE "@target@")
+    if(NOT "@target@" IN_LIST QT_ALL_MODULES_FOUND_VIA_FIND_PACKAGE)
+        list(APPEND QT_ALL_MODULES_FOUND_VIA_FIND_PACKAGE "@target@")
+        list(APPEND QT_ALL_MODULES_VERSIONED_FOUND_VIA_FIND_PACKAGE
+            "@INSTALL_CMAKE_NAMESPACE@::@target@")
+    endif()
 
     get_target_property(_qt_module_target_type "@INSTALL_CMAKE_NAMESPACE@::@target@" TYPE)
     if(NOT _qt_module_target_type STREQUAL "INTERFACE_LIBRARY")
         get_target_property(_qt_module_plugin_types
                             @INSTALL_CMAKE_NAMESPACE@::@target@ MODULE_PLUGIN_TYPES)
         if(_qt_module_plugin_types)
-            list(APPEND QT_ALL_PLUGIN_TYPES_FOUND_VIA_FIND_PACKAGE "${_qt_module_plugin_types}")
+            foreach(_qt_module_plugin_type IN LISTS _qt_module_plugin_types)
+                if(NOT "${_qt_module_plugin_type}"
+                    IN_LIST QT_ALL_PLUGIN_TYPES_FOUND_VIA_FIND_PACKAGE)
+                    list(APPEND QT_ALL_PLUGIN_TYPES_FOUND_VIA_FIND_PACKAGE
+                    "${_qt_module_plugin_type}")
+                endif()
+            endforeach()
+            unset(_qt_module_plugin_type)
         endif()
     endif()
-
 
     # Load Module's BuildInternals should any exist
     if (@INSTALL_CMAKE_NAMESPACE@BuildInternals_DIR AND
@@ -152,9 +214,9 @@ else()
         set(@INSTALL_CMAKE_NAMESPACE@@target@_NOT_FOUND_MESSAGE
             "Target \"@QT_CMAKE_EXPORT_NAMESPACE@::@target@\" was not found.")
 
-        if(QT_NO_CREATE_TARGETS)
+        if(__qt_@target@_skip_include_targets_file)
             string(APPEND @INSTALL_CMAKE_NAMESPACE@@target@_NOT_FOUND_MESSAGE
-                "Possibly due to QT_NO_CREATE_TARGETS being set to TRUE and thus "
+                "Possibly due to __qt_@target@_skip_include_targets_file being set to TRUE and thus "
                 "${CMAKE_CURRENT_LIST_DIR}/@INSTALL_CMAKE_NAMESPACE@@target@Targets.cmake was not "
                 "included to define the target.")
         endif()

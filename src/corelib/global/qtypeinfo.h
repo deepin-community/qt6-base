@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTYPEINFO_H
 #define QTYPEINFO_H
@@ -20,6 +21,18 @@ class QDebug;
 
 namespace QtPrivate {
 
+// Helper for QTypeInfo<T>::isComplex, which used to be simply
+// !std::is_trivial_v but P3247 deprecated it for C++26. It used to be defined
+// (since C++11) by [class]/7 as: "A trivial class is a class that is trivially
+// copyable and has one or more default constructors, all of which are either
+// trivial or deleted and at least one of which is not deleted. [ Note: In
+// particular, a trivially copyable or trivial class does not have virtual
+// functions or virtual base classes. — end note ]".
+
+template <typename T>
+inline constexpr bool qIsComplex =
+        !std::is_trivially_default_constructible_v<T> || !std::is_trivially_copyable_v<T>;
+
 // A trivially copyable class must also have a trivial, non-deleted
 // destructor [class.prop/1.3], CWG1734. Some implementations don't
 // check for a trivial destructor, because of backwards compatibility
@@ -29,6 +42,8 @@ namespace QtPrivate {
 // explicitly check for trivial destruction here.
 template <typename T>
 inline constexpr bool qIsRelocatable =  std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>;
+
+template <typename T> inline constexpr bool qIsQtRelocatableContainer = false;
 
 // Denotes types that are trivially default constructible, and for which
 // value-initialization can be achieved by filling their storage with 0 bits.
@@ -53,7 +68,7 @@ public:
     enum {
         isPointer [[deprecated("Use std::is_pointer instead")]] = std::is_pointer_v<T>,
         isIntegral [[deprecated("Use std::is_integral instead")]] = std::is_integral_v<T>,
-        isComplex = !std::is_trivial_v<T>,
+        isComplex = QtPrivate::qIsComplex<T>,
         isRelocatable = QtPrivate::qIsRelocatable<T>,
         isValueInitializationBitwiseZero = QtPrivate::qIsValueInitializationBitwiseZero<T>,
     };
@@ -116,6 +131,9 @@ template <class T1, class T2>
 class QTypeInfo<std::pair<T1, T2>> : public QTypeInfoMerger<std::pair<T1, T2>, T1, T2> {};
 
 #define Q_DECLARE_MOVABLE_CONTAINER(CONTAINER) \
+namespace QtPrivate { \
+template <typename ...T> constexpr bool qIsQtRelocatableContainer<CONTAINER<T...>> = true; \
+} \
 template <typename ...T> \
 class QTypeInfo<CONTAINER<T...>> \
 { \
@@ -138,6 +156,8 @@ Q_DECLARE_MOVABLE_CONTAINER(QMultiMap);
 Q_DECLARE_MOVABLE_CONTAINER(QHash);
 Q_DECLARE_MOVABLE_CONTAINER(QMultiHash);
 Q_DECLARE_MOVABLE_CONTAINER(QCache);
+// if you add a new container here after a .0 release, see qvariant.h for
+// QVariant::Private::hasAlwaysBeenAbleToUseInternalSpace()
 
 #undef Q_DECLARE_MOVABLE_CONTAINER
 
@@ -162,13 +182,13 @@ class QTypeInfo<TYPE > \
 { \
 public: \
     enum { \
-        isComplex = (((FLAGS) & Q_PRIMITIVE_TYPE) == 0) && !std::is_trivial_v<TYPE>, \
+        isComplex = (((FLAGS) & Q_PRIMITIVE_TYPE) == 0) && QtPrivate::qIsComplex<TYPE>, \
         isRelocatable = !isComplex || ((FLAGS) & Q_RELOCATABLE_TYPE) || QtPrivate::qIsRelocatable<TYPE>, \
         isPointer [[deprecated("Use std::is_pointer instead")]] = std::is_pointer_v< TYPE >, \
         isIntegral [[deprecated("Use std::is_integral instead")]] = std::is_integral< TYPE >::value, \
         isValueInitializationBitwiseZero = QtPrivate::qIsValueInitializationBitwiseZero<TYPE>, \
     }; \
-    static_assert(!isRelocatable || \
+    static_assert(!QTypeInfo<TYPE>::isRelocatable || \
                   std::is_copy_constructible_v<TYPE > || \
                   std::is_move_constructible_v<TYPE >, \
                   #TYPE " is neither copy- nor move-constructible, so cannot be Q_RELOCATABLE_TYPE"); \

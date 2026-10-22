@@ -1,9 +1,11 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 #ifndef QBYTEARRAYVIEW_H
 #define QBYTEARRAYVIEW_H
 
 #include <QtCore/qbytearrayalgorithms.h>
+#include <QtCore/qchar.h>
 #include <QtCore/qcompare.h>
 #include <QtCore/qcontainerfwd.h>
 #include <QtCore/qstringfwd.h>
@@ -18,12 +20,11 @@ QT_BEGIN_NAMESPACE
 namespace QtPrivate {
 
 template <typename Byte>
-struct IsCompatibleByteTypeHelper
-    : std::integral_constant<bool,
-                             std::is_same_v<Byte, char> ||
-                             std::is_same_v<Byte, uchar> ||
-                             std::is_same_v<Byte, signed char> ||
-                             std::is_same_v<Byte, std::byte>> {};
+struct IsCompatibleByteTypeHelper : std::false_type {};
+template <> struct IsCompatibleByteTypeHelper<char> : std::true_type {};
+template <> struct IsCompatibleByteTypeHelper<signed char> : std::true_type {};
+template <> struct IsCompatibleByteTypeHelper<unsigned char> : std::true_type {};
+template <> struct IsCompatibleByteTypeHelper<std::byte> : std::true_type {};
 
 template <typename Byte>
 struct IsCompatibleByteType
@@ -138,15 +139,19 @@ private:
     { return data; }
 
 public:
-    constexpr QByteArrayView() noexcept
-        : m_size(0), m_data(nullptr) {}
+    constexpr QByteArrayView() = default;
     constexpr QByteArrayView(std::nullptr_t) noexcept
         : QByteArrayView() {}
 
     template <typename Byte, if_compatible_byte<Byte> = true>
     constexpr QByteArrayView(const Byte *data, qsizetype len)
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
+        : m_data(castHelper(data)),
+          m_size((Q_ASSERT(len >= 0), Q_ASSERT(data || !len), len)) {}
+#else
         : m_size((Q_ASSERT(len >= 0), Q_ASSERT(data || !len), len)),
           m_data(castHelper(data)) {}
+#endif
 
     template <typename Byte, if_compatible_byte<Byte> = true>
     constexpr QByteArrayView(const Byte *first, const Byte *last)
@@ -177,6 +182,10 @@ public:
     constexpr QByteArrayView(const char (&data)[Size]) noexcept
         : QByteArrayView(data, lengthHelperCharArray(data, Size)) {}
 
+    template <typename Byte, if_compatible_byte<Byte> = true>
+    constexpr QByteArrayView(const Byte (&data)[]) noexcept
+        : QByteArrayView(&*data) {} // decay to pointer
+
 #ifdef Q_QDOC
     template <typename Byte, size_t Size>
 #else
@@ -186,7 +195,18 @@ public:
     { return QByteArrayView(data, Size); }
     [[nodiscard]] inline QByteArray toByteArray() const; // defined in qbytearray.h
 
-    [[nodiscard]] constexpr qsizetype size() const noexcept { return m_size; }
+    [[nodiscard]] static constexpr qsizetype maxSize() noexcept
+    {
+        // -1 to deal with the pointer one-past-the-end;
+        return QtPrivate::MaxAllocSize - 1;
+    }
+
+    [[nodiscard]] constexpr qsizetype size() const noexcept
+    {
+        constexpr size_t MaxSize = maxSize();
+        Q_PRESUME(size_t(m_size) <= MaxSize);
+        return m_size;
+    }
     [[nodiscard]] constexpr const_pointer data() const noexcept { return m_data; }
     [[nodiscard]] constexpr const_pointer constData() const noexcept { return data(); }
 
@@ -267,17 +287,35 @@ public:
     }
 
     [[nodiscard]] bool startsWith(QByteArrayView other) const noexcept
-    { return QtPrivate::startsWith(*this, other); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(other.m_size) && other.m_size == 1)
+            return startsWith(other.front());
+#endif
+        return QtPrivate::startsWith(*this, other);
+    }
     [[nodiscard]] constexpr bool startsWith(char c) const noexcept
     { return !empty() && front() == c; }
 
     [[nodiscard]] bool endsWith(QByteArrayView other) const noexcept
-    { return QtPrivate::endsWith(*this, other); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(other.m_size) && other.m_size == 1)
+            return endsWith(other.front());
+#endif
+        return QtPrivate::endsWith(*this, other);
+    }
     [[nodiscard]] constexpr bool endsWith(char c) const noexcept
     { return !empty() && back() == c; }
 
     [[nodiscard]] qsizetype indexOf(QByteArrayView a, qsizetype from = 0) const noexcept
-    { return QtPrivate::findByteArray(*this, from, a); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(a.m_size) && a.m_size == 1)
+            return indexOf(a.front(), from);
+#endif
+        return QtPrivate::findByteArray(*this, from, a);
+    }
     [[nodiscard]] qsizetype indexOf(char ch, qsizetype from = 0) const noexcept
     { return QtPrivate::findByteArray(*this, from, ch); }
 
@@ -289,16 +327,29 @@ public:
     [[nodiscard]] qsizetype lastIndexOf(QByteArrayView a) const noexcept
     { return lastIndexOf(a, size()); }
     [[nodiscard]] qsizetype lastIndexOf(QByteArrayView a, qsizetype from) const noexcept
-    { return QtPrivate::lastIndexOf(*this, from, a); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(a.m_size) && a.m_size == 1)
+            return lastIndexOf(a.front(), from);
+#endif
+        return QtPrivate::lastIndexOf(*this, from, a);
+    }
     [[nodiscard]] qsizetype lastIndexOf(char ch, qsizetype from = -1) const noexcept
     { return QtPrivate::lastIndexOf(*this, from, ch); }
 
     [[nodiscard]] qsizetype count(QByteArrayView a) const noexcept
-    { return QtPrivate::count(*this, a); }
+    {
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+        if (__builtin_constant_p(a.m_size) && a.m_size == 1)
+            return count(a.front());
+#endif
+        return QtPrivate::count(*this, a);
+    }
     [[nodiscard]] qsizetype count(char ch) const noexcept
     { return QtPrivate::count(*this, QByteArrayView(&ch, 1)); }
 
-    inline int compare(QByteArrayView a, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
+    inline int compare(QByteArrayView a) const noexcept;
+    inline int compare(QByteArrayView a, Qt::CaseSensitivity) const noexcept;
 
     [[nodiscard]] inline bool isValidUtf8() const noexcept { return QtPrivate::isValidUtf8(*this); }
 
@@ -333,12 +384,6 @@ public:
     [[nodiscard]] constexpr char first() const { return front(); }
     [[nodiscard]] constexpr char last()  const { return back(); }
 
-    [[nodiscard]] static constexpr qsizetype maxSize() noexcept
-    {
-        // -1 to deal with the pointer one-past-the-end;
-        return QtPrivate::MaxAllocSize - 1;
-    }
-
 private:
     Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos = 0,
                                           [[maybe_unused]] qsizetype n = 1) const
@@ -350,10 +395,27 @@ private:
     }
 
     friend bool
+    comparesEqual(const QByteArrayView &lhs, char rhs) noexcept
+    {
+        return lhs.size() == 1 && lhs[0] == rhs;
+    }
+    friend bool
     comparesEqual(const QByteArrayView &lhs, const QByteArrayView &rhs) noexcept
     {
         return lhs.size() == rhs.size()
                 && (!lhs.size() || memcmp(lhs.data(), rhs.data(), lhs.size()) == 0);
+    }
+    friend Qt::strong_ordering
+    compareThreeWay(const QByteArrayView &lhs, char rhs) noexcept
+    {
+        if (lhs.size() >= 1) {
+            if (int diff = uchar(lhs[0]) - uchar(rhs))
+                return Qt::compareThreeWay(diff, 0);
+        }
+        // the first char matched
+        // so the longer one is lexically after the shorter one
+        const int res = lhs.size() == 1 ? 0 : lhs.size() > 1 ? 1 : -1;
+        return Qt::compareThreeWay(res, 0);
     }
     friend Qt::strong_ordering
     compareThreeWay(const QByteArrayView &lhs, const QByteArrayView &rhs) noexcept
@@ -362,13 +424,7 @@ private:
         return Qt::compareThreeWay(res, 0);
     }
     Q_DECLARE_STRONGLY_ORDERED(QByteArrayView)
-
-    friend bool comparesEqual(const QByteArrayView &lhs, const char *rhs) noexcept
-    { return comparesEqual(lhs, QByteArrayView(rhs)); }
-    friend Qt::strong_ordering
-    compareThreeWay(const QByteArrayView &lhs, const char *rhs) noexcept
-    { return compareThreeWay(lhs, QByteArrayView(rhs)); }
-    Q_DECLARE_STRONGLY_ORDERED(QByteArrayView, const char *)
+    Q_DECLARE_STRONGLY_ORDERED(QByteArrayView, char)
 
     // defined in qstring.cpp
     friend Q_CORE_EXPORT bool
@@ -384,8 +440,13 @@ private:
     Q_DECLARE_STRONGLY_ORDERED(QByteArrayView, char16_t, QT_ASCII_CAST_WARN)
 #endif // !defined(QT_NO_CAST_FROM_ASCII) && !defined(QT_RESTRICTED_CAST_FROM_ASCII)
 
-    qsizetype m_size;
-    const storage_type *m_data;
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
+    const storage_type *m_data = nullptr;
+    qsizetype m_size = 0;
+#else
+    qsizetype m_size = 0;
+    const storage_type *m_data = nullptr;
+#endif
 };
 Q_DECLARE_TYPEINFO(QByteArrayView, Q_PRIMITIVE_TYPE);
 
@@ -394,9 +455,23 @@ template<typename QByteArrayLike,
 [[nodiscard]] inline QByteArrayView qToByteArrayViewIgnoringNull(const QByteArrayLike &b) noexcept
 { return QByteArrayView(b.begin(), b.size()); }
 
+inline int QByteArrayView::compare(QByteArrayView a) const noexcept
+{
+#if defined(Q_CC_GNU) || __has_builtin(__builtin_constant_p)
+    if (__builtin_constant_p(a.m_size) && a.m_size == 1) {
+        if (isEmpty())
+            return -1;
+        if (int diff = uchar(front()) - uchar(a.front()))
+            return diff;
+        return size() > 1 ? 1 : 0;
+    }
+#endif
+    return QtPrivate::compareMemory(*this, a);
+}
+
 inline int QByteArrayView::compare(QByteArrayView a, Qt::CaseSensitivity cs) const noexcept
 {
-    return cs == Qt::CaseSensitive ? QtPrivate::compareMemory(*this, a) :
+    return cs == Qt::CaseSensitive ? compare(a) :
                                      qstrnicmp(data(), size(), a.data(), a.size());
 }
 
@@ -409,8 +484,10 @@ inline quint16 qChecksum(const char *s, qsizetype len,
 
 qsizetype QtPrivate::findByteArray(QByteArrayView haystack, qsizetype from, char needle) noexcept
 {
+    if (from < -haystack.size()) // from < 0 && abs(from) > haystack.size(), avoiding overflow
+        return -1;
     if (from < 0)
-        from = qMax(from + haystack.size(), qsizetype(0));
+        from = from + haystack.size();
     if (from < haystack.size()) {
         const char *const b = haystack.data();
         if (const auto n = static_cast<const char *>(

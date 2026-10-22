@@ -26,7 +26,7 @@ if (UNIX)
     if(NOT APPLE)
         add_dependencies(tst_qpluginloader theoldplugin)
     endif()
-    if (NOT ANDROID AND NOT APPLE)
+    if (NOT ANDROID AND NOT APPLE AND NOT CYGWIN AND NOT OHOS)
         add_dependencies(tst_qpluginloader almostplugin)
     endif()
 endif()
@@ -45,5 +45,16 @@ if(ANDROID)
     endforeach()
     set_target_properties(tst_qpluginloader PROPERTIES
         QT_ANDROID_EXTRA_LIBS "${extra_libs}"
+    )
+endif()
+
+if(OHOS)
+    set(extra_libs
+        theplugin
+        theoldplugin
+        tst_qpluginloaderlib
+    )
+    set_target_properties(tst_qpluginloader PROPERTIES
+        QT_HARMONYOS_EXTRA_LIBS "${extra_libs}"
     )
 endif()

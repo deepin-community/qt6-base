@@ -42,9 +42,9 @@ public:
     {
         if (Form->objectName().isEmpty())
             Form->setObjectName("Form");
-        Form->resize(258, 224);
+        Form->resize(301, 228);
         vboxLayout = new QVBoxLayout(Form);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
         vboxLayout->setContentsMargins(8, 8, 8, 8);
@@ -52,7 +52,7 @@ public:
         groupBox = new QGroupBox(Form);
         groupBox->setObjectName("groupBox");
         gridLayout = new QGridLayout(groupBox);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
         gridLayout->setContentsMargins(8, 8, 8, 8);

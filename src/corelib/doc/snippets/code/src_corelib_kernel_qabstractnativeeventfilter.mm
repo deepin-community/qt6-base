@@ -1,10 +1,30 @@
 // Copyright (C) 2016 Samuel Gaist <samuel.gaist@edeltech.ch>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-//! [0]
+#if 0
+//! [include]
 #include "mycocoaeventfilter.h"
 
+//! [include]
+#endif
+
+#if defined(Q_OS_MACOS)
+
+#include <QByteArray>
+
+//! [mycocoaeventfilter]
+#include <QAbstractNativeEventFilter>
+
+class MyCocoaEventFilter : public QAbstractNativeEventFilter
+{
+public:
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *) override;
+};
+//! [mycocoaeventfilter]
+
+//! [0]
 #import <AppKit/AppKit.h>
+
 
 bool MyCocoaEventFilter::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *)
 {
@@ -18,3 +38,4 @@ bool MyCocoaEventFilter::nativeEventFilter(const QByteArray &eventType, void *me
     return false;
 }
 //! [0]
+#endif

@@ -1,7 +1,7 @@
 // Copyright (C) 2016 David Faure <faure@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <qcommandlineparser.h>
+#include <QCommandLineParser>
 
 //! [0]
 int main(int argc, char *argv[])
@@ -43,22 +43,22 @@ int main(int argc, char *argv[])
     QString targetDir = parser.value(targetDirectoryOption);
     // ...
 }
-
 //! [0]
 
-void f() {
-//! [cxx11]
-    parser.addOptions({
-        // A boolean option with a single name (-p)
-        {"p",
-            QCoreApplication::translate("main", "Show progress during copy")},
-        // A boolean option with multiple names (-f, --force)
-        {{"f", "force"},
-            QCoreApplication::translate("main", "Overwrite existing files.")},
-        // An option with a value
-        {{"t", "target-directory"},
-            QCoreApplication::translate("main", "Copy all source files into <directory>."),
-            QCoreApplication::translate("main", "directory")},
-    });
-//! [cxx11]
+void f(QCommandLineParser parser)
+{
+    //! [cxx11]
+        parser.addOptions({
+            // A boolean option with a single name (-p)
+            {"p",
+                QCoreApplication::translate("main", "Show progress during copy")},
+            // A boolean option with multiple names (-f, --force)
+            {{"f", "force"},
+                QCoreApplication::translate("main", "Overwrite existing files.")},
+            // An option with a value
+            {{"t", "target-directory"},
+                QCoreApplication::translate("main", "Copy all source files into <directory>."),
+                QCoreApplication::translate("main", "directory")},
+        });
+    //! [cxx11]
 }

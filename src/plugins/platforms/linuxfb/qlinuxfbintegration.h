@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLINUXFBINTEGRATION_H
 #define QLINUXFBINTEGRATION_H
@@ -53,10 +54,12 @@ private:
     QFbScreen *m_primaryScreen;
     QPlatformInputContext *m_inputContext;
     QScopedPointer<QPlatformFontDatabase> m_fontDb;
-    QScopedPointer<QPlatformServices> m_services;
+    mutable QScopedPointer<QPlatformServices> m_services;
     QScopedPointer<QFbVtHandler> m_vtHandler;
 
-    QEvdevKeyboardManager *m_kbdMgr;
+#if QT_CONFIG(evdev)
+    QEvdevKeyboardManager *m_kbdMgr = nullptr;
+#endif
 };
 
 QT_END_NAMESPACE

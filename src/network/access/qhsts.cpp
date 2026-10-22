@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qhsts_p.h"
 
@@ -328,8 +329,8 @@ quoted-pair    = "\" CHAR
 
 bool QHstsHeaderParser::parse(const QHttpHeaders &headers)
 {
-    for (const auto &value : headers.values(
-                 QHttpHeaders::WellKnownHeader::StrictTransportSecurity)) {
+    const auto stsHeaders = headers.values(QHttpHeaders::WellKnownHeader::StrictTransportSecurity);
+    for (const auto &value : stsHeaders) {
         header = value;
         // RFC6797, 8.1:
         //

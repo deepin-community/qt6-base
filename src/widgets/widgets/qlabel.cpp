@@ -1,14 +1,19 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpainter.h"
 #include "qevent.h"
+#include "qpixmapcache.h"
 #include "qstyle.h"
 #include "qstyleoption.h"
 #include "qlabel_p.h"
-#include "private/qstylesheetstyle_p.h"
+#include "private/qhexstring_p.h"
 #include <qmath.h>
 
+#if QT_CONFIG(style_stylesheet)
+#include "private/qstylesheetstyle_p.h"
+#endif
 #if QT_CONFIG(abstractbutton)
 #include "qabstractbutton.h"
 #endif
@@ -47,7 +52,9 @@ QLabelPrivate::~QLabelPrivate()
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-label.png
+    \image fusion-label.png {Label}
+
+
 
     QLabel is used for displaying text or an image. No user
     interaction functionality is provided. The visual appearance of
@@ -183,6 +190,12 @@ QLabel::QLabel(const QString &text, QWidget *parent, Qt::WindowFlags f)
 QLabel::~QLabel()
 {
     Q_D(QLabel);
+
+#ifndef QT_NO_SHORTCUT
+    if (d->buddy)
+        d->buddy->d_func()->labels.removeAll(this);
+#endif
+
     d->clearContents();
 }
 
@@ -198,7 +211,7 @@ void QLabelPrivate::init()
 
 /*!
     \property QLabel::text
-    \brief the label's text
+    \brief the label's text.
 
     If no text has been set this will return an empty string. Setting
     the text clears any previous content.
@@ -304,20 +317,19 @@ void QLabel::clear()
 void QLabel::setPixmap(const QPixmap &pixmap)
 {
     Q_D(QLabel);
-    if (!d->pixmap || d->pixmap->cacheKey() != pixmap.cacheKey()) {
-        d->clearContents();
-        d->pixmap = pixmap;
-    }
-
+    if (d->icon && d->icon->availableSizes().contains(pixmap.size()) &&
+        d->icon->pixmap(pixmap.size()).cacheKey() == pixmap.cacheKey())
+        return;
+    d->clearContents();
+    d->icon = QIcon(pixmap);
+    d->pixmapSize = pixmap.deviceIndependentSize().toSize();
     d->updateLabel();
 }
 
 QPixmap QLabel::pixmap() const
 {
     Q_D(const QLabel);
-    if (d->pixmap)
-        return *(d->pixmap);
-    return QPixmap();
+    return d->icon ? d->icon->pixmap(d->pixmapSize) : QPixmap();
 }
 
 /*!
@@ -393,7 +405,7 @@ void QLabel::setNum(double num)
 
 /*!
     \property QLabel::alignment
-    \brief the alignment of the label's contents
+    \brief the alignment of the label's contents.
 
     By default, the contents of the label are left-aligned and vertically-centered.
 
@@ -421,7 +433,7 @@ Qt::Alignment QLabel::alignment() const
 
 /*!
     \property QLabel::wordWrap
-    \brief the label's word-wrapping policy
+    \brief the label's word-wrapping policy.
 
     If this property is \c true then label text is wrapped where
     necessary at word-breaks; otherwise it is not wrapped at all.
@@ -449,7 +461,7 @@ bool QLabel::wordWrap() const
 
 /*!
     \property QLabel::indent
-    \brief the label's text indent in pixels
+    \brief the label's text indent in pixels.
 
     If a label displays text, the indent applies to the left edge if
     alignment() is Qt::AlignLeft, to the right edge if alignment() is
@@ -484,7 +496,7 @@ int QLabel::indent() const
 
 /*!
     \property QLabel::margin
-    \brief the width of the margin
+    \brief the width of the margin.
 
     The margin is the distance between the innermost pixel of the
     frame and the outermost pixel of contents.
@@ -509,6 +521,12 @@ void QLabel::setMargin(int margin)
 }
 
 /*!
+    \class QLabelPrivate
+    \inmodule QtWidgets
+    \internal
+*/
+
+/*!
     Returns the size that will be used if the width of the label is \a
     w. If \a w is -1, the sizeHint() is returned. If \a w is 0 minimumSizeHint() is returned
 */
@@ -525,9 +543,8 @@ QSize QLabelPrivate::sizeForWidth(int w) const
     int vextra = hextra;
     QFontMetrics fm = q->fontMetrics();
 
-    if (pixmap && !pixmap->isNull()) {
-        br = pixmap->rect();
-        br.setSize(pixmap->deviceIndependentSize().toSize());
+    if (icon && !icon->isNull()) {
+        br = QRect(QPoint(0, 0), pixmapSize);
 #ifndef QT_NO_PICTURE
     } else if (picture && !picture->isNull()) {
         br = picture->boundingRect();
@@ -735,7 +752,7 @@ bool QLabel::hasSelectedText() const
 
 /*!
     \property QLabel::selectedText
-    \brief the selected text
+    \brief the selected text.
 
     If there is no selected text this property's value is
     an empty string.
@@ -917,10 +934,10 @@ void QLabel::keyPressEvent(QKeyEvent *ev)
 bool QLabel::event(QEvent *e)
 {
     Q_D(QLabel);
-    QEvent::Type type = e->type();
 
+    switch (e->type()) {
 #ifndef QT_NO_SHORTCUT
-    if (type == QEvent::Shortcut) {
+    case QEvent::Shortcut: {
         QShortcutEvent *se = static_cast<QShortcutEvent *>(e);
         if (se->shortcutId() == d->shortcutId) {
             QWidget *w = d->buddy;
@@ -937,21 +954,30 @@ bool QLabel::event(QEvent *e)
                 window()->setAttribute(Qt::WA_KeyboardFocusChange);
             return true;
         }
-    } else
+        break;
+    }
 #endif
-    if (type == QEvent::Resize) {
+    case QEvent::Resize:
         if (d->control)
             d->textLayoutDirty = true;
-    } else if (e->type() == QEvent::StyleChange
-#ifdef Q_OS_MAC
-               || e->type() == QEvent::MacSizeChange
+        break;
+    case QEvent::StyleChange:
+#ifdef Q_OS_MACOS
+    case QEvent::MacSizeChange:
 #endif
-               ) {
         d->setLayoutItemMargins(QStyle::SE_LabelLayoutItem);
         d->updateLabel();
-    } else if (type == QEvent::Polish) {
+        break;
+    case QEvent::Polish:
         if (d->needTextControl())
             d->ensureTextControl();
+        break;
+    case QEvent::Enter:
+    case QEvent::Leave:
+        d->sendControlEvent(e);
+        break;
+    default:
+        break;
     }
 
     return QFrame::event(e);
@@ -983,7 +1009,7 @@ void QLabel::paintEvent(QPaintEvent *)
         QRectF lr = d->layoutRect().toAlignedRect();
         QStyleOption opt;
         opt.initFrom(this);
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
         if (QStyleSheetStyle* cssStyle = qt_styleSheet(style))
             cssStyle->styleSheetPalette(this, &opt, &opt.palette);
 #endif
@@ -1050,25 +1076,35 @@ void QLabel::paintEvent(QPaintEvent *)
         }
     } else
 #endif
-    if (d->pixmap && !d->pixmap->isNull()) {
-        QPixmap pix;
+    if (d->icon && !d->icon->isNull()) {
         const qreal dpr = devicePixelRatio();
-        if (d->scaledcontents || dpr != d->pixmap->devicePixelRatio()) {
-            QSize scaledSize = d->scaledcontents ? (cr.size() * dpr)
-                               : (d->pixmap->size() * (dpr / d->pixmap->devicePixelRatio()));
-            if (!d->scaledpixmap || d->scaledpixmap->size() != scaledSize) {
-                d->scaledpixmap =
-                        d->pixmap->scaled(scaledSize,
-                                          Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-                d->scaledpixmap->setDevicePixelRatio(dpr);
+        const QSize size = d->scaledcontents ? cr.size() : d->pixmapSize;
+        const auto mode = isEnabled() ? QIcon::Normal : QIcon::Disabled;
+        QPixmap pix = d->icon->pixmap(size, dpr, mode);
+        // the size of the returned pixmap might not match when
+        //  - scaledContents is enabled
+        //  - the dpr does not match the one from the pixmap in QIcon
+        // since QStyle::drawItemPixmap() stretches without Qt::SmoothTransformation
+        // we do it here
+        if (pix.size() != size * dpr) {
+            const QString key = "qt_label_"_L1 % HexString<quint64>(pix.cacheKey())
+                                               % HexString<quint8>(mode)
+                                               % HexString<uint>(size.width())
+                                               % HexString<uint>(size.height())
+                                               % HexString<quint16>(qRound(dpr * 1000));
+            if (!QPixmapCache::find(key, &pix)) {
+                pix = pix.scaled(size * dpr, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                pix.setDevicePixelRatio(dpr);
+                // using QIcon to cache the newly create pixmap is not possible
+                // because QIcon does not clear this cache (so we grow indefinitely)
+                // and also uses the newly added pixmap as starting point for new
+                // scaled pixmap which makes it very blurry.
+                // Therefore use QPixmapCache here.
+                QPixmapCache::insert(key, pix);
             }
-            pix = *d->scaledpixmap;
-        } else
-            pix = *d->pixmap;
+        }
         QStyleOption opt;
         opt.initFrom(this);
-        if (!isEnabled())
-            pix = style->generatedIconPixmap(QIcon::Disabled, pix, &opt);
         style->drawItemPixmap(&painter, cr, align, pix);
     }
 }
@@ -1127,15 +1163,19 @@ void QLabel::setBuddy(QWidget *buddy)
 {
     Q_D(QLabel);
 
-    if (d->buddy)
+    if (d->buddy) {
         QObjectPrivate::disconnect(d->buddy, &QObject::destroyed,
                                    d, &QLabelPrivate::buddyDeleted);
+        d->buddy->d_func()->labels.removeAll(this);
+    }
 
     d->buddy = buddy;
 
-    if (buddy)
+    if (buddy) {
+        buddy->d_func()->labels.append(this);
         QObjectPrivate::connect(buddy, &QObject::destroyed,
                                 d, &QLabelPrivate::buddyDeleted);
+    }
 
     if (d->isTextLabel) {
         if (d->shortcutId)
@@ -1266,8 +1306,8 @@ void QLabelPrivate::clearContents()
 #ifndef QT_NO_PICTURE
     picture.reset();
 #endif
-    scaledpixmap.reset();
-    pixmap.reset();
+    icon.reset();
+    pixmapSize = QSize();
 
     text.clear();
     Q_Q(QLabel);
@@ -1277,7 +1317,7 @@ void QLabelPrivate::clearContents()
     shortcutId = 0;
 #endif
 #if QT_CONFIG(movie)
-    for (const auto &conn : std::as_const(movieConnections))
+    for (auto &conn : movieConnections)
         QObject::disconnect(conn);
     movie = nullptr;
 #endif
@@ -1313,7 +1353,7 @@ QMovie *QLabel::movie() const
 
 /*!
     \property QLabel::textFormat
-    \brief the label's text format
+    \brief the label's text format.
 
     See the Qt::TextFormat enum for an explanation of the possible
     options.
@@ -1410,8 +1450,6 @@ void QLabel::setScaledContents(bool enable)
     if ((bool)d->scaledcontents == enable)
         return;
     d->scaledcontents = enable;
-    if (!enable)
-        d->scaledpixmap.reset();
     update(contentsRect());
 }
 

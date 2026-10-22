@@ -7,12 +7,12 @@
 
 CustomStyle::CustomStyle(const QWidget *widget)
 {
-//! [0]
+    //! [0]
     const QSpinBox *spinBox = qobject_cast<const QSpinBox *>(widget);
     if (spinBox) {
-//! [0] //! [1]
+        //...
     }
-//! [1]
+    //! [0]
 }
 
 //! [2]
@@ -48,8 +48,6 @@ void CustomStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *op
         painter->drawPolygon(points);
     } else {
         QProxyStyle::drawPrimitive(element, option, painter, widget);
-//! [2] //! [3]
     }
-//! [3] //! [4]
 }
-//! [4]
+//! [2]

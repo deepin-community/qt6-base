@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #include "cppwriteinitialization.h"
 #include "customwidgetsinfo.h"
@@ -125,72 +126,6 @@ namespace {
         return iconHasStatePixmaps(i) || !i->attributeTheme().isEmpty();
     }
 
-    // An approximation of "Unicode Standard Annex #31" for checking property
-    // and enumeration identifiers to prevent code injection attacks.
-    // FIXME 6.9: Simplify according to QTBUG-126860
-    static bool isIdStart(QChar c)
-    {
-        bool result = false;
-        switch (c.category()) {
-        case QChar::Letter_Uppercase:
-        case QChar::Letter_Lowercase:
-        case QChar::Letter_Titlecase:
-        case QChar::Letter_Modifier:
-        case QChar::Letter_Other:
-        case QChar::Number_Letter:
-            result = true;
-            break;
-        default:
-            result = c == u'_';
-            break;
-        }
-        return result;
-    }
-
-    static bool isIdContinuation(QChar c)
-    {
-        bool result = false;
-        switch (c.category()) {
-        case QChar::Letter_Uppercase:
-        case QChar::Letter_Lowercase:
-        case QChar::Letter_Titlecase:
-        case QChar::Letter_Modifier:
-        case QChar::Letter_Other:
-        case QChar::Number_Letter:
-        case QChar::Mark_NonSpacing:
-        case QChar::Mark_SpacingCombining:
-        case QChar::Number_DecimalDigit:
-        case QChar::Punctuation_Connector: // '_'
-            result = true;
-            break;
-        default:
-            break;
-        }
-        return result;
-    }
-
-    static bool isEnumIdContinuation(QChar c)
-    {
-        return c == u':' || c == u'|' || c == u' ' || isIdContinuation(c);
-    }
-
-    bool checkPropertyName(QStringView name)
-    {
-        return !name.isEmpty() && isIdStart(name.at(0))
-               && std::all_of(name.cbegin() + 1, name.cend(), isIdContinuation);
-    }
-
-    bool checkEnumValue(QStringView name)
-    {
-        return !name.isEmpty() && isIdStart(name.at(0))
-               && std::all_of(name.cbegin() + 1, name.cend(), isEnumIdContinuation);
-    }
-
-    QString msgInvalidValue(const QString &name, const QString &value)
-    {
-        return "uic: Invalid property value: \""_L1 + name + "\": \""_L1 + value + u'"';
-    }
-
     // Check on properties. Filter out empty legacy pixmap/icon properties
     // as Designer pre 4.4 used to remove missing resource references.
     // This can no longer be handled by the code as we have 'setIcon(QIcon())' as well as 'QIcon icon'
@@ -199,19 +134,10 @@ namespace {
                               const DomProperty *p) {
 
         const QString &name = p->attributeName();
-        const bool isDynamicProperty = p->hasAttributeStdset() && p->attributeStdset() == 0;
-        if (!isDynamicProperty && !checkPropertyName(name)) {
-            qWarning("uic: Invalid property name: \"%s\".", qPrintable(name));
-            return false;
-        }
 
         switch (p->kind()) {
         // ### fixme Qt 7 remove this: Exclude deprecated properties of Qt 5.
         case DomProperty::Set:
-            if (!checkEnumValue(p->elementSet())) {
-                qWarning("%s", qPrintable(msgInvalidValue(name, p->elementSet())));
-                return false;
-            }
             if (name == u"features"
                 && customWidgetsInfo->extends(className, "QDockWidget")
                 && p->elementSet() == u"QDockWidget::AllDockWidgetFeatures") {
@@ -221,10 +147,6 @@ namespace {
             }
             break;
         case DomProperty::Enum:
-            if (!checkEnumValue(p->elementEnum())) {
-                qWarning("%s", qPrintable(msgInvalidValue(name, p->elementEnum())));
-                return false;
-            }
             if (name == u"sizeAdjustPolicy"
                 && customWidgetsInfo->extends(className, "QComboBox")
                 && p->elementEnum() == u"QComboBox::AdjustToMinimumContentsLength") {
@@ -232,12 +154,15 @@ namespace {
                 qWarning("%s", qPrintable(msg));
                 return false;
             }
+            // Qt 7 separate layout size constraints (QTBUG-17730)
+            if (name == "verticalSizeConstraint"_L1 && className.contains("Layout"_L1))
+                return false;
             break;
         case DomProperty::IconSet:
             if (const DomResourceIcon *dri = p->elementIconSet()) {
                 if (!isIconFormat44(dri)) {
                     if (dri->text().isEmpty())  {
-                        const QString msg = QString::fromLatin1("%1: Warning: An invalid icon property '%2' was encountered.")
+                        const QString msg = "%1: Warning: An invalid icon property '%2' was encountered."_L1
                                             .arg(fileName, name);
                         qWarning("%s", qPrintable(msg));
                         return false;
@@ -248,7 +173,7 @@ namespace {
         case DomProperty::Pixmap:
             if (const DomResourcePixmap *drp = p->elementPixmap())
                 if (drp->text().isEmpty()) {
-                    const QString msg = QString::fromUtf8("%1: Warning: An invalid pixmap property '%2' was encountered.")
+                    const QString msg = "%1: Warning: An invalid pixmap property '%2' was encountered."_L1
                                         .arg(fileName, name);
                     qWarning("%s", qPrintable(msg));
                     return false;
@@ -502,7 +427,7 @@ void WriteInitialization::LayoutDefaultHandler::writeProperty(int p, const QStri
             bool ifndefMac = (!(m_state[p] & (HasDefaultFunction|HasDefaultValue))
                              && value == defaultStyleValue);
             if (ifndefMac)
-                str << "#ifndef Q_OS_MAC\n";
+                str << "#ifndef Q_OS_MACOS\n";
             if (p == Margin) { // Use setContentsMargins for numeric values
                 writeContentsMargins(indent, objectName, value, str);
             } else {
@@ -1104,8 +1029,9 @@ void WriteInitialization::acceptSpacer(DomSpacer *node)
 static inline QString formLayoutRole(int column, int colspan)
 {
     if (colspan > 1)
-        return "QFormLayout::SpanningRole"_L1;
-    return column == 0 ? "QFormLayout::LabelRole"_L1 : "QFormLayout::FieldRole"_L1;
+        return "QFormLayout::ItemRole::SpanningRole"_L1;
+    return column == 0
+        ? "QFormLayout::ItemRole::LabelRole"_L1 : "QFormLayout::ItemRole::FieldRole"_L1;
 }
 
 static QString layoutAddMethod(DomLayoutItem::Kind kind, const QString &layoutClass)
@@ -1330,6 +1256,9 @@ void WriteInitialization::writeProperties(const QString &varName,
         if (!checkProperty(m_uic->customWidgetsInfo(), m_option.inputFile, className, p))
             continue;
         QString propertyName = p->attributeName();
+        // Qt 7 separate layout size constraints (QTBUG-17730)
+        if (propertyName == "horizontalSizeConstraint"_L1 && className.contains("Layout"_L1))
+            propertyName = "sizeConstraint"_L1;
         QString propertyValue;
         bool delayProperty = false;
 
@@ -1503,9 +1432,12 @@ void WriteInitialization::writeProperties(const QString &varName,
             const QString paletteName = m_driver->unique("palette"_L1);
             m_output << m_indent << language::stackVariable("QPalette", paletteName)
                 << language::eol;
-            writeColorGroup(pal->elementActive(), "QPalette::Active"_L1, paletteName);
-            writeColorGroup(pal->elementInactive(), "QPalette::Inactive"_L1, paletteName);
-            writeColorGroup(pal->elementDisabled(), "QPalette::Disabled"_L1, paletteName);
+            writeColorGroup(pal->elementActive(),
+                            "QPalette::ColorGroup::Active"_L1, paletteName);
+            writeColorGroup(pal->elementInactive(),
+                            "QPalette::ColorGroup::Inactive"_L1, paletteName);
+            writeColorGroup(pal->elementDisabled(),
+                            "QPalette::ColorGroup::Disabled"_L1, paletteName);
 
             propertyValue = paletteName;
             break;
@@ -2039,6 +1971,8 @@ static inline QVersionNumber colorRoleVersionAdded(const QString &roleName)
 {
     if (roleName == "PlaceholderText"_L1)
         return {5, 12, 0};
+    if (roleName == "Accent"_L1)
+        return {6, 6, 0};
     return {};
 }
 
@@ -2053,7 +1987,8 @@ void WriteInitialization::writeColorGroup(DomColorGroup *colorGroup, const QStri
         const DomColor *color = colors.at(i);
 
         m_output << m_indent << paletteName << ".setColor(" << group
-            << ", QPalette" << language::qualifier << language::paletteColorRole(i)
+            << ", QPalette" << language::qualifier << "ColorRole"
+            << language::qualifier << language::paletteColorRole(i)
             << ", " << domColor2QString(color)
             << ")" << language::eol;
     }
@@ -2072,8 +2007,8 @@ void WriteInitialization::writeColorGroup(DomColorGroup *colorGroup, const QStri
             }
             m_output << m_indent << paletteName << ".setBrush("
                 << language::enumValue(group) << ", "
-                << "QPalette" << language::qualifier << roleName
-                << ", " << brushName << ")" << language::eol;
+                << "QPalette" << language::qualifier << "ColorRole"
+                << language::qualifier << roleName << ", " << brushName << ')' << language::eol;
             if (!versionAdded.isNull())
                 m_output << "#endif\n";
         }
@@ -2142,13 +2077,13 @@ void WriteInitialization::writeBrush(const DomBrush *brush, const QString &brush
         }
 
         m_output << m_indent << gradientName << ".setSpread(QGradient"
-            << language::qualifier << gradient->attributeSpread()
+            << language::qualifier << "Spread" << language::qualifier << gradient->attributeSpread()
             << ')' << language::eol;
 
         if (gradient->hasAttributeCoordinateMode()) {
             m_output << m_indent << gradientName << ".setCoordinateMode(QGradient"
-                << language::qualifier << gradient->attributeCoordinateMode()
-                << ')' << language::eol;
+                << language::qualifier << "CoordinateMode" << language::qualifier
+                << gradient->attributeCoordinateMode() << ')' << language::eol;
         }
 
        const auto &stops = gradient->elementGradientStop();
@@ -2175,7 +2110,8 @@ void WriteInitialization::writeBrush(const DomBrush *brush, const QString &brush
             << domColor2QString(color) << ')' << language::eol;
 
         m_output << m_indent << brushName << ".setStyle("
-            << language::qtQualifier << style << ')' << language::eol;
+            << language::qtQualifier << "BrushStyle" << language::qualifier
+            << style << ')' << language::eol;
     }
 }
 
@@ -2350,7 +2286,9 @@ void WriteInitialization::addInitializer(Item *item, const QString &name,
         str << language::derefPointer << "set" << name.at(0).toUpper() << QStringView{name}.mid(1) << '(';
         if (column >= 0)
             str << column << ", ";
-        str << value << ");";
+        str << value << ')';
+        if (language::language() != Language::Python)
+            str << ';';
         item->addSetter(setter, directive, translatable);
     }
 }
@@ -2397,11 +2335,16 @@ void WriteInitialization::addQtFlagsInitializer(Item *item, const DomPropertyMap
                                                 const QString &name, int column)
 {
     if (const DomProperty *p = properties.value(name)) {
-        const QString orOperator = u'|' + language::qtQualifier;
         QString v = p->elementSet();
         if (!v.isEmpty()) {
-            v.replace(u'|', orOperator);
-            addInitializer(item, name, column, language::qtQualifier + v);
+            if (v.contains(u':')) {
+                v = language::enumValue(v);
+            } else { // Qt 6 Legacy: Unqualified values
+                const QString orOperator = u'|' + language::qtQualifier;
+                v.replace(u'|', orOperator);
+                v.prepend(language::qtQualifier);
+            }
+            addInitializer(item, name, column, v);
         }
     }
 }
@@ -2415,8 +2358,11 @@ void WriteInitialization::addQtEnumInitializer(Item *item,
 {
     if (const DomProperty *p = properties.value(name)) {
         QString v = p->elementEnum();
-        if (!v.isEmpty())
-            addInitializer(item, name, column, language::qtQualifier + v);
+        if (!v.isEmpty()) {
+            v = v.contains(u':') ? language::enumValue(v)
+                                 : language::qtQualifier + v; // Qt 6 Legacy: Unqualified values
+            addInitializer(item, name, column, v);
+        }
     }
 }
 

@@ -64,7 +64,49 @@ function(qt_auto_detect_wasm)
     endif()
 endfunction()
 
+# Handle assignment of CMAKE_POLICY_VERSION_MINIMUM for cross-compilation toolchain files that
+# use cmake_minimum_required with an old version, to avoid deprecation warnings.
+# PLATFORM is the platform identifier in uppercase, e.g. ANDROID or OHOS.
+# For Android NDK < r28 background, see https://github.com/android/ndk/issues/2100
+#
+# NOTE: If updating the version, also update qt_internal_get_cmake_policy_version_minimum.
+#
+# Use a macro, to make propagation of the variable in the parent scope of the calling function
+# easier.
+macro(qt_auto_detect_set_cmake_policy_version_minimum platform is_detected)
+    if("${is_detected}"
+            AND CMAKE_VERSION VERSION_GREATER_EQUAL "4.0"
+            AND NOT QT_NO_SET_${platform}_CMAKE_POLICY_VERSION_MINIMUM
+        )
+
+        if(QT_${platform}_CMAKE_POLICY_VERSION_MINIMUM)
+            set(min_policy_version "${QT_${platform}_CMAKE_POLICY_VERSION_MINIMUM}")
+        elseif(CMAKE_POLICY_VERSION_MINIMUM)
+            set(min_policy_version "${CMAKE_POLICY_VERSION_MINIMUM}")
+        else()
+            set(min_policy_version "3.10")
+        endif()
+
+        message(DEBUG
+            "Setting CMAKE_POLICY_VERSION_MINIMUM to ${min_policy_version}"
+            " for ${platform} builds.")
+
+        # Set the variable in the qtbase directory scope for easier reading.
+        set(CMAKE_POLICY_VERSION_MINIMUM "${min_policy_version}" PARENT_SCOPE)
+
+        # Also set the environment variable, otherwise any try_compile project that's started
+        # by CMake itself, rather than Qt (e.g. compiler detection), will not inherit the
+        # assignment.
+        set(ENV{CMAKE_POLICY_VERSION_MINIMUM} "${min_policy_version}")
+    endif()
+endmacro()
+
 function(qt_auto_detect_android)
+    # Don't assume an Android build if we're requesting to build Java documentation on the host.
+    if(QT_BUILD_HOST_JAVA_DOCS)
+        return()
+    endif()
+
     # We assume an Android build if any of the ANDROID_* cache variables are set.
     if(DEFINED ANDROID_SDK_ROOT
             OR DEFINED ANDROID_NDK_ROOT
@@ -149,11 +191,124 @@ function(qt_auto_detect_android)
     elseif (QT_AUTODETECT_ANDROID)
         message(STATUS "Android build detected")
     endif()
+
+    qt_auto_detect_set_cmake_policy_version_minimum(ANDROID "${android_detected}")
+endfunction()
+
+function(qt_auto_detect_ohos)
+    # Catch setups that still pass the removed OHOS_NDK_ROOT. Without this they would
+    # silently configure a host build, because nothing else keys off that variable.
+    if(DEFINED OHOS_NDK_ROOT)
+        message(FATAL_ERROR "The OHOS_NDK_ROOT variable is no longer supported. Point "
+            "OHOS_SDK_ROOT, or the -ohos-sdk configure argument, at the HarmonyOS SDK "
+            "instead.")
+    endif()
+
+    # Handle the OHOS_SDK_ROOT environment variable.
+    if("${OHOS_SDK_ROOT}" STREQUAL "" AND DEFINED ENV{OHOS_SDK_ROOT})
+        set(OHOS_SDK_ROOT $ENV{OHOS_SDK_ROOT})
+    endif()
+
+    set(ohos_detected FALSE)
+    if(DEFINED OHOS_SDK_ROOT
+            OR DEFINED OHOS_ARCH
+            OR DEFINED OHOS_NATIVE_ABI_LEVEL
+            OR QT_AUTODETECT_OHOS)
+        set(ohos_detected TRUE)
+    elseif(NOT DEFINED QT_AUTODETECT_OHOS AND EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+        # Peek into the toolchain file and check if it looks like an OHOS one.
+        file(READ "${CMAKE_TOOLCHAIN_FILE}" toolchain_file_content OFFSET 0 LIMIT 80)
+        string(FIND "${toolchain_file_content}" "Huawei Device Co., Ltd" find_result REVERSE)
+        if(NOT find_result EQUAL -1)
+            set(ohos_detected TRUE)
+        endif()
+    endif()
+
+    # Everything below applies to cross builds against an OHOS SDK only.
+    if(NOT ohos_detected)
+        return()
+    endif()
+
+    # Auto-detect toolchain file
+    if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+        __qt_internal_detect_ohos_toolchain_file(CMAKE_TOOLCHAIN_FILE "")
+    endif()
+    if("${CMAKE_TOOLCHAIN_FILE}" STREQUAL "" OR NOT EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+        __qt_internal_show_error_no_ohos_toolchain_file_found_when_building_qt()
+    endif()
+
+    if(NOT DEFINED QT_AUTODETECT_OHOS)
+        message(STATUS "OHOS build detected, checking configuration defaults...")
+        if(NOT DEFINED OHOS_PLATFORM)
+            set(OHOS_PLATFORM "OHOS" CACHE STRING "")
+        endif()
+        if(NOT DEFINED OHOS_STL)
+            set(OHOS_STL "c++_shared" CACHE STRING "")
+        endif()
+
+        # Wrap the OHOS SDK toolchain file so that QtOHOSToolchainFixes.cmake
+        # is applied after it loads.  The wrapper is used as CMAKE_TOOLCHAIN_FILE
+        # for the Qt build itself; CMake propagates CMAKE_TOOLCHAIN_FILE to every
+        # try_compile invocation, so the fixes also apply inside those.
+        #
+        # A Platform/OHOS-Initialize.cmake entry on CMAKE_MODULE_PATH would be
+        # the natural hook here, but CMake policy CMP0017 causes CMake's own
+        # module files (including CMakeSystemSpecificInitialize.cmake) to prefer
+        # CMake's built-in Platform/*-Initialize.cmake over CMAKE_MODULE_PATH
+        # entries.  CMake already ships such a file for every other supported
+        # platform, and OHOS will eventually get one too.
+        get_filename_component(ohos_real_toolchain "${CMAKE_TOOLCHAIN_FILE}" ABSOLUTE)
+        set(QT_OHOS_REAL_TOOLCHAIN_FILE "${ohos_real_toolchain}" CACHE STRING "" FORCE)
+        set(CMAKE_TOOLCHAIN_FILE
+            "${CMAKE_BINARY_DIR}/qt_ohos_toolchain_wrapper.cmake" CACHE STRING "" FORCE)
+
+        set(QT_AUTODETECT_OHOS TRUE CACHE STRING "")
+    else()
+        message(STATUS "OHOS build detected")
+    endif()
+
+    # (Re)generate the wrapper on every configure so it survives partial build
+    # directory cleanups.  QT_OHOS_REAL_TOOLCHAIN_FILE is set on first configure
+    # and then persists in the CMake cache.
+    if(QT_OHOS_REAL_TOOLCHAIN_FILE)
+        get_filename_component(_qt_ohos_fixes_file
+            "${CMAKE_CURRENT_LIST_DIR}/QtOHOSToolchainFixes.cmake" ABSOLUTE)
+        file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/qt_ohos_toolchain_wrapper.cmake"
+            CONTENT
+            "# Auto-generated by Qt's cmake/QtAutoDetectHelpers.cmake. Do not edit.
+# Wraps the OHOS SDK toolchain to apply Qt-specific fixes after loading.
+include(\"${QT_OHOS_REAL_TOOLCHAIN_FILE}\")
+include(\"${_qt_ohos_fixes_file}\")\n"
+        )
+        unset(_qt_ohos_fixes_file)
+    endif()
+
+    qt_auto_detect_set_cmake_policy_version_minimum(OHOS "${ohos_detected}")
 endfunction()
 
 function(qt_auto_detect_vcpkg)
-    if(QT_USE_VCPKG AND DEFINED ENV{VCPKG_ROOT})
-        set(vcpkg_toolchain_file "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+    if(QT_USE_VCPKG)
+        if(NOT DEFINED ENV{VCPKG_ROOT})
+            message(FATAL_ERROR
+                "Usage of vcpkg was requested but the environment variable VCPKG_ROOT is not set."
+            )
+        endif()
+
+        set(vcpkg_root "$ENV{VCPKG_ROOT}")
+        if(NOT vcpkg_root OR NOT EXISTS "${vcpkg_root}")
+            message(FATAL_ERROR
+                "The vcpkg root directory specified by the VCPKG_ROOT env var was not found: "
+                "'${vcpkg_root}'"
+            )
+        endif()
+
+        set(vcpkg_toolchain_file "${vcpkg_root}/scripts/buildsystems/vcpkg.cmake")
+        if(NOT EXISTS "${vcpkg_toolchain_file}")
+            message(FATAL_ERROR
+                "The vcpkg toolchain file was not found at the expected location: "
+                "'${vcpkg_toolchain_file}'"
+            )
+        endif()
         get_filename_component(vcpkg_toolchain_file "${vcpkg_toolchain_file}" ABSOLUTE)
 
         if(DEFINED CMAKE_TOOLCHAIN_FILE)
@@ -179,6 +334,11 @@ endfunction()
 
 function(qt_auto_detect_apple)
     if(NOT APPLE)
+        if(CMAKE_OSX_ARCHITECTURES AND NOT QT_NO_SHOW_NON_APPLE_CMAKE_OSX_ARCHITECTURES_WARNING)
+            message(WARNING
+                "CMAKE_OSX_ARCHITECTURES is set while targeting a non-Apple platform. This can "
+                "lead to build failures. Consider reconfiguring with the variable unset.")
+        endif()
         return()
     endif()
 
@@ -217,7 +377,7 @@ function(qt_auto_detect_apple)
         elseif(QT_APPLE_SDK STREQUAL "iphoneos")
             set(osx_architectures "arm64")
         elseif(QT_APPLE_SDK STREQUAL "iphonesimulator")
-            set(osx_architectures "x86_64")
+            qt_internal_get_early_apple_host_system_arch(osx_architectures)
         else()
             if(NOT DEFINED QT_APPLE_SDK)
                 message(FATAL_ERROR "Please provide a value for -DQT_APPLE_SDK."
@@ -233,10 +393,15 @@ function(qt_auto_detect_apple)
 
     if(QT_APPLE_SDK)
         set(CMAKE_OSX_SYSROOT "${QT_APPLE_SDK}" CACHE STRING "")
+    elseif(NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        # Persist SDK name for macOS builds, since CMake 4.x will pick arbitrary
+        # SDK paths, ignoring xcode-select, if not given an explicit SDK.
+        _qt_internal_get_apple_sdk_name(sdk_name)
+        set(CMAKE_OSX_SYSROOT "${sdk_name}" CACHE STRING "")
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL iOS OR CMAKE_SYSTEM_NAME STREQUAL visionOS)
-        if(NOT DEFINED BUILD_SHARED_LIBS)
+        if(NOT DEFINED BUILD_SHARED_LIBS OR CMAKE_SYSTEM_NAME STREQUAL visionOS)
             qt_internal_ensure_static_qt_config()
         endif()
 
@@ -253,24 +418,31 @@ function(qt_auto_detect_apple)
         "Minimum OS X version to target for deployment (at runtime); newer APIs weak linked."
         " Set to empty string for default value.")
     if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-        if(NOT CMAKE_SYSTEM_NAME)
+        if(NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
             # macOS
-            set(version "12.0")
+            set(version "${QT_SUPPORTED_MIN_MACOS_VERSION}")
         elseif(CMAKE_SYSTEM_NAME STREQUAL iOS)
-            set(version "16.0")
+            set(version "${QT_SUPPORTED_MIN_IOS_VERSION}")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL visionOS)
+            set(version "${QT_SUPPORTED_MIN_VISIONOS_VERSION}")
         endif()
         if(version)
             set(CMAKE_OSX_DEPLOYMENT_TARGET "${version}" CACHE STRING "${description}")
         endif()
     endif()
 
+    _qt_internal_get_apple_sdk_path(apple_sdk_path)
+    set(QT_APPLE_SDK_PATH "${apple_sdk_path}" CACHE STRING "Darwin SDK path.")
+
     _qt_internal_get_apple_sdk_version(apple_sdk_version)
     set(QT_MAC_SDK_VERSION "${apple_sdk_version}" CACHE STRING "Darwin SDK version.")
 
     _qt_internal_get_xcode_version_raw(xcode_version_raw)
-    set(QT_MAC_XCODE_VERSION "${xcode_version_raw}" CACHE STRING "Xcode version.")
+    if(xcode_version_raw)
+        set(QT_MAC_XCODE_VERSION "${xcode_version_raw}" CACHE STRING "Xcode version.")
+    endif()
 
-    if(NOT CMAKE_SYSTEM_NAME)
+    if(NOT CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         # macOS
         list(LENGTH CMAKE_OSX_ARCHITECTURES arch_count)
         if(arch_count GREATER 0)
@@ -432,6 +604,11 @@ function(qt_auto_detect_macos_single_arch_cross_compilation)
 
         # Exit early if check was previously done, so we don't need to do extra process calls.
         OR QT_INTERNAL_MACOS_SINGLE_ARCH_CROSS_COMPILING_DETECTION_DONE)
+        if(QT_NO_HANDLE_APPLE_SINGLE_ARCH_CROSS_COMPILING)
+            message(STATUS
+                "Skipping macOS single-arch cross-compilation detection as requested by "
+                "QT_NO_HANDLE_APPLE_SINGLE_ARCH_CROSS_COMPILING.")
+        endif()
         return()
     endif()
 
@@ -450,8 +627,15 @@ function(qt_auto_detect_macos_single_arch_cross_compilation)
         message(
             STATUS "Detected implicit macOS cross-compilation. "
             "Host arch: ${host_arch} Target arch: ${target_arch}. "
-            "Setting CMAKE_CROSSCOMPILING to TRUE."
+            "Setting CMAKE_CROSSCOMPILING to TRUE, and requiring a host Qt."
         )
+        if(host_arch MATCHES "arm64" AND NOT QT_HOST_PATH)
+            message(WARNING
+                "If you don't want to require a host Qt for the cross-build, and are ok "
+                "with relying on Rosetta for running the build tools, please reconfigure with "
+                "-DQT_NO_HANDLE_APPLE_SINGLE_ARCH_CROSS_COMPILING=ON in a clean build dir."
+            )
+        endif()
 
         # Setting these tells CMake we are cross-compiling. This gets set in the correct scope
         # for top-level builds as well, because it is included via
@@ -481,7 +665,10 @@ function(qt_auto_detect_pch)
 endfunction()
 
 function(qt_auto_detect_win32_arm)
-    if("${QT_QMAKE_TARGET_MKSPEC}" STREQUAL "win32-arm64-msvc")
+    _qt_internal_set_win_arm64ec_env_flags()
+
+    if("${QT_QMAKE_TARGET_MKSPEC}" STREQUAL "win32-arm64-msvc"
+        OR "${QT_QMAKE_TARGET_MKSPEC}" STREQUAL "win32-arm64ec-msvc")
         set(CMAKE_SYSTEM_NAME "Windows" CACHE STRING "")
         set(CMAKE_SYSTEM_VERSION "10" CACHE STRING "")
         set(CMAKE_SYSTEM_PROCESSOR "arm64" CACHE STRING "")
@@ -591,12 +778,24 @@ function(qt_auto_detect_cmake_build_type)
     set(__qt_auto_detect_cmake_build_type_before_project_call "${CMAKE_BUILD_TYPE}" PARENT_SCOPE)
 endfunction()
 
+# Set pthread preference flag globally in the root directory scope, to avoid accidental full
+# rebuilds when reconfiguring a top-level build.
+# Only affects platforms with glibc < 2.34.
+# See QTBUG-115209.
+function(qt_auto_detect_threads_pthread_flag)
+    if(NOT QT_NO_THREADS_PREFER_PTHREAD_FLAG)
+        set(THREADS_PREFER_PTHREAD_FLAG TRUE PARENT_SCOPE)
+    endif()
+endfunction()
+
 macro(qt_internal_setup_autodetect)
     # This needs to be here because QtAutoDetect loads before any other modules
     option(QT_USE_VCPKG "Enable the use of vcpkg" OFF)
 
     include("${CMAKE_CURRENT_LIST_DIR}/QtPublicAppleHelpers.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/QtPublicHarmonyOSToolchainHelpers.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/QtPublicWasmToolchainHelpers.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/QtPublicWinArm64ECHelpers.cmake")
 
     # Let CMake load our custom platform modules.
     # CMake-provided platform modules take precedence.
@@ -604,11 +803,13 @@ macro(qt_internal_setup_autodetect)
         list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/platforms")
     endif()
 
+    qt_auto_detect_threads_pthread_flag()
     qt_auto_detect_cyclic_toolchain()
     qt_auto_detect_cmake_config()
     qt_auto_detect_apple()
     qt_auto_detect_macos_single_arch_cross_compilation()
     qt_auto_detect_android()
+    qt_auto_detect_ohos()
     qt_auto_detect_pch()
     qt_auto_detect_wasm()
     qt_auto_detect_win32_arm()

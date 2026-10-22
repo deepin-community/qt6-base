@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFUTUREINTERFACE_P_H
 #define QFUTUREINTERFACE_P_H
@@ -142,6 +143,9 @@ public:
     // Wrapper for continuation
     std::function<void(const QFutureInterfaceBase &)> continuation;
     QFutureInterfaceBasePrivate *continuationData = nullptr;
+    // will reset back to nullptr when the parent future is done
+    // (finished, canceled, failed etc)
+    QFutureInterfaceBasePrivate *nonConcludedParent = nullptr;
 
     RefCount refCount = 1;
     QAtomicInt state; // reads and writes can happen unprotected, both must be atomic
@@ -159,9 +163,13 @@ public:
     bool launchAsync = false;
     bool isValid = false;
     bool hasException = false;
+    bool addResultsIfCanceled = false;
 
     enum ContinuationState : quint8 { Default, Canceled, Cleaned };
     std::atomic<ContinuationState> continuationState { Default };
+    bool continuationExecuted = false;
+
+    QFutureInterfaceBase::ContinuationType continuationType = QFutureInterfaceBase::ContinuationType::Unknown;
 
     inline QThreadPool *pool() const
     { return m_pool ? m_pool : QThreadPool::globalInstance(); }
@@ -180,6 +188,14 @@ public:
     void disconnectOutputInterface(QFutureCallOutInterface *iface);
 
     void setState(QFutureInterfaceBase::State state);
+
+    enum class CancelOption : quint32
+    {
+        None = 0x00,
+        CancelContinuations = 0x01,
+    };
+    Q_DECLARE_FLAGS(CancelOptions, CancelOption)
+    void cancelImpl(QFutureInterfaceBase::CancelMode mode, CancelOptions options);
 };
 
 QT_END_NAMESPACE

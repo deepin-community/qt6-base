@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2015 Alex Trotsenko <alex1973tr@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "private/qringbuffer_p.h"
 
@@ -340,13 +341,21 @@ void QRingBuffer::append(QByteArray &&qba)
     bufferSize += qbaSize;
 }
 
-qint64 QRingBuffer::readLine(char *data, qint64 maxLength)
+qint64 QRingBuffer::readLineWithoutTerminatingNull(char *data, qint64 maxLength)
 {
-    Q_ASSERT(data != nullptr && maxLength > 1);
+    Q_ASSERT(data != nullptr && maxLength > 0);
 
-    --maxLength;
     qint64 i = indexOf('\n', maxLength);
     i = read(data, i >= 0 ? (i + 1) : maxLength);
+
+    return i;
+}
+
+qint64 QRingBuffer::readLine(char *data, qint64 maxLength)
+{
+    Q_ASSERT(maxLength > 1);
+
+    qint64 i = readLineWithoutTerminatingNull(data, maxLength - 1);
 
     // Terminate it.
     data[i] = '\0';

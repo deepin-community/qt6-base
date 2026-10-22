@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPNETWORKREPLY_H
 #define QHTTPNETWORKREPLY_H
@@ -15,7 +16,7 @@
 // We mean it.
 //
 
-#include <QtNetwork/private/qtnetworkglobal_p.h>
+#include <QtNetwork/private/qbytedatabuffer_p.h>
 
 #include <qplatformdefs.h>
 
@@ -33,7 +34,6 @@
 #include <private/qhttpnetworkrequest_p.h>
 #include <private/qauthenticator_p.h>
 #include <private/qringbuffer_p.h>
-#include <private/qbytedata_p.h>
 
 #ifndef QT_NO_NETWORKPROXY
 Q_MOC_INCLUDE(<QtNetwork/QNetworkProxy>)
@@ -60,7 +60,7 @@ class Q_NETWORK_EXPORT QHttpNetworkReply : public QObject, public QHttpNetworkHe
 public:
 
     explicit QHttpNetworkReply(const QUrl &url = QUrl(), QObject *parent = nullptr);
-    virtual ~QHttpNetworkReply();
+    ~QHttpNetworkReply() override;
 
     QUrl url() const override;
     void setUrl(const QUrl &url) override;
@@ -205,10 +205,6 @@ public:
         ReadingHeaderState,
         ReadingDataState,
         AllDoneState,
-        SPDYSYNSent,
-        SPDYUploading,
-        SPDYHalfClosed,
-        SPDYClosed,
         Aborted
     } state;
 

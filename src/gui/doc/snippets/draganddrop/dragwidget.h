@@ -9,6 +9,8 @@
 #include <QString>
 #include <QStringList>
 
+QT_BEGIN_NAMESPACE
+
 class QComboBox;
 class QFrame;
 class QLabel;
@@ -38,5 +40,7 @@ private:
     QPoint dragStartPosition;
     QString mimeType;
 };
+
+QT_END_NAMESPACE
 
 #endif

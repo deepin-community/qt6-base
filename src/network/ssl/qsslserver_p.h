@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSSLSERVER_P_H
 #define QSSLSERVER_P_H
@@ -47,8 +48,8 @@ public:
 
         SocketData(QMetaObject::Connection readyRead, QMetaObject::Connection destroyed,
                    std::shared_ptr<QTimer> &&timer)
-            : readyReadConnection(readyRead),
-              destroyedConnection(destroyed),
+            : readyReadConnection{std::move(readyRead)},
+              destroyedConnection{std::move(destroyed)},
               timeoutTimer(std::move(timer))
         {
         }

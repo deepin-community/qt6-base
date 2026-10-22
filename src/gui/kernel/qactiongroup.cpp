@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qactiongroup.h"
 
@@ -18,6 +19,7 @@ QActionGroupPrivate::QActionGroupPrivate() :
 
 QActionGroupPrivate::~QActionGroupPrivate() = default;
 
+/*! \internal */
 void QActionGroup::_q_actionChanged()
 {
     Q_D(QActionGroup);
@@ -36,6 +38,7 @@ void QActionGroup::_q_actionChanged()
     }
 }
 
+/*! \internal */
 void QActionGroup::_q_actionTriggered()
 {
     auto action = qobject_cast<QAction*>(sender());
@@ -43,6 +46,7 @@ void QActionGroup::_q_actionTriggered()
     emit triggered(action);
 }
 
+/*! \internal */
 void QActionGroup::_q_actionHovered()
 {
     auto action = qobject_cast<QAction*>(sender());

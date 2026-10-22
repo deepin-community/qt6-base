@@ -1,6 +1,8 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+__qt_internal_cmake_include_guard(GLOBAL GUARD_KEY "QtPublicCMakeHelpers")
+
 # copy_if_different works incorrect in Windows if file size if bigger than 2GB.
 # See https://gitlab.kitware.com/cmake/cmake/-/issues/23052 and QTBUG-99491 for details.
 function(_qt_internal_copy_file_if_different_command out_var src_file dst_file)
@@ -41,30 +43,41 @@ endfunction()
 
 # Checks if the path points to the cmake directory, like lib/cmake.
 function(__qt_internal_check_path_points_to_cmake_dir result path)
-    string(TOUPPER "${QT_CMAKE_EXPORT_NAMESPACE}" export_namespace_upper)
-    if((INSTALL_LIBDIR AND path MATCHES "/${INSTALL_LIBDIR}/cmake$") OR
-        (${export_namespace_upper}_INSTALL_LIBS AND
-            path MATCHES "/${${export_namespace_upper}_INSTALL_LIBS}/cmake$") OR
-        path MATCHES "/lib/cmake$"
-    )
-        set(${result} TRUE PARENT_SCOPE)
-    else()
-        set(${result} FALSE PARENT_SCOPE)
+    if(INSTALL_CMAKEDIR)
+        _qt_internal_re_escape(re_cmakedir "${INSTALL_CMAKEDIR}")
+        if(path MATCHES "/${re_cmakedir}$")
+            set(${result} TRUE PARENT_SCOPE)
+            return()
+        endif()
     endif()
+
+    string(TOUPPER "${QT_CMAKE_EXPORT_NAMESPACE}" export_namespace_upper)
+    if(${export_namespace_upper}_INSTALL_CMAKEDIR)
+        _qt_internal_re_escape(re_cmakedir "${${export_namespace_upper}_INSTALL_CMAKEDIR}")
+        if(path MATCHES "/${re_cmakedir}$")
+            set(${result} TRUE PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+
+    set(${result} FALSE PARENT_SCOPE)
 endfunction()
 
 # Creates a reverse path to prefix from possible cmake directories. Returns the unchanged path
 # if it doesn't point to cmake directory.
 function(__qt_internal_reverse_prefix_path_from_cmake_dir result cmake_path)
     string(TOUPPER "${QT_CMAKE_EXPORT_NAMESPACE}" export_namespace_upper)
-    if(INSTALL_LIBDIR AND cmake_path MATCHES "(.+)/${INSTALL_LIBDIR}/cmake$")
-        if(CMAKE_MATCH_1)
+    if(INSTALL_CMAKEDIR)
+        _qt_internal_re_escape(re_cmakedir "${INSTALL_CMAKEDIR}")
+        if(cmake_path MATCHES "(.+)/${re_cmakedir}$" AND CMAKE_MATCH_1)
             set(${result} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+            return()
         endif()
-    elseif(${export_namespace_upper}_INSTALL_LIBS AND
-        cmake_path MATCHES "(.+)/${${export_namespace_upper}_INSTALL_LIBS}/cmake$")
-        if(CMAKE_MATCH_1)
+    elseif(${export_namespace_upper}_INSTALL_CMAKEDIR)
+        _qt_internal_re_escape(re_cmakedir "${${export_namespace_upper}_INSTALL_CMAKEDIR}")
+        if(cmake_path MATCHES "(.+)/${re_cmakedir}$" AND CMAKE_MATCH_1)
             set(${result} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+            return()
         endif()
     elseif(result MATCHES "(.+)/lib/cmake$")
         if(CMAKE_MATCH_1)
@@ -79,19 +92,22 @@ endfunction()
 function(__qt_internal_get_possible_cmake_dirs out_paths prefix_path)
     set(${out_paths} "")
 
-    if(EXISTS "${prefix_path}/lib/cmake")
-        list(APPEND ${out_paths} "${prefix_path}/lib/cmake")
+    set(next_path "${prefix_path}/${INSTALL_CMAKEDIR}")
+    if(INSTALL_CMAKEDIR AND EXISTS "${next_path}")
+        list(APPEND ${out_paths} "${next_path}")
     endif()
 
     string(TOUPPER "${QT_CMAKE_EXPORT_NAMESPACE}" export_namespace_upper)
-    set(next_path "${prefix_path}/${${export_namespace_upper}_INSTALL_LIBS}/cmake")
-    if(${export_namespace_upper}_INSTALL_LIBS AND EXISTS "${next_path}")
+    set(next_path "${prefix_path}/${${export_namespace_upper}_INSTALL_CMAKEDIR}")
+    if(${export_namespace_upper}_INSTALL_CMAKEDIR AND EXISTS "${next_path}")
         list(APPEND ${out_paths} "${next_path}")
     endif()
 
-    set(next_path "${prefix_path}/${INSTALL_LIBDIR}/cmake")
-    if(INSTALL_LIBDIR AND EXISTS "${next_path}")
-        list(APPEND ${out_paths} "${next_path}")
+    if(EXISTS "${prefix_path}/lib/cmake")
+        list(APPEND ${out_paths} "${prefix_path}/lib/cmake")
+    endif()
+    if(EXISTS "${prefix_path}/lib64/cmake")
+        list(APPEND ${out_paths} "${prefix_path}/lib64/cmake")
     endif()
 
     list(REMOVE_DUPLICATES ${out_paths})
@@ -153,7 +169,7 @@ function(__qt_internal_collect_additional_module_paths)
         if(is_path_to_cmake)
             list(APPEND CMAKE_MODULE_PATH "${prefix_path}/${QT_CMAKE_EXPORT_NAMESPACE}")
         else()
-            __qt_internal_get_possible_cmake_dirs(additional_cmake_dirs "${additional_path}")
+            __qt_internal_get_possible_cmake_dirs(additional_cmake_dirs "${prefix_path}")
             list(TRANSFORM additional_cmake_dirs APPEND "/${QT_CMAKE_EXPORT_NAMESPACE}")
             list(APPEND CMAKE_MODULE_PATH ${additional_cmake_dirs})
         endif()
@@ -172,6 +188,45 @@ function(__qt_internal_prefix_paths_to_roots out_var prefix_paths)
         list(APPEND result "${path}")
     endforeach()
     set("${out_var}" "${result}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_get_check_cxx_source_compiles_out_var out_output_var out_func_args)
+    # This just resets the output var in the parent scope to an empty string.
+    set(${out_output_var} "" PARENT_SCOPE)
+
+    # OUTPUT_VARIABLE is an internal undocumented variable of check_cxx_source_compiles
+    # since 3.23. Allow an opt out in case this breaks in the future.
+    set(extra_func_args "")
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.23"
+            AND NOT QT_INTERNAL_NO_TRY_COMPILE_OUTPUT_VARIABLE)
+        set(extra_func_args OUTPUT_VARIABLE ${out_output_var})
+    endif()
+
+    set(${out_func_args} "${extra_func_args}" PARENT_SCOPE)
+endfunction()
+
+# Sets TARGET_SUPPORTS_SHARED_LIBS to TRUE when using Emscripten to build Qt for WebAssembly
+# or user projects.
+# The upstream Emscripten cmake toolchain file sets TARGET_SUPPORTS_SHARED_LIBS to FALSE, claiming
+# true shared library support is not available.
+# See https://github.com/emscripten-core/emscripten/pull/8362#issuecomment-3050586255
+# Upstream CMake 4.2+ will set it to TRUE itself, when not using the Emscripten cmake toolchain
+# file directly.
+function(_qt_internal_handle_target_supports_shared_libs)
+    if(NOT EMSCRIPTEN)
+        return()
+    endif()
+
+    if(QT_NO_ENABLE_TARGET_SUPPORTS_SHARED_LIBS)
+        return()
+    endif()
+
+    get_property(target_supports_shared_libs GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
+    if(target_supports_shared_libs)
+        return()
+    endif()
+
+    set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
 endfunction()
 
 # This function gets all targets below this directory
@@ -346,21 +401,44 @@ function(_qt_internal_add_phony_target_deferred target)
     endif()
 endfunction()
 
+# Equivalent to the auto-generated `*Targets.cmake` multi-inclusion check
+#
 # The helper function that checks if module was included multiple times, and has the inconsistent
 # set of targets that belong to the module. It's expected that either all 'targets' or none of them
 # will be written to the 'targets_not_defined' variable, if the module was not or was
 # searched before accordingly.
-function(_qt_internal_check_multiple_inclusion targets_not_defined targets)
+function(_qt_internal_check_multiple_inclusion targets_not_defined)
+    # Backport for the old syntax
+    if(ARGC EQUAL 2)
+        _qt_internal_check_multiple_inclusion(${targets_not_defined}
+            TARGETS ${ARGN}
+        )
+        set(${targets_not_defined} "${${targets_not_defined}}" PARENT_SCOPE)
+        return()
+    endif()
+
+    set(option_args "")
+    set(single_args
+        NAMESPACE
+    )
+    set(multi_args
+        TARGETS
+    )
+    cmake_parse_arguments(PARSE_ARGV 1 arg "${option_args}" "${single_args}" "${multi_args}")
+
+    if(NOT arg_NAMESPACE)
+        set(arg_NAMESPACE Qt::)
+    endif()
+
     set(targets_defined "")
     set(${targets_not_defined} "")
     set(expected_targets "")
-    foreach(expected_target ${targets})
+    foreach(expected_target ${arg_TARGETS})
         list(APPEND expected_targets ${expected_target})
-        if(NOT TARGET Qt::${expected_target})
-            list(APPEND ${targets_not_defined} ${expected_target})
-        endif()
-        if(TARGET Qt::${expected_target})
+        if(TARGET "${arg_NAMESPACE}${expected_target}")
             list(APPEND targets_defined ${expected_target})
+        else()
+            list(APPEND ${targets_not_defined} ${expected_target})
         endif()
     endforeach()
     if("${targets_defined}" STREQUAL "${expected_targets}")
@@ -536,8 +614,14 @@ endfunction()
 
 # Takes a list of path components and joins them into one path separated by forward slashes "/",
 # and saves the path in out_var.
+# Filters out any path parts that are bare "."s.
 function(_qt_internal_path_join out_var)
-    string(JOIN "/" path ${ARGN})
+    set(args ${ARGN})
+
+    # Remove any bare ".", to avoid any CMP0177 warnings for paths passed to install().
+    list(REMOVE_ITEM args ".")
+
+    string(JOIN "/" path ${args})
     set(${out_var} ${path} PARENT_SCOPE)
 endfunction()
 
@@ -595,6 +679,45 @@ function(_qt_internal_remove_args out_var)
         endif()
     endforeach()
     set(${out_var} "${result}" PARENT_SCOPE)
+endfunction()
+
+function(__qt_internal_handle_find_all_qt_module_packages out_var)
+    set(opt_args "")
+    set(single_args "")
+    set(multi_args
+        COMPONENTS
+    )
+    cmake_parse_arguments(PARSE_ARGV 1 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_COMPONENTS)
+        return()
+    endif()
+
+    set(components ${arg_COMPONENTS})
+
+    if("ALL_QT_MODULES" IN_LIST components)
+        list(FIND components "ALL_QT_MODULES" all_qt_modules_index)
+        list(REMOVE_AT components ${all_qt_modules_index})
+
+        # Find the path to dir with module.json files. # We consider each file name to be a
+        # Qt package (component) name that contains a target with the same name.
+        set(json_modules_path "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_DESCRIPTIONSDIR}")
+        file(GLOB json_modules "${json_modules_path}/*.json")
+
+        set(all_qt_modules "")
+
+        foreach(json_module IN LISTS json_modules)
+            get_filename_component(module_name "${json_module}" NAME_WE)
+            list(APPEND all_qt_modules ${module_name})
+        endforeach()
+
+        if(all_qt_modules)
+            list(INSERT components "${all_qt_modules_index}" ${all_qt_modules})
+        endif()
+    endif()
+
+    set(${out_var} "${components}" PARENT_SCOPE)
 endfunction()
 
 # Append ${ARGN} to ${target}'s ${property_name} property, removing duplicates.
@@ -674,4 +797,461 @@ function(_qt_internal_forward_function_args)
     endif()
 
     set(${arg_FORWARD_OUT_VAR} "${forward_args}" PARENT_SCOPE)
+endfunction()
+
+# Function adds the transitive property of the specified type to a target, avoiding duplicates.
+# Supported types: COMPILE, LINK
+#
+# See:
+#   https://cmake.org/cmake/help/latest/prop_tgt/TRANSITIVE_COMPILE_PROPERTIES.html
+#   https://cmake.org/cmake/help/latest/prop_tgt/TRANSITIVE_LINK_PROPERTIES.html
+function(_qt_internal_add_transitive_property target type property)
+    if(CMAKE_VERSION VERSION_LESS 3.30)
+        return()
+    endif()
+    if(NOT type MATCHES "^(COMPILE|LINK)$")
+        message(FATAL_ERROR "Attempt to assign unknown TRANSITIVE_${type}_PROPERTIES property")
+    endif()
+
+    _qt_internal_dealias_target(target)
+    get_target_property(transitive_properties ${target}
+        TRANSITIVE_${type}_PROPERTIES)
+    if(NOT "${property}" IN_LIST transitive_properties)
+        set_property(TARGET ${target}
+            APPEND PROPERTY TRANSITIVE_${type}_PROPERTIES ${property})
+    endif()
+endfunction()
+
+# Compatibility of `cmake_path(RELATIVE_PATH)`
+#
+# In order to be compatible with `file(RELATIVE_PATH)`, path normalization of the result is
+# always performed, with the trailing slash stripped.
+#
+# Synopsis
+#
+#   _qt_internal_relative_path(<path-var>
+#       [BASE_DIRECTORY <input>]
+#       [OUTPUT_VARIABLE <out-var>]
+#   )
+#
+# Arguments
+#
+# `path-var`
+#   Equivalent to `cmake_path(RELATIVE_PATH <path-var>)`.
+#
+# `BASE_DIRECTORY`
+#   Equivalent to `cmake_path(RELATIVE_PATH BASE_DIRECTORY)`.
+#
+# `OUTPUT_VARIABLE`
+#   Equivalent to `cmake_path(RELATIVE_PATH OUTPUT_VARIABLE)`.
+function(_qt_internal_relative_path path_var)
+    set(option_args "")
+    set(single_args
+        BASE_DIRECTORY
+        OUTPUT_VARIABLE
+    )
+    set(multi_args "")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "${option_args}" "${single_args}" "${multi_args}")
+
+    if(NOT arg_BASE_DIRECTORY)
+        set(arg_BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    endif()
+    if(NOT arg_OUTPUT_VARIABLE)
+        set(arg_OUTPUT_VARIABLE ${path_var})
+    endif()
+
+    if(CMAKE_VERSION VERSION_LESS 3.20)
+        file(RELATIVE_PATH ${arg_OUTPUT_VARIABLE}
+            "${arg_BASE_DIRECTORY}"
+            "${${path_var}}")
+    else()
+        cmake_path(RELATIVE_PATH ${path_var}
+            BASE_DIRECTORY "${arg_BASE_DIRECTORY}"
+            OUTPUT_VARIABLE ${arg_OUTPUT_VARIABLE}
+        )
+        cmake_path(NORMAL_PATH ${arg_OUTPUT_VARIABLE})
+        string(REGEX REPLACE "/$" "" ${arg_OUTPUT_VARIABLE}
+                "${${arg_OUTPUT_VARIABLE}}")
+    endif()
+    set(${arg_OUTPUT_VARIABLE} "${${arg_OUTPUT_VARIABLE}}" PARENT_SCOPE)
+endfunction()
+
+# Compatibility of `cmake_path(IS_PREFIX)`
+#
+# NORMALIZE keyword is not supported
+#
+# Synopsis
+#
+#   _qt_internal_path_is_prefix(<path-var> <input> <out-var>)
+#
+# Arguments
+#
+# `path-var`
+#   Equivalent to `cmake_path(IS_PREFIX <path-var>)`.
+#
+# `input`
+#   Equivalent to `cmake_path(IS_PREFIX <input>)`.
+#
+# `out-var`
+#   Equivalent to `cmake_path(IS_PREFIX <out-var>)`.
+function(_qt_internal_path_is_prefix path_var input out_var)
+
+    # Make sure the path ends with `/`
+    if(NOT ${path_var} MATCHES "/$")
+        set(${path_var} "${${path_var}}/")
+    endif()
+    # For the case input == path_var, we need to also include a trailing `/` to match the
+    # previous change. We discard the actual path for input so we can add it unconditionally
+    set(input "${input}/")
+    if(CMAKE_VERSION VERSION_LESS 3.20)
+        string(FIND "${input}" "${${path_var}}" find_pos)
+        if(find_pos EQUAL 0)
+            # input starts_with path_var
+            set(${out_var} ON)
+        else()
+            set(${out_var} OFF)
+        endif()
+    else()
+        cmake_path(IS_PREFIX ${path_var} ${input} ${out_var})
+    endif()
+    set(${out_var} "${${out_var}}" PARENT_SCOPE)
+endfunction()
+
+# Return the current build dir's drive letter on Windows hosts.
+function(_qt_internal_get_current_build_dir_drive_letter_on_windows out_var)
+    # For newer CMake versions extract the drive letter directly from the binary dir.
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.20" AND FALSE)
+        cmake_path(GET CMAKE_BINARY_DIR ROOT_NAME drive_letter)
+    else()
+        # For older CMakes, we need to rely on cmd.exe + echo.
+        # %CD% expands to the current directory full path.
+        # ~0,2 gets a substring of 2 chars from the beginning.
+        # (%CD:~0,2% -> "C:").
+        execute_process(
+            COMMAND cmd /c "echo %CD:~0,2%"
+            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+            OUTPUT_VARIABLE drive_letter
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+    endif()
+    set(${out_var} "${drive_letter}" PARENT_SCOPE)
+endfunction()
+
+# Configures the file using either the input template or the CONTENT.
+# Behaves as either file(CONFIGURE or configure_file( command, but do not depend
+# on CMake version.
+#
+# Synopsis
+#    _qt_internal_configure_file(<CONFIGURE|GENERATE>
+#        OUTPUT <path>
+#        <INPUT path|CONTENT data>
+#    )
+#
+# Arguments
+# `CONFIGURE` Run in pure CONFIGURE mode.
+#
+# `GENERATE` Configure CONTENT and generate file with the generator expression
+#   support.
+#
+# `OUTPUT` The output file name to generate.
+#
+# `INPUT` The input template file name.
+#
+# `CONTENT` The template content. If both INPUT and CONTENT are specified, INPUT
+#   argument is ignored.
+function(_qt_internal_configure_file mode)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "OUTPUT;INPUT;CONTENT" "")
+
+    if(NOT arg_OUTPUT)
+        message(FATAL_ERROR "No OUTPUT file provided to _qt_internal_configure_file.")
+    endif()
+
+    # Substitute the '@' wrapped variables and generate the file with the
+    # the generator expressions evaluation inside the resulting CONTENT.
+    if(mode STREQUAL "GENERATE")
+        if(arg_INPUT)
+            configure_file("${arg_INPUT}" "${arg_OUTPUT}.tmp" @ONLY)
+            file(GENERATE OUTPUT "${arg_OUTPUT}" INPUT "${arg_OUTPUT}.tmp")
+        else()
+            string(CONFIGURE "${arg_CONTENT}" arg_CONTENT @ONLY)
+            file(GENERATE OUTPUT "${arg_OUTPUT}" CONTENT "${arg_CONTENT}")
+        endif()
+        return()
+    endif()
+
+    # We use this check for the cases when the specified CONTENT is empty. The value of arg_CONTENT
+    # is undefined, but we still want to create a file with empty content.
+    if("CONTENT" IN_LIST ARGV)
+        if(arg_INPUT)
+            message(WARNING "Both CONTENT and INPUT are specified. CONTENT will be used to generate"
+                " output")
+        endif()
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)
+            file(CONFIGURE OUTPUT "${arg_OUTPUT}" CONTENT "${arg_CONTENT}" @ONLY)
+            return()
+        endif()
+        set(template_name "QtFileConfigure.txt.in")
+        # When building qtbase, use the source template file.
+        # Otherwise use the installed file (basically wherever Qt6 package is found).
+        # This should work for non-prefix and superbuilds as well.
+        if(QtBase_SOURCE_DIR)
+            set(input_file "${QtBase_SOURCE_DIR}/cmake/${template_name}")
+        else()
+            set(input_file "${_qt_6_config_cmake_dir}/${template_name}")
+        endif()
+        set(__qt_file_configure_content "${arg_CONTENT}")
+    elseif(arg_INPUT)
+        set(input_file "${arg_INPUT}")
+    else()
+        message(FATAL_ERROR "No input value provided to _qt_internal_configure_file.")
+    endif()
+
+    configure_file("${input_file}" "${arg_OUTPUT}" @ONLY)
+endfunction()
+
+# The function checks if `value` is a valid C indentifier.
+#
+# Synopsis
+#
+#  _qt_internal_is_c_identifier(<out_var> <value>)
+#
+# Arguments
+#
+#  `out_var`
+#    Variable name for the evaluation result.
+#
+#  `value`
+#    The string for the evaluation.
+function(_qt_internal_is_c_identifier out_var value)
+    string(MAKE_C_IDENTIFIER "${value}" value_valid)
+
+    if(value AND "${value}" STREQUAL "${value_valid}")
+        set(${out_var} "TRUE" PARENT_SCOPE)
+    else()
+        set(${out_var} "FALSE" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Makes appending of the CMake configure time dependencies unique.
+function(_qt_internal_append_cmake_configure_depends)
+    get_property(configure_depends DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+    foreach(path IN LISTS ARGN)
+        get_filename_component(abs_path "${path}" REALPATH)
+        if(NOT "${abs_path}" IN_LIST configure_depends)
+            list(APPEND configure_depends "${abs_path}")
+        endif()
+    endforeach()
+    set_property(DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS "${configure_depends}")
+endfunction()
+
+function(_qt_internal_get_moc_compiler_flavor_flags out_var)
+    set(flags "")
+    if(WIN32)
+        list(APPEND flags -DWIN32)
+    endif()
+    if(MSVC)
+        list(APPEND flags --compiler-flavor=msvc)
+    endif()
+
+    set(${out_var} "${flags}" PARENT_SCOPE)
+endfunction()
+
+# Check if we should be including the `Targets.cmake` file
+#
+# Synopsis
+#
+#   _qt_internal_should_include_targets(
+#       TARGETS <target1> ...
+#       NAMESPACE <str>
+#       OUT_VAR_SHOULD_SKIP <var>
+#       [PROJECT_NAME <str>]
+#       [TEST_PLUGIN]
+#   )
+#
+# Arguments
+#
+# `TARGETS`
+#   The targets added via `export(TARGETS ...)`
+#
+# `NAMESPACE`
+#   The `NAMESPACE` used in the `export` command. Make sure to include the `::`
+#
+# `OUT_VAR_SHOULD_SKIP`
+#   Output variable indicating if the `include(*Targets.cmake)` should be skipped
+#
+# `PROJECT_NAMES`
+#   The original project names that defined the current Config.cmake file at the time of the
+#   generation. For now only used for plugins. Mostly it's just the main repo project name,
+#   but for some projects like the sqldriver one that can be built standalone, there can be
+#   more than one.
+#
+# `PROJECT_NAME`
+#   Deprecated. Same as the one above, but only takes a single value. Kept for compatibility.
+#
+# `TEST_PLUGIN`
+#   If the module is a TEST_PLUGIN, we do additional checks based on
+#   `QT_BUILD_STANDALONE_TESTS`
+#
+# `SKIP_IF_PROJECT_NAME_NOT_IN_QT_REPO_DEPENDENCIES`
+#   If the target's project name is not in the current QT_REPO_DEPENDENCIES, skip including it.
+#   Mainly used for qt and qml plugins. Avoids issues when reconfiguring parent repos.
+function(_qt_internal_should_include_targets)
+    set(option_args
+        TEST_PLUGIN
+        # Deprecated
+        CHECK_QT_NO_CREATE_TARGETS
+        SKIP_IF_PROJECT_NAME_NOT_IN_QT_REPO_DEPENDENCIES
+    )
+    set(single_args
+        NAMESPACE
+        OUT_VAR_SHOULD_SKIP
+        PROJECT_NAME # deprecated
+    )
+    set(multi_args
+        TARGETS
+        PROJECT_NAMES
+    )
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${option_args}" "${single_args}" "${multi_args}")
+
+    # Check for required inputs
+    foreach(check_arg IN ITEMS NAMESPACE OUT_VAR_SHOULD_SKIP)
+        if(NOT arg_${check_arg})
+            message(FATAL_ERROR "Missing input ${check_arg}")
+        endif()
+    endforeach()
+
+    # Check for inputs that will be required in the future
+    foreach(check_arg IN ITEMS)
+        if(NOT arg_${check_arg})
+            get_property(skip_warning GLOBAL
+                PROPERTY _qt_skip_warning__qt_internal_should_include_targets
+            )
+            if(NOT skip_warning)
+                message(WARNING
+                    "The current module was generated before ${check_arg} was introduced.\n"
+                    "Consider reconfiguring the current module (see backtrace)."
+                )
+                set_property(GLOBAL
+                    PROPERTY _qt_skip_warning__qt_internal_should_include_targets ON
+                )
+            endif()
+        endif()
+    endforeach()
+
+    # Check for deprecated inputs, i.e. the Config.cmake were already created
+    # with a version of qtbase that removed the specific compatibilities
+    foreach(check_arg IN ITEMS CHECK_QT_NO_CREATE_TARGETS)
+        if(arg_${check_arg})
+            get_property(skip_warning GLOBAL
+                PROPERTY _qt_skip_warning__qt_internal_should_include_targets
+            )
+            if(NOT skip_warning)
+                message(WARNING
+                    "The input ${check_arg} is deprecated and has no effect.\n"
+                    "Consider reconfiguring the current module (see backtrace)."
+                )
+                set_property(GLOBAL
+                    PROPERTY _qt_skip_warning__qt_internal_should_include_targets ON
+                )
+            endif()
+        endif()
+    endforeach()
+
+    set(project_names "")
+    set(lower_case_project_names "")
+    if(arg_PROJECT_NAMES)
+        list(APPEND project_names ${arg_PROJECT_NAMES})
+    endif()
+    if(arg_PROJECT_NAME)
+        list(APPEND project_names ${arg_PROJECT_NAME})
+    endif()
+
+    if(project_names)
+        list(TRANSFORM project_names TOLOWER OUTPUT_VARIABLE lower_case_project_names)
+    endif()
+
+    if(project_names)
+        # Check if we are in a top-level build and which submodules will be included
+        if(NOT QT_INTERNAL_BUILD_STANDALONE_PARTS AND DEFINED Qt_SOURCE_DIR)
+            # All projects will be rebuilt so skip any include targets
+            set(${arg_OUT_VAR_SHOULD_SKIP} ON PARENT_SCOPE)
+            return()
+        endif()
+
+        # Check if we are building the current project
+        if(NOT QT_INTERNAL_BUILD_STANDALONE_PARTS AND
+            PROJECT_NAME IN_LIST project_names)
+            # We are currently building the project, so skip the include targets
+            set(${arg_OUT_VAR_SHOULD_SKIP} ON PARENT_SCOPE)
+            return()
+        endif()
+
+        # We're building a Qt repository because QT_REPO_DEPENDENCIES is set.
+        # Skip including the target if it has not been provided by one of this repo's
+        # dependencies.
+        if(arg_SKIP_IF_PROJECT_NAME_NOT_IN_QT_REPO_DEPENDENCIES
+                AND DEFINED QT_REPO_DEPENDENCIES
+                AND NOT QT_INTERNAL_BUILD_STANDALONE_PARTS
+                # safety opt out
+                AND NOT QT_NO_SKIP_IF_PROJECT_NAME_NOT_IN_QT_REPO_DEPENDENCIES
+            )
+            set(target_project_name_in_repo_deps FALSE)
+            foreach(lower_case_project_name IN LISTS lower_case_project_names)
+                if(lower_case_project_name IN_LIST QT_REPO_DEPENDENCIES)
+                    set(target_project_name_in_repo_deps TRUE)
+                    break()
+                endif()
+            endforeach()
+
+            if(NOT target_project_name_in_repo_deps)
+                set(${arg_OUT_VAR_SHOULD_SKIP} ON PARENT_SCOPE)
+                return()
+            endif()
+        endif()
+
+        # Check if we are building the standalone tests
+        if(arg_TEST_PLUGIN AND QT_BUILD_STANDALONE_TESTS AND
+            PROJECT_NAME IN_LIST project_names)
+            set(${arg_OUT_VAR_SHOULD_SKIP} ON PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+
+    # We might still be generating the Targets.cmake file, so we do the same
+    # checks as in the Targets.cmake, but with the targets that were defined
+    # in the current build tree.
+    _qt_internal_check_multiple_inclusion(tgt_not_defined
+        TARGETS ${arg_TARGETS}
+        NAMESPACE ${arg_NAMESPACE}
+    )
+
+    # In Targets.cmake, if there are no expected targets that are undefined,
+    # the script returns, otherwise it creates all expected targets.
+    if(NOT tgt_not_defined)
+        set(${arg_OUT_VAR_SHOULD_SKIP} ON PARENT_SCOPE)
+        return()
+    endif()
+
+    # If no special setup is detected, use the normal logic, i.e. include
+    # the Targets.cmake
+    set(${arg_OUT_VAR_SHOULD_SKIP} OFF PARENT_SCOPE)
+endfunction()
+
+# Creates a regular expression that exactly matches the given string
+# Found in https://gitlab.kitware.com/cmake/cmake/issues/18580
+function(_qt_internal_re_escape out_var str)
+    string(REGEX REPLACE "([][+.*()^])" "\\\\\\1" regex "${str}")
+    set(${out_var} ${regex} PARENT_SCOPE)
+endfunction()
+
+# Create a non-existent, unique target name.
+# If the target ${name} doesn't exist, return that name in ${out_var}.
+# Otherwise, append an incrementing number, starting with 1.
+function(_qt_internal_unique_target_name out_var name)
+    set(target "${name}")
+    set(id 0)
+    while(TARGET "${target}")
+        math(EXPR id "${id} + 1")
+        set(target "${name}_${id}")
+    endwhile()
+    set("${out_var}" "${target}" PARENT_SCOPE)
 endfunction()

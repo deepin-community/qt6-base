@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxcbimage.h"
 #include <QtCore/QtEndian>
@@ -79,12 +80,6 @@ bool qt_xcb_imageFormatForVisual(QXcbConnection *connection, uint8_t depth, cons
             *imageFormat = QImage::Format_Grayscale8;
             return true;
         }
-#if QT_CONFIG(xcb_native_painting)
-        if (QXcbIntegration::instance() && QXcbIntegration::instance()->nativePaintingEnabled()) {
-            *imageFormat = QImage::Format_Indexed8;
-            return true;
-        }
-#endif
         return false;
     }
 

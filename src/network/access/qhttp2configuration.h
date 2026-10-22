@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTP2CONFIGURATION_H
 #define QHTTP2CONFIGURATION_H
@@ -39,9 +40,13 @@ public:
     bool setMaxFrameSize(unsigned size);
     unsigned maxFrameSize() const;
 
+    void setMaxConcurrentStreams(unsigned value);
+    unsigned maxConcurrentStreams() const;
+
     void swap(QHttp2Configuration &other) noexcept;
 
 private:
+    friend class QHttp2ConfigurationPrivate;
     QSharedDataPointer<QHttp2ConfigurationPrivate> d;
 
     bool isEqual(const QHttp2Configuration &other) const noexcept;

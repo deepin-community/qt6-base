@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTIMER_H
 #define QTIMER_H
@@ -74,7 +75,7 @@ public:
                                   Functor &&slot)
     {
         using Prototype = void(*)();
-        singleShotImpl(interval, timerType, receiver,
+        singleShotImpl(toDuration(interval), timerType, receiver,
                        QtPrivate::makeCallableObject<Prototype>(std::forward<Functor>(slot)));
     }
 #endif
@@ -154,11 +155,23 @@ private:
 
     static std::chrono::nanoseconds from_msecs(std::chrono::milliseconds);
 
+    static std::chrono::nanoseconds toDuration(int msecs) noexcept
+    { return std::chrono::milliseconds(msecs); }
+    static std::chrono::nanoseconds toDuration(std::chrono::nanoseconds ns) noexcept
+    { return ns; }
+
     inline int startTimer(int){ return -1;}
     inline void killTimer(int){}
 
     static constexpr Qt::TimerType defaultTypeFor(int msecs) noexcept
     { return defaultTypeFor(std::chrono::milliseconds{msecs}); }
+
+#if QT_CORE_REMOVED_SINCE(6, 8)
+    static constexpr Qt::TimerType defaultTypeFor(std::chrono::milliseconds interval) noexcept
+    {
+        return defaultTypeFor(std::chrono::nanoseconds{interval});
+    }
+#endif
 
     static constexpr Qt::TimerType defaultTypeFor(std::chrono::nanoseconds interval) noexcept
     {
@@ -169,10 +182,11 @@ private:
         return interval >= 2s ? Qt::CoarseTimer : Qt::PreciseTimer;
     }
 
-    QT_CORE_INLINE_SINCE(6, 8)
+#if QT_CORE_REMOVED_SINCE(6, 11)
+    // was: QT_CORE_INLINE_SINCE(6, 8)
     static void singleShotImpl(int msec, Qt::TimerType timerType,
                                const QObject *receiver, QtPrivate::QSlotObjectBase *slotObj);
-
+#endif
 #if QT_CORE_REMOVED_SINCE(6, 8)
     static void singleShotImpl(std::chrono::milliseconds interval, Qt::TimerType timerType,
                                const QObject *receiver, QtPrivate::QSlotObjectBase *slotObj);
@@ -188,12 +202,6 @@ void QTimer::singleShot(int msec, const QObject *receiver, const char *member)
 void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiver,
                         const char *member)
 { singleShot(std::chrono::milliseconds{msec}, timerType, receiver, member); }
-
-void QTimer::singleShotImpl(int msec, Qt::TimerType timerType,
-                            const QObject *receiver, QtPrivate::QSlotObjectBase *slotObj)
-{
-    singleShotImpl(std::chrono::milliseconds{msec}, timerType, receiver, slotObj);
-}
 #endif
 
 QT_END_NAMESPACE

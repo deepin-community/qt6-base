@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMKEYMAPPER_P
 #define QPLATFORMKEYMAPPER_P
@@ -18,7 +19,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcQpaKeyMapper, Q_GUI_EXPORT)
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaKeyMapper, Q_GUI_EXPORT)
 
 class QKeyEvent;
 

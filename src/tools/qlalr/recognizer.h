@@ -1,14 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
-#ifndef RECOGNIZER_H
-#define RECOGNIZER_H
+#pragma once
 
 #include "grammar_p.h"
 
 #include "lalr.h"
 
-#include <QtCore/qdebug.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qtextstream.h>
@@ -75,5 +74,3 @@ protected:
   QString _M_current_value;
   bool _M_no_lines;
 };
-
-#endif // RECOGNIZER_H

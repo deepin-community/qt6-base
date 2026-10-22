@@ -58,17 +58,17 @@ public:
     {
         if (qdesigner_internal__PaletteEditor->objectName().isEmpty())
             qdesigner_internal__PaletteEditor->setObjectName("qdesigner_internal__PaletteEditor");
-        qdesigner_internal__PaletteEditor->resize(365, 409);
+        qdesigner_internal__PaletteEditor->resize(397, 422);
         QSizePolicy sizePolicy(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Expanding);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(qdesigner_internal__PaletteEditor->sizePolicy().hasHeightForWidth());
         qdesigner_internal__PaletteEditor->setSizePolicy(sizePolicy);
         vboxLayout = new QVBoxLayout(qdesigner_internal__PaletteEditor);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout->setObjectName("vboxLayout");
@@ -77,10 +77,10 @@ public:
         advancedBox->setMinimumSize(QSize(0, 0));
         advancedBox->setMaximumSize(QSize(16777215, 16777215));
         gridLayout = new QGridLayout(advancedBox);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         gridLayout->setObjectName("gridLayout");
@@ -127,7 +127,7 @@ public:
         sizePolicy2.setHeightForWidth(GroupBox126->sizePolicy().hasHeightForWidth());
         GroupBox126->setSizePolicy(sizePolicy2);
         gridLayout1 = new QGridLayout(GroupBox126);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout1->setSpacing(6);
 #endif
         gridLayout1->setContentsMargins(8, 8, 8, 8);
@@ -160,8 +160,8 @@ public:
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__PaletteEditor);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::NoButton|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         vboxLayout->addWidget(buttonBox);
 

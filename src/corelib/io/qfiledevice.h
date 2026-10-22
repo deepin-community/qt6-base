@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILEDEVICE_H
 #define QFILEDEVICE_H
@@ -7,10 +8,42 @@
 #include <QtCore/qiodevice.h>
 #include <QtCore/qstring.h>
 
+#if QT_CONFIG(cxx17_filesystem)
+#include <filesystem>
+#elif defined(Q_QDOC)
+namespace std {
+    namespace filesystem {
+        class path {
+        };
+    };
+};
+#endif
+
 QT_BEGIN_NAMESPACE
 
 class QDateTime;
 class QFileDevicePrivate;
+
+#if QT_CONFIG(cxx17_filesystem)
+namespace QtPrivate {
+inline QString fromFilesystemPath(const std::filesystem::path &path)
+{
+    // we could use QAnyStringView, but this allows us to statically determine
+    // the correct toString() call
+    using View = std::conditional_t<sizeof(std::filesystem::path::value_type) == sizeof(char16_t),
+            QStringView, QUtf8StringView>;
+    return View(path.native()).toString();
+}
+
+inline std::filesystem::path toFilesystemPath(const QString &path)
+{
+    if constexpr (sizeof(std::filesystem::path::value_type) == sizeof(char16_t))
+        return std::u16string_view(QStringView(path));
+    else
+        return path.toStdString();
+}
+} // namespace QtPrivate
+#endif // QT_CONFIG(cxx17_filesystem)
 
 #if !defined(QT_USE_NODISCARD_FILE_OPEN) && !defined(QT_NO_USE_NODISCARD_FILE_OPEN)
 #  if QT_VERSION < QT_VERSION_CHECK(6, 10, 0)

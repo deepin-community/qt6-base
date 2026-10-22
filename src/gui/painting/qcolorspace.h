@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOLORSPACE_H
 #define QCOLORSPACE_H
@@ -7,13 +8,13 @@
 #include <QtGui/qtguiglobal.h>
 #include <QtGui/qcolortransform.h>
 #include <QtCore/qobjectdefs.h>
+#include <QtCore/qpoint.h>
 #include <QtCore/qshareddata.h>
 #include <QtCore/qvariant.h>
 
 QT_BEGIN_NAMESPACE
 
 class QColorSpacePrivate;
-class QPointF;
 
 QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QColorSpacePrivate, Q_GUI_EXPORT)
 
@@ -65,6 +66,16 @@ public:
     };
     Q_ENUM(ColorModel)
 
+    struct PrimaryPoints
+    {
+        Q_GUI_EXPORT static PrimaryPoints fromPrimaries(Primaries primaries);
+        Q_GUI_EXPORT bool isValid() const noexcept;
+        QPointF whitePoint;
+        QPointF redPoint;
+        QPointF greenPoint;
+        QPointF bluePoint;
+    };
+
     QColorSpace() noexcept = default;
     QColorSpace(NamedColorSpace namedColorSpace);
     explicit QColorSpace(QPointF whitePoint, TransferFunction transferFunction, float gamma = 0.0f);
@@ -74,6 +85,8 @@ public:
     QColorSpace(Primaries primaries, const QList<uint16_t> &transferFunctionTable);
     QColorSpace(const QPointF &whitePoint, const QPointF &redPoint,
                 const QPointF &greenPoint, const QPointF &bluePoint,
+                TransferFunction transferFunction, float gamma = 0.0f);
+    QColorSpace(const PrimaryPoints &primaryPoints,
                 TransferFunction transferFunction, float gamma = 0.0f);
     QColorSpace(const QPointF &whitePoint, const QPointF &redPoint,
                 const QPointF &greenPoint, const QPointF &bluePoint,
@@ -122,6 +135,8 @@ public:
                       const QPointF &greenPoint, const QPointF &bluePoint);
     void setWhitePoint(QPointF whitePoint);
     QPointF whitePoint() const;
+    void setPrimaryPoints(const PrimaryPoints &primaryPoints);
+    PrimaryPoints primaryPoints() const;
 
     TransformModel transformModel() const noexcept;
     ColorModel colorModel() const noexcept;

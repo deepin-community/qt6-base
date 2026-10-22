@@ -1,10 +1,12 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest>
+#include <QTest>
 
 #include <QtCore/qjnitypes.h>
 #include <QtCore/qjniarray.h>
+
+QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
@@ -181,21 +183,22 @@ void tst_QJniTypes::nativeClassMethod(JNIEnv *, jclass, int) {}
 
 void tst_QJniTypes::nativeMethod()
 {
+    using namespace QtJniMethods;
     {
         const auto method = Q_JNI_NATIVE_METHOD(nativeFunction);
-        QVERIFY(method.fnPtr == QtJniMethods::va_nativeFunction);
+        QVERIFY(method.fnPtr == &(nativeFunction_Helper::call<bool, jclass, int, jstring, quint64>));
         QCOMPARE(method.name, "nativeFunction");
         QCOMPARE(method.signature, "(ILjava/lang/String;J)Z");
     }
 
     {
         const auto method = Q_JNI_NATIVE_METHOD(forwardDeclaredNativeFunction);
-        QVERIFY(method.fnPtr == QtJniMethods::va_forwardDeclaredNativeFunction);
+        QVERIFY(method.fnPtr == &(forwardDeclaredNativeFunction_Helper::call<int, jobject, bool>));
     }
 
     {
         const auto method = Q_JNI_NATIVE_SCOPED_METHOD(nativeClassMethod, tst_QJniTypes);
-        QVERIFY(method.fnPtr == va_nativeClassMethod);
+        QVERIFY(method.fnPtr == &(nativeClassMethod_QtJniMethod::call<void, jclass, int>));
     }
 }
 
@@ -278,6 +281,8 @@ void tst_QJniTypes::stringTypeCantBeArgument()
     static_assert(callStaticMethod<QtJniTypes::JavaType, jint>("method name", 42)
                   == Overload::OnlyMethod);
 }
+
+QT_END_NAMESPACE
 
 QTEST_MAIN(tst_QJniTypes)
 

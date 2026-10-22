@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#define Q_NO_THREAD_STORAGE_TRIVIAL_WARNING
+
 #include <QTest>
 #if QT_CONFIG(process)
 #include <QProcess>
@@ -15,6 +17,9 @@
 #include <qdir.h>
 #include <qfileinfo.h>
 
+#include <array>
+#include <QtCore/qxpfunctional.h>
+
 #ifdef Q_OS_UNIX
 #include <pthread.h>
 #endif
@@ -23,22 +28,12 @@
 #  include <qt_windows.h>
 #endif
 
-class tst_QThreadStorage : public QObject
-{
-    Q_OBJECT
-private slots:
-    void hasLocalData();
-    void localData();
-    void localData_const();
-    void setLocalData();
-    void autoDelete();
-    void adoptedThreads();
-    void ensureCleanupOrder();
-    void crashOnExit();
-    void leakInDestructor();
-    void resetInDestructor();
-    void valueBased();
-};
+#ifdef QTEST_THROW_ON_FAIL
+# error QVERIFY/QCOMPARE in QThread::run()
+#endif
+
+using namespace std::chrono_literals;
+using namespace Qt::StringLiterals;
 
 class Pointer
 {
@@ -48,6 +43,31 @@ public:
     inline ~Pointer() { --count; }
 };
 int Pointer::count = 0;
+
+class tst_QThreadStorage : public QObject
+{
+    Q_OBJECT
+private Q_SLOTS:
+    void hasLocalData();
+    void localData();
+    void localData_const();
+    void setLocalData();
+    void autoDelete();
+    void adoptedPThreads();
+    void adoptedWinThreads();
+    void ensureCleanupOrder();
+    void noWarningOnExitForQGlobalStatic();
+    void crashOnExit();
+    void leakInDestructor();
+    void resetInDestructor();
+    void valueBased();
+    void otherStorageInDestructor();
+
+private:
+    void adoptedThreads_impl(qxp::function_ref<void(QThreadStorage<Pointer *> &) const>);
+};
+
+constexpr auto WaitTimeout = 10s;
 
 void tst_QThreadStorage::hasLocalData()
 {
@@ -62,8 +82,13 @@ void tst_QThreadStorage::hasLocalData()
 void tst_QThreadStorage::localData()
 {
     QThreadStorage<Pointer*> pointers;
+    {
+        // the mere creation of a Pointer doesn't cause localData() to spring into existence:
+        QVERIFY(!pointers.hasLocalData());
+        [[maybe_unused]] Pointer p;
+        QVERIFY(!pointers.hasLocalData());
+    }
     Pointer *p = new Pointer;
-    QVERIFY(!pointers.hasLocalData());
     pointers.setLocalData(p);
     QVERIFY(pointers.hasLocalData());
     QCOMPARE(pointers.localData(), p);
@@ -76,8 +101,8 @@ void tst_QThreadStorage::localData_const()
 {
     QThreadStorage<Pointer *> pointers;
     const QThreadStorage<Pointer *> &const_pointers = pointers;
-    Pointer *p = new Pointer;
     QVERIFY(!pointers.hasLocalData());
+    Pointer *p = new Pointer;
     pointers.setLocalData(p);
     QVERIFY(pointers.hasLocalData());
     QCOMPARE(const_pointers.localData(), p);
@@ -92,12 +117,18 @@ void tst_QThreadStorage::setLocalData()
     QVERIFY(!pointers.hasLocalData());
     pointers.setLocalData(new Pointer);
     QVERIFY(pointers.hasLocalData());
+
+    const int c = Pointer::count;
+    pointers.setLocalData(pointers.localData()); // self-referential: must be a no-op
+    QCOMPARE(Pointer::count, c);
+
     pointers.setLocalData(nullptr);
     QVERIFY(!pointers.hasLocalData());
 }
 
 class Thread : public QThread
 {
+    Q_OBJECT
 public:
     QThreadStorage<Pointer *> &pointers;
 
@@ -114,7 +145,7 @@ public:
 
         QMutexLocker locker(&mutex);
         cond.wakeOne();
-        cond.wait(&mutex);
+        cond.wait(&mutex, WaitTimeout / 2);
     }
 };
 
@@ -128,16 +159,16 @@ void tst_QThreadStorage::autoDelete()
     {
         QMutexLocker locker(&thread.mutex);
         thread.start();
-        thread.cond.wait(&thread.mutex);
+        thread.cond.wait(&thread.mutex, WaitTimeout / 2);
         // QCOMPARE(Pointer::count, c + 1);
         thread.cond.wakeOne();
     }
-    thread.wait();
+    QVERIFY(thread.wait(WaitTimeout));
     QCOMPARE(Pointer::count, c);
 }
 
 static bool threadStorageOk;
-void testAdoptedThreadStorageWin(void *p)
+void testAdoptedThreadStorage(void *p)
 {
     QThreadStorage<Pointer *>  *pointers = reinterpret_cast<QThreadStorage<Pointer *> *>(p);
     if (pointers->hasLocalData()) {
@@ -159,36 +190,55 @@ void testAdoptedThreadStorageWin(void *p)
     }
     QObject::connect(QThread::currentThread(), SIGNAL(finished()), &QTestEventLoop::instance(), SLOT(exitLoop()));
 }
-void *testAdoptedThreadStorageUnix(void *pointers)
-{
-    testAdoptedThreadStorageWin(pointers);
-    return nullptr;
-}
-void tst_QThreadStorage::adoptedThreads()
+
+void tst_QThreadStorage::adoptedThreads_impl(qxp::function_ref<void(QThreadStorage<Pointer *> &) const> run)
 {
     QTestEventLoop::instance(); // Make sure the instance is created in this thread.
     QThreadStorage<Pointer *> pointers;
     int c = Pointer::count;
     threadStorageOk = true;
-    {
-#ifdef Q_OS_UNIX
-        pthread_t thread;
-        const int state = pthread_create(&thread, nullptr, testAdoptedThreadStorageUnix, &pointers);
-        QCOMPARE(state, 0);
-        pthread_join(thread, nullptr);
-#elif defined Q_OS_WIN
-        HANDLE thread;
-        thread = (HANDLE)_beginthread(testAdoptedThreadStorageWin, 0, &pointers);
-        QVERIFY(thread);
-        WaitForSingleObject(thread, INFINITE);
-#endif
-    }
+    run(pointers);
+    if (QTest::currentTestResolved())
+        return;
     QVERIFY(threadStorageOk);
 
     QTestEventLoop::instance().enterLoop(2);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
     QTRY_COMPARE(Pointer::count, c);
+}
+
+void tst_QThreadStorage::adoptedPThreads()
+{
+#ifdef Q_OS_UNIX
+    adoptedThreads_impl([] (QThreadStorage<Pointer *> &pointers) {
+        const auto returnValueAdded = [](void *pointers) -> void* {
+            testAdoptedThreadStorage(pointers);
+            return nullptr; // pthread wants a void* return
+        };
+        pthread_t thread;
+        const int state = pthread_create(&thread, nullptr, returnValueAdded, &pointers);
+        QCOMPARE(state, 0);
+        pthread_join(thread, nullptr);
+    });
+#else
+    QSKIP("This is a Unix test");
+#endif
+}
+
+void tst_QThreadStorage::adoptedWinThreads()
+{
+#ifdef Q_OS_WIN
+    adoptedThreads_impl([] (QThreadStorage<Pointer *> &pointers) {
+        HANDLE thread;
+        thread = (HANDLE)_beginthread(testAdoptedThreadStorage, 0, &pointers);
+        QVERIFY(thread);
+        WaitForSingleObject(thread, INFINITE);
+    });
+#else
+    QSKIP("This is a Windows test.");
+#endif
+
 }
 
 static QBasicAtomicInt cleanupOrder = Q_BASIC_ATOMIC_INITIALIZER(0);
@@ -217,7 +267,7 @@ int Second::order = -1;
 
 void tst_QThreadStorage::ensureCleanupOrder()
 {
-    class Thread : public QThread
+    class Thread : public QThread // clazy:exclude=missing-qobject-macro
     {
     public:
         QThreadStorage<First *> &first;
@@ -242,9 +292,32 @@ void tst_QThreadStorage::ensureCleanupOrder()
     QThreadStorage<First *> first;
     Thread thread(first, second);
     thread.start();
-    thread.wait();
+    QVERIFY(thread.wait(WaitTimeout));
 
     QVERIFY(First::order < Second::order);
+}
+
+void tst_QThreadStorage::noWarningOnExitForQGlobalStatic()
+{
+#ifdef Q_OS_ANDROID
+    QSKIP("Can't start QProcess to run a custom user binary on Android");
+#endif
+#if !QT_CONFIG(process)
+    QSKIP("No QProcess support");
+#else
+#  ifdef Q_OS_WIN
+    QSKIP("Not able to detect a call to exit() in Windows.");
+    QString binary = QFINDTESTDATA("tst_qthreadstorage_warnonexit.exe");
+#  else
+    QString binary = QFINDTESTDATA("tst_qthreadstorage_warnonexit");
+#  endif
+    QProcess process;
+    process.start(binary);
+    QVERIFY2(process.waitForStarted(), qPrintable(process.errorString()));
+    QVERIFY2(process.waitForFinished(), qPrintable(process.errorString()));
+    QCOMPARE(process.readAllStandardError(), QByteArray());
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+#endif
 }
 
 #if QT_CONFIG(process)
@@ -254,16 +327,16 @@ static inline bool runCrashOnExit(const QString &binary, QString *errorMessage)
     QProcess process;
     process.start(binary);
     if (!process.waitForStarted()) {
-        *errorMessage = QString::fromLatin1("Could not start '%1': %2").arg(binary, process.errorString());
+        *errorMessage = "Could not start '%1': %2"_L1.arg(binary, process.errorString());
         return false;
     }
     if (!process.waitForFinished(timeout)) {
         process.kill();
-        *errorMessage = QString::fromLatin1("Timeout (%1ms) waiting for %2.").arg(timeout).arg(binary);
+        *errorMessage = u"Timeout (%1ms) waiting for %2."_s.arg(timeout).arg(binary);
         return false;
     }
     if (process.exitStatus() != QProcess::NormalExit) {
-        *errorMessage = binary + QStringLiteral(" crashed.");
+        *errorMessage = binary + " crashed."_L1;
         return false;
     }
     return true;
@@ -272,14 +345,14 @@ static inline bool runCrashOnExit(const QString &binary, QString *errorMessage)
 
 void tst_QThreadStorage::crashOnExit()
 {
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
     QSKIP("Can't start QProcess to run a custom user binary on Android");
 #endif
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QString errorMessage;
-    QVERIFY2(runCrashOnExit("./crashOnExit_helper", &errorMessage),
+    QVERIFY2(runCrashOnExit(u"./crashOnExit_helper"_s, &errorMessage),
              qPrintable(errorMessage));
 #endif
 }
@@ -315,7 +388,7 @@ public:
 
 void tst_QThreadStorage::leakInDestructor()
 {
-    class Thread : public QThread
+    class Thread : public QThread // clazy:exclude=missing-qobject-macro
     {
     public:
         QThreadStorage<ThreadStorageLocalDataTester *> &tls;
@@ -348,9 +421,9 @@ void tst_QThreadStorage::leakInDestructor()
     t2.start();
     t3.start();
 
-    QVERIFY(t1.wait());
-    QVERIFY(t2.wait());
-    QVERIFY(t3.wait());
+    QVERIFY(t1.wait(WaitTimeout));
+    QVERIFY(t2.wait(WaitTimeout / 2));
+    QVERIFY(t3.wait(WaitTimeout / 4));
 
     //check all the constructed things have been destructed
     QCOMPARE(int(SPointer::count.loadRelaxed()), c);
@@ -371,7 +444,7 @@ ThreadStorageResetLocalDataTester::~ThreadStorageResetLocalDataTester() {
 
 void tst_QThreadStorage::resetInDestructor()
 {
-    class Thread : public QThread
+    class Thread : public QThread // clazy:exclude=missing-qobject-macro
     {
     public:
         void run() override
@@ -389,9 +462,9 @@ void tst_QThreadStorage::resetInDestructor()
     t1.start();
     t2.start();
     t3.start();
-    QVERIFY(t1.wait());
-    QVERIFY(t2.wait());
-    QVERIFY(t3.wait());
+    QVERIFY(t1.wait(WaitTimeout));
+    QVERIFY(t2.wait(WaitTimeout / 2));
+    QVERIFY(t3.wait(WaitTimeout / 4));
 
     //check all the constructed things have been destructed
     QCOMPARE(int(SPointer::count.loadRelaxed()), c);
@@ -400,15 +473,18 @@ void tst_QThreadStorage::resetInDestructor()
 
 void tst_QThreadStorage::valueBased()
 {
-    struct Thread : QThread {
+    struct Thread : QThread // clazy:exclude=missing-qobject-macro
+    {
         QThreadStorage<SPointer> &tlsSPointer;
         QThreadStorage<QString> &tlsString;
         QThreadStorage<int> &tlsInt;
+        QThreadStorage<std::unique_ptr<int>> &tlsUniquePtr;
 
         int someNumber;
         QString someString;
-        Thread(QThreadStorage<SPointer> &t1, QThreadStorage<QString> &t2, QThreadStorage<int> &t3)
-        : tlsSPointer(t1), tlsString(t2), tlsInt(t3) { }
+        explicit Thread(QThreadStorage<SPointer> &t1, QThreadStorage<QString> &t2,
+                        QThreadStorage<int> &t3, QThreadStorage<std::unique_ptr<int>> &t4)
+            : tlsSPointer(t1), tlsString(t2), tlsInt(t3), tlsUniquePtr(t4) { }
 
         void run()  override
         {
@@ -420,56 +496,137 @@ void tst_QThreadStorage::valueBased()
             //Default constructed values
             QVERIFY(tlsString.localData().isNull());
             QCOMPARE(tlsInt.localData(), 0);
+            QCOMPARE_EQ(tlsUniquePtr.localData(), nullptr);
 
             //setting
             tlsString.setLocalData(someString);
             tlsInt.setLocalData(someNumber);
+            int* const someIntPtr = [&] {
+                auto up = std::make_unique<int>(someNumber);
+                auto p = up.get();
+                tlsUniquePtr.setLocalData(std::move(up));
+                return p;
+            }();
 
             QCOMPARE(tlsString.localData(), someString);
             QCOMPARE(tlsInt.localData(), someNumber);
+            QCOMPARE_EQ(tlsUniquePtr.localData().get(), someIntPtr);
 
             //changing
             tlsSPointer.setLocalData(SPointer());
             tlsInt.localData() += 42;
             tlsString.localData().append(QLatin1String(" world"));
+            tlsUniquePtr.localData().reset(new int{someNumber + 42});
 
             QCOMPARE(tlsString.localData(), (someString + QLatin1String(" world")));
             QCOMPARE(tlsInt.localData(), (someNumber + 42));
+            QCOMPARE_NE(tlsUniquePtr.localData(), nullptr);
+            QCOMPARE(*tlsUniquePtr.localData(), someNumber + 42);
 
             // operator=
             tlsString.localData() = QString::number(someNumber);
             QCOMPARE(tlsString.localData().toInt(), someNumber);
+            tlsUniquePtr.localData() = std::make_unique<int>(someNumber);
+            QCOMPARE_NE(tlsUniquePtr.localData(), nullptr);
+            QCOMPARE_EQ(*tlsUniquePtr.localData(), someNumber);
         }
     };
 
     QThreadStorage<SPointer> tlsSPointer;
     QThreadStorage<QString> tlsString;
     QThreadStorage<int> tlsInt;
+    QThreadStorage<std::unique_ptr<int>> tlsUniquePtr;
 
     int c = SPointer::count.loadRelaxed();
 
-    Thread t1(tlsSPointer, tlsString, tlsInt);
-    Thread t2(tlsSPointer, tlsString, tlsInt);
-    Thread t3(tlsSPointer, tlsString, tlsInt);
+    Thread t1(tlsSPointer, tlsString, tlsInt, tlsUniquePtr);
+    Thread t2(tlsSPointer, tlsString, tlsInt, tlsUniquePtr);
+    Thread t3(tlsSPointer, tlsString, tlsInt, tlsUniquePtr);
     t1.someNumber = 42;
     t2.someNumber = -128;
     t3.someNumber = 78;
-    t1.someString = "hello";
-    t2.someString = "australia";
-    t3.someString = "nokia";
+    t1.someString = u"hello"_s;
+    t2.someString = u"australia"_s;
+    t3.someString = u"nokia"_s;
 
     t1.start();
     t2.start();
     t3.start();
 
-    QVERIFY(t1.wait());
-    QVERIFY(t2.wait());
-    QVERIFY(t3.wait());
+    QVERIFY(t1.wait(WaitTimeout));
+    QVERIFY(t2.wait(WaitTimeout / 2));
+    QVERIFY(t3.wait(WaitTimeout / 4));
 
     QCOMPARE(c, int(SPointer::count.loadRelaxed()));
 
 }
 
+
+// ---------------------------------------------------------------------
+// QThreadStorage reentrancy contracts.
+//
+// The destructor of the previous payload runs from within setLocalData():
+//
+//  - otherStorageInDestructor(): the destructor may use other
+//    QThreadStorage objects, including ones the current thread has never
+//    used before.
+//
+// Running these under ASan/LSan additionally verifies the memory safety
+// of the above (no use-after-free, no leaks).
+// ---------------------------------------------------------------------
+
+namespace {
+
+// A payload whose destructor makes first use of a different QThreadStorage
+// (with a much higher id) on the current thread:
+class OtherStorageUsingPayload
+{
+public:
+    explicit OtherStorageUsingPayload(QThreadStorage<int> *other) : other(other) {}
+    ~OtherStorageUsingPayload() { other->setLocalData(42); }
+
+private:
+    QThreadStorage<int> *other;
+};
+
+} // unnamed namespace
+
+void tst_QThreadStorage::otherStorageInDestructor()
+{
+    struct Thread : public QThread // clazy:exclude=missing-qobject-macro
+    {
+        QThreadStorage<OtherStorageUsingPayload *> &primary;
+        QThreadStorage<int> &other;
+
+        explicit Thread(QThreadStorage<OtherStorageUsingPayload *> &p, QThreadStorage<int> &o)
+            : primary(p), other(o)
+        { }
+
+        void run() override
+        {
+            primary.setLocalData(new OtherStorageUsingPayload(&other));
+            QVERIFY(!other.hasLocalData());
+            primary.setLocalData(nullptr);
+            // the destructor made first use of `other` on this thread:
+            QVERIFY(!primary.hasLocalData());
+            QVERIFY(other.hasLocalData());
+            QCOMPARE(other.localData(), 42);
+        }
+    };
+
+    QThreadStorage<OtherStorageUsingPayload *> primary;
+
+    // Burn through a large block of ids, so `other`'s id is far higher
+    // than `primary`'s, and higher than anything a freshly-started thread
+    // has used; its first use, from within the payload's destructor, then
+    // grows the thread's storage while setLocalData(nullptr) is still
+    // executing.
+    std::array<QThreadStorage<int>, 256> others;
+
+    Thread t(primary, others.back());
+    t.start();
+    QVERIFY(t.wait(WaitTimeout));
+}
 
 QTEST_MAIN(tst_QThreadStorage)
 #include "tst_qthreadstorage.moc"

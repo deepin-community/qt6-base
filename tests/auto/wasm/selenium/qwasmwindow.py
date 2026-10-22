@@ -3,6 +3,7 @@
 
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
 from selenium.webdriver.common.actions.pointer_actions import PointerActions
@@ -11,22 +12,308 @@ from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.expected_conditions import presence_of_element_located
 from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
 
+import os
 import time
 import unittest
 from enum import Enum, auto
 
 class WidgetTestCase(unittest.TestCase):
     def setUp(self):
-        self._driver = Chrome(service=ChromeService(ChromeDriverManager().install()))
+        chromedriver_path = os.getenv('WASM_CHROMEDRIVER_PATH_JSPI')
+        chromedriver_args = ""
+
+        if chromedriver_path:
+            chromedriver_args = os.getenv('WASM_CHROMEDRIVER_PATH_JSPI_ARGS')
+        else:
+            chromedriver_path = os.getenv('CHROMEDRIVER_PATH')
+
+        if chromedriver_path:
+            options = ChromeOptions()
+            args = chromedriver_args.split()
+            for arg in args:
+                options.add_argument(arg)
+            self._driver = Chrome(service=ChromeService(executable_path=chromedriver_path), options=options)
+        else:
+            self._driver = Chrome()
+        self._driver.maximize_window()
         self._driver.get(
-            'http://localhost:8001/tst_qwasmwindow_harness.html')
+            'http://localhost:8001/tst_qwasmwindow_harness_run.html')
         self._test_sandbox_element = WebDriverWait(self._driver, 30).until(
             presence_of_element_located((By.ID, 'test-sandbox'))
         )
         self.addTypeEqualityFunc(Color, assert_colors_equal)
         self.addTypeEqualityFunc(Rect, assert_rects_equal)
+
+    def test_zz_a11y_buttons(self):
+        screen = Screen(self._driver, ScreenPosition.FIXED,
+                    x=0, y=0, width=600, height=600)
+
+        w0 = Widget(self._driver, "w0", 2)
+        w0.show()
+
+        checkboxa1 = screen.find_element(By.ID, f'CheckBoxA1');
+        checkboxa2 = screen.find_element(By.ID, f'CheckBoxA2');
+        radiobuttonb1 = screen.find_element(By.ID, f'RadioB1');
+        radiobuttonb2 = screen.find_element(By.ID, f'RadioB2');
+        pushbuttonc1 = screen.find_element(By.ID, f'PushC1');
+        pushbuttonc2 = screen.find_element(By.ID, f'PushC2');
+
+        checkboxa1DB = screen.find_element(By.ID, checkboxa1.get_attribute("aria-describedby"));
+        checkboxa2DB = screen.find_element(By.ID, checkboxa2.get_attribute("aria-describedby"));
+        radiobuttonb1DB = screen.find_element(By.ID, radiobuttonb1.get_attribute("aria-describedby"));
+        radiobuttonb2DB = screen.find_element(By.ID, radiobuttonb2.get_attribute("aria-describedby"));
+        pushbuttonc1DB = screen.find_element(By.ID, pushbuttonc1.get_attribute("aria-describedby"));
+        pushbuttonc2DB = screen.find_element(By.ID, pushbuttonc2.get_attribute("aria-describedby"));
+
+        self.assertEqual(checkboxa1DB.get_attribute("innerHTML"), "CheckBoxA1 - Description");
+        self.assertEqual(checkboxa2DB.get_attribute("innerHTML"), "CheckBoxA2 - Description");
+        self.assertEqual(radiobuttonb1DB.get_attribute("innerHTML"), "RadioB1 - Description");
+        self.assertEqual(radiobuttonb2DB.get_attribute("innerHTML"), "RadioB2 - Description");
+        self.assertEqual(pushbuttonc1DB.get_attribute("innerHTML"), "PushC1 - Description");
+        self.assertEqual(pushbuttonc2DB.get_attribute("innerHTML"), "PushC2 - Description");
+
+        self.assertEqual(checkboxa1.get_attribute("checked"), None);
+        self.assertEqual(checkboxa2.get_attribute("checked"), None);
+        self.assertEqual(checkboxa1.get_attribute("type"), "checkbox");
+        self.assertEqual(checkboxa2.get_attribute("type"), "checkbox");
+        self.assertEqual(checkboxa1.get_attribute("aria-label"), "CheckBoxA1");
+        self.assertEqual(checkboxa2.get_attribute("aria-label"), "CheckBoxA2");
+
+        self.assertEqual(radiobuttonb1.get_attribute("checked"), None);
+        self.assertEqual(radiobuttonb2.get_attribute("checked"), None);
+        self.assertEqual(radiobuttonb1.get_attribute("type"), "radio");
+        self.assertEqual(radiobuttonb2.get_attribute("type"), "radio");
+        self.assertEqual(radiobuttonb1.get_attribute("aria-label"), "RadioB1");
+        self.assertEqual(radiobuttonb2.get_attribute("aria-label"), "RadioB2");
+
+        self.assertEqual(pushbuttonc1.get_attribute("checked"), None);
+        self.assertEqual(pushbuttonc2.get_attribute("checked"), None);
+        self.assertEqual(pushbuttonc1.get_attribute("type"), "submit");
+        self.assertEqual(pushbuttonc2.get_attribute("type"), "submit");
+        self.assertEqual(pushbuttonc1.get_attribute("aria-label"), "PushC1");
+        self.assertEqual(pushbuttonc2.get_attribute("aria-label"), "PushC2");
+
+        # Check focus
+        screen.focus(checkboxa1);
+        self.assertTrue(screen.has_focus(checkboxa1));
+        checkboxa1.send_keys("\t");
+        self.assertTrue(screen.has_focus(checkboxa2));
+        checkboxa2.send_keys("\t");
+        self.assertTrue(screen.has_focus(radiobuttonb1));
+        radiobuttonb1.send_keys("\t");
+        self.assertTrue(screen.has_focus(radiobuttonb2));
+        radiobuttonb2.send_keys("\t");
+        self.assertTrue(screen.has_focus(pushbuttonc1));
+        pushbuttonc1.send_keys("\t");
+        self.assertTrue(screen.has_focus(pushbuttonc2));
+
+        screen.focus(checkboxa1);
+
+        # Check behavior checkboxes
+        screen.click(checkboxa1);
+        self.assertEqual(checkboxa1.get_dom_attribute("checked"), "true");
+        self.assertEqual(checkboxa2.get_dom_attribute("checked"), None);
+
+        screen.click(checkboxa2);
+        self.assertEqual(checkboxa1.get_dom_attribute("checked"), "true");
+        self.assertEqual(checkboxa2.get_dom_attribute("checked"), "true");
+
+        screen.click(checkboxa1);
+        self.assertEqual(checkboxa1.get_dom_attribute("checked"), None);
+        self.assertEqual(checkboxa2.get_dom_attribute("checked"), "true");
+
+        screen.click(checkboxa2);
+        self.assertEqual(checkboxa1.get_dom_attribute("checked"), None);
+        self.assertEqual(checkboxa2.get_dom_attribute("checked"), None);
+
+        # Check behavior radiobuttons
+        screen.click(radiobuttonb1);
+        self.assertEqual(radiobuttonb1.get_dom_attribute("checked"), "true");
+        self.assertEqual(radiobuttonb2.get_dom_attribute("checked"), None);
+
+        screen.click(radiobuttonb2);
+        self.assertEqual(radiobuttonb1.get_dom_attribute("checked"), None);
+        self.assertEqual(radiobuttonb2.get_dom_attribute("checked"), "true");
+
+        screen.click(radiobuttonb1);
+        self.assertEqual(radiobuttonb1.get_dom_attribute("checked"), "true");
+        self.assertEqual(radiobuttonb2.get_dom_attribute("checked"), None);
+
+        screen.click(radiobuttonb2);
+        self.assertEqual(radiobuttonb1.get_dom_attribute("checked"), None);
+        self.assertEqual(radiobuttonb2.get_dom_attribute("checked"), "true");
+
+        # Check behaviour push buttons
+        screen.click(pushbuttonc1);
+        screen.click(pushbuttonc2);
+        self.assertEqual(pushbuttonc1.get_attribute("aria-label"), "PushC1 - Clicked");
+        self.assertEqual(pushbuttonc2.get_attribute("aria-label"), "PushC2 - Clicked");
+        w0.close();
+        clearWidgets(self._driver)
+
+    def test_zz_a11y_text(self):
+        screen = Screen(self._driver, ScreenPosition.FIXED,
+                    x=0, y=0, width=600, height=600)
+
+        w0 = Widget(self._driver, "w0", 3)
+        w0.show()
+
+        lineedita1 = screen.find_element(By.ID, f'LineEditA1');
+        lineedita2 = screen.find_element(By.ID, f'LineEditA2');
+        lineedita3 = screen.find_element(By.ID, f'LineEditA3');
+        lineedita4 = screen.find_element(By.ID, f'LineEditA4');
+        lineedita5 = screen.find_element(By.ID, f'LineEditA5');
+
+        texteditb1 = screen.find_element(By.ID, f'TextEditB1');
+        texteditb2 = screen.find_element(By.ID, f'TextEditB2');
+        plaintexteditc1 = screen.find_element(By.ID, f'PlainTextEditC1');
+        plaintexteditc2 = screen.find_element(By.ID, f'PlainTextEditC2');
+        labeld1 = screen.find_element(By.ID, f'LabelD1');
+
+        lineedita1DB = screen.find_element(By.ID, lineedita1.get_attribute("aria-describedby"));
+        lineedita2DB = screen.find_element(By.ID, lineedita2.get_attribute("aria-describedby"));
+        lineedita3DB = screen.find_element(By.ID, lineedita3.get_attribute("aria-describedby"));
+        lineedita4DB = screen.find_element(By.ID, lineedita4.get_attribute("aria-describedby"));
+        lineedita5DB = screen.find_element(By.ID, lineedita5.get_attribute("aria-describedby"));
+
+        texteditb1DB = screen.find_element(By.ID, texteditb1.get_attribute("aria-describedby"));
+        texteditb2DB = screen.find_element(By.ID, texteditb2.get_attribute("aria-describedby"));
+        plaintexteditc1DB = screen.find_element(By.ID, plaintexteditc1.get_attribute("aria-describedby"));
+        plaintexteditc2DB = screen.find_element(By.ID, plaintexteditc2.get_attribute("aria-describedby"));
+        labeld1DB = screen.find_element(By.ID, labeld1.get_attribute("aria-describedby"));
+
+        self.assertEqual(lineedita1DB.get_attribute("innerHTML"), "LineEditA1 - Description");
+        self.assertEqual(lineedita2DB.get_attribute("innerHTML"), "LineEditA2 - Description");
+        self.assertEqual(lineedita3DB.get_attribute("innerHTML"), "LineEditA3 - Description");
+        self.assertEqual(lineedita4DB.get_attribute("innerHTML"), "LineEditA4 - Description");
+        self.assertEqual(lineedita5DB.get_attribute("innerHTML"), "LineEditA5 - Description");
+        self.assertEqual(texteditb1DB.get_attribute("innerHTML"), "TextEditB1 - Description");
+        self.assertEqual(texteditb2DB.get_attribute("innerHTML"), "TextEditB2 - Description");
+        self.assertEqual(plaintexteditc1DB.get_attribute("innerHTML"), "PlainTextEditC1 - Description");
+        self.assertEqual(plaintexteditc2DB.get_attribute("innerHTML"), "PlainTextEditC2 - Description");
+        self.assertEqual(labeld1DB.get_attribute("innerHTML"), "LabelD1 - Description");
+
+        self.assertEqual(lineedita1.get_attribute("value"), "LineEditA1 - Text");
+        self.assertEqual(lineedita2.get_attribute("value"), "LineEditA2 - Text");
+        self.assertEqual(lineedita3.get_attribute("value"), "●●●●●●●●●●●●●●●●●");
+        self.assertEqual(lineedita4.get_attribute("value"), "");
+        self.assertEqual(lineedita5.get_attribute("value"), "●●●●●●●●●●●●●●●●●");
+        self.assertEqual(texteditb1.get_attribute("value"), "TextEditB1 - Text");
+        self.assertEqual(texteditb2.get_attribute("value"), "TextEditB2 - Text");
+        self.assertEqual(plaintexteditc1.get_attribute("value"), "PlainTextEditC1 - Text");
+        self.assertEqual(plaintexteditc2.get_attribute("value"), "PlainTextEditC2 - Text");
+        self.assertEqual(labeld1.get_attribute("innerHTML"), "LabelD1 - Text");
+
+        self.assertEqual(lineedita1.get_attribute("type"), "text");
+        self.assertEqual(lineedita2.get_attribute("type"), "text");
+        self.assertEqual(lineedita3.get_attribute("type"), "password");
+        self.assertEqual(lineedita4.get_attribute("type"), "password");
+        self.assertEqual(lineedita5.get_attribute("type"), "password");
+        self.assertEqual(texteditb1.get_attribute("type"), "text");
+        self.assertEqual(texteditb2.get_attribute("type"), "text");
+        self.assertEqual(plaintexteditc1.get_attribute("type"), "text");
+        self.assertEqual(plaintexteditc2.get_attribute("type"), "text");
+        self.assertEqual(labeld1.get_attribute("type"), None);
+
+        self.assertEqual(lineedita1.get_attribute("readonly"), None);
+        self.assertEqual(lineedita2.get_attribute("readonly"), "true");
+        self.assertEqual(lineedita3.get_attribute("readonly"), None);
+        self.assertEqual(lineedita4.get_attribute("readonly"), None);
+        self.assertEqual(lineedita5.get_attribute("readonly"), None);
+        self.assertEqual(texteditb1.get_attribute("readonly"), None);
+        self.assertEqual(texteditb2.get_attribute("readonly"), "true");
+        self.assertEqual(plaintexteditc1.get_attribute("readonly"), None);
+        self.assertEqual(plaintexteditc2.get_attribute("readonly"), "true");
+        self.assertEqual(labeld1.get_attribute("readonly"), None);
+
+        self.assertEqual(lineedita1.get_dom_attribute("aria-label"), None);
+        self.assertEqual(lineedita2.get_dom_attribute("aria-label"), None);
+        self.assertEqual(lineedita3.get_dom_attribute("aria-label"), None);
+        self.assertEqual(lineedita4.get_dom_attribute("aria-label"), None);
+        self.assertEqual(lineedita5.get_dom_attribute("aria-label"), None);
+        self.assertEqual(texteditb1.get_dom_attribute("aria-label"), None);
+        self.assertEqual(texteditb2.get_dom_attribute("aria-label"), None);
+        self.assertEqual(plaintexteditc1.get_dom_attribute("aria-label"), None);
+        self.assertEqual(plaintexteditc2.get_dom_attribute("aria-label"), None);
+        self.assertEqual(labeld1.get_dom_attribute("aria-label"), None);
+        w0.close();
+        clearWidgets(self._driver)
+
+    def test_zz_a11y_group_box(self):
+        screen = Screen(self._driver, ScreenPosition.FIXED,
+                    x=0, y=0, width=600, height=600)
+
+        w0 = Widget(self._driver, "w0", 4);
+        w0.show();
+
+        box1Label = screen.find_element(By.ID, f'GroupBox1');
+        box2Checkbox = screen.find_element(By.ID, f'GroupBox2');
+        label1 = screen.find_element(By.ID, f'Label1');
+        label2 = screen.find_element(By.ID, f'Label2');
+        button1 = screen.find_element(By.ID, f'Button1');
+        button2 = screen.find_element(By.ID, f'Button2');
+        checkbox2 = box2Checkbox.find_element(By.XPATH, ".//input");
+        box1LabelDB = screen.find_element(By.ID, box1Label.get_attribute("aria-describedby"));
+        box2CheckboxDB = screen.find_element(By.ID, box2Checkbox.get_attribute("aria-describedby"));
+
+        box1LabelLB = screen.find_element(By.ID, box1Label.get_attribute("aria-labelledby"));
+        box2CheckboxLB = screen.find_element(By.ID, box2Checkbox.get_attribute("aria-labelledby"));
+
+        label1DB = screen.find_element(By.ID, label1.get_attribute("aria-describedby"));
+        label2DB = screen.find_element(By.ID, label2.get_attribute("aria-describedby"));
+        button1DB = screen.find_element(By.ID, button1.get_attribute("aria-describedby"));
+        button2DB = screen.find_element(By.ID, button2.get_attribute("aria-describedby"));
+
+        self.assertEqual(box1LabelDB.get_attribute("innerHTML"), "GroupBox1 - Description");
+        self.assertEqual(box2CheckboxDB.get_attribute("innerHTML"), "GroupBox2 - Description");
+        self.assertEqual(label1DB.get_attribute("innerHTML"), "Label1 - Description");
+        self.assertEqual(label2DB.get_attribute("innerHTML"), "Label2 - Description");
+        self.assertEqual(button1DB.get_attribute("innerHTML"), "Button1 - Description");
+        self.assertEqual(button2DB.get_attribute("innerHTML"), "Button2 - Description");
+
+        self.assertEqual(box1LabelLB.get_attribute("innerHTML"), "Group1");
+        self.assertEqual(box2CheckboxLB.get_attribute("innerHTML"), "Group2");
+        self.assertEqual(checkbox2.get_attribute("type"), "checkbox");
+        self.assertEqual(checkbox2.get_attribute("checked"), "true");
+        self.assertEqual(label1.get_attribute("innerHTML"), "Label1");
+        self.assertEqual(label2.get_attribute("innerHTML"), "Label2");
+        self.assertEqual(button1.get_attribute("aria-label"), "Button1");
+        self.assertEqual(button2.get_attribute("aria-label"), "Button2");
+        w0.close();
+        clearWidgets(self._driver);
+
+    #
+    #  This is a manual test
+    # The reason is that the color readback works
+    # even if the display is incorrect
+    #
+    def test_opengl_context_reuse_after_doneCurrent(self):
+        # QTBUG-145723: doneCurrent() must not invalidate a QOpenGLContext;
+        # the context must stay valid and be reusable for a subsequent
+        # makeCurrent() on the same surface.
+        result = call_instance_function(self._driver, 'testContextReuse')
+        self.assertTrue(result['created'])
+        self.assertTrue(result['makeCurrent1'])
+        self.assertTrue(result['validAfterMakeCurrent1'])
+        self.assertTrue(result['validAfterDoneCurrent'])
+        self.assertTrue(result['makeCurrent2'])
+        self.assertTrue(result['validAfterMakeCurrent2'])
+
+    def test_native_widgets(self):
+        screen = Screen(self._driver, ScreenPosition.FIXED,
+                    x=0, y=0, width=600, height=1200)
+
+        w0 = Widget(self._driver, "w0", 1)
+        w0.show()
+
+        color = w0.color_at(100, 150)
+        self.assertEqual(color.r, 255)
+        self.assertEqual(color.g, 255)
+        self.assertEqual(color.b, 255)
+        self.assertEqual(w0.hasFocus(), True)
+        w0.close();
+        clearWidgets(self._driver)
 
     def test_hasFocus_returnsFalse_whenSetNoFocusShowWasCalled(self):
         screen = Screen(self._driver, ScreenPosition.FIXED,
@@ -34,6 +321,12 @@ class WidgetTestCase(unittest.TestCase):
 
         w0 = Widget(self._driver, "w0")
         w0.show()
+        w0.showToolTip()
+
+        #
+        # Wait for tooltip to disappear
+        #
+        time.sleep(60)
         self.assertEqual(w0.hasFocus(), True)
 
         w1 = Widget(self._driver, "w1")
@@ -60,6 +353,52 @@ class WidgetTestCase(unittest.TestCase):
         self.assertEqual(w1.hasFocus(), False)
         self.assertEqual(w2.hasFocus(), False)
         self.assertEqual(w3.hasFocus(), True)
+
+        w3.close();
+        self.assertEqual(w0.hasFocus(), False)
+        self.assertEqual(w1.hasFocus(), False)
+        self.assertEqual(w2.hasFocus(), True)
+
+        w2.close();
+        self.assertEqual(w0.hasFocus(), True)
+        self.assertEqual(w1.hasFocus(), False)
+
+        w1.close();
+        self.assertEqual(w0.hasFocus(), True)
+
+        clearWidgets(self._driver)
+
+    #Looks weird, no asserts, the test is that
+    #the test itself finishes
+    def test_showContextMenu_doesNotDeadlock(self):
+        screen = Screen(self._driver, ScreenPosition.FIXED,
+                   x=0, y=0, width=600, height=1200)
+
+        w0 = Widget(self._driver, "w0")
+        w0.show()
+        w0.showContextMenu()
+        w0.showToolTip()
+
+        w1 = Widget(self._driver, "w1")
+        w1.setNoFocusShow()
+        w1.show()
+        w1.showContextMenu()
+        w1.showToolTip()
+
+        w2 = Widget(self._driver, "w2")
+        w2.show()
+        w2.showContextMenu()
+        w2.showToolTip()
+
+        w3 = Widget(self._driver,  "w3")
+        w3.setNoFocusShow()
+        w3.show()
+        w3.showContextMenu()
+        w3.showToolTip()
+
+        w3.activate();
+        w3.showContextMenu()
+        w3.showToolTip();
 
         clearWidgets(self._driver)
 
@@ -91,7 +430,7 @@ class WidgetTestCase(unittest.TestCase):
         window.drag(Handle.BOTTOM_LEFT, direction=DOWN(10) + LEFT(10))
         self.assertEqual(window.rect, Rect(x=80, y=95, width=210, height=230))
 
-        window.drag(Handle.LEFT, direction=DOWN(343) + LEFT(5))
+        window.drag(Handle.LEFT, direction=DOWN(30) + LEFT(5))
         self.assertEqual(window.rect, Rect(x=75, y=95, width=215, height=230))
 
         window.drag(Handle.BOTTOM_RIGHT, direction=UP(150) + LEFT(150))
@@ -157,43 +496,41 @@ class WidgetTestCase(unittest.TestCase):
 
     def test_multitouch_window_move(self):
         screen = Screen(self._driver, ScreenPosition.FIXED,
-                        x=0, y=0, width=800, height=800)
+                        x=0, y=0, width=600, height=600)
         windows = [Window(screen, rect=Rect(x=50, y=50, width=100, height=100), title='First'),
-                   Window(screen, rect=Rect(x=400, y=400, width=100, height=100), title='Second'),
-                   Window(screen, rect=Rect(x=50, y=400, width=100, height=100), title='Third')]
+                   Window(screen, rect=Rect(x=250, y=250, width=100, height=100), title='Second'),
+                   Window(screen, rect=Rect(x=50, y=250, width=100, height=100), title='Third')]
 
         self.assertEqual(windows[0].rect, Rect(x=50, y=50, width=100, height=100))
-        self.assertEqual(windows[1].rect, Rect(x=400, y=400, width=100, height=100))
-        self.assertEqual(windows[2].rect, Rect(x=50, y=400, width=100, height=100))
+        self.assertEqual(windows[1].rect, Rect(x=250, y=250, width=100, height=100))
+        self.assertEqual(windows[2].rect, Rect(x=50, y=250, width=100, height=100))
 
         actions = [TouchDragAction(origin=windows[0].at(Handle.TOP_WINDOW_BAR), direction=DOWN(20) + RIGHT(20)),
                    TouchDragAction(origin=windows[1].at(Handle.TOP_WINDOW_BAR), direction=DOWN(20) + LEFT(20)),
                    TouchDragAction(origin=windows[2].at(Handle.TOP_WINDOW_BAR), direction=UP(20) + RIGHT(20))]
         perform_touch_drag_actions(actions)
         self.assertEqual(windows[0].rect, Rect(x=70, y=70, width=100, height=100))
-        self.assertEqual(windows[1].rect, Rect(x=380, y=420, width=100, height=100))
-        self.assertEqual(windows[2].rect, Rect(x=70, y=380, width=100, height=100))
+        self.assertEqual(windows[1].rect, Rect(x=230, y=270, width=100, height=100))
+        self.assertEqual(windows[2].rect, Rect(x=70, y=230, width=100, height=100))
 
-    #TODO FIX IN CI
-    @unittest.skip('Skip temporarily')
     def test_multitouch_window_resize(self):
         screen = Screen(self._driver, ScreenPosition.FIXED,
-                        x=0, y=0, width=800, height=800)
-        windows = [Window(screen, rect=Rect(x=50, y=50, width=150, height=150), title='First'),
-                   Window(screen, rect=Rect(x=400, y=400, width=150, height=150), title='Second'),
-                   Window(screen, rect=Rect(x=50, y=400, width=150, height=150), title='Third')]
+                        x=0, y=0, width=600, height=600)
+        windows = [Window(screen, rect=Rect(x=50, y=50, width=100, height=100), title='First'),
+                   Window(screen, rect=Rect(x=200, y=200, width=100, height=100), title='Second'),
+                   Window(screen, rect=Rect(x=50, y=200, width=100, height=100), title='Third')]
 
-        self.assertEqual(windows[0].rect, Rect(x=50, y=50, width=150, height=150))
-        self.assertEqual(windows[1].rect, Rect(x=400, y=400, width=150, height=150))
-        self.assertEqual(windows[2].rect, Rect(x=50, y=400, width=150, height=150))
+        self.assertEqual(windows[0].rect, Rect(x=50, y=50, width=100, height=100))
+        self.assertEqual(windows[1].rect, Rect(x=200, y=200, width=100, height=100))
+        self.assertEqual(windows[2].rect, Rect(x=50, y=200, width=100, height=100))
 
         actions = [TouchDragAction(origin=windows[0].at(Handle.TOP_LEFT), direction=DOWN(20) + RIGHT(20)),
                    TouchDragAction(origin=windows[1].at(Handle.TOP), direction=DOWN(20) + LEFT(20)),
                    TouchDragAction(origin=windows[2].at(Handle.BOTTOM_RIGHT), direction=UP(20) + RIGHT(20))]
         perform_touch_drag_actions(actions)
-        self.assertEqual(windows[0].rect, Rect(x=70, y=70, width=130, height=130))
-        self.assertEqual(windows[1].rect, Rect(x=400, y=420, width=150, height=130))
-        self.assertEqual(windows[2].rect, Rect(x=50, y=400, width=170, height=130))
+        self.assertEqual(windows[0].rect, Rect(x=70, y=70, width=80, height=80))
+        self.assertEqual(windows[1].rect, Rect(x=200, y=220, width=100, height=80))
+        self.assertEqual(windows[2].rect, Rect(x=50, y=200, width=120, height=80))
 
     def test_newly_created_window_gets_keyboard_focus(self):
         screen = Screen(self._driver, ScreenPosition.FIXED,
@@ -381,7 +718,7 @@ class WidgetTestCase(unittest.TestCase):
                         x=0, y=0, width=800, height=800)
 
         bottom = Window(parent=screen, rect=Rect(x=800, y=800, width=300, height=300), title='root')
-        bottom.close()
+        # Do not close bottom here, it will terminate the application
 
         w1 = Window(parent=screen, rect=Rect(x=50, y=50, width=300, height=300), title='w1')
         w2 = Window(parent=screen, rect=Rect(x=50, y=50, width=300, height=300), title='w2')
@@ -593,11 +930,21 @@ class Screen:
         shadow_container = self.element.find_element(By.CSS_SELECTOR, f'#qt-shadow-container')
         return [
             Window(self, element=element) for element in shadow_container.shadow_root.find_elements(
-                    By.CSS_SELECTOR, f'div#{self.name} > div.qt-window')]
+                    By.CSS_SELECTOR, f'div#{self.name} > div.qt-decorated-window')]
 
     def find_element(self, method, query):
         shadow_container = self.element.find_element(By.CSS_SELECTOR, f'#qt-shadow-container')
         return shadow_container.shadow_root.find_element(method, query)
+
+    def click(self, element):
+        ActionChains(self.driver).move_to_element(
+            element).click().perform()
+
+    def focus(self, element):
+        self.driver.execute_script("arguments[0].focus();", element);
+
+    def has_focus(self, element):
+        return self.driver.execute_script("return document.activeElement = arguments[0];", element);
 
 def clearWidgets(driver):
     driver.execute_script(
@@ -607,15 +954,58 @@ def clearWidgets(driver):
         )
 
 class Widget:
-    def __init__(self, driver, name):
+    def __init__(self, driver, name, isNative=0):
         self.name=name
         self.driver=driver
 
-        self.driver.execute_script(
-            f'''
-                instance.createWidget('{self.name}');
-            '''
-        )
+        if isNative == 0:
+            self.driver.execute_script(
+                f'''
+                    instance.createWidget('{self.name}');
+                '''
+            )
+        if isNative == 1:
+            self.driver.execute_script(
+                f'''
+                    instance.createNativeWidget('{self.name}');
+                '''
+            )
+
+        if isNative == 2:
+            self.driver.execute_script(
+                f'''
+                    instance.createNativeA11yButtonWidgets('{self.name}');
+                '''
+            )
+
+        if isNative == 3:
+            self.driver.execute_script(
+                f'''
+                    instance.createNativeA11yTextWidgets('{self.name}');
+                '''
+            )
+
+        if isNative == 4:
+            self.driver.execute_script(
+                f'''
+                    instance.createNativeA11yGroupBoxWidgets('{self.name}');
+                '''
+            )
+
+        if isNative == 5:
+            self.driver.execute_script(
+                f'''
+                    instance.createNativeA11yComboBoxWidgets('{self.name}');
+                '''
+            )
+
+        if isNative == 1:
+            information = self.__window_information()
+            self.screen = Screen(self.driver, screen_name=information['screen']['name'])
+
+            self._window_id = self.__window_information()['id']
+            self.element = self.screen.find_element(
+                    By.CSS_SELECTOR, f'#qt-window-{self._window_id}')
 
     def setNoFocusShow(self):
         self.driver.execute_script(
@@ -641,6 +1031,45 @@ class Widget:
             '''
         )
 
+    def color_at(self, x, y):
+        raw = self.driver.execute_script(
+            f'''
+                return arguments[0].querySelector('canvas')
+                    .getContext('2d').getImageData({x}, {y}, 1, 1).data;
+            ''', self.element)
+        return Color(r=raw[0], g=raw[1], b=raw[2])
+
+    def __window_information(self):
+        information = call_instance_function(self.driver, 'windowInformation')
+        return next(filter(lambda e: e['title'] == "Dialog", information))
+
+    def showContextMenu(self):
+        self.driver.execute_script(
+            f'''
+                instance.showContextMenuWidget('{self.name}');
+            '''
+        )
+
+    def showToolTip(self):
+        self.driver.execute_script(
+            f'''
+                instance.showToolTipWidget('{self.name}');
+            '''
+        )
+
+    def setComboMenu(self):
+        self.driver.execute_script(
+            f'''
+                instance.setWidgetComboMenu('{self.name}');
+            '''
+        )
+
+    def close(self):
+        self.driver.execute_script(
+            f'''
+                instance.closeWidget('{self.name}');
+            '''
+        )
 
 class Window:
     def __init__(self, parent=None, rect=None, title=None, element=None, visible=True, opengl=0):

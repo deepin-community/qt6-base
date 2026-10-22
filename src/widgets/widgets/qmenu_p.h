@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMENU_P_H
 #define QMENU_P_H
@@ -103,13 +104,14 @@ public:
 
     void initialize(QMenu *menu)
     {
+        const auto style = menu->style();
         m_menu = menu;
-        m_uni_directional = menu->style()->styleHint(QStyle::SH_Menu_SubMenuUniDirection, nullptr, menu);
-        m_uni_dir_fail_at_count = short(menu->style()->styleHint(QStyle::SH_Menu_SubMenuUniDirectionFailCount, nullptr, menu));
-        m_select_other_actions = menu->style()->styleHint(QStyle::SH_Menu_SubMenuSloppySelectOtherActions, nullptr , menu);
-        m_timeout = short(menu->style()->styleHint(QStyle::SH_Menu_SubMenuSloppyCloseTimeout));
-        m_discard_state_when_entering_parent = menu->style()->styleHint(QStyle::SH_Menu_SubMenuResetWhenReenteringParent);
-        m_dont_start_time_on_leave = menu->style()->styleHint(QStyle::SH_Menu_SubMenuDontStartSloppyOnLeave);
+        m_uni_directional = style->styleHint(QStyle::SH_Menu_SubMenuUniDirection, nullptr, menu);
+        m_uni_dir_fail_at_count = short(style->styleHint(QStyle::SH_Menu_SubMenuUniDirectionFailCount, nullptr, menu));
+        m_select_other_actions = style->styleHint(QStyle::SH_Menu_SubMenuSloppySelectOtherActions, nullptr, menu);
+        m_timeout = short(style->styleHint(QStyle::SH_Menu_SubMenuSloppyCloseTimeout, nullptr, menu));
+        m_discard_state_when_entering_parent = style->styleHint(QStyle::SH_Menu_SubMenuResetWhenReenteringParent, nullptr, menu);
+        m_dont_start_time_on_leave = style->styleHint(QStyle::SH_Menu_SubMenuDontStartSloppyOnLeave, nullptr, menu);
         reset();
     }
 
@@ -326,13 +328,9 @@ public:
 
     //selection
     static QMenu *mouseDown;
-    QPoint mousePopupPos;
+    QPointF mousePopupPos;
 
     QAction *currentAction = nullptr;
-#ifdef QT_KEYPAD_NAVIGATION
-    QAction *selectAction = nullptr;
-    QAction *cancelAction = nullptr;
-#endif
     struct DelayState {
         DelayState()
         { }
@@ -360,12 +358,19 @@ public:
     } delayState;
     enum SelectionReason {
         SelectedFromKeyboard,
-        SelectedFromElsewhere
+        SelectedFromAPI,
+        SelectedFromElsewhere,
+    };
+    enum class SelectionDirection {
+        Up,
+        Down,
     };
     QWidget *topCausedWidget() const;
     QAction *actionAt(QPoint p) const;
     void setFirstActionActive();
-    void setCurrentAction(QAction *, int popup = -1, SelectionReason reason = SelectedFromElsewhere, bool activateFirst = false);
+    void setCurrentAction(QAction *, int popup = -1, SelectionReason reason = SelectedFromElsewhere,
+                          SelectionDirection direction = SelectionDirection::Down,
+                          bool activateFirst = false);
     void popupAction(QAction *, int, bool);
     void setSyncAction();
 
@@ -435,7 +440,7 @@ public:
     void _q_actionHovered();
     void _q_platformMenuAboutToShow();
 
-    bool hasMouseMoved(const QPoint &globalPos);
+    bool hasMouseMoved(const QPointF &globalPos) const;
 
     void updateLayoutDirection();
 
@@ -463,6 +468,16 @@ public:
     void drawScroller(QPainter *painter, ScrollerTearOffItem::Type type, const QRect &rect);
     void drawTearOff(QPainter *painter, const QRect &rect);
     QRect rect() const;
+
+    bool considerAction(const QAction *action) const
+    {
+        Q_Q(const QMenu);
+        if (!action || action->isSeparator())
+            return false;
+        if (action->isEnabled())
+            return true;
+        return q->style()->styleHint(QStyle::SH_Menu_AllowActiveAndDisabled, nullptr, q);
+    }
 
     mutable uint maxIconWidth = 0;
     mutable uint tabWidth = 0;

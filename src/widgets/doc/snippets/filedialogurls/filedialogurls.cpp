@@ -6,7 +6,7 @@
 
 int loadFileDialog()
 {
-//![0]
+    //![0]
     QList<QUrl> urls;
     urls << QUrl::fromLocalFile("/Users/foo/Code/qt5")
          << QUrl::fromLocalFile(QStandardPaths::standardLocations(QStandardPaths::MusicLocation).first());
@@ -17,6 +17,6 @@ int loadFileDialog()
     if (dialog.exec()) {
         // ...
     }
-//![0]
+    //![0]
     return 1;
 }

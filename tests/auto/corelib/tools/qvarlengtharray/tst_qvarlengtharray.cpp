@@ -298,6 +298,19 @@ void tst_QVarLengthArray::move(T t1, T t2)
         QCOMPARE(v.size(), 2);
         QCOMPARE(v[0], t1);
         QCOMPARE(v[1], t2);
+
+        QVarLengthArray<T, N> v2;
+        v2.append(t1);
+        v2.append(t1);
+        v2.append(t2);
+        v2.append(t2);
+
+        v = std::move(v2);
+        QCOMPARE(v.size(), 4);
+        QCOMPARE(v[0], t1);
+        QCOMPARE(v[1], t1);
+        QCOMPARE(v[2], t2);
+        QCOMPARE(v[3], t2);
     }
 }
 
@@ -1171,11 +1184,11 @@ void tst_QVarLengthArray::squeeze()
     list.resize(0);
     QCOMPARE(list.capacity(), sizeOnStack);
     list.resize(sizeOnHeap);
-    QCOMPARE(list.capacity(), sizeOnHeap);
+    QCOMPARE_GE(list.capacity(), sizeOnHeap);
     list.resize(sizeOnStack);
-    QCOMPARE(list.capacity(), sizeOnHeap);
+    QCOMPARE_GE(list.capacity(), sizeOnHeap);
     list.resize(0);
-    QCOMPARE(list.capacity(), sizeOnHeap);
+    QCOMPARE_GE(list.capacity(), sizeOnHeap);
     list.squeeze();
     QCOMPARE(list.capacity(), sizeOnStack);
     list.resize(sizeOnStack);
@@ -1183,7 +1196,7 @@ void tst_QVarLengthArray::squeeze()
     QCOMPARE(list.capacity(), sizeOnStack);
     list.resize(sizeOnHeap);
     list.squeeze();
-    QCOMPARE(list.capacity(), sizeOnHeap);
+    QCOMPARE_GE(list.capacity(), sizeOnHeap);
 }
 
 void tst_QVarLengthArray::operators()
@@ -1545,14 +1558,14 @@ void tst_QVarLengthArray::reserve()
 
     arr.reserve(150);
     // Allocate memory on heap, as we reserve more than pre-allocated
-    QCOMPARE(arr.capacity(), 150);
+    QCOMPARE_GE(arr.capacity(), 150);
     QCOMPARE(arr.size(), 0);
     const auto *heapPtr = arr.constData();
     QVERIFY(heapPtr != stackPtr);
 
     arr.reserve(50);
     // Nothing changed
-    QCOMPARE(arr.capacity(), 150);
+    QCOMPARE_GE(arr.capacity(), 150);
     QCOMPARE(arr.constData(), heapPtr);
 
     arr.squeeze();
@@ -1701,7 +1714,7 @@ void tst_QVarLengthArray::remove()
     arr.remove(1, 3);
     QCOMPARE(arr, QVarLengthArray<QString>({ "val0", "val1", "val2", "val0", "val1", "val2" }));
 
-    arr.remove(2);
+    arr.removeAt(2);
     QCOMPARE(arr, QVarLengthArray<QString>({ "val0", "val1", "val0", "val1", "val2" }));
 
     QVERIFY(arr.removeOne("val1"));

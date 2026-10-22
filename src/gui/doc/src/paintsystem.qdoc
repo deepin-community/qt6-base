@@ -22,14 +22,15 @@
 /*!
     \page paintsystem.html
     \title Paint System
-    \brief A system for painting on the screen or on print devices using the same API
+    \brief A system for painting on the screen or on print devices using the same API.
     \ingroup qt-graphics
     \ingroup frameworks-technologies
     \ingroup qt-basic-concepts
 
 
-    Qt's paint system enables painting on screen and print devices
-    using the same API, and is primarily based on the QPainter,
+    Qt's paint system provides a unified and flexible framework for
+    rendering graphics on various surfaces, such as on-screen widgets,
+    images, and printed pages. It is primarily built around the QPainter,
     QPaintDevice, and QPaintEngine classes.
 
     QPainter is used to perform drawing operations, QPaintDevice is an
@@ -40,7 +41,8 @@
     QPaintDevice, and is hidden from application programmers unless
     they create their own device type.
 
-    \image paintsystem-core.png
+    \image paintsystem-core.png {Illustration showing the relations of
+           the paint system}
 
     The main benefit of this approach is that all painting follows the
     same painting pipeline making it easy to add support for new
@@ -174,7 +176,7 @@
 
     \table 100%
     \row
-    \li \image paintsystem-painterpath.png
+    \li \image paintsystem-painterpath.png {Qt logo}
     \li \b QPainterPath
 
     A painter path is an object composed of lines and curves. For
@@ -230,7 +232,8 @@
     antialias edges of primitives if possible, i.e. smoothing the
     edges by using different color intensities.
 
-    \li \image paintsystem-antialiasing.png
+    \li \image paintsystem-antialiasing.png {Screenshot showing a drawing
+               that was rendered with antialiasing}
 
     \endtable
 
@@ -242,8 +245,7 @@
     Any color in Qt is represented by the QColor class which supports
     the RGB, HSV and CMYK color models. QColor also support
     alpha-blended outlining and filling (specifying the transparency
-    effect), and the class is platform and device independent (the
-    colors are mapped to hardware using the QColormap class). For more
+    effect), and the class is platform and device independent. For more
     information, see the QColor class documentation.
 
     The available fill patterns are described by the Qt::BrushStyle
@@ -255,13 +257,15 @@
 
     \table 100%
     \row
-    \li \image paintsystem-fancygradient.png
+    \li \image paintsystem-fancygradient.png {Screenshot of the gradient
+               example}
     \li \b QGradient
 
     The QGradient class is used in combination with QBrush to specify
     gradient fills.
 
-    \image paintsystem-gradients.png
+    \image paintsystem-gradients.png {Illustration that shows three
+           different supported ways gradients can be used}
 
     Qt currently supports three types of gradient fills: Linear
     gradients interpolate colors between start and end points, radial
@@ -300,7 +304,9 @@
     provides various functions for both running and controlling the
     given animation.
 
-    \li \image paintsystem-movie.png
+    \li \image paintsystem-movie.png {Screenshot showing how creating
+               an animation with QMovie looks by separating the
+               animation into individual images}
     \endtable
 
     The QImageReader and QImageWriter classes rely on the

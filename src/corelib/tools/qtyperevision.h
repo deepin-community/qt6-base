@@ -2,6 +2,7 @@
 // Copyright (C) 2022 Intel Corporation.
 // Copyright (C) 2015 Keith Gardner <kreios4004@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QTYPEREVISION_H
 #define QTYPEREVISION_H
@@ -45,9 +46,11 @@ public:
     static constexpr bool isValidSegment(Integer segment)
     {
         // using extra parentheses around max to avoid expanding it if it is a macro
+        // and adding zero to cause it to be promoted
+        constexpr auto Max = (std::numeric_limits<Integer>::max)() + 0;
+        constexpr bool HasSufficientRange = Max >= SegmentUnknown;
         return segment >= Integer(0)
-                && ((std::numeric_limits<Integer>::max)() < Integer(SegmentUnknown)
-                    || segment < Integer(SegmentUnknown));
+                && (!HasSufficientRange || segment < Integer(SegmentUnknown));
     }
 
     template<typename Major, typename Minor,

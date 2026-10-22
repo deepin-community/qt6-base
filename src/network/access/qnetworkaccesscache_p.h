@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKACCESSCACHE_P_H
 #define QNETWORKACCESSCACHE_P_H
@@ -22,6 +23,8 @@
 #include <QtCore/qflags.h>
 #include "QtCore/qhash.h"
 #include "QtCore/qmetatype.h"
+
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -49,7 +52,7 @@ public:
             Expires = 0x01,
             Shareable = 0x02,
         };
-        typedef QFlags<Option> Options; // #### QTBUG-127269
+        typedef QFlags<Option> Options;
 
         virtual ~CacheableObject();
         virtual void dispose() = 0;
@@ -62,14 +65,11 @@ public:
 
     void clear();
 
-    void addEntry(const QByteArray &key, CacheableObject *entry, qint64 connectionCacheExpiryTimeoutSeconds = -1);
+    void addEntry(const QByteArray &key, CacheableObject *entry, std::optional<qint64> connectionCacheExpiryTimeoutSeconds = std::nullopt);
     bool hasEntry(const QByteArray &key) const;
     CacheableObject *requestEntryNow(const QByteArray &key);
     void releaseEntry(const QByteArray &key);
     void removeEntry(const QByteArray &key);
-
-signals:
-    void entryReady(QNetworkAccessCache::CacheableObject *);
 
 protected:
     void timerEvent(QTimerEvent *) override;
@@ -85,7 +85,6 @@ private:
     void linkEntry(const QByteArray &key);
     bool unlinkEntry(const QByteArray &key);
     void updateTimer();
-    bool emitEntryReady(Node *node, QObject *target, const char *member);
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QNetworkAccessCache::CacheableObject::Options)

@@ -1,6 +1,8 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
+
 #include "qlibrary.h"
 #include "qlibrary_p.h"
 
@@ -55,7 +57,7 @@ static constexpr bool QtBuildIsDebug = true;
 #endif
 
 Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(qt_lcDebugPlugins, "QT_DEBUG_PLUGINS", "qt.core.plugin.loader")
-static Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(lcDebugLibrary, "QT_DEBUG_PLUGINS", "qt.core.library")
+Q_STATIC_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(lcDebugLibrary, "QT_DEBUG_PLUGINS", "qt.core.library")
 
 /*!
     \class QLibrary
@@ -177,7 +179,7 @@ static QLibraryScanResult qt_find_pattern(const char *s, qsizetype s_len, QStrin
     return QElfParser::parse({s, s_len}, errMsg);
 #elif defined(Q_OF_MACH_O)
     return QMachOParser::parse(s, s_len, errMsg);
-#elif defined(Q_OS_WIN)
+#elif defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
     return QCoffPeParser::parse({s, s_len}, errMsg);
 #else
 #   warning "Qt does not know how to efficiently parse your platform's binary format; using slow fall-back."
@@ -615,7 +617,7 @@ QtPluginInstanceFunction QLibraryPrivate::loadPlugin()
  */
 bool QLibrary::isLibrary(const QString &fileName)
 {
-#if defined(Q_OS_WIN)
+#if defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
     return fileName.endsWith(".dll"_L1, Qt::CaseInsensitive);
 #else // Generic Unix
 # if defined(Q_OS_DARWIN)
@@ -678,7 +680,7 @@ bool QLibrary::isLibrary(const QString &fileName)
 static bool qt_get_metadata(QLibraryPrivate *priv, QString *errMsg)
 {
     auto error = [=](QString &&explanation) {
-        *errMsg = QLibrary::tr("'%1' is not a Qt plugin (%2)").arg(priv->fileName, std::move(explanation));
+        *errMsg = QLibrary::tr("'%1' is not a Qt plugin (%2)").arg(priv->fileName, explanation);
         return false;
     };
 

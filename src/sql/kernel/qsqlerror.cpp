@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsqlerror.h"
 #include "qdebug.h"
@@ -78,25 +79,23 @@ QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QSqlErrorPrivate)
 */
 
 /*! \fn QSqlError::swap(QSqlError &other)
-    Swaps error \a other with this error. This operation is very fast
-    and never fails.
-
+    \memberswap{error}
     \since 5.10
 */
 
 /*!
     Constructs an error containing the driver error text \a
     driverText, the database-specific error text \a databaseText, the
-    type \a type and the error code \a code.
+    type \a type and the native error code \a nativeErrorCode.
 */
 QSqlError::QSqlError(const QString &driverText, const QString &databaseText,
-                     ErrorType type, const QString &code)
+                     ErrorType type, const QString &nativeErrorCode)
     : d(new QSqlErrorPrivate)
 {
     d->driverError = driverText;
     d->databaseError = databaseText;
     d->errorType = type;
-    d->errorCode = code;
+    d->errorCode = nativeErrorCode;
 }
 
 
@@ -178,8 +177,8 @@ QSqlError::ErrorType QSqlError::type() const
 }
 
 /*!
-    Returns the database-specific error code, or an empty string if
-    it cannot be determined.
+    Returns the database-specific (native) error code, or an empty
+    string if it cannot be determined.
     \note Some drivers (like DB2 or ODBC) may return more than one
     error code. When this happens, \c ; is used as separator between
     the error codes.

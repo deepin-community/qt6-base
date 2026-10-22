@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpicture.h"
 #include <private/qpicture_p.h>
@@ -26,9 +27,16 @@
 
 QT_BEGIN_NAMESPACE
 
-void qt_format_text(const QFont &fnt, const QRectF &_r,
-                    int tf, const QTextOption *opt, const QString& str, QRectF *brect,
-                    int tabstops, int *, int tabarraylen,
+void qt_format_text(const QFont &fnt,
+                    const QRectF &_r,
+                    int tf,
+                    int alignment,
+                    const QTextOption *opt,
+                    const QString& str,
+                    QRectF *brect,
+                    int tabstops,
+                    int *,
+                    int tabarraylen,
                     QPainter *painter);
 
 /*!
@@ -69,6 +77,10 @@ void qt_format_text(const QFont &fnt, const QRectF &_r,
     picture is available, for example, size(), isNull() and
     boundingRect().
 
+    \note QPicture uses QDataStream for serialization. The
+    \l {QDataStream#Corruption and Security}{same reservations} against
+    reading untrusted data apply.
+
     \sa QMovie
 */
 
@@ -80,7 +92,7 @@ void qt_format_text(const QFont &fnt, const QRectF &_r,
     \since 5.2
 */
 
-const char  *qt_mfhdr_tag = "QPIC"; // header tag
+const char *const qt_mfhdr_tag = "QPIC"; // header tag
 static const quint16 mfhdr_maj = QDataStream::Qt_DefaultCompiledVersion; // major version #
 static const quint16 mfhdr_min = 0; // minor version #
 
@@ -612,21 +624,46 @@ bool QPicture::exec(QPainter *painter, QDataStream &s, int nrecords)
                 s >> justificationWidth;
 
                 int flags = Qt::TextSingleLine | Qt::TextDontClip | Qt::TextForceLeftToRight;
+                int alignment = 0;
 
                 QSizeF size(1, 1);
                 if (justificationWidth > 0) {
                     size.setWidth(justificationWidth);
                     flags |= Qt::TextJustificationForced;
-                    flags |= Qt::AlignJustify;
+                    alignment |= Qt::AlignJustify;
                 }
 
-                QFontMetrics fm(fnt);
-                QPointF pt(p.x(), p.y() - fm.ascent());
-                qt_format_text(fnt, QRectF(pt, size), flags, /*opt*/nullptr,
-                               str, /*brect=*/nullptr, /*tabstops=*/0, /*...*/nullptr, /*tabarraylen=*/0, painter);
+                QPointF pt(p.x(), p.y());
+                if (d->formatMajor >= QDataStream::Qt_6_11) {
+                    alignment |= Qt::AlignBaseline;
+                } else {
+                    QFontMetrics fm(fnt);
+                    pt.ry() -= fm.ascent();
+                }
+
+                qt_format_text(fnt,
+                               QRectF(pt, size),
+                               flags,
+                               alignment,
+                               /*opt*/nullptr,
+                               str,
+                               /*brect=*/nullptr,
+                               /*tabstops=*/0,
+                               /*...*/nullptr,
+                               /*tabarraylen=*/0,
+                               painter);
             } else {
-                qt_format_text(font, QRectF(p, QSizeF(1, 1)), Qt::TextSingleLine | Qt::TextDontClip, /*opt*/nullptr,
-                               str, /*brect=*/nullptr, /*tabstops=*/0, /*...*/nullptr, /*tabarraylen=*/0, painter);
+                qt_format_text(font,
+                               QRectF(p, QSizeF(1, 1)),
+                               Qt::TextSingleLine | Qt::TextDontClip,
+                               0,
+                               /*opt*/nullptr,
+                               str,
+                               /*brect=*/nullptr,
+                               /*tabstops=*/0,
+                               /*...*/nullptr,
+                               /*tabarraylen=*/0,
+                               painter);
             }
 
             break;
@@ -925,9 +962,7 @@ QPicture& QPicture::operator=(const QPicture &p)
 
 /*!
     \fn void QPicture::swap(QPicture &other)
-
-    Swaps picture \a other with this picture. This operation is very
-    fast and never fails.
+    \memberswap{picture}
 */
 
 /*!
@@ -936,7 +971,8 @@ QPicture& QPicture::operator=(const QPicture &p)
   Constructs a QPicturePrivate
 */
 QPicturePrivate::QPicturePrivate()
-    : in_memory_only(false)
+    : pictb(&pictbData),
+      in_memory_only(false)
 {
 }
 
@@ -946,7 +982,8 @@ QPicturePrivate::QPicturePrivate()
   Copy-Constructs a QPicturePrivate. Needed when detaching.
 */
 QPicturePrivate::QPicturePrivate(const QPicturePrivate &other)
-    : trecs(other.trecs),
+    : pictb(&pictbData),
+      trecs(other.trecs),
       formatOk(other.formatOk),
       formatMinor(other.formatMinor),
       brect(other.brect),

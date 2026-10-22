@@ -64,8 +64,8 @@ private slots:
 void tst_QOpenGLWidget::initTestCase()
 {
     // See QOpenGLWidget constructor
-    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::RasterGLSurface))
-        QSKIP("QOpenGLWidget is not supported on this platform.");
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::OpenGL))
+        QSKIP("OpenGL is not supported on this platform.");
 }
 
 void tst_QOpenGLWidget::create()
@@ -774,6 +774,13 @@ static QPixmap grabWidgetWithoutRepaint(const QWidget *widget, QRect clipArea)
 #endif
     QScreen *screen = window->screen();
     Q_ASSERT(screen);
+
+    []{
+        QTest::ThrowOnSkipEnabler throwOnSkip;
+        const auto platformIntegration = QGuiApplicationPrivate::platformIntegration();
+        if (!platformIntegration->hasCapability(QPlatformIntegration::ScreenWindowGrabbing))
+            QSKIP("QScreen::grabWindow is not supported in this config");
+    }();
 
     const QSize size = clipArea.size();
     const QPixmap result = screen->grabWindow(windowId,

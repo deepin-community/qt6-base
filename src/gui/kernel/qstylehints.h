@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTYLEHINTS_H
 #define QSTYLEHINTS_H
@@ -7,11 +8,13 @@
 #include <QtGui/qtguiglobal.h>
 #include <QtCore/qobject.h>
 
-QT_BEGIN_NAMESPACE
+#include <chrono>
 
+QT_BEGIN_NAMESPACE
 
 class QPlatformIntegration;
 class QStyleHintsPrivate;
+class QAccessibilityHints;
 
 class Q_GUI_EXPORT QStyleHints : public QObject
 {
@@ -56,6 +59,12 @@ class Q_GUI_EXPORT QStyleHints : public QObject
     Q_PROPERTY(int touchDoubleTapDistance READ touchDoubleTapDistance STORED false CONSTANT FINAL)
     Q_PROPERTY(Qt::ColorScheme colorScheme READ colorScheme WRITE setColorScheme
                RESET unsetColorScheme NOTIFY colorSchemeChanged FINAL)
+    Q_PROPERTY(bool menuSelectionWraps READ menuSelectionWraps STORED false CONSTANT FINAL REVISION(6, 10))
+    Q_PROPERTY(const QAccessibilityHints* accessibility READ accessibility CONSTANT FINAL REVISION(6, 10))
+    Q_PROPERTY(std::chrono::milliseconds toolTipWakeUpDelay READ toolTipWakeUpDelay
+               WRITE setToolTipWakeUpDelay NOTIFY toolTipWakeUpDelayChanged FINAL REVISION(6, 12))
+    Q_PROPERTY(int toolTipWakeUpDelayAsMSec READ toolTipWakeUpDelayAsMSec NOTIFY toolTipWakeUpDelayAsMSecChanged
+               FINAL REVISION(6, 12))
 
 public:
     void setMouseDoubleClickInterval(int mouseDoubleClickInterval);
@@ -84,6 +93,7 @@ public:
     void setShowShortcutsInContextMenus(bool showShortcutsInContextMenus);
     Qt::ContextMenuTrigger contextMenuTrigger() const;
     void setContextMenuTrigger(Qt::ContextMenuTrigger contextMenuTrigger);
+    bool menuSelectionWraps() const;
     int passwordMaskDelay() const;
     QChar passwordMaskCharacter() const;
     qreal fontSmoothingGamma() const;
@@ -101,6 +111,10 @@ public:
     Qt::ColorScheme colorScheme() const;
     void setColorScheme(Qt::ColorScheme scheme);
     void unsetColorScheme() { setColorScheme(Qt::ColorScheme::Unknown); }
+    const QAccessibilityHints* accessibility() const;
+    std::chrono::milliseconds toolTipWakeUpDelay() const;
+    void setToolTipWakeUpDelay(std::chrono::milliseconds toolTipWakeUpDelay);
+    int toolTipWakeUpDelayAsMSec() const;
 
 Q_SIGNALS:
     void cursorFlashTimeChanged(int cursorFlashTime);
@@ -116,6 +130,8 @@ Q_SIGNALS:
     void wheelScrollLinesChanged(int scrollLines);
     void mouseQuickSelectionThresholdChanged(int threshold);
     void colorSchemeChanged(Qt::ColorScheme colorScheme);
+    Q_REVISION(6, 12) void toolTipWakeUpDelayChanged(std::chrono::milliseconds toolTipWakeUpDelay);
+    Q_REVISION(6, 12) void toolTipWakeUpDelayAsMSecChanged(int toolTipWakeUpDelay);
 
 private:
     friend class QGuiApplication;

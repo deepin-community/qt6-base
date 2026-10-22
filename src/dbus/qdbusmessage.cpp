@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusmessage.h"
 #include "qdbusmessage_p.h"
@@ -109,7 +110,10 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
     case QDBusMessage::MethodCallMessage:
         // only service and interface can be empty -> path and name must not be empty
         if (!d_ptr->parametersValidated) {
-            if (!QDBusUtil::checkBusName(d_ptr->service, QDBusUtil::EmptyAllowed, error))
+            using namespace QDBusUtil;
+            AllowEmptyFlag serviceCheckMode = capabilities & QDBusConnectionPrivate::ConnectionIsBus
+                    ? EmptyNotAllowed : EmptyAllowed;
+            if (!checkBusName(d_ptr->service, serviceCheckMode, error))
                 return nullptr;
             if (!QDBusUtil::checkObjectPath(d_ptr->path, QDBusUtil::EmptyNotAllowed, error))
                 return nullptr;
@@ -146,7 +150,7 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
         }
         break;
     case QDBusMessage::SignalMessage:
-        // only the service name can be empty here
+        // only the service name can be empty here (even for bus connections)
         if (!d_ptr->parametersValidated) {
             if (!QDBusUtil::checkBusName(d_ptr->service, QDBusUtil::EmptyAllowed, error))
                 return nullptr;
@@ -517,6 +521,15 @@ QDBusMessage::QDBusMessage()
 }
 
 /*!
+    \fn QDBusMessage::QDBusMessage(QDBusMessage &&other)
+    \since 6.11
+
+    Moves \a other into this object.
+
+    \include qdbusmessage.cpp partially-formed
+*/
+
+/*!
     Constructs a copy of the object given by \a other.
 
     Note: QDBusMessage objects are shared. Modifications made to the
@@ -534,9 +547,21 @@ QDBusMessage::QDBusMessage(const QDBusMessage &other)
 */
 QDBusMessage::~QDBusMessage()
 {
-    if (!d_ptr->ref.deref())
+    if (d_ptr && !d_ptr->ref.deref())
         delete d_ptr;
 }
+
+/*!
+    \fn QDBusMessage &QDBusMessage::operator=(QDBusMessage &&other)
+
+    Move-assigns \a other into this object.
+
+//! [partially-formed]
+    \note The moved-from object \a other is placed in a partially-formed state,
+    in which the only valid operations are destruction and assignment of a new
+    value.
+//! [partially-formed]
+*/
 
 /*!
     Copies the contents of the object given by \a other.
@@ -547,7 +572,8 @@ QDBusMessage::~QDBusMessage()
 */
 QDBusMessage &QDBusMessage::operator=(const QDBusMessage &other)
 {
-    qAtomicAssign(d_ptr, other.d_ptr);
+    QDBusMessage copy(other);
+    swap(copy);
     return *this;
 }
 
@@ -740,6 +766,9 @@ bool QDBusMessage::isInteractiveAuthorizationAllowed() const
     Sets the arguments that are going to be sent over D-Bus to \a arguments. Those
     will be the arguments to a method call or the parameters in the signal.
 
+    Note that QVariantMap with invalid QVariant as value is not allowed
+    in \a arguments.
+
     \sa arguments()
 */
 void QDBusMessage::setArguments(const QList<QVariant> &arguments)
@@ -845,8 +874,7 @@ QDebug operator<<(QDebug dbg, const QDBusMessage &msg)
 
 /*!
     \fn void QDBusMessage::swap(QDBusMessage &other)
-
-    Swaps this QDBusMessage instance with \a other.
+    \memberswap{message}
 */
 
 QT_END_NAMESPACE

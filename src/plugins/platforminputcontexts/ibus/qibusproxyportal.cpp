@@ -8,8 +8,11 @@
  * This file may have been hand-edited. Look for HAND-EDIT comments
  * before re-generating it.
  */
+// Qt-Security score:significant reason:default
 
 #include "qibusproxyportal.h"
+
+QT_BEGIN_NAMESPACE
 
 /*
  * Implementation of interface class QIBusProxyPortal
@@ -24,3 +27,4 @@ QIBusProxyPortal::~QIBusProxyPortal()
 {
 }
 
+QT_END_NAMESPACE

@@ -1,18 +1,20 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformdefs.h"
 #include "qdebug.h"
 #include "qfile.h"
-#include "qfsfileengine_p.h"
-#include "qtemporaryfile.h"
-#include "qtemporaryfile_p.h"
-#include "qlist.h"
 #include "qfileinfo.h"
+#include "qfsfileengine_p.h"
+#include "qlist.h"
+#include "qsavefile.h"
+#include "qtemporaryfile.h"
 #include "private/qiodevice_p.h"
 #include "private/qfile_p.h"
 #include "private/qfilesystemengine_p.h"
+#include "private/qsavefile_p.h"
 #include "private/qsystemerror_p.h"
 #include "private/qtemporaryfile_p.h"
 #if defined(QT_BUILD_CORE_LIB)
@@ -123,7 +125,7 @@ QAbstractFileEngine *QFilePrivate::engine() const
 
     \snippet file/file.cpp 0
 
-    The QIODevice::Text flag passed to open() tells Qt to convert
+    The \l{QIODeviceBase::}{Text} flag passed to open() tells Qt to convert
     Windows-style line terminators ("\\r\\n") into C++-style
     terminators ("\\n"). By default, QFile assumes binary, i.e. it
     doesn't perform any conversion on the bytes stored in the file.
@@ -176,6 +178,38 @@ QAbstractFileEngine *QFilePrivate::engine() const
 
     \snippet file/file.cpp 3
 
+    \include android-content-uri-limitations.qdocinc
+
+    \section1 Security Considerations
+
+    \section2 Windows path normalization
+
+    Qt APIs that handle file and directory paths perform the normalization and
+    canonicalization differently from the native Windows APIs:
+
+    \list
+        \li The trailing dots and/or whitespaces are not stripped.
+        \li The \l{https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file#short-vs-long-names}
+            {8.3 short names} are not expanded.
+        \li The \c{\\?\} and \c{\\?\UNC\} prefixes are always discarded.
+    \endlist
+
+    These differences open a possibility for bypassing security checks based
+    on string comparison or pattern matching. For example, the code below will
+    yield \c{false} for both comparisons, but passing this path into QFile will
+    successfully open \c {myapp.exe} in \c{Program Files}.
+
+    \code
+    const QString path = u"C:\\PROGRA~1\\MyApp\\myapp.exe."_s; // note the trailing dot
+    QFileInfo fi(path);
+    qDebug() << fi.canonicalFilePath().contains("Program Files"_L1); // false
+    qDebug() << (fi.suffix() == "exe"_L1); // false
+    QFile f(path);
+    f.open(QIODevice::WriteOnly); // true
+    \endcode
+
+    \section2 File permissions
+
     File permissions are handled differently on Unix-like systems and
     Windows.  In a non \l{QIODevice::isWritable()}{writable}
     directory on Unix-like systems, files cannot be created. This is not always
@@ -189,8 +223,6 @@ QAbstractFileEngine *QFilePrivate::engine() const
     passed. Qt does not manipulate access control lists (ACLs), which makes this
     function mostly useless for NTFS volumes. It may still be of use for USB
     sticks that use VFAT file systems. POSIX ACLs are not manipulated, either.
-
-    \include android-content-uri-limitations.qdocinc
 
     \sa QTextStream, QDataStream, QFileInfo, QDir, {The Qt Resource System}
 */
@@ -269,10 +301,10 @@ QFile::~QFile()
 }
 
 /*!
-    Returns the name set by setFileName() or to the QFile
-    constructors.
+    Returns the name of the file as set by setFileName(), rename(), or
+    by the QFile constructors.
 
-    \sa setFileName(), QFileInfo::fileName()
+    \sa setFileName(), rename(), QFileInfo::fileName()
 */
 QString QFile::fileName() const
 {
@@ -407,10 +439,12 @@ QString QFile::symLinkTarget(const QString &fileName)
 }
 
 /*!
-    Removes the file specified by fileName(). Returns \c true if successful;
-    otherwise returns \c false.
+    Removes the file specified by fileName().
 
-    The file is closed before it is removed.
+    Returns \c true if the file was successfully removed; otherwise returns \c
+    false.
+
+    The file is closed before it is removed, if it was open.
 
     \sa setFileName()
 */
@@ -441,7 +475,8 @@ QFile::remove()
 
     Removes the file specified by the \a fileName given.
 
-    Returns \c true if successful; otherwise returns \c false.
+    Returns \c true if the file was successfully removed; otherwise returns
+    \c false.
 
     \sa remove()
 */
@@ -450,6 +485,22 @@ bool
 QFile::remove(const QString &fileName)
 {
     return QFile(fileName).remove();
+}
+
+/*!
+    \since 6.9
+
+    Returns \c true if Qt supports moving files to a trash (recycle bin) in the
+    current operating system using the moveToTrash() function, \c false
+    otherwise. Note that this function returning \c true does not imply
+    moveToTrash() will succeed. In particular, this function does not check if
+    the user has disabled the functionality in their settings.
+
+    \sa moveToTrash()
+*/
+bool QFile::supportsMoveToTrash()
+{
+    return QFileSystemEngine::supportsMoveFileToTrash();
 }
 
 /*!
@@ -479,9 +530,12 @@ QFile::remove(const QString &fileName)
     themselves mount points).
 //! [move-to-trash-common]
 
-    \note On systems where the system API doesn't report the location of the file in the
-    trash, fileName() will be set to the null string once the file has been moved. On
-    systems that don't have a trash can, this function always returns false.
+    \note On systems where the system API doesn't report the location of the
+    file in the trash, fileName() will be set to the null string once the file
+    has been moved. On systems that don't have a trash can, this function
+    always returns \c false (see supportsMoveToTrash()).
+
+    \sa supportsMoveToTrash(), remove(), QDir::remove()
 */
 bool
 QFile::moveToTrash()
@@ -571,6 +625,10 @@ QFile::rename(const QString &newName)
         return false;
     }
 
+    // Keep engine for target alive during the operation
+    // FIXME: Involve the target engine in the operation
+    auto targetEngine = QFileSystemEngine::createLegacyEngine(newName);
+
     // If the file exists and it is a case-changing rename ("foo" -> "Foo"),
     // compare Ids to make sure it really is a different file.
     // Note: this does not take file engines into account.
@@ -635,51 +693,42 @@ QFile::rename(const QString &newName)
             return true;
         }
 
+        // Engine was unable to rename and the fallback will delete the original file,
+        // so we have to back out here on case-insensitive file systems:
+        if (changingCase) {
+            d->setError(QFile::RenameError, d->fileEngine->errorString());
+            return false;
+        }
+
         if (isSequential()) {
             d->setError(QFile::RenameError, tr("Will not rename sequential file using block copy"));
             return false;
         }
 
-        QFile out(newName);
-        if (open(QIODevice::ReadOnly)) {
-            if (out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-                bool error = false;
-                char block[4096];
-                qint64 bytes;
-                while ((bytes = read(block, sizeof(block))) > 0) {
-                    if (bytes != out.write(block, bytes)) {
-                        d->setError(QFile::RenameError, out.errorString());
-                        error = true;
-                        break;
-                    }
-                }
-                if (bytes == -1) {
-                    d->setError(QFile::RenameError, errorString());
-                    error = true;
-                }
-                if (!error) {
-                    if (!remove()) {
-                        d->setError(QFile::RenameError, tr("Cannot remove source file"));
-                        error = true;
-                    }
-                }
-                if (error) {
-                    out.remove();
-                } else {
-                    d->fileEngine->setFileName(newName);
-                    setPermissions(permissions());
-                    unsetError();
-                    setFileName(newName);
-                }
-                close();
-                return !error;
+#if QT_CONFIG(temporaryfile)
+        // copy the file to the destination first
+        if (d->copy(newName, permissions())) {
+            // succeeded, remove the original
+            if (!remove()) {
+                d->setError(QFile::RenameError, tr("Cannot remove source file: %1").arg(errorString()));
+                QFile out(newName);
+                // set it back to writable so we can delete it
+                out.setPermissions(ReadUser | WriteUser);
+                out.remove(newName);
+                return false;
             }
-            close();
-            d->setError(QFile::RenameError,
-                        tr("Cannot open destination file: %1").arg(out.errorString()));
+            d->fileEngine->setFileName(newName);
+            unsetError();
+            setFileName(newName);
+            return true;
         } else {
+            // change the error type but keep the string
             d->setError(QFile::RenameError, errorString());
         }
+#else
+        // copy the error from the engine rename() above
+        d->setError(QFile::RenameError, d->fileEngine->errorString());
+#endif
     }
     return false;
 }
@@ -726,6 +775,11 @@ QFile::link(const QString &linkName)
         qWarning("QFile::link: Empty or null file name");
         return false;
     }
+
+    // Keep engine for target alive during the operation
+    // FIXME: Involve the target engine in the operation
+    auto targetEngine = QFileSystemEngine::createLegacyEngine(linkName);
+
     QFileInfo fi(linkName);
     if (d->engine()->link(fi.absoluteFilePath())) {
         unsetError();
@@ -752,19 +806,89 @@ QFile::link(const QString &fileName, const QString &linkName)
     return QFile(fileName).link(linkName);
 }
 
+#if QT_CONFIG(temporaryfile)    // dangerous without QTemporaryFile
+bool QFilePrivate::copy(const QString &newName, QFileDevice::Permissions permissions)
+{
+    Q_Q(QFile);
+    Q_ASSERT(error == QFile::NoError);
+    Q_ASSERT(!q->isOpen());
+
+    // Keep engine for target alive during the operation
+    // FIXME: Involve the target engine in the operation
+    auto targetEngine = QFileSystemEngine::createLegacyEngine(newName);
+
+    // Some file engines can perform this copy more efficiently (e.g., Windows
+    // calling CopyFile).
+    if (engine()->copy(newName))
+        return true;
+
+    if (!q->open(QFile::ReadOnly | QFile::Unbuffered)) {
+        setError(QFile::CopyError, QFile::tr("Cannot open %1 for input").arg(fileName));
+        return false;
+    }
+
+    QSaveFile out(newName);
+    out.setDirectWriteFallback(true);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Unbuffered)) {
+        q->close();
+        setError(QFile::CopyError, QFile::tr("Cannot open for output: %1").arg(out.errorString()));
+        return false;
+    }
+
+    // Attempt to do an OS-level data copy
+    QAbstractFileEngine::TriStateResult r = engine()->cloneTo(out.d_func()->engine());
+    if (r == QAbstractFileEngine::TriStateResult::Failed) {
+        q->close();
+        setError(QFile::CopyError, QFile::tr("Could not copy to %1: %2")
+                 .arg(newName, engine()->errorString()));
+        return false;
+    }
+
+    while (r == QAbstractFileEngine::TriStateResult::NotSupported) {
+        // OS couldn't do it, so do a block-level copy
+        Q_DECL_UNINITIALIZED
+        char block[4096];
+        qint64 in = q->read(block, sizeof(block));
+        if (in == 0)
+            break;      // eof
+        if (in < 0) {
+            // Unable to read from the source. Save the error from read() above.
+            QString s = std::move(errorString);
+            q->close();
+            setError(QFile::CopyError, std::move(s));
+            return false;
+        }
+        if (in != out.write(block, in)) {
+            q->close();
+            setError(QFile::CopyError, QFile::tr("Failure to write block: %1")
+                     .arg(out.errorString()));
+            return false;
+        }
+    }
+
+    // copy the permissions
+    out.setPermissions(permissions);
+    q->close();
+
+    // final step: commit the copy
+    if (out.commit())
+        return true;
+    setError(out.error(), out.errorString());
+    return false;
+}
+
 /*!
     Copies the file named fileName() to \a newName.
 
-    \include qfile-copy.qdocinc
+    This file is closed before it is copied.
 
-    \note On Android, this operation is not yet supported for \c content
-    scheme URIs.
+    \include qfile-copy.qdocinc
 
     \sa setFileName()
 */
 
 bool
-QFile::copy(const QString &newName)
+QFile::copy(const QString &newName, std::optional<QFileDevice::Permissions> perm)
 {
     Q_D(QFile);
     if (fileName().isEmpty()) {
@@ -780,86 +904,8 @@ QFile::copy(const QString &newName)
     }
     unsetError();
     close();
-    if (error() == QFile::NoError) {
-        if (d->engine()->copy(newName)) {
-            unsetError();
-            return true;
-        } else {
-            bool error = false;
-            if (!open(QFile::ReadOnly)) {
-                error = true;
-                d->setError(QFile::CopyError, tr("Cannot open %1 for input").arg(d->fileName));
-            } else {
-                const auto fileTemplate = "%1/qt_temp.XXXXXX"_L1;
-#if !QT_CONFIG(temporaryfile)
-                QFile out(fileTemplate.arg(QFileInfo(newName).path()));
-                if (!out.open(QIODevice::ReadWrite))
-                    error = true;
-#else
-                QTemporaryFile out(fileTemplate.arg(QFileInfo(newName).path()));
-                if (!out.open()) {
-                    out.setFileTemplate(fileTemplate.arg(QDir::tempPath()));
-                    if (!out.open())
-                        error = true;
-                }
-#endif
-                if (error) {
-                    d->setError(QFile::CopyError, tr("Cannot open for output: %1").arg(out.errorString()));
-                    out.close();
-                    close();
-                } else {
-                    if (!d->engine()->cloneTo(out.d_func()->engine())) {
-                        char block[4096];
-                        qint64 totalRead = 0;
-                        while (!atEnd()) {
-                            qint64 in = read(block, sizeof(block));
-                            if (in <= 0)
-                                break;
-                            totalRead += in;
-                            if (in != out.write(block, in)) {
-                                close();
-                                d->setError(QFile::CopyError, tr("Failure to write block: %1")
-                                            .arg(out.errorString()));
-                                error = true;
-                                break;
-                            }
-                        }
-
-                        if (totalRead != size()) {
-                            // Unable to read from the source. The error string is
-                            // already set from read().
-                            error = true;
-                        }
-                    }
-
-                    if (!error) {
-                        // Sync to disk if possible. Ignore errors (e.g. not supported).
-                        out.d_func()->fileEngine->syncToDisk();
-
-                        if (!out.rename(newName)) {
-                            error = true;
-                            close();
-                            d->setError(QFile::CopyError, tr("Cannot create %1 for output: %2")
-                                        .arg(newName, out.errorString()));
-                        }
-                    }
-#if !QT_CONFIG(temporaryfile)
-                    if (error)
-                        out.remove();
-#else
-                    if (!error)
-                        out.setAutoRemove(false);
-#endif
-                }
-            }
-            if (!error) {
-                QFile::setPermissions(newName, permissions());
-                close();
-                unsetError();
-                return true;
-            }
-        }
-    }
+    if (error() == QFile::NoError)
+        return d->copy(newName, perm ? *perm : permissions());
     return false;
 }
 
@@ -870,27 +916,26 @@ QFile::copy(const QString &newName)
 
     \include qfile-copy.qdocinc
 
-    \note On Android, this operation is not yet supported for \c content
-    scheme URIs.
-
     \sa rename()
 */
 
 bool
-QFile::copy(const QString &fileName, const QString &newName)
+QFile::copy(const QString &fileName, const QString &newName,
+            std::optional<QFileDevice::Permissions> perm)
 {
-    return QFile(fileName).copy(newName);
+    return QFile(fileName).copy(newName, perm);
 }
+#endif // QT_CONFIG(temporaryfile)
 
 /*!
-    Opens the file using OpenMode \a mode, returning true if successful;
-    otherwise false.
+    Opens the file using \a mode flags, returning \c true if successful;
+    otherwise returns \c false.
 
-    The \a mode must be QIODevice::ReadOnly, QIODevice::WriteOnly, or
-    QIODevice::ReadWrite. It may also have additional flags, such as
-    QIODevice::Text and QIODevice::Unbuffered.
+    The flags for \a mode must include \l QIODeviceBase::ReadOnly,
+    \l WriteOnly, or \l ReadWrite. It may also have additional flags,
+    such as \l Text and \l Unbuffered.
 
-    \note In \l{QIODevice::}{WriteOnly} or \l{QIODevice::}{ReadWrite}
+    \note In \l{WriteOnly} or \l{ReadWrite}
     mode, if the relevant file does not already exist, this function
     will try to create a new file before opening it. The file will be
     created with mode 0666 masked by the umask on POSIX systems, and
@@ -899,9 +944,7 @@ QFile::copy(const QString &fileName, const QString &newName)
     of the file name, otherwise, it won't be possible to create this
     non-existing file.
 
-    \sa QT_USE_NODISCARD_FILE_OPEN
-
-    \sa QIODevice::OpenMode, setFileName()
+    \sa QT_USE_NODISCARD_FILE_OPEN, setFileName()
 */
 bool QFile::open(OpenMode mode)
 {
@@ -1375,6 +1418,15 @@ qint64 QFile::size() const
     \note The thread-safety of this function holds only as long as there are no
     concurrent updates to \l qt_ntfs_permission_lookup.
 */
+
+#ifndef QT_NO_DEBUG_STREAM
+void QFilePrivate::writeToDebugStream(QDebug &dbg) const
+{
+    Q_Q(const QFile);
+    dbg.nospace();
+    dbg << "QFile(" << q->fileName() << ')';
+}
+#endif
 
 QT_END_NAMESPACE
 

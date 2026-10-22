@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // This file is included from qnsview.mm, and only used to organize the code
 
@@ -22,7 +23,7 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
     if (primaryDevice->systemId() == kDefaultPrimaryPointingDeviceId) {
         // Adopt existing primary device instead of creating a new one
         QPointingDevicePrivate::get(const_cast<QPointingDevice *>(primaryDevice))->systemId = deviceID;
-        qCDebug(lcInputDevices) << "primaryPointingDevice is now" << primaryDevice;
+        qCDebug(lcQpaInputDevices) << "primaryPointingDevice is now" << primaryDevice;
         return primaryDevice;
     } else {
         // Register a new device. Name and capabilities may need updating later.
@@ -117,7 +118,7 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
     ulong timestamp = [theEvent timestamp] * 1000;
 
     QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
-    nativeDrag->setLastMouseEvent(theEvent, self);
+    nativeDrag->setLastInputEvent(theEvent, self);
 
     const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(theEvent.modifierFlags);
     auto button = cocoaButton2QtButton(theEvent);
@@ -289,8 +290,7 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
         if (qIsNaN(windowPoint.x) || qIsNaN(windowPoint.y)) {
             screenPoint = [NSEvent mouseLocation];
         } else {
-            NSRect screenRect = [[theEvent window] convertRectToScreen:NSMakeRect(windowPoint.x, windowPoint.y, 1, 1)];
-            screenPoint = screenRect.origin;
+            screenPoint = [theEvent.window convertPointToScreen:windowPoint];
         }
     } else {
         screenPoint = [NSEvent mouseLocation];
@@ -703,7 +703,6 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
             m_scrolling = false;
         }
     } else if (theEvent.momentumPhase == NSEventPhaseBegan) {
-        Q_ASSERT(!pixelDelta.isNull() && !angleDelta.isNull());
         // If we missed finding a momentum NSEventPhaseBegan when the non-momentum
         // phase ended we need to treat this as a scroll begin, to not confuse client
         // code. Otherwise we treat it as a continuation of the existing scroll.
@@ -755,8 +754,8 @@ static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
         if (!devicePriv->capabilities.testFlag(QInputDevice::Capability::PixelScroll)) {
             devicePriv->name = "trackpad or magic mouse"_L1;
             devicePriv->deviceType = QInputDevice::DeviceType::TouchPad;
-            devicePriv->capabilities |= QInputDevice::Capability::PixelScroll;
-            qCDebug(lcInputDevices) << "mouse scrolling: updated capabilities" << device;
+            devicePriv->setCapabilities(devicePriv->capabilities | QInputDevice::Capability::PixelScroll);
+            qCDebug(lcQpaInputDevices) << "mouse scrolling: updated capabilities" << device;
         }
     }
 

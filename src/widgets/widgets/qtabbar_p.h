@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTABBAR_P_H
 #define QTABBAR_P_H
@@ -21,7 +22,7 @@
 
 #include <qicon.h>
 #include <qtoolbutton.h>
-#include <qdebug.h>
+#include <qbasictimer.h>
 #if QT_CONFIG(animation)
 #include <qvariantanimation.h>
 #endif
@@ -55,7 +56,7 @@ public:
     QTabBarPrivate()
     : layoutDirty(false), drawBase(true), elideModeSetByUser(false), useScrollButtons(false),
       useScrollButtonsSetByUser(false), expanding(true), closeButtonOnTabs(false),
-      paintWithOffsets(true), movable(false), dragInProgress(false), documentMode(false),
+      movable(false), dragInProgress(false), documentMode(false),
       autoHide(false), changeCurrentOnDrag(false)
     {}
     ~QTabBarPrivate()
@@ -75,7 +76,7 @@ public:
     QMovableTabWidget *movingTab = nullptr;
     int hoverIndex = -1;
     int switchTabCurrentIndex = -1;
-    int switchTabTimerId = 0;
+    QBasicTimer switchTabTimer;
     Qt::TextElideMode elideMode = Qt::ElideNone;
     QTabBar::SelectionBehavior selectionBehaviorOnRemove = QTabBar::SelectRightTab;
     QTabBar::Shape shape = QTabBar::RoundedNorth;
@@ -94,7 +95,6 @@ public:
     bool useScrollButtonsSetByUser : 1;
     bool expanding : 1;
     bool closeButtonOnTabs : 1;
-    bool paintWithOffsets : 1;
     bool movable : 1;
     bool dragInProgress : 1;
     bool documentMode : 1;
@@ -103,7 +103,7 @@ public:
 
     struct Tab {
         inline Tab(const QIcon &ico, const QString &txt)
-        : text(txt), icon(ico), enabled(true), visible(true)
+        : text(txt), icon(ico), enabled(true), visible(true), measuringMinimum(false)
         {
         }
         /*
@@ -136,6 +136,7 @@ public:
         int dragOffset = 0;
         uint enabled : 1;
         uint visible : 1;
+        uint measuringMinimum : 1;
 
 #if QT_CONFIG(animation)
         struct TabBarAnimation : public QVariantAnimation {
@@ -200,12 +201,19 @@ public:
     bool isTabInMacUnifiedToolbarArea() const;
     void setupMovableTab();
     void autoHideTabs();
-    QRect normalizedScrollRect(int index = -1);
+    QRect scrollRect(int index = -1) const;
+    QRect normalizedScrollRect(int index = -1) const;
     int hoveredTabIndex() const;
 
     void initBasicStyleOption(QStyleOptionTab *option, int tabIndex) const;
 
     void makeVisible(int index);
+    const Tab *lastVisibleTab() const
+    {
+        auto it = std::find_if(tabList.rbegin(), tabList.rend(),
+                               [](const Tab *tab) { return tab->visible; });
+        return it == tabList.rend() ? nullptr : *it;
+    }
 
     // shared by tabwidget and qtabbar
     static void initStyleBaseOption(QStyleOptionTabBarBase *optTabBase, QTabBar *tabbar, QSize size)

@@ -614,10 +614,14 @@ void tst_QMetaMethod::method()
 
     QByteArray computedName = signature.left(signature.indexOf('('));
     QCOMPARE(method.name(), computedName);
+    QCOMPARE_EQ(method.nameView(), method.name());
 
     QCOMPARE(method.tag(), "");
     QCOMPARE(method.returnType(), returnType);
-    QVERIFY(method.typeName() != 0);
+    if (QT7_ONLY(method.methodType() == QMetaMethod::Constructor) QT6_ONLY(false))
+        QVERIFY(method.typeName());
+    else
+        QVERIFY(method.typeName() != 0);
     if (QByteArray(method.typeName()) != returnTypeName) {
         // QMetaMethod should always produce a semantically equivalent typename
         QCOMPARE(QMetaType::fromName(method.typeName()), QMetaType::fromName(returnTypeName));
@@ -863,14 +867,14 @@ void tst_QMetaMethod::isConst()
     auto mo = MethodTestObject::staticMetaObject;
     {
         const auto normalized = QMetaObject::normalizedSignature("qrealInvokable()");
-        const int idx = mo.indexOfSlot(normalized);
+        const int idx = mo.indexOfMethod(normalized);
         QMetaMethod mm = mo.method(idx);
         QVERIFY(mm.isValid());
         QCOMPARE(mm.isConst(), false);
     }
     {
         const auto normalized = QMetaObject::normalizedSignature("voidInvokable()");
-        const int idx = mo.indexOfSlot(normalized);
+        const int idx = mo.indexOfMethod(normalized);
         QMetaMethod mm = mo.method(idx);
         QVERIFY(mm.isValid());
         QCOMPARE(mm.isConst(), true);

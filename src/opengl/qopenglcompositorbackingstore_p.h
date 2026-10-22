@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOPENGLCOMPOSITORBACKINGSTORE_H
 #define QOPENGLCOMPOSITORBACKINGSTORE_H
@@ -48,7 +49,8 @@ public:
                          const QRegion &region,
                          const QPoint &offset,
                          QPlatformTextureList *textures,
-                         bool translucentBackground) override;
+                         bool translucentBackground,
+                         qreal sourceTransformFactor = 0) override;
 
     const QPlatformTextureList *textures() const { return m_textures; }
 

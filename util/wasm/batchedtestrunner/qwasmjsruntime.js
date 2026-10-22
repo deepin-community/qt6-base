@@ -101,15 +101,17 @@ export class CompiledModule {
     #js;
     #wasm;
     #resourceLocator;
+    #qtContainerElements;
 
-    constructor(createQtAppInstanceFn, js, wasm, resourceLocator) {
+    constructor(createQtAppInstanceFn, js, wasm, resourceLocator, qtContainerElements) {
         this.#createQtAppInstanceFn = createQtAppInstanceFn;
         this.#js = js;
         this.#wasm = wasm;
         this.#resourceLocator = resourceLocator;
+        this.#qtContainerElements = qtContainerElements;
     }
 
-    static make(js, wasm, entryFunctionName, resourceLocator)
+    static make(js, wasm, entryFunctionName, resourceLocator, qtContainerElements)
     {
         const exports = {};
         const module = {};
@@ -121,7 +123,7 @@ export class CompiledModule {
         }
 
         return new CompiledModule(
-            module.exports, js, wasm, resourceLocator
+            module.exports, js, wasm, resourceLocator, qtContainerElements
         );
     }
 
@@ -188,6 +190,12 @@ export class CompiledModule {
         instanceParams.mainScriptUrlOrBlob = new Blob([this.#js], {
             type: 'text/javascript',
         });
+
+        // Add Qt container elements if provided
+        if (this.#qtContainerElements) {
+            instanceParams.qtContainerElements = this.#qtContainerElements;
+        }
+
         return instanceParams;
     }
 }
@@ -208,7 +216,7 @@ export class ModuleLoader {
     // Loads an emscripten module named |moduleName| from the main resource path. Provides
     // progress of 'downloading' and 'compiling' to the caller using the |onProgress| callback.
     async loadEmscriptenModule(
-        moduleName, onProgress
+        moduleName, onProgress, qtContainerElements
     ) {
         if (!Platform.webAssemblySupported)
             throw new Error('Web assembly not supported');
@@ -226,6 +234,6 @@ export class ModuleLoader {
         );
 
         const [js, wasm] = await Promise.all([jsLoadPromise, wasmLoadPromise]);
-        return CompiledModule.make(js, wasm, `${moduleName}_entry`, this.#resourceLocator);
+        return CompiledModule.make(js, wasm, `${moduleName}_entry`, this.#resourceLocator, qtContainerElements);
     }
 }

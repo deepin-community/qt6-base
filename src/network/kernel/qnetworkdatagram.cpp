@@ -1,5 +1,6 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkdatagram.h"
 #include "qnetworkdatagram_p.h"
@@ -174,8 +175,8 @@ void QNetworkDatagram::clear()
  */
 bool QNetworkDatagram::isValid() const
 {
-    return d->header.senderAddress.protocol() != QAbstractSocket::UnknownNetworkLayerProtocol ||
-           d->header.destinationAddress.protocol() != QAbstractSocket::UnknownNetworkLayerProtocol;
+    return d->header.senderAddress.protocol() != QHostAddress::UnknownNetworkLayerProtocol ||
+           d->header.destinationAddress.protocol() != QHostAddress::UnknownNetworkLayerProtocol;
 }
 
 /*!
@@ -224,7 +225,7 @@ QHostAddress QNetworkDatagram::destinationAddress() const
 */
 int QNetworkDatagram::senderPort() const
 {
-    return d->header.senderAddress.protocol() == QAbstractSocket::UnknownNetworkLayerProtocol
+    return d->header.senderAddress.protocol() == QHostAddress::UnknownNetworkLayerProtocol
             ? -1 : d->header.senderPort;
 }
 
@@ -241,7 +242,7 @@ int QNetworkDatagram::senderPort() const
 */
 int QNetworkDatagram::destinationPort() const
 {
-    return d->header.destinationAddress.protocol() == QAbstractSocket::UnknownNetworkLayerProtocol
+    return d->header.destinationAddress.protocol() == QHostAddress::UnknownNetworkLayerProtocol
             ? -1 : d->header.destinationPort;
 }
 
@@ -370,7 +371,7 @@ uint QNetworkDatagram::interfaceIndex() const
     index are different and neither is zero, it is undefined which interface
     the operating system will send the datagram on.
 
-    \sa setInterfaceIndex()
+    \sa interfaceIndex()
  */
 void QNetworkDatagram::setInterfaceIndex(uint index)
 {
@@ -486,7 +487,7 @@ void QNetworkDatagram::destroy(QNetworkDatagramPrivate *d)
 }
 
 /*! \fn  void QNetworkDatagram::swap(QNetworkDatagram &other)
-  Swaps this instance with \a other.
+    \memberswap{datagram}
 */
 
 

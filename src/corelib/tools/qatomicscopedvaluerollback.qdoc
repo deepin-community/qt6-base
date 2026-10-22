@@ -11,8 +11,8 @@ QT_BEGIN_NAMESPACE
     \ingroup tools
     \since 6.7
 
-    The QAtomicScopedValueRollback class resets an atomic variable to its
-    prior value on destruction. It can be used to revert state when an
+    QAtomicScopedValueRollback\<T\> resets an atomic variable of type \a T to
+    its prior value on destruction. It can be used to revert state when an
     exception is thrown without the need to write try-catch blocks.
 
     It can also be used to manage variables that are temporarily set, such as
@@ -24,7 +24,7 @@ QT_BEGIN_NAMESPACE
     \l QAtomicInteger, \l QAtomicInt, QBasicAtomicPointer and \l QAtomicPointer.
 
     \target Memory Order
-    The memory accesses to the atomic variable \a var are specified using the value
+    The memory accesses to the atomic variable \c var are specified using the value
     of \c mo. The memory order follows this mapping:
     \br
     \list

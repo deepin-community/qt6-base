@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeventdispatcher_glib_p.h"
 #include "qeventdispatcher_unix_p.h"
@@ -30,7 +31,7 @@ struct GSocketNotifierSource
 {
     GSource source;
     QList<GPollFDWithQSocketNotifier *> pollfds;
-    int activeNotifierPos;
+    qsizetype activeNotifierPos;
 };
 
 static gboolean socketNotifierSourcePrepare(GSource *, gint *timeout)
@@ -45,15 +46,15 @@ static gboolean socketNotifierSourceCheck(GSource *source)
     GSocketNotifierSource *src = reinterpret_cast<GSocketNotifierSource *>(source);
 
     bool pending = false;
-    for (int i = 0; !pending && i < src->pollfds.size(); ++i) {
+    for (qsizetype i = 0; !pending && i < src->pollfds.size(); ++i) {
         GPollFDWithQSocketNotifier *p = src->pollfds.at(i);
 
         if (p->pollfd.revents & G_IO_NVAL) {
             // disable the invalid socket notifier
             const char * const t[] = { "Read", "Write", "Exception" };
             qWarning("QSocketNotifier: Invalid socket %d and type '%s', disabling...",
-                     p->pollfd.fd, t[int(p->socketNotifier->type())]);
-            // ### note, modifies src->pollfds!
+                     p->pollfd.fd, t[p->socketNotifier->type()]);
+            // ### note, modifies src->pollfds, turning this loop quadratic (QTBUG-143853)!
             p->socketNotifier->setEnabled(false);
             i--;
         } else {
@@ -105,7 +106,7 @@ static gboolean timerSourcePrepareHelper(GTimerSource *src, gint *timeout)
     }
 
     auto remaining = src->timerList.timerWait().value_or(-1ms);
-    *timeout = q26::saturate_cast<gint>(ceil<milliseconds>(remaining).count());
+    *timeout = q26::saturating_cast<gint>(ceil<milliseconds>(remaining).count());
 
     return (*timeout == 0);
 }
@@ -214,6 +215,7 @@ struct GPostEventSource
     GSource source;
     QAtomicInt serialNumber;
     int lastSerialNumber;
+    int pendingSerialNumber;
     QEventDispatcherGlibPrivate *d;
 };
 
@@ -242,8 +244,9 @@ static gboolean postEventSourceCheck(GSource *source)
 static gboolean postEventSourceDispatch(GSource *s, GSourceFunc, gpointer)
 {
     GPostEventSource *source = reinterpret_cast<GPostEventSource *>(s);
-    source->lastSerialNumber = source->serialNumber.loadRelaxed();
+    source->pendingSerialNumber = source->serialNumber.loadRelaxed();
     QCoreApplication::sendPostedEvents();
+    source->lastSerialNumber = source->pendingSerialNumber;
     source->d->runTimersOnceWithNormalPriority();
     return true; // i dunno, george...
 }
@@ -322,6 +325,9 @@ QEventDispatcherGlibPrivate::QEventDispatcherGlibPrivate(GMainContext *context)
     g_source_attach(&idleTimerSource->source, mainContext);
 }
 
+QEventDispatcherGlibPrivate::~QEventDispatcherGlibPrivate()
+    = default;
+
 void QEventDispatcherGlibPrivate::runTimersOnceWithNormalPriority()
 {
     timerSource->runWithIdlePriority = false;
@@ -351,8 +357,8 @@ QEventDispatcherGlib::~QEventDispatcherGlib()
     d->idleTimerSource = nullptr;
 
     // destroy socket notifier source
-    for (int i = 0; i < d->socketNotifierSource->pollfds.size(); ++i) {
-        GPollFDWithQSocketNotifier *p = d->socketNotifierSource->pollfds[i];
+    for (qsizetype i = 0; i < d->socketNotifierSource->pollfds.size(); ++i) {
+        GPollFDWithQSocketNotifier *p = d->socketNotifierSource->pollfds.at(i);
         g_source_remove_poll(&d->socketNotifierSource->source, &p->pollfd);
         delete p;
     }
@@ -409,7 +415,7 @@ void QEventDispatcherGlib::registerSocketNotifier(QSocketNotifier *notifier)
 {
     Q_ASSERT(notifier);
     int sockfd = int(notifier->socket());
-    int type = notifier->type();
+    const auto type = notifier->type();
 #ifndef QT_NO_DEBUG
     if (sockfd < 0) {
         qWarning("QSocketNotifier: Internal error");
@@ -431,10 +437,10 @@ void QEventDispatcherGlib::registerSocketNotifier(QSocketNotifier *notifier)
         p->pollfd.events = G_IO_IN | G_IO_HUP | G_IO_ERR;
         break;
     case QSocketNotifier::Write:
-        p->pollfd.events = G_IO_OUT | G_IO_ERR;
+        p->pollfd.events = G_IO_OUT | G_IO_HUP | G_IO_ERR;
         break;
     case QSocketNotifier::Exception:
-        p->pollfd.events = G_IO_PRI | G_IO_ERR;
+        p->pollfd.events = G_IO_PRI | G_IO_HUP | G_IO_ERR;
         break;
     }
     p->socketNotifier = notifier;
@@ -460,7 +466,7 @@ void QEventDispatcherGlib::unregisterSocketNotifier(QSocketNotifier *notifier)
 
     Q_D(QEventDispatcherGlib);
 
-    for (int i = 0; i < d->socketNotifierSource->pollfds.size(); ++i) {
+    for (qsizetype i = 0; i < d->socketNotifierSource->pollfds.size(); ++i) {
         GPollFDWithQSocketNotifier *p = d->socketNotifierSource->pollfds.at(i);
         if (p->socketNotifier == notifier) {
             // found it

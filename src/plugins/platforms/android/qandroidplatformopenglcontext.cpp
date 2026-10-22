@@ -1,6 +1,7 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qandroidplatformopenglcontext.h"
 #include "qandroidplatformopenglwindow.h"
@@ -22,19 +23,47 @@ QAndroidPlatformOpenGLContext::QAndroidPlatformOpenGLContext(const QSurfaceForma
 
 void QAndroidPlatformOpenGLContext::swapBuffers(QPlatformSurface *surface)
 {
-    if (surface->surface()->surfaceClass() == QSurface::Window &&
-            static_cast<QAndroidPlatformOpenGLWindow *>(surface)->checkNativeSurface(eglConfig())) {
-        QEGLPlatformContext::makeCurrent(surface);
+    if (surface->surface()->surfaceClass() != QSurface::Window) {
+        QEGLPlatformContext::swapBuffers(surface);
+        return;
     }
 
+    QAndroidPlatformOpenGLWindow *window = static_cast<QAndroidPlatformOpenGLWindow *>(surface);
+    // Since QEGLPlatformContext::makeCurrent() and QEGLPlatformContext::swapBuffers()
+    // will be using the eglSurface of the window, which wraps the Android Surface, we
+    // need to lock here to make sure we don't end up using a Surface already destroyed
+    // by Android
+    window->lockSurface();
+
+    if (window->ensureEglSurfaceCreated(eglConfig())) {
+        // Call base class implementation directly since we are already locked
+        QEGLPlatformContext::makeCurrent(surface);
+    }
     QEGLPlatformContext::swapBuffers(surface);
+
+    window->unlockSurface();
 }
 
 bool QAndroidPlatformOpenGLContext::makeCurrent(QPlatformSurface *surface)
 {
-    return QEGLPlatformContext::makeCurrent(surface);
+    if (surface->surface()->surfaceClass() != QSurface::Window)
+        return QEGLPlatformContext::makeCurrent(surface);
+
+    QAndroidPlatformOpenGLWindow *window = static_cast<QAndroidPlatformOpenGLWindow *>(surface);
+    window->lockSurface();
+    // Has the Surface been destroyed?
+    if (window->eglSurface(eglConfig()) == EGL_NO_SURFACE) {
+        qWarning() << "makeCurrent(): no EGLSurface, likely Surface destroyed by Android.";
+        window->unlockSurface();
+        return false;
+    }
+    const bool ok = QEGLPlatformContext::makeCurrent(surface);
+    window->unlockSurface();
+    return ok;
 }
 
+// Called from inside QEGLPlatformContext::swapBuffers() and QEGLPlatformContext::makeCurrent(),
+// already locked
 EGLSurface QAndroidPlatformOpenGLContext::eglSurfaceForPlatformSurface(QPlatformSurface *surface)
 {
     if (surface->surface()->surfaceClass() == QSurface::Window) {

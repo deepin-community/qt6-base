@@ -11,7 +11,7 @@
     caching any changes to the data until the user explicitly submits them using a
     push button.
 
-    \borderedimage cachedtable-example.png
+    \image cachedtable-example.png {The user updates a cell in the table, and selects the submit button to apply the change in the database}
 
     The example consists of a single class, \c TableEditor, which is a
     custom dialog widget that allows the user to modify data stored in
@@ -58,7 +58,7 @@
     is located in the \c sql example directory (all the examples in
     the \c sql directory use this function to connect to a database).
 
-    \snippet connection.h 0
+    \snippet cachedtable/connection.h 0
 
     The \c createConnection function opens a connection to an
     in-memory SQLITE database and creates a test table.  If you want

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parsing
 
 #ifndef QDEBUG_P_H
 #define QDEBUG_P_H
@@ -23,6 +24,8 @@
 
 QT_BEGIN_NAMESPACE
 
+class QRect;
+
 namespace QtDebugUtils {
 
 Q_CORE_EXPORT QByteArray toPrintable(const char *data, qint64 len, qsizetype maxSize);
@@ -44,7 +47,19 @@ static inline void formatQSize(QDebug &debug, const Size &size)
 template <class Rect>
 static inline void formatQRect(QDebug &debug, const Rect &rect)
 {
-    debug << rect.x() << ',' << rect.y() << ' ' << rect.width() << 'x' << rect.height();
+    debug << rect.x() << ',' << rect.y() << ' ';
+    if constexpr (std::is_same_v<Rect, QRect>) {
+        // QRect may overflow. Calculate width and height in higher precision.
+        const qint64 w = qint64(rect.right()) - rect.left() + 1;
+        const qint64 h = qint64(rect.bottom()) - rect.top() + 1;
+        debug << w << 'x' << h;
+
+        constexpr qint64 M = (std::numeric_limits<int>::max)();
+        if (w > M || h > M)
+            debug << " (oversized)";
+    } else {
+        debug << rect.width() << 'x' << rect.height();
+    }
 }
 
 template <class Margins>

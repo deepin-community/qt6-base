@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
+    \headerfile <QtVersionChecks>
+    \inmodule QtCore
+    \ingroup funclists
+    \brief Macros for performing Qt version checks.
+*/
+
+/*!
     \macro QT_VERSION_CHECK(major, minor, patch)
     \relates <QtVersionChecks>
 
@@ -13,7 +20,7 @@
 
     Example:
 
-    \snippet code/src_corelib_global_qglobal.cpp qt-version-check
+    \snippet code/src_corelib_global_qglobal_widgets.cpp qt-version-check
 
     \note the parameters are read as integers in the normal way, so should
     normally be written in decimal (so a \c 0x prefix must be used if writing
@@ -40,7 +47,7 @@
 
     Example:
 
-    \snippet code/src_corelib_global_qglobal.cpp 16
+    \snippet code/src_corelib_global_qglobal_widgets.cpp 1
 
     \sa QT_VERSION_STR, QT_VERSION_CHECK(), qVersion()
 */

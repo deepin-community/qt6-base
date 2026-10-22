@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // This file is included from qnsview.mm, and only used to organize the code
 
@@ -69,7 +70,7 @@ static bool sendAsShortcut(const KeyEvent &keyEvent, QWindow *window)
     QWindow *window = [self topLevelWindow];
 
     // We will send a key event unless the input method handles it
-    QBoolBlocker sendKeyEventGuard(m_sendKeyEvent, true);
+    QScopedValueRollback sendKeyEventGuard(m_sendKeyEvent, true);
 
     // Assume we should send key events with text, unless told
     // otherwise by doCommandBySelector.
@@ -113,6 +114,9 @@ static bool sendAsShortcut(const KeyEvent &keyEvent, QWindow *window)
 
                     qCDebug(lcQpaKeys) << "Interpreting key event for focus object" << focusObject;
                     m_currentlyInterpretedKeyEvent = nsevent;
+                    // Asking the input context to handle the event will involve both
+                    // the current input method, as well as NSKeyBindingManager, which
+                    // may result in action callbacks to doCommandBySelector.
                     if (![self.inputContext handleEvent:nsevent]) {
                         qCDebug(lcQpaKeys) << "Input context did not consume event";
                         m_sendKeyEvent = true;
@@ -250,14 +254,39 @@ static bool sendAsShortcut(const KeyEvent &keyEvent, QWindow *window)
     }
 }
 
+#if QT_APPLE_SDK_EQUAL_OR_ABOVE(MACOS(15))
+- (void)contextMenuKeyDown:(NSEvent *)nsevent
+{
+    qCDebug(lcQpaKeys) << "Handling context menu key down for" << nsevent;
+
+    if ([self isTransparentForUserInput])
+        return [super contextMenuKeyDown:nsevent];
+
+    if ([self handleKeyEvent:nsevent]) {
+        qCDebug(lcQpaKeys) << "Accepted context menu event as regular key down";
+        m_acceptedKeyDowns.insert(nsevent.keyCode);
+    } else {
+        // Forward up the responder chain to trigger default system
+        // behavior of calling showContextMenuForSelection.
+        [super contextMenuKeyDown:nsevent];
+    }
+}
+#endif
+
 @end
+
+QT_BEGIN_NAMESPACE
 
 // -------------------------------------------------------------------------
 
 KeyEvent::KeyEvent(NSEvent *nsevent)
 {
-    timestamp = nsevent.timestamp * 1000;
-    nativeModifiers = nsevent.modifierFlags;
+    // We may not have an event to base the key event on, for example when
+    // the input method asks us to insert text outside of interpreting a
+    // key event. In that case we fall back to the current state, and the
+    // remaining members are left for the caller to fill in.
+    timestamp = (nsevent ? nsevent.timestamp : NSProcessInfo.processInfo.systemUptime) * 1000;
+    nativeModifiers = nsevent ? nsevent.modifierFlags : NSEvent.modifierFlags;
     modifiers = QAppleKeyMapper::fromCocoaModifiers(nativeModifiers);
 
     switch (nsevent.type) {
@@ -336,3 +365,5 @@ QDebug operator<<(QDebug debug, const KeyEvent &e)
     << ")";
     return debug;
 }
+
+QT_END_NAMESPACE

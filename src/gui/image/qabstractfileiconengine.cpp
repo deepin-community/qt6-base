@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qabstractfileiconengine_p.h"
 
@@ -44,7 +45,7 @@ QPixmap QAbstractFileIconEngine::scaledPixmap(const QSize &size, QIcon::Mode mod
     if (key.isEmpty())
         return filePixmap(size * scale, mode, state);
 
-    key += u'_' + QString::number(size.width());
+    key += u'_' + QString::number(size.width() * scale);
 
     QPixmap result;
     if (!QPixmapCache::find(key, &result)) {

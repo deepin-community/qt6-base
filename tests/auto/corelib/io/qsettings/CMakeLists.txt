@@ -22,6 +22,7 @@ set(qsettings_resource_files
     "float.ini"
     "qt5settings.ini"
     "utf8settings.ini"
+    "incorrectsection.ini"
 )
 
 qt_internal_add_test(tst_qsettings

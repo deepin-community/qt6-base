@@ -13,7 +13,6 @@ qt_internal_add_plugin(QWasmIntegrationPlugin
         main.cpp
         qwasmaccessibility.cpp qwasmaccessibility.h
         qwasmbase64iconstore.cpp qwasmbase64iconstore.h
-        qwasmclipboard.cpp qwasmclipboard.h
         qwasmcompositor.cpp qwasmcompositor.h
         qwasmcssstyle.cpp qwasmcssstyle.h
         qwasmcursor.cpp qwasmcursor.h
@@ -30,15 +29,13 @@ qt_internal_add_plugin(QWasmIntegrationPlugin
         qwasmservices.cpp qwasmservices.h
         qwasmtheme.cpp qwasmtheme.h
         qwasmwindow.cpp qwasmwindow.h
-        qwasmwindowclientarea.cpp qwasmwindowclientarea.h
         qwasmwindowtreenode.cpp qwasmwindowtreenode.h
         qwasmwindownonclientarea.cpp qwasmwindownonclientarea.h
         qwasminputcontext.cpp qwasminputcontext.h
-        qwasmwindowstack.cpp qwasmwindowstack.h
-        qwasmdrag.cpp qwasmdrag.h
+        qwasmwindowstack.h
+        qwasmfiledialoghelper.cpp qwasmfiledialoghelper.h
     DEFINES
         QT_EGL_NO_X11
-        QT_NO_FOREACH
     LIBRARIES
         Qt::Core
         Qt::CorePrivate
@@ -64,6 +61,16 @@ qt_internal_add_resource(QWasmIntegrationPlugin "wasmfonts"
         ${wasmfonts_resource_files}
 )
 
+qt_internal_extend_target(QWasmIntegrationPlugin CONDITION QT_FEATURE_clipboard
+    SOURCES
+        qwasmclipboard.cpp qwasmclipboard.h
+)
+
+qt_internal_extend_target(QWasmIntegrationPlugin CONDITION QT_FEATURE_draganddrop
+    SOURCES
+        qwasmdrag.cpp qwasmdrag.h
+)
+
 qt_internal_extend_target(QWasmIntegrationPlugin CONDITION QT_FEATURE_opengl
     SOURCES
         qwasmbackingstore.cpp qwasmbackingstore.h
@@ -77,6 +84,7 @@ qt_internal_extend_target(QWasmIntegrationPlugin CONDITION QT_FEATURE_opengl
 set(wasm_support_files
     wasm_shell.html
     qtloader.js
+    asan.js
     resources/qtlogo.svg
 )
 

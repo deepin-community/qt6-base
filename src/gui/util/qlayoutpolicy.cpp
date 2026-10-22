@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-parsing-only
 
 #include "qlayoutpolicy_p.h"
 #include <QtCore/qdebug.h>
@@ -7,6 +8,11 @@
 
 QT_BEGIN_NAMESPACE
 
+/*!
+    \class QLayoutPolicy
+    \inmodule QtGui
+    \internal
+*/
 void QLayoutPolicy::setControlType(ControlType type)
 {
     /*
@@ -22,15 +28,7 @@ void QLayoutPolicy::setControlType(ControlType type)
             0x00000008 maps to 3
             etc.
     */
-
-    int i = 0;
-    while (true) {
-        if (type & (0x1 << i)) {
-            bits.ctype = i;
-            return;
-        }
-        ++i;
-    }
+    bits.ctype = qCountTrailingZeroBits(quint32(type));
 }
 
 QLayoutPolicy::ControlType QLayoutPolicy::controlType() const

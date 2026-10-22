@@ -1,65 +1,25 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# The common implementation of qt_configure_file functionality.
-macro(qt_configure_file_impl)
-    if(NOT arg_OUTPUT)
-        message(FATAL_ERROR "No output file provided to qt_configure_file.")
-    endif()
-
-    # We use this check for the cases when the specified CONTENT is empty. The value of arg_CONTENT
-    # is undefined, but we still want to create a file with empty content.
-    if(NOT "CONTENT" IN_LIST arg_KEYWORDS_MISSING_VALUES)
-        if(arg_INPUT)
-            message(WARNING "Both CONTENT and INPUT are specified. CONTENT will be used to generate"
-                " output")
-        endif()
-        set(template_name "QtFileConfigure.txt.in")
-        # When building qtbase, use the source template file.
-        # Otherwise use the installed file (basically wherever Qt6 package is found).
-        # This should work for non-prefix and superbuilds as well.
-        if(QtBase_SOURCE_DIR)
-            set(input_file "${QtBase_SOURCE_DIR}/cmake/${template_name}")
-        else()
-            set(input_file "${_qt_6_config_cmake_dir}/${template_name}")
-        endif()
-        set(__qt_file_configure_content "${arg_CONTENT}")
-    elseif(arg_INPUT)
-        set(input_file "${arg_INPUT}")
-    else()
-        message(FATAL_ERROR "No input value provided to qt_configure_file.")
-    endif()
-
-    configure_file("${input_file}" "${arg_OUTPUT}" @ONLY)
-endmacro()
-
 # qt_configure_file(OUTPUT output-file <INPUT input-file | CONTENT content>)
 # input-file is relative to ${CMAKE_CURRENT_SOURCE_DIR}
 # output-file is relative to ${CMAKE_CURRENT_BINARY_DIR}
 #
-# This function is similar to file(GENERATE OUTPUT) except it writes the content
-# to the file at configure time, rather than at generate time.
-#
-# TODO: Once we require 3.18+, this can use file(CONFIGURE) in its implementation,
-# or maybe its usage can be replaced by file(CONFIGURE). Until then, it  uses
-# configure_file() with a generic input file as source, when used with the CONTENT
-# signature.
+# This function is the universal replacement for file(CONFIGURE CMake command.
 function(qt_configure_file)
     cmake_parse_arguments(PARSE_ARGV 0 arg "" "OUTPUT;INPUT;CONTENT" "")
-    qt_configure_file_impl()
-endfunction()
-
-# A version of cmake_parse_arguments that makes sure all arguments are processed and errors out
-# with a message about ${type} having received unknown arguments.
-#
-# TODO: Remove when all usage of qt_parse_all_arguments were replaced by
-# cmake_parse_all_arguments(PARSEARGV) instances
-macro(qt_parse_all_arguments result type flags options multiopts)
-    cmake_parse_arguments(${result} "${flags}" "${options}" "${multiopts}" ${ARGN})
-    if(DEFINED ${result}_UNPARSED_ARGUMENTS)
-        message(FATAL_ERROR "Unknown arguments were passed to ${type} (${${result}_UNPARSED_ARGUMENTS}).")
+    if("CONTENT" IN_LIST ARGV)
+        if(arg_INPUT)
+            message(WARNING "Both CONTENT and INPUT are specified. CONTENT will be used to generate"
+                " output")
+        endif()
+        _qt_internal_configure_file(CONFIGURE OUTPUT "${arg_OUTPUT}" CONTENT "${arg_CONTENT}")
+    elseif(arg_INPUT)
+        _qt_internal_configure_file(CONFIGURE OUTPUT "${arg_OUTPUT}" INPUT "${arg_INPUT}")
+    else()
+        message(FATAL_ERROR "No input value provided to _qt_internal_configure_file.")
     endif()
-endmacro()
+endfunction()
 
 # Print all variables defined in the current scope.
 macro(qt_debug_print_variables)
@@ -161,6 +121,14 @@ endfunction()
 #   example: Qt6Gui
 # out_path should be the build path where the write the file.
 function(qt_internal_write_qt_package_version_file package_name out_path)
+    set(opt_args
+        ALLOW_OVERRIDE_FILES
+    )
+    set(single_args "")
+    set(multi_args "")
+    cmake_parse_arguments(PARSE_ARGV 2 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
     set(extra_code "")
 
     # Need to check for FEATURE_developer_build as well, because QT_FEATURE_developer_build is not
@@ -170,6 +138,29 @@ function(qt_internal_write_qt_package_version_file package_name out_path)
 # Disabling version check because Qt was configured with -developer-build.
 set(__qt_disable_package_version_check TRUE)
 set(__qt_disable_package_version_check_due_to_developer_build TRUE)")
+    endif()
+
+    set(QT_PACKAGE_NAME "${package_name}")
+
+    set(QT_VERSION_OVERRIDE_CODE "")
+    if(arg_ALLOW_OVERRIDE_FILES AND NOT QT_NO_INJECT_CONFIG_VERSION_OVERRIDE_FILES)
+        # Read the contents of the file into a variable, which will be appended to the template.
+        file(STRINGS "${QT_CMAKE_DIR}/QtCMakePackageVersionFileOverride.cmake.in"
+            QT_VERSION_OVERRIDE_CODE)
+
+        # Skip license
+        while(QT_VERSION_OVERRIDE_CODE)
+            list(POP_FRONT QT_VERSION_OVERRIDE_CODE line)
+            if (line MATCHES "^# SPDX")
+                list(POP_FRONT QT_VERSION_OVERRIDE_CODE line)
+                break()
+            endif()
+        endwhile()
+
+        string(REPLACE ";" "\n" QT_VERSION_OVERRIDE_CODE "${QT_VERSION_OVERRIDE_CODE}")
+
+        # Need to replace template expansion variables.
+        string(CONFIGURE "${QT_VERSION_OVERRIDE_CODE}" QT_VERSION_OVERRIDE_CODE @ONLY)
     endif()
 
     configure_file("${QT_CMAKE_DIR}/QtCMakePackageVersionFile.cmake.in" "${out_path}" @ONLY)

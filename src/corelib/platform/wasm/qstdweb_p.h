@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTDWEB_P_H
 #define QSTDWEB_P_H
@@ -19,6 +20,7 @@
 #include <QtCore/qglobal.h>
 #include "QtCore/qhash.h"
 #include "QtCore/qiodevice.h"
+#include "QtCore/private/qwasmsuspendresumecontrol_p.h"
 
 #include <emscripten/val.h>
 
@@ -33,6 +35,12 @@
 #include <emscripten/proxying.h>
 #include <emscripten/threading.h>
 #endif  // #if QT_CONFIG(thread)
+
+#if QT_CONFIG(wasm_jspi)
+# define QT_WASM_EMSCRIPTEN_ASYNC ,emscripten::async()
+#else
+# define QT_WASM_EMSCRIPTEN_ASYNC
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -164,7 +172,6 @@ namespace qstdweb {
 
     class Q_CORE_EXPORT Uint8Array {
     public:
-        static Uint8Array heap();
         explicit Uint8Array(const emscripten::val &uint8Array);
         explicit Uint8Array(const ArrayBuffer &buffer);
         explicit Uint8Array(uint32_t size);
@@ -185,26 +192,43 @@ namespace qstdweb {
         emscripten::val val() const;
 
     private:
-        static emscripten::val heap_();
         static emscripten::val constructor_();
         emscripten::val m_uint8Array = emscripten::val::undefined();
     };
 
-    class Q_CORE_EXPORT EventCallback
+    class Q_CORE_EXPORT FileSystemWritableFileStream {
+    public:
+        FileSystemWritableFileStream() = default;
+        explicit FileSystemWritableFileStream(const emscripten::val &writableStream);
+        emscripten::val val() const;
+
+    private:
+        emscripten::val m_writableStream = emscripten::val::undefined();
+    };
+
+    class Q_CORE_EXPORT FileSystemFileHandle {
+    public:
+        FileSystemFileHandle() = default;
+        explicit FileSystemFileHandle(const emscripten::val &fileHandle);
+
+        std::string name() const;
+        std::string kind() const;
+
+        emscripten::val val() const;
+
+    private:
+        emscripten::val m_fileHandle = emscripten::val::undefined();
+    };
+
+    // EventCallback here for source compatibility; prefer using QWasmEventHandler directly
+    class Q_CORE_EXPORT EventCallback : public QWasmEventHandler
     {
     public:
         EventCallback() = default;
-        ~EventCallback();
         EventCallback(EventCallback const&) = delete;
         EventCallback& operator=(EventCallback const&) = delete;
         EventCallback(emscripten::val element, const std::string &name,
                       const std::function<void(emscripten::val)> &fn);
-
-    private:
-        emscripten::val m_element = emscripten::val::undefined();
-        std::string m_eventName;
-        std::unique_ptr<std::function<void(emscripten::val)>> m_handler;
-        emscripten::val m_eventListener = emscripten::val::undefined();
     };
 
     struct PromiseCallbacks
@@ -214,14 +238,83 @@ namespace qstdweb {
         std::function<void()> finallyFunc;
     };
 
-    namespace Promise {
-        void Q_CORE_EXPORT adoptPromise(emscripten::val promise, PromiseCallbacks callbacks);
+    // Note: it is ok for the Promise object to go out of scope,
+    // the resources will be cleaned up in the finally handler.
+    class Q_CORE_EXPORT Promise {
+    public:
+        template<typename... Args>
+        Promise(emscripten::val target, QString methodName, Args... args) {
+            m_state = std::make_shared<State>();
+            m_state->m_promise = target.call<emscripten::val>(
+                methodName.toStdString().c_str(), std::forward<Args>(args)...);
+            if (m_state->m_promise.isUndefined() || m_state->m_promise["constructor"]["name"].as<std::string>() != "Promise") {
+                 qFatal("This function did not return a promise");
+            }
+            addFinallyFunction([](){});
+        }
+
+        Promise(emscripten::val promise) {
+            m_state = std::make_shared<State>();
+            m_state->m_promise = promise;
+            if (m_state->m_promise.isUndefined() || m_state->m_promise["constructor"]["name"].as<std::string>() != "Promise") {
+                 qFatal("This function did not return a promise");
+            }
+            addFinallyFunction([](){});
+        }
+
+        Promise(const std::vector<Promise> &promises) {
+            std::vector<emscripten::val> all;
+            all.reserve(promises.size());
+            for (const auto &p : promises)
+                all.push_back(p.getPromise());
+
+            auto arr = emscripten::val::array(all);
+            m_state = std::make_shared<State>();
+            m_state->m_promise = emscripten::val::global("Promise").call<emscripten::val>("all", arr);
+            addFinallyFunction([](){});
+        }
+
+        Promise& addThenFunction(std::function<void(emscripten::val)> thenFunc);
+        Promise& addCatchFunction(std::function<void(emscripten::val)> catchFunc);
+        Promise& addFinallyFunction(std::function<void()> finallyFunc);
+
+        void suspendExclusive();
+
+        emscripten::val getPromise() const;
+
+    public:
+        class State {
+        private:
+            friend class Promise;
+
+            State(const State&) = delete;
+            State(State&&) = delete;
+            State& operator=(const State&) = delete;
+            State& operator=(State&&) = delete;
+
+        public:
+            State() { ++s_numInstances; }
+            ~State() { --s_numInstances; }
+            static size_t numInstances() { return s_numInstances; }
+
+        private:
+            emscripten::val m_promise = emscripten::val::undefined();
+            QList<uint32_t> m_handlers;
+            static size_t s_numInstances;
+        };
+
+    private:
+        std::shared_ptr<State> m_state;
+
+    public:
+        // Deprecated: To be backwards compatible
+        static uint32_t Q_CORE_EXPORT adoptPromise(emscripten::val promise, PromiseCallbacks callbacks, QList<uint32_t> *handlers = nullptr);
 
         template<typename... Args>
-        void make(emscripten::val target,
-                  QString methodName,
-                  PromiseCallbacks callbacks,
-                  Args... args)
+        static uint32_t make(emscripten::val target,
+                      QString methodName,
+                      PromiseCallbacks callbacks,
+                      Args... args)
         {
             emscripten::val promiseObject = target.call<emscripten::val>(
                 methodName.toStdString().c_str(), std::forward<Args>(args)...);
@@ -229,10 +322,28 @@ namespace qstdweb {
                  qFatal("This function did not return a promise");
             }
 
-            adoptPromise(std::move(promiseObject), std::move(callbacks));
+            return adoptPromise(std::move(promiseObject), std::move(callbacks));
         }
 
-        void Q_CORE_EXPORT all(std::vector<emscripten::val> promises, PromiseCallbacks callbacks);
+        template<typename... Args>
+        static void make(
+            QList<uint32_t> &handlers,
+            emscripten::val target,
+                      QString methodName,
+                      PromiseCallbacks callbacks,
+                      Args... args)
+        {
+            emscripten::val promiseObject = target.call<emscripten::val>(
+                methodName.toStdString().c_str(), std::forward<Args>(args)...);
+            if (promiseObject.isUndefined() || promiseObject["constructor"]["name"].as<std::string>() != "Promise") {
+                 qFatal("This function did not return a promise");
+            }
+
+            adoptPromise(std::move(promiseObject), std::move(callbacks), &handlers);
+        }
+
+        static void Q_CORE_EXPORT suspendExclusive(QList<uint32_t> handlerIndices);
+        static void Q_CORE_EXPORT all(std::vector<emscripten::val> promises, PromiseCallbacks callbacks);
     };
 
     template<class F>
@@ -275,57 +386,55 @@ namespace qstdweb {
         Uint8Array m_array;
     };
 
+    class Q_CORE_EXPORT FileSystemWritableFileStreamIODevice: public QIODevice
+    {
+    public:
+        FileSystemWritableFileStreamIODevice(FileSystemWritableFileStream stream);
+        bool open(QIODevice::OpenMode mode) override;
+        void close() override;
+        bool isSequential() const override;
+        qint64 size() const override;
+        bool seek(qint64 pos) override;
+
+    protected:
+        qint64 readData(char *data, qint64 maxSize) override;
+        qint64 writeData(const char *data, qint64 size) override;
+
+    private:
+        FileSystemWritableFileStream m_stream;
+        qint64 m_size = 0;
+    };
+
+    class Q_CORE_EXPORT FileSystemFileIODevice: public QIODevice
+    {
+    public:
+        FileSystemFileIODevice(FileSystemFileHandle fileHandle);
+        bool open(QIODevice::OpenMode mode) override;
+        void close() override;
+        bool isSequential() const override;
+        qint64 size() const override;
+        bool seek(qint64 pos) override;
+
+    protected:
+        qint64 readData(char *data, qint64 maxSize) override;
+        qint64 writeData(const char *data, qint64 size) override;
+
+    private:
+        FileSystemFileHandle m_fileHandle;
+        std::unique_ptr<BlobIODevice> m_blobDevice;
+        std::unique_ptr<FileSystemWritableFileStreamIODevice> m_writableDevice;
+        qint64 m_size = 0;
+    };
+
     inline emscripten::val window()
     {
         static emscripten::val savedWindow = emscripten::val::global("window");
         return savedWindow;
     }
 
-    bool haveAsyncify();
+    bool Q_CORE_EXPORT haveAsyncify();
     bool Q_CORE_EXPORT haveJspi();
     bool canBlockCallingThread();
-
-    struct CancellationFlag
-    {
-    };
-
-#if QT_CONFIG(thread)
-    template<class T>
-    T proxyCall(std::function<T()> task, emscripten::ProxyingQueue *queue)
-    {
-        T result;
-        queue->proxySync(emscripten_main_runtime_thread_id(),
-                         [task, result = &result]() { *result = task(); });
-        return result;
-    }
-
-    template<>
-    inline void proxyCall<void>(std::function<void()> task, emscripten::ProxyingQueue *queue)
-    {
-        queue->proxySync(emscripten_main_runtime_thread_id(), task);
-    }
-
-    template<class T>
-    T runTaskOnMainThread(std::function<T()> task, emscripten::ProxyingQueue *queue)
-    {
-        return emscripten_is_main_runtime_thread() ? task() : proxyCall<T>(std::move(task), queue);
-    }
-
-    template<class T>
-    T runTaskOnMainThread(std::function<T()> task)
-    {
-        emscripten::ProxyingQueue singleUseQueue;
-        return runTaskOnMainThread<T>(task, &singleUseQueue);
-    }
-
-#else
-    template<class T>
-    T runTaskOnMainThread(std::function<T()> task)
-    {
-        return task();
-    }
-#endif // QT_CONFIG(thread)
-
 }
 
 QT_END_NAMESPACE

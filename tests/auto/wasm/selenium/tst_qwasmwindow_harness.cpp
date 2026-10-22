@@ -16,10 +16,26 @@
 #include <QApplication>
 #include <QDialog>
 #include <QSysInfo>
+#include <QTreeView>
+#include <QFileSystemModel>
+#include <QScrollArea>
+#include <QVBoxLayout>
+#include <QSpinBox>
+#include <QToolTip>
+#include <QCheckBox>
+#include <QRadioButton>
+#include <QPushButton>
+#include <QTextEdit>
+#include <QPlainTextEdit>
+#include <QLabel>
+#include <QGroupBox>
+#include <QComboBox>
 
 #include <QOpenGLWindow>
 #include <QOpenGLFunctions>
 #include <QOpenGLShaderProgram>
+#include <QOpenGLContext>
+#include <QOffscreenSurface>
 
 #include <emscripten.h>
 #include <emscripten/bind.h>
@@ -29,6 +45,36 @@
 #include <sstream>
 #include <vector>
 
+void QWasmAccessibilityEnable();
+
+// Our dialog to test two things
+// 1) Focus logic
+// 2) spinbox context menu
+class TestWidget : public QDialog
+{
+    Q_OBJECT
+};
+
+// We override to be able to test that the contextMenu
+// calls popup and not exec. Calling exec locks the
+// test.
+class TestSpinBox : public QSpinBox
+{
+    Q_OBJECT
+
+public:
+    TestSpinBox(QWidget *parent = nullptr) : QSpinBox(parent) { }
+
+    void ShowContextMenu()
+    {
+        QContextMenuEvent event(QContextMenuEvent::Reason::Mouse, QPoint(0, geometry().bottom()),
+                                mapToGlobal(QPoint(0, geometry().bottom())), Qt::NoModifier);
+
+        contextMenuEvent(&event);
+    }
+};
+
+// Baseclass for our windows, openglwindow and raster window
 class TestWindowBase
 {
 public:
@@ -39,11 +85,6 @@ public:
     virtual bool close() = 0;
     virtual QWindow *qWindow() = 0;
     virtual void opengl_color_at_0_0(int *r, int *g, int *b) = 0;
-};
-
-class TestWidget : public QDialog
-{
-    Q_OBJECT
 };
 
 class TestWindow : public QRasterWindow, public TestWindowBase
@@ -359,9 +400,8 @@ public:
     static WidgetStorage *getInstance()
     {
         if (!s_instance)
-        {
             s_instance = new WidgetStorage();
-        }
+
         return s_instance;
     }
     static void clearInstance()
@@ -378,37 +418,301 @@ public:
         return nullptr;
     }
 
-    QLineEdit *findEdit(const std::string &name)
+    TestSpinBox *findSpinBox(const std::string &name)
     {
-        auto it = m_lineEdits.find(name);
-        if (it != m_lineEdits.end())
+        auto it = m_spinBoxes.find(name);
+        if (it != m_spinBoxes.end())
             return it->second;
         return nullptr;
     }
+    QComboBox *findComboBox(const std::string& name)
+    {
+        auto it = m_comboBoxes.find(name);
+        if (it != m_comboBoxes.end())
+            return it->second;
+        return nullptr;
+    }
+    void setComboBox(const std::string &name)
+    {
+        auto box1 = findComboBox(name + ".1");
+        auto box2 = findComboBox(name + ".2");
 
+        if (box1) box1->setCurrentIndex(1);
+        if (box2) box2->setCurrentIndex(1);
+    }
     void make(const std::string &name)
     {
         auto widget = std::make_shared<TestWidget>();
-        auto *lineEdit = new QLineEdit(widget.get());
+
+        widget->setWindowTitle("Dialog");
+        auto spinBox = new TestSpinBox(widget.get());
+        spinBox->setToolTip(QString(u"A ToolTip"));
 
         widget->setMinimumSize(200, 200);
         widget->setMaximumSize(200, 200);
         widget->setGeometry(0, m_widgetY, 200, 200);
         m_widgetY += 200;
 
-        lineEdit->setText("Hello world");
+        m_widgets[name] = widget;
+        m_spinBoxes[name] = spinBox;
+    }
+    void showContextMenu(const std::string &name)
+    {
+        TestSpinBox *spinBox = findSpinBox(name);
+        if (spinBox)
+            spinBox->ShowContextMenu();
+    }
+    void showToolTip(const std::string &name)
+    {
+        TestSpinBox *spinBox = findSpinBox(name);
+        if (spinBox)
+            QToolTip::showText(spinBox->mapToGlobal( QPoint( 0, 0 ) ), spinBox->toolTip());
+    }
+    void makeNative(const std::string &name)
+    {
+        auto widget = std::make_shared<TestWidget>();
+        widget->setWindowTitle("Dialog");
+        auto spinBox = new TestSpinBox(widget.get());
+        spinBox->setToolTip(QString(u"A ToolTip"));
+
+        widget->setMinimumSize(200, 200);
+        widget->setMaximumSize(200, 200);
+        widget->setGeometry(0, m_widgetY, 200, 200);
+        m_widgetY += 200;
 
         m_widgets[name] = widget;
-        m_lineEdits[name] = lineEdit;
+        m_spinBoxes[name] = spinBox;
+
+        QFileSystemModel *model = new QFileSystemModel;
+        model->setRootPath(QDir::currentPath());
+
+        auto *scrollArea = new QScrollArea();
+        auto *layout = new QVBoxLayout(widget.get());
+        auto *treeView = new QTreeView(scrollArea);
+        treeView->setModel(model);
+
+        layout->addWidget(spinBox);
+        layout->addWidget(scrollArea);
+
+        treeView->setAttribute(Qt::WA_NativeWindow);
+        scrollArea->setAttribute(Qt::WA_NativeWindow);
+        spinBox->setAttribute(Qt::WA_NativeWindow);
+        widget->setAttribute(Qt::WA_NativeWindow);
+    }
+
+    void makeNativeA11yButtonWidgets(const std::string &name)
+    {
+        QWasmAccessibilityEnable();
+        auto widget = std::make_shared<TestWidget>();
+        widget->setWindowTitle("Dialog");
+
+        m_widgets[name] = widget;
+
+        auto *layout = new QVBoxLayout(widget.get());
+        auto *checkBoxA1 = new QCheckBox("CheckBoxA1", widget.get());
+        auto *checkBoxA2 = new QCheckBox("CheckBoxA2", widget.get());
+        auto *radioB1 = new QRadioButton("RadioB1", widget.get());
+        auto *radioB2 = new QRadioButton("RadioB2", widget.get());
+        auto *pushC1 = new QPushButton("PushC1", widget.get());
+        auto *pushC2 = new QPushButton("PushC2", widget.get());
+
+        checkBoxA1->setAccessibleIdentifier("CheckBoxA1");
+        checkBoxA2->setAccessibleIdentifier("CheckBoxA2");
+        radioB1->setAccessibleIdentifier("RadioB1");
+        radioB2->setAccessibleIdentifier("RadioB2");
+        pushC1->setAccessibleIdentifier("PushC1");
+        pushC2->setAccessibleIdentifier("PushC2");
+
+        checkBoxA1->setAccessibleDescription("CheckBoxA1 - Description");
+        checkBoxA2->setAccessibleDescription("CheckBoxA2 - Description");
+        radioB1->setAccessibleDescription("RadioB1 - Description");
+        radioB2->setAccessibleDescription("RadioB2 - Description");
+        pushC1->setAccessibleDescription("PushC1 - Description");
+        pushC2->setAccessibleDescription("PushC2 - Description");
+
+        QObject::connect(pushC1, &QPushButton::clicked, widget.get(), [pushC1]() { pushC1->setText("PushC1 - Clicked"); });
+        QObject::connect(pushC2, &QPushButton::clicked, widget.get(), [pushC2]() { pushC2->setText("PushC2 - Clicked"); });
+
+        layout->addWidget(checkBoxA1);
+        layout->addWidget(checkBoxA2);
+        layout->addWidget(radioB1);
+        layout->addWidget(radioB2);
+        layout->addWidget(pushC1);
+        layout->addWidget(pushC2);
+    }
+
+    void makeNativeA11yTextWidgets(const std::string &name)
+    {
+        QWasmAccessibilityEnable();
+        auto widget = std::make_shared<TestWidget>();
+        widget->setWindowTitle("Dialog");
+
+        m_widgets[name] = widget;
+
+        auto *layout = new QVBoxLayout(widget.get());
+        auto *lineEditA1 = new QLineEdit("LineEditA1", widget.get());
+        auto *lineEditA2 = new QLineEdit("LineEditA2", widget.get());
+        auto *lineEditA3 = new QLineEdit("LineEditA3", widget.get());
+        auto *lineEditA4 = new QLineEdit("LineEditA4", widget.get());
+        auto *lineEditA5 = new QLineEdit("LineEditA5", widget.get());
+
+        auto *textEditB1 = new QTextEdit("TextEditB1", widget.get());
+        auto *textEditB2 = new QTextEdit("TextEditB2", widget.get());
+
+        auto *plainTextEditC1 = new QPlainTextEdit("PlainTextEditC1", widget.get());
+        auto *plainTextEditC2 = new QPlainTextEdit("PlainTextEditC2", widget.get());
+
+        auto *labelD1 = new QLabel("LabelD1", widget.get());
+
+        lineEditA1->setAccessibleIdentifier("LineEditA1");
+        lineEditA2->setAccessibleIdentifier("LineEditA2");
+        lineEditA3->setAccessibleIdentifier("LineEditA3");
+        lineEditA4->setAccessibleIdentifier("LineEditA4");
+        lineEditA5->setAccessibleIdentifier("LineEditA5");
+        textEditB1->setAccessibleIdentifier("TextEditB1");
+        textEditB2->setAccessibleIdentifier("TextEditB2");
+        plainTextEditC1->setAccessibleIdentifier("PlainTextEditC1");
+        plainTextEditC2->setAccessibleIdentifier("PlainTextEditC2");
+        labelD1->setAccessibleIdentifier("LabelD1");
+
+        lineEditA1->setAccessibleDescription("LineEditA1 - Description");
+        lineEditA2->setAccessibleDescription("LineEditA2 - Description");
+        lineEditA3->setAccessibleDescription("LineEditA3 - Description");
+        lineEditA4->setAccessibleDescription("LineEditA4 - Description");
+        lineEditA5->setAccessibleDescription("LineEditA5 - Description");
+        textEditB1->setAccessibleDescription("TextEditB1 - Description");
+        textEditB2->setAccessibleDescription("TextEditB2 - Description");
+        plainTextEditC1->setAccessibleDescription("PlainTextEditC1 - Description");
+        plainTextEditC2->setAccessibleDescription("PlainTextEditC2 - Description");
+        labelD1->setAccessibleDescription("LabelD1 - Description");
+
+        lineEditA1->setText("LineEditA1 - Text");
+        lineEditA2->setText("LineEditA2 - Text");
+        lineEditA3->setText("LineEditA3 - Text");
+        lineEditA4->setText("LineEditA4 - Text");
+        lineEditA5->setText("LineEditA5 - Text");
+        textEditB1->setText("TextEditB1 - Text");
+        textEditB2->setText("TextEditB2 - Text");
+        plainTextEditC1->setPlainText("PlainTextEditC1 - Text");
+        plainTextEditC2->setPlainText("PlainTextEditC2 - Text");
+        labelD1->setText("LabelD1 - Text");
+
+        lineEditA2->setReadOnly(true);
+        textEditB2->setReadOnly(true);
+        plainTextEditC2->setReadOnly(true);
+
+        lineEditA3->setEchoMode(QLineEdit::Password);
+        lineEditA4->setEchoMode(QLineEdit::NoEcho);
+        lineEditA5->setEchoMode(QLineEdit::PasswordEchoOnEdit);
+
+        layout->addWidget(lineEditA1);
+        layout->addWidget(lineEditA2);
+        layout->addWidget(lineEditA3);
+        layout->addWidget(lineEditA4);
+        layout->addWidget(lineEditA5);
+        layout->addWidget(textEditB1);
+        layout->addWidget(textEditB2);
+        layout->addWidget(plainTextEditC1);
+        layout->addWidget(plainTextEditC2);
+        layout->addWidget(labelD1);
+    }
+
+    void makeNativeA11yGroupBoxWidgets(const std::string &name)
+    {
+        QWasmAccessibilityEnable();
+        auto widget = std::make_shared<TestWidget>();
+        widget->setWindowTitle("Dialog");
+
+        m_widgets[name] = widget;
+
+        auto *layout = new QHBoxLayout(widget.get());
+
+        auto *groupBox1 = new QGroupBox("Group1");
+        auto *groupBox2 = new QGroupBox("Group2");
+        auto *groupBox1Layout = new QVBoxLayout(groupBox1);
+        auto *groupBox2Layout = new QVBoxLayout(groupBox2);
+        auto *gb1Label = new QLabel("Label1");
+        auto *gb2Label = new QLabel("Label2");
+        auto *gb1Button = new QPushButton("Button1");
+        auto *gb2Button = new QPushButton("Button2");
+
+        groupBox1Layout->addWidget(gb1Label);
+        groupBox1Layout->addWidget(gb1Button);
+
+        groupBox2Layout->addWidget(gb2Label);
+        groupBox2Layout->addWidget(gb2Button);
+
+        groupBox2->setCheckable(true);
+
+        groupBox1->setAccessibleIdentifier("GroupBox1");
+        groupBox2->setAccessibleIdentifier("GroupBox2");
+        gb1Label->setAccessibleIdentifier("Label1");
+        gb2Label->setAccessibleIdentifier("Label2");
+        gb1Button->setAccessibleIdentifier("Button1");
+        gb2Button->setAccessibleIdentifier("Button2");
+
+        groupBox1->setAccessibleDescription("GroupBox1 - Description");
+        groupBox2->setAccessibleDescription("GroupBox2 - Description");
+        gb1Label->setAccessibleDescription("Label1 - Description");
+        gb2Label->setAccessibleDescription("Label2 - Description");
+        gb1Button->setAccessibleDescription("Button1 - Description");
+        gb2Button->setAccessibleDescription("Button2 - Description");
+
+        layout->addWidget(groupBox1);
+        layout->addWidget(groupBox2);
+    }
+
+    void makeNativeA11yComboBoxWidgets(const std::string &name)
+    {
+        QWasmAccessibilityEnable();
+        auto widget = std::make_shared<TestWidget>();
+        widget->setWindowTitle("Dialog");
+
+        m_widgets[name] = widget;
+
+        auto *layout = new QHBoxLayout(widget.get());
+
+        auto *comboBox1 = new QComboBox();
+        auto *comboBox2 = new QComboBox();
+        layout->addWidget(comboBox1);
+        layout->addWidget(comboBox2);
+
+        comboBox1->setEditable(true);
+        comboBox1->addItem(QLatin1String("Box1Item1"));
+        comboBox1->addItem(QLatin1String("Box1Item2"));
+        comboBox2->addItem(QLatin1String("Box2Item1"));
+        comboBox2->addItem(QLatin1String("Box2Item2"));
+
+        comboBox1->findChildren<QWidget *>().back()->setAccessibleIdentifier("ComboBox1LineEdit");
+
+        comboBox1->setAccessibleIdentifier("ComboBox1");
+        comboBox2->setAccessibleIdentifier("ComboBox2");
+
+        comboBox1->setAccessibleDescription("ComboBox1 - Description");
+        comboBox2->setAccessibleDescription("ComboBox2 - Description");
+
+        m_comboBoxes[name + ".1"] = comboBox1;
+        m_comboBoxes[name + ".2"] = comboBox2;
+    }
+
+    bool closeWidget(const std::string &name)
+    {
+        TestWidget *widget = findWidget(name);
+        if (!widget)
+            return false;
+
+        widget->close();
+        return true;
     }
 
 private:
     using TestWidgetPtr = std::shared_ptr<TestWidget>;
 
-    static WidgetStorage               * s_instance;
-    std::map<std::string, TestWidgetPtr> m_widgets;
-    std::map<std::string, QLineEdit  *>  m_lineEdits;
-    int                                  m_widgetY = 0;
+    static WidgetStorage                 *s_instance;
+    std::map<std::string, TestWidgetPtr>  m_widgets;
+    std::map<std::string, TestSpinBox *>  m_spinBoxes;
+    std::map<std::string, QComboBox   *>  m_comboBoxes;
+    int                                   m_widgetY = 0;
 };
 
 WidgetStorage *WidgetStorage::s_instance = nullptr;
@@ -503,6 +807,42 @@ void createWidget(const std::string &name)
     WidgetStorage::getInstance()->make(name);
 }
 
+
+void createNativeWidget(const std::string &name)
+{
+    WidgetStorage::getInstance()->makeNative(name);
+}
+
+void createNativeA11yButtonWidgets(const std::string &name)
+{
+    WidgetStorage::getInstance()->makeNativeA11yButtonWidgets(name);
+}
+
+void createNativeA11yTextWidgets(const std::string &name)
+{
+    WidgetStorage::getInstance()->makeNativeA11yTextWidgets(name);
+}
+
+void showContextMenuWidget(const std::string &name)
+{
+    WidgetStorage::getInstance()->showContextMenu(name);
+}
+
+void createNativeA11yGroupBoxWidgets(const std::string &name)
+{
+    WidgetStorage::getInstance()->makeNativeA11yGroupBoxWidgets(name);
+}
+
+void createNativeA11yComboBoxWidgets(const std::string &name)
+{
+    WidgetStorage::getInstance()->makeNativeA11yComboBoxWidgets(name);
+}
+
+void showToolTipWidget(const std::string &name)
+{
+    WidgetStorage::getInstance()->showToolTip(name);
+}
+
 void setWidgetNoFocusShow(const std::string &name)
 {
     auto w = WidgetStorage::getInstance()->findWidget(name);
@@ -520,9 +860,9 @@ void showWidget(const std::string &name)
 void hasWidgetFocus(const std::string &name)
 {
     bool focus = false;
-    auto le = WidgetStorage::getInstance()->findEdit(name);
-    if (le)
-        focus = le->hasFocus();
+    auto spinBox = WidgetStorage::getInstance()->findSpinBox(name);
+    if (spinBox)
+        focus = spinBox->hasFocus();
 
     emscripten::val::global("window").call<void>("hasWidgetFocusCallback",
                                                  emscripten::val(focus));
@@ -533,6 +873,16 @@ void activateWidget(const std::string &name)
     auto w = WidgetStorage::getInstance()->findWidget(name);
     if (w)
         w->activateWindow();
+}
+
+void setWidgetComboMenu(const std::string &name)
+{
+    WidgetStorage::getInstance()->setComboBox(name);
+}
+
+bool closeWidget(const std::string &name)
+{
+    return WidgetStorage::getInstance()->closeWidget(name);
 }
 
 void clearWidgets()
@@ -639,12 +989,17 @@ bool closeWindow(const std::string &title)
 
 std::string colorToJs(int r, int g, int b)
 {
-    return
-        "[{"
-        "   r: " + std::to_string(r) + ","
-        "   g: " + std::to_string(g) + ","
-        "   b: " + std::to_string(b) + ""
-        "}]";
+    return "[{"
+           "   r: "
+            + std::to_string(r)
+            + ","
+              "   g: "
+            + std::to_string(g)
+            + ","
+              "   b: "
+            + std::to_string(b)
+            + ""
+              "}]";
 }
 
 void getOpenGLColorAt_0_0(const std::string &windowTitle)
@@ -664,25 +1019,87 @@ void getOpenGLColorAt_0_0(const std::string &windowTitle)
                                                  emscripten::val(colorToJs(r, g, b)));
 }
 
+// Reproduces QTBUG-145723: a QOpenGLContext must stay valid and reusable after
+// doneCurrent(). The sequence makeCurrent() -> doneCurrent() -> makeCurrent()
+// must succeed, and isValid() must report true after each step (in particular
+// doneCurrent() must not invalidate the context). Returns a JS object with the
+// outcome of each step so the test driver can assert on it.
+void testContextReuse()
+{
+    QSurfaceFormat format;
+    format.setVersion(3, 0);
+
+    QOpenGLContext context;
+    context.setFormat(format);
+    const bool created = context.create();
+
+    QOffscreenSurface surface;
+    surface.setFormat(context.format());
+    surface.create();
+
+    const bool makeCurrent1 = context.makeCurrent(&surface);
+    const bool validAfterMakeCurrent1 = context.isValid();
+
+    context.doneCurrent();
+    const bool validAfterDoneCurrent = context.isValid();
+
+    const bool makeCurrent2 = context.makeCurrent(&surface);
+    const bool validAfterMakeCurrent2 = context.isValid();
+
+    context.doneCurrent();
+
+    auto boolStr = [](bool value) { return value ? "true" : "false"; };
+    std::ostringstream out;
+    out << "({"
+        << "created:" << boolStr(created) << ","
+        << "makeCurrent1:" << boolStr(makeCurrent1) << ","
+        << "validAfterMakeCurrent1:" << boolStr(validAfterMakeCurrent1) << ","
+        << "validAfterDoneCurrent:" << boolStr(validAfterDoneCurrent) << ","
+        << "makeCurrent2:" << boolStr(makeCurrent2) << ","
+        << "validAfterMakeCurrent2:" << boolStr(validAfterMakeCurrent2)
+        << "})";
+
+    emscripten::val::global("window").call<void>("testContextReuseCallback",
+                                                 emscripten::val(out.str()));
+}
+
+#if QT_CONFIG(wasm_jspi)
+#  define EMSC_BIND_FUNC(name, afunction) \
+      emscripten::function(name, afunction, emscripten::async())
+#else
+#  define EMSC_BIND_FUNC(name, afunction) \
+      emscripten::function(name, afunction)
+#endif
+
 EMSCRIPTEN_BINDINGS(qwasmwindow)
 {
-    emscripten::function("screenInformation", &screenInformation);
-    emscripten::function("windowInformation", &windowInformation);
+    EMSC_BIND_FUNC("screenInformation", &screenInformation);
+    EMSC_BIND_FUNC("windowInformation", &windowInformation);
 
-    emscripten::function("createWindow", &createWindow);
-    emscripten::function("setWindowVisible", &setWindowVisible);
-    emscripten::function("setWindowParent", &setWindowParent);
-    emscripten::function("closeWindow", &closeWindow);
-    emscripten::function("setWindowBackgroundColor", &setWindowBackgroundColor);
+    EMSC_BIND_FUNC("createWindow", &createWindow);
+    EMSC_BIND_FUNC("setWindowVisible", &setWindowVisible);
+    EMSC_BIND_FUNC("setWindowParent", &setWindowParent);
+    EMSC_BIND_FUNC("closeWindow", &closeWindow);
+    EMSC_BIND_FUNC("setWindowBackgroundColor", &setWindowBackgroundColor);
 
-    emscripten::function("getOpenGLColorAt_0_0", &getOpenGLColorAt_0_0);
+    EMSC_BIND_FUNC("getOpenGLColorAt_0_0", &getOpenGLColorAt_0_0);
+    EMSC_BIND_FUNC("testContextReuse", &testContextReuse);
 
-    emscripten::function("createWidget", &createWidget);
-    emscripten::function("setWidgetNoFocusShow", &setWidgetNoFocusShow);
-    emscripten::function("showWidget", &showWidget);
-    emscripten::function("activateWidget", &activateWidget);
-    emscripten::function("hasWidgetFocus", &hasWidgetFocus);
-    emscripten::function("clearWidgets", &clearWidgets);
+    EMSC_BIND_FUNC("createWidget", &createWidget);
+    EMSC_BIND_FUNC("createNativeWidget", &createNativeWidget);
+    EMSC_BIND_FUNC("createNativeA11yButtonWidgets", &createNativeA11yButtonWidgets);
+    EMSC_BIND_FUNC("createNativeA11yTextWidgets", &createNativeA11yTextWidgets);
+    EMSC_BIND_FUNC("createNativeA11yGroupBoxWidgets", &createNativeA11yGroupBoxWidgets);
+    EMSC_BIND_FUNC("createNativeA11yComboBoxWidgets", &createNativeA11yComboBoxWidgets);
+    EMSC_BIND_FUNC("showContextMenuWidget", &showContextMenuWidget);
+    EMSC_BIND_FUNC("showToolTipWidget", &showToolTipWidget);
+    EMSC_BIND_FUNC("setWidgetNoFocusShow", &setWidgetNoFocusShow);
+    EMSC_BIND_FUNC("showWidget", &showWidget);
+    EMSC_BIND_FUNC("setWidgetComboMenu", &setWidgetComboMenu);
+    EMSC_BIND_FUNC("closeWidget", &closeWidget);
+    EMSC_BIND_FUNC("activateWidget", &activateWidget);
+    EMSC_BIND_FUNC("hasWidgetFocus", &hasWidgetFocus);
+    EMSC_BIND_FUNC("clearWidgets", &clearWidgets);
 }
 
 int main(int argc, char **argv)

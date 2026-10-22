@@ -68,25 +68,25 @@ public:
     {
         if (qdesigner_internal__PreviewWidget->objectName().isEmpty())
             qdesigner_internal__PreviewWidget->setObjectName("qdesigner_internal__PreviewWidget");
-        qdesigner_internal__PreviewWidget->resize(471, 251);
+        qdesigner_internal__PreviewWidget->resize(471, 337);
         QSizePolicy sizePolicy(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Minimum);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(qdesigner_internal__PreviewWidget->sizePolicy().hasHeightForWidth());
         qdesigner_internal__PreviewWidget->setSizePolicy(sizePolicy);
         gridLayout = new QGridLayout(qdesigner_internal__PreviewWidget);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         gridLayout->setObjectName("gridLayout");
         vboxLayout = new QVBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setContentsMargins(0, 0, 0, 0);
 #endif
         vboxLayout->setObjectName("vboxLayout");
@@ -102,7 +102,7 @@ public:
         vboxLayout->addWidget(ComboBox1);
 
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);
@@ -122,13 +122,13 @@ public:
 
         ScrollBar1 = new QScrollBar(qdesigner_internal__PreviewWidget);
         ScrollBar1->setObjectName("ScrollBar1");
-        ScrollBar1->setOrientation(Qt::Horizontal);
+        ScrollBar1->setOrientation(Qt::Orientation::Horizontal);
 
         vboxLayout->addWidget(ScrollBar1);
 
         Slider1 = new QSlider(qdesigner_internal__PreviewWidget);
         Slider1->setObjectName("Slider1");
-        Slider1->setOrientation(Qt::Horizontal);
+        Slider1->setOrientation(Qt::Orientation::Horizontal);
 
         vboxLayout->addWidget(Slider1);
 
@@ -147,17 +147,17 @@ public:
 
         ProgressBar1 = new QProgressBar(qdesigner_internal__PreviewWidget);
         ProgressBar1->setObjectName("ProgressBar1");
-        ProgressBar1->setOrientation(Qt::Horizontal);
+        ProgressBar1->setOrientation(Qt::Orientation::Horizontal);
 
         gridLayout->addWidget(ProgressBar1, 2, 0, 1, 1);
 
         ButtonGroup2 = new QGroupBox(qdesigner_internal__PreviewWidget);
         ButtonGroup2->setObjectName("ButtonGroup2");
         vboxLayout1 = new QVBoxLayout(ButtonGroup2);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout1->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout1->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout1->setObjectName("vboxLayout1");
@@ -178,10 +178,10 @@ public:
         ButtonGroup1 = new QGroupBox(qdesigner_internal__PreviewWidget);
         ButtonGroup1->setObjectName("ButtonGroup1");
         vboxLayout2 = new QVBoxLayout(ButtonGroup1);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout2->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout2->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout2->setObjectName("vboxLayout2");

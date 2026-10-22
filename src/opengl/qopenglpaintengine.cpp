@@ -25,6 +25,7 @@
 */
 
 // #define QT_OPENGL_CACHE_AS_VBOS
+// Qt-Security score:significant reason:default
 
 #include <private/qopenglgradientcache_p.h>
 #include <private/qopengltexturecache_p.h>
@@ -893,7 +894,7 @@ void QOpenGL2PaintEngineExPrivate::fill(const QVectorPath& path)
                 vertexCoordinateArray.clear();
                 vertexCoordinateArray.addPath(path, inverseScale, false);
                 int vertexCount = vertexCoordinateArray.vertexCount();
-                int floatSizeInBytes = vertexCount * 2 * sizeof(float);
+                qsizetype floatSizeInBytes = qsizetype(vertexCount) * 2 * sizeof(float);
                 cache->vertexCount = vertexCount;
                 cache->indexCount = 0;
                 cache->primitiveType = GL_TRIANGLE_FAN;
@@ -1921,6 +1922,15 @@ void QOpenGL2PaintEngineExPrivate::drawCachedGlyphs(QFontEngine::GlyphFormat gly
     if (numGlyphs == 0)
         return;
 
+    // Using uint16 indices. Also we do not want 0xFFFF to be used as an index
+    // value to not accidentally conflict with primitive restart.
+    constexpr int maxGlyphsPerRun = 65536 / 4 - 1; // 16383 -> largest index value is 65531
+    if (numGlyphs > maxGlyphsPerRun) {
+        qWarning("drawCachedGlyphs: glyph run of %d glyphs exceeds the %d-glyph limit; clamping",
+                 numGlyphs, maxGlyphsPerRun);
+        numGlyphs = maxGlyphsPerRun;
+    }
+
     if (elementIndices.size() < numGlyphs*6) {
         Q_ASSERT(elementIndices.size() % 6 == 0);
         int j = elementIndices.size() / 6 * 4;
@@ -2216,7 +2226,7 @@ bool QOpenGL2PaintEngineEx::begin(QPaintDevice *pdev)
     // still tests for QGL-QOpenGL paint engine interoperability, so keep the
     // status quo for now, and avoid introducing a VAO in non-core contexts.
     const bool needsVAO = d->ctx->format().profile() == QSurfaceFormat::CoreProfile
-        && d->ctx->format().version() >= qMakePair(3, 2);
+        && d->ctx->format().version() >= std::pair(3, 2);
     if (needsVAO && !d->vao.isCreated()) {
         bool created = d->vao.create();
 
@@ -2680,7 +2690,7 @@ QPainterState *QOpenGL2PaintEngineEx::createState(QPainterState *orig) const
     return s;
 }
 
-QOpenGL2PaintEngineState::QOpenGL2PaintEngineState(QOpenGL2PaintEngineState &other)
+QOpenGL2PaintEngineState::QOpenGL2PaintEngineState(const QOpenGL2PaintEngineState &other)
     : QPainterState(other)
 {
     isNew = true;

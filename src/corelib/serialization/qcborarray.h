@@ -1,5 +1,6 @@
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORARRAY_H
 #define QCBORARRAY_H
@@ -203,7 +204,9 @@ public:
 
     QCborArray() noexcept;
     QCborArray(const QCborArray &other) noexcept;
+    QCborArray(QCborArray &&other) noexcept = default;
     QCborArray &operator=(const QCborArray &other) noexcept;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QCborArray)
     QCborArray(std::initializer_list<QCborValue> args)
         : QCborArray()
     {
@@ -254,7 +257,7 @@ public:
 
     bool contains(const QCborValue &value) const;
 
-    int compare(const QCborArray &other) const noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION int compare(const QCborArray &other) const noexcept;
 #if QT_CORE_REMOVED_SINCE(6, 8)
     bool operator==(const QCborArray &other) const noexcept
     { return compare(other) == 0; }

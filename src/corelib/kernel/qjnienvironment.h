@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QJNI_ENVIRONMENT_H
 #define QJNI_ENVIRONMENT_H
@@ -89,10 +90,11 @@ public:
     static bool checkAndClearExceptions(JNIEnv *env, OutputMode outputMode = OutputMode::Verbose);
 
     static JNIEnv *getJniEnv();
+    static QStringList stackTrace(jthrowable exception);
 
 private:
     Q_DISABLE_COPY_MOVE(QJniEnvironment)
-    QScopedPointer<QJniEnvironmentPrivate> d;
+    std::unique_ptr<QJniEnvironmentPrivate> d;
 };
 
 QT_END_NAMESPACE

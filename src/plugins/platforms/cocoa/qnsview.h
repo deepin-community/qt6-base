@@ -1,10 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNSVIEW_H
 #define QNSVIEW_H
 
 #include <AppKit/NSView.h>
+#include <QuartzCore/CALayer.h>
 
 #include <QtCore/private/qcore_mac_p.h>
 
@@ -41,7 +43,12 @@ Q_FORWARD_DECLARE_OBJC_CLASS(NSColorSpace);
 @interface QNSView (QtExtras)
 @property (nonatomic, readonly) QCocoaWindow *platformWindow;
 @end
-#endif // __OBJC__
 
+QT_DECLARE_NAMESPACED_OBJC_INTERFACE(QContainerLayer, CALayer
+- (instancetype)initWithContentLayer:(CALayer *)contentLayer;
+@property (readonly) CALayer *contentLayer;
+)
+
+#endif // __OBJC__
 
 #endif //QNSVIEW_H

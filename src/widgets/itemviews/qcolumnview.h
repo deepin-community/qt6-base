@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOLUMNVIEW_H
 #define QCOLUMNVIEW_H
@@ -17,6 +18,7 @@ class Q_WIDGETS_EXPORT QColumnView : public QAbstractItemView {
 
 Q_OBJECT
     Q_PROPERTY(bool resizeGripsVisible READ resizeGripsVisible WRITE setResizeGripsVisible)
+    Q_PROPERTY(bool previewColumnVisible READ isPreviewColumnVisible WRITE setPreviewColumnVisible)
 
 Q_SIGNALS:
     void updatePreviewWidget(const QModelIndex &index);
@@ -38,6 +40,8 @@ public:
     // QColumnView functions
     void setResizeGripsVisible(bool visible);
     bool resizeGripsVisible() const;
+    void setPreviewColumnVisible(bool visible);
+    bool isPreviewColumnVisible() const;
 
     QWidget *previewWidget() const;
     void setPreviewWidget(QWidget *widget);

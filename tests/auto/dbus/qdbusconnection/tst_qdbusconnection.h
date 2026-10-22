@@ -120,11 +120,14 @@ private slots:
     void callVirtualObject();
     void callVirtualObjectLocal();
     void pendingCallWhenDisconnected();
+    void connectRelayWhenDisconnected();
     void connectionLimit();
 
     void emptyServerAddress();
 
     void parentClassSignal();
+
+    void delayedDeliveryReenabledAfterUsedInMainThread();
 
 public:
     QString serviceName() const { return "org.qtproject.Qt.Autotests.QDBusConnection"; }

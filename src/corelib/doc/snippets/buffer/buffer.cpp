@@ -1,7 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QApplication>
 #include <QBuffer>
 #include <QPalette>
 
@@ -23,13 +22,14 @@ static void main_snippet()
 
 static void write_datastream_snippets()
 {
+    QPalette palette;
 //! [1]
     QByteArray byteArray;
     QBuffer buffer(&byteArray);
     buffer.open(QIODevice::WriteOnly);
 
     QDataStream out(&buffer);
-    out << QApplication::palette();
+    out << palette;
 //! [1]
 }
 
@@ -72,16 +72,4 @@ static void setBuffer_snippet()
     buffer.close();
     // byteArray == "abcdef"
 //! [4]
-}
-
-int main(int argc, char *argv[])
-{
-    QApplication app(argc, argv);
-
-    main_snippet();
-    bytearray_ptr_ctor_snippet();
-    write_datastream_snippets();
-    read_datastream_snippets();
-    setBuffer_snippet();
-    return 0;
 }

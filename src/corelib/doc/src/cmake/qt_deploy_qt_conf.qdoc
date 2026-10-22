@@ -6,7 +6,7 @@
 \ingroup cmake-commands-qtcore
 
 \title qt_deploy_qt_conf
-\keyword qt6_deploy_qt_conf
+\keyword qt_deploy_qt_conf()
 
 \summary {Write a qt.conf file at deployment time.}
 
@@ -56,13 +56,22 @@ The \c file_path argument expects an absolute path to the location where the
 variables can be used to dynamically specify a path relative to the deployment binary directory,
 as shown in the example below. This helps avoid hard-coding an absolute path.
 
-\sa {qt6_generate_deploy_app_script}{qt_generate_deploy_app_script()},
-    {qt6_deploy_runtime_dependencies}{qt_deploy_runtime_dependencies()}
+\sa qt_generate_deploy_app_script(),
+    qt_deploy_runtime_dependencies(),
+    {QTP0008}
 
 \section1 Example
 
+\note The example below intends for \c{${QT_DEPLOY_PREFIX}} and
+\c{${QT_DEPLOY_BIN_DIR}} to be expanded when the generated script is run.
+That only works with \l {QTP0008} set to \c NEW.
+With the \c OLD behavior both references are expanded while the arguments are forwarded,
+and the generated script ends up with \c{qt_deploy_qt_conf("//qt.conf")}.
+
 \badcode
 # The following script must only be executed at install time
+qt_policy(SET QTP0008 NEW)
+
 qt_generate_deploy_script(
     OUTPUT_SCRIPT deploy_script
     CONTENT "

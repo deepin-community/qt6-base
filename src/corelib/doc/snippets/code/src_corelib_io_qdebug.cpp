@@ -1,7 +1,11 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-//! [0]
+#include <QDebug>
+
+void example()
+{
+    //! [0]
     QString s;
 
     s = "a";
@@ -25,9 +29,9 @@
 
     s = "\u0430\u0301";         // CYRILLIC SMALL LETTER A followed by COMBINING ACUTE ACCENT
     qDebug() << s;              // prints: "а́"
-//! [0]
+    //! [0]
 
-//! [1]
+    //! [1]
     QByteArray ba;
 
     ba = "a";
@@ -44,10 +48,12 @@
     qDebug() << ba;              // prints: "\xC3\xA1"
 
     ba = QByteArray("a\0b", 3);
-    qDebug() << ba               // prints: "\a\x00""b"
-//! [1]
+    qDebug() << ba;               // prints: "\a\x00""b"
+    //! [1]
 
-//! [toString]
-    QTRY_VERIFY2(list.isEmpty(), qPrintable(QString::fromLatin1(
-        "Expected list to be empty, but it has the following items: %1")).arg(QDebug::toString(list)));
-//! [toString]
+    QList<QString> list;
+
+    //! [toString]
+    QString str = QDebug::toString(list);
+    //! [toString]
+}

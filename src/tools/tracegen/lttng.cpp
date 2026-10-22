@@ -87,7 +87,7 @@ static void writeCtfMacro(QTextStream &stream, const Provider &provider, const T
                << "ctf_integer(int, QSize_" << name << "_height, " << name << ".height()) ";
         return;
     case Tracepoint::Field::EnumeratedType:
-        stream << "ctf_enum(" << provider.name << ", " << typeToTypeName(paramType) << ", int, " << name << ", " << name << ") ";
+        stream << "ctf_enum(" << provider.name << ", " << typeToTypeName(paramType) << ", int, " << name << ", static_cast<int>(" << name << ")) ";
         return;
     case Tracepoint::Field::FlagType:
         stream << "ctf_sequence(const char , " << name << ", "

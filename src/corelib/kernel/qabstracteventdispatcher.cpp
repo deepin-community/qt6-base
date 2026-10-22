@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qabstracteventdispatcher.h"
 #include "qabstracteventdispatcher_p.h"
@@ -60,7 +61,7 @@ template <typename T> static T fromDuration(std::chrono::nanoseconds interval)
 {
     using namespace std::chrono;
     qint64 value = ceil<milliseconds>(interval).count();
-    return q26::saturate_cast<T>(value);
+    return q26::saturating_cast<T>(value);
 }
 
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
@@ -91,7 +92,7 @@ QAbstractEventDispatcherPrivate::QAbstractEventDispatcherPrivate()
 QAbstractEventDispatcherPrivate::~QAbstractEventDispatcherPrivate()
     = default;
 
-int QAbstractEventDispatcherPrivate::allocateTimerId()
+Qt::TimerId QAbstractEventDispatcherPrivate::allocateTimerId()
 {
     // This function may be called after timerIdFreeList() has been destructed
     // for example in case when application exits without waiting for
@@ -99,16 +100,16 @@ int QAbstractEventDispatcherPrivate::allocateTimerId()
     // to a slot which triggers a sequence that registers new timer.
     // See https://bugreports.qt-project.org/browse/QTBUG-38957.
     if (QtTimerIdFreeList *fl = timerIdFreeList())
-        return fl->next();
-    return 0; // Note! returning 0 generates a warning
+        return Qt::TimerId{fl->next()};
+    return Qt::TimerId{0}; // Note! returning 0 generates a warning
 }
 
-void QAbstractEventDispatcherPrivate::releaseTimerId(int timerId)
+void QAbstractEventDispatcherPrivate::releaseTimerId(Qt::TimerId timerId)
 {
     // this function may be called by a global destructor after
     // timerIdFreeList() has been destructed
     if (QtTimerIdFreeList *fl = timerIdFreeList())
-        fl->release(timerId);
+        fl->release(qToUnderlying(timerId));
 }
 
 /*!
@@ -175,7 +176,12 @@ QAbstractEventDispatcher::QAbstractEventDispatcher(QAbstractEventDispatcherPriva
     Destroys the event dispatcher.
 */
 QAbstractEventDispatcher::~QAbstractEventDispatcher()
-{ }
+{
+    // don't recreate the QThreadData if it has already been destroyed
+    QThreadData *data = QThreadData::currentThreadData();
+    if (data && data->eventDispatcher.loadRelaxed() == this)
+        data->eventDispatcher.storeRelaxed(nullptr);
+}
 
 /*!
     Returns a pointer to the event dispatcher object for the specified
@@ -188,6 +194,7 @@ QAbstractEventDispatcher::~QAbstractEventDispatcher()
  */
 QAbstractEventDispatcher *QAbstractEventDispatcher::instance(QThread *thread)
 {
+    // do create a QThreadData, in case this is very early in an adopted thread
     QThreadData *data = thread ? QThreadData::get2(thread) : QThreadData::current();
     return data->eventDispatcher.loadRelaxed();
 }
@@ -270,7 +277,7 @@ int QAbstractEventDispatcher::registerTimer(qint64 interval, Qt::TimerType timer
 Qt::TimerId QAbstractEventDispatcher::registerTimer(Duration interval, Qt::TimerType timerType,
                                                     QObject *object)
 {
-    auto id = Qt::TimerId(QAbstractEventDispatcherPrivate::allocateTimerId());
+    auto id = QAbstractEventDispatcherPrivate::allocateTimerId();
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     if (QAbstractEventDispatcherV2 *self = v2(this))
         self->registerTimer(id, interval, timerType, object);
@@ -409,7 +416,7 @@ void QAbstractEventDispatcher::closingDown()
 
 /*!
     \class QAbstractEventDispatcher::TimerInfo
-    \deprecated [6.8] Use TimerInfoV2
+    \deprecated [6.8] Use TimerInfoV2.
     \inmodule QtCore
 
     This struct represents information about a timer:
@@ -418,11 +425,6 @@ void QAbstractEventDispatcher::closingDown()
     \l{QAbstractEventDispatcher::TimerInfo::timerType}{timerType}.
 
     \sa registeredTimers(), QAbstractEventDispatcher::TimerInfoV2, timersForObject()
-*/
-/*! \fn QAbstractEventDispatcher::TimerInfo::TimerInfo(int timerId, int interval, Qt::TimerType timerType)
-
-    Constructs a TimerInfo struct with the given \a timerId, \a interval, and
-    \a timerType.
 */
 /*!
     \variable QAbstractEventDispatcher::TimerInfo::timerId
@@ -524,12 +526,8 @@ void QAbstractEventDispatcher::installNativeEventFilter(QAbstractNativeEventFilt
 void QAbstractEventDispatcher::removeNativeEventFilter(QAbstractNativeEventFilter *filter)
 {
     Q_D(QAbstractEventDispatcher);
-    for (int i = 0; i < d->eventFilters.size(); ++i) {
-        if (d->eventFilters.at(i) == filter) {
-            d->eventFilters[i] = nullptr;
-            break;
-        }
-    }
+    if (const auto idx = d->eventFilters.indexOf(filter); idx >= 0)
+        d->eventFilters[idx] = nullptr;
 }
 
 /*!
@@ -558,7 +556,7 @@ bool QAbstractEventDispatcher::filterNativeEvent(const QByteArray &eventType, vo
         // Raise the loopLevel so that deleteLater() calls in or triggered
         // by event_filter() will be processed from the main event loop.
         QScopedScopeLevelCounter scopeLevelCounter(d->threadData.loadAcquire());
-        for (int i = 0; i < d->eventFilters.size(); ++i) {
+        for (qsizetype i = 0; i < d->eventFilters.size(); ++i) {
             QAbstractNativeEventFilter *filter = d->eventFilters.at(i);
             if (!filter)
                 continue;

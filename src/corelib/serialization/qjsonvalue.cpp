@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qjsonobject.h>
 #include <qjsonvalue.h>
@@ -14,6 +15,8 @@
 #include <qhash.h>
 #include <qdebug.h>
 #include "qdatastream.h"
+#include "qjsonparser_p.h"
+#include "qjsonwriter_p.h"
 
 #include <private/qnumeric_p.h>
 #include <private/qcborvalue_p.h>
@@ -173,9 +176,14 @@ QJsonValue::QJsonValue(int v)
 /*!
     \overload
     Creates a value of type Double, with value \a v.
-    NOTE: the integer limits for IEEE 754 double precision data is 2^53 (-9007199254740992 to +9007199254740992).
-    If you pass in values outside this range expect a loss of precision to occur.
- */
+
+    This is stored internally as a 64-bit integer, so retains its full
+    precision, as long as it is retrieved with \l toInteger(). However,
+    retrieving its value with \l toDouble() will lose precision unless the value
+    lies between ±2^53.
+
+    \sa toInteger(), toDouble()
+*/
 QJsonValue::QJsonValue(qint64 v)
     : value(v)
 {
@@ -264,17 +272,6 @@ QJsonValue &QJsonValue::operator =(const QJsonValue &other) noexcept
     return *this;
 }
 
-QJsonValue::QJsonValue(QJsonValue &&other) noexcept
-    : value(std::move(other.value))
-{
-    other.value = QCborValue(nullptr);
-}
-
-void QJsonValue::swap(QJsonValue &other) noexcept
-{
-    value.swap(other.value);
-}
-
 /*!
     \fn QJsonValue::QJsonValue(QJsonValue &&other)
     \since 5.10
@@ -292,8 +289,7 @@ void QJsonValue::swap(QJsonValue &other) noexcept
 /*!
     \fn void QJsonValue::swap(QJsonValue &other)
     \since 5.10
-
-    Swaps the value \a other with this. This operation is very fast and never fails.
+    \memberswap{value}
 */
 
 /*!
@@ -483,12 +479,15 @@ QJsonValue QJsonValue::fromVariant(const QVariant &variant)
     case QMetaType::UShort:
     case QMetaType::Int:
     case QMetaType::UInt:
+    case QMetaType::Long:
     case QMetaType::LongLong:
         return QJsonValue(variant.toLongLong());
+    case QMetaType::ULong:
     case QMetaType::ULongLong:
         if (variant.toULongLong() <= static_cast<uint64_t>(std::numeric_limits<qint64>::max()))
             return QJsonValue(variant.toLongLong());
         Q_FALLTHROUGH();
+    case QMetaType::Float16:
     case QMetaType::Float:
     case QMetaType::Double: {
         double v = variant.toDouble();
@@ -595,6 +594,62 @@ QVariant QJsonValue::toVariant() const
 #endif // !QT_NO_VARIANT
 
 /*!
+    \since 6.9
+    Parses \a json as a UTF-8 encoded JSON value, and creates a QJsonValue
+    from it.
+
+    Returns a valid QJsonValue if the parsing succeeds. If it fails, the
+    returned value will be \l {QJsonValue::isUndefined} {undefined}, and
+    the optional \a error variable will contain further details about the
+    error.
+
+    \sa QJsonParseError, isUndefined(), toJson()
+ */
+QJsonValue QJsonValue::fromJson(QByteArrayView json, QJsonParseError *error)
+{
+    QJsonPrivate::Parser parser(json);
+    QJsonValue result;
+    result.value = parser.parse(error);
+    return result;
+}
+
+/*!
+\if defined(qt7)
+    \enum QJsonValue::JsonFormat
+    \since 6.9
+
+    This value defines the format of the JSON byte array produced
+    when converting to a QJsonValue using toJson().
+
+    \value Indented Defines human readable output as follows:
+        \snippet code/src_corelib_serialization_qjsondocument.cpp 0
+
+    \value Compact Defines a compact output as follows:
+        \snippet code/src_corelib_serialization_qjsondocument.cpp 1
+\else
+    \typealias QJsonValue::JsonFormat
+    \since 6.9
+
+    Same as \l QJsonDocument::JsonFormat.
+\endif
+*/
+
+/*!
+    \since 6.9
+    Converts the QJsonValue to a UTF-8 encoded JSON value in the provided \a format.
+
+    \sa fromJson(), JsonFormat
+ */
+QByteArray QJsonValue::toJson(JsonFormat format) const
+{
+    QByteArray json;
+
+    QJsonPrivate::Writer::valueToJson(value, json, 0, (format == JsonFormat::Compact));
+
+    return json;
+}
+
+/*!
     Returns the type of the value.
 
     \sa QJsonValue::Type
@@ -687,10 +742,32 @@ double QJsonValue::toDouble(double defaultValue) const
     Converts the value to a QString and returns it.
 
     If type() is not String, the \a defaultValue will be returned.
+
+    \sa toStringView()
  */
 QString QJsonValue::toString(const QString &defaultValue) const
 {
     return value.toString(defaultValue);
+}
+
+/*!
+    \since 6.10
+
+    Returns the string value stored in this QJsonValue, if it is of the
+    \l{String}{string} type. Otherwise, it returns \a defaultValue. Since
+    QJsonValue stores strings in either US-ASCII, UTF-8 or UTF-16, the returned
+    QAnyStringView may be in any of these encodings.
+
+    This function does not allocate memory. The return value is valid until the
+    next call to a non-const member function on this object. If this object goes
+    out of scope, the return value is valid until the next call to a non-const
+    member function on the parent JSON object or array.
+
+    \sa toString()
+*/
+QAnyStringView QJsonValue::toStringView(QAnyStringView defaultValue) const
+{
+    return value.toStringView(defaultValue);
 }
 
 /*!
@@ -1009,6 +1086,15 @@ QString QJsonValueConstRef::concreteString(QJsonValueConstRef self, const QStrin
     return d->stringAt(index);
 }
 
+QAnyStringView QJsonValueConstRef::concreteStringView(QJsonValueConstRef self, QAnyStringView defaultValue)
+{
+    const QCborContainerPrivate *d = QJsonPrivate::Value::container(self);
+    const qsizetype index = QJsonPrivate::Value::indexHelper(self);
+    if (d->elements.at(index).type != QCborValue::String)
+        return defaultValue;
+    return d->anyStringViewAt(index);
+}
+
 QJsonValue QJsonValueConstRef::concrete(QJsonValueConstRef self) noexcept
 {
     const QCborContainerPrivate *d = QJsonPrivate::Value::container(self);
@@ -1016,9 +1102,19 @@ QJsonValue QJsonValueConstRef::concrete(QJsonValueConstRef self) noexcept
     return QJsonPrivate::Value::fromTrustedCbor(d->valueAt(index));
 }
 
-QString QJsonValueConstRef::objectKey(QJsonValueConstRef self)
+QAnyStringView QJsonValueConstRef::objectKeyView(QJsonValueConstRef self)
 {
     Q_ASSERT(self.is_object);
+    const QCborContainerPrivate *d = QJsonPrivate::Value::container(self);
+    const qsizetype index = QJsonPrivate::Value::indexHelper(self);
+
+    Q_ASSERT(d);
+    Q_ASSERT(index < d->elements.size());
+    return d->anyStringViewAt(index - 1);
+}
+
+QString QJsonValueConstRef::objectKey(QJsonValueConstRef self)
+{
     Q_ASSERT(self.is_object);
     const QCborContainerPrivate *d = QJsonPrivate::Value::container(self);
     qsizetype index = QJsonPrivate::Value::indexHelper(self);
@@ -1109,7 +1205,7 @@ size_t qHash(const QJsonValue &value, size_t seed)
     Q_UNREACHABLE_RETURN(0);
 }
 
-#if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
+#if !defined(QT_NO_DEBUG_STREAM)
 QDebug operator<<(QDebug dbg, const QJsonValue &o)
 {
     QDebugStateSaver saver(dbg);

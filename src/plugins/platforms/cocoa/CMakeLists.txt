@@ -39,15 +39,26 @@ qt_internal_add_plugin(QCocoaIntegrationPlugin
         qmacclipboard.h qmacclipboard.mm
         qmultitouch_mac.mm qmultitouch_mac_p.h
         qnsview.h qnsview.mm
+        qnsview_drawing.mm
+        qnsview_mouse.mm
+        qnsview_touch.mm
+        qnsview_gestures.mm
+        qnsview_tablet.mm
+        qnsview_dragging.mm
+        qnsview_keys.mm
+        qnsview_complextext.mm
+        qnsview_menus.mm
+        qnsview_accessibility.mm
         qnswindow.h qnswindow.mm
         qnswindowdelegate.h qnswindowdelegate.mm
         qcocoacolordialoghelper.h qcocoacolordialoghelper.mm
         qcocoafiledialoghelper.h qcocoafiledialoghelper.mm
         qcocoafontdialoghelper.h qcocoafontdialoghelper.mm
         qcocoamessagedialog.h qcocoamessagedialog.mm
-    DEFINES
-        QT_NO_FOREACH
+    PRECOMPILED_HEADER
+        $<$<COMPILE_LANGUAGE:OBJCXX>:qcocoa_plugin_pch.h>
     LIBRARIES
+        ${FWFoundation}
         ${FWAppKit}
         ${FWCarbon}
         ${FWCoreServices}
@@ -57,10 +68,27 @@ qt_internal_add_plugin(QCocoaIntegrationPlugin
         ${FWMetal}
         ${FWQuartzCore}
         ${FWUniformTypeIdentifiers}
+        ${FWScreenCaptureKit}
         Qt::Core
         Qt::CorePrivate
         Qt::Gui
         Qt::GuiPrivate
+)
+
+# compiled as part of qnsview.mm
+set_property(SOURCE
+    qnsview_drawing.mm
+    qnsview_mouse.mm
+    qnsview_touch.mm
+    qnsview_gestures.mm
+    qnsview_tablet.mm
+    qnsview_dragging.mm
+    qnsview_keys.mm
+    qnsview_complextext.mm
+    qnsview_menus.mm
+    qnsview_accessibility.mm
+    PROPERTY
+        HEADER_FILE_ONLY TRUE
 )
 
 qt_disable_apple_app_extension_api_only(QCocoaIntegrationPlugin)
@@ -102,3 +130,10 @@ qt_internal_extend_target(QCocoaIntegrationPlugin CONDITION QT_FEATURE_sessionma
     SOURCES
         qcocoasessionmanager.cpp qcocoasessionmanager.h
 )
+
+# Work around CMake issue 23464
+if(CMAKE_VERSION VERSION_LESS "3.25" AND NOT QT_FEATURE_sessionmanager)
+    set_target_properties(QCocoaIntegrationPlugin PROPERTIES
+        DISABLE_PRECOMPILE_HEADERS ON
+    )
+endif()

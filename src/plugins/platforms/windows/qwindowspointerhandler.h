@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSPOINTERHANDLER_H
 #define QWINDOWSPOINTERHANDLER_H
@@ -46,6 +47,7 @@ private:
     bool translateMouseWheelEvent(QWindow *window, QWindow *currentWindowUnderPointer, MSG msg, QPoint globalPos, Qt::KeyboardModifiers keyModifiers);
     void handleCaptureRelease(QWindow *window, QWindow *currentWindowUnderPointer, HWND hwnd, QEvent::Type eventType, Qt::MouseButtons mouseButtons);
     void handleEnterLeave(QWindow *window, QWindow *currentWindowUnderPointer, QPoint globalPos);
+    void handleWindowActivation(QWindow *window, QEvent::Type eventType);
 
 #if QT_CONFIG(tabletevent)
     QPointingDevicePtr findTabletDevice(QPointingDevice::PointerType pointerType) const;

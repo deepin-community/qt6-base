@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusextratypes.h"
 #include "qdbusutil_p.h"
@@ -216,20 +217,17 @@ QDBusObjectPath::operator QVariant() const { return QVariant::fromValue(*this); 
 
 /*!
     \fn void QDBusObjectPath::swap(QDBusObjectPath &other)
-
-    Swaps this QDBusObjectPath instance with \a other.
+    \memberswap{object path}
 */
 
 /*!
     \fn void QDBusSignature::swap(QDBusSignature &other)
-
-    Swaps this QDBusSignature instance with \a other.
+    \memberswap{signature}
 */
 
 /*!
     \fn void QDBusVariant::swap(QDBusVariant &other)
-
-    Swaps this QDBusVariant instance with \a other.
+    \memberswap{variant}
 */
 
 QT_END_NAMESPACE

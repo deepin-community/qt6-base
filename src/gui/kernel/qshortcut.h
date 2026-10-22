@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSHORTCUT_H
 #define QSHORTCUT_H
@@ -71,6 +72,7 @@ public:
               const QObject *context2, FunctorAmbiguous functorAmbiguous,
               Qt::ShortcutContext shortcutContext = Qt::WindowShortcut);
 #else
+#ifndef QT_NO_CONTEXTLESS_CONNECT
     template<typename Func1>
     QShortcut(const QKeySequence &key, QObject *parent,
               Func1 slot1,
@@ -79,6 +81,7 @@ public:
     {
         connect(this, &QShortcut::activated, std::move(slot1));
     }
+#endif
     template<class Obj1, typename Func1>
     QShortcut(const QKeySequence &key, QObject *parent,
               const Obj1 *object1, Func1 slot1,

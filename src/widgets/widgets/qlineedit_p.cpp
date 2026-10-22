@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlineedit.h"
 #include "qlineedit_p.h"
@@ -139,14 +140,6 @@ void QLineEditPrivate::cursorPositionChanged(int from, int to)
     emit q->cursorPositionChanged(from, to);
 }
 
-#ifdef QT_KEYPAD_NAVIGATION
-void QLineEditPrivate::editFocusChange(bool e)
-{
-    Q_Q(QLineEdit);
-    q->setEditFocus(e);
-}
-#endif
-
 void QLineEditPrivate::selectionChanged()
 {
     Q_Q(QLineEdit);
@@ -193,10 +186,6 @@ void QLineEditPrivate::init(const QString& txt)
                             this, &QLineEditPrivate::selectionChanged);
     QObjectPrivate::connect(control, &QWidgetLineControl::editingFinished,
                             this, &QLineEditPrivate::controlEditingFinished);
-#ifdef QT_KEYPAD_NAVIGATION
-    QObject::connect(control, &QWidgetLineControl::editFocusChange,
-                     this, &QLineEditPrivate::editFocusChange);
-#endif
     QObject::connect(control, &QWidgetLineControl::cursorPositionChanged,
                      q, qUpdateMicroFocus);
 
@@ -292,6 +281,12 @@ void QLineEditPrivate::resetInputMethod()
 }
 
 /*!
+    \class QLineEditPrivate
+    \inmodule QtWidgets
+    \internal
+*/
+
+/*!
   This function is not intended as polymorphic usage. Just a shared code
   fragment that calls QInputMethod::invokeAction for this
   class.
@@ -352,17 +347,16 @@ QLineEditPrivate *QLineEditIconButton::lineEditPrivate() const
 void QLineEditIconButton::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
-    QIcon::Mode state = QIcon::Disabled;
+    QIcon::Mode mode = QIcon::Disabled;
     if (isEnabled())
-        state = isDown() ? QIcon::Active : QIcon::Normal;
+        mode = isDown() ? QIcon::Active : QIcon::Normal;
     const QLineEditPrivate *lep = lineEditPrivate();
     const int iconWidth = lep ? lep->sideWidgetParameters().iconSize : 16;
     const QSize iconSize(iconWidth, iconWidth);
-    const QPixmap iconPixmap = icon().pixmap(iconSize, devicePixelRatio(), state, QIcon::Off);
     QRect pixmapRect = QRect(QPoint(0, 0), iconSize);
     pixmapRect.moveCenter(rect().center());
     painter.setOpacity(m_opacity);
-    painter.drawPixmap(pixmapRect, iconPixmap);
+    icon().paint(&painter, pixmapRect, Qt::AlignCenter, mode, QIcon::Off);
 }
 
 void QLineEditIconButton::actionEvent(QActionEvent *e)
@@ -652,10 +646,16 @@ void QLineEditPrivate::removeAction(QAction *action)
     SideWidgetEntryList &list = location.position == QLineEdit::TrailingPosition ? trailingSideWidgets : leadingSideWidgets;
     SideWidgetEntry entry = list[location.index];
     list.erase(list.begin() + location.index);
-     if (entry.flags & SideWidgetCreatedByWidgetAction)
-         static_cast<QWidgetAction *>(entry.action)->releaseWidget(entry.widget);
-     else
+    if (entry.flags & SideWidgetCreatedByWidgetAction) {
+        // If the cast fails, the QAction is in the process of being deleted
+        // and has already ceased to be a QWidgetAction; in the process, it
+        // will release its widget itself, and calling releaseWidget() here
+        // would be UB, so don't:
+        if (const auto a = qobject_cast<QWidgetAction*>(entry.action))
+            a->releaseWidget(entry.widget);
+    } else {
          delete entry.widget;
+    }
      positionSideWidgets();
      if (!hasSideWidgets()) // Last widget, remove connection
          QObjectPrivate::connect(q, &QLineEdit::textChanged,

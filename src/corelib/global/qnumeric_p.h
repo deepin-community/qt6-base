@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNUMERIC_P_H
 #define QNUMERIC_P_H
@@ -23,7 +24,7 @@
 #include <limits>
 #include <type_traits>
 
-#include <QtCore/q26numeric.h> // temporarily, for saturate_cast
+#include <QtCore/q26numeric.h> // temporarily, for saturating_cast
 
 #ifndef __has_extension
 #  define __has_extension(X)    0
@@ -248,7 +249,7 @@ convertDoubleTo(double v, T *value, bool allow_precision_upgrade = true)
         if (*value == Tmax) {
             // no double can have an exact value of quint64(-1), but they can
             // quint32(-1), so we need to compare for that
-            if (TypeIsLarger || _mm_ucomieq_sd(mv, _mm_set_sd(Tmax)))
+            if (TypeIsLarger || _mm_ucomieq_sd(mv, _mm_set_sd(double(Tmax))))
                 return false;
         }
 
@@ -384,7 +385,7 @@ convertDoubleTo(double v, T *value, bool allow_precision_upgrade = true)
 
     // Check for in-range value to ensure the conversion is not UB (see the
     // comment above for Standard language).
-    if (std::fabs(v) > (std::numeric_limits<T>::max)()) {
+    if (std::fabs(v) > double{(std::numeric_limits<T>::max)()}) {
         *value = v < 0 ? -Huge : Huge;
         return false;
     }
@@ -436,7 +437,7 @@ template <auto V2, typename T> bool mul_overflow(T v1, T *r)
 template <typename To, typename From>
 static constexpr auto qt_saturate(From x)
 {
-    return q26::saturate_cast<To>(x);
+    return q26::saturating_cast<To>(x);
 }
 
 QT_END_NAMESPACE

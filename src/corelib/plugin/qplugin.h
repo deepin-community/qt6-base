@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLUGIN_H
 #define QPLUGIN_H
@@ -191,15 +192,17 @@ public:
     }
 };
 
-#define Q_IMPORT_PLUGIN(PLUGIN) \
-        extern const QT_PREPEND_NAMESPACE(QStaticPlugin) qt_static_plugin_##PLUGIN(); \
-        class Static##PLUGIN##PluginInstance{ \
-        public: \
-                Static##PLUGIN##PluginInstance() { \
-                    qRegisterStaticPluginFunction(qt_static_plugin_##PLUGIN()); \
-                } \
-        }; \
-       static Static##PLUGIN##PluginInstance static##PLUGIN##Instance;
+#define Q_IMPORT_PLUGIN(PLUGIN)                                                                            \
+        extern const QT_PREPEND_NAMESPACE(QStaticPlugin) QT_MANGLE_NAMESPACE(qt_static_plugin_##PLUGIN)(); \
+        namespace {                                                                                        \
+            struct Static##PLUGIN##PluginInstance {                                                        \
+                Static##PLUGIN##PluginInstance() {                                                         \
+                    qRegisterStaticPluginFunction(QT_MANGLE_NAMESPACE(qt_static_plugin_##PLUGIN)());       \
+                }                                                                                          \
+            };                                                                                             \
+        } /* namespace */                                                                                  \
+        /* QTBUG-139615: static, to work around bug in clazy-non-pod-global-static */                      \
+        static Static##PLUGIN##PluginInstance static##PLUGIN##Instance;                                    \
 
 #if defined(QT_PLUGIN_RESOURCE_INIT_FUNCTION)
 #  define QT_PLUGIN_RESOURCE_INIT \
@@ -220,11 +223,11 @@ public:
         }
 
 #if defined(QT_STATICPLUGIN)
-#  define QT_MOC_EXPORT_PLUGIN_COMMON(PLUGINCLASS, MANGLEDNAME)                                 \
-    static QT_PREPEND_NAMESPACE(QObject) *qt_plugin_instance_##MANGLEDNAME()                    \
-    Q_PLUGIN_INSTANCE(PLUGINCLASS)                                                              \
-    const QT_PREPEND_NAMESPACE(QStaticPlugin) qt_static_plugin_##MANGLEDNAME()                  \
-    { return { qt_plugin_instance_##MANGLEDNAME, qt_plugin_query_metadata_##MANGLEDNAME}; }     \
+#  define QT_MOC_EXPORT_PLUGIN_COMMON(PLUGINCLASS, MANGLEDNAME)                                     \
+    static QT_PREPEND_NAMESPACE(QObject) *qt_plugin_instance_##MANGLEDNAME()                        \
+    Q_PLUGIN_INSTANCE(PLUGINCLASS)                                                                  \
+    const QT_PREPEND_NAMESPACE(QStaticPlugin) QT_MANGLE_NAMESPACE(qt_static_plugin_##MANGLEDNAME)() \
+    { return { qt_plugin_instance_##MANGLEDNAME, qt_plugin_query_metadata_##MANGLEDNAME}; }         \
     /**/
 
 #  define QT_MOC_EXPORT_PLUGIN(PLUGINCLASS, PLUGINCLASSNAME) \

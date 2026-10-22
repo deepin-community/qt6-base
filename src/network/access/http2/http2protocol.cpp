@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "http2protocol_p.h"
 #include "http2frames_p.h"
@@ -8,6 +9,7 @@
 #include "private/qhttpnetworkreply_p.h"
 
 #include <access/qhttp2configuration.h>
+#include <access/qhttp2configuration_p.h>
 
 #include <QtCore/qbytearray.h>
 #include <QtCore/qstring.h>
@@ -50,8 +52,15 @@ Frame configurationToSettingsFrame(const QHttp2Configuration &config)
         builder.append(Settings::MAX_FRAME_SIZE_ID);
         builder.append(config.maxFrameSize());
     }
+
+    if (const quint32 maxHeaderListSize =
+                QHttp2ConfigurationPrivate::get(config)->maxHeaderListSize;
+        maxHeaderListSize != (std::numeric_limits<quint32>::max)()) {
+        builder.append(Settings::MAX_HEADER_LIST_SIZE_ID);
+        builder.append(maxHeaderListSize);
+    }
     // TODO: In future, if the need is proven, we can
-    // also send decoding table size and header list size.
+    // also send the decoding table size.
     // For now, defaults suffice.
     return builder.outboundFrame();
 }
@@ -103,8 +112,8 @@ void qt_error(quint32 errorCode, QNetworkReply::NetworkError &error,
 
     switch (http2Error) {
     case HTTP2_NO_ERROR:
-        error = QNetworkReply::NoError;
-        errorMessage.clear();
+        error = QNetworkReply::RemoteHostClosedError;
+        errorMessage = "Remote host signaled shutdown"_L1;
         break;
     case PROTOCOL_ERROR:
         error = QNetworkReply::ProtocolFailure;
@@ -187,8 +196,9 @@ bool is_protocol_upgraded(const QHttpNetworkReply &reply)
     if (reply.statusCode() != 101)
         return false;
 
+    const auto values = reply.header().values(QHttpHeaders::WellKnownHeader::Upgrade);
     // Do some minimal checks here - we expect 'Upgrade: h2c' to be found.
-    for (const auto &v : reply.header().values(QHttpHeaders::WellKnownHeader::Upgrade)) {
+    for (const auto &v : values) {
         if (v.compare("h2c", Qt::CaseInsensitive) == 0)
             return true;
     }

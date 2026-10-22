@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEGLFSKMSDEVICE_H
 #define QEGLFSKMSDEVICE_H
@@ -30,6 +31,13 @@ public:
                         bool isPrimary,
                         const QPoint &virtualPos,
                         const QList<QPlatformScreen *> &virtualSiblings) override;
+
+    void unregisterScreen(QPlatformScreen *screen) override;
+
+    void updateScreen(QPlatformScreen *screen, const QPoint &virtualPos,
+                      const QList<QPlatformScreen *> &virtualSiblings) override;
+
+    void updateScreenOutput(QPlatformScreen *screen, const QKmsOutput &output) override;
 };
 
 QT_END_NAMESPACE

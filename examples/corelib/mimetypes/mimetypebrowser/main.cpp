@@ -6,10 +6,28 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QScreen>
+#if QT_CONFIG(translation)
+#  include <QLocale>
+#  include <QLibraryInfo>
+#  include <QTranslator>
+#endif
+
+using namespace Qt::StringLiterals;
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+
+#if QT_CONFIG(translation)
+    QTranslator translator;
+    for (const QString &trPath : QLibraryInfo::paths(QLibraryInfo::TranslationsPath)) {
+        if (translator.load(QLocale(), u"qtbase"_s, u"_"_s, trPath)) {
+            app.installTranslator(&translator);
+            break;
+        }
+    }
+#endif
+
     QCoreApplication::setApplicationVersion(QT_VERSION_STR);
 
     QCommandLineParser parser;

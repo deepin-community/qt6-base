@@ -2,11 +2,15 @@
 // Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeglfskmsscreen_p.h"
 #include "qeglfskmsdevice_p.h"
-#include <private/qeglfsintegration_p.h>
 
+#include <private/qeglfsintegration_p.h>
+#include <private/qeglfskmsintegration_p.h>
+
+#include <QtCore/QMutex>
 #include <QtCore/QLoggingCategory>
 
 #include <QtGui/private/qguiapplication_p.h>
@@ -14,7 +18,8 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(qLcEglfsKmsDebug)
+static QMutex s_screensMutex;
+static QSet<QEglFSKmsScreen *> s_screens;
 
 class QEglFSKmsInterruptHandler : public QObject
 {
@@ -59,10 +64,20 @@ QEglFSKmsScreen::QEglFSKmsScreen(QEglFSKmsDevice *device, const QKmsOutput &outp
     } else {
         qCDebug(qLcEglfsKmsDebug) << "No EDID data for output" << name();
     }
+
+    {
+        QMutexLocker lock(&s_screensMutex);
+        s_screens.insert(this);
+    }
 }
 
 QEglFSKmsScreen::~QEglFSKmsScreen()
 {
+    {
+        QMutexLocker lock(&s_screensMutex);
+        s_screens.remove(this);
+    }
+
     m_output.cleanup(m_device);
     delete m_interruptHandler;
 }
@@ -166,6 +181,11 @@ void QEglFSKmsScreen::waitForFlip()
 {
 }
 
+void QEglFSKmsScreen::updateOutput(QKmsOutput output)
+{
+    m_output = output;
+}
+
 void QEglFSKmsScreen::restoreMode()
 {
     m_output.restoreMode(m_device);
@@ -178,6 +198,11 @@ qreal QEglFSKmsScreen::refreshRate() const
 
     quint32 refresh = m_output.modes[m_output.mode].vrefresh;
     return refresh > 0 ? refresh : 60;
+}
+
+void QEglFSKmsScreen::removeSibling(QPlatformScreen *screen)
+{
+    m_siblings.removeAll(screen);
 }
 
 QList<QPlatformScreen::Mode> QEglFSKmsScreen::modes() const
@@ -225,6 +250,12 @@ void QEglFSKmsScreen::pageFlipped(unsigned int sequence, unsigned int tv_sec, un
     Q_UNUSED(sequence);
     Q_UNUSED(tv_sec);
     Q_UNUSED(tv_usec);
+}
+
+bool QEglFSKmsScreen::isScreenKnown(QEglFSKmsScreen *s)
+{
+    QMutexLocker lock(&s_screensMutex);
+    return s_screens.contains(s);
 }
 
 QT_END_NAMESPACE

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMDISUBWINDOW_P_H
 #define QMDISUBWINDOW_P_H
@@ -26,8 +27,8 @@
 #if QT_CONFIG(sizegrip)
 #include <QSizeGrip>
 #endif
+#include <QBasicTimer>
 #include <QPointer>
-#include <QDebug>
 #include <private/qwidget_p.h>
 
 QT_REQUIRE_CONFIG(mdiarea);
@@ -172,7 +173,7 @@ public:
     bool isExplicitlyDeactivated;
     int keyboardSingleStep;
     int keyboardPageStep;
-    int resizeTimerId;
+    QBasicTimer resizeTimer;
     Operation currentOperation;
     QStyle::SubControl hoveredSubControl;
     QStyle::SubControl activeSubControl;

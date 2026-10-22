@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMDIAREA_P_H
 #define QMDIAREA_P_H
@@ -21,7 +22,7 @@
 
 QT_REQUIRE_CONFIG(mdiarea);
 
-#include <QList>
+#include <QBasicTimer>
 #include <QList>
 #include <QRect>
 #include <QPoint>
@@ -147,8 +148,8 @@ public:
     int indexToPreviousWindow;
     int indexToHighlighted;
     int indexToLastActiveTab;
-    int resizeTimerId;
-    int tabToPreviousTimerId;
+    QBasicTimer resizeTimer;
+    QBasicTimer tabToPreviousTimer;
 
     // Slots.
     void _q_deactivateAllWindows(QMdiSubWindow *aboutToActivate = nullptr);
@@ -189,17 +190,17 @@ public:
     inline void startResizeTimer()
     {
         Q_Q(QMdiArea);
-        if (resizeTimerId > 0)
-            q->killTimer(resizeTimerId);
-        resizeTimerId = q->startTimer(200);
+
+        using namespace std::chrono_literals;
+        resizeTimer.start(200ms, q);
     }
 
     inline void startTabToPreviousTimer()
     {
         Q_Q(QMdiArea);
-        if (tabToPreviousTimerId > 0)
-            q->killTimer(tabToPreviousTimerId);
-        tabToPreviousTimerId = q->startTimer(QApplication::keyboardInputInterval());
+
+        using namespace std::chrono_literals;
+        tabToPreviousTimer.start(QApplication::keyboardInputInterval() * 1ms, q);
     }
 
     inline bool windowStaysOnTop(QMdiSubWindow *subWindow) const

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTREEVIEW_H
 #define QTREEVIEW_H
@@ -99,6 +100,7 @@ public:
     void keyboardSearch(const QString &search) override;
 
     QRect visualRect(const QModelIndex &index) const override;
+    QRect itemDecorationRect(const QModelIndex &index) const;
     void scrollTo(const QModelIndex &index, ScrollHint hint = EnsureVisible) override;
     QModelIndex indexAt(const QPoint &p) const override;
     QModelIndex indexAbove(const QModelIndex &index) const;

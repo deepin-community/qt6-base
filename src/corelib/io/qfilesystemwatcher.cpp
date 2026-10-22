@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfilesystemwatcher.h"
 #include "qfilesystemwatcher_p.h"
@@ -9,10 +10,9 @@
 #include <qfileinfo.h>
 #include <qloggingcategory.h>
 #include <qset.h>
-#include <qtimer.h>
 
-#if (defined(Q_OS_LINUX) || defined(Q_OS_QNX)) && QT_CONFIG(inotify)
-#define USE_INOTIFY
+#if (defined(Q_OS_LINUX) || defined(Q_OS_QNX) || defined(Q_OS_FREEBSD)) && QT_CONFIG(inotify)
+#  define USE_INOTIFY
 #endif
 
 #include "qfilesystemwatcher_polling_p.h"
@@ -33,7 +33,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcWatcher, "qt.core.filesystemwatcher")
+Q_STATIC_LOGGING_CATEGORY(lcWatcher, "qt.core.filesystemwatcher")
 
 QFileSystemWatcherEngine *QFileSystemWatcherPrivate::createNativeEngine(QObject *parent)
 {

@@ -9,6 +9,7 @@
 #include <qdebug.h>
 #include <qmap.h>
 #include <qhashfunctions.h>
+#include <private/qfont_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -388,6 +389,20 @@ void QTextFormatPrivate::recalcFont() const
             case QTextFormat::FontKerning:
                 f.setKerning(props.at(i).value.toBool());
                 break;
+            case QTextFormat::FontFeatures:
+            {
+                const auto fontFeatures = props.at(i).value.value<QMap<QFont::Tag, quint32>>();
+                for (auto it = fontFeatures.constBegin(); it != fontFeatures.constEnd(); ++it)
+                    f.setFeature(it.key(), it.value());
+                break;
+            }
+            case QTextFormat::FontVariableAxes:
+            {
+                const auto fontVariableAxes = props.at(i).value.value<QMap<QFont::Tag, float>>();
+                for (auto it = fontVariableAxes.constBegin(); it != fontVariableAxes.constEnd(); ++it)
+                    f.setVariableAxis(it.key(), it.value());
+                break;
+            }
             default:
                 break;
             }
@@ -404,6 +419,16 @@ void QTextFormatPrivate::recalcFont() const
 Q_GUI_EXPORT QDataStream &operator<<(QDataStream &stream, const QTextFormat &fmt)
 {
     QMap<int, QVariant> properties = fmt.properties();
+    if (stream.version() < QDataStream::Qt_6_11) {
+        auto it = properties.constFind(QTextFormat::FontFeatures);
+        if (it != properties.cend())
+            properties.erase(it);
+
+        it = properties.constFind(QTextFormat::FontVariableAxes);
+        if (it != properties.cend())
+            properties.erase(it);
+    }
+
     if (stream.version() < QDataStream::Qt_6_0) {
         auto it = properties.constFind(QTextFormat::FontLetterSpacingType);
         if (it != properties.cend()) {
@@ -447,14 +472,17 @@ Q_GUI_EXPORT QDataStream &operator>>(QDataStream &stream, QTextFormat &fmt)
     for (QMap<qint32, QVariant>::ConstIterator it = properties.constBegin();
          it != properties.constEnd(); ++it) {
         qint32 key = it.key();
-        if (key == QTextFormat::OldFontLetterSpacingType)
-            key = QTextFormat::FontLetterSpacingType;
-        else if (key == QTextFormat::OldFontStretch)
-            key = QTextFormat::FontStretch;
-        else if (key == QTextFormat::OldTextUnderlineColor)
-            key = QTextFormat::TextUnderlineColor;
-        else if (key == QTextFormat::OldFontFamily)
-            key = QTextFormat::FontFamilies;
+
+        if (stream.version() < QDataStream::Qt_6_0) {
+            if (key == QTextFormat::OldFontLetterSpacingType)
+                key = QTextFormat::FontLetterSpacingType;
+            else if (key == QTextFormat::OldFontStretch)
+                key = QTextFormat::FontStretch;
+            else if (key == QTextFormat::OldTextUnderlineColor)
+                key = QTextFormat::TextUnderlineColor;
+            else if (key == QTextFormat::OldFontFamily)
+                key = QTextFormat::FontFamilies;
+        }
         fmt.d->insertProperty(key, it.value());
     }
 
@@ -630,8 +658,8 @@ Q_GUI_EXPORT QDataStream &operator>>(QDataStream &stream, QTextTableCellFormat &
     \value FontStyleName
     \value FontPointSize
     \value FontPixelSize
-    \value FontSizeAdjustment       Specifies the change in size given to the fontsize already set using
-                                    FontPointSize or FontPixelSize.
+    \value FontSizeAdjustment       Specifies an integer adjustment added to the base font size set using
+                                    \c FontPointSize or \c FontPixelSize.
     \value FontFixedPitch
     \omitvalue FontSizeIncrement
     \value FontWeight
@@ -653,14 +681,20 @@ Q_GUI_EXPORT QDataStream &operator>>(QDataStream &stream, QTextTableCellFormat &
     \value FontKerning          Specifies whether the font has kerning turned on.
     \value FontHintingPreference Controls the use of hinting according to values
                                  of the QFont::HintingPreference enum.
+    \value FontFeatures [since 6.11] Assigns integer numbers to typographical features. See
+           \l{QFont::setFeature()} for additional information.
+    \value FontVariableAxes [since 6.11] Assigns floating point numbers to variable axes in variable
+           fonts. See \l{QFont::setVariableAxis()} for additional information.
 
     \omitvalue FirstFontProperty
     \omitvalue LastFontProperty
 
     \value TextUnderlineColor      Specifies the color to draw underlines, overlines and strikeouts.
-    \value TextVerticalAlignment
-    \value TextOutline
-    \value TextUnderlineStyle
+    \value TextVerticalAlignment   Specifies the type of text vertical alignment according to
+                                   the values of the QTextCharFormat::VerticalAlignment enum.
+    \value TextOutline             Specifies a \l QPen used to draw the text outline.
+    \value TextUnderlineStyle      Specifies the style of text underline according to
+                                   the values of the QTextCharFormat::UnderlineStyle enum.
     \value TextToolTip Specifies the (optional) tool tip to be displayed for a fragment of text.
     \value TextSuperScriptBaseline Specifies the baseline (in % of height) of superscript texts.
     \value TextSubScriptBaseline   Specifies the baseline (in % of height) of subscript texts.
@@ -912,9 +946,7 @@ QTextFormat &QTextFormat::operator=(const QTextFormat &rhs)
 /*!
     \fn void QTextFormat::swap(QTextFormat &other)
     \since 5.0
-
-    Swaps this text format with \a other. This function is very fast
-    and never fails.
+    \memberswap{text format}
 */
 
 /*!
@@ -1235,7 +1267,7 @@ void QTextFormat::setProperty(int propertyId, const QList<QTextLength> &value)
     list.reserve(numValues);
     for (int i = 0; i < numValues; ++i)
         list << value.at(i);
-    d->insertProperty(propertyId, list);
+    d->insertProperty(propertyId, std::move(list));
 }
 
 /*!
@@ -1810,6 +1842,55 @@ void QTextCharFormat::setUnderlineStyle(UnderlineStyle style)
 */
 
 /*!
+    \since 6.11
+
+    Sets the typographical features of the text format's font to be \a fontFeatures.
+
+    \sa QFont::setFeature()
+*/
+void QTextCharFormat::setFontFeatures(const QMap<QFont::Tag, quint32> &fontFeatures)
+{
+    setProperty(FontFeatures, QVariant::fromValue(fontFeatures));
+}
+
+/*!
+    \since 6.11
+
+    Gets the typographical features of the text format's font.
+
+    \sa setFontFeatures()
+*/
+QMap<QFont::Tag, quint32> QTextCharFormat::fontFeatures() const
+{
+    return property(FontFeatures).value<QMap<QFont::Tag, quint32>>();
+}
+
+/*!
+    \since 6.11
+
+    Sets the variable axes of the text format's font to be \a fontVariableAxes.
+
+    \sa QFont::setVariableAxis()
+*/
+void QTextCharFormat::setFontVariableAxes(const QMap<QFont::Tag, float> &fontVariableAxes)
+{
+    setProperty(FontVariableAxes, QVariant::fromValue(fontVariableAxes));
+}
+
+/*!
+    \since 6.11
+
+    Gets the variable axes of the text format's font.
+
+    \sa setFontVariableAxes()
+*/
+QMap<QFont::Tag, float> QTextCharFormat::fontVariableAxes() const
+{
+    return property(FontVariableAxes).value<QMap<QFont::Tag, float>>();
+}
+
+
+/*!
     \fn QPen QTextCharFormat::textOutline() const
 
     Returns the pen used to draw the outlines of characters in this format.
@@ -2145,10 +2226,30 @@ void QTextCharFormat::setFont(const QFont &font, FontPropertiesInheritanceBehavi
         setFontHintingPreference(font.hintingPreference());
     if (mask & QFont::KerningResolved)
         setFontKerning(font.kerning());
+
+    if (mask & QFont::FeaturesResolved) {
+        QFontPrivate *fd = QFontPrivate::get(font);
+        setFontFeatures(fd->features);
+    }
+    if (mask & QFont::VariableAxesResolved) {
+        QFontPrivate *fd = QFontPrivate::get(font);
+        setFontVariableAxes(fd->request.variableAxisValues);
+    }
 }
 
 /*!
     Returns the font for this character format.
+
+    This function takes into account the format's font attributes (such as fontWeight()
+    and fontPointSize()) and resolves them on top of the default font, defined as follows.
+    If the format is part of a document, that is the document's default font.
+    Otherwise the properties are resolved on top of a default constructed QFont.
+
+    For example, if this format's font size hasn't been changed from the default font,
+    fontPointSize() returns 0, while \c {font().pointSize()} returns the actual
+    size used for drawing.
+
+    \sa QTextDocument::defaultFont()
 */
 QFont QTextCharFormat::font() const
 {
@@ -2245,7 +2346,7 @@ void QTextBlockFormat::setTabPositions(const QList<QTextOption::Tab> &tabs)
     list.reserve(tabs.size());
     for (const auto &e : tabs)
         list.append(QVariant::fromValue(e));
-    setProperty(TabPositions, list);
+    setProperty(TabPositions, std::move(list));
 }
 
 /*!
@@ -2799,7 +2900,8 @@ QTextListFormat::QTextListFormat(const QTextFormat &fmt)
     frame's padding(). This scheme is similar to the box model used by Cascading
     Style Sheets for HTML pages.
 
-    \image qtextframe-style.png
+    \image qtextframe-style.png {Diagram showing how padding, border, and margin
+           are laid around the text content rectangle.}
 
     The position() of a frame is set using setPosition() and determines how it
     is located relative to the surrounding text.
@@ -3129,7 +3231,8 @@ qreal QTextFrameFormat::rightMargin() const
     between each cell edge and its contents is set with setCellPadding() and read
     with cellPadding().
 
-    \image qtexttableformat-cell.png
+    \image qtexttableformat-cell.png {Diagram showing how cell spacing and padding
+           are laid around the cell content rectangle.}
 
     The table's background color can be read with the background() function,
     and can be specified with setBackground(). The background color of each
@@ -3291,7 +3394,7 @@ QTextTableFormat::QTextTableFormat(const QTextFormat &fmt)
     \fn void QTextTableFormat::setBorderCollapse(bool borderCollapse)
     \since 5.14
 
-    Enabling \a borderCollapse will have the following implications:
+    By default, \l borderCollapse() is \c true, which has the following implications:
     \list
     \li The borders and grid of the table will be rendered following the
         CSS table \c border-collapse: \c collapse rules
@@ -3308,9 +3411,11 @@ QTextTableFormat::QTextTableFormat(const QTextFormat &fmt)
         \endlist
     \endlist
 
-    With borderCollapse disabled, cell borders can still be styled
+    With \a borderCollapse set to \c false, cell borders can still be styled
     using QTextTableCellFormat but styling will be applied only within
     the cell's frame, which is probably not very useful in practice.
+
+    \note In Qt versions prior to 6.8, the default value was \c false.
 
     \sa setBorder(), setBorderBrush(), setBorderStyle()
     \sa QTextTableCellFormat
@@ -3320,7 +3425,7 @@ QTextTableFormat::QTextTableFormat(const QTextFormat &fmt)
     \fn bool QTextTableFormat::borderCollapse() const
     \since 5.14
 
-    Returns true if borderCollapse is enabled.
+    Returns \c true if table borders are to be collapsed. The default is \c true.
 
     \sa setBorderCollapse()
 */

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSQLQUERYMODEL_H
 #define QSQLQUERYMODEL_H
@@ -40,12 +41,13 @@ public:
     bool insertColumns(int column, int count, const QModelIndex &parent = QModelIndex()) override;
     bool removeColumns(int column, int count, const QModelIndex &parent = QModelIndex()) override;
 
-#if QT_DEPRECATED_SINCE(6, 2)
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
     QT_DEPRECATED_VERSION_X_6_2("QSqlQuery is not meant to be copied. Pass it by move instead.")
     void setQuery(const QSqlQuery &query);
 #endif
     void setQuery(QSqlQuery &&query);
     void setQuery(const QString &query, const QSqlDatabase &db = QSqlDatabase());
+    void refresh();
 #if QT_SQL_REMOVED_SINCE(6, 5)
     QSqlQuery query() const;
 #endif

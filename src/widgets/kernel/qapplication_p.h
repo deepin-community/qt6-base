@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QAPPLICATION_P_H
 #define QAPPLICATION_P_H
@@ -75,6 +76,7 @@ public:
     static void dispatchEnterLeave(QWidget *enter, QWidget *leave, const QPointF &globalPosF);
     static QWidget *desktop();
     void notifyWindowIconChanged() override;
+    bool compressEvent(QEvent *event, QObject *receiver, QPostEventList *postedEvents) final;
 
 #ifndef QT_NO_ACTION
     QActionPrivate *createActionPrivate() const override;
@@ -90,14 +92,6 @@ public:
     static bool modalState();
     static bool tryModalHelper(QWidget *widget, QWidget **rettop = nullptr);
 
-#ifdef QT_KEYPAD_NAVIGATION
-    static bool keypadNavigationEnabled()
-    {
-        return navigationMode == Qt::NavigationModeKeypadTabOrder ||
-                navigationMode == Qt::NavigationModeKeypadDirectional;
-    }
-#endif
-
     bool notify_helper(QObject *receiver, QEvent * e);
 
     void init();
@@ -109,6 +103,8 @@ public:
     static bool inPopupMode();
     void closePopup(QWidget *popup);
     void openPopup(QWidget *popup);
+    static bool replayMousePress;
+
     static void setFocusWidget(QWidget *focus, Qt::FocusReason reason);
     static QWidget *focusNextPrevChild_helper(QWidget *toplevel, bool next,
                                               bool *wrappingOccurred = nullptr);
@@ -120,7 +116,7 @@ public:
 #endif
 
     QBasicTimer toolTipWakeUp, toolTipFallAsleep;
-    QPoint toolTipPos, toolTipGlobalPos, hoverGlobalPos;
+    QPoint toolTipPos, toolTipGlobalPos;
     QPointer<QWidget> toolTipWidget;
 
     static QSize app_strut;
@@ -158,11 +154,6 @@ public:
     static PaletteHash widgetPalettes;
 
     static QApplicationPrivate *instance() { return self; }
-
-#ifdef QT_KEYPAD_NAVIGATION
-    static QWidget *oldEditFocus;
-    static Qt::NavigationMode navigationMode;
-#endif
 
 #ifndef QT_NO_STYLE_STYLESHEET
     static QString styleSheet;

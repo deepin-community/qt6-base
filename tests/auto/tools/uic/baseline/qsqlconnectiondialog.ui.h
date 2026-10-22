@@ -56,9 +56,9 @@ public:
     {
         if (QSqlConnectionDialogUi->objectName().isEmpty())
             QSqlConnectionDialogUi->setObjectName("QSqlConnectionDialogUi");
-        QSqlConnectionDialogUi->resize(315, 302);
+        QSqlConnectionDialogUi->resize(321, 343);
         vboxLayout = new QVBoxLayout(QSqlConnectionDialogUi);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
         vboxLayout->setContentsMargins(8, 8, 8, 8);
@@ -66,7 +66,7 @@ public:
         connGroupBox = new QGroupBox(QSqlConnectionDialogUi);
         connGroupBox->setObjectName("connGroupBox");
         gridLayout = new QGridLayout(connGroupBox);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
         gridLayout->setContentsMargins(8, 8, 8, 8);
@@ -93,8 +93,8 @@ public:
 
         portSpinBox = new QSpinBox(connGroupBox);
         portSpinBox->setObjectName("portSpinBox");
-        portSpinBox->setMaximum(65535);
         portSpinBox->setMinimum(-1);
+        portSpinBox->setMaximum(65535);
         portSpinBox->setValue(-1);
 
         gridLayout->addWidget(portSpinBox, 5, 1, 1, 1);
@@ -106,7 +106,7 @@ public:
 
         editPassword = new QLineEdit(connGroupBox);
         editPassword->setObjectName("editPassword");
-        editPassword->setEchoMode(QLineEdit::Password);
+        editPassword->setEchoMode(QLineEdit::EchoMode::Password);
 
         gridLayout->addWidget(editPassword, 3, 1, 1, 1);
 
@@ -139,7 +139,7 @@ public:
         vboxLayout->addWidget(connGroupBox);
 
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);
@@ -157,7 +157,7 @@ public:
         vboxLayout->addLayout(hboxLayout);
 
         hboxLayout1 = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout1->setSpacing(6);
 #endif
         hboxLayout1->setContentsMargins(0, 0, 0, 0);

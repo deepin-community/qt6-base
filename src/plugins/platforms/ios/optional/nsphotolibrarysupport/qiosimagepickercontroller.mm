@@ -1,15 +1,16 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #import <UIKit/UIKit.h>
 
 #include "qiosimagepickercontroller.h"
 
 @implementation QIOSImagePickerController {
-    QIOSFileDialog *m_fileDialog;
+    QPlatformFileDialogHelper *m_fileDialog;
 }
 
-- (instancetype)initWithQIOSFileDialog:(QIOSFileDialog *)fileDialog
+- (instancetype)initWithQIOSFileDialog:(QPlatformFileDialogHelper *)fileDialog
 {
     self = [super init];
     if (self) {
@@ -25,7 +26,7 @@
     Q_UNUSED(picker);
     NSURL *url = info[UIImagePickerControllerReferenceURL];
     QUrl fileUrl = QUrl::fromLocalFile(QString::fromNSString(url.description));
-    m_fileDialog->selectedFilesChanged(QList<QUrl>() << fileUrl);
+    emit m_fileDialog->filesSelected(QList<QUrl>() << fileUrl);
     emit m_fileDialog->accept();
 }
 

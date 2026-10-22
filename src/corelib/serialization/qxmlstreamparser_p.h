@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 
 //
@@ -130,7 +131,7 @@ bool QXmlStreamReaderPrivate::parse()
 
     act = state_stack[tos];
 
-    forever {
+    while (true) {
         if (token == -1 && - TERMINAL_COUNT != action_index[act]) {
             uint cu = getChar();
             token = NOTOKEN;
@@ -271,8 +272,9 @@ bool QXmlStreamReaderPrivate::parse()
             state_stack[tos] = 0;
             return true;
         } else if (act > 0) {
-            if (++tos >= stack_size-1)
+            if (tos + 1 >= stack_size - 1)
                 reallocateStack();
+            ++tos;
 
             Value &val = sym_stack[tos];
             val.c = token_char;
@@ -430,9 +432,11 @@ bool QXmlStreamReaderPrivate::parse()
             DtdAttribute &dtdAttribute = dtdAttributes.push();
             dtdAttribute.tagName.clear();
             dtdAttribute.isCDATA = lastAttributeIsCData;
-            dtdAttribute.attributePrefix = addToStringStorage(symPrefix(1));
-            dtdAttribute.attributeName = addToStringStorage(symString(1));
-            dtdAttribute.attributeQualifiedName = addToStringStorage(symName(1));
+            auto symbol = symQName(1);
+            symbol.resetBackingStorage(addToStringStorage(symbol.all()));
+            dtdAttribute.attributePrefix = symbol.prefix();
+            dtdAttribute.attributeName = symbol.localPart();
+            dtdAttribute.attributeQualifiedName = symbol.qname();
             dtdAttribute.isNamespaceAttribute = (dtdAttribute.attributePrefix == "xmlns"_L1
                                                  || (dtdAttribute.attributePrefix.isEmpty()
                                                      && dtdAttribute.attributeName == "xmlns"_L1));
@@ -714,8 +718,8 @@ bool QXmlStreamReaderPrivate::parse()
         break;
 
         case 229: {
-            XmlStringRef prefix = symPrefix(1);
-            if (prefix.isEmpty() && symString(1) == "xmlns"_L1 && namespaceProcessing) {
+            const XmlStringRef prfx = symPrefix(1);
+            if (prfx.isEmpty() && symString(1) == "xmlns"_L1 && namespaceProcessing) {
                 NamespaceDeclaration &namespaceDeclaration = namespaceDeclarations.push();
                 namespaceDeclaration.prefix.clear();
 
@@ -764,7 +768,7 @@ bool QXmlStreamReaderPrivate::parse()
                     attribute.value.pos = pos;
                     attribute.value.len = n;
                 }
-                if (prefix == "xmlns"_L1 && namespaceProcessing) {
+                if (prfx == "xmlns"_L1 && namespaceProcessing) {
                     NamespaceDeclaration &namespaceDeclaration = namespaceDeclarations.push();
                     XmlStringRef namespacePrefix = symString(attribute.key);
                     XmlStringRef namespaceUri = symString(attribute.value);
@@ -785,9 +789,11 @@ bool QXmlStreamReaderPrivate::parse()
         case 235: {
             normalizeLiterals = true;
             Tag &tag = tagStack_push();
-            prefix = tag.namespaceDeclaration.prefix  = addToStringStorage(symPrefix(2));
-            name = tag.name = addToStringStorage(symString(2));
-            qualifiedName = tag.qualifiedName = addToStringStorage(symName(2));
+            auto symbol = symQName(2);
+            symbol.resetBackingStorage(addToStringStorage(symbol.all()));
+            prefix = tag.namespaceDeclaration.prefix = symbol.prefix();
+            name = tag.name = symbol.localPart();
+            qualifiedName = tag.qualifiedName = symbol.qname();
             if ((!prefix.isEmpty() && !QXmlUtils::isNCName(prefix)) || !QXmlUtils::isNCName(name))
                 raiseWellFormedError(QXmlStream::tr("Invalid XML name."));
         } break;

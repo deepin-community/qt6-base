@@ -4,6 +4,8 @@
 #include <QtGui>
 #include <QApplication>
 #include <QSortFilterProxyModel>
+#include <QWidget>
+#include <QTreeView>
 
 class MyItemModel : public QStandardItemModel
 {
@@ -47,15 +49,7 @@ Widget::Widget(QWidget *parent)
 //! [4]
         proxyModel->sort(2, Qt::AscendingOrder);
 //! [4] //! [5]
-        proxyModel->setFilterRegularExpression(QRegularExpression("\.png", QRegularExpression::CaseInsensitiveOption));
+        proxyModel->setFilterRegularExpression(QRegularExpression("\\.png", QRegularExpression::CaseInsensitiveOption));
         proxyModel->setFilterKeyColumn(1);
 //! [5]
-}
-
-int main(int argc, char *argv[])
-{
-    QApplication app(argc, argv);
-    Widget widget;
-    widget.show();
-    return app.exec();
 }

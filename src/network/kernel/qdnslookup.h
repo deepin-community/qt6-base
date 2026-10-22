@@ -1,5 +1,6 @@
 // Copyright (C) 2012 Jeremy Lainé <jeremy.laine@m4x.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDNSLOOKUP_H
 #define QDNSLOOKUP_H
@@ -313,7 +314,7 @@ public:
 #endif
 
     static bool isProtocolSupported(Protocol protocol);
-    static quint16 defaultPortForProtocol(Protocol protocol) noexcept Q_DECL_CONST_FUNCTION;
+    Q_DECL_CONST_FUNCTION static quint16 defaultPortForProtocol(Protocol protocol) noexcept;
 
 public Q_SLOTS:
     void abort();

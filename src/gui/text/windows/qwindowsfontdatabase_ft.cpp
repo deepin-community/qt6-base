@@ -133,6 +133,23 @@ static const FontKey *findFontKey(const QString &name, int *indexIn = nullptr)
      return nullptr;
 }
 
+static bool detectColorFont(const QByteArray &filename)
+{
+#if defined(FT_HAS_COLOR)
+    FT_Library library = qt_getFreetype();
+
+    FT_Face face;
+    if (FT_New_Face(library, filename.constData(), 0, &face) == FT_Err_Ok) {
+        bool hasColor = FT_HAS_COLOR(face);
+        FT_Done_Face(face);
+        return hasColor;
+    }
+#else
+    Q_UNUSED(filename);
+#endif
+    return false;
+}
+
 static bool addFontToDatabase(QString familyName,
                               QString styleName,
                               const QString &fullName,
@@ -242,25 +259,27 @@ static bool addFontToDatabase(QString familyName,
     if (!QDir::isAbsolutePath(value))
         value.prepend(QFile::decodeName(qgetenv("windir") + "\\Fonts\\"));
 
+    const bool color = detectColorFont(value.toLocal8Bit());
+
     QPlatformFontDatabase::registerFont(familyName, styleName, foundryName, weight, style, stretch,
-        antialias, scalable, size, fixed, writingSystems, createFontFile(value, index));
+        antialias, scalable, size, fixed, color, writingSystems, createFontFile(value, index));
 
     // add fonts windows can generate for us:
     if (weight <= QFont::DemiBold && styleName.isEmpty())
         QPlatformFontDatabase::registerFont(familyName, QString(), foundryName, QFont::Bold, style, stretch,
-                                            antialias, scalable, size, fixed, writingSystems, createFontFile(value, index));
+                                            antialias, scalable, size, fixed, color, writingSystems, createFontFile(value, index));
 
     if (style != QFont::StyleItalic && styleName.isEmpty())
         QPlatformFontDatabase::registerFont(familyName, QString(), foundryName, weight, QFont::StyleItalic, stretch,
-                                            antialias, scalable, size, fixed, writingSystems, createFontFile(value, index));
+                                            antialias, scalable, size, fixed, color, writingSystems, createFontFile(value, index));
 
     if (weight <= QFont::DemiBold && style != QFont::StyleItalic && styleName.isEmpty())
         QPlatformFontDatabase::registerFont(familyName, QString(), foundryName, QFont::Bold, QFont::StyleItalic, stretch,
-                                            antialias, scalable, size, fixed, writingSystems, createFontFile(value, index));
+                                            antialias, scalable, size, fixed, color, writingSystems, createFontFile(value, index));
 
     if (!subFamilyName.isEmpty() && familyName != subFamilyName) {
         QPlatformFontDatabase::registerFont(subFamilyName, subFamilyStyle, foundryName, weight,
-                                            style, stretch, antialias, scalable, size, fixed, writingSystems, createFontFile(value, index));
+                                            style, stretch, antialias, scalable, size, fixed, color, writingSystems, createFontFile(value, index));
     }
 
     if (!englishName.isEmpty() && englishName != familyName)
@@ -378,7 +397,7 @@ void QWindowsFontDatabaseFT::populateFontDatabase()
     EnumFontFamiliesEx(dummy, &lf, populateFontFamilies, 0, 0);
     ReleaseDC(0, dummy);
     // Work around EnumFontFamiliesEx() not listing the system font
-    const QString systemDefaultFamily = QWindowsFontDatabase::systemDefaultFont().families().constFirst();
+    const QString systemDefaultFamily = QWindowsFontDatabase::systemDefaultFont().family();
     if (QPlatformFontDatabase::resolveFontFamilyAlias(systemDefaultFamily) == systemDefaultFamily)
         QPlatformFontDatabase::registerFontFamily(systemDefaultFamily);
 }
@@ -386,7 +405,7 @@ void QWindowsFontDatabaseFT::populateFontDatabase()
 QFontEngine * QWindowsFontDatabaseFT::fontEngine(const QFontDef &fontDef, void *handle)
 {
     QFontEngine *fe = QFreeTypeFontDatabase::fontEngine(fontDef, handle);
-    qCDebug(lcQpaFonts) << __FUNCTION__ << "FONTDEF" << fontDef.families.constFirst() << fe << handle;
+    qCDebug(lcQpaFonts) << __FUNCTION__ << "FONTDEF" << fontDef.family() << fe << handle;
     return fe;
 }
 
@@ -397,9 +416,13 @@ QFontEngine *QWindowsFontDatabaseFT::fontEngine(const QByteArray &fontData, qrea
     return fe;
 }
 
-QStringList QWindowsFontDatabaseFT::fallbacksForFamily(const QString &family, QFont::Style style, QFont::StyleHint styleHint, QChar::Script script) const
+QStringList QWindowsFontDatabaseFT::fallbacksForFamily(const QString &family,
+                                                       QFont::Style style,
+                                                       QFont::StyleHint styleHint,
+                                                       QFontDatabasePrivate::ExtendedScript script) const
 {
     QStringList result;
+    result.append(QWindowsFontDatabaseBase::familiesForScript(script));
     result.append(QWindowsFontDatabaseBase::familyForStyleHint(styleHint));
     result.append(QWindowsFontDatabaseBase::extraTryFontsForFamily(family));
     result.append(QFreeTypeFontDatabase::fallbacksForFamily(family, style, styleHint, script));

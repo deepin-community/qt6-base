@@ -529,13 +529,17 @@ void tst_QSharedMemory::emptyMemory()
 void tst_QSharedMemory::readOnly()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #elif defined(Q_OS_MACOS)
-    QSKIP("QTBUG-59936: Times out on macOS", SkipAll);
+    QSKIP("QTBUG-59936: Times out on macOS");
 #elif defined(Q_OS_WIN)
     QSKIP("This test opens a crash dialog on Windows.");
+#elif defined(Q_OS_HARMONY)
+    // TODO: Due to limitation in ohos template application, its not
+    // possible to launch an application from the auto test.
+    QSKIP("Fail to launch produceconsumer application through QProcess");
 #elif defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
-    QSKIP("ASan prevents the crash this test is looking for.", SkipAll);
+    QSKIP("ASan prevents the crash this test is looking for.");
 #else
     QNativeIpcKey key = rememberKey("readonly_segfault");
 
@@ -860,7 +864,7 @@ void tst_QSharedMemory::simpleProcessProducerConsumer_data()
 void tst_QSharedMemory::simpleProcessProducerConsumer()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QFETCH(int, processes);
 
@@ -942,9 +946,12 @@ QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
 void tst_QSharedMemory::createWithSameKey()
 {
-    const QString key = u"legacy_key"_s;
+    const QString key = mangleKey(u"legacy_key");
     const qsizetype sz = 100;
     QSharedMemory mem1(key);
+    // The POSIX backend does not unlink the segment on detach, so the segment
+    // must be removed explicitly or the next run will fail to create it.
+    keys.append(mem1.nativeIpcKey());
     QVERIFY(mem1.create(sz));
 
     {

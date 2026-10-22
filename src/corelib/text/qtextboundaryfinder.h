@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-impl-only
 
 #ifndef QTEXTBOUNDARYFINDER_H
 #define QTEXTBOUNDARYFINDER_H
@@ -7,8 +8,11 @@
 #include <QtCore/qchar.h>
 #include <QtCore/qstring.h>
 
-QT_BEGIN_NAMESPACE
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+#  include <array>
+#endif
 
+QT_BEGIN_NAMESPACE
 
 struct QCharAttributes;
 
@@ -17,10 +21,32 @@ class Q_CORE_EXPORT QTextBoundaryFinder
 public:
     QTextBoundaryFinder();
     QTextBoundaryFinder(const QTextBoundaryFinder &other);
+    QTextBoundaryFinder(QTextBoundaryFinder &&other) noexcept
+        : s{std::move(other.s)},
+          sv{other.sv},
+          pos{other.pos},
+          attributes{std::exchange(other.attributes, nullptr)}
+    {
+          t = other.t;
+          freeBuffer = other.freeBuffer;
+          QT7_ONLY(reserved = other.reserved;)
+    }
     QTextBoundaryFinder &operator=(const QTextBoundaryFinder &other);
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QTextBoundaryFinder)
     ~QTextBoundaryFinder();
 
-    enum BoundaryType {
+    void swap(QTextBoundaryFinder &other) noexcept
+    {
+        std::swap(t, other.t);
+        s.swap(other.s);
+        std::swap(sv, other.sv);
+        std::swap(pos, other.pos);
+        std::swap(freeBuffer, other.freeBuffer);
+        qt_ptr_swap(attributes, other.attributes);
+        QT7_ONLY(reserved.swap(other.reserved);)
+    }
+
+    enum BoundaryType QT7_ONLY(: quint8) {
         Grapheme,
         Word,
         Sentence,
@@ -60,14 +86,20 @@ public:
     BoundaryReasons boundaryReasons() const;
 
 private:
-    BoundaryType t = Grapheme;
+    QT6_ONLY(BoundaryType t = Grapheme;)
     QString s;
     QStringView sv;
     qsizetype pos = 0;
-    uint freeBuffer : 1;
-    uint unused : 31;
+    QT6_ONLY(uint freeBuffer = true;)
     QCharAttributes *attributes = nullptr;
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    bool freeBuffer = true;
+    BoundaryType t = Grapheme;
+    std::array<quint8, sizeof(void *) - 2> reserved = {};
+#endif
 };
+
+Q_DECLARE_SHARED(QTextBoundaryFinder)
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QTextBoundaryFinder::BoundaryReasons)
 

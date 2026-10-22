@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMTHEME_H
 #define QPLATFORMTHEME_H
@@ -99,6 +100,8 @@ public:
         UnderlineShortcut,
         ShowIconsInMenus,
         PreferFileIconFromTheme,
+        MenuSelectionWraps,
+        ScrollSingleStepDistance,
     };
     Q_ENUM(ThemeHint)
 
@@ -108,7 +111,7 @@ public:
         FontDialog,
         MessageDialog
     };
-    Q_ENUM(DialogType);
+    Q_ENUM(DialogType)
 
     enum Palette {
         SystemPalette,
@@ -245,6 +248,10 @@ public:
         DialogIgnoreButton,
         RestoreDefaultsButton,
         TabCloseButton,
+        TabScrollLeftButton,
+        TabScrollRightButton,
+        TabScrollUpButton,
+        TabScrollDownButton,
         NStandardPixmap, // assertion value for sync with QStyle::StandardPixmap
 
         // do not add any values below/greater than this
@@ -318,6 +325,8 @@ public:
     virtual QKeySequence standardButtonShortcut(int button) const;
 #endif
     virtual void requestColorScheme(Qt::ColorScheme scheme);
+    virtual Qt::ContrastPreference contrastPreference() const;
+    virtual Qt::MotionPreference motionPreference() const;
 
     static QVariant defaultThemeHint(ThemeHint hint);
     static QString defaultStandardButtonText(int button);

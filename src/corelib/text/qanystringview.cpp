@@ -1,5 +1,6 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-impl-only
 
 #include "qanystringview.h"
 #include "qdebug.h"
@@ -46,6 +47,43 @@ QT_BEGIN_NAMESPACE
     that the referenced string data (for example, owned by a QString)
     outlives the QAnyStringView on all code paths, lest the string
     view ends up referencing deleted data.
+
+    For example,
+
+    \code
+    QAnyStringView str = funcReturningQString(); // return value is a temp
+    \endcode
+
+    would leave \c{str} referencing the deleted temporary (which constitutes
+    undefined behavior). This is particularly true for the single-character
+    constructors:
+
+    \code
+    QAnyStringView ch = u' '; // u' ' is a temporary
+    // oops, ch references deleted temporary
+    \endcode
+
+    In both cases, the solution is to "pin" the temporary to an lvalue and only
+    then create a QAnyStringView from it:
+
+    \code
+    const auto r = funcReturningQString();
+    QAnyStringView str = r; // ok, `r` outlives `str`
+    const auto sp = u' ';
+    QAnyStringView ch = sp; // ok, `sp` outlives `ch`
+    \endcode
+
+    However, using QAnyStringView as the interface type that it is intended to
+    be is \e{always} safe, provided the called function's documentation is not
+    asking for a longer lifetime:
+
+    \code
+    void func(QAnyStringView s);
+    func(u' ');
+    func(functionReturningQString());
+    \endcode
+
+    This is why QAnyStringView supports these conversions in the first place.
 
     When used as an interface type, QAnyStringView allows a single
     function to accept a wide variety of string data sources. One
@@ -95,6 +133,19 @@ QT_BEGIN_NAMESPACE
     presented as a QLatin1StringView) while the 16-bit character types are
     interpreted as UTF-16 data in host byte order (the same as QString).
 
+    The following character types are only supported by the single-character
+    constructor:
+
+    \list
+    \li \c QLatin1Char
+    \li \c QChar::SpecialCharacter
+    \li \c wchar_t (where it's a 32-bit type, i.e. Unix) (since 6.10)
+    \li \c char32_t
+    \endlist
+
+    These character types are internally decomposed into a UTF-16
+    sequence (using QChar::fromUcs4() for the last).
+
     \section2 Sizes and Sub-Strings
 
     All sizes and positions in QAnyStringView functions are in the
@@ -103,7 +154,7 @@ QT_BEGIN_NAMESPACE
     and UTF-8 multibyte sequences count as two, three or four,
     depending on their length).
 
-    \sa QUtf8StringView, QStringView
+    \sa {Which string class to use?}, QUtf8StringView, QStringView
 */
 
 /*!
@@ -145,8 +196,7 @@ QT_BEGIN_NAMESPACE
 
     The behavior is undefined if \a len is negative or, when positive, if \a str is \nullptr.
 
-    This constructor only participates in overload resolution if \c Char is a compatible
-    character type.
+    \constraints \c Char is a compatible character type.
 
     \sa isNull(), {Compatible Character Types}
 */
@@ -165,8 +215,7 @@ QT_BEGIN_NAMESPACE
     The behavior is undefined if \a last precedes \a first, or \a first
     is \nullptr and \a last is not.
 
-    This constructor only participates in overload resolution if \c Char
-    is a compatible character type.
+    \constraints \c Char is a compatible character type.
 
     \sa isNull(), {Compatible Character Types}
 */
@@ -181,11 +230,73 @@ QT_BEGIN_NAMESPACE
 
     Passing \nullptr as \a str is safe and results in a null string view.
 
-    This constructor only participates in overload resolution if \a
-    str is not an array and if \c Char is a compatible character
-    type.
+    \constraints \a str is not an array and \c Char is a
+    compatible character type.
 
     \sa isNull(), {Compatible Character Types}
+*/
+
+/*!
+    \fn template <typename Char, QAnyStringView::if_compatible_char<Char>> QAnyStringView::QAnyStringView(const Char &ch)
+
+    Constructs a string view on the single character \a ch. The length is usually
+    \c{1} (but see below).
+
+    In general, you must assume that a QAnyStringView thus created will start
+    to reference stale data at the end of the
+    \l{https://en.cppreference.com/w/cpp/language/expressions#Full-expressions}{full-expression},
+    when temporaries are deleted. That means that using it to pass a single
+    character to a QAnyStringView-taking function is ok and safe (as long as
+    the function documentation doesn't ask for a lifetime longer than the
+    initial call):
+
+    \code
+    int to_int(QAnyStringView);
+    int res = to_int(u'9'); // OK, data stays around for the duration of the call
+    \endcode
+
+    But keeping the object around longer is undefined behavior:
+
+    \code
+    QAnyStringView ch = u'9';
+    int res = to_int(ch); // (silent) ERROR: ch references deleted data
+    \endcode
+
+    If you need this, prefer
+
+    \code
+    const auto nine = u'9';
+    QAnyStringView ch(nine); // ok, references `nine`, which outlives `ch`
+    int res = to_int(ch); // 9
+    \endcode
+
+    The above is true for all directly supported \l{Compatible Character Types}.
+
+    If \a ch is not one of these types, but merely converts to QChar, e.g.
+    QChar::SpecialCharacter or QLatin1Char, the QAnyStringView will bind to a
+    temporary object that will have been deleted at the end of the full
+    expression, just like in the second example.
+
+    If \a ch cannot be represented in a single UTF-16 code unit (e.g. because
+    it's a \c{char32_t} value), this constructor decomposes \a ch into two
+    UFT-16 code units. The resulting QAnyStringView will have a size() of \c{2}
+    in that case, and the temporary buffer in which the decomposition is stored
+    is deleted at the end of the full-expression, similar to
+
+    \code
+    [](char32_t ch, auto &&tmp = QChar::fromUcs4(ch)) {
+        return QAnyStringView(tmp);
+    }
+    \endcode
+
+    The equivalent safe version in this case would be
+
+    \code
+    const auto decomposed = QChar::fromUcs4(ch);
+    QAnyStringView ch(decomposed);
+    \endcode
+
+    \sa QChar::fromUcs4(), {Compatible Character Types}
 */
 
 /*!
@@ -199,7 +310,7 @@ QT_BEGIN_NAMESPACE
     \a string must remain valid for the lifetime of this string view
     object.
 
-    This constructor only participates in overload resolution if \a
+    \constraints \a
     string is an actual array and \c Char is a compatible character
     type.
 
@@ -233,23 +344,27 @@ QT_BEGIN_NAMESPACE
 
     \c{std::data(str)} must remain valid for the lifetime of this string view object.
 
-    This constructor only participates in overload resolution if \c Container is a
-    container with a compatible character type as \c{value_type}.
-
     The string view will be empty if and only if \c{std::size(str) == 0}. It is unspecified
     whether this constructor can result in a null string view (\c{std::data(str)} would
     have to return \nullptr for this).
 
+    \constraints \c Container is a
+    container with a compatible character type as \c{value_type}.
+
     \sa isNull(), isEmpty()
 */
+
+// confirm we don't make an accidental copy constructor:
+static_assert(QtPrivate::IsContainerCompatibleWithQStringView<QAnyStringView>::value == false);
+static_assert(QtPrivate::IsContainerCompatibleWithQUtf8StringView<QAnyStringView>::value == false);
 
 /*!
     \fn template <typename Char, size_t Size> static QAnyStringView fromArray(const Char (&string)[Size]) noexcept
 
-    Constructs a string view on the full character string literal \a string,
-    including any trailing \c{Char(0)}. If you don't want the
-    null-terminator included in the view then you can use the constructor
-    overload taking a pointer and a size:
+    Constructs a string view on the full character string literal \a string
+    of \a Size elements, including any trailing \c{Char(0)}. If you don't
+    want the null-terminator included in the view then you can use the
+    constructor overload taking a pointer and a size:
 
     \snippet code/src_corelib_text_qanystringview.cpp 2
 
@@ -375,7 +490,7 @@ QT_BEGIN_NAMESPACE
     Returns the substring of length \a n starting at position
     \a pos in this object.
 
-    \deprecated Use sliced() instead in new code.
+    \deprecated [6.5] Use sliced() instead in new code.
 
     Returns an empty string view if \a n exceeds the
     length of the string view. If there are less than \a n code points
@@ -390,7 +505,7 @@ QT_BEGIN_NAMESPACE
     \fn QAnyStringView::left(qsizetype n) const
     \since 6.5
 
-    \deprecated Use first() instead in new code.
+    \deprecated [6.5] Use first() instead in new code.
 
     Returns the substring of length \a n starting at position
     0 in this object.
@@ -405,7 +520,7 @@ QT_BEGIN_NAMESPACE
     \fn QAnyStringView::right(qsizetype n) const
     \since 6.5
 
-    \deprecated Use last() instead in new code.
+    \deprecated [6.5] Use last() instead in new code.
 
     Returns the substring of length \a n starting at position
     size() - \a n in this object.
@@ -663,7 +778,7 @@ QT_BEGIN_NAMESPACE
     Outputs \a s to debug stream \a d.
 
     If \c{d.quotedString()} is \c true, indicates which encoding the string is
-    in. If you just want the string data, use visit() like this:
+    in. If you just want the string data, use \l{QAnyStringView::visit()}{visit()} like this:
 
     \code
     s.visit([&d) (auto s) { d << s; });
@@ -696,5 +811,32 @@ QDebug operator<<(QDebug d, QAnyStringView s)
     return d;
 }
 
+/*!
+    \fn template <typename...Args> QString QAnyStringView::arg(Args &&...args) const
+    \since 6.9
+
+    \include qstringview.cpp qstring-multi-arg
+
+    \sa QString::arg(Args&&...)
+*/
+
+/*!
+    \fn template <typename Char, size_t Size, QAnyStringView::if_compatible_char<Char>> QAnyStringView QAnyStringView::fromArray(const Char (&string)[Size])
+
+    Constructs a string view on the full character string literal \a string
+    of \a Size elements, including any trailing \c{Char(0)}. If you don't want the
+    null-terminator included in the view then you can chop() it off
+    when you are certain it is at the end. Alternatively you can use
+    the constructor overload taking an array literal which will create
+    a view up to, but not including, the first null-terminator in the data.
+
+    \a string must remain valid for the lifetime of this string view
+    object.
+
+    This function will work with any array literal if \c Char is a
+    compatible character type. The compatible character types are: \c QChar, \c ushort, \c
+    char16_t and (on platforms, such as Windows, where it is a 16-bit
+    type) \c wchar_t.
+*/
 
 QT_END_NAMESPACE

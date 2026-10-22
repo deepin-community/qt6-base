@@ -6,7 +6,6 @@
 #define SYMBOLS_H
 
 #include "token.h"
-#include <qdebug.h>
 #include <qhashfunctions.h>
 #include <qlist.h>
 #include <qstack.h>
@@ -59,6 +58,9 @@ struct Symbol
     Token token = NOTOKEN;
     inline QByteArray lexem() const { return lex.mid(from, len); }
     inline QByteArray unquotedLexem() const { return lex.mid(from+1, len-2); }
+    inline QByteArrayView lexemView() const { return QByteArrayView{lex}.mid(from, len); }
+    inline QByteArrayView unquotedLexemView() const { return QByteArrayView{lex}.mid(from+1, len-2); }
+    void mergeStringLiteral(const Symbol &next);
     inline operator SubArray() const { return SubArray(lex, from, len); }
     bool operator==(const Symbol& o) const
     {
@@ -83,20 +85,21 @@ Q_DECLARE_TYPEINFO(SafeSymbols, Q_RELOCATABLE_TYPE);
 class SymbolStack : public QStack<SafeSymbols>
 {
 public:
+    const SafeSymbols &constTop() const { return top(); }
     inline bool hasNext() {
-        while (!isEmpty() && top().index >= top().symbols.size())
+        while (!isEmpty() && constTop().index >= constTop().symbols.size())
             pop();
         return !isEmpty();
     }
     inline Token next() {
-        while (!isEmpty() && top().index >= top().symbols.size())
+        while (!isEmpty() && constTop().index >= constTop().symbols.size())
             pop();
         if (isEmpty())
             return NOTOKEN;
-        return top().symbols.at(top().index++).token;
+        return constTop().symbols.at(top().index++).token;
     }
     bool test(Token);
-    inline const Symbol &symbol() const { return top().symbols.at(top().index-1); }
+    inline const Symbol &symbol() const { return constTop().symbols.at(constTop().index-1); }
     inline Token token() { return symbol().token; }
     inline QByteArray lexem() const { return symbol().lexem(); }
     inline QByteArray unquotedLexem() { return symbol().unquotedLexem(); }

@@ -442,6 +442,13 @@ void tst_QTextMarkdownImporter::nestedSpans()
         QCOMPARE(fmt.isAnchor(), expectedFormat.testFlag(Link));
         QCOMPARE(fmt.fontFixedPitch(), expectedFormat.testFlag(Mono));
         QCOMPARE(fmt.hasProperty(QTextFormat::FontFixedPitch), expectedFormat.testFlag(Mono));
+        if (expectedFormat.testFlag(Mono)) {
+            // QTBUG-97041: a code span must not bake in an absolute font size:
+            // the size is inherited from the document's default font, so that
+            // inline code scales with the surrounding text like the other spans.
+            QVERIFY(!fmt.hasProperty(QTextFormat::FontPointSize));
+            QVERIFY(!fmt.hasProperty(QTextFormat::FontPixelSize));
+        }
         ++iterator;
     }
 }
@@ -497,6 +504,18 @@ void tst_QTextMarkdownImporter::fragmentsAndProperties_data()
             << QString("<b>x&amp;lt;</b>")
             << 0 << "x&lt;" << QTextFormat::FontWeight << QVariant(700)
             << 1 << 1;
+    // An image title is stored as both ImageTitle (for serialization) and
+    // TextToolTip (what QTextEdit/Text display on hover). QTBUG-148545
+    QTest::newRow("imageTitleAsImageTitle")
+            << QString("before ![alt](/path/to/image.png \"the title\") after")
+            << 1 << QString(QChar(QChar::ObjectReplacementCharacter))
+            << QTextFormat::ImageTitle << QVariant(QStringLiteral("the title"))
+            << 1 << 3;
+    QTest::newRow("imageTitleAsToolTip")
+            << QString("before ![alt](/path/to/image.png \"the title\") after")
+            << 1 << QString(QChar(QChar::ObjectReplacementCharacter))
+            << QTextFormat::TextToolTip << QVariant(QStringLiteral("the title"))
+            << 1 << 3;
 }
 
 void tst_QTextMarkdownImporter::fragmentsAndProperties()
@@ -548,6 +567,7 @@ void tst_QTextMarkdownImporter::pathological_data()
     QTest::addColumn<QString>("warning");
     QTest::newRow("fuzz20450") << "attempted to insert into a list that no longer exists";
     QTest::newRow("fuzz20580") << "";
+    QTest::newRow("oss-fuzz-42533775") << ""; // caused a heap-buffer-overflow
 }
 
 void tst_QTextMarkdownImporter::pathological() // avoid crashing on crazy input
@@ -586,6 +606,16 @@ void tst_QTextMarkdownImporter::fencedCodeBlocks_data()
             << "~~~pseudocode\nprint('hello world\\n')\n~~~\n"
             << 1 << 0 << "pseudocode" << "~"
             << "~~~pseudocode\nprint('hello world\\n')\n~~~\n\n";
+    QTest::newRow("fence inside a list item")
+            << "- item:\n\n  ```pseudocode\n  print('hello world\\n')\n  ```\n\n  after the fence\n"
+            << 1 << 2 << "pseudocode" << "`"
+            << "- item:\n\n  ```pseudocode\n  print('hello world\\n')\n  ```\n  after the "
+               "fence\n\n";
+    QTest::newRow("fence continuing a tight list item")
+            << "- item:\n- some code below:\n  ```pseudocode\n  int a = 1;\n  int b = a + 2;\n  ```\n- after the fence\n"
+            << 2 << 3 << "pseudocode" << "`"
+            << "- item:\n- some code below:\n\n  ```pseudocode\n  int a = 1;\n  int b = a + 2;"
+               "\n  ```\n- after the fence\n";
     QTest::newRow("embedded backticks")
             << "```\nnone `one` ``two``\n```\nplain\n```\n```three``` ````four````\n```\nplain\n"
             << 2 << 2 << QString() << "`"
@@ -644,21 +674,33 @@ void tst_QTextMarkdownImporter::fencedCodeBlocks()
 void tst_QTextMarkdownImporter::frontMatter_data()
 {
     QTest::addColumn<QString>("inputFile");
+    QTest::addColumn<bool>("convertToCrLf");
+    QTest::addColumn<int>("expectedFrontMatterSize");
     QTest::addColumn<int>("expectedBlockCount");
 
-    QTest::newRow("yaml + markdown") << QFINDTESTDATA("data/yaml.md") << 1;
-    QTest::newRow("yaml only") << QFINDTESTDATA("data/yaml-only.md") << 0;
+    QTest::newRow("yaml + markdown") << QFINDTESTDATA("data/yaml.md") << false << 140 << 1;
+    QTest::newRow("yaml + markdown with CRLFs") << QFINDTESTDATA("data/yaml.md") << true << 147 << 1;
+    QTest::newRow("yaml only") << QFINDTESTDATA("data/yaml-only.md") << false << 59 << 0;
+    QTest::newRow("malformed 1") << QFINDTESTDATA("data/front-marker-malformed1.md") << false << 0 << 1;
+    QTest::newRow("malformed 2") << QFINDTESTDATA("data/front-marker-malformed2.md") << false << 0 << 2;
+    QTest::newRow("malformed 3") << QFINDTESTDATA("data/front-marker-malformed3.md") << false << 0 << 1;
 }
 
 void tst_QTextMarkdownImporter::frontMatter()
 {
     QFETCH(QString, inputFile);
+    QFETCH(bool, convertToCrLf);
+    QFETCH(int, expectedFrontMatterSize);
     QFETCH(int, expectedBlockCount);
 
     QFile f(inputFile);
     QVERIFY(f.open(QFile::ReadOnly | QIODevice::Text));
     QString md = QString::fromUtf8(f.readAll());
     f.close();
+    if (convertToCrLf)
+        md.replace("\n", "\r\n");
+    qCDebug(lcTests) << inputFile << "begins with" << md.first(16).toLatin1().toHex(' ');
+
     const int yamlBegin = md.indexOf("name:");
     const int yamlEnd = md.indexOf("---", yamlBegin);
     const QString yaml = md.sliced(yamlBegin, yamlEnd - yamlBegin);
@@ -672,7 +714,9 @@ void tst_QTextMarkdownImporter::frontMatter()
             ++blockCount;
     }
     QCOMPARE(blockCount, expectedBlockCount); // yaml is not part of the markdown text
-    QCOMPARE(doc.metaInformation(QTextDocument::FrontMatter), yaml); // without fences
+    if (expectedFrontMatterSize)
+        QCOMPARE(doc.metaInformation(QTextDocument::FrontMatter), yaml); // without fences
+    QCOMPARE(doc.metaInformation(QTextDocument::FrontMatter).size(), expectedFrontMatterSize);
 }
 
 void tst_QTextMarkdownImporter::toRawText_data()

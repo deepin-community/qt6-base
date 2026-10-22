@@ -55,9 +55,6 @@ private slots:
     void stopRepeatTimer();
 
     void mouseReleased(); // QTBUG-53244
-#ifdef QT_KEYPAD_NAVIGATION
-    void keyNavigation();
-#endif
 
     void buttonPressKeys();
 
@@ -97,7 +94,7 @@ public:
             opt.palette = palette();
             opt.state = QStyle::State_None;
             style()->drawPrimitive(QStyle::PE_FrameFocusRect, &opt, &p, this);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
             p.setPen(Qt::red);
             p.drawRect(r);
 #endif
@@ -354,6 +351,12 @@ void tst_QAbstractButton::setText()
 
 void tst_QAbstractButton::setIcon()
 {
+#if defined(Q_OS_HARMONY)
+    if (QGuiApplication::highDpiScaleFactorRoundingPolicy()
+            == Qt::HighDpiScaleFactorRoundingPolicy::PassThrough) {
+           QSKIP("DPR-sensitive setIcon test is not reliable on OHOS with PassThrough rounding.");
+    }
+#endif
     const char *test1_xpm[] = {
     "12 8 2 1",
     ". c None",
@@ -423,8 +426,7 @@ void tst_QAbstractButton::setDown()
     QVERIFY( !testWidget->isDown() );
 
     testWidget->setDown( true );
-    QTest::qWait(300);
-    QVERIFY( testWidget->isDown() );
+    QTRY_VERIFY( testWidget->isDown() );
 
     testWidget->setDown( true );
 
@@ -485,23 +487,11 @@ void tst_QAbstractButton::setShortcut()
     QVERIFY(QTest::qWaitForWindowActive(testWidget));
 
     QTest::keyClick( testWidget, 'A' );
-    QTest::qWait(300);                      // Animate click takes time
-    QCOMPARE(click_count,  (uint)1);
-    QCOMPARE(press_count,  (uint)1); // Press is part of a click
-    QCOMPARE(release_count,(uint)1); // Release is part of a click
+    QTRY_COMPARE(click_count,  1);
+    QTRY_COMPARE(press_count,  1); // Press is part of a click
+    QTRY_COMPARE(release_count,1); // Release is part of a click
 
     QVERIFY( toggle_count == 0 );
-
-//     resetValues();
-//     QTest::keyPress( testWidget, 'A' );
-//     QTest::qWait(10000);
-//     QTest::keyRelease( testWidget, 'A' );
-//     QCOMPARE(click_count,  (uint)1);
-//     QCOMPARE(press_count,  (uint)1);
-//     QCOMPARE(release_count,(uint)1);
-
-//     qDebug() << click_count;
-
 }
 #endif // QT_CONFIG(shortcut)
 
@@ -555,11 +545,9 @@ void tst_QAbstractButton::shortcutEvents()
             QTest::qWait(500);
     }
 
-    QTest::qWait(1000); // ensure animate timer is expired
-
-    QCOMPARE(pressedSpy.size(), 3);
-    QCOMPARE(releasedSpy.size(), 3);
-    QCOMPARE(clickedSpy.size(), 3);
+    QTRY_COMPARE(pressedSpy.size(), 3);
+    QTRY_COMPARE(releasedSpy.size(), 3);
+    QTRY_COMPARE(clickedSpy.size(), 3);
 }
 
 #endif // QT_CONFIG(shortcut)
@@ -572,8 +560,7 @@ void tst_QAbstractButton::stopRepeatTimer()
     // Mouse trigger case:
     button.resetTimerEvents();
     QTest::mousePress(&button, Qt::LeftButton);
-    QTest::qWait(1000);
-    QVERIFY(button.timerEventCount() > 0);
+    QTRY_COMPARE_GE(button.timerEventCount(), 1);
 
     QTest::mouseRelease(&button, Qt::LeftButton);
     button.resetTimerEvents();
@@ -583,8 +570,7 @@ void tst_QAbstractButton::stopRepeatTimer()
     // Key trigger case:
     button.resetTimerEvents();
     QTest::keyPress(&button, Qt::Key_Space);
-    QTest::qWait(1000);
-    QVERIFY(button.timerEventCount() > 0);
+    QTRY_COMPARE_GE(button.timerEventCount(), 1);
 
     QTest::keyRelease(&button, Qt::Key_Space);
     button.resetTimerEvents();
@@ -622,63 +608,6 @@ void tst_QAbstractButton::mouseReleased() // QTBUG-53244
     QCOMPARE(button.isDown(), false);
     QCOMPARE(spyRelease.size(), 1);
 }
-
-#ifdef QT_KEYPAD_NAVIGATION
-void tst_QAbstractButton::keyNavigation()
-{
-    QApplication::setNavigationMode(Qt::NavigationModeKeypadDirectional);
-
-    QWidget widget;
-    QGridLayout *layout = new QGridLayout(&widget);
-    QAbstractButton *buttons[3][3];
-    for(int y = 0; y < 3; y++) {
-        for(int x = 0; x < 3; x++) {
-            buttons[y][x] = new MyButton(&widget);
-            buttons[y][x]->setFocusPolicy(Qt::StrongFocus);
-            layout->addWidget(buttons[y][x], y, x);
-        }
-    }
-
-    widget.show();
-    QApplicationPrivate::setActiveWindow(&widget);
-    widget.activateWindow();
-    QVERIFY(QTest::qWaitForWindowActive(&widget));
-
-    buttons[1][1]->setFocus();
-    QTest::qWait(400);
-    QVERIFY(buttons[1][1]->hasFocus());
-    QTest::keyPress(buttons[1][1], Qt::Key_Up);
-    QTest::qWait(100);
-    QVERIFY(buttons[0][1]->hasFocus());
-    QTest::keyPress(buttons[0][1], Qt::Key_Down);
-    QTest::qWait(100);
-    QVERIFY(buttons[1][1]->hasFocus());
-    QTest::keyPress(buttons[1][1], Qt::Key_Left);
-    QTest::qWait(100);
-    QVERIFY(buttons[1][0]->hasFocus());
-    QTest::keyPress(buttons[1][0], Qt::Key_Down);
-    QTest::qWait(100);
-    QVERIFY(buttons[2][0]->hasFocus());
-    QTest::keyPress(buttons[2][0], Qt::Key_Right);
-    QTest::qWait(100);
-    QVERIFY(buttons[2][1]->hasFocus());
-    QTest::keyPress(buttons[2][1], Qt::Key_Right);
-    QTest::qWait(100);
-    QVERIFY(buttons[2][2]->hasFocus());
-    QTest::keyPress(buttons[2][2], Qt::Key_Up);
-    QTest::qWait(100);
-    QVERIFY(buttons[1][2]->hasFocus());
-    QTest::keyPress(buttons[1][2], Qt::Key_Up);
-    QTest::qWait(100);
-    QVERIFY(buttons[0][2]->hasFocus());
-    buttons[0][1]->hide();
-    QTest::keyPress(buttons[0][2], Qt::Key_Left);
-    QTest::qWait(100);
-    QTest::keyPress(buttons[0][2], Qt::Key_Left);
-    QEXPECT_FAIL("", "QTBUG-22286" ,Abort);
-    QVERIFY(buttons[0][0]->hasFocus());
-}
-#endif
 
 void tst_QAbstractButton::buttonPressKeys()
 {

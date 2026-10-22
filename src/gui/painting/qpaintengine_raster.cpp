@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qmutex.h>
@@ -89,9 +90,15 @@ public:
     {
         set(r);
     }
+QT_WARNING_PUSH
+// see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=123985
+#if defined(Q_CC_GNU_ONLY) && Q_CC_GNU_ONLY >= 1600 && Q_CC_GNU_ONLY < 1700 && !defined(__OPTIMIZE__)
+QT_WARNING_DISABLE_GCC("-Wmaybe-uninitialized")
+#endif
     inline QRectVectorPath()
         : QVectorPath(pts, 4, nullptr, QVectorPath::RectangleHint | QVectorPath::ImplicitClose)
     { }
+QT_WARNING_POP
 
     qreal pts[8];
 };
@@ -311,7 +318,7 @@ void QRasterPaintEngine::init()
     // The antialiasing raster.
     d->grayRaster.reset(new QT_FT_Raster);
     Q_CHECK_PTR(d->grayRaster.data());
-    if (qt_ft_grays_raster.raster_new(d->grayRaster.data()))
+    if (QT_MANGLE_NAMESPACE(qt_ft_grays_raster).raster_new(d->grayRaster.data()))
         QT_THROW(std::bad_alloc()); // an error creating the raster is caused by a bad malloc
 
 
@@ -376,7 +383,7 @@ QRasterPaintEngine::~QRasterPaintEngine()
 {
     Q_D(QRasterPaintEngine);
 
-    qt_ft_grays_raster.raster_done(*d->grayRaster.data());
+    QT_MANGLE_NAMESPACE(qt_ft_grays_raster).raster_done(*d->grayRaster.data());
 }
 
 /*!
@@ -515,7 +522,7 @@ QRasterPaintEngineState::QRasterPaintEngineState()
     dirty = 0;
 }
 
-QRasterPaintEngineState::QRasterPaintEngineState(QRasterPaintEngineState &s)
+QRasterPaintEngineState::QRasterPaintEngineState(const QRasterPaintEngineState &s)
     : QPainterState(s)
     , lastPen(s.lastPen)
     , penData(s.penData)
@@ -1410,7 +1417,7 @@ static void fillRect_normalized(const QRect &r, QSpanData *data,
     ProcessSpans blend = isUnclipped ? data->unclipped_blend : data->blend;
 
     const int nspans = 512;
-    QT_FT_Span spans[nspans];
+    Q_DECL_UNINITIALIZED QT_FT_Span spans[nspans];
 
     Q_ASSERT(data->blend);
     int y = y1;
@@ -1584,11 +1591,8 @@ void QRasterPaintEngine::stroke(const QVectorPath &path, const QPen &pen)
             const QLineF line = s->matrix.map(lines[i]);
             if (line.p1() == line.p2()) {
                 if (s->lastPen.capStyle() != Qt::FlatCap) {
-                    QPointF p = lines[i].p1();
-                    QLineF mappedline = s->matrix.map(QLineF(QPointF(p.x() - width*0.5, p.y()),
-                                                       QPointF(p.x() + width*0.5, p.y())));
-                    d->rasterizer->rasterizeLine(mappedline.p1(), mappedline.p2(),
-                                                 width / mappedline.length());
+                    const QPointF delta(width / 2, 0);
+                    d->rasterizer->rasterizeLine(line.p1() - delta, line.p1() + delta, 1);
                 }
                 continue;
             }
@@ -2221,21 +2225,11 @@ void QRasterPaintEngine::drawImage(const QRectF &r, const QImage &img, const QRe
 
         // Do whatever fillRect() does, but without premultiplying the color if it's already premultiplied.
         QRgb color = img.pixel(sr_l, sr_t);
-        switch (img.format()) {
-        case QImage::Format_ARGB32_Premultiplied:
-        case QImage::Format_ARGB8565_Premultiplied:
-        case QImage::Format_ARGB6666_Premultiplied:
-        case QImage::Format_ARGB8555_Premultiplied:
-        case QImage::Format_ARGB4444_Premultiplied:
-        case QImage::Format_RGBA8888_Premultiplied:
-        case QImage::Format_A2BGR30_Premultiplied:
-        case QImage::Format_A2RGB30_Premultiplied:
+        if (img.pixelFormat().premultiplied() == QPixelFormat::Premultiplied) {
             // Combine premultiplied color with the opacity set on the painter.
             d->solid_color_filler.solidColor = multiplyAlpha256(QRgba64::fromArgb32(color), s->intOpacity);
-            break;
-        default:
+        } else {
             d->solid_color_filler.solidColor = qPremultiply(combineAlpha256(QRgba64::fromArgb32(color), s->intOpacity));
-            break;
         }
 
         if (d->solid_color_filler.solidColor.alphaF() <= 0.0f && s->composition_mode == QPainter::CompositionMode_SourceOver)
@@ -2821,7 +2815,7 @@ bool QRasterPaintEngine::drawCachedGlyphs(int numGlyphs, const glyph_t *glyphs,
                         qFloor(positions[i].x) + alphaMap->x,
                         qFloor(y) - alphaMap->y,
                         alphaMap->width, alphaMap->height,
-                        fontEngine->expectsGammaCorrectedBlending());
+                        fontEngine->expectsGammaCorrectedBlending(QFontEngine::GlyphFormat(alphaMap->format)));
         }
 
     } else {
@@ -2885,7 +2879,14 @@ bool QRasterPaintEngine::drawCachedGlyphs(int numGlyphs, const glyph_t *glyphs,
                 drawImage(QPoint(x, y), QImage(glyphBits, c.w, c.h, bpl, image.format()));
                 s->matrix = originalTransform;
             } else {
-                alphaPenBlt(glyphBits, bpl, depth, x, y, c.w, c.h, fontEngine->expectsGammaCorrectedBlending());
+                alphaPenBlt(glyphBits,
+                            bpl,
+                            depth,
+                            x,
+                            y,
+                            c.w,
+                            c.h,
+                            fontEngine->expectsGammaCorrectedBlending(glyphFormat));
             }
         }
     }
@@ -2894,6 +2895,7 @@ bool QRasterPaintEngine::drawCachedGlyphs(int numGlyphs, const glyph_t *glyphs,
 
 
 /*!
+ * \internal
  * Returns \c true if the rectangle is completely within the current clip
  * state of the paint engine.
  */
@@ -2965,9 +2967,9 @@ inline bool QRasterPaintEnginePrivate::isUnclipped(const QRectF &rect,
                                                    int penWidth) const
 {
     const QRectF norm = rect.normalized();
-    if (norm.left() <= INT_MIN || norm.top() <= INT_MIN
-            || norm.right() > INT_MAX || norm.bottom() > INT_MAX
-            || norm.width() > INT_MAX || norm.height() > INT_MAX)
+    if (norm.left() <= qreal(INT_MIN) || norm.top() <= qreal(INT_MIN)
+            || norm.right() > qreal(INT_MAX) || norm.bottom() > qreal(INT_MAX)
+            || norm.width() > qreal(INT_MAX) || norm.height() > qreal(INT_MAX))
         return false;
     return isUnclipped(norm.toAlignedRect(), penWidth);
 }
@@ -3370,6 +3372,9 @@ bool QRasterPaintEngine::shouldDrawCachedGlyphs(QFontEngine *fontEngine, const Q
     if (!fontEngine->hasInternalCaching() && !fontEngine->supportsTransformation(m))
         return false;
 
+    if (fontEngine->supportsTransformation(m) && !fontEngine->isSmoothlyScalable)
+        return true;
+
     return QPaintEngineEx::shouldDrawCachedGlyphs(fontEngine, m);
 }
 
@@ -3561,7 +3566,7 @@ void QRasterPaintEnginePrivate::rasterize(QT_FT_Outline *outline,
 }
 
 extern "C" {
-    int q_gray_rendered_spans(QT_FT_Raster raster);
+int QT_MANGLE_NAMESPACE(q_gray_rendered_spans)(QT_FT_Raster raster);
 }
 
 static inline uchar *alignAddress(uchar *address, quintptr alignmentMask)
@@ -3596,12 +3601,12 @@ void QRasterPaintEnginePrivate::rasterize(QT_FT_Outline *outline,
     // minimize memory reallocations. However if initial size for
     // raster pool is changed for lower value, reallocations will
     // occur normally.
-    int rasterPoolSize = MINIMUM_POOL_SIZE;
-    uchar rasterPoolOnStack[MINIMUM_POOL_SIZE + 0xf];
+    unsigned int rasterPoolSize = MINIMUM_POOL_SIZE;
+    Q_DECL_UNINITIALIZED uchar rasterPoolOnStack[MINIMUM_POOL_SIZE + 0xf];
     uchar *rasterPoolBase = alignAddress(rasterPoolOnStack, 0xf);
     uchar *rasterPoolOnHeap = nullptr;
 
-    qt_ft_grays_raster.raster_reset(*grayRaster.data(), rasterPoolBase, rasterPoolSize);
+    QT_MANGLE_NAMESPACE(qt_ft_grays_raster).raster_reset(*grayRaster.data(), rasterPoolBase, rasterPoolSize);
 
     void *data = userData;
 
@@ -3631,7 +3636,7 @@ void QRasterPaintEnginePrivate::rasterize(QT_FT_Outline *outline,
         rasterParams.flags |= (QT_FT_RASTER_FLAG_AA | QT_FT_RASTER_FLAG_DIRECT);
         rasterParams.gray_spans = callback;
         rasterParams.skip_spans = rendered_spans;
-        error = qt_ft_grays_raster.raster_render(*grayRaster.data(), &rasterParams);
+        error = QT_MANGLE_NAMESPACE(qt_ft_grays_raster).raster_render(*grayRaster.data(), &rasterParams);
 
         // Out of memory, reallocate some more and try again...
         if (error == -6) { // ErrRaster_OutOfMemory from qgrayraster.c
@@ -3641,7 +3646,7 @@ void QRasterPaintEnginePrivate::rasterize(QT_FT_Outline *outline,
                 break;
             }
 
-            rendered_spans += q_gray_rendered_spans(*grayRaster.data());
+            rendered_spans += QT_MANGLE_NAMESPACE(q_gray_rendered_spans)(*grayRaster.data());
 
             free(rasterPoolOnHeap);
             rasterPoolOnHeap = (uchar *)malloc(rasterPoolSize + 0xf);
@@ -3650,9 +3655,9 @@ void QRasterPaintEnginePrivate::rasterize(QT_FT_Outline *outline,
 
             rasterPoolBase = alignAddress(rasterPoolOnHeap, 0xf);
 
-            qt_ft_grays_raster.raster_done(*grayRaster.data());
-            qt_ft_grays_raster.raster_new(grayRaster.data());
-            qt_ft_grays_raster.raster_reset(*grayRaster.data(), rasterPoolBase, rasterPoolSize);
+            QT_MANGLE_NAMESPACE(qt_ft_grays_raster).raster_done(*grayRaster.data());
+            QT_MANGLE_NAMESPACE(qt_ft_grays_raster).raster_new(grayRaster.data());
+            QT_MANGLE_NAMESPACE(qt_ft_grays_raster).raster_reset(*grayRaster.data(), rasterPoolBase, rasterPoolSize);
         } else {
             done = true;
         }
@@ -4087,7 +4092,7 @@ static void qt_span_fill_clipped(int spanCount, const QT_FT_Span *spans, void *u
     Q_ASSERT(fillData->blend && fillData->unclipped_blend);
 
     const int NSPANS = 512;
-    QT_FT_Span cspans[NSPANS];
+    Q_DECL_UNINITIALIZED QT_FT_Span cspans[NSPANS];
     int currentClip = 0;
     const QT_FT_Span *end = spans + spanCount;
     while (spans < end) {

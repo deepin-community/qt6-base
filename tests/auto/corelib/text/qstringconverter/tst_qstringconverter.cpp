@@ -151,7 +151,7 @@ private slots:
 
     void convertL1U16();
 
-#if QT_CONFIG(icu)
+#if QT_CONFIG(icu) || QT_CONFIG(winsdkicu)
     void roundtripIcu_data();
     void roundtripIcu();
     void icuInvalidCharacter_data();
@@ -179,6 +179,9 @@ private slots:
     void utf8stateful_data();
     void utf8stateful();
 
+    void utf32Codec_data();
+    void utf32Codec();
+
     void utfHeaders_data();
     void utfHeaders();
 
@@ -195,6 +198,12 @@ private slots:
     void encodingForHtml();
 
     void availableCodesAreAvailable();
+
+    void finalizeEncoder_data();
+    void finalizeEncoder();
+    void finalizeDecoder_data();
+    void finalizeDecoder();
+    void finalizeStateful();
 
 #ifdef Q_OS_WIN
     // On all other systems local 8-bit encoding is UTF-8
@@ -501,7 +510,7 @@ void tst_QStringConverter::convertL1U8()
     }
 }
 
-#if QT_CONFIG(icu)
+#if QT_CONFIG(icu) || QT_CONFIG(winsdkicu)
 
 void tst_QStringConverter::roundtripIcu_data()
 {
@@ -2025,6 +2034,101 @@ void tst_QStringConverter::utf8stateful()
     }
 }
 
+void tst_QStringConverter::utf32Codec_data()
+{
+    QTest::addColumn<QStringConverter::Flag>("flags");
+    QTest::addColumn<QByteArray>("encoded");
+    QTest::addColumn<QString>("unicode");
+
+#define UTF32_BOM "\0\0\xfe\xff"
+#define UTF32_A "\0\0\0a"
+#define UTF32_B "\0\0\0b"
+#define UTF32_C "\0\0\0c"
+#define UTF32_D "\0\0\0d"
+#define UTF32_REPLACEMENT "\0\0\xff\xfd"
+#define UTF32_ILLEGAL_BOM "\xff\xfe\xfe\xff"
+#define UTF32_ILLEGAL "\xff\0\0\xff"
+
+    QTest::newRow("abc skipbom")
+        << QStringConverter::Flag::Default
+        << UTF32_BOM UTF32_A UTF32_B UTF32_C ""_ba
+        << u"abc"_s;
+
+    QTest::newRow("abc writebom")
+        << QStringConverter::Flag::ConvertInitialBom
+        << UTF32_BOM UTF32_A UTF32_B UTF32_C ""_ba
+        << u"\uFEFF""abc"_s;
+
+    QTest::newRow("invalid with replacement 1")
+        << QStringConverter::Flag::Default
+        << UTF32_BOM UTF32_A UTF32_ILLEGAL UTF32_C ""_ba
+        << u"a""\uFFFD""c"_s;
+
+    QTest::newRow("invalid with replacement 2")
+        << QStringConverter::Flag::Default
+        << UTF32_BOM UTF32_A UTF32_ILLEGAL UTF32_C UTF32_D UTF32_ILLEGAL UTF32_ILLEGAL ""_ba
+        << u"a""\uFFFD""cd""\uFFFD""\uFFFD"_s;
+
+    QTest::newRow("invalid with null 1")
+        << QStringConverter::Flag::ConvertInvalidToNull
+        << UTF32_BOM UTF32_A UTF32_ILLEGAL UTF32_C ""_ba
+        << u"a\0c"_s;
+
+    QTest::newRow("invalid with null 2")
+        << QStringConverter::Flag::ConvertInvalidToNull
+        << UTF32_BOM UTF32_A UTF32_ILLEGAL UTF32_C UTF32_D UTF32_ILLEGAL UTF32_ILLEGAL ""_ba
+        << u"a\0cd\0\0"_s;
+
+    QTest::newRow("invalid with null 3")
+        << QStringConverter::Flag::ConvertInvalidToNull
+        << UTF32_BOM UTF32_A UTF32_REPLACEMENT UTF32_C UTF32_D UTF32_ILLEGAL UTF32_ILLEGAL ""_ba
+        << u"a""\uFFFD""cd\0\0"_s; // U+FFFD was in the source
+
+    QTest::newRow("nobom invalid 1")
+        << QStringConverter::Flag::Default
+        << UTF32_ILLEGAL_BOM UTF32_A UTF32_B UTF32_C ""_ba
+        << u"\uFFFD""abc"_s;
+
+    QTest::newRow("nobom invalid 2")
+        << QStringConverter::Flag::Default
+        << UTF32_ILLEGAL_BOM UTF32_A UTF32_ILLEGAL UTF32_C ""_ba
+        << u"\uFFFD""a""\uFFFD""c"_s;
+
+    QTest::newRow("nobom invalid 3")
+        << QStringConverter::Flag::ConvertInvalidToNull
+        << UTF32_ILLEGAL_BOM UTF32_A UTF32_ILLEGAL UTF32_C ""_ba
+        << u"\0a\0c"_s;
+
+#undef UTF32_BOM
+#undef UTF32_A
+#undef UTF32_B
+#undef UTF32_C
+#undef UTF32_D
+#undef UTF32_REPLACEMENT
+#undef UTF32_ILLEGAL_BOM
+#undef UTF32_ILLEGAL
+}
+
+void tst_QStringConverter::utf32Codec()
+{
+    QFETCH(QStringConverter::Flag, flags);
+    QFETCH(QByteArray, encoded);
+    QFETCH(QString, unicode);
+
+    if constexpr (QSysInfo::ByteOrder == QSysInfo::LittleEndian) {
+        if (QByteArrayView(QTest::currentDataTag()).startsWith("nobom")) {
+            char32_t *begin = reinterpret_cast<char32_t *>(encoded.data());
+            const qsizetype count = encoded.size() / sizeof(char32_t);
+            qFromBigEndian<char32_t>(begin, count, begin);
+        }
+    }
+
+    QStringDecoder decoder(QStringDecoder::Utf32, flags);
+    QVERIFY(decoder.isValid());
+    QString result = decoder(encoded);
+    QCOMPARE(result, unicode);
+}
+
 void tst_QStringConverter::utfHeaders_data()
 {
     QTest::addColumn<QStringConverter::Encoding>("encoding");
@@ -2489,6 +2593,138 @@ void tst_QStringConverter::availableCodesAreAvailable()
     auto codecs = QStringConverter::availableCodecs();
     for (const auto &codecName: codecs)
         QVERIFY(QStringEncoder(codecName.toLatin1()).isValid());
+}
+
+void tst_QStringConverter::finalizeEncoder_data()
+{
+    QTest::addColumn<QString>("incompleteInput");
+    QTest::addColumn<QByteArray>("incompleteOutput");
+
+    QTest::newRow("no-prefix") << QString(QChar(0xd800)) << QByteArray();
+    QTest::newRow("with-prefix") << "a" + QString(QChar(0xd800)) << "a"_ba;
+}
+
+// explicitly cast to void to ensure that QCOMPARE doesn't treat char*
+// as strings: we want to compare actual pointer values
+#define COMPARE_PTR(p,q)    QCOMPARE(static_cast<const void *>(p), static_cast<const void *>(q))
+
+void tst_QStringConverter::finalizeEncoder()
+{
+    QFETCH(QString, incompleteInput);
+    QFETCH(QByteArray, incompleteOutput);
+
+    auto fromUtf16 = QStringEncoder(QStringEncoder::Utf8);
+    QByteArray buffer("cdcdcdcd");
+    char *ptr = fromUtf16.appendToBuffer(buffer.data(), incompleteInput);
+    QVERIFY(!fromUtf16.hasError());
+
+    COMPARE_PTR(ptr, buffer.data() + incompleteOutput.size());
+    QCOMPARE(buffer.first(incompleteOutput.size()), incompleteOutput);
+
+    // now finalize
+    QStringEncoder::FinalizeResult r = fromUtf16.finalize(ptr, buffer.size() - incompleteOutput.size());
+    QCOMPARE_GT(r.next, ptr);
+    QCOMPARE(r.error, QStringEncoder::FinalizeResult::Error::InvalidCharacters);
+    QCOMPARE_GT(r.invalidChars, 0);
+    QVERIFY(!fromUtf16.hasError());
+    QByteArray expectedStart = incompleteOutput + "\ufffd";
+    QCOMPARE(buffer.first(expectedStart.size()), expectedStart);
+
+    // Try calling finalize again, no new bytes should be output
+    std::array<char, 3> extraBytes;
+    r = fromUtf16.finalize(extraBytes.data(), extraBytes.size());
+    COMPARE_PTR(r.next, extraBytes.data());
+    QCOMPARE(r.invalidChars, 0);
+    QCOMPARE(r.error, QStringEncoder::FinalizeResult::Error::NoError);
+}
+
+void tst_QStringConverter::finalizeDecoder_data()
+{
+    QTest::addColumn<QByteArray>("incompleteInput");
+    QTest::addColumn<QString>("incompleteOutput");
+
+    QTest::newRow("no-prefix") << QByteArray("\xf0") << QString();
+    QTest::newRow("with-prefix") << "a\xf0"_ba << "a";
+}
+
+void tst_QStringConverter::finalizeDecoder()
+{
+    QFETCH(QByteArray, incompleteInput);
+    QFETCH(QString, incompleteOutput);
+
+    auto toUtf16 = QStringDecoder(QStringConverter::Utf8);
+    QString buffer = u"cdcdcdcd"_s;
+    QChar *ptr = toUtf16.appendToBuffer(buffer.data(), incompleteInput);
+    QVERIFY(!toUtf16.hasError());
+
+    // Ugly-cast to void to circumvent smart testlib
+    COMPARE_PTR(ptr, buffer.data() + incompleteOutput.size());
+    QCOMPARE(buffer.first(incompleteOutput.size()), incompleteOutput);
+
+    auto result = toUtf16.finalize(ptr, buffer.size() - incompleteOutput.size());
+    QCOMPARE_GT(result.next, ptr);
+    QCOMPARE(result.error, QStringDecoder::FinalizeResult::Error::InvalidCharacters);
+    QString expectedStart = incompleteOutput + u"\ufffd";
+    QCOMPARE(buffer.first(expectedStart.size()), expectedStart);
+
+    // Try calling finalize again, no new bytes should be output
+    std::array<QChar, 3> extraBytes;
+    result = toUtf16.finalize(extraBytes.data(), extraBytes.size());
+    COMPARE_PTR(result.next, extraBytes.data());
+}
+
+void tst_QStringConverter::finalizeStateful()
+{
+#if !QT_CONFIG(icu) && !QT_CONFIG(winsdkicu)
+    // Technically there is _access_ to stateful encoding on Windows, but only
+    // through the System encoder.
+    QSKIP("ICU is not enabled in this build => stateful encoding is not tested.");
+#else
+    {
+        // Test that calling finalize() restores ASCII mode in this stateful encoding:
+        static const char expected[] = {
+            0x1b, 0x24, 0x42, 0x25, 0x26, 0x25, 0x23, 0x25, 0x2d, 0x25, 0x5a, 0x25,
+            0x47, 0x25, 0x23, 0x25, 0x22, 0x1b, 0x28, 0x42
+        };
+        QString input = u"ウィキペディア"_s; // "Wikipedia"
+        QByteArray buffer(20, '\0');
+        auto stateful = QStringEncoder("ISO-2022-JP");
+        if (!stateful.isValid())
+            QSKIP("ICU without support for ISO-2022-JP, cannot continue test.");
+        char *out = stateful.appendToBuffer(buffer.data(), input);
+        QCOMPARE(std::distance(buffer.data(), out), 17);
+        // First without enough space. We assume ICU may or may not output the
+        // start of the 1b 28 42 sequence, so we handle either.
+        char * const end = buffer.end();
+        QStringEncoder::FinalizeResult result = stateful.finalize(out, 1);
+        QCOMPARE(result.error, QStringEncoder::FinalizeResult::Error::NotEnoughSpace);
+        // Then with enough space
+        result = stateful.finalize(result.next, std::distance(result.next, end));
+        QCOMPARE((void *)result.next, (void *)buffer.constEnd());
+        QCOMPARE(buffer.toHex(' '), QByteArrayView(expected).toByteArray().toHex(' '));
+        QCOMPARE(result.invalidChars, 0);
+        // Try calling finalize again, no new bytes should be output
+        std::array<char, 3> extraBytes;
+        result = stateful.finalize(extraBytes.data(), extraBytes.size());
+        QCOMPARE((void *)result.next, (void *)extraBytes.data());
+        QCOMPARE(result.error, QStringEncoder::FinalizeResult::Error::NoError);
+        QCOMPARE(result.invalidChars, 0);
+    }
+    {
+        // Repeat, but calling finalize() without an output
+        QString input = u"ウィキペディア"_s; // "Wikipedia"
+        QByteArray buffer(20, '\0');
+        auto stateful = QStringEncoder("ISO-2022-JP");
+        QVERIFY(stateful.isValid());
+        char *out = stateful.appendToBuffer(buffer.data(), input);
+        QCOMPARE(std::distance(buffer.data(), out), 17);
+        // This passes some pointers to ICU, we just shouldn't crash
+        QStringEncoder::FinalizeResult r = stateful.finalize();
+        QCOMPARE(r.error, QStringEncoder::FinalizeResult::Error::NoError);
+        QCOMPARE(r.invalidChars, 0);
+        QCOMPARE(r.next, nullptr);
+    }
+#endif
 }
 
 class LoadAndConvert: public QRunnable

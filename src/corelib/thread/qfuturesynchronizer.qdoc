@@ -10,10 +10,12 @@
 
     \ingroup thread
 
-    QFutureSynchronizer is a template class that simplifies synchronization of
-    one or more QFuture objects. Futures are added using the addFuture() or
-    setFuture() functions. The futures() function returns a list of futures.
-    Use clearFutures() to remove all futures from the QFutureSynchronizer.
+    QFutureSynchronizer is a template class where the template parameter \a T
+    specifies the result type of the QFuture objects being synchronized.
+    QFutureSynchronizer simplifies synchronization of one or more QFuture
+    objects. Futures are added using the addFuture() or setFuture() functions.
+    The futures() function returns a list of futures. Use clearFutures() to
+    remove all futures from the QFutureSynchronizer.
 
     The waitForFinished() function waits for all futures to finish.
     The destructor of QFutureSynchronizer calls waitForFinished(), providing

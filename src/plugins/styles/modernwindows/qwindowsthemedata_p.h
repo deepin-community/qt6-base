@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSTHEMEDATA_P_H
 #define QWINDOWSTHEMEDATA_P_H
@@ -16,9 +17,13 @@
 //
 
 #include <qwidget.h>
+
+#include <QtCore/qhashfunctions.h>
 #include <qt_windows.h>
+
 #include <uxtheme.h>
 #include <vssym32.h>
+
 #include <limits.h>
 
 
@@ -48,6 +53,8 @@
 #ifndef CBS_INACTIVE
 #define CBS_INACTIVE 5
 #endif
+
+QT_BEGIN_NAMESPACE
 
 // Declarations -----------------------------------------------------------------------------------
 class QWindowsThemeData
@@ -101,10 +108,9 @@ struct ThemeMapKey {
         : theme(data.theme), partId(data.partId), stateId(data.stateId),
         noBorder(data.noBorder), noContent(data.noContent) {}
 
+    friend size_t qHash(const ThemeMapKey &key, size_t seed = 0) noexcept
+    { return qHashMulti(seed, key.theme, key.partId, key.stateId); }
 };
-
-inline size_t qHash(const ThemeMapKey &key)
-{ return key.theme ^ key.partId ^ key.stateId; }
 
 inline bool operator==(const ThemeMapKey &k1, const ThemeMapKey &k2)
 {
@@ -179,5 +185,7 @@ inline QMarginsF QWindowsThemeData::margins(int propId)
     }
     return result;
 }
+
+QT_END_NAMESPACE
 
 #endif // QWINDOWSTHEMEDATA_P_H

@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /****************************************************************************
 **
@@ -38,6 +39,7 @@
 #include "qsslcertificate.h"
 #include "qsslcipher.h"
 #include "qsslkey.h"
+#include "qsslkeyingmaterial.h"
 #include "qsslellipticcurve.h"
 #include "qssldiffiehellmanparameters.h"
 
@@ -58,7 +60,8 @@ public:
           sslSessionTicketLifeTimeHint(-1),
           ephemeralServerKey(),
           preSharedKeyIdentityHint(),
-          nextProtocolNegotiationStatus(QSslConfiguration::NextProtocolNegotiationNone)
+          nextProtocolNegotiationStatus(QSslConfiguration::NextProtocolNegotiationNone),
+          keyingMaterial()
     { }
 
     QSslCertificate peerCertificate;
@@ -100,6 +103,8 @@ public:
     QList<QByteArray> nextAllowedProtocols;
     QByteArray nextNegotiatedProtocol;
     QSslConfiguration::NextProtocolNegotiationStatus nextProtocolNegotiationStatus;
+
+    QList<QSslKeyingMaterial> keyingMaterial;
 
 #if QT_CONFIG(dtls)
     bool dtlsCookieEnabled = true;

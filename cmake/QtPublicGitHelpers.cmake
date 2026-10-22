@@ -2,6 +2,8 @@
 # Copyright (C) 2023-2024 Jochem Rutgers
 # SPDX-License-Identifier: BSD-3-Clause AND MIT
 
+__qt_internal_cmake_include_guard(GLOBAL GUARD_KEY "QtPublicGitHelpers")
+
 macro(_qt_internal_find_git_package)
     find_package(Git)
 endmacro()
@@ -47,6 +49,16 @@ function(_qt_internal_query_git_version)
         set(version_git_branch "dev")
         set(version_git_tag "")
         set(git_version "${version_git_head}+${version_git_branch}")
+    endif()
+
+    if(QT_SBOM_FAKE_GIT_VERSION)
+        set(version_git_head "fakegithead")
+        set(version_git_hash "fakegithash")
+        set(version_git_branch "fakegitbranch")
+        set(version_git_tag "fakegittag")
+        set(git_version "${version_git_head}+${version_git_branch}")
+        _qt_internal_set_git_query_variables()
+        return()
     endif()
 
     if(NOT Git_FOUND)

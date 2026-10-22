@@ -1,19 +1,46 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QJNITYPES_IMPL_H
 #define QJNITYPES_IMPL_H
 
-#include <QtCore/qglobal.h>
+#include <QtCore/qstring.h>
+
+#include <QtCore/q26numeric.h>
 #include <QtCore/q20type_traits.h>
+#include <QtCore/q20utility.h>
 
 #if defined(Q_QDOC) || defined(Q_OS_ANDROID)
 #include <jni.h>
 
 QT_BEGIN_NAMESPACE
 
+class QJniObject;
+
 namespace QtJniTypes
 {
+
+namespace Detail
+{
+static inline jstring fromQString(QStringView string, JNIEnv *env)
+{
+    if (!q20::in_range<jsize>(string.size()))
+        qWarning("String is too large for a Java string and will be truncated");
+    const jsize length = q26::saturating_cast<jsize>(string.size());
+    return env->NewString(reinterpret_cast<const jchar*>(string.constData()), length);
+}
+
+static inline QString toQString(jstring string, JNIEnv *env)
+{
+    if (!string)
+        return QString();
+    const jsize length = env->GetStringLength(string);
+    QString res(length, Qt::Uninitialized);
+    env->GetStringRegion(string, 0, length, reinterpret_cast<jchar *>(res.data_ptr().data()));
+    return res;
+}
+} // namespace Detail
 
 // a constexpr type for string literals of any character width, aware of the length
 // of the string.
@@ -141,7 +168,7 @@ template<size_t N> struct IsStringType<const char[N]> : std::true_type {};
 template<size_t N> struct IsStringType<const char(&)[N]> : std::true_type {};
 template<size_t N> struct IsStringType<char[N]> : std::true_type {};
 
-template <typename T>
+template <typename T, typename = void>
 struct Traits {
     // The return type of className/signature becomes void for any type
     // not handled here. This indicates that the Traits type is not specialized
@@ -166,11 +193,6 @@ struct Traits {
         if constexpr (!std::is_same_v<decltype(className()), void>) {
             // the type signature of any object class is L<className>;
             return CTString("L") + className() + CTString(";");
-        } else if constexpr (std::is_array_v<T>) {
-            using UnderlyingType = typename std::remove_extent_t<T>;
-            static_assert(!std::is_array_v<UnderlyingType>,
-                        "Traits::signature() does not handle multi-dimensional arrays");
-            return CTString("[") + Traits<UnderlyingType>::signature();
         } else if constexpr (std::is_same_v<T, jobjectArray>) {
             return CTString("[Ljava/lang/Object;");
         } else if constexpr (std::is_same_v<T, jbooleanArray>) {
@@ -225,10 +247,18 @@ struct Traits {
             return CTString("V");
         } else if constexpr (std::is_enum_v<T>) {
             return Traits<std::underlying_type_t<T>>::signature();
-        } else if constexpr (std::is_same_v<T, QString>) {
-            return CTString("Ljava/lang/String;");
         }
         // else: return void -> not implemented
+    }
+
+    template <typename U = T>
+    static auto convertToJni(JNIEnv *, U &&value)
+    {
+        return std::forward<U>(value);
+    }
+    static auto convertFromJni(QJniObject &&object)
+    {
+        return std::move(object);
     }
 };
 

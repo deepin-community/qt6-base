@@ -1,5 +1,6 @@
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qglobal.h"
 #include "qversiontagging.h"
@@ -21,7 +22,7 @@ extern "C" {
 //
 // [1] https://sourceware.org/binutils/docs/as/Symver.html
 
-#if defined(Q_CC_GNU) && defined(Q_OF_ELF)
+#if defined(Q_CC_GNU) && defined(Q_OF_ELF) && !defined(QT_STATIC)
 #  define make_versioned_symbol2(sym, m, n, separator)     \
     Q_CORE_EXPORT extern __attribute__((alias("_" SSYM))) const char sym ## _ ## m ## _ ## n; \
     asm(".symver " QT_STRINGIFY(sym) "_" QT_STRINGIFY(m) "_" QT_STRINGIFY(n) ", " \

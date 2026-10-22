@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qiostextresponder.h"
 
@@ -281,6 +282,9 @@
 
 - (BOOL)hasSelection
 {
+    if (!QGuiApplication::focusObject())
+        return false;
+
     QInputMethodQueryEvent query(Qt::ImAnchorPosition | Qt::ImCursorPosition);
     QGuiApplication::sendEvent(QGuiApplication::focusObject(), &query);
     int anchorPos = query.value(Qt::ImAnchorPosition).toInt();
@@ -393,6 +397,8 @@
         self.keyboardType = UIKeyboardTypeASCIICapable;
     else if (hints & (Qt::ImhPreferNumbers | Qt::ImhFormattedNumbersOnly))
         self.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
+    else if (hints & Qt::ImhDecimalNumbersOnly)
+        self.keyboardType = UIKeyboardTypeDecimalPad;
     else
         self.keyboardType = UIKeyboardTypeDefault;
 
@@ -424,6 +430,7 @@
 {
     self.inputView = 0;
     self.inputAccessoryView = 0;
+    [self.undoManager removeAllActions];
 
     [super dealloc];
 }

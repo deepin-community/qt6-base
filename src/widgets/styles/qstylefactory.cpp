@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstylefactory.h"
 #include "qstyleplugin.h"
@@ -32,11 +33,12 @@ Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
     styles are either built-in or dynamically loaded from a style
     plugin (see QStylePlugin).
 
-    The valid keys can be retrieved using the keys()
-    function. Typically they include "windows" and "fusion".
-    Depending on the platform, "windowsvista"
-    and "macos" may be available.
-    Note that keys are case insensitive.
+    Use the keys() function to retrieve the valid keys. The built-in
+    styles, typically "windows" and "fusion", are always available. The
+    platform styles are plugins and are available on their platform only:
+    "windows11", which follows the Windows 11 Fluent design, and
+    "windowsvista" on Windows, "macos" on \macos, and "android" on Android.
+    The keys are case-insensitive.
 
     \sa QStyle
 */
@@ -48,7 +50,7 @@ Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
     Both built-in styles and styles from style plugins are queried for a
     matching style.
 
-    \note The keys used are case insensitive.
+    \note The keys are case-insensitive.
 
     \sa keys()
 */

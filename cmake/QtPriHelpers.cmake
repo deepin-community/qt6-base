@@ -57,10 +57,34 @@ function(qt_generate_qmake_libraries_pri_content module_name output_root_dir out
                 list(APPEND lib_incdir "${target_include_dir}")
                 list(APPEND lib_defines "$<TARGET_PROPERTY:${lib_target},INTERFACE_COMPILE_DEFINITIONS>")
             else()
-                if(lib_target MATCHES "/([^/]+).framework$")
+                # Strip any directory scope tokens.
+                __qt_internal_strip_target_directory_scope_token("${lib_target}" lib_target)
+
+                # Skip CMAKE_DIRECTORY_ID_SEP. If a target_link_libraries is applied to a target
+                # that was defined in a different scope, CMake appends and prepends a special
+                # directory id separator. Filter those out.
+                if(lib_target MATCHES "^::@")
+                    continue()
+
+                elseif(lib_target MATCHES "^\\$<TARGET_OBJECTS:")
+                    # Skip object files.
+                    continue()
+
+                elseif(lib_target MATCHES "/([^/]+)\\.framework$")
+                    # Handle frameworks
                     list(APPEND lib_libs "-framework ${CMAKE_MATCH_1}")
+
+                elseif(lib_target MATCHES "^\\$<LINK_ONLY:(.*)>$")
+                    # Extract value of LINK_ONLY genex, because it can't be used in file(GENERATE)
+                    set(lib_target "${CMAKE_MATCH_1}")
+                    if(lib_target)
+                        list(PREPEND lib_targets ${lib_target})
+                    endif()
                 else()
-                    list(APPEND lib_libs "${lib_target}")
+                    # Regular library name, library path, or -lfoo-like flag. Check for emptiness.
+                    if(lib_target)
+                        list(APPEND lib_libs "${lib_target}")
+                    endif()
                 endif()
             endif()
         endwhile()
@@ -347,14 +371,22 @@ function(qt_generate_module_pri_file target)
     if(is_fw)
         qt_internal_get_framework_info(fw ${target})
         set(framework_base_path "$$QT_MODULE_LIB_BASE")
-        set(public_module_includes "${framework_base_path}/${fw_header_dir}")
+        # Expose the non-framework include/QtFoo dir, which holds forwarding
+        # headers, so that non-framework-style includes (<qfoo.h>) work.
+        set(public_module_includes "$$QT_MODULE_INCLUDE_BASE/${module}")
         set(public_module_frameworks "${framework_base_path}")
-        set(private_module_includes "${framework_base_path}/${fw_private_header_dir} \
+        set(private_module_includes "")
+        qt_internal_append_include_directories_with_headers_check(${target}
+            private_module_includes PRIVATE
+            "${framework_base_path}/${fw_private_header_dir} \
 ${framework_base_path}/${fw_private_module_header_dir}")
     else()
         set(public_module_includes "$$QT_MODULE_INCLUDE_BASE $$QT_MODULE_INCLUDE_BASE/${module}")
         set(public_module_frameworks "")
-        set(private_module_includes "$$QT_MODULE_INCLUDE_BASE/${module_versioned_include_dir} \
+        set(private_module_includes "")
+        qt_internal_append_include_directories_with_headers_check(${target}
+            private_module_includes PRIVATE
+            "$$QT_MODULE_INCLUDE_BASE/${module_versioned_include_dir} \
 $$QT_MODULE_INCLUDE_BASE/${module_versioned_inner_include_dir}")
     endif()
 
@@ -698,7 +730,7 @@ function(qt_generate_global_config_pri_file)
     list(JOIN corrected_qt_public_config " " qt_public_config_joined)
 
     set(content "")
-    if(GCC OR CLANG AND NOT "${CMAKE_SYSROOT}" STREQUAL "")
+    if((GCC OR CLANG) AND NOT "${CMAKE_SYSROOT}" STREQUAL "" AND NOT OHOS)
         string(APPEND content "!host_build {
     QMAKE_CFLAGS    += --sysroot=\$\$[QT_SYSROOT]
     QMAKE_CXXFLAGS  += --sysroot=\$\$[QT_SYSROOT]
@@ -708,9 +740,10 @@ function(qt_generate_global_config_pri_file)
     endif()
 
     if(CMAKE_CROSSCOMPILING)
+        qt_internal_get_host_info_var_prefix(host_info_var_prefix)
         string(APPEND content "host_build {
-    QT_ARCH = ${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_ARCH}
-    QT_BUILDABI = ${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_BUILDABI}
+    QT_ARCH = ${${host_info_var_prefix}_ARCH}
+    QT_BUILDABI = ${${host_info_var_prefix}_BUILDABI}
     QT_TARGET_ARCH = ${TEST_architecture_arch}
     QT_TARGET_BUILDABI = ${TEST_buildAbi}
 } else {
@@ -794,6 +827,13 @@ QT_PATCH_VERSION = ${PROJECT_VERSION_PATCH}
                  "QT_MAC_SDK_VERSION_MIN = ${QT_SUPPORTED_MIN_IOS_SDK_VERSION}")
             list(APPEND extra_statements
                  "QT_MAC_SDK_VERSION_MAX = ${QT_SUPPORTED_MAX_IOS_SDK_VERSION}")
+         elseif(CMAKE_SYSTEM_NAME STREQUAL visionOS)
+            list(APPEND extra_statements
+                "QMAKE_VISIONOS_DEPLOYMENT_TARGET = ${CMAKE_OSX_DEPLOYMENT_TARGET}")
+            list(APPEND extra_statements
+                 "QT_MAC_SDK_VERSION_MIN = ${QT_SUPPORTED_MIN_VISIONOS_SDK_VERSION}")
+            list(APPEND extra_statements
+                 "QT_MAC_SDK_VERSION_MAX = ${QT_SUPPORTED_MAX_VISIONOS_SDK_VERSION}")
         endif()
 
         if (CMAKE_OSX_ARCHITECTURES)
@@ -863,6 +903,16 @@ function(qt_generate_global_device_pri_file)
         endif()
     endif()
 
+    # Write OHOS specific device info.
+    if(OHOS)
+        _qt_internal_harmonyos_get_sdk_ndk_paths(unused_sdk_root ohos_ndk_root)
+        if(ohos_ndk_root)
+            file(TO_CMAKE_PATH "${ohos_ndk_root}" ohos_ndk_root)
+            string(APPEND content "DEFAULT_OHOS_NDK_ROOT = ${ohos_ndk_root}\n")
+        endif()
+        string(APPEND content "DEFAULT_OHOS_TARGET_ARCH = ${OHOS_ARCH}\n")
+    endif()
+
     if(QT_APPLE_SDK)
         string(APPEND content "QMAKE_MAC_SDK = ${QT_APPLE_SDK}\n")
     endif()
@@ -890,6 +940,10 @@ function(qt_get_build_parts out_var)
 
     if(NOT CMAKE_CROSSCOMPILING OR QT_FORCE_BUILD_TOOLS)
         list(APPEND parts "tools")
+    endif()
+
+    if(QT_BUILD_DOC_SNIPPETS)
+        list(APPEND parts "doc-snippets")
     endif()
 
     set(${out_var} ${parts} PARENT_SCOPE)
@@ -935,8 +989,9 @@ function(qt_generate_global_module_pri_file)
     set(arch "${TEST_architecture_arch}")
     list(JOIN TEST_subarch_result " " subarchs)
     if(CMAKE_CROSSCOMPILING)
-        set(host_arch "${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_ARCH}")
-        list(JOIN QT${PROJECT_VERSION_MAJOR}_HOST_INFO_SUBARCHS " " host_subarchs)
+        qt_internal_get_host_info_var_prefix(host_info_var_prefix)
+        set(host_arch "${${host_info_var_prefix}_ARCH}")
+        list(JOIN ${host_info_var_prefix}_SUBARCHS " " host_subarchs)
         string(APPEND content "host_build {
     QT_CPU_FEATURES.${host_arch} = ${host_subarchs}
 } else {

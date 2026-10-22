@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformdefs.h"
 #include "qfilesystemengine_p.h"
@@ -21,10 +22,15 @@ QT_BEGIN_NAMESPACE
     such a core API; applications that want that can play the sound themselves.
 */
 //static
+bool QFileSystemEngine::supportsMoveFileToTrash()
+{
+    return true;
+}
+
+//static
 bool QFileSystemEngine::moveFileToTrash(const QFileSystemEntry &source,
                                         QFileSystemEntry &newLocation, QSystemError &error)
 {
-#ifdef Q_OS_MACOS // desktop macOS has a trash can
     QMacAutoReleasePool pool;
 
     QFileInfo info(source.filePath());
@@ -39,12 +45,6 @@ bool QFileSystemEngine::moveFileToTrash(const QFileSystemEntry &source,
     }
     newLocation = QFileSystemEntry(QUrl::fromNSURL(resultingUrl).path());
     return true;
-#else // watch, tv, iOS don't have a trash can
-    Q_UNUSED(source);
-    Q_UNUSED(newLocation);
-    error = QSystemError(ENOSYS, QSystemError::StandardLibraryError);
-    return false;
-#endif
 }
 
 QT_END_NAMESPACE

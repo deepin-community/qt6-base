@@ -45,6 +45,8 @@ private slots:
     void setFont_collection_data();
     void setFont_collection();
     void clearCollection();
+    void setFontFeatures();
+    void setFontVariableAxes();
 
 #ifndef QT_NO_DATASTREAM
     void dataStreamCompatibility();
@@ -667,6 +669,89 @@ void tst_QTextFormat::clearCollection()
     QCOMPARE(collection.defaultFont(), f); // kept, QTextDocument::clear or setPlainText should not reset the font set by setDefaultFont
 }
 
+void tst_QTextFormat::setFontFeatures()
+{
+    {
+        QFont font;
+        font.setFeature("abcd", 1234);
+        font.setFeature("efgh", 5678);
+
+        QTextCharFormat format;
+        format.setFont(font);
+
+        QFont resolvedFont = format.font();
+        QCOMPARE(resolvedFont.featureTags().size(), 2);
+        QCOMPARE(resolvedFont.featureValue("abcd"), 1234);
+        QCOMPARE(resolvedFont.featureValue("efgh"), 5678);
+
+        const auto features = format.fontFeatures();
+        QCOMPARE(features.size(), 2);
+        QCOMPARE(features.value("abcd"), 1234);
+        QCOMPARE(features.value("efgh"), 5678);
+    }
+
+    {
+        QTextCharFormat format;
+
+        QMap<QFont::Tag, quint32> features;
+        features.insert("abcd", 4321);
+        features.insert("efgh", 8765);
+        format.setFontFeatures(features);
+
+        QFont resolvedFont = format.font();
+        QCOMPARE(resolvedFont.featureTags().size(), 2);
+        QCOMPARE(resolvedFont.featureValue("abcd"), 4321);
+        QCOMPARE(resolvedFont.featureValue("efgh"), 8765);
+
+        features = format.fontFeatures();
+        QCOMPARE(features.size(), 2);
+        QCOMPARE(features.value("abcd"), 4321);
+        QCOMPARE(features.value("efgh"), 8765);
+    }
+}
+
+void tst_QTextFormat::setFontVariableAxes()
+{
+    {
+        QFont font;
+        font.setVariableAxis("abcd", 12.25);
+        font.setVariableAxis("efgh", 13.25);
+
+        QTextCharFormat format;
+        format.setFont(font);
+
+        QFont resolvedFont = format.font();
+        QCOMPARE(resolvedFont.variableAxisTags().size(), 2);
+        QCOMPARE(resolvedFont.variableAxisValue("abcd"), 12.25);
+        QCOMPARE(resolvedFont.variableAxisValue("efgh"), 13.25);
+
+        const auto axes = format.fontVariableAxes();
+        QCOMPARE(axes.size(), 2);
+        QCOMPARE(axes.value("abcd"), 12.25);
+        QCOMPARE(axes.value("efgh"), 13.25);
+    }
+
+    {
+        QTextCharFormat format;
+
+        QMap<QFont::Tag, float> axes;
+        axes.insert("abcd", 12.25);
+        axes.insert("efgh", 13.25);
+        format.setFontVariableAxes(axes);
+
+        QFont resolvedFont = format.font();
+        QCOMPARE(resolvedFont.variableAxisTags().size(), 2);
+        QCOMPARE(resolvedFont.variableAxisValue("abcd"), 12.25);
+        QCOMPARE(resolvedFont.variableAxisValue("efgh"), 13.25);
+
+        axes = format.fontVariableAxes();
+        QCOMPARE(axes.size(), 2);
+        QCOMPARE(axes.value("abcd"), 12.25);
+        QCOMPARE(axes.value("efgh"), 13.25);
+    }
+
+}
+
 #ifndef QT_NO_DATASTREAM
 void tst_QTextFormat::dataStreamCompatibility()
 {
@@ -795,6 +880,73 @@ void tst_QTextFormat::dataStreamCompatibility()
         }
     }
 
+    // Don't mix up FontFeatures and OldTextUnderlineColor
+    memory.clear();
+    {
+        {
+            QBuffer buffer(&memory);
+            buffer.open(QIODevice::WriteOnly);
+
+            QFont font;
+            font.setFeature("abcd", 1234);
+
+            QTextCharFormat format;
+            format.setFont(font);
+
+            QDataStream stream(&buffer);
+
+            stream << format;
+        }
+
+        {
+            QBuffer buffer(&memory);
+            buffer.open(QIODevice::ReadOnly);
+
+            QDataStream stream(&buffer);
+
+            QTextFormat other;
+            stream >> other;
+
+            QMap<int, QVariant> properties = other.properties();
+            QVERIFY(properties.contains(QTextFormat::FontFeatures));
+
+            auto features = other.property(QTextFormat::FontFeatures).value<QMap<QFont::Tag, quint32>>();
+            QCOMPARE(features.value("abcd"), 1234);
+        }
+    }
+
+    memory.clear();
+    {
+        {
+            QBuffer buffer(&memory);
+            buffer.open(QIODevice::WriteOnly);
+
+            QFont font;
+            font.setFeature("abcd", 1234);
+
+            QTextCharFormat format;
+            format.setFont(font);
+
+            QDataStream stream(&buffer);
+            stream.setVersion(QDataStream::Qt_5_15);
+
+            stream << format;
+        }
+
+        {
+            QBuffer buffer(&memory);
+            buffer.open(QIODevice::ReadOnly);
+
+            QDataStream stream(&buffer);
+            stream.setVersion(QDataStream::Qt_5_15);
+
+            QTextFormat other;
+            stream >> other;
+            QMap<int, QVariant> properties = other.properties();
+            QVERIFY(!properties.contains(QTextFormat::FontFeatures));
+            QVERIFY(!properties.contains(QTextFormat::OldTextUnderlineColor));
+        }
+    }
 }
 #endif // QT_NO_DATASTREAM
 

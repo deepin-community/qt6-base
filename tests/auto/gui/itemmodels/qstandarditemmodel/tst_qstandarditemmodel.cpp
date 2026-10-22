@@ -68,6 +68,7 @@ private slots:
     void insertRow();
     void insertRows();
     void insertRowsItems();
+    void insertRowsWithChildItems();
     void insertRowInHierarcy();
     void insertColumn_data();
     void insertColumn();
@@ -295,6 +296,39 @@ void tst_QStandardItemModel::insertRowsItems()
         QCOMPARE(m->item(i)->model(), m_model);
     }
 }
+
+void tst_QStandardItemModel::insertRowsWithChildItems()
+{
+    QStandardItemModel model;
+    auto *top = new QStandardItem("top");
+    auto *mid = new QStandardItem("mid");
+    auto *btm = new QStandardItem("bottom");
+
+    model.appendRow(top);
+    mid->appendRow(btm);
+
+    QCOMPARE(top->model(), &model);
+    QCOMPARE(mid->model(), nullptr);
+    QCOMPARE(btm->model(), nullptr);
+
+    top->appendRow(mid);
+    QCOMPARE(top->model(), &model);
+    QCOMPARE(mid->model(), &model);
+    QCOMPARE(btm->model(), &model);
+
+    auto mid2 = top->takeChild(0);
+    top->removeRow(0);
+    QCOMPARE(mid, mid2);
+    QCOMPARE(top->model(), &model);
+    QCOMPARE(mid->model(), nullptr);
+    QCOMPARE(btm->model(), nullptr);
+
+    top->appendRows({mid}); // other codepath than appendRow() above
+    QCOMPARE(top->model(), &model);
+    QCOMPARE(mid->model(), &model);
+    QCOMPARE(btm->model(), &model);
+}
+
 
 void tst_QStandardItemModel::insertRowInHierarcy()
 {
@@ -728,7 +762,7 @@ void tst_QStandardItemModel::data()
     const QMap<int, QVariant> itmData = m_model->itemData(m_model->index(0, 0));
     QCOMPARE(itmData.value(Qt::DisplayRole), QLatin1String("initialitem"));
     QCOMPARE(itmData.value(Qt::ToolTipRole), QLatin1String("tooltip"));
-    QVERIFY(!itmData.contains(Qt::UserRole - 1)); // Qt::UserRole - 1 is used to store flags
+    QVERIFY(!itmData.contains(Qt::StandardItemFlagsRole));
     QVERIFY(m_model->itemData(QModelIndex()).isEmpty());
 }
 
@@ -1403,6 +1437,7 @@ bool tst_QStandardItemModel::compareItems(QStandardItem *item1, QStandardItem *i
     return true;
 }
 
+#ifdef QT_BUILD_INTERNAL
 static QStandardItem *itemFromText(QStandardItem *parent, const QString &text)
 {
     QStandardItem *item = nullptr;
@@ -1429,7 +1464,6 @@ static QStandardItem *itemFromText(QStandardItem *parent, const QString &text)
     return item;
 }
 
-#ifdef QT_BUILD_INTERNAL
 static QModelIndex indexFromText(QStandardItemModel *model, const QString &text)
 {
     QStandardItem *item = itemFromText(model->invisibleRootItem(), text);
@@ -1443,9 +1477,6 @@ struct FriendlyTreeView : public QTreeView
     friend class tst_QStandardItemModel;
     Q_DECLARE_PRIVATE(QTreeView)
 };
-#endif
-
-#ifdef QT_BUILD_INTERNAL
 
 static void populateDragAndDropModel(QStandardItemModel &model, int nRow, int nCol)
 {

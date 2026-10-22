@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qsql_sqlite_p.h"
 
@@ -39,24 +40,22 @@ Q_DECLARE_METATYPE(sqlite3_stmt*)
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcSqlite, "qt.sql.sqlite")
+Q_STATIC_LOGGING_CATEGORY(lcSqlite, "qt.sql.sqlite")
 
 using namespace Qt::StringLiterals;
 
 static int qGetColumnType(const QString &tpName)
 {
-    const QString typeName = tpName.toLower();
-
-    if (typeName == "integer"_L1 || typeName == "int"_L1)
+    if (tpName.compare("integer"_L1, Qt::CaseInsensitive) == 0 || tpName.compare("int"_L1, Qt::CaseInsensitive) == 0)
         return QMetaType::Int;
-    if (typeName == "double"_L1
-        || typeName == "float"_L1
-        || typeName == "real"_L1
-        || typeName.startsWith("numeric"_L1))
+    if (tpName.compare("double"_L1, Qt::CaseInsensitive) == 0
+        || tpName.compare("float"_L1, Qt::CaseInsensitive) == 0
+        || tpName.compare("real"_L1, Qt::CaseInsensitive) == 0
+        || tpName.startsWith("numeric"_L1, Qt::CaseInsensitive))
         return QMetaType::Double;
-    if (typeName == "blob"_L1)
+    if (tpName.compare("blob"_L1, Qt::CaseInsensitive) == 0)
         return QMetaType::QByteArray;
-    if (typeName == "boolean"_L1 || typeName == "bool"_L1)
+    if (tpName.compare("boolean"_L1, Qt::CaseInsensitive) == 0 || tpName.compare("bool"_L1, Qt::CaseInsensitive) == 0)
         return QMetaType::Bool;
     return QMetaType::QString;
 }
@@ -134,7 +133,7 @@ QSqlIndex QSQLiteDriverPrivate::getTableInfo(QSqlQuery &query, const QString &ta
         }
     }
 
-    query.exec("PRAGMA "_L1 + schema + "table_info ("_L1 + table + u')');
+    query.exec("PRAGMA "_L1 + schema + "table_xinfo ("_L1 + table + u')');
     QSqlIndex ind;
     while (query.next()) {
         bool isPk = query.value(5).toInt();

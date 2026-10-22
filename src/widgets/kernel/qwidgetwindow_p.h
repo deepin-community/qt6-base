@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWIDGETWINDOW_P_H
 #define QWIDGETWINDOW_P_H
@@ -46,6 +47,8 @@ public:
 
     QObject *focusObject() const override;
     void setNativeWindowVisibility(bool visible);
+    static void focusNextPrevChild(QWidget *widget, bool next);
+
 protected:
     bool event(QEvent *) override;
 
@@ -63,7 +66,7 @@ protected:
     void handleWheelEvent(QWheelEvent *);
 #endif
 #if QT_CONFIG(draganddrop)
-    void handleDragEnterEvent(QDragEnterEvent *, QWidget *widget = nullptr);
+    void handleDragEnterEvent(QDragMoveEvent *, QWidget *widget = nullptr);
     void handleDragMoveEvent(QDragMoveEvent *);
     void handleDragLeaveEvent(QDragLeaveEvent *);
     void handleDropEvent(QDropEvent *);
@@ -87,7 +90,7 @@ private slots:
 private:
     void handleScreenChange();
     void handleDevicePixelRatioChange();
-    void repaintWindow();
+    void scheduleRepaint();
     bool updateSize();
     void updateMargins();
     void updateNormalGeometry();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
+#include <QtCore/qatomicscopedvaluerollback.h>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QTimer>
 #ifdef QT_GUI_LIB
@@ -15,6 +16,8 @@
 #endif
 #include <QSet>
 #include <vector>
+
+using namespace std::chrono_literals;
 using namespace Qt::StringLiterals;
 
 /* XPM test data for QPixmap, QImage tests (use drag cursors as example) */
@@ -105,6 +108,9 @@ public:
     enum class MyClassEnum { MyClassEnumValue1, MyClassEnumValue2 };
     Q_ENUM(MyClassEnum)
 
+private:
+    void defaultTryTimeoutData();
+
 private slots:
     void compare_unregistered_enums();
     void compare_registered_enums();
@@ -116,6 +122,7 @@ private slots:
     void compare_boolfuncs();
     void compare_to_nullptr();
     void compare_pointerfuncs();
+    void compare_stringLiterals();
     void compare_tostring();
     void compare_tostring_data();
     void compare_unknown();
@@ -129,7 +136,6 @@ private slots:
     void compareQListIntToArray();
     void compareQListIntToInitializerList_data();
     void compareQListIntToInitializerList();
-    void compareQListDouble();
     void compareContainerToInitializerList();
 #ifdef QT_GUI_LIB
     void compareQColor_data();
@@ -152,6 +158,10 @@ private slots:
     void tryVerify();
     void tryVerify2();
     void verifyExplicitOperatorBool();
+    void defaultTryVerifyTimeout_data();
+    void defaultTryVerifyTimeout();
+    void defaultTryCompareTimeout_data();
+    void defaultTryCompareTimeout();
 };
 
 enum MyUnregisteredEnum { MyUnregisteredEnumValue1, MyUnregisteredEnumValue2 };
@@ -281,10 +291,32 @@ void tst_Cmptest::compareQObjects()
     object1.setObjectName(QStringLiteral("object1"));
     QObject object2;
     object2.setObjectName(QStringLiteral("object2"));
-    QCOMPARE(&object1, &object1);
-    QCOMPARE(&object1, &object2);
-    QCOMPARE(&object1, nullptr);
-    QCOMPARE(nullptr, &object2);
+    [&] { QCOMPARE(&object1, &object1); }();
+    [&] { QCOMPARE(&object1, &object2); }();
+    [&] { QCOMPARE(&object1, nullptr); }();
+    [&] { QCOMPARE(nullptr, &object2); }();
+}
+
+void tst_Cmptest::compare_stringLiterals()
+{
+    const QString lhs = QStringLiteral("abc");
+
+    // We don't want to put those into test data since we want to specifically test comparison
+    // against inline string literals.
+
+    [&]() { QCOMPARE(lhs, u""); }();
+    [&]() { QCOMPARE_EQ(lhs, u""); }();
+    [&]() { QCOMPARE(lhs, u"abc"); }();
+    [&]() { QCOMPARE_EQ(lhs, u"abc"); }();
+    [&]() { QCOMPARE(lhs, u"abcd"); }();
+    [&]() { QCOMPARE_EQ(lhs, u"abcd"); }();
+
+    [&]() { QCOMPARE(lhs, ""); }();
+    [&]() { QCOMPARE_EQ(lhs, ""); }();
+    [&]() { QCOMPARE(lhs, "abc"); }();
+    [&]() { QCOMPARE_EQ(lhs, "abc"); }();
+    [&]() { QCOMPARE(lhs, "abcd"); }();
+    [&]() { QCOMPARE_EQ(lhs, "abcd"); }();
 }
 
 struct PhonyClass
@@ -503,13 +535,6 @@ void tst_Cmptest::compareQListIntToInitializerList()
 #define ARG(...) __VA_ARGS__
     QCOMPARE(actual,  ARG({1, 2, 3}));
 #undef ARG
-}
-
-void tst_Cmptest::compareQListDouble()
-{
-    QList<double> double1; double1 << 1.5 << 2 << 3;
-    QList<double> double2; double2 << 1 << 2 << 4;
-    QCOMPARE(double1, double2);
 }
 
 void tst_Cmptest::compareContainerToInitializerList()
@@ -824,6 +849,57 @@ void tst_Cmptest::verifyExplicitOperatorBool()
 
     ExplicitOperatorBool val2(-273);
     QVERIFY(!val2);
+}
+
+void tst_Cmptest::defaultTryTimeoutData()
+{
+    QTest::addColumn<std::chrono::milliseconds>("timeout");
+    QTest::addRow("times-out") << 1ms;
+    QTest::addRow("ample-time") << 1000ms;
+}
+
+void tst_Cmptest::defaultTryVerifyTimeout_data()
+{
+    defaultTryTimeoutData();
+}
+
+void tst_Cmptest::defaultTryVerifyTimeout()
+{
+    QFETCH(const std::chrono::milliseconds, timeout);
+
+    // Check that the default is what expect.
+    QCOMPARE(QTest::defaultTryTimeout.load(std::memory_order_relaxed), 5s);
+
+    {
+        DeferredFlag trueEventually;
+        const auto innerScope = QAtomicScopedValueRollback(QTest::defaultTryTimeout, timeout, std::memory_order_relaxed);
+        QEXPECT_FAIL("times-out", "The timeout (std::chrono::milliseconds) is deliberately too short", Continue);
+        QTRY_VERIFY(trueEventually);
+    }
+
+    // innerScope has now been destroyed, so the timeout should be back to its default.
+    QCOMPARE(QTest::defaultTryTimeout.load(std::memory_order_relaxed), 5s);
+}
+
+void tst_Cmptest::defaultTryCompareTimeout_data()
+{
+    defaultTryTimeoutData();
+}
+
+void tst_Cmptest::defaultTryCompareTimeout()
+{
+    QFETCH(const std::chrono::milliseconds, timeout);
+
+    DeferredFlag trueAlready(true);
+    {
+        DeferredFlag trueEventually;
+        const auto innerScope = QAtomicScopedValueRollback(QTest::defaultTryTimeout, timeout, std::memory_order_relaxed);
+        QEXPECT_FAIL("times-out", "The timeout (std::chrono::milliseconds) is deliberately too short", Continue);
+        QTRY_COMPARE(trueEventually, trueAlready);
+    }
+
+    // innerScope has now been destroyed, so the timeout should be back to its default.
+    QCOMPARE(QTest::defaultTryTimeout.load(std::memory_order_relaxed), 5s);
 }
 
 QTEST_MAIN(tst_Cmptest)

@@ -352,14 +352,14 @@ void tst_QGuiVariant::toString_data()
     QTest::addColumn<QString>("result");
 
     QTest::newRow( "qkeysequence" ) << QVariant::fromValue( QKeySequence( Qt::CTRL | Qt::Key_A ) )
-#ifndef Q_OS_MAC
+#ifndef Q_OS_APPLE
         << QString( "Ctrl+A" );
 #else
         << QString(QChar(0x2318)) + QLatin1Char('A');
 #endif
 
     QFont font( "times", 12 );
-    QTest::newRow("qfont") << QVariant::fromValue(font) << QString("times,12,-1,5,400,0,0,0,0,0,0,0,0,0,0,1");
+    QTest::newRow("qfont") << QVariant::fromValue(font) << QString("times,12,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0");
     QTest::newRow( "qcolor" ) << QVariant::fromValue( QColor( 10, 10, 10 ) ) << QString( "#0a0a0a" );
 }
 

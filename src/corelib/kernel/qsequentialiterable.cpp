@@ -1,15 +1,20 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
+#include <QtCore/qiterable_impl.h>
 #include <QtCore/qsequentialiterable.h>
 #include <QtCore/qvariant.h>
 
-#include <QtCore/private/qiterable_p.h>
-
 QT_BEGIN_NAMESPACE
+
+#if QT_DEPRECATED_SINCE(6, 15)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
 
 /*!
     \class QSequentialIterable
+    \deprecated [6.15] Use QMetaSequence::Iterable instead.
     \since 5.2
     \inmodule QtCore
     \brief The QSequentialIterable class is an iterable interface for a container in a QVariant.
@@ -17,8 +22,6 @@ QT_BEGIN_NAMESPACE
     This class allows several methods of accessing the values of a container held within
     a QVariant. An instance of QSequentialIterable can be extracted from a QVariant if it can
     be converted to a QVariantList.
-
-    \snippet code/src_corelib_kernel_qvariant.cpp 9
 
     The container itself is not copied before iterating over it.
 
@@ -161,22 +164,27 @@ void QSequentialIterable::set(qsizetype idx, const QVariant &value)
 
 /*!
     \typealias QSequentialIterable::const_iterator
+    \deprecated [6.15] Use QMetaSequence::Iterable::ConstIterator instead.
     \brief The QSequentialIterable::const_iterator allows iteration over a container in a QVariant.
 
     A QSequentialIterable::const_iterator can only be created by a QSequentialIterable instance,
     and can be used in a way similar to other stl-style iterators.
-
-    \snippet code/src_corelib_kernel_qvariant.cpp 9
 */
 
 /*!
     \typealias QSequentialIterable::iterator
     \since 6.0
+    \deprecated [6.15] Use QMetaSequence::Iterable::Iterator instead.
     \brief The QSequentialIterable::iterator allows iteration over a container in a QVariant.
 
     A QSequentialIterable::iterator can only be created by a QSequentialIterable instance,
     and can be used in a way similar to other stl-style iterators.
 */
+
+/*!
+    \class QSequentialIterator
+    \internal
+ */
 
 /*!
     Returns the current item, converted to a QVariantRef.
@@ -195,11 +203,16 @@ QVariantPointer<QSequentialIterator> QSequentialIterator::operator->() const
 }
 
 /*!
+    \class QSequentialConstIterator
+    \internal
+ */
+
+/*!
     Returns the current item, converted to a QVariant.
 */
 QVariant QSequentialConstIterator::operator*() const
 {
-    return QIterablePrivate::retrieveElement(metaContainer().valueMetaType(), [this](void *dataPtr) {
+    return QtIterablePrivate::retrieveElement(metaContainer().valueMetaType(), [this](void *dataPtr) {
         metaContainer().valueAtConstIterator(constIterator(), dataPtr);
     });
 }
@@ -211,5 +224,8 @@ QVariantConstPointer QSequentialConstIterator::operator->() const
 {
     return QVariantConstPointer(operator*());
 }
+
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 15)
 
 QT_END_NAMESPACE

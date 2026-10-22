@@ -8,10 +8,14 @@
 
 #include <QtTest/private/qemulationdetector_p.h>
 
+#include <fenv.h>
+
 // Test proper handling of floating-point types
 class tst_float: public QObject
 {
     Q_OBJECT
+public:
+    tst_float();
 private slots:
     void doubleComparisons() const;
     void doubleComparisons_data() const;
@@ -21,7 +25,42 @@ private slots:
     void float16Comparisons_data() const;
     void compareFloatTests() const;
     void compareFloatTests_data() const;
+    void compareQListDouble() const;
 };
+
+template<typename F> F negate(F f)
+{
+    // ISO C says we should just use the unary minus operator to negate any
+    // input, but we do it explicitly here to survive a too-smart compiler in
+    // fast-math mode.
+
+    using U = typename QIntegerForSizeof<F>::Unsigned;
+    auto u = qFromUnaligned<U>(&f);
+    u |= U(1) << (std::numeric_limits<U>::digits - 1);
+    return qFromUnaligned<F>(&u);
+}
+
+template<typename F> F makeNan(typename QIntegerForSizeof<F>::Signed i, bool is_quiet = true)
+{
+    using U = typename QIntegerForSizeof<F>::Unsigned;
+    constexpr U MantissaMask = (U(1) << (std::numeric_limits<F>::digits - 1)) - 1;
+    constexpr U SignBit = U(1) << (std::numeric_limits<U>::digits - 1);
+    constexpr U ExponentMask = U(~(MantissaMask | SignBit));
+    Q_ASSERT(i);
+
+    U u = i;
+    if (i < 0) {
+        // transform two's complement into sign-magnitude
+        u = -i;
+        u |= SignBit;
+    }
+    Q_ASSERT((u & ExponentMask) == 0);
+    u |= ExponentMask;
+    // the is_quiet bit is the MSB of the significand
+    u |= U(is_quiet) << (std::numeric_limits<F>::digits - 2);
+
+    return qFromUnaligned<F>(&u);
+}
 
 template<typename F>
 static void nonFinite_data(F zero, F one)
@@ -32,10 +71,46 @@ static void nonFinite_data(F zero, F one)
     if (Bounds::has_quiet_NaN) {
         const F nan = Bounds::quiet_NaN();
         QTest::newRow("should PASS: NaN == NaN") << nan << nan;
+        QTest::newRow("should PASS: NaN == -NaN") << nan << negate(nan);
         QTest::newRow("should FAIL: NaN != 0") << nan << zero;
         QTest::newRow("should FAIL: 0 != NaN") << zero << nan;
         QTest::newRow("should FAIL: NaN != 1") << nan << one;
         QTest::newRow("should FAIL: 1 != NaN") << one << nan;
+        QTest::newRow("should FAIL: -NaN != 0") << negate(nan) << zero;
+        QTest::newRow("should FAIL: -NaN != -0") << negate(nan) << negate(zero);
+
+        QTest::newRow("should PASS: NaN == NaN(1)") << nan << makeNan<F>(1);
+        QTest::newRow("should PASS: NaN(1) == NaN") << makeNan<F>(1) << nan;
+        QTest::newRow("should PASS: NaN == -NaN(1)") << nan << makeNan<F>(-1);
+        QTest::newRow("should PASS: -NaN(1) == NaN") << makeNan<F>(-1) << nan;
+        QTest::newRow("should FAIL: NaN(1) != 0") << makeNan<F>(1) << zero;
+        QTest::newRow("should FAIL: 0 != NaN(1)") << zero << makeNan<F>(1);
+        QTest::newRow("should FAIL: NaN(1) != 1") << makeNan<F>(1) << one;
+        QTest::newRow("should FAIL: 1 != NaN(1)") << one << makeNan<F>(1);
+
+        if (Bounds::has_signaling_NaN) {
+            // make SNaN with the highest and lowest bits set
+            const F snanMsb = makeNan<F>(Q_INT64_C(1) << (Bounds::digits - 3), false);
+            const F snanLsb = makeNan<F>(1, false);
+            QTest::newRow("should PASS: SNaN == SNaN") << snanMsb << snanMsb;
+            QTest::newRow("should PASS: SNaN == -SNaN") << snanMsb << negate(snanMsb);
+            QTest::newRow("should PASS: SNaN == NaN") << snanMsb << nan;
+            QTest::newRow("should PASS: NaN == SNaN") << nan << snanMsb;
+
+            QTest::newRow("should FAIL: SNaN != 0") << snanMsb << zero;
+            QTest::newRow("should FAIL: 0 != sNaN") << zero << snanMsb;
+            QTest::newRow("should FAIL: SNaN != 1") << snanMsb << one;
+            QTest::newRow("should FAIL: 1 != SNaN") << one << snanMsb;
+            QTest::newRow("should FAIL: -SNaN != 0") << negate(snanMsb) << zero;
+            QTest::newRow("should FAIL: -SNaN != -0") << negate(snanMsb) << negate(zero);
+
+            QTest::newRow("should PASS: SNaN == SNaN(1)") << snanMsb << snanLsb;
+            QTest::newRow("should PASS: SNaN(1) == sNaN") << snanLsb << snanMsb;
+            QTest::newRow("should PASS: SNaN == -SNaN(1)") << snanMsb << negate(snanLsb);
+            QTest::newRow("should PASS: -SNaN(1) == sNaN") << negate(snanLsb) << snanMsb;
+            QTest::newRow("should PASS: NaN(1) == SNaN(1)") << makeNan<F>(1) << snanLsb;
+            QTest::newRow("should PASS: SNaN(1) == NaN(1)") << snanLsb << makeNan<F>(1);
+        }
     }
 
     if (Bounds::has_infinity) {
@@ -55,6 +130,8 @@ static void nonFinite_data(F zero, F one)
         QTest::newRow("should FAIL: 0 != inf") << zero << uge;
         QTest::newRow("should FAIL: -inf != 0") << -uge << zero;
         QTest::newRow("should FAIL: 0 != -inf") << zero << -uge;
+        QTest::newRow("should FAIL: inf != -0") << uge << negate(zero);
+        QTest::newRow("should FAIL: -0 != inf") << negate(zero) << uge;
         QTest::newRow("should FAIL: inf != 1") << uge << one;
         QTest::newRow("should FAIL: 1 != inf") << one << uge;
         QTest::newRow("should FAIL: -inf != 1") << -uge << one;
@@ -70,6 +147,12 @@ static void nonFinite_data(F zero, F one)
         QTest::newRow("should FAIL: max != -inf") << big << -uge;
         QTest::newRow("should FAIL: -max != -inf") << -big << -uge;
     }
+}
+
+tst_float::tst_float()
+{
+    fenv_t env;
+    feholdexcept(&env);     // ensure that we don't consume exceptions
 }
 
 void tst_float::doubleComparisons() const
@@ -88,6 +171,7 @@ void tst_float::doubleComparisons_data() const
 
     QTest::newRow("should FAIL 1") << one << 3.;
     QTest::newRow("should PASS 1") << zero << zero;
+    QTest::newRow("should PASS: 0 == -0") << zero << negate(zero);
     QTest::newRow("should FAIL 2") << 1.e-7 << 3.e-7;
 
     // QCOMPARE() uses qFuzzyCompare(), which succeeds if doubles differ by no
@@ -124,6 +208,7 @@ void tst_float::floatComparisons_data() const
 
     QTest::newRow("should FAIL 1") << one << 3.f;
     QTest::newRow("should PASS 1") << zero << zero;
+    QTest::newRow("should PASS: 0 == -0") << zero << negate(zero);
     QTest::newRow("should FAIL 2") << 1.e-5f << 3.e-5f;
 
     // QCOMPARE() uses qFuzzyCompare(), which succeeds if the floats differ by
@@ -160,6 +245,7 @@ void tst_float::float16Comparisons_data() const
     const qfloat16 tiny(9.756e-03f);
 
     QTest::newRow("should FAIL 1") << one << qfloat16(3);
+    QTest::newRow("should PASS: 0 == -0") << zero << negate(zero);
     QTest::newRow("should PASS 1") << zero << zero;
 
     // QCOMPARE for uses qFuzzyCompare(), which ignores differences of one part
@@ -200,6 +286,13 @@ void tst_float::compareFloatTests_data() const
     QTest::newRow("1e0") << 1e0f;
     QTest::newRow("1e-5") << 1e-5f;
     QTest::newRow("1e+7") << 1e+7f;
+}
+
+void tst_float::compareQListDouble() const
+{
+    QList<double> double1; double1 << 1.5 << 2 << 3;
+    QList<double> double2; double2 << 1 << 2 << 4;
+    QCOMPARE(double1, double2);
 }
 
 QTEST_MAIN(tst_float)

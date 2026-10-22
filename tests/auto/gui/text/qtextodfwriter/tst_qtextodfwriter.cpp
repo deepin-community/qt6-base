@@ -9,8 +9,17 @@
 #include <QTextTable>
 #include <QBuffer>
 #include <QDebug>
+#include <QXmlStreamWriter>
 
 #include <private/qtextodfwriter_p.h>
+
+class QTextOdfWriterTest : public QTextOdfWriter
+{
+public:
+    using QTextOdfWriter::QTextOdfWriter;
+    using QTextOdfWriter::tableCellStyleElement;
+    using QTextOdfWriter::mergeFormats;
+};
 
 class tst_QTextOdfWriter : public QObject
 {
@@ -31,7 +40,13 @@ private slots:
     void testWriteAll();
     void testWriteSection();
     void testWriteTable();
+    void testWriteTable2_data();
+    void testWriteTable2();
     void testWriteFrameFormat();
+    void testWriteTableFormat();
+    void testWriteTableFormat2();
+    void testWriteTableCellStyleElement();
+    void testWriteTableCellStyleElement_data();
     void testWriteDefaultFont_data();
     void testWriteDefaultFont();
 
@@ -42,14 +57,14 @@ private:
 private:
     QTextDocument *document;
     QXmlStreamWriter *xmlWriter;
-    QTextOdfWriter *odfWriter;
+    QTextOdfWriterTest *odfWriter;
     QBuffer *buffer;
 };
 
 void tst_QTextOdfWriter::init()
 {
     document = new QTextDocument();
-    odfWriter = new QTextOdfWriter(*document, 0);
+    odfWriter = new QTextOdfWriterTest(*document, 0);
 
     buffer = new QBuffer();
     buffer->open(QIODevice::WriteOnly);
@@ -524,6 +539,38 @@ void tst_QTextOdfWriter::testWriteTable()
     QCOMPARE(getContentFromXml(), xml);
 }
 
+void tst_QTextOdfWriter::testWriteTable2_data()
+{
+    QTest::addColumn<bool>("collapsing");
+    QTest::addColumn<QString>("borderString");
+
+    QTest::newRow("collapsing") << true
+                                << R"(<style:table-properties table:border-model="collapsing"/>)";
+    QTest::newRow("separating") << false
+                                << R"(<style:table-properties table:border-model="separating"/>)";
+}
+
+void tst_QTextOdfWriter::testWriteTable2()
+{
+    QFETCH(bool, collapsing);
+    QFETCH(QString, borderString);
+
+    // create table with merged cells
+    QTextCursor cursor(document);
+    QTextTable *table = cursor.insertTable(3, 3);
+
+    QTextTableFormat ttf;
+    ttf.setBorderStyle(QTextFrameFormat::BorderStyle_Dotted);
+    ttf.setBorderCollapse(collapsing);
+    table->setFormat(ttf);
+    QTextOdfWriter writer(*document, buffer);
+    writer.setCreateArchive(false);
+    writer.writeAll();
+
+    const QString result = getContentFromXml();
+    QVERIFY(result.indexOf(borderString) >= 0);
+}
+
 void tst_QTextOdfWriter::testWriteFrameFormat()
 {
     QTextFrameFormat tff;
@@ -541,6 +588,131 @@ void tst_QTextOdfWriter::testWriteFrameFormat()
             "</style:style>");
     QCOMPARE(getContentFromXml(), xml);
 }
+
+void tst_QTextOdfWriter::testWriteTableFormat()
+{
+    QTextTableFormat ttf;
+    ttf.setAlignment(Qt::AlignLeft);
+    ttf.setBorderCollapse(true);
+    ttf.setColumnWidthConstraints({ QTextLength(QTextLength::VariableLength, 10),
+                                    QTextLength(QTextLength::FixedLength, 20),
+                                    QTextLength(QTextLength::PercentageLength, 30) });
+    QTextCursor tc(document);
+    odfWriter->writeTableFormat(*xmlWriter, ttf, 0);
+    QString xml = QString::fromLatin1(
+            R"(<style:style style:name="Table0" style:family="table"><style:table-properties table:align="left"/></style:style>)"
+            R"(<style:style style:name="Table0.0" style:family="table-column"><style:table-column-properties style:column-width="33%"/></style:style>)"
+            R"(<style:style style:name="Table0.1" style:family="table-column"><style:table-column-properties style:column-width="20pt"/></style:style>)"
+            R"(<style:style style:name="Table0.2" style:family="table-column"><style:table-column-properties style:column-width="30%"/></style:style>)");
+    QCOMPARE(getContentFromXml(), xml);
+}
+
+void tst_QTextOdfWriter::testWriteTableFormat2()
+{
+    QTextCursor tc(document);
+    QTextTableFormat ttf;
+    tc.insertTable(10, 10, ttf);
+
+    const auto formats = document->allFormats();
+    int formatIdToExport = -1;
+    for (qsizetype i = 0; i < formats.size(); ++i) {
+        const auto &fmt = formats.at(i);
+        if (fmt.type() == QTextFormat::CharFormat && fmt.isTableCellFormat()) {
+            formatIdToExport = i;
+            break;
+        }
+    }
+    QCOMPARE_NE(formatIdToExport, -1);
+
+    odfWriter->writeFormats(*xmlWriter, { formatIdToExport });
+    // default cell padding is 4 -> 3pt
+    QString xml = QString::fromLatin1(
+            R"(<office:automatic-styles>)"
+            R"(<style:style style:name="T%1" style:family="table-cell"><style:table-cell-properties fo:padding="3pt"/></style:style>)"
+            R"(</office:automatic-styles>)").arg(formatIdToExport);
+    QCOMPARE(getContentFromXml(), xml);
+}
+
+void tst_QTextOdfWriter::testWriteTableCellStyleElement_data()
+{
+    QTest::addColumn<QTextTableFormat>("ttf");
+    QTest::addColumn<QTextTableCellFormat>("ttcf");
+    QTest::addColumn<QString>("xml");
+    QTest::addColumn<bool>("tableHasBorderStyle");
+    // tableHasBorderStyle = true  --> padding is sum of ttf and ttcf, border gets merged with ttf
+    // tableHasBorderStyle = false --> padding is sum of ttf and ttcf, border gets merged with default QTextTableFormat
+
+    QTextTableFormat ttf;
+    ttf.setCellPadding(4);  // 3.00pt
+    ttf.setBorder(5);       // 3.75pt
+    ttf.setBorderCollapse(true);
+    QTextTableCellFormat ttcf;
+    ttcf.setBorder(18);     // 13.50pt
+    ttcf.setPadding(20);    // 15.00pt
+    QTest::newRow("cellStyleElement_table_has_border")
+            << ttf << ttcf
+            << QString::fromLatin1(
+                       R"(<style:style style:name="T0" style:family="table-cell">)"
+                       R"(<style:table-cell-properties fo:border="13.5pt outset #808080" fo:padding="18pt"/>)"
+                       R"(</style:style>)")
+            << true;
+
+    QTest::newRow("cellStyleElement_table_has_border_no_ttcf")
+            << ttf << QTextTableCellFormat()
+            << QString::fromLatin1(
+                       R"(<style:style style:name="T0" style:family="table-cell">)"
+                       R"(<style:table-cell-properties fo:border="3.75pt outset #808080" fo:padding="3pt"/>)"
+                       R"(</style:style>)")
+            << true;
+
+    QTest::newRow("cellStyleElement_table_has_no_border")
+            << ttf << ttcf
+            << QString::fromLatin1(
+                       R"(<style:style style:name="T0" style:family="table-cell">)"
+                       R"(<style:table-cell-properties fo:padding="18pt"/>)"
+                       R"(</style:style>)")
+            << false;
+
+    ttcf.setTopPadding(10); // 7.50pt
+    QTest::newRow("cellStyleElement_table_has_border_ttcf_padding")
+            << ttf << ttcf
+            << QString::fromLatin1(
+                       R"(<style:style style:name="T0" style:family="table-cell">)"
+                       R"(<style:table-cell-properties fo:border="13.5pt outset #808080" fo:padding-top="10.5pt" fo:padding-bottom="18pt" fo:padding-left="18pt" fo:padding-right="18pt"/>)"
+                       R"(</style:style>)")
+            << true;
+
+    QTest::newRow("cellStyleElement_table_no_border_ttcf_padding")
+            << ttf << ttcf
+            << QString::fromLatin1(
+                       R"(<style:style style:name="T0" style:family="table-cell">)"
+                       R"(<style:table-cell-properties fo:padding-top="10.5pt" fo:padding-bottom="18pt" fo:padding-left="18pt" fo:padding-right="18pt"/>)"
+                       R"(</style:style>)")
+            << false;
+
+    ttcf.setPadding(20);    // reset
+    ttcf.setLeftBorder(8);  // 6pt
+    QTest::newRow("cellStyleElement_table_has_border_ttcf_left_border")
+            << ttf << ttcf
+            << QString::fromLatin1(
+                       R"(<style:style style:name="T0" style:family="table-cell">)"
+                       R"(<style:table-cell-properties fo:border-top="13.5pt outset #808080" fo:border-right="13.5pt outset #808080" fo:border-bottom="13.5pt outset #808080" fo:border-left="6pt outset #808080" fo:padding="18pt"/>)"
+                       R"(</style:style>)")
+            << true;
+}
+
+void tst_QTextOdfWriter::testWriteTableCellStyleElement()
+{
+    QFETCH(QTextTableFormat, ttf);
+    QFETCH(QTextTableCellFormat, ttcf);
+    QFETCH(QString, xml);
+    QFETCH(bool, tableHasBorderStyle);
+
+    const auto fmt = odfWriter->mergeFormats(ttcf, tableHasBorderStyle ? ttf : QTextTableFormat());
+    odfWriter->tableCellStyleElement(*xmlWriter, 0, fmt, tableHasBorderStyle);
+    QCOMPARE(getContentFromXml(), xml);
+}
+
 
 QTEST_MAIN(tst_QTextOdfWriter)
 #include "tst_qtextodfwriter.moc"

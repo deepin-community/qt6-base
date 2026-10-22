@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTOOLBARAREALAYOUT_P_H
 #define QTOOLBARAREALAYOUT_P_H
@@ -16,10 +17,13 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include <QtWidgets/private/qwidgetanimator_p.h>
 #include "qmenu_p.h"
 #include <QList>
 #include <QSize>
 #include <QRect>
+#include <array>
+#include <optional>
 
 QT_REQUIRE_CONFIG(toolbar);
 
@@ -126,14 +130,9 @@ Q_DECLARE_TYPEINFO(QToolBarAreaLayoutInfo, Q_RELOCATABLE_TYPE);
 class QToolBarAreaLayout
 {
 public:
-    enum { // sentinel values used to validate state data
-        ToolBarStateMarker = 0xfe,
-        ToolBarStateMarkerEx = 0xfc
-    };
-
     QRect rect;
     const QMainWindow *mainWindow;
-    QToolBarAreaLayoutInfo docks[4];
+    std::array<QToolBarAreaLayoutInfo, 4> docks;
     bool visible;
 
     QToolBarAreaLayout(const QMainWindow *win);
@@ -143,7 +142,7 @@ public:
     QSize minimumSize(const QSize &centerMin) const;
     QRect rectHint(const QRect &r) const;
     QSize sizeHint(const QSize &center) const;
-    void apply(bool animate);
+    void apply(QWidgetAnimator::AnimationRule rule);
 
     QLayoutItem *itemAt(int *x, int index) const;
     QLayoutItem *takeAt(int *x, int index);
@@ -160,7 +159,7 @@ public:
     void insertItem(QInternal::DockPosition pos, QLayoutItem *item);
     void insertItem(QToolBar *before, QLayoutItem *item);
 
-    QInternal::DockPosition findToolBar(const QToolBar *toolBar) const;
+    std::optional<QInternal::DockPosition> findToolBar(const QToolBar *toolBar) const;
     bool toolBarBreak(QToolBar *toolBar) const;
 
     void getStyleOptionInfo(QStyleOptionToolBar *option, QToolBar *toolBar) const;
@@ -178,7 +177,7 @@ public:
     QLayoutItem *unplug(const QList<int> &path, QToolBarAreaLayout *other);
 
     void saveState(QDataStream &stream) const;
-    bool restoreState(QDataStream &stream, const QList<QToolBar*> &toolBars, uchar tmarker, bool testing = false);
+    bool restoreState(QDataStream &stream, const QList<QToolBar*> &toolBars, uchar tmarker, QInternal::CallMode callMode);
     bool isEmpty() const;
 };
 

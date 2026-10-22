@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qchronotimer.h"
 #include "qtimer_p.h"
@@ -33,8 +34,8 @@ QT_BEGIN_NAMESPACE
     its timeout() signal to the appropriate slots, and call start(). From then
     on, it will emit the timeout() signal at constant intervals. For example:
 
-    \snippet timers/timers.cpp timer-interval-in-ctor
-    \snippet timers/timers.cpp timer-setinterval
+    \snippet timers/timers.cpp qchronotimer-interval-in-ctor
+    \snippet timers/timers.cpp qchronotimer-setinterval
 
     You can set a timer to time out only once by calling setSingleShot(true).
 
@@ -217,7 +218,7 @@ void QChronoTimer::stop()
 void QChronoTimer::timerEvent(QTimerEvent *e)
 {
     auto *d = d_func();
-    if (Qt::TimerId{e->timerId()} == d->id) {
+    if (e->id() == d->id) {
         if (d->single)
             stop();
         Q_EMIT timeout(QPrivateSignal());
@@ -249,7 +250,7 @@ void QChronoTimer::timerEvent(QTimerEvent *e)
 
     The default value for this property is \c false.
 
-    \sa interval, QChronoTimer::singleShot()
+    \sa interval
 */
 void QChronoTimer::setSingleShot(bool singleShot)
 {
@@ -279,10 +280,18 @@ QBindable<bool> QChronoTimer::bindableSingleShot()
     stop() and then start() the timer, and acquire a new id().
     If the timer is not running, only the interval is changed.
 
+    \include timers-common.qdocinc negative-intervals-not-allowed
+
     \sa singleShot
 */
 void QChronoTimer::setInterval(std::chrono::nanoseconds nsec)
 {
+    if (nsec < 0ns) {
+        qWarning("QChronoTimer::setInterval: negative intervals aren't allowed; the "
+                 "interval will be set to 1ms.");
+        nsec = 1ms;
+    }
+
     auto *d = d_func();
     d->intervalDuration.removeBindingUnlessInWrapper();
     const bool intervalChanged = nsec != d->intervalDuration.valueBypassingBindings();

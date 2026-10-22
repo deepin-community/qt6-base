@@ -1,8 +1,18 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include "textedit.h"
 #include <QtGui>
+#include <QTextEdit>
+
+class TextEdit : public QTextEdit
+{
+    Q_OBJECT
+public:
+    TextEdit(QWidget *parent = nullptr);
+
+    bool canInsertFromMimeData(const QMimeData *source) const override;
+    void insertFromMimeData(const QMimeData *source) override;
+};
 
 TextEdit::TextEdit(QWidget *parent)
     : QTextEdit(parent)

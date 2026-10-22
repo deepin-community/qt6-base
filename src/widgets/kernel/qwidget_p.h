@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWIDGET_P_H
 #define QWIDGET_P_H
@@ -19,6 +20,9 @@
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtWidgets/qwidget.h"
+#if QT_CONFIG(label)
+#include <QtWidgets/qlabel.h>
+#endif
 #include "private/qobject_p.h"
 #include "QtCore/qrect.h"
 #include "QtCore/qlocale.h"
@@ -65,8 +69,6 @@ class QWidgetItemV2;
 
 class QStyle;
 
-class QUnifiedToolbarSurface;
-
 // implemented in qshortcut.cpp
 bool qWidgetShortcutContextMatcher(QObject *object, Qt::ShortcutContext context);
 void qSendWindowChangeToTextureChildrenRecursively(QWidget *widget, QEvent::Type eventType);
@@ -83,6 +85,7 @@ public:
 
 protected:
     friend class QApplication;
+    friend class QApplicationPrivate;
     QRegion m_region;
 };
 
@@ -118,6 +121,7 @@ struct QTLWExtra {
     uint posIncludesFrame : 1;
     uint sizeAdjusted : 1;
     uint embedded : 1;
+    uint explicitContentsMarginsRespectsSafeArea: 1;
 };
 
 struct QWExtra {
@@ -206,7 +210,7 @@ public:
     Q_ENUM(Direction)
 
     // Functions.
-    explicit QWidgetPrivate(int version = QObjectPrivateVersion);
+    explicit QWidgetPrivate(decltype(QObjectPrivateVersion) = QObjectPrivateVersion);
     ~QWidgetPrivate();
 
     static QWidgetPrivate *get(QWidget *w) { return w->d_func(); }
@@ -395,13 +399,6 @@ public:
     void updateFrameStrut();
     QRect frameStrut() const;
 
-#ifdef QT_KEYPAD_NAVIGATION
-    static bool navigateToDirection(Direction direction);
-    static QWidget *widgetInNavigationDirection(Direction direction);
-    static bool canKeypadNavigate(Qt::Orientation orientation);
-    static bool inTabWidget(QWidget *widget);
-#endif
-
     void setWindowIconText_sys(const QString &cap);
     void setWindowIconText_helper(const QString &cap);
     void setWindowTitle_sys(const QString &cap);
@@ -436,6 +433,14 @@ public:
     // QWidget::destroy() is executed. It's used to signal QWidget
     // sub-classes that their internals are about to be released.
     virtual void aboutToDestroy() {}
+
+    // customization point for widget re-creation to deal with different RHI types
+    virtual void recreate()
+    {
+        Q_Q(QWidget);
+        q->destroy();
+        q->create();
+    }
 
     inline QWidget *effectiveFocusWidget() {
         QWidget *w = q_func();
@@ -564,7 +569,7 @@ public:
         Q_Q(QWidget);
         if (qApp->autoSipEnabled()) {
             QStyle::RequestSoftwareInputPanel behavior = QStyle::RequestSoftwareInputPanel(
-                    q->style()->styleHint(QStyle::SH_RequestSoftwareInputPanel));
+                    q->style()->styleHint(QStyle::SH_RequestSoftwareInputPanel, nullptr, q));
             if (!clickCausedFocus || behavior == QStyle::RSIP_OnMouseClick) {
                 QGuiApplication::inputMethod()->show();
             }
@@ -655,6 +660,10 @@ public:
     QPaintEngine *extraPaintEngine;
     mutable const QMetaObject *polished;
     QGraphicsEffect *graphicsEffect;
+#if QT_CONFIG(label)
+    // labels for which this widget is the buddy widget
+    QVarLengthArray<QLabel *, 1> labels;
+#endif
     // All widgets are added into the allWidgets set. Once
     // they receive a window id they are also added to the mapper.
     // This should just ensure that all widgets are deleted by QApplication
@@ -662,9 +671,6 @@ public:
     static QWidgetSet *allWidgets;
 #if !defined(QT_NO_IM)
     Qt::InputMethodHints imHints;
-#endif
-#ifdef QT_KEYPAD_NAVIGATION
-    static QPointer<QWidget> editingWidget;
 #endif
 
     // Implicit pointers (shared_null/shared_empty).
@@ -683,6 +689,7 @@ public:
 #if QT_CONFIG(accessibility)
     QString accessibleName;
     QString accessibleDescription;
+    QString accessibleIdentifier;
 #endif
 
     // Other variables.
@@ -734,6 +741,7 @@ public:
     uint childrenHiddenByWState : 1;
     uint childrenShownByExpose : 1;
     uint dontSetExplicitShowHide : 1;
+    uint inheritStyleRecursionGuard : 1;
 
     // *************************** Focus abstraction ************************************
     enum class FocusDirection {
@@ -772,7 +780,7 @@ public:
     // *************************** Platform specific ************************************
 #if defined(Q_OS_WIN)
     uint noPaintOnScreen : 1; // see qwidget.cpp ::paintEngine()
-#elif defined(Q_OS_MAC)
+#elif defined(Q_OS_MACOS)
     void macUpdateSizeAttribute();
 #endif
     void setNetWmWindowTypes(bool skipIfMissing = false);
@@ -887,9 +895,15 @@ inline void QWidgetPrivate::setSharedPainter(QPainter *painter)
 inline bool QWidgetPrivate::pointInsideRectAndMask(const QPointF &p) const
 {
     Q_Q(const QWidget);
-    // Use QRectF::contains so that (0, -0.1) isn't in, with p.toPoint() it would be
-    // The adjusted matches QRect semantics: (160,160) isn't contained in QRect(0, 0, 160, 160)
-    return QRectF(q->rect().adjusted(0, 0, -1, -1)).contains(p)
+
+    // Use QRectF::contains so that (0, -0.1) isn't in, with p.toPoint() it would be in.
+    // The -1 on right and bottom matches QRect semantics:
+    // (160,160) isn't contained in QRect(0, 0, 160, 160)
+    QRect r = q->rect();
+    r.setRight(qMax(-1, r.right() - 1));
+    r.setBottom(qMax(-1, r.bottom() - 1));
+
+    return r.toRectF().contains(p)
             && (!extra || !extra->hasMask || q->testAttribute(Qt::WA_MouseNoMask)
                 || extra->mask.contains(p.toPoint() /* incorrect for the -0.1 case */));
 }

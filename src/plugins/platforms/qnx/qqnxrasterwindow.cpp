@@ -1,5 +1,6 @@
 // Copyright (C) 2013 - 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qqnxglobal.h"
 
@@ -7,6 +8,8 @@
 #include "qqnxscreen.h"
 
 #include <QDebug>
+
+#include <private/qhighdpiscaling_p.h>
 
 #include <errno.h>
 
@@ -18,10 +21,6 @@ QQnxRasterWindow::QQnxRasterWindow(QWindow *window, screen_context_t context, bo
     m_previousBufferIndex(-1)
 {
     initWindow();
-
-    // Set window usage
-    if (window->type() == Qt::Desktop)
-        return;
 
     const int val = SCREEN_USAGE_NATIVE | SCREEN_USAGE_READ | SCREEN_USAGE_WRITE;
     const int result = screen_set_window_property_iv(nativeHandle(), SCREEN_PROPERTY_USAGE, &val);
@@ -58,6 +57,7 @@ void QQnxRasterWindow::post(const QRegion &dirty)
         qCDebug(lcQpaWindow) << Q_FUNC_INFO << "window = " << window();
         QQnxBuffer &currentBuffer = m_buffers[m_currentBufferIndex];
 
+#if defined(QQNX_INCREMENTAL_RASTER_UPDATE)
         // Copy unmodified region from old render buffer to new render buffer;
         // required to allow partial updates
         QRegion preserve = m_previousDirty - dirty - m_scrolled;
@@ -72,6 +72,12 @@ void QQnxRasterWindow::post(const QRegion &dirty)
         Q_SCREEN_CHECKERROR(
                 screen_post_window(nativeHandle(), currentBuffer.nativeBuffer(), 1, dirtyRect, 0),
                 "Failed to post window");
+#else
+        // Update the display with contents of render buffer
+        Q_SCREEN_CHECKERROR(
+                screen_post_window(nativeHandle(), currentBuffer.nativeBuffer(), 0, NULL, 0),
+                "Failed to post window");
+#endif
 
         // Advance to next nender buffer
         m_previousBufferIndex = m_currentBufferIndex++;
@@ -79,7 +85,7 @@ void QQnxRasterWindow::post(const QRegion &dirty)
             m_currentBufferIndex = 0;
 
         // Save modified region and clear scrolled region
-        m_previousDirty = dirty;
+        m_previousDirty = QRect(QPoint(0, 0), QHighDpi::toNativePixels(window()->size(), window()));
         m_scrolled = QRegion();
 
         windowPosted();
@@ -135,10 +141,13 @@ void QQnxRasterWindow::setParent(const QPlatformWindow *wnd)
 
 void QQnxRasterWindow::adjustBufferSize()
 {
-    const QSize windowSize = window()->size();
+    adjustBufferSize(QHighDpi::toNativePixels(window()->size(), window()));
+}
 
-    if (windowSize != bufferSize())
-        setBufferSize(windowSize);
+void QQnxRasterWindow::adjustBufferSize(const QSize &size)
+{
+    if (size != bufferSize())
+        setBufferSize(size);
 }
 
 int QQnxRasterWindow::pixelFormat() const
@@ -149,6 +158,7 @@ int QQnxRasterWindow::pixelFormat() const
 void QQnxRasterWindow::resetBuffers()
 {
     // Buffers were destroyed; reacquire them
+    m_previousBufferIndex = -1;
     m_currentBufferIndex = -1;
     m_previousDirty = QRegion();
     m_scrolled = QRegion();

@@ -41,7 +41,7 @@
 #endif
 #endif
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 const QString rsrcPath = ":/images/mac";
 #else
 const QString rsrcPath = ":/images/win";
@@ -155,21 +155,22 @@ void TextEdit::setupFileActions()
     actionSave->setEnabled(false);
     tb->addAction(actionSave);
 
-    a = menu->addAction(tr("Save &As..."), this, [this]() { fileSaveAs(SaveContinuation::None); });
+    const QIcon saveAsIcon = QIcon::fromTheme(QIcon::ThemeIcon::DocumentSaveAs);
+    a = menu->addAction(saveAsIcon, tr("Save &As..."), this, [this]() { fileSaveAs(SaveContinuation::None); });
     a->setPriority(QAction::LowPriority);
     menu->addSeparator();
 
 #if defined(QT_PRINTSUPPORT_LIB) && QT_CONFIG(printer)
-    const QIcon printIcon = QIcon::fromTheme("document-print", QIcon(rsrcPath + "/fileprint.png"));
+    const QIcon printIcon = QIcon::fromTheme(QIcon::ThemeIcon::DocumentPrint, QIcon(rsrcPath + "/fileprint.png"));
     a = menu->addAction(printIcon, tr("&Print..."), this, &TextEdit::filePrint);
     a->setPriority(QAction::LowPriority);
     a->setShortcut(QKeySequence::Print);
     tb->addAction(a);
 
-    const QIcon filePrintIcon = QIcon::fromTheme("fileprint", QIcon(rsrcPath + "/fileprint.png"));
+    const QIcon filePrintIcon = QIcon::fromTheme(QIcon::ThemeIcon::DocumentPrintPreview, QIcon(rsrcPath + "/fileprint.png"));
     menu->addAction(filePrintIcon, tr("Print Preview..."), this, &TextEdit::filePrintPreview);
 
-    const QIcon exportPdfIcon = QIcon::fromTheme("exportpdf", QIcon(rsrcPath + "/exportpdf.png"));
+    const QIcon exportPdfIcon = QIcon::fromTheme("document-export", QIcon(rsrcPath + "/exportpdf.png"));
     a = menu->addAction(exportPdfIcon, tr("&Export PDF..."), this, &TextEdit::filePrintPdf);
     a->setPriority(QAction::LowPriority);
     a->setShortcut(Qt::CTRL | Qt::Key_D);

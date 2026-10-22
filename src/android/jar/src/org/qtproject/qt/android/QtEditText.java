@@ -1,22 +1,30 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:password-input-type
 
 package org.qtproject.qt.android;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.text.InputType;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.ExtractedText;
+import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
 import android.view.KeyEvent;
+import android.util.Log;
 
 import org.qtproject.qt.android.QtInputConnection.QtInputConnectionListener;
 
+@SuppressLint("ViewConstructor")
 class QtEditText extends View
 {
+    static final String QtTAG = "QtEditText";
+
     int m_initialCapsMode = 0;
     int m_imeOptions = 0;
     int m_inputType = InputType.TYPE_CLASS_TEXT;
@@ -39,6 +47,8 @@ class QtEditText extends View
 
     private final int ImhMultiLine = 0x400;
 
+    private final int ImhNoFullscreen = 0x2000;
+
     private final int ImhDigitsOnly = 0x10000;
     private final int ImhFormattedNumbersOnly = 0x20000;
     private final int ImhUppercaseOnly = 0x40000;
@@ -47,6 +57,7 @@ class QtEditText extends View
     private final int ImhEmailCharactersOnly = 0x200000;
     private final int ImhUrlCharactersOnly = 0x400000;
     private final int ImhLatinOnly = 0x800000;
+    private final int ImhDecimalNumbersOnly = 0x1000000;
 
     private final QtInputConnectionListener m_qtInputConnectionListener;
 
@@ -101,9 +112,23 @@ class QtEditText extends View
     public InputConnection onCreateInputConnection(EditorInfo outAttrs)
     {
         outAttrs.inputType = m_inputType;
+
         outAttrs.imeOptions = m_imeOptions;
+        if (System.getenv("QT_ANDROID_NO_FULLSCREEN_KEYBOARD") != null) {
+            outAttrs.imeOptions = m_imeOptions | EditorInfo.IME_FLAG_NO_FULLSCREEN;
+            Log.w(QtTAG, "Use Qt::ImhNoFullscreen instead of QT_ANDROID_NO_FULLSCREEN_KEYBOARD "
+                    + "environment variable on Qt 6.12 and newer.");
+        }
+
         outAttrs.initialCapsMode = m_initialCapsMode;
         m_inputConnection = new QtInputConnection(this,m_qtInputConnectionListener);
+
+        ExtractedText extracted = m_inputConnection.getExtractedText(new ExtractedTextRequest(), 0);
+        if (extracted != null) {
+            outAttrs.initialSelStart = extracted.selectionStart;
+            outAttrs.initialSelEnd = extracted.selectionEnd;
+        }
+
         return m_inputConnection;
     }
 
@@ -145,6 +170,8 @@ class QtEditText extends View
 
             if ((inputHints & ImhHiddenText) != 0)
                 inputType |= android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD;
+        } else if ((inputHints & ImhDecimalNumbersOnly) != 0) {
+            inputType |= android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL;
         } else if ((inputHints & ImhDialableCharactersOnly) != 0) {
             inputType = android.text.InputType.TYPE_CLASS_PHONE;
         } else if ((inputHints & (ImhDate | ImhTime)) != 0) {
@@ -190,6 +217,9 @@ class QtEditText extends View
 
         if (enterKeyType == 0 && (inputHints & ImhMultiLine) != 0)
             imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_ENTER_ACTION;
+
+        if ((inputHints & ImhNoFullscreen) != 0)
+            imeOptions |= android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN;
 
         setInitialCapsMode(initialCapsMode);
         setImeOptions(imeOptions);
@@ -267,10 +297,6 @@ class QtEditText extends View
             break;
         case CursorHandleShowNormal:
             if (m_cursorHandle == null) {
-                // We pass this to the CursorHandle to use the QtEditText to calculate its
-                // position. This is OK as the QtEditText size matches the QtWindow size.
-                // If the size of the QtEditText is changed to not reflect the window's anymore,
-                // this should be changed to use getParent() instead of this.
                 m_cursorHandle = new CursorHandle((Activity) getContext(), this,
                         CursorHandle.IdCursorHandle,
                         android.R.attr.textSelectHandle, false);

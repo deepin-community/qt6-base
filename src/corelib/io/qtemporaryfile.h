@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTEMPORARYFILE_H
 #define QTEMPORARYFILE_H
@@ -63,6 +64,7 @@ public:
 
     // Hides QFile::rename
     bool rename(const QString &newName);
+    bool renameOverwrite(const QString &newName);
 
 #if QT_CONFIG(cxx17_filesystem) || defined(Q_QDOC)
     Q_WEAK_OVERLOAD
@@ -70,6 +72,9 @@ public:
     {
         return rename(QtPrivate::fromFilesystemPath(newName));
     }
+    Q_WEAK_OVERLOAD
+    bool renameOverwrite(const std::filesystem::path &newName)
+    { return renameOverwrite(QtPrivate::fromFilesystemPath(newName)); }
 #endif // QT_CONFIG(cxx17_filesystem)
 
     inline static QTemporaryFile *createNativeFile(const QString &fileName)

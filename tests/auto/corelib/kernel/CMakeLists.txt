@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 add_subdirectory(qapplicationstatic)
+add_subdirectory(qapplicationstatic_static_qcoreapplication)
 add_subdirectory(qchronotimer)
 add_subdirectory(qcoreapplication)
 add_subdirectory(qdeadlinetimer)
@@ -15,6 +16,7 @@ add_subdirectory(qmetaproperty)
 add_subdirectory(qmetaenum)
 add_subdirectory(qsignalblocker)
 add_subdirectory(qsignalmapper)
+add_subdirectory(qslotobject)
 add_subdirectory(qtimer)
 add_subdirectory(qtranslator)
 # QTBUG-88135

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCONCATENATEROWSPROXYMODEL_H
 #define QCONCATENATEROWSPROXYMODEL_H
@@ -24,8 +25,8 @@ public:
     Q_SCRIPTABLE void addSourceModel(QAbstractItemModel *sourceModel);
     Q_SCRIPTABLE void removeSourceModel(QAbstractItemModel *sourceModel);
 
-    QModelIndex mapFromSource(const QModelIndex &sourceIndex) const;
-    QModelIndex mapToSource(const QModelIndex &proxyIndex) const;
+    Q_INVOKABLE Q_REVISION(6, 11) QModelIndex mapFromSource(const QModelIndex &sourceIndex) const;
+    Q_INVOKABLE Q_REVISION(6, 11) QModelIndex mapToSource(const QModelIndex &proxyIndex) const;
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
@@ -42,6 +43,7 @@ public:
     bool canDropMimeData(const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent) const override;
     bool dropMimeData(const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent) override;
     QSize span(const QModelIndex &index) const override;
+    QHash<int, QByteArray> roleNames() const override;
 
 private:
     Q_DECLARE_PRIVATE(QConcatenateTablesProxyModel)

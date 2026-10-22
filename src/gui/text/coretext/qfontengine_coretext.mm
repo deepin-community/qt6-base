@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qfontengine_coretext_p.h"
 
@@ -204,15 +205,14 @@ void QCoreTextFontEngine::init()
     synthesisFlags = 0;
     CTFontSymbolicTraits traits = CTFontGetSymbolicTraits(ctfont);
 
+    const auto requestedStyle = fontDef.style;
+
     if (traits & kCTFontColorGlyphsTrait)
         glyphFormat = QFontEngine::Format_ARGB;
     else if (shouldSmoothFont() && fontSmoothing() == FontSmoothing::Subpixel)
         glyphFormat = QFontEngine::Format_A32;
     else
         glyphFormat = QFontEngine::Format_A8;
-
-    if (traits & kCTFontItalicTrait)
-        fontDef.style = QFont::StyleItalic;
 
     static const auto getTraitValue = [](CFDictionaryRef allTraits, CFStringRef trait) -> float {
         if (CFDictionaryContainsKey(allTraits, trait)) {
@@ -226,15 +226,19 @@ void QCoreTextFontEngine::init()
 
     QCFType<CFDictionaryRef> allTraits = CTFontCopyTraits(ctfont);
     int slant = static_cast<int>(getTraitValue(allTraits, kCTFontSlantTrait) * 500 + 500);
-    if (slant > 500 && !(traits & kCTFontItalicTrait))
+    if (traits & kCTFontItalicTrait)
+        fontDef.style = QFont::StyleItalic;
+    else if (slant > 500)
         fontDef.style = QFont::StyleOblique;
+    else
+        fontDef.style = QFont::StyleNormal;
 
     if (fontDef.weight >= QFont::Bold && !(traits & kCTFontBoldTrait) && !qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_BOLD"))
         synthesisFlags |= SynthesizedBold;
     else
         fontDef.weight = QCoreTextFontEngine::qtWeightFromCFWeight(getTraitValue(allTraits, kCTFontWeightTrait));
 
-    if (fontDef.style != QFont::StyleNormal && !(traits & kCTFontItalicTrait) && !qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_ITALIC"))
+    if (requestedStyle != QFont::StyleNormal && fontDef.style == QFont::StyleNormal && !qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_ITALIC"))
         synthesisFlags |= SynthesizedItalic;
 
     avgCharWidth = 0;
@@ -254,6 +258,55 @@ void QCoreTextFontEngine::init()
     cache_cost = (CTFontGetAscent(ctfont) + CTFontGetDescent(ctfont)) * avgCharWidth.toInt() * 2000;
 
     kerningPairsLoaded = false;
+
+    if (QCFType<CFArrayRef> variationAxes = CTFontCopyVariationAxes(ctfont)) {
+        CFIndex count = CFArrayGetCount(variationAxes);
+        for (CFIndex i = 0; i < count; ++i) {
+            CFDictionaryRef variationAxis = CFDictionaryRef(CFArrayGetValueAtIndex(variationAxes, i));
+
+            QFontVariableAxis fontVariableAxis;
+            if (CFNumberRef tagRef = (CFNumberRef) CFDictionaryGetValue(variationAxis,
+                                                                        kCTFontVariationAxisIdentifierKey)) {
+                quint32 tag;
+                CFNumberGetValue(tagRef, kCFNumberIntType, &tag);
+                if (auto maybeTag = QFont::Tag::fromValue(tag))
+                    fontVariableAxis.setTag(*maybeTag);
+            }
+
+            if (CFNumberRef minimumValueRef = (CFNumberRef) CFDictionaryGetValue(variationAxis,
+                                                                                 kCTFontVariationAxisMinimumValueKey)) {
+                float minimumValue;
+                CFNumberGetValue(minimumValueRef, kCFNumberFloatType, &minimumValue);
+                fontVariableAxis.setMinimumValue(minimumValue);
+            }
+
+            if (CFNumberRef maximumValueRef = (CFNumberRef) CFDictionaryGetValue(variationAxis,
+                                                                                 kCTFontVariationAxisMaximumValueKey)) {
+                float maximumValue;
+                CFNumberGetValue(maximumValueRef, kCFNumberFloatType, &maximumValue);
+                fontVariableAxis.setMaximumValue(maximumValue);
+            }
+
+            if (CFNumberRef defaultValueRef = (CFNumberRef) CFDictionaryGetValue(variationAxis,
+                                                                                 kCTFontVariationAxisDefaultValueKey)) {
+                float defaultValue;
+                CFNumberGetValue(defaultValueRef, kCFNumberFloatType, &defaultValue);
+                fontVariableAxis.setDefaultValue(defaultValue);
+            }
+
+            if (CFStringRef nameRef = (CFStringRef) CFDictionaryGetValue(variationAxis,
+                                                                         kCTFontVariationAxisNameKey)) {
+                fontVariableAxis.setName(QString::fromCFString(nameRef));
+            }
+
+            variableAxisList.append(fontVariableAxis);
+        }
+    }
+}
+
+int QCoreTextFontEngine::glyphCount() const
+{
+    return CTFontGetGlyphCount(ctfont);
 }
 
 glyph_t QCoreTextFontEngine::glyphIndex(uint ucs4) const
@@ -273,6 +326,24 @@ glyph_t QCoreTextFontEngine::glyphIndex(uint ucs4) const
     CTFontGetGlyphsForCharacters(ctfont, (const UniChar *)str, glyphIndices, len);
 
     return glyphIndices[0];
+}
+
+QString QCoreTextFontEngine::glyphName(glyph_t index) const
+{
+    QString result = QCFString(CTFontCopyNameForGlyph(ctfont, index));
+    if (result.isEmpty())
+        result = QFontEngine::glyphName(index);
+    return result;
+}
+
+glyph_t QCoreTextFontEngine::findGlyph(QLatin1StringView name) const
+{
+    const QCFString cfName = CFStringCreateWithBytes(kCFAllocatorDefault,
+                                                     reinterpret_cast<const UInt8 *>(name.data()),
+                                                     name.size(), kCFStringEncodingASCII, false);
+    const glyph_t result = CTFontGetGlyphWithName(ctfont, cfName);
+
+    return result ? result : QFontEngine::findGlyph(name);
 }
 
 int QCoreTextFontEngine::stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs,
@@ -529,8 +600,9 @@ glyph_metrics_t QCoreTextFontEngine::alphaMapBoundingBox(glyph_t glyph, const QF
     if (br.height < 0)
         br.height = -br.height;
 
-    if (format == QFontEngine::Format_A8 || format == QFontEngine::Format_A32) {
-        // Drawing a glyph at x-position 0 with anti-aliasing enabled
+    if (format == QFontEngine::Format_A8 || format == QFontEngine::Format_A32 || format == QFontEngine::Format_ARGB) {
+        // Drawing a vector based glyph with anti-aliasing enabled, or a
+        // bitmap based glyph with pre-baked anti-aliasing, at x = 0,
         // will potentially fill the pixel to the left of 0, as the
         // coordinates are not aligned to the center of pixels. To
         // prevent clipping of this pixel we need to shift the glyph
@@ -687,8 +759,9 @@ bool QCoreTextFontEngine::shouldSmoothFont() const
     Q_UNREACHABLE();
 }
 
-bool QCoreTextFontEngine::expectsGammaCorrectedBlending() const
+bool QCoreTextFontEngine::expectsGammaCorrectedBlending(QFontEngine::GlyphFormat format) const
 {
+    Q_UNUSED(format);
     return shouldSmoothFont() && fontSmoothing() == Subpixel;
 }
 
@@ -701,15 +774,24 @@ QImage QCoreTextFontEngine::imageForGlyph(glyph_t glyph, const QFixedPoint &subP
 {
     glyph_metrics_t br = alphaMapBoundingBox(glyph, subPixelPosition, matrix, glyphFormat);
 
+    if (glyphBoundingBoxExceedsLimit(br.width.toReal(),
+                                     br.height.toReal(),
+                                     effectivePixelSizeSquared(matrix))) {
+        return QImage();
+    }
+
     QImage::Format imageFormat = hasColorGlyphs() ? QImage::Format_ARGB32_Premultiplied : QImage::Format_RGB32;
     QImage im(br.width.ceil().toInt(), br.height.ceil().toInt(), imageFormat);
     if (!im.width() || !im.height())
         return im;
 
-    QCFType<CGColorSpaceRef> colorspace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    auto cgImageFormat = qt_mac_cgImageFormatForImage(im);
+    if (!cgImageFormat)
+        return im;
+
     QCFType<CGContextRef> ctx = CGBitmapContextCreate(im.bits(), im.width(), im.height(),
-                                             8, im.bytesPerLine(), colorspace,
-                                             qt_mac_bitmapInfoForImage(im));
+        cgImageFormat->bitsPerComponent, im.bytesPerLine(), cgImageFormat->colorSpace,
+        cgImageFormat->bitmapInfo);
     Q_ASSERT(ctx);
 
     CGContextSetShouldAntialias(ctx, shouldAntialias());
@@ -998,6 +1080,11 @@ void QCoreTextFontEngine::doKerning(QGlyphLayout *g, ShaperFlags flags) const
     }
 
     QFontEngine::doKerning(g, flags);
+}
+
+QList<QFontVariableAxis> QCoreTextFontEngine::variableAxes() const
+{
+    return variableAxisList;
 }
 
 QT_END_NAMESPACE

@@ -128,6 +128,7 @@ private slots:
     void readChunks();
     void waitForBytesWritten();
     void waitForBytesWrittenMinusOne();
+    void waitForBytesWrittenWriteInReadyReadSlot();
     void waitForReadyRead();
     void waitForReadyReadMinusOne();
     void flush();
@@ -1394,7 +1395,8 @@ void tst_QTcpSocket::disconnectWhileConnectingNoEventLoop()
     if (setProxy)
         return; //proxy not useful for localhost test case
 
-    QScopedPointer<ReceiverThread, ReceiverThread> thread (new ReceiverThread);
+    using Ptr = std::unique_ptr<ReceiverThread, decltype(&ReceiverThread::cleanup)>;
+    auto thread = Ptr(new ReceiverThread, ReceiverThread::cleanup);
     QVERIFY(thread->listen());
     thread->start();
 
@@ -1678,6 +1680,52 @@ void tst_QTcpSocket::waitForBytesWrittenMinusOne()
     QVERIFY(toWrite > socket->bytesToWrite());
 
     delete socket;
+}
+
+//----------------------------------------------------------------------------------
+void tst_QTcpSocket::waitForBytesWrittenWriteInReadyReadSlot()
+{
+    QFETCH_GLOBAL(bool, setProxy);
+    if (setProxy)
+        return;
+
+    SocketPair socketPair;
+    QVERIFY(socketPair.create());
+    QTcpSocket *client = socketPair.endPoints[0];
+    QTcpSocket *server = socketPair.endPoints[1];
+
+    QCOMPARE(client->state(), QTcpSocket::ConnectedState);
+    QCOMPARE(server->state(), QTcpSocket::ConnectedState);
+
+    server->write("ServerHello");
+    server->waitForBytesWritten();
+
+    // Make sure that the data from server has made it to client, but only read one byte from
+    // the OS buffer so that future polling for read will find more data ready.
+    client->setReadBufferSize(1);
+    QVERIFY(client->waitForReadyRead());
+
+    uint readyReadCount = 0;
+    connect(client, &QAbstractSocket::readyRead, [client, &readyReadCount]() {
+        // The commented out code is not necessary, but typically part of a real scenario
+        // client->readAll();
+        // client->write("response to whatever was read");
+        readyReadCount++;
+        client->flush();
+    });
+
+    client->write("ClientHello");
+
+    // Allow to fetch more data from the OS buffer ("new data", causes emission of readyRead())
+    client->setReadBufferSize(0);
+    QCOMPARE(readyReadCount, 0); // we missed the  one from the first waitForReadyRead()
+
+    // If there is incoming data, waitForBytesWritten() emits readyRead() even *before* writing
+    // data, so if the readyRead handler already flushes outgoing data, the subsequent attempt
+    // in waitForBytesWritten() to flush outgoing data will fail.
+    // This tests that that doesn't happen anymore.
+    QVERIFY(client->waitForBytesWritten());
+    QCOMPARE(readyReadCount, 1);
 }
 
 //----------------------------------------------------------------------------------
@@ -2191,7 +2239,7 @@ public slots:
         attemptedToConnect = true;
         sock->connectToHost(QtNetworkSettings::httpServerName(), 80);
 
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_MACOS)
         pthread_yield_np();
 #elif defined Q_OS_LINUX && !defined Q_OS_ANDROID
         sched_yield();
@@ -2482,8 +2530,14 @@ void tst_QTcpSocket::suddenRemoteDisconnect()
 
     QString processExe = stressTestDir + "/stressTest";
 
+    auto noMsgPatternEnv = QProcessEnvironment::systemEnvironment();
+    // Unset any custom message pattern that might mess with the expected output:
+    noMsgPatternEnv.remove(u"QT_MESSAGE_PATTERN"_s);
+
     // Start server
     QProcess serverProcess;
+    serverProcess.setProcessEnvironment(noMsgPatternEnv);
+
     serverProcess.setReadChannel(QProcess::StandardError);
     serverProcess.start(processExe, QStringList(server), QIODevice::ReadWrite | QIODevice::Text);
     QVERIFY2(serverProcess.waitForStarted(), qPrintable(
@@ -2504,6 +2558,7 @@ void tst_QTcpSocket::suddenRemoteDisconnect()
 
     // Start client
     QProcess clientProcess;
+    clientProcess.setProcessEnvironment(noMsgPatternEnv);
     clientProcess.setReadChannel(QProcess::StandardError);
     clientProcess.start(processExe, QStringList(client), QIODevice::ReadWrite | QIODevice::Text);
     QVERIFY2(clientProcess.waitForStarted(), qPrintable(

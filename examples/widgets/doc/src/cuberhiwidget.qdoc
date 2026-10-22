@@ -9,6 +9,7 @@
     \brief Shows how to render a textured cube and integrate with QPainter and widgets, using QRhi Qt's 3D API and shading language abstraction layer.
 
     \image cuberhiwidget-example.jpg
+           {Application showing complex rendering overlays}
     \caption Screenshot of the Cube RHI Widget example
 
     This example builds on the \l{Simple RHI Widget Example}. While the simple
@@ -35,7 +36,7 @@
     at run time. The QRhiWidget subclass is prepared to handle the changing
     sample count correctly.
 
-    \li Forcing an \l{QRhiWidget::explicitSize}{explicitly specified backing
+    \li Forcing an \l{QRhiWidget::fixedColorBufferSize}{explicitly specified backing
     texture size} can be toggled dynamically and controlled with a slider
     between 16x16 up to 512x512 pixels.
 

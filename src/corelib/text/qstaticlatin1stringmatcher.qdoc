@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+// Qt-Security score:insignificant reason:docs
 
 /*! \class QStaticLatin1StringMatcher
     \inmodule QtCore
@@ -9,6 +10,10 @@
     \since 6.7
     \ingroup tools
     \ingroup string-processing
+
+    QStaticLatin1StringMatcher\<CS, N\> is a template class where \a CS is
+    the Qt::CaseSensitivity to use for matching and \a N is the length of the
+    pattern to search for (including the null terminator for string literals).
 
     This class is useful when your code needs to search efficiently
     in Latin-1 strings for a substring that's known at compile-time.
@@ -61,7 +66,7 @@
     \since 6.7
     \relates QStaticLatin1StringMatcher
 
-    Return a QStaticLatin1StringMatcher with the correct \c{N} determined
+    Return a QStaticLatin1StringMatcher with the correct \a N determined
     automatically from the \a patternToMatch passed, and with case sensitivity.
 
     To take full advantage of this function, assign the result to a
@@ -77,7 +82,7 @@
     \since 6.7
     \relates QStaticLatin1StringMatcher
 
-    Return a QStaticLatin1StringMatcher with the correct \c{N} determined
+    Return a QStaticLatin1StringMatcher with the correct \a N determined
     automatically from the \a patternToMatch passed, and without case sensitivity.
 
     To take full advantage of this function, assign the result to a

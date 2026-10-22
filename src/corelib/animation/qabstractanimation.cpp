@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QAbstractAnimation
@@ -112,10 +113,17 @@
 
 #include "qabstractanimation_p.h"
 
+#if defined(Q_OS_WASM)
+#include <QtCore/private/qwasmanimationdriver_p.h>
+#endif
+
 #include <QtCore/qmath.h>
 #include <QtCore/qcoreevent.h>
+#include <QtCore/qnumeric.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qscopedvaluerollback.h>
+
+#include <QtCore/q26numeric.h>
 
 #define DEFAULT_TIMER_INTERVAL 16
 #define PAUSE_TIMER_COARSE_THRESHOLD 2000
@@ -124,6 +132,22 @@ QT_BEGIN_NAMESPACE
 
 typedef QList<QAbstractAnimationTimer*>::ConstIterator TimerListConstIt;
 typedef QList<QAbstractAnimation*>::ConstIterator AnimationListConstIt;
+
+namespace {
+
+/*!
+    \internal
+    Returns INT_MAX in case of overflow.
+*/
+int mulSaturating(int a, int b)
+{
+    int r;
+    if (qMulOverflow(a, b, &r))
+        return std::numeric_limits<int>::max();
+    return r;
+}
+
+} // namespace
 
 /*!
   \class QAbstractAnimationTimer
@@ -158,7 +182,7 @@ typedef QList<QAbstractAnimation*>::ConstIterator AnimationListConstIt;
 */
 
 /*!
-    \fn virtual int QAbstractAnimationTimer::runningAnimationCount() = 0;
+    \fn virtual qsizetype QAbstractAnimationTimer::runningAnimationCount() = 0;
     \internal
 
     This pure virtual function returns the number of animations the timer is running.
@@ -179,9 +203,9 @@ typedef QList<QAbstractAnimation*>::ConstIterator AnimationListConstIt;
 
 QUnifiedTimer::QUnifiedTimer() :
     QObject(), defaultDriver(this), lastTick(0), timingInterval(DEFAULT_TIMER_INTERVAL),
-    currentAnimationIdx(0), insideTick(false), insideRestart(false), consistentTiming(false), slowMode(false),
+    currentAnimationIdx(0), insideTick(false), insideRestart(false), consistentTiming(false),
     startTimersPending(false), stopTimerPending(false), allowNegativeDelta(false),
-    slowdownFactor(5.0f), profilerCallback(nullptr),
+    speedModifier(1), profilerCallback(nullptr),
     driverStartTime(0), temporalDrift(0)
 {
     time.invalidate();
@@ -265,9 +289,11 @@ void QUnifiedTimer::updateAnimationTimers()
     // ignore consistentTiming in case the pause timer is active
     qint64 delta = (consistentTiming && !pauseTimer.isActive()) ?
                         timingInterval : totalElapsed - lastTick;
-    if (slowMode) {
-        if (slowdownFactor > 0)
-            delta = qRound(delta / slowdownFactor);
+    // Don't use qFuzzyCompare because this won't be set frequently enough
+    // that floating point error can accumulate.
+    if (speedModifier != 1) {
+        if (speedModifier > 0)
+            delta = qRound(delta * speedModifier);
         else
             delta = 0;
     }
@@ -291,11 +317,11 @@ void QUnifiedTimer::updateAnimationTimers()
     }
 }
 
-int QUnifiedTimer::runningAnimationCount()
+qsizetype QUnifiedTimer::runningAnimationCount() const
 {
-    int count = 0;
-    for (int i = 0; i < animationTimers.size(); ++i)
-        count += animationTimers.at(i)->runningAnimationCount();
+    qsizetype count = 0;
+    for (const QAbstractAnimationTimer *timer : animationTimers)
+        count += timer->runningAnimationCount();
     return count;
 }
 
@@ -385,7 +411,7 @@ void QUnifiedTimer::timerEvent(QTimerEvent *event)
             startTimers();
     }
 
-    if (event->timerId() == pauseTimer.timerId()) {
+    if (event->id() == pauseTimer.id()) {
         // update current time on all timers
         updateAnimationTimers();
         restart();
@@ -570,9 +596,9 @@ void QAnimationTimer::updateAnimationsTime(qint64 delta)
         QScopedValueRollback<bool> guard(insideTick, true);
         for (currentAnimationIdx = 0; currentAnimationIdx < animations.size(); ++currentAnimationIdx) {
             QAbstractAnimation *animation = animations.at(currentAnimationIdx);
-            int elapsed = QAbstractAnimationPrivate::get(animation)->totalCurrentTime
+            qint64 elapsed = QAbstractAnimationPrivate::get(animation)->totalCurrentTime
                           + (animation->direction() == QAbstractAnimation::Forward ? delta : -delta);
-            animation->setCurrentTime(elapsed);
+            animation->setCurrentTime(q26::saturating_cast<int>(elapsed));
         }
         currentAnimationIdx = 0;
     }
@@ -851,6 +877,7 @@ qint64 QAnimationDriver::elapsed() const
  */
 
 /*!
+   \internal
    The default animation driver just spins the timer...
  */
 QDefaultAnimationDriver::QDefaultAnimationDriver(QUnifiedTimer *timer)
@@ -868,7 +895,7 @@ QDefaultAnimationDriver::~QDefaultAnimationDriver()
 
 void QDefaultAnimationDriver::timerEvent(QTimerEvent *e)
 {
-    Q_ASSERT(e->timerId() == m_timer.timerId());
+    Q_ASSERT(e->id() == m_timer.id());
     Q_UNUSED(e); // if the assertions are disabled
     advance();
 }
@@ -979,7 +1006,8 @@ void QAbstractAnimationPrivate::setState(QAbstractAnimation::State newState)
             q->deleteLater();
 
         if (dura == -1 || loopCount < 0
-            || (oldDirection == QAbstractAnimation::Forward && (oldCurrentTime * (oldCurrentLoop + 1)) == (dura * loopCount))
+            || (oldDirection == QAbstractAnimation::Forward
+                && qint64(oldCurrentTime) * (oldCurrentLoop + 1) == qint64(dura) * loopCount)
             || (oldDirection == QAbstractAnimation::Backward && oldCurrentTime == 0)) {
                 emit q->finished();
         }
@@ -1246,6 +1274,10 @@ QBindable<int> QAbstractAnimation::bindableCurrentLoop() const
     Returns the total and effective duration of the animation, including the
     loop count.
 
+    \note If the loop count is very large, or if the duration of a single loop
+    is too long, the total duration can be too large to fit into an \c {int}.
+    In such case the value is saturated to \c {INT_MAX}.
+
     \sa duration(), currentTime
 */
 int QAbstractAnimation::totalDuration() const
@@ -1256,7 +1288,7 @@ int QAbstractAnimation::totalDuration() const
     int loopcount = loopCount();
     if (loopcount < 0)
         return -1;
-    return dura * loopcount;
+    return mulSaturating(dura, loopcount);
 }
 
 /*!
@@ -1276,7 +1308,7 @@ int QAbstractAnimation::currentLoopTime() const
     \brief the current time and progress of the animation
 
     This property describes the animation's current time. You can change the
-    current time by calling setCurrentTime, or you can call start() and let
+    current time by calling setCurrentTime(), or you can call start() and let
     the animation run, setting the current time automatically as the animation
     progresses.
 
@@ -1308,7 +1340,8 @@ void QAbstractAnimation::setCurrentTime(int msecs)
     // Calculate new time and loop.
     const int dura = duration();
     const int totalLoopCount = d->loopCount;
-    const int totalDura = dura <= 0 ? dura : ((totalLoopCount < 0) ? -1 : dura * totalLoopCount);
+    const int totalDura = dura <= 0
+            ? dura : ((totalLoopCount < 0) ? -1 : mulSaturating(dura, totalLoopCount));
     if (totalDura != -1)
         msecs = qMin(totalDura, msecs);
 
@@ -1428,8 +1461,7 @@ void QAbstractAnimation::pause()
 
 /*!
     Resumes the animation after it was paused. When the animation is resumed,
-    it emits the resumed() and stateChanged() signals. The currenttime is not
-    changed.
+    it emits the stateChanged() signal. The currentTime property is not changed.
 
     \sa start(), pause(), state()
  */

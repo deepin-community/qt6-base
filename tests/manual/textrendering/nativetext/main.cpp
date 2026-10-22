@@ -9,6 +9,7 @@
 #include <Foundation/Foundation.h>
 #include <private/qfont_p.h>
 #include <private/qfontengine_p.h>
+#include <AppKit/AppKit.h>
 #endif
 
 static int s_mode;
@@ -228,7 +229,7 @@ public:
         controls->addWidget(fontButton);
 
         auto *aaButton = new QCheckBox("NoAntialias");
-        connect(aaButton, &QCheckBox::stateChanged, [&] {
+        connect(aaButton, &QCheckBox::checkStateChanged, [&] {
             for (TextRenderer *renderer : m_previews->findChildren<TextRenderer *>()) {
                 QFont font = renderer->font();
                 font.setStyleStrategy(QFont::StyleStrategy(font.styleStrategy() ^ QFont::NoAntialias));
@@ -238,7 +239,7 @@ public:
         controls->addWidget(aaButton);
 
         auto *subpixelAAButton = new QCheckBox("NoSubpixelAntialias");
-        connect(subpixelAAButton, &QCheckBox::stateChanged, [&] {
+        connect(subpixelAAButton, &QCheckBox::checkStateChanged, [&] {
             for (TextRenderer *renderer : m_previews->findChildren<TextRenderer *>()) {
                 QFont font = renderer->font();
                 font.setStyleStrategy(QFont::StyleStrategy(font.styleStrategy() ^ QFont::NoSubpixelAntialias));
@@ -246,12 +247,27 @@ public:
             }
         });
         controls->addWidget(subpixelAAButton);
-        controls->addStretch();
 
+        auto *trakButton = new QCheckBox("Tracking (trak)");
+        connect(trakButton, &QCheckBox::checkStateChanged, [&](auto state) {
+            for (TextRenderer *renderer : m_previews->findChildren<TextRenderer *>()) {
+                QFont font = renderer->font();
+                font.setFeature("trak", state == Qt::Checked);
+                renderer->setFont(font);
+            }
+        });
+        trakButton->checkStateChanged(trakButton->checkState());
+        controls->addWidget(trakButton);
+
+        controls->addStretch();
         mainLayout->addLayout(controls);
 
         mainLayout->setSizeConstraint(QLayout::SetFixedSize);
         setLayout(mainLayout);
+
+        // Enable emoji insertion shortcut on macOS
+        auto *menuBar = new QMenuBar(this);
+        menuBar->addMenu("Edit");
 
         setMode(TextRenderer::QtRendering);
         setFocusPolicy(Qt::StrongFocus);
@@ -261,7 +277,8 @@ public:
     void setMode(TextRenderer::RenderingMode mode)
     {
         s_mode = mode;
-        setWindowTitle(s_mode == TextRenderer::QtRendering ? "Qt" : "Native");
+        setWindowTitle((s_mode == TextRenderer::QtRendering ? "Qt" : "Native")
+            + QLatin1String(" (") + m_previews->font().family() + QLatin1String(")"));
 
         for (TextRenderer *renderer : m_previews->findChildren<TextRenderer *>())
             renderer->update();

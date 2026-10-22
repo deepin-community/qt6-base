@@ -1,28 +1,30 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #include "qdir.h"
 #include "qstringlist.h"
 #include "qfile.h"
 #if QT_CONFIG(settings)
+#include "qresource.h"
 #include "qsettings.h"
 #endif
 #include "qlibraryinfo.h"
 #include "qlibraryinfo_p.h"
-#include "qscopedpointer.h"
 
 #include "qcoreapplication.h"
 
-#include "private/qglobal_p.h"
+#include "private/qcoreapplication_p.h"
+#include "private/qfilesystementry_p.h"
 #include "archdetect.cpp"
 #include "qconfig.cpp"
 
-#ifdef Q_OS_DARWIN
+#if defined(Q_OS_APPLE)
 #  include "private/qcore_mac_p.h"
-#endif // Q_OS_DARWIN
+#endif
 
-#if QT_CONFIG(relocatable) && QT_CONFIG(dlopen) && !QT_CONFIG(framework)
+#if QT_CONFIG(relocatable) && QT_CONFIG(dlopen)
 #    include <dlfcn.h>
 #endif
 
@@ -30,15 +32,77 @@
 #    include <qt_windows.h>
 #endif
 
+#include <memory>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
 extern void qDumpCPUFeatures(); // in qsimd.cpp
 
+static QString fromRawStringView(QStringView string)
+{
+    return QString::fromRawData(string.data(), string.size());
+}
+
+static bool pathIsRelative(const QString &path)
+{
+    using FromInternalPath = QFileSystemEntry::FromInternalPath;
+    return !path.startsWith(':'_L1) && QFileSystemEntry(path, FromInternalPath{}).isRelative();
+}
+
+// Resolves and caches the Qt and application prefix roots. Resolution
+// may be costly and is queried repeatedly during startup, so results
+// are memoized. Wrapped in a Q_GLOBAL_STATIC (prefixCache) so lookups
+// during static destruction fall back to resolving from scratch.
+struct QLibraryPrefixes
+{
+    static QString qtPrefix();
+    static QString appPrefix();
+
+private:
+    // Pure resolvers, without caching, so they're usable even without a
+    // cache instance during static destruction. resolveAppPrefix() returns an
+    // empty string when no stable source is available yet; appPrefix()
+    // then falls back to the (uncached) working directory.
+    static QString resolveQtPrefix();
+    static QString resolveAppPrefix();
+
+    // The directory the application prefix is rooted at: the app bundle on
+    // Apple platforms, or the application directory once a QCoreApplication
+    // exists. Empty when no stable source is available yet.
+    static QString resolveAppDir();
+
+    // The qt.conf "Prefix" entry the application prefix is rooted at,
+    // or its "." default when there's no qt.conf (or settings) to read.
+    static QString qtConfPrefix();
+
+    // Memoizes resolve() in the given member. A resolver may return an
+    // empty string to signal that the result is not yet stable and should
+    // not be cached, in which case it is resolved anew on each call. During
+    // static destruction prefixCache() returns nullptr and resolve() is
+    // used directly.
+    static QString cached(QString QLibraryPrefixes::*member, QString (*resolve)());
+
+    QString m_qt;
+    QString m_app;
+};
+Q_GLOBAL_STATIC(QLibraryPrefixes, prefixCache)
+
+QString QLibraryPrefixes::cached(QString QLibraryPrefixes::*member, QString (*resolve)())
+{
+    QLibraryPrefixes *cache = prefixCache();
+    if (cache && !(cache->*member).isEmpty())
+        return cache->*member;
+    QString prefix = resolve();
+    if (cache && !prefix.isEmpty())
+        cache->*member = prefix;
+    return prefix;
+}
+
 #if QT_CONFIG(settings)
 
-static QSettings *findConfiguration();
+static std::unique_ptr<QSettings> findConfiguration();
 
 struct QLibrarySettings
 {
@@ -46,45 +110,91 @@ struct QLibrarySettings
     void load();
     bool havePaths();
     QSettings *configuration();
+    QVariant value(QLibraryInfo::LibraryPath location);
+    QStringList paths(QLibraryInfo::LibraryPath location);
 
-    QScopedPointer<QSettings> settings;
-    bool paths;
+    std::unique_ptr<QSettings> settings;
+    bool configHasPaths;
     bool reloadOnQAppAvailable;
 };
 Q_GLOBAL_STATIC(QLibrarySettings, qt_library_settings)
 
-QLibrarySettings::QLibrarySettings() : paths(false), reloadOnQAppAvailable(false)
+QLibrarySettings::QLibrarySettings() : configHasPaths(false), reloadOnQAppAvailable(false)
 {
     load();
 }
 
 QSettings *QLibrarySettings::configuration()
 {
-    if (reloadOnQAppAvailable && QCoreApplication::instance() != nullptr)
+    if (reloadOnQAppAvailable && QCoreApplication::instanceExists())
         load();
-    return settings.data();
+    return settings.get();
 }
 
 bool QLibrarySettings::havePaths()
 {
-    if (reloadOnQAppAvailable && QCoreApplication::instance() != nullptr)
+    if (reloadOnQAppAvailable && QCoreApplication::instanceExists())
         load();
-    return paths;
+    return configHasPaths;
 }
 
 void QLibrarySettings::load()
 {
     // If we get any settings here, those won't change when the application shows up.
-    settings.reset(findConfiguration());
-    reloadOnQAppAvailable = (settings.data() == nullptr && QCoreApplication::instance() == nullptr);
+    settings = findConfiguration();
+    reloadOnQAppAvailable = !settings && !QCoreApplication::instanceExists();
 
     if (settings) {
         // This code needs to be in the regular library, as otherwise a qt.conf that
         // works for qmake would break things for dynamically built Qt tools.
         QStringList children = settings->childGroups();
-        paths = !children.contains("Platforms"_L1)
-                || children.contains("Paths"_L1);
+        configHasPaths = !children.contains("Platforms"_L1)
+                         || children.contains("Paths"_L1);
+    } else {
+        configHasPaths = false;
     }
+}
+
+/*!
+    Returns the value for a given \a location from \c qt.conf
+
+    If no \c qt.conf is found, or the configuration doesn't
+    specify a value for the given \a path a null-variant is
+    returned.
+
+    \internal
+*/
+QVariant QLibrarySettings::value(QLibraryInfo::LibraryPath location)
+{
+    const auto locationInfo = QLibraryInfoPrivate::locationInfo(location);
+    if (locationInfo.key.isNull())
+        return {};
+
+    QSettings *config = configuration();
+    if (!settings || !configHasPaths)
+        return {};
+
+    config->beginGroup("Paths"_L1);
+    auto cleanup = qScopeGuard([&]() { config->endGroup(); });
+    QVariant value = config->value(locationInfo.key);
+    if (!value.isValid() && !locationInfo.fallbackKey.isNull())
+        value = config->value(locationInfo.fallbackKey);
+    return value;
+}
+
+QStringList QLibrarySettings::paths(QLibraryInfo::LibraryPath location)
+{
+    QStringList ret;
+    if (QVariant v = value(location); v.isValid()) {
+        if (auto *asList = get_if<QStringList>(&v))
+            ret = std::move(*asList);
+        else
+            ret << v.toString();
+
+        for (qsizetype i = 0, end = ret.size(); i < end; ++i)
+            ret[i] = QLibraryInfoPrivate::expandEnvVariables(ret[i]);
+    }
+    return ret;
 }
 
 namespace {
@@ -96,15 +206,15 @@ void QLibraryInfoPrivate::setQtconfManualPath(const QString *path)
     qtconfManualPath = path;
 }
 
-static QSettings *findConfiguration()
+static std::unique_ptr<QSettings> findConfiguration()
 {
     if (qtconfManualPath)
-        return new QSettings(*qtconfManualPath, QSettings::IniFormat);
+        return std::make_unique<QSettings>(*qtconfManualPath, QSettings::IniFormat);
 
     QString qtconfig = QStringLiteral(":/qt/etc/qt.conf");
-    if (QFile::exists(qtconfig))
-        return new QSettings(qtconfig, QSettings::IniFormat);
-#ifdef Q_OS_DARWIN
+    if (QResource(qtconfig, QLocale::c()).isValid())
+        return std::make_unique<QSettings>(qtconfig, QSettings::IniFormat);
+#if defined(Q_OS_APPLE)
     CFBundleRef bundleRef = CFBundleGetMainBundle();
     if (bundleRef) {
         QCFType<CFURLRef> urlRef = CFBundleCopyResourceURL(bundleRef,
@@ -115,18 +225,18 @@ static QSettings *findConfiguration()
             QCFString path = CFURLCopyFileSystemPath(urlRef, kCFURLPOSIXPathStyle);
             qtconfig = QDir::cleanPath(path);
             if (QFile::exists(qtconfig))
-                return new QSettings(qtconfig, QSettings::IniFormat);
+                return std::make_unique<QSettings>(qtconfig, QSettings::IniFormat);
         }
     }
 #endif
-    if (QCoreApplication::instance()) {
-        QDir pwd(QCoreApplication::applicationDirPath());
-        qtconfig = pwd.filePath(u"qt" QT_STRINGIFY(QT_VERSION_MAJOR) ".conf"_s);
+    if (QCoreApplication::instanceExists()) {
+        QString pwd = QCoreApplication::applicationDirPath();
+        qtconfig = pwd + u"/qt" QT_STRINGIFY(QT_VERSION_MAJOR) ".conf"_s;
         if (QFile::exists(qtconfig))
-            return new QSettings(qtconfig, QSettings::IniFormat);
-        qtconfig = pwd.filePath("qt.conf"_L1);
+            return std::make_unique<QSettings>(qtconfig, QSettings::IniFormat);
+        qtconfig = pwd + u"/qt.conf";
         if (QFile::exists(qtconfig))
-            return new QSettings(qtconfig, QSettings::IniFormat);
+            return std::make_unique<QSettings>(qtconfig, QSettings::IniFormat);
     }
     return nullptr;     //no luck
 }
@@ -136,34 +246,34 @@ QSettings *QLibraryInfoPrivate::configuration()
     QLibrarySettings *ls = qt_library_settings();
     return ls ? ls->configuration() : nullptr;
 }
+#endif // settings
 
 void QLibraryInfoPrivate::reload()
 {
+#if QT_CONFIG(settings)
     if (qt_library_settings.exists())
         qt_library_settings->load();
+#endif
+    if (prefixCache.exists())
+        *prefixCache = {};
 }
-
-static bool havePaths() {
-    QLibrarySettings *ls = qt_library_settings();
-    return ls && ls->havePaths();
-}
-
-#endif // settings
 
 /*!
     \class QLibraryInfo
     \inmodule QtCore
-    \brief The QLibraryInfo class provides information about the Qt library.
+    \brief The QLibraryInfo class provides information about the Qt libraries.
 
-    Many pieces of information are established when Qt is configured and built.
-    This class provides an abstraction for accessing that information.
-    By using the static functions of this class, an application can obtain
-    information about the instance of the Qt library which the application
-    is using at run-time.
+    This class provides an abstraction for accessing information about the
+    Qt libraries which the application is using, such as run-time paths,
+    or the build configuration of the Qt libraries.
 
-    You can also use a \c qt.conf file to override the hard-coded paths
-    that are compiled into the Qt library. For more information, see
-    the \l {Using qt.conf} documentation.
+    The default run-time paths depend on the Qt build configuration, as well
+    as whether the Qt libraries have been relocated, and possibly bundled along
+    with the application.
+
+    You can use a \c qt.conf file to override the default paths,
+    in case your deployment situation does not match the defaults.
+    For more information, see the \l {Using qt.conf} documentation.
 
     \sa QSysInfo, {Using qt.conf}
 */
@@ -191,8 +301,10 @@ QLibraryInfo::QLibraryInfo()
 #    define COMPILER_STRING "MSVC 2017"
 #  elif _MSC_VER < 1930
 #    define COMPILER_STRING "MSVC 2019"
-#  elif _MSC_VER < 2000
+#  elif _MSC_VER < 1950
 #    define COMPILER_STRING "MSVC 2022"
+#  elif _MSC_VER < 2000
+#    define COMPILER_STRING "MSVC 2026"
 #  else
 #    define COMPILER_STRING "MSVC _MSC_VER " QT_STRINGIFY(_MSC_VER)
 #  endif
@@ -266,43 +378,120 @@ QVersionNumber QLibraryInfo::version() noexcept
     return QVersionNumber(QT_VERSION_MAJOR, QT_VERSION_MINOR, QT_VERSION_PATCH);
 }
 
-static QString prefixFromAppDirHelper()
-{
-    QString appDir;
+/*!
+    \internal
 
-    if (QCoreApplication::instance()) {
-#ifdef Q_OS_DARWIN
-        CFBundleRef bundleRef = CFBundleGetMainBundle();
-        if (bundleRef) {
-            QCFType<CFURLRef> urlRef = CFBundleCopyBundleURL(bundleRef);
-            if (urlRef) {
-                QCFString path = CFURLCopyFileSystemPath(urlRef, kCFURLPOSIXPathStyle);
-#ifdef Q_OS_MACOS
-                QString bundleContentsDir = QString(path) + "/Contents/"_L1;
-                if (QDir(bundleContentsDir).exists())
-                    return QDir::cleanPath(bundleContentsDir);
+    Returns the qt.conf "Prefix" entry the application prefix is rooted at,
+    falling back to its "." default when there's no qt.conf with paths (or
+    settings support), so the prefix then resolves to the application directory.
+*/
+QString QLibraryPrefixes::qtConfPrefix()
+{
+#if QT_CONFIG(settings)
+    QLibrarySettings *settings = qt_library_settings();
+    if (settings && settings->havePaths()) {
+        const QString prefix = settings->paths(QLibraryInfo::PrefixPath).value(0);
+        if (!prefix.isEmpty())
+            return prefix;
+    }
+#endif
+    return u"."_s;
+}
+
+/*!
+    \internal
+
+    The directory the application prefix is rooted at: the app bundle on
+    Apple platforms, or the application directory once a QCoreApplication
+    exists. Returns an empty string when no stable source is available yet.
+*/
+QString QLibraryPrefixes::resolveAppDir()
+{
+#if defined(Q_OS_APPLE)
+    // Resolve the app prefix from the app bundle instead of the
+    // executable, as that correctly handles both the main executable
+    // as well as possibly deeply nested helper tools, and lets us
+    // root the app prefix at the base of the bundle. Note that
+    // CFBundleGetMainBundle returns a bundle representation even
+    // for unbundled apps, so we verify the URL is actually a bundle.
+    if (CFBundleRef bundleRef = CFBundleGetMainBundle()) {
+        if (QCFType<CFURLRef> urlRef = CFBundleCopyBundleURL(bundleRef)) {
+            const QString bundlePath = QCFString(CFURLCopyFileSystemPath(urlRef, kCFURLPOSIXPathStyle));
+            if (qt_apple_bundleType(bundlePath)) {
+#if defined(Q_OS_MACOS)
+                // On macOS the prefix is rooted at the bundle's Contents directory.
+                return QFileInfo(bundlePath + "/Contents"_L1).canonicalFilePath();
 #else
-                return QDir::cleanPath(QString(path)); // iOS
+                return QFileInfo(bundlePath).canonicalFilePath(); // iOS
 #endif // Q_OS_MACOS
             }
         }
-#endif // Q_OS_DARWIN
+    }
+#endif // Q_OS_APPLE
+
+    if (QCoreApplication::instanceExists()) {
         // We make the prefix path absolute to the executable's directory.
-        appDir = QCoreApplication::applicationDirPath();
-    } else {
-        appDir = QDir::currentPath();
+        return QCoreApplication::applicationDirPath();
     }
 
-    return appDir;
+    // Without an application instance there's no stable source; return an
+    // empty string so the result isn't cached, and let appPrefix() fall back
+    // to the (volatile) working directory until a stable source is available.
+    return {};
+}
+
+/*!
+    \internal
+
+    The fully resolved application prefix: the qt.conf "Prefix" entry
+    (explicit, or the "." default) rooted at the application directory.
+    An absolute Prefix is used as-is, independent of the application
+    directory. Without a qt.conf the prefix is the application directory
+    itself, which is also what static builds use as their Qt prefix.
+
+    Returns an empty string when the result would depend on a not-yet-stable
+    application directory, so it isn't cached; appPrefix() then roots the
+    prefix at the (volatile) working directory until a stable source exists.
+*/
+QString QLibraryPrefixes::resolveAppPrefix()
+{
+    const QString prefix = qtConfPrefix();
+    // An absolute qt.conf Prefix is stable on its own, regardless of appDir.
+    if (!pathIsRelative(prefix))
+        return prefix;
+    const QString appDir = resolveAppDir();
+    if (appDir.isEmpty())
+        return {};
+    return QDir::cleanPath(appDir + u'/' + prefix);
+}
+
+QString QLibraryPrefixes::appPrefix()
+{
+    QString prefix = cached(&QLibraryPrefixes::m_app, &QLibraryPrefixes::resolveAppPrefix);
+    if (!prefix.isNull())
+        return prefix;
+
+    // No stable source yet; root the possible qt.conf Prefix at the volatile
+    // working directory, without caching, until one is available.
+    return QDir::cleanPath(QDir::currentPath() + u'/' + qtConfPrefix());
 }
 
 #if QT_CONFIG(relocatable)
-#if !defined(QT_STATIC) && !(defined(Q_OS_DARWIN) && QT_CONFIG(framework)) \
-        && (QT_CONFIG(dlopen) || defined(Q_OS_WIN))
+#if !defined(QT_STATIC) && (QT_CONFIG(dlopen) || defined(Q_OS_WIN))
 static QString prefixFromQtCoreLibraryHelper(const QString &qtCoreLibraryPath)
 {
     const QString qtCoreLibrary = QDir::fromNativeSeparators(qtCoreLibraryPath);
-    const QString libDir = QFileInfo(qtCoreLibrary).absolutePath();
+    QString libDir = QFileInfo(qtCoreLibrary).absolutePath();
+
+#if QT_CONFIG(framework)
+# if defined(Q_OS_MACOS)
+    // The library in a macOS framework lives in a `Versions/A/` subdirectory
+    libDir += "/../.."_L1;
+# endif
+    // And both macOS and iOS frameworks are `.framework` bundle directories
+    libDir += "/.."_L1;
+#endif
+
     const QString prefixDir = libDir + "/" QT_CONFIGURE_LIBLOCATION_TO_PREFIX_PATH;
     return QDir::cleanPath(prefixDir);
 }
@@ -319,86 +508,52 @@ static HMODULE getWindowsModuleHandle()
 }
 #endif // Q_OS_WIN
 
-static QString getRelocatablePrefix(QLibraryInfoPrivate::UsageMode usageMode)
+static QString relocatablePrefixFromQt()
 {
     QString prefixPath;
 
-    // For static builds, the prefix will be the app directory.
+    // For static builds, the prefix will be the app directory, unless it's a non-sandboxed Apple app.
     // For regular builds, the prefix will be relative to the location of the QtCore shared library.
 #if defined(QT_STATIC)
-    prefixPath = prefixFromAppDirHelper();
-    if (usageMode == QLibraryInfoPrivate::UsedFromQtBinDir) {
-        // For Qt tools in a static build, we must chop off the bin directory.
-        constexpr QByteArrayView binDir = qt_configure_strs.viewAt(QLibraryInfo::BinariesPath - 1);
-        constexpr size_t binDirLength = binDir.size() + 1;
-        prefixPath.chop(binDirLength);
-    }
-#elif defined(Q_OS_DARWIN) && QT_CONFIG(framework)
-    Q_UNUSED(usageMode);
-#ifndef QT_LIBINFIX
-    #define QT_LIBINFIX ""
-#endif
-    auto qtCoreBundle = CFBundleGetBundleWithIdentifier(CFSTR("org.qt-project.QtCore" QT_LIBINFIX));
-    if (!qtCoreBundle) {
-        // When running Qt apps over Samba shares, CoreFoundation will fail to find
-        // the Resources directory inside the bundle, This directory is a symlink,
-        // and CF relies on readdir() and dtent.dt_type to detect symlinks, which
-        // does not work reliably for Samba shares. We work around it by manually
-        // looking for the QtCore bundle.
-        auto allBundles = CFBundleGetAllBundles();
-        auto bundleCount = CFArrayGetCount(allBundles);
-        for (int i = 0; i < bundleCount; ++i) {
-            auto bundle = CFBundleRef(CFArrayGetValueAtIndex(allBundles, i));
-            auto url = QCFType<CFURLRef>(CFBundleCopyBundleURL(bundle));
-            auto path = QCFType<CFStringRef>(CFURLCopyFileSystemPath(url, kCFURLPOSIXPathStyle));
-            if (CFStringHasSuffix(path, CFSTR("/QtCore" QT_LIBINFIX ".framework"))) {
-                qtCoreBundle = bundle;
-                break;
-            }
-        }
-    }
-    Q_ASSERT(qtCoreBundle);
-
-    QCFType<CFURLRef> qtCorePath = CFBundleCopyBundleURL(qtCoreBundle);
-    Q_ASSERT(qtCorePath);
-
-    QCFType<CFURLRef> qtCorePathAbsolute = CFURLCopyAbsoluteURL(qtCorePath);
-    Q_ASSERT(qtCorePathAbsolute);
-
-    QCFType<CFURLRef> libDirCFPath = CFURLCreateCopyDeletingLastPathComponent(NULL, qtCorePathAbsolute);
-
-    const QCFString libDirCFString = CFURLCopyFileSystemPath(libDirCFPath, kCFURLPOSIXPathStyle);
-
-    const QString prefixDir = QString(libDirCFString) + "/" QT_CONFIGURE_LIBLOCATION_TO_PREFIX_PATH;
-
-    prefixPath = QDir::cleanPath(prefixDir);
+# if defined(Q_OS_APPLE)
+    // The default value for QT_CONFIG(relocatable) for static builds
+    // used to be false, giving end users QT_CONFIGURE_PREFIX_PATH as
+    // the prefix path. We've since changed the default to true for
+    // Apple platforms, since sandboxed applications are always
+    // relocated, even for static builds. To avoid regressions for
+    // those that shipped non-sandboxed apps with static Qt relying
+    // on the previous behavior, we fall back to the Qt configure
+    // prefix for non-sandboxed apps.
+    if (!qt_apple_isSandboxed())
+        return QString::fromLocal8Bit(QT_CONFIGURE_PREFIX_PATH);
+# endif
+    prefixPath = QLibraryPrefixes::appPrefix();
 #elif defined(Q_OS_WASM)
     // Emscripten expects to find shared libraries at the root of the in-memory
     // file system when resolving dependencies for for dlopen() calls. So that's
     // where libqt6core.so would be.
     prefixPath = QStringLiteral("/");
 #elif QT_CONFIG(dlopen)
-    Q_UNUSED(usageMode);
     Dl_info info;
     int result = dladdr(reinterpret_cast<void *>(&QLibraryInfo::isDebugBuild), &info);
     if (result > 0 && info.dli_fname)
         prefixPath = prefixFromQtCoreLibraryHelper(QString::fromLocal8Bit(info.dli_fname));
 #elif defined(Q_OS_WIN)
-    Q_UNUSED(usageMode);
     HMODULE hModule = getWindowsModuleHandle();
     const int kBufferSize = 4096;
     wchar_t buffer[kBufferSize];
     DWORD pathSize = GetModuleFileName(hModule, buffer, kBufferSize);
     const QString qtCoreFilePath = QString::fromWCharArray(buffer, int(pathSize));
     const QString qtCoreDirPath = QFileInfo(qtCoreFilePath).absolutePath();
-    pathSize = GetModuleFileName(NULL, buffer, kBufferSize);
+
+    hModule = reinterpret_cast<HMODULE>(QCoreApplicationPrivate::mainInstanceHandle);
+    pathSize = GetModuleFileName(hModule, buffer, kBufferSize);
     const QString exeDirPath = QFileInfo(QString::fromWCharArray(buffer, int(pathSize))).absolutePath();
     if (QFileInfo(exeDirPath) == QFileInfo(qtCoreDirPath)) {
         // QtCore DLL is next to the executable. This is either a windeployqt'ed executable or an
         // executable within the QT_HOST_BIN directory. We're detecting the latter case by checking
         // whether there's an import library corresponding to our QtCore DLL in PREFIX/lib.
-        const QString libdir = QString::fromLocal8Bit(
-            qt_configure_strs.viewAt(QLibraryInfo::LibrariesPath - 1));
+        QStringView libdir = qt_configure_strs.viewAt(QLibraryInfo::LibrariesPath - 1);
         const QLatin1Char slash('/');
 #if defined(Q_CC_MINGW)
         const QString implibPrefix = QStringLiteral("lib");
@@ -429,8 +584,7 @@ static QString getRelocatablePrefix(QLibraryInfoPrivate::UsageMode usageMode)
     // QTBUG-78948: libQt5Core.so may be located in subdirectories below libdir.
     // See "Hardware capabilities" in the ld.so documentation and the Qt 5.3.0
     // changelog regarding SSE2 support.
-    const QString libdir = QString::fromLocal8Bit(
-        qt_configure_strs.viewAt(QLibraryInfo::LibrariesPath - 1));
+    QString libdir = fromRawStringView(qt_configure_strs.viewAt(QLibraryInfo::LibrariesPath - 1));
     QDir prefixDir(prefixPath);
     while (!prefixDir.exists(libdir)) {
         prefixDir.cdUp();
@@ -442,23 +596,36 @@ static QString getRelocatablePrefix(QLibraryInfoPrivate::UsageMode usageMode)
     }
 #endif
 
-    Q_ASSERT_X(!prefixPath.isEmpty(), "getRelocatablePrefix",
+    Q_ASSERT_X(!prefixPath.isEmpty(), "relocatablePrefixFromQt",
                                       "Failed to find the Qt prefix path.");
     return prefixPath;
 }
 #endif
 
-static QString getPrefix(QLibraryInfoPrivate::UsageMode usageMode)
+QString QLibraryPrefixes::resolveQtPrefix()
 {
 #if QT_CONFIG(relocatable)
-    return getRelocatablePrefix(usageMode);
+    return relocatablePrefixFromQt();
 #else
-    Q_UNUSED(usageMode);
     return QString::fromLocal8Bit(QT_CONFIGURE_PREFIX_PATH);
 #endif
 }
 
-QLibraryInfoPrivate::LocationInfo QLibraryInfoPrivate::locationInfo(QLibraryInfo::LibraryPath loc)
+QString QLibraryPrefixes::qtPrefix()
+{
+#if defined(QT_STATIC)
+    // In static builds the Qt prefix resolves via the app directory (see
+    // relocatablePrefixFromQt), which is not stable until an application
+    // instance exists, and is cached and invalidated by appPrefix().
+    // Don't cache it a second time here, to avoid freezing a transient
+    // working-directory value.
+    return resolveQtPrefix();
+#else
+    return cached(&QLibraryPrefixes::m_qt, &QLibraryPrefixes::resolveQtPrefix);
+#endif
+}
+
+QLibraryInfoPrivate::LocationInfo QLibraryInfoPrivate::locationInfo(QLibraryInfo::LibraryPath location)
 {
     /*
      * To add a new entry in QLibraryInfo::LibraryPath, add it to the enum
@@ -492,13 +659,13 @@ QLibraryInfoPrivate::LocationInfo QLibraryInfoPrivate::locationInfo(QLibraryInfo
 
     LocationInfo result;
 
-    if (int(loc) < qtConfEntries.count()) {
-        result.key = QLatin1StringView(qtConfEntries.viewAt(loc * 2));
-        result.defaultValue = QLatin1StringView(qtConfEntries.viewAt(loc * 2 + 1));
+    if (int(location) < qtConfEntries.count()) {
+        result.key = QLatin1StringView(qtConfEntries.viewAt(location * 2));
+        result.defaultValue = QLatin1StringView(qtConfEntries.viewAt(location * 2 + 1));
         if (result.key == u"QmlImports")
             result.fallbackKey = u"Qml2Imports"_s;
-#ifndef Q_OS_WIN // On Windows we use the registry
-    } else if (loc == QLibraryInfo::SettingsPath) {
+#if !defined(Q_OS_WIN) // On Windows we use the registry
+    } else if (location == QLibraryInfo::SettingsPath) {
         result.key = "Settings"_L1;
         result.defaultValue = QLatin1StringView(dot);
 #endif
@@ -506,6 +673,57 @@ QLibraryInfoPrivate::LocationInfo QLibraryInfoPrivate::locationInfo(QLibraryInfo
 
     return result;
 }
+
+#if defined(Q_OS_APPLE)
+/*!
+    \internal
+
+    Relative suffixes for the modern Apple bundle layout, reported in addition to
+    the unixy scheme when a prefix is a bundle. Root-agnostic: the same suffixes
+    apply whether rooted at the app or the Qt prefix. Mirrors the conventions that
+    macdeployqt and the CMake deployment machinery follow. Returns empty for
+    locations with no modern equivalent (only the unixy suffix is then reported).
+*/
+static QStringList appleBundleSuffixes(QLibraryInfo::LibraryPath location)
+{
+    constexpr bool isMacOS =
+        QOperatingSystemVersion::currentType() == QOperatingSystemVersion::MacOS;
+    constexpr QStringView resourcesDir = isMacOS ? u"Resources/" : u"./";
+    constexpr QStringView sharedSupportDir = u"SharedSupport/";
+
+    switch (location) {
+    case QLibraryInfo::BinariesPath:
+        return { isMacOS ? u"MacOS"_s : u"."_s };
+    case QLibraryInfo::PluginsPath:
+        return { u"PlugIns"_s };
+    case QLibraryInfo::LibrariesPath:
+        return { u"Frameworks"_s };
+    case QLibraryInfo::HeadersPath:
+        return { u"Headers"_s };
+    case QLibraryInfo::LibraryExecutablesPath:
+        return { u"Helpers"_s };
+    case QLibraryInfo::DataPath:
+        return { resourcesDir.toString() };
+    case QLibraryInfo::QmlImportsPath:
+        return { resourcesDir + u"qml"_s };
+    case QLibraryInfo::ArchDataPath:
+        return { resourcesDir + ARCH_PROCESSOR };
+    case QLibraryInfo::TranslationsPath:
+        return { resourcesDir + u"translations"_s };
+    case QLibraryInfo::DocumentationPath:
+        return { sharedSupportDir + u"doc"_s };
+    case QLibraryInfo::ExamplesPath:
+        return { sharedSupportDir + u"examples"_s };
+    case QLibraryInfo::TestsPath:
+        return { sharedSupportDir + u"tests"_s };
+    case QLibraryInfo::PrefixPath:
+    case QLibraryInfo::SettingsPath:
+        return {};
+    }
+
+    Q_UNREACHABLE_RETURN({});
+}
+#endif
 
 /*! \fn QString QLibraryInfo::location(LibraryLocation loc)
     \deprecated [6.0] Use path() instead.
@@ -537,19 +755,38 @@ QStringList QLibraryInfo::paths(LibraryPath p)
     return QLibraryInfoPrivate::paths(p);
 }
 
-static bool keepQtBuildDefaults()
+/*!
+    Returns whether we have a user-written qt.conf with explicit paths.
+
+    A user-written qt.conf is an expression of exclusivity: the
+    application declares the layout it follows, so its paths replace the Qt
+    ones, and the stable fallback-values from locationInfo() are rooted at the
+    application prefix for the locations the qt.conf leaves out.
+
+    A qt.conf with MergeQtConf = true is an artifact generated by the
+    Qt QML CMake machinery to support development builds, and does not
+    qualify as a user-written qt.conf.
+
+    \internal
+*/
+static bool haveUserQtConf()
 {
 #if QT_CONFIG(settings)
-    QSettings *config = QLibraryInfoPrivate::configuration();
-    Q_ASSERT(config != nullptr);
-    return config->value("Config/MergeQtConf", false).toBool();
-#else
-    return false;
+    if (QLibrarySettings *qtConf = qt_library_settings()) {
+        if (!qtConf->havePaths())
+            return false;
+
+        if (qtConf->configuration()->value("Config/MergeQtConf", false).toBool())
+            return false;
+
+        return true;
+    }
 #endif
+    return false;
 }
 
 #if QT_CONFIG(settings)
-static QString normalizePath(QString ret)
+QString QLibraryInfoPrivate::expandEnvVariables(QString ret)
 {
     qsizetype startIndex = 0;
     /* We support placeholders of the form $(<ENV_VAR>) in qt.conf.
@@ -575,101 +812,208 @@ static QString normalizePath(QString ret)
         startIndex += value.size();
     }
     return QDir::fromNativeSeparators(ret);
-};
-
-static QVariant libraryPathToValue(QLibraryInfo::LibraryPath loc)
-{
-    QVariant value;
-    auto li = QLibraryInfoPrivate::locationInfo(loc);
-    if (li.key.isNull())
-        return value;
-    QSettings *config = QLibraryInfoPrivate::configuration();
-    Q_ASSERT(config != nullptr);
-    // if keepQtBuildDefaults returns true,
-    // we only consider explicit values listed in qt.conf
-    QVariant defaultValue = keepQtBuildDefaults()
-            ? QVariant()
-            : QVariant(li.defaultValue);
-    config->beginGroup("Paths"_L1);
-    auto cleanup = qScopeGuard([&]() { config->endGroup(); });
-    if (li.fallbackKey.isNull()) {
-        value = config->value(li.key, defaultValue);
-    } else {
-        value = config->value(li.key);
-        if (!value.isValid())
-            value = config->value(li.fallbackKey, defaultValue);
-    }
-    return value;
 }
+
 #endif // settings
 
-QStringList QLibraryInfoPrivate::paths(QLibraryInfo::LibraryPath p,
-                                       UsageMode usageMode)
+/*!
+    \internal
+
+    Roots any relative entries in \a paths at the directory returned by
+    \a resolveBaseDir, which is resolved lazily (only when there's actually a
+    relative path to root, and at most once).
+*/
+static QStringList makeAbsolute(QStringList paths, QString (*resolveBaseDir)())
 {
-    const QLibraryInfo::LibraryPath loc = p;
-    QList<QString> ret;
-    bool fromConf = false;
-#if QT_CONFIG(settings)
-    if (havePaths()) {
-        fromConf = true;
-
-        QVariant value = libraryPathToValue(loc);
-        if (value.isValid()) {
-
-            if (auto *asList = get_if<QList<QString>>(&value))
-                ret = std::move(*asList);
-            else
-                ret = QList<QString>({ std::move(value).toString()});
-            for (qsizetype i = 0, end = ret.size(); i < end; ++i)
-                ret[i] = normalizePath(ret[i]);
-        }
-    }
-#endif // settings
-
-    if (!fromConf || keepQtBuildDefaults()) {
-        QString noConfResult;
-        if (loc == QLibraryInfo::PrefixPath) {
-            noConfResult = getPrefix(usageMode);
-        } else if (int(loc) <= qt_configure_strs.count()) {
-            noConfResult = QString::fromLocal8Bit(qt_configure_strs.viewAt(loc - 1));
-#ifndef Q_OS_WIN // On Windows we use the registry
-        } else if (loc == QLibraryInfo::SettingsPath) {
-            // Use of volatile is a hack to discourage compilers from calling
-            // strlen(), in the inlined fromLocal8Bit(const char *)'s body, at
-            // compile-time, as Qt installers binary-patch the path, replacing
-            // the dummy path seen at compile-time, typically changing length.
-            const char *volatile path = QT_CONFIGURE_SETTINGS_PATH;
-            noConfResult = QString::fromLocal8Bit(path);
-#endif
-        }
-        if (!noConfResult.isEmpty())
-            ret.push_back(std::move(noConfResult));
-    }
-    if (ret.isEmpty())
-        return ret;
-
     QString baseDir;
-    if (loc == QLibraryInfo::PrefixPath) {
-        baseDir = prefixFromAppDirHelper();
-    } else {
-        // we make any other path absolute to the prefix directory
-        baseDir = QLibraryInfoPrivate::path(QLibraryInfo::PrefixPath, usageMode);
+    for (QString &path : paths) {
+        if (pathIsRelative(path)) {
+            if (baseDir.isNull())
+                baseDir = resolveBaseDir();
+            path = QDir::cleanPath(baseDir + u'/' + std::move(path));
+        }
     }
-    for (qsizetype i = 0, end = ret.size(); i < end; ++i)
-        if (QDir::isRelativePath(ret[i]))
-            ret[i] = QDir::cleanPath(baseDir + u'/' +  std::move(ret[i]));
-    return ret;
+    return paths;
+}
+
+#if defined(Q_OS_APPLE)
+/*!
+    \internal
+
+    Whether a resolved \a prefix is rooted at an Apple bundle. Path-based, so it
+    works for any prefix (the app or the Qt prefix), not just the main bundle.
+*/
+static bool prefixIsBundle(const QString &prefix)
+{
+    QString bundlePath = prefix;
+#if defined(Q_OS_MACOS)
+    // On macOS the prefix is rooted at the bundle's Contents directory.
+    // On iOS/visionOS the prefix already is the bundle directory.
+    const QFileSystemEntry prefixInfo(prefix, QFileSystemEntry::FromInternalPath());
+    if (prefixInfo.fileName() == "Contents"_L1)
+        bundlePath = prefixInfo.path();
+#endif
+    return bool(qt_apple_bundleType(bundlePath));
+}
+#endif
+
+/*!
+    \internal
+
+    All the paths \a location can resolve to, in order of priority, deduplicated.
+*/
+QStringList QLibraryInfoPrivate::paths(QLibraryInfo::LibraryPath location)
+{
+    // The paths a qt.conf lists explicitly always come first, as they are the only
+    // ones anyone declared. What follows depends on whether the qt.conf was written
+    // by the user, as described in haveUserQtConf().
+    QStringList paths = qtConfPaths(location);
+
+    if (!haveUserQtConf()) {
+        // Without a user-written qt.conf the Qt-prefixed paths come first, so that an
+        // application running against a non-bundled Qt keeps reporting that Qt's paths
+        // first, for compatibility, as that's what consumers using path() rely on.
+        paths += qtPaths(location);
+    }
+
+    // We always report the app-rooted paths, to allow picking up libraries,
+    // plugins, and other resources from the app's location during both development
+    // and deployment. And as we use paths() in Qt itself, for e.g. plugin or QML
+    // module lookup, we will find them either way. This also covers an app bundle
+    // nested inside an outer bundle that bundles Qt, for example an app extension
+    // inside its main application, where each bundle may hold part of the
+    // deployment story.
+    paths += appPaths(location);
+
+    paths.removeDuplicates();
+    return paths;
+}
+
+/*!
+    \internal
+
+    The paths a qt.conf lists explicitly for \a location, rooted at the app
+    prefix. Empty if there is no qt.conf, or it doesn't list the location.
+
+    Both a user-written and a generated qt.conf are reported here. A generated
+    one merges with the Qt build defaults, and is an overlay: the locations it
+    lists still take priority, as that's the point of the mechanism, but it
+    neither suppresses the other paths, nor implies anything about the locations
+    it leaves out.
+*/
+QStringList QLibraryInfoPrivate::qtConfPaths(QLibraryInfo::LibraryPath location)
+{
+#if QT_CONFIG(settings)
+    if (QLibrarySettings *qtConfSettings = qt_library_settings()) {
+        if (location == QLibraryInfo::PrefixPath) {
+            // An explicit Prefix is resolved against the application directory,
+            // and not the app prefix like the other values, as we'd otherwise
+            // end up double-applying any relative paths in the prefix.
+            if (!qtConfSettings->paths(location).isEmpty())
+                return { QLibraryPrefixes::appPrefix() };
+            else
+                return {};
+        }
+
+        return makeAbsolute(qtConfSettings->paths(location), &QLibraryPrefixes::appPrefix);
+    }
+#else
+    Q_UNUSED(location);
+#endif
+    return {};
+}
+
+/*!
+    \internal
+
+    The paths implied by the application's own layout for \a location, rooted at
+    the app prefix.
+
+    We add the modern Apple suffixes when the app prefix is a bundle, followed by
+    the Unixy stable fallback-value when a user-written qt.conf says the application
+    follows that layout.
+
+    Returns empty when neither applies: a plain executable with no qt.conf, or one
+    with only a merging qt.conf, which doesn't imply that the application has paths
+    of its own. A bundle always reports its Apple suffixes, whatever the qt.conf says.
+*/
+QStringList QLibraryInfoPrivate::appPaths(QLibraryInfo::LibraryPath location)
+{
+    bool appPrefixIsBundle = false;
+#if defined(Q_OS_APPLE)
+    appPrefixIsBundle = prefixIsBundle(QLibraryPrefixes::appPrefix());
+#endif
+
+    const bool appDeclaresItsLayout = haveUserQtConf();
+
+    // The prefix itself is reported whenever anything implies that the
+    // application has paths of its own, so that the application prefix stays
+    // discoverable via QLibraryInfo, but not for a generated qt.conf alone, as
+    // that only overlays the locations it lists.
+    if (location == QLibraryInfo::PrefixPath) {
+        if (appPrefixIsBundle || appDeclaresItsLayout)
+            return { QLibraryPrefixes::appPrefix() };
+        return {};
+    }
+
+    QStringList paths;
+
+#if defined(Q_OS_APPLE)
+    if (appPrefixIsBundle)
+        paths += appleBundleSuffixes(location);
+#endif
+
+    // A bundle on its own only implies the modern Apple layout. The Unixy
+    // layout is legacy in a bundle, and outside of one it's not implied by
+    // anything but a user-written qt.conf, so we leave it to the Qt prefix
+    // otherwise.
+    if (appDeclaresItsLayout) {
+        const auto locationInfo = QLibraryInfoPrivate::locationInfo(location);
+        if (!locationInfo.defaultValue.isNull())
+            paths << locationInfo.defaultValue;
+    }
+
+    return makeAbsolute(std::move(paths), &QLibraryPrefixes::appPrefix);
+}
+
+/*!
+    \internal
+
+    The Qt-prefixed paths for \a location, rooted at the Qt prefix. The Unixy
+    configure-time suffix is preceded by the modern Apple suffixes when the Qt
+    prefix is itself a bundle, which is the case when Qt was deployed into an
+    application bundle.
+*/
+QStringList QLibraryInfoPrivate::qtPaths(QLibraryInfo::LibraryPath location)
+{
+    if (location == QLibraryInfo::PrefixPath)
+        return { QLibraryPrefixes::qtPrefix() };
+
+    QStringList paths;
+
+#if defined(Q_OS_APPLE)
+    if (prefixIsBundle(QLibraryPrefixes::qtPrefix()))
+        paths += appleBundleSuffixes(location);
+#endif
+
+    if (int(location) <= qt_configure_strs.count()) {
+        paths << fromRawStringView(qt_configure_strs.viewAt(location - 1));
+#if !defined(Q_OS_WIN) // On Windows we use the registry
+    } else if (location == QLibraryInfo::SettingsPath) {
+        constexpr QStringView path = u"" QT_CONFIGURE_SETTINGS_PATH;
+        paths << fromRawStringView(path);
+#endif
+    }
+
+    return makeAbsolute(std::move(paths), &QLibraryPrefixes::qtPrefix);
 }
 
 /*
     Returns the path specified by \a p.
-
-    The usage mode can be set to UsedFromQtBinDir to enable special handling for executables that
-    live in <install-prefix>/bin.
  */
-QString QLibraryInfoPrivate::path(QLibraryInfo::LibraryPath p, UsageMode usageMode)
+QString QLibraryInfoPrivate::path(QLibraryInfo::LibraryPath location)
 {
-    return paths(p, usageMode).value(0, QString());
+    return paths(location).value(0, QString());
 }
 
 /*!
@@ -688,8 +1032,7 @@ QString QLibraryInfoPrivate::path(QLibraryInfo::LibraryPath p, UsageMode usageMo
 QStringList QLibraryInfo::platformPluginArguments(const QString &platformName)
 {
 #if QT_CONFIG(settings)
-    QScopedPointer<const QSettings> settings(findConfiguration());
-    if (!settings.isNull()) {
+    if (const QSettings *settings = QLibraryInfoPrivate::configuration()) {
         const QString key = "Platforms/"_L1
                 + platformName
                 + "Arguments"_L1;
@@ -729,7 +1072,15 @@ QStringList QLibraryInfo::platformPluginArguments(const QString &platformName)
 
 /*!
     \typealias QLibraryInfo::LibraryLocation
-    \deprecated Use LibraryPath with QLibraryInfo::path() instead.
+    \deprecated [6.0] Use LibraryPath with QLibraryInfo::path() instead.
+*/
+
+/*!
+    \headerfile <QtVersion>
+    \inmodule QtCore
+    \ingroup funclists
+    \brief Information about which Qt version the application is running on,
+           and the version it was compiled against.
 */
 
 /*!
@@ -817,18 +1168,30 @@ extern const char qt_core_interpreter[] __attribute__((section(".interp")))
 extern "C" void qt_core_boilerplate() __attribute__((force_align_arg_pointer));
 void qt_core_boilerplate()
 {
+    QT_USE_NAMESPACE
+
     printf("This is the QtCore library version %s\n"
            "%s\n"
            "Contact: https://www.qt.io/licensing/\n"
-           "\n"
-           "Installation prefix: %s\n"
+           "\n",
+           QT_PREPEND_NAMESPACE(qt_build_string)(),
+           QT_COPYRIGHT);
+
+    QByteArray libPath =
+            qt_configure_strs.viewAt(QLibraryInfo::LibrariesPath - 1).toUtf8();
+    QByteArray pluginPath =
+            qt_configure_strs.viewAt(QLibraryInfo::PluginsPath - 1).toUtf8();
+#if QT_CONFIG(relocatable)
+    QByteArray prefix = QLibraryPrefixes::qtPrefix().toUtf8();
+#else
+    QByteArrayView prefix = QT_CONFIGURE_PREFIX_PATH;
+#endif
+    printf("Installation prefix: %s\n"
            "Library path:        %s\n"
            "Plugin path:         %s\n",
-           QT_PREPEND_NAMESPACE(qt_build_string)(),
-           QT_COPYRIGHT,
-           QT_CONFIGURE_PREFIX_PATH,
-           qt_configure_strs[QT_PREPEND_NAMESPACE(QLibraryInfo)::LibrariesPath - 1],
-           qt_configure_strs[QT_PREPEND_NAMESPACE(QLibraryInfo)::PluginsPath - 1]);
+           prefix.data(),
+           libPath.data(),
+           pluginPath.data());
 
     QT_PREPEND_NAMESPACE(qDumpCPUFeatures)();
 

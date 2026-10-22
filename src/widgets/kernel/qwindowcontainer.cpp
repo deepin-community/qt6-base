@@ -1,9 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowcontainer_p.h"
 #include "qwidget_p.h"
 #include "qwidgetwindow_p.h"
+#include <QtCore/qtimer.h>
 #include <QtGui/qwindow.h>
 #include <QtGui/private/qwindow_p.h>
 #include <QtGui/private/qguiapplication_p.h>
@@ -30,6 +32,7 @@ public:
     QWindowContainerPrivate()
         : window(nullptr)
         , usesNativeWidgets(false)
+        , syncingFocus(false)
     {
     }
 
@@ -108,6 +111,7 @@ public:
     QWindow fakeParent;
 
     uint usesNativeWidgets : 1;
+    uint syncingFocus : 1;
 };
 
 
@@ -156,25 +160,28 @@ public:
     instance have any focus policy and it will delegate focus to the
     window via a call to QWindow::requestActivate(). However,
     returning to the normal focus chain from the QWindow instance will
-    be up to the QWindow instance implementation itself. For instance,
-    when entering a Qt Quick based window with tab focus, it is quite
-    likely that further tab presses will only cycle inside the QML
-    application. Also, whether QWindow::requestActivate() actually
-    gives the window focus, is platform dependent.
+    be up to the QWindow instance implementation itself. Also, whether
+    QWindow::requestActivate() actually gives the window focus, is
+    platform dependent.
+
+    If embedding a Qt Quick based window, Qt will automatically ensure
+    that tab presses will transition in and out of the embedded QML window,
+    allowing focus to move to the next or previous focusable object in the
+    window container chain.
 
     \li Using many window container instances in a QWidget-based
     application can greatly hurt the overall performance of the
     application.
 
-    \li Since 6.7, if \a window belongs to a widget (that is, \a window
+    \endlist
+
+    \note If \a window belongs to a widget (that is, \a window
     was received from calling \l windowHandle()), no container will be
     created. Instead, this function will return the widget itself, after
     being reparented to \l parent. Since no container will be created,
     \a flags will be ignored. In other words, if \a window belongs to
     a widget, consider just reparenting that widget to \a parent instead
     of using this function.
-
-    \endlist
  */
 
 QWidget *QWidget::createWindowContainer(QWindow *window, QWidget *parent, Qt::WindowFlags flags)
@@ -269,8 +276,14 @@ bool QWindowContainer::eventFilter(QObject *o, QEvent *e)
             d->window = nullptr;
         }
     } else if (e->type() == QEvent::FocusIn) {
-        if (o == d->window)
-            setFocus(Qt::ActiveWindowFocusReason);
+        if (o == d->window) {
+            if (d->syncingFocus) {
+                d->syncingFocus = false;
+                return false;
+            }
+            if (!hasFocus())
+                setFocus(Qt::ActiveWindowFocusReason);
+        }
     }
     return false;
 }
@@ -320,7 +333,7 @@ bool QWindowContainer::event(QEvent *e)
         break;
     case QEvent::FocusIn:
         if (d->window->parent()) {
-            if (QGuiApplication::focusWindow() != d->window) {
+            if (QGuiApplication::focusWindow() != d->window && !d->syncingFocus) {
                 QFocusEvent *event = static_cast<QFocusEvent *>(e);
                 const auto reason = event->reason();
                 QWindowPrivate::FocusTarget target = QWindowPrivate::FocusTarget::Current;
@@ -329,7 +342,14 @@ bool QWindowContainer::event(QEvent *e)
                 else if (reason == Qt::BacktabFocusReason)
                     target = QWindowPrivate::FocusTarget::Last;
                 qt_window_private(d->window)->setFocusToTarget(target, reason);
+                d->syncingFocus = true;
                 d->window->requestActivate();
+                // In case the window doesn't get focused,
+                // we don't want to be stuck in syncingFocus forever. Reset it after a short delay.
+                QTimer::singleShot(200, this, [this]() {
+                    Q_D(QWindowContainer);
+                    d->syncingFocus = false;
+                });
             }
         }
         break;
@@ -422,7 +442,9 @@ void QWindowContainer::parentWasChanged(QWidget *parent)
 void QWindowContainer::parentWasMoved(QWidget *parent)
 {
     if (QWindowContainerPrivate *d = QWindowContainerPrivate::get(parent)) {
-        if (d->window->parent())
+        if (!d->window)
+            return;
+        else if (d->window->parent())
             d->updateGeometry();
     }
     qwindowcontainer_traverse(parent, parentWasMoved);
@@ -431,7 +453,9 @@ void QWindowContainer::parentWasMoved(QWidget *parent)
 void QWindowContainer::parentWasRaised(QWidget *parent)
 {
     if (QWindowContainerPrivate *d = QWindowContainerPrivate::get(parent)) {
-        if (d->window->parent())
+        if (!d->window)
+            return;
+        else if (d->window->parent())
             d->window->raise();
     }
     qwindowcontainer_traverse(parent, parentWasRaised);
@@ -440,7 +464,9 @@ void QWindowContainer::parentWasRaised(QWidget *parent)
 void QWindowContainer::parentWasLowered(QWidget *parent)
 {
     if (QWindowContainerPrivate *d = QWindowContainerPrivate::get(parent)) {
-        if (d->window->parent())
+        if (!d->window)
+            return;
+        else if (d->window->parent())
             d->window->lower();
     }
     qwindowcontainer_traverse(parent, parentWasLowered);

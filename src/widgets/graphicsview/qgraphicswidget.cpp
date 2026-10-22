@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qglobal.h"
 
@@ -675,13 +676,6 @@ void QGraphicsWidget::initStyleOption(QStyleOption *option) const
     }
     if (isWindow())
         option->state |= QStyle::State_Window;
-    /*
-      ###
-#ifdef QT_KEYPAD_NAVIGATION
-    if (widget->hasEditFocus())
-        state |= QStyle::State_HasEditFocus;
-#endif
-    */
     option->direction = layoutDirection();
     option->rect = rect().toRect(); // ### truncation!
     option->palette = palette();
@@ -2243,7 +2237,7 @@ void QGraphicsWidget::paintWindowFrame(QPainter *painter, const QStyleOptionGrap
     const QPointF styleOrigin = this->windowFrameRect().topLeft();
     painter->translate(styleOrigin);
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     const QSize pixmapSize = windowFrameRect.size();
     if (pixmapSize.width() <= 0 || pixmapSize.height() <= 0)
         return;
@@ -2303,7 +2297,7 @@ void QGraphicsWidget::paintWindowFrame(QPainter *painter, const QStyleOptionGrap
     frameOptions.midLineWidth = 1;
     style()->drawPrimitive(QStyle::PE_FrameWindow, &frameOptions, painter, widget);
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     realPainter->drawPixmap(QPoint(), pm);
     delete painter;
 #endif

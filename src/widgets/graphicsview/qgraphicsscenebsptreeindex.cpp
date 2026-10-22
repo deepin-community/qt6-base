@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QGraphicsSceneBspTreeIndex
@@ -47,6 +48,8 @@
 
 #include <algorithm>
 
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
 
 static inline int intmaxlog(int n)
@@ -55,12 +58,15 @@ static inline int intmaxlog(int n)
 }
 
 /*!
+    \class QGraphicsSceneBspTreeIndexPrivate
+    \inmodule QtWidgets
+    \internal
+
     Constructs a private scene bsp index.
 */
 QGraphicsSceneBspTreeIndexPrivate::QGraphicsSceneBspTreeIndexPrivate(QGraphicsScene *scene)
     : QGraphicsSceneIndexPrivate(scene),
     bspTreeDepth(0),
-    indexTimerId(0),
     restartIndexTimer(false),
     regenerateIndex(true),
     lastItemCount(0),
@@ -81,12 +87,10 @@ QGraphicsSceneBspTreeIndexPrivate::QGraphicsSceneBspTreeIndexPrivate(QGraphicsSc
 */
 void QGraphicsSceneBspTreeIndexPrivate::_q_updateIndex()
 {
-    Q_Q(QGraphicsSceneBspTreeIndex);
-    if (!indexTimerId)
+    if (!indexTimer.isActive())
         return;
 
-    q->killTimer(indexTimerId);
-    indexTimerId = 0;
+    indexTimer.stop();
 
     purgeRemovedItems();
 
@@ -172,10 +176,10 @@ void QGraphicsSceneBspTreeIndexPrivate::purgeRemovedItems()
 void QGraphicsSceneBspTreeIndexPrivate::startIndexTimer(int interval)
 {
     Q_Q(QGraphicsSceneBspTreeIndex);
-    if (indexTimerId) {
+    if (indexTimer.isActive()) {
         restartIndexTimer = true;
     } else {
-        indexTimerId = q->startTimer(interval);
+        indexTimer.start(interval * 1ms, q);
     }
 }
 
@@ -657,7 +661,7 @@ bool QGraphicsSceneBspTreeIndex::event(QEvent *event)
 {
     Q_D(QGraphicsSceneBspTreeIndex);
     if (event->type() == QEvent::Timer) {
-            if (d->indexTimerId && static_cast<QTimerEvent *>(event)->timerId() == d->indexTimerId) {
+            if (d->indexTimer.isActive() && static_cast<QTimerEvent *>(event)->id() == d->indexTimer.id()) {
                 if (d->restartIndexTimer) {
                     d->restartIndexTimer = false;
                 } else {

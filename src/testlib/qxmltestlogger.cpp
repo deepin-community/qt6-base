@@ -191,7 +191,7 @@ static const char *incidentFormatString(bool noDescription, bool noTag)
 
 static const char *benchmarkResultFormatString()
 {
-    return "  <BenchmarkResult metric=\"%s\" tag=\"%s\" value=\"%.6g\" iterations=\"%d\" />\n";
+    return "  <BenchmarkResult metric=\"%s\" tag=\"%s\" value=\"%.6g\" variance=\"%.6g\" iterations=\"%d\" />\n";
 }
 
 static const char *messageFormatString(bool noDescription, bool noTag)
@@ -263,6 +263,7 @@ void QXmlTestLogger::addBenchmarkResult(const QBenchmarkResult &result)
                            quotedMetric.constData(),
                            quotedTag.constData(),
                            result.measurement.value / double(result.iterations),
+                           result.measurement.variance,
                            result.iterations);
         outputString(buf.constData());
     }
@@ -272,20 +273,27 @@ void QXmlTestLogger::addMessage(MessageTypes type, const QString &message,
                                 const char *file, int line)
 {
     QTestCharBuffer buf;
-    const char *tag = QTestResult::currentDataTag();
-    const char *gtag = QTestResult::currentGlobalDataTag();
-    const char *filler = (tag && gtag) ? ":" : "";
-    const bool notag = QTest::isEmpty(tag) && QTest::isEmpty(gtag);
-
     QTestCharBuffer quotedFile;
     QTestCharBuffer cdataGtag;
     QTestCharBuffer cdataTag;
     QTestCharBuffer cdataDescription;
 
-    if (xmlQuote(&quotedFile, file)
-        && xmlCdata(&cdataGtag, gtag)
-        && xmlCdata(&cdataTag, tag)
-        && xmlCdata(&cdataDescription, message.toUtf8().constData())) {
+    const char *filler;
+    bool notag;
+    bool quoted;
+    {
+        // We may run on any thread, so copy the tags out while holding the lock.
+        const QTestResult::IdentifierLocker locker;
+        const char *tag = locker.dataTag();
+        const char *gtag = locker.globalDataTag();
+        filler = (tag && gtag) ? ":" : "";
+        notag = QTest::isEmpty(tag) && QTest::isEmpty(gtag);
+        quoted = xmlQuote(&quotedFile, file) && xmlCdata(&cdataGtag, gtag)
+                && xmlCdata(&cdataTag, tag);
+    }
+    quoted = quoted && xmlCdata(&cdataDescription, message.toUtf8().constData());
+
+    if (quoted) {
         QTest::qt_asprintf(&buf,
                            QTest::messageFormatString(message.isEmpty(), notag),
                            QTest::xmlMessageType2String(type),

@@ -37,6 +37,10 @@ bool Qt::mightBeRichText(const QString& text)
     return Qt::mightBeRichText(qToStringViewIgnoringNull(text));
 }
 
+// #include "qotherheader.h"
+// // implement removed functions from qotherheader.h
+// order sections alphabetically
+
 #endif // QT_GUI_REMOVED_SINCE(6, 7)
 
 #if QT_GUI_REMOVED_SINCE(6, 8)
@@ -68,8 +72,32 @@ bool QPageLayout::setBottomMargin(qreal bottomMargin)
     return setBottomMargin(bottomMargin, OutOfBoundsPolicy::Reject);
 }
 
+#ifndef QT_NO_CONTEXTMENU
+#include <qpa/qwindowsysteminterface.h>
+void QWindowSystemInterface::handleContextMenuEvent(QWindow *window, bool mouseTriggered,
+                                                    const QPoint &pos, const QPoint &globalPos,
+                                                    Qt::KeyboardModifiers modifiers)
+{
+    handleContextMenuEvent<QWindowSystemInterface::DefaultDelivery>(
+        window, mouseTriggered, pos, globalPos, modifiers);
+}
+#endif // QT_NO_CONTEXTMENU
+
 // #include "qotherheader.h"
 // // implement removed functions from qotherheader.h
 // order sections alphabetically
 
 #endif // QT_GUI_REMOVED_SINCE(6, 8)
+
+#if QT_GUI_REMOVED_SINCE(6, 11)
+
+#include "qpainter.h" // inlined API
+
+#include "qquaternion.h" // inlined API (also one added Q_WEAK_OVERLOAD)
+
+
+// #include "qotherheader.h"
+// // implement removed functions from qotherheader.h
+// order sections alphabetically
+
+#endif // QT_GUI_REMOVED_SINCE(6, 11)

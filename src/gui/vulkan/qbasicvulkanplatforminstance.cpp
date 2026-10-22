@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qbasicvulkanplatforminstance_p.h"
 #include <QCoreApplication>
@@ -9,7 +10,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcPlatVk, "qt.vulkan")
+Q_STATIC_LOGGING_CATEGORY(lcPlatVk, "qt.vulkan")
 
 /*!
     \class QBasicPlatformVulkanInstance
@@ -51,7 +52,7 @@ void QBasicPlatformVulkanInstance::loadVulkanLibrary(const QString &defaultLibra
     // embedded systems without a Vulkan loader and possibly with custom vendor
     // library names.
     if (qEnvironmentVariableIsSet("QT_VULKAN_LIB"))
-        loadList.append({ QString::fromUtf8(qgetenv("QT_VULKAN_LIB")), -1 });
+        loadList.append({ qEnvironmentVariable("QT_VULKAN_LIB"), -1 });
 
     // Then what the platform specified. On Linux the version is likely 1, thus
     // preferring libvulkan.so.1 over libvulkan.so.
@@ -228,7 +229,7 @@ void QBasicPlatformVulkanInstance::initInstance(QVulkanInstance *instance, const
         QByteArray envExts = qgetenv("QT_VULKAN_INSTANCE_EXTENSIONS");
         if (!envExts.isEmpty()) {
             QByteArrayList envExtList =  envExts.split(';');
-            for (auto ext : m_enabledExtensions)
+            for (const QByteArray &ext : std::as_const(m_enabledExtensions))
                 envExtList.removeAll(ext);
             m_enabledExtensions.append(envExtList);
         }
@@ -236,7 +237,7 @@ void QBasicPlatformVulkanInstance::initInstance(QVulkanInstance *instance, const
         QByteArray envLayers = qgetenv("QT_VULKAN_INSTANCE_LAYERS");
         if (!envLayers.isEmpty()) {
             QByteArrayList envLayerList = envLayers.split(';');
-            for (auto ext : m_enabledLayers)
+            for (const QByteArray &ext : std::as_const(m_enabledLayers))
                 envLayerList.removeAll(ext);
             m_enabledLayers.append(envLayerList);
         }
@@ -259,7 +260,8 @@ void QBasicPlatformVulkanInstance::initInstance(QVulkanInstance *instance, const
         VkInstanceCreateInfo instInfo = {};
         instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instInfo.pApplicationInfo = &appInfo;
-        if (!flags.testFlag(QVulkanInstance::NoPortabilityDrivers)) {
+        if (!flags.testFlag(QVulkanInstance::NoPortabilityDrivers)
+                && m_enabledExtensions.contains("VK_KHR_portability_enumeration")) {
             // With old Vulkan SDKs setting a non-zero flags gives a validation error.
             // Whereas from 1.3.216 on the portability bit is required for MoltenVK to function.
             // Hence the version check.
@@ -365,12 +367,26 @@ bool QBasicPlatformVulkanInstance::supportsPresent(VkPhysicalDevice physicalDevi
 
 void QBasicPlatformVulkanInstance::setDebugFilters(const QList<QVulkanInstance::DebugFilter> &filters)
 {
+    QMutexLocker locker(&m_debugFilterMutex);
     m_debugFilters = filters;
 }
 
 void QBasicPlatformVulkanInstance::setDebugUtilsFilters(const QList<QVulkanInstance::DebugUtilsFilter> &filters)
 {
+    QMutexLocker locker(&m_debugFilterMutex);
     m_debugUtilsFilters = filters;
+}
+
+QList<QVulkanInstance::DebugFilter> QBasicPlatformVulkanInstance::debugFilters() const
+{
+    QMutexLocker locker(&m_debugFilterMutex);
+    return m_debugFilters;
+}
+
+QList<QVulkanInstance::DebugUtilsFilter> QBasicPlatformVulkanInstance::debugUtilsFilters() const
+{
+    QMutexLocker locker(&m_debugFilterMutex);
+    return m_debugUtilsFilters;
 }
 
 void QBasicPlatformVulkanInstance::destroySurface(VkSurfaceKHR surface) const
@@ -387,8 +403,11 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL defaultDebugCallbackFunc(VkDebugUtilsMessa
 {
     QBasicPlatformVulkanInstance *self = static_cast<QBasicPlatformVulkanInstance *>(pUserData);
 
+    const QList<QVulkanInstance::DebugFilter> legacyFilters = self->debugFilters();
+    const QList<QVulkanInstance::DebugUtilsFilter> utilsFilters = self->debugUtilsFilters();
+
     // legacy filters
-    for (QVulkanInstance::DebugFilter filter : *self->debugFilters()) {
+    for (QVulkanInstance::DebugFilter filter : legacyFilters) {
         // As per docs in qvulkaninstance.cpp we pass object, messageCode,
         // pMessage to the callback with the legacy signature.
         uint64_t object = 0;
@@ -402,7 +421,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL defaultDebugCallbackFunc(VkDebugUtilsMessa
     }
 
     // filters with new signature
-    for (QVulkanInstance::DebugUtilsFilter filter : *self->debugUtilsFilters()) {
+    for (const QVulkanInstance::DebugUtilsFilter &filter : utilsFilters) {
         QVulkanInstance::DebugMessageSeverityFlags severity;
         if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT)
             severity |= QVulkanInstance::VerboseSeverity;
@@ -441,6 +460,14 @@ void QBasicPlatformVulkanInstance::setupDebugOutput()
 
     m_vkDestroyDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
                 m_vkGetInstanceProcAddr(m_vkInst, "vkDestroyDebugUtilsMessengerEXT"));
+
+    // This cannot happen as per spec if the extension was advertised and
+    // the instance was successfully created, but is reported to happen on
+    // some Android devices (QTBUG-148216). Handle it gracefully.
+    if (!vkCreateDebugUtilsMessengerEXT || !m_vkDestroyDebugUtilsMessengerEXT) {
+        qWarning("VK_EXT_debug_utils advertised but entry points are not available, skipping Vulkan debug output");
+        return;
+    }
 
     VkDebugUtilsMessengerCreateInfoEXT messengerInfo = {};
     messengerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qprinter.h"
 #include "qprinter_p.h"
@@ -39,7 +40,7 @@ using namespace Qt::StringLiterals;
         return retValue; \
     }
 
-extern qreal qt_pixelMultiplier(int resolution);
+Q_GUI_EXPORT extern qreal qt_pixelMultiplier(int resolution);
 extern QMarginsF qt_convertMargins(const QMarginsF &margins, QPageLayout::Unit fromUnits, QPageLayout::Unit toUnits);
 
 QPrinterInfo QPrinterPrivate::findValidPrinter(const QPrinterInfo &printer)
@@ -218,7 +219,7 @@ public:
         QPrinterPrivate *pd = QPrinterPrivate::get(m_printer);
 
         // Try to set print engine margins
-        QPair<QMarginsF, QPageLayout::Unit> pair = qMakePair(margins, units);
+        std::pair<QMarginsF, QPageLayout::Unit> pair(margins, units);
         pd->setProperty(QPrintEngine::PPK_QPageMargins, QVariant::fromValue(pair));
 
         return pageLayout().margins() == margins && pageLayout().units() == units;
@@ -334,11 +335,11 @@ public:
     lower quality output than HighResolution and should only be used
     for drafts.
 
-    \value PrinterResolution This value is deprecated. It is
-    equivalent to ScreenResolution on Unix and HighResolution on
-    Windows and Mac. Due to the difference between ScreenResolution
-    and HighResolution, use of this value may lead to non-portable
-    printer code.
+    \value PrinterResolution This value is deprecated. For printers,
+    it is equivalent to ScreenResolution on Unix and HighResolution
+    on Windows and macOS. For PDF printing, it is not supported and
+    may result in undefined behavior. Using this value can lead to
+    non-portable printer code.
 
     \value HighResolution On Windows, sets the printer resolution to that
     defined for the printer in use. For PDF printing, sets the
@@ -1546,7 +1547,7 @@ QPrinter::PrintRange QPrinter::printRange() const
 
     \value PPK_QPageSize Set the page size using a QPageSize object.
 
-    \value PPK_QPageMargins Set the page margins using a QPair of QMarginsF and QPageLayout::Unit.
+    \value PPK_QPageMargins Set the page margins using a std::pair of QMarginsF and QPageLayout::Unit.
 
     \value PPK_QPageLayout Set the page layout using a QPageLayout object.
 

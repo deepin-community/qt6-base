@@ -87,6 +87,9 @@ macro(qt_internal_qtbase_pre_project_setup)
         # qtbase. Set it here so qt_add_plugin can compute the proper plugin flavor.
         set(QT6_IS_SHARED_LIBS_BUILD ${BUILD_SHARED_LIBS})
 
+        # Include this early enough for a qtbase / top-level build.
+        include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtPublicCMakeIncludeGuardHelpers.cmake")
+
         # BUILD_SHARED_LIBS influences the minimum required CMake version. The value is set either
         # by:
         #   a cache variable provided on the configure command line
@@ -96,6 +99,8 @@ macro(qt_internal_qtbase_pre_project_setup)
         include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtCMakeVersionHelpers.cmake")
         include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtPublicCMakeVersionHelpers.cmake")
         qt_internal_check_and_warn_about_unsuitable_cmake_version()
+
+        include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtPublicCMakeEarlyPolicyHelpers.cmake")
 
         ## Add some paths to check for cmake modules:
         list(PREPEND CMAKE_MODULE_PATH
@@ -135,7 +140,7 @@ macro(qt_internal_qtbase_install_mkspecs)
         LIST_DIRECTORIES TRUE
         "${PROJECT_SOURCE_DIR}/mkspecs/*")
     foreach(entry IN LISTS mkspecs_subdirs)
-        if (IS_DIRECTORY ${entry})
+        if(IS_DIRECTORY ${entry})
             qt_copy_or_install(DIRECTORY "${entry}"
                                DESTINATION ${mkspecs_install_dir}
                                USE_SOURCE_PERMISSIONS)
@@ -143,8 +148,69 @@ macro(qt_internal_qtbase_install_mkspecs)
             qt_copy_or_install(FILES "${entry}"
                                DESTINATION ${mkspecs_install_dir})
         endif()
+
+        # In prefix builds we also need to copy the files into the build dir.
+        if(QT_WILL_INSTALL)
+            file(COPY "${entry}" DESTINATION "${mkspecs_install_dir}")
+        endif()
     endforeach()
 endmacro()
+
+function(qt_internal_qtbase_install_wayland_files)
+    qt_path_join(wlprotocols_build_dir
+                 ${QT_BUILD_DIR}
+                 ${INSTALL_QT_SHAREDIR}/wayland/protocols)
+    qt_path_join(wlprotocols_install_dir
+                 ${QT_INSTALL_DIR}
+                 ${INSTALL_QT_SHAREDIR}/wayland/protocols)
+
+    file(GLOB wlprotocols_subdirs
+        LIST_DIRECTORIES TRUE
+        "${PROJECT_SOURCE_DIR}/src/3rdparty/wayland/protocols/*")
+    foreach(entry IN LISTS wlprotocols_subdirs)
+        if (IS_DIRECTORY "${entry}")
+            qt_copy_or_install(DIRECTORY "${entry}"
+                               DESTINATION "${wlprotocols_install_dir}"
+                               USE_SOURCE_PERMISSIONS)
+            if(QT_WILL_INSTALL)
+                file(COPY "${entry}" DESTINATION "${wlprotocols_build_dir}")
+            endif()
+        else()
+            qt_copy_or_install(FILES "${entry}"
+                               DESTINATION "${wlprotocols_install_dir}")
+            if(QT_WILL_INSTALL)
+                file(COPY "${entry}" DESTINATION "${wlprotocols_build_dir}")
+            endif()
+        endif()
+    endforeach()
+
+    qt_path_join(wlextensions_build_dir
+                 ${QT_BUILD_DIR}
+                 ${INSTALL_QT_SHAREDIR}/wayland/extensions)
+    qt_path_join(wlextensions_install_dir
+                 ${QT_INSTALL_DIR}
+                 ${INSTALL_QT_SHAREDIR}/wayland/extensions)
+
+    file(GLOB wlextensions_subdirs
+        LIST_DIRECTORIES TRUE
+        "${PROJECT_SOURCE_DIR}/src/3rdparty/wayland/extensions/*")
+    foreach(entry IN LISTS wlextensions_subdirs)
+        if (IS_DIRECTORY "${entry}")
+            qt_copy_or_install(DIRECTORY "${entry}"
+                               DESTINATION "${wlextensions_install_dir}"
+                               USE_SOURCE_PERMISSIONS)
+            if(QT_WILL_INSTALL)
+                file(COPY "${entry}" DESTINATION "${wlextensions_build_dir}")
+            endif()
+        else()
+            qt_copy_or_install(FILES "${entry}"
+                               DESTINATION "${wlextensions_install_dir}")
+            if(QT_WILL_INSTALL)
+                file(COPY "${entry}" DESTINATION "${wlextensions_build_dir}")
+            endif()
+        endif()
+    endforeach()
+endfunction()
 
 macro(qt_internal_qtbase_build_repo)
     qt_internal_qtbase_pre_project_setup()
@@ -174,6 +240,16 @@ macro(qt_internal_qtbase_build_repo)
         # Needed when building qtbase for android.
         if(ANDROID)
             include(src/corelib/Qt6AndroidMacros.cmake)
+            include(src/corelib/Qt6AndroidDynamicFeatureHelpers.cmake)
+            include(src/corelib/Qt6AndroidGradleHelpers.cmake)
+            include(src/corelib/Qt6AndroidPermissionHelpers.cmake)
+        endif()
+
+        # Needed when building qtbase for HarmonyOS.
+        if(OHOS)
+            include(src/corelib/Qt6HarmonyOSMacros.cmake)
+            include(src/corelib/Qt6HarmonyOSPermissionHelpers.cmake)
+            include(src/corelib/Qt6HarmonyOSBlockingTestDialogHelpers.cmake)
         endif()
 
         # Needed when building for WebAssembly.
@@ -181,6 +257,8 @@ macro(qt_internal_qtbase_build_repo)
             include(cmake/QtWasmHelpers.cmake)
             include(src/corelib/Qt6WasmMacros.cmake)
         endif()
+
+        include(src/tools/qtwaylandscanner/Qt6WaylandCompositorMacros.cmake)
 
         ## Targets for global features, etc.:
         include(QtBaseGlobalTargets)
@@ -217,6 +295,7 @@ macro(qt_internal_qtbase_build_repo)
         endif()
 
         qt_internal_qtbase_install_mkspecs()
+        qt_internal_qtbase_install_wayland_files()
     endif()
 
     qt_build_repo_post_process()

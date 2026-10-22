@@ -9,15 +9,12 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.util.Log;
 
 import java.lang.IllegalArgumentException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 
 class QtActivityLoader extends QtLoader {
@@ -48,7 +45,7 @@ class QtActivityLoader extends QtLoader {
         int size = m_activity.getResources().getDimensionPixelSize(android.R.dimen.app_icon_size);
         if (size < 36 || size > 512) { // check size sanity
             DisplayMetrics metrics = new DisplayMetrics();
-            m_activity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
+            QtDisplayManager.getDisplay(m_activity).getMetrics(metrics);
             size = metrics.densityDpi / 10 * 3;
             if (size < 36)
                 size = 36;
@@ -89,10 +86,6 @@ class QtActivityLoader extends QtLoader {
             return;
         }
 
-        String intentArgs = intent.getStringExtra("applicationArguments");
-        if (intentArgs != null)
-            appendApplicationParameters(intentArgs);
-
         Bundle extras = intent.getExtras();
         if (extras == null) {
             Log.w(QtTAG, "Null extras from the Activity's intent.");
@@ -106,6 +99,13 @@ class QtActivityLoader extends QtLoader {
             if (extras.containsKey("extraenvvars")) {
                 String extraEnvVars = extras.getString("extraenvvars");
                 setEnvironmentVariables(getDecodedUtfString(extraEnvVars));
+            }
+
+            for (String key : extras.keySet()) {
+                if (key.startsWith("extraenvvars_")) {
+                    String varName = key.substring("extraenvvars_".length());
+                    setEnvironmentVariable(varName, extras.getString(key));
+                }
             }
 
             if (extras.containsKey("extraappparams")) {

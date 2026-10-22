@@ -6,6 +6,8 @@
 
 #include <QMainWindow>
 
+QT_BEGIN_NAMESPACE
+
 class QTextEdit;
 
 class MainWindow : public QMainWindow
@@ -24,5 +26,7 @@ private:
 
     QTextEdit *editor;
 };
+
+QT_END_NAMESPACE
 
 #endif

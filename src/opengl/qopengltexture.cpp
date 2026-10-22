@@ -1,6 +1,7 @@
 // Copyright (C) 2013 Klaralvdalens Datakonsult AB (KDAB).
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qopengltexture.h"
 #include "qopengltexture_p.h"
@@ -664,6 +665,12 @@ static QOpenGLTexture::PixelFormat pixelFormatCompatibleWithInternalFormat(QOpen
     case QOpenGLTexture::S8:
         return QOpenGLTexture::Stencil;
 
+    case QOpenGLTexture::SRGB8:
+        return QOpenGLTexture::RGB;
+
+    case QOpenGLTexture::SRGB8_Alpha8:
+        return QOpenGLTexture::RGBA;
+
     case QOpenGLTexture::RGB_DXT1:
     case QOpenGLTexture::RGBA_DXT1:
     case QOpenGLTexture::RGBA_DXT3:
@@ -675,8 +682,6 @@ static QOpenGLTexture::PixelFormat pixelFormatCompatibleWithInternalFormat(QOpen
     case QOpenGLTexture::RGB_BP_UNSIGNED_FLOAT:
     case QOpenGLTexture::RGB_BP_SIGNED_FLOAT:
     case QOpenGLTexture::RGB_BP_UNorm:
-    case QOpenGLTexture::SRGB8:
-    case QOpenGLTexture::SRGB8_Alpha8:
     case QOpenGLTexture::SRGB_DXT1:
     case QOpenGLTexture::SRGB_Alpha_DXT1:
     case QOpenGLTexture::SRGB_Alpha_DXT3:
@@ -1006,6 +1011,11 @@ static bool isCompressedFormat(QOpenGLTexture::TextureFormat internalFormat)
     case QOpenGLTexture::D32FS8X24:
 
     case QOpenGLTexture::S8:
+
+    // GL_SRGB8 and GL_SRGB8_ALPHA8 are uncompressed, unlike the rest of
+    // the sRGB section of the enum.
+    case QOpenGLTexture::SRGB8:
+    case QOpenGLTexture::SRGB8_Alpha8:
         return false;
 
     case QOpenGLTexture::RGB_DXT1:
@@ -1019,8 +1029,6 @@ static bool isCompressedFormat(QOpenGLTexture::TextureFormat internalFormat)
     case QOpenGLTexture::RGB_BP_UNSIGNED_FLOAT:
     case QOpenGLTexture::RGB_BP_SIGNED_FLOAT:
     case QOpenGLTexture::RGB_BP_UNorm:
-    case QOpenGLTexture::SRGB8:
-    case QOpenGLTexture::SRGB8_Alpha8:
     case QOpenGLTexture::SRGB_DXT1:
     case QOpenGLTexture::SRGB_Alpha_DXT1:
     case QOpenGLTexture::SRGB_Alpha_DXT3:
@@ -2059,7 +2067,7 @@ QOpenGLTexture *QOpenGLTexturePrivate::createTextureView(QOpenGLTexture::Target 
 
     \code
     // Prepare texture
-    QOpenGLTexture *texture = new QOpenGLTexture(QImage(fileName).mirrored());
+    QOpenGLTexture *texture = new QOpenGLTexture(QImage(fileName).flipped());
     texture->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
     texture->setMagnificationFilter(QOpenGLTexture::Linear);
     ...
@@ -2068,9 +2076,15 @@ QOpenGLTexture *QOpenGLTexturePrivate::createTextureView(QOpenGLTexture::Target 
     glDrawArrays(...);
     \endcode
 
-    Note that the QImage is mirrored vertically to account for the fact that
+    Note that the QImage is flipped vertically to account for the fact that
     OpenGL and QImage use opposite directions for the y axis. Another option
     would be to transform your texture coordinates.
+
+    \warning All data consumed by QOpenGLTexture is expected to be trusted
+    content. Pixel and image data is passed on to the underlying OpenGL
+    implementation. Application developers are advised to carefully consider the
+    potential implications before passing in user-provided content to functions
+    such as setData().
 */
 
 /*!
@@ -3748,53 +3762,53 @@ bool QOpenGLTexture::hasFeature(Feature feature)
     if (!ctx->isOpenGLES()) {
         switch (feature) {
         case ImmutableMultisampleStorage:
-            supported = f.version() >= qMakePair(4, 3)
+            supported = f.version() >= std::pair(4, 3)
                     || ctx->hasExtension(QByteArrayLiteral("GL_ARB_texture_storage_multisample"));
             break;
 
         case TextureBuffer:
-            supported = f.version() >= qMakePair(3, 0)
+            supported = f.version() >= std::pair(3, 0)
                     || ctx->hasExtension(QByteArrayLiteral("GL_ARB_texture_buffer_object"));
             break;
 
         case StencilTexturing:
-            supported = f.version() >= qMakePair(4, 3)
+            supported = f.version() >= std::pair(4, 3)
                     || ctx->hasExtension(QByteArrayLiteral("GL_ARB_stencil_texturing"));
             break;
 
         case ImmutableStorage:
-            supported = f.version() >= qMakePair(4, 2)
+            supported = f.version() >= std::pair(4, 2)
                     || ctx->hasExtension(QByteArrayLiteral("GL_ARB_texture_storage"))
                     || ctx->hasExtension(QByteArrayLiteral("GL_EXT_texture_storage"));
             break;
 
         case TextureCubeMapArrays:
-            supported = f.version() >= qMakePair(4, 0)
+            supported = f.version() >= std::pair(4, 0)
                     || ctx->hasExtension(QByteArrayLiteral("ARB_texture_cube_map_array"));
             break;
 
         case Swizzle:
-            supported = f.version() >= qMakePair(3, 3)
+            supported = f.version() >= std::pair(3, 3)
                     || ctx->hasExtension(QByteArrayLiteral("GL_ARB_texture_swizzle"));
             break;
 
         case TextureMultisample:
-            supported = f.version() >= qMakePair(3, 2)
+            supported = f.version() >= std::pair(3, 2)
                     || ctx->hasExtension(QByteArrayLiteral("GL_ARB_texture_multisample"));
             break;
 
         case TextureArrays:
-            supported = f.version() >= qMakePair(3, 0)
+            supported = f.version() >= std::pair(3, 0)
                     || ctx->hasExtension(QByteArrayLiteral("GL_EXT_texture_array"));
             break;
 
         case TextureRectangle:
-            supported = f.version() >= qMakePair(2, 1)
+            supported = f.version() >= std::pair(2, 1)
                     || ctx->hasExtension(QByteArrayLiteral("ARB_texture_rectangle"));
             break;
 
         case Texture3D:
-            supported = f.version() >= qMakePair(1, 3);
+            supported = f.version() >= std::pair(1, 3);
             break;
 
         case AnisotropicFiltering:
@@ -3807,7 +3821,7 @@ bool QOpenGLTexture::hasFeature(Feature feature)
             break;
 
         case Texture1D:
-            supported = f.version() >= qMakePair(1, 1);
+            supported = f.version() >= std::pair(1, 1);
             break;
 
         case TextureComparisonOperators:
@@ -3815,13 +3829,13 @@ bool QOpenGLTexture::hasFeature(Feature feature)
             // since we're talking about history anyhow avoid to be extra pedantic
             // in the feature set, and simply claim supported if we have the full set of operators
             // (which has been added into 1.5 / GL_EXT_shadow_funcs).
-            supported = f.version() >= qMakePair(1, 5)
+            supported = f.version() >= std::pair(1, 5)
                     || (ctx->hasExtension(QByteArrayLiteral("GL_ARB_shadow"))
                         && ctx->hasExtension(QByteArrayLiteral("GL_EXT_shadow_funcs")));
             break;
 
         case TextureMipMapLevel:
-            supported = f.version() >= qMakePair(1, 2);
+            supported = f.version() >= std::pair(1, 2);
             break;
 
         case MaxFeatureFlag:
@@ -3835,28 +3849,28 @@ bool QOpenGLTexture::hasFeature(Feature feature)
         const char *renderer = reinterpret_cast<const char *>(ctx->functions()->glGetString(GL_RENDERER));
         switch (feature) {
         case ImmutableStorage:
-            supported = (f.version() >= qMakePair(3, 0) || ctx->hasExtension(QByteArrayLiteral("GL_EXT_texture_storage")))
+            supported = (f.version() >= std::pair(3, 0) || ctx->hasExtension(QByteArrayLiteral("GL_EXT_texture_storage")))
                 && !(renderer && strstr(renderer, "Mali")); // do not use on Mali: QTBUG-45106
             break;
 
         case ImmutableMultisampleStorage:
-            supported = f.version() >= qMakePair(3, 1);
+            supported = f.version() >= std::pair(3, 1);
             break;
 
         case TextureRectangle:
             break;
 
         case TextureArrays:
-            supported = f.version() >= qMakePair(3, 0);
+            supported = f.version() >= std::pair(3, 0);
             break;
 
         case Texture3D:
-            supported = f.version() >= qMakePair(3, 0)
+            supported = f.version() >= std::pair(3, 0)
                     || ctx->hasExtension(QByteArrayLiteral("GL_OES_texture_3D"));
             break;
 
         case TextureMultisample:
-            supported = f.version() >= qMakePair(3, 1);
+            supported = f.version() >= std::pair(3, 1);
             break;
 
         case TextureBuffer:
@@ -3866,7 +3880,7 @@ bool QOpenGLTexture::hasFeature(Feature feature)
             break;
 
         case Swizzle:
-            supported = f.version() >= qMakePair(3, 0);
+            supported = f.version() >= std::pair(3, 0);
             break;
 
         case StencilTexturing:
@@ -3878,7 +3892,7 @@ bool QOpenGLTexture::hasFeature(Feature feature)
 
         case NPOTTextures:
         case NPOTTextureRepeat:
-            supported = f.version() >= qMakePair(3,0)
+            supported = f.version() >= std::pair(3,0)
                     || ctx->hasExtension(QByteArrayLiteral("GL_OES_texture_npot"))
                     || ctx->hasExtension(QByteArrayLiteral("GL_ARB_texture_non_power_of_two"));
             break;
@@ -3887,12 +3901,12 @@ bool QOpenGLTexture::hasFeature(Feature feature)
             break;
 
         case TextureComparisonOperators:
-            supported = f.version() >= qMakePair(3, 0)
+            supported = f.version() >= std::pair(3, 0)
                     || ctx->hasExtension(QByteArrayLiteral("GL_EXT_shadow_samplers"));
             break;
 
         case TextureMipMapLevel:
-            supported = f.version() >= qMakePair(3, 0);
+            supported = f.version() >= std::pair(3, 0);
             break;
 
         case MaxFeatureFlag:
@@ -3995,10 +4009,10 @@ void QOpenGLTexture::setMipLevelRange(int baseLevel, int maxLevel)
 
     \sa mipBaseLevel(), mipMaxLevel()
 */
-QPair<int, int> QOpenGLTexture::mipLevelRange() const
+std::pair<int, int> QOpenGLTexture::mipLevelRange() const
 {
     Q_D(const QOpenGLTexture);
-    return qMakePair(d->baseLevel, d->maxLevel);
+    return std::pair(d->baseLevel, d->maxLevel);
 }
 
 /*!
@@ -4096,7 +4110,7 @@ void QOpenGLTexture::generateMipMaps(int baseLevel, bool resetBaseLevel)
 */
 void QOpenGLTexture::setSwizzleMask(SwizzleComponent component, SwizzleValue value)
 {
-#if !defined(Q_OS_MAC) && !QT_CONFIG(opengles2)
+#if !defined(Q_OS_APPLE) && !QT_CONFIG(opengles2)
     if (!QOpenGLContext::currentContext()->isOpenGLES()) {
         Q_D(QOpenGLTexture);
         d->create();
@@ -4125,7 +4139,7 @@ void QOpenGLTexture::setSwizzleMask(SwizzleComponent component, SwizzleValue val
 void QOpenGLTexture::setSwizzleMask(SwizzleValue r, SwizzleValue g,
                                     SwizzleValue b, SwizzleValue a)
 {
-#if !defined(Q_OS_MAC) && !QT_CONFIG(opengles2)
+#if !defined(Q_OS_APPLE) && !QT_CONFIG(opengles2)
     if (!QOpenGLContext::currentContext()->isOpenGLES()) {
         Q_D(QOpenGLTexture);
         d->create();
@@ -4185,7 +4199,7 @@ QOpenGLTexture::SwizzleValue QOpenGLTexture::swizzleMask(SwizzleComponent compon
 */
 void QOpenGLTexture::setDepthStencilMode(QOpenGLTexture::DepthStencilMode mode)
 {
-#if !defined(Q_OS_MAC) && !QT_CONFIG(opengles2)
+#if !defined(Q_OS_APPLE) && !QT_CONFIG(opengles2)
     if (!QOpenGLContext::currentContext()->isOpenGLES()) {
         Q_D(QOpenGLTexture);
         d->create();
@@ -4388,10 +4402,10 @@ void QOpenGLTexture::setMinMagFilters(QOpenGLTexture::Filter minificationFilter,
 
     \sa setMinMagFilters()
 */
-QPair<QOpenGLTexture::Filter, QOpenGLTexture::Filter> QOpenGLTexture::minMagFilters() const
+std::pair<QOpenGLTexture::Filter, QOpenGLTexture::Filter> QOpenGLTexture::minMagFilters() const
 {
     Q_D(const QOpenGLTexture);
-    return QPair<QOpenGLTexture::Filter, QOpenGLTexture::Filter>(d->minFilter, d->magFilter);
+    return std::pair<QOpenGLTexture::Filter, QOpenGLTexture::Filter>(d->minFilter, d->magFilter);
 }
 
 /*!
@@ -4441,7 +4455,8 @@ void QOpenGLTexture::setWrapMode(QOpenGLTexture::WrapMode mode)
 }
 
 /*!
-    Holds the texture dimension \a direction.
+    Sets the wrap (or repeat mode) for the texture dimension \a direction
+    to \a mode.
     \overload
 */
 void QOpenGLTexture::setWrapMode(QOpenGLTexture::CoordinateDirection direction, QOpenGLTexture::WrapMode mode)
@@ -4761,10 +4776,10 @@ void QOpenGLTexture::setLevelOfDetailRange(float min, float max)
 
     \sa setLevelOfDetailRange(), minimumLevelOfDetail(), maximumLevelOfDetail()
 */
-QPair<float, float> QOpenGLTexture::levelOfDetailRange() const
+std::pair<float, float> QOpenGLTexture::levelOfDetailRange() const
 {
     Q_D(const QOpenGLTexture);
-    return qMakePair(d->minLevelOfDetail, d->maxLevelOfDetail);
+    return std::pair(d->minLevelOfDetail, d->maxLevelOfDetail);
 }
 
 /*!
@@ -4834,7 +4849,7 @@ QDebug operator<<(QDebug debug, const QOpenGLTexture *t)
             << ", features=" << d->features << ", minificationFilter=" << d->minFilter
             << ", magnificationFilter=" << d->magFilter << ", wrapMode=" << d->wrapModes[0];
     } else {
-        debug << '0';
+        debug << "0x0";
     }
     debug << ')';
     return debug;

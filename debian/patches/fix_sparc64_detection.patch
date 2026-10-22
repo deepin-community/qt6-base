@@ -1,0 +1,33 @@
+From 1d62835fdae38a8f9814d77c54d752c2cfd30de9 Mon Sep 17 00:00:00 2001
+From: Stian Halseth <stian@itx.no>
+Date: Thu, 08 Oct 2026 09:45:11 +0200
+Subject: [PATCH] qprocessordetection.h: Detect 64-bit SPARC when building with GCC
+
+GCC defines __sparc64__ only for the BSD targets. On Linux and Solaris
+it defines __arch64__, so Q_PROCESSOR_SPARC_64 was never set in a GCC
+build there. Check for __arch64__ as well, which GCC and clang both
+define on every 64-bit SPARC target.
+
+This only changes qtdeclarative, whose sparc64 heap pointer encoding
+was never compiled in. The other users test Q_PROCESSOR_SPARC_V9 first.
+
+Pick-to: 6.12 6.8
+Task-number: QTBUG-141832
+Change-Id: I88321df6e8c255d9288a17521d4a52138651df3b
+Reviewed-by: John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>
+Reviewed-by: Thiago Macieira <thiago.macieira@intel.com>
+---
+
+diff --git a/src/corelib/global/qprocessordetection.h b/src/corelib/global/qprocessordetection.h
+index 7dbd38d..2ab321c 100644
+--- a/src/corelib/global/qprocessordetection.h
++++ b/src/corelib/global/qprocessordetection.h
+@@ -334,7 +334,7 @@
+ #  if defined(__sparc_v9__) || defined(__sparcv9)
+ #    define Q_PROCESSOR_SPARC_V9
+ #  endif
+-#  if defined(__sparc64__)
++#  if defined(__sparc64__) || defined(__arch64__)
+ #    define Q_PROCESSOR_SPARC_64
+ #  endif
+ #  define Q_BYTE_ORDER Q_BIG_ENDIAN

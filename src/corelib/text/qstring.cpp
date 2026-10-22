@@ -2,6 +2,7 @@
 // Copyright (C) 2022 Intel Corporation.
 // Copyright (C) 2019 Mail.ru Group.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qstringlist.h"
 #if QT_CONFIG(regularexpression)
@@ -44,7 +45,6 @@
 #include "qstringmatcher.cpp"
 #include "qstringiterator_p.h"
 #include "qstringalgorithms_p.h"
-#include "qthreadstorage.h"
 
 #include <algorithm>
 #include <functional>
@@ -372,7 +372,7 @@ static constexpr bool UseAvx2 = UseSse4_1 &&
         (qCompilerCpuFeatures & CpuFeatureArchHaswell) == CpuFeatureArchHaswell;
 
 [[maybe_unused]]
-static Q_ALWAYS_INLINE __m128i mm_load8_zero_extend(const void *ptr)
+Q_ALWAYS_INLINE static __m128i mm_load8_zero_extend(const void *ptr)
 {
     const __m128i *dataptr = static_cast<const __m128i *>(ptr);
     if constexpr (UseSse4_1) {
@@ -749,11 +749,7 @@ const char16_t *QtPrivate::qustrchr(QStringView str, char16_t c) noexcept
                                    [=](qsizetype i) { return n + i; });
 #  endif
 #elif defined(__ARM_NEON__)
-#ifdef _MSC_VER
-    const uint16x8_t vmask = { 0x0008000400020001ULL, 0x0080004000200010ULL };
-#else
-    const uint16x8_t vmask = { 1, 1 << 1, 1 << 2, 1 << 3, 1 << 4, 1 << 5, 1 << 6, 1 << 7 };
-#endif
+    const uint16x8_t vmask = qvsetq_n_u16(1, 1 << 1, 1 << 2, 1 << 3, 1 << 4, 1 << 5, 1 << 6, 1 << 7);
     const uint16x8_t ch_vec = vdupq_n_u16(c);
     for (const char16_t *next = n + 8; next <= e; n = next, next += 8) {
         uint16x8_t data = vld1q_u16(reinterpret_cast<const uint16_t *>(n));
@@ -1200,15 +1196,13 @@ Q_NEVER_INLINE static int ucstricmp(qsizetype alen, const char16_t *a, qsizetype
     if (a == b)
         return qt_lencmp(alen, blen);
 
-    char32_t alast = 0;
-    char32_t blast = 0;
     qsizetype l = qMin(alen, blen);
     qsizetype i;
     for (i = 0; i < l; ++i) {
 //         qDebug() << Qt::hex << alast << blast;
 //         qDebug() << Qt::hex << "*a=" << *a << "alast=" << alast << "folded=" << foldCase (*a, alast);
 //         qDebug() << Qt::hex << "*b=" << *b << "blast=" << blast << "folded=" << foldCase (*b, blast);
-        int diff = foldCase(a[i], alast) - foldCase(b[i], blast);
+        int diff = foldCase(a + i, a) - foldCase(b + i, b);
         if ((diff))
             return diff;
     }
@@ -1242,22 +1236,12 @@ Q_NEVER_INLINE static int ucstricmp(qsizetype alen, const char16_t *a, qsizetype
 // Case-insensitive comparison between a Unicode string and a UTF-8 string
 Q_NEVER_INLINE static int ucstricmp8(const char *utf8, const char *utf8end, const QChar *utf16, const QChar *utf16end)
 {
-    auto src1 = reinterpret_cast<const uchar *>(utf8);
-    auto end1 = reinterpret_cast<const uchar *>(utf8end);
+    auto src1 = reinterpret_cast<const qchar8_t *>(utf8);
+    auto end1 = reinterpret_cast<const qchar8_t *>(utf8end);
     QStringIterator src2(utf16, utf16end);
 
     while (src1 < end1 && src2.hasNext()) {
-        char32_t uc1 = 0;
-        char32_t *output = &uc1;
-        uchar b = *src1++;
-        const qsizetype res = QUtf8Functions::fromUtf8<QUtf8BaseTraits>(b, output, src1, end1);
-        if (res < 0) {
-            // decoding error
-            uc1 = QChar::ReplacementCharacter;
-        } else {
-            uc1 = QChar::toCaseFolded(uc1);
-        }
-
+        char32_t uc1 = QChar::toCaseFolded(QUtf8Functions::nextUcs4FromUtf8(src1, end1));
         char32_t uc2 = QChar::toCaseFolded(src2.next());
         int diff = uc1 - uc2;   // can't underflow
         if (diff)
@@ -1294,11 +1278,7 @@ static int ucstrncmp(const char16_t *a, const char16_t *b, size_t l)
 #  elif defined(__ARM_NEON__)
     if (l >= 8) {
         const char16_t *end = a + l;
-#ifdef _MSC_VER
-        const uint16x8_t mask = { 0x0008000400020001ULL, 0x0080004000200010ULL };
-#else
-        const uint16x8_t mask = { 1, 1 << 1, 1 << 2, 1 << 3, 1 << 4, 1 << 5, 1 << 6, 1 << 7 };
-#endif
+        const uint16x8_t mask = qvsetq_n_u16( 1, 1 << 1, 1 << 2, 1 << 3, 1 << 4, 1 << 5, 1 << 6, 1 << 7 );
         while (end - a > 7) {
             uint16x8_t da = vld1q_u16(reinterpret_cast<const uint16_t *>(a));
             uint16x8_t db = vld1q_u16(reinterpret_cast<const uint16_t *>(b));
@@ -1358,10 +1338,6 @@ static int ucstrncmp(const char16_t *a, const char *b, size_t l)
 template <typename Char2>
 static bool ucstreq(const char16_t *a, size_t alen, const Char2 *b)
 {
-    if constexpr (std::is_same_v<decltype(a), decltype(b)>) {
-        if (a == b)
-            return true;
-    }
     return ucstrncmp<CompareStringsForEquality>(a, b, alen) == 0;
 }
 
@@ -1369,10 +1345,6 @@ static bool ucstreq(const char16_t *a, size_t alen, const Char2 *b)
 template <typename Char2>
 static int ucstrcmp(const char16_t *a, size_t alen, const Char2 *b, size_t blen)
 {
-    if constexpr (std::is_same_v<decltype(a), decltype(b)>) {
-        if (a == b && alen == blen)
-            return 0;
-    }
     const size_t l = qMin(alen, blen);
     int cmp = ucstrncmp<CompareStringsForOrdering>(a, b, l);
     return cmp ? cmp : qt_lencmp(alen, blen);
@@ -1651,7 +1623,11 @@ static int qArgDigitValue(QChar ch) noexcept
 
 #if QT_CONFIG(regularexpression)
 Q_DECL_COLD_FUNCTION
-void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *where);
+static void qtWarnAboutInvalidRegularExpression(const QRegularExpression &re, const char *cls, const char *method)
+{
+    extern void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *cls, const char *method);
+    qtWarnAboutInvalidRegularExpression(re.pattern(), cls, method);
+}
 #endif
 
 /*!
@@ -1725,7 +1701,7 @@ void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *whe
                   QStringView QUtf8StringView
     \endcompareswith
     \compareswith strong QByteArray QByteArrayView {const char *}
-    When comparing with byte arrays, their content is interpreted as utf-8.
+    When comparing with byte arrays, their content is interpreted as UTF-8.
     \endcompareswith
 
     QString stores a string of 16-bit \l{QChar}s, where each QChar
@@ -1769,6 +1745,13 @@ void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *whe
     C-style \c{'\\0'}-terminated string. Except where the function's
     name overtly indicates some other encoding, such \c{const char *}
     parameters are assumed to be encoded in UTF-8.
+
+    Since Qt 6.4, it is also possible to initialize QStrings using
+    the \l {Qt::Literals::StringLiterals::operator""_s()} and
+    \l {Qt::Literals::StringLiterals::operator""_L1()} literal
+    operators. In many cases, using the literals results in
+    \l{More efficient string construction}{more efficient string construction}.
+
 
     You can also provide string data as an array of \l{QChar}s:
 
@@ -1818,7 +1801,8 @@ void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *whe
     constructor. Similarly, you can pass a QString to a function that
     takes a \c{const char *} argument using the \l qPrintable() macro,
     which returns the given QString as a \c{const char *}. This is
-    equivalent to calling <QString>.toLocal8Bit().constData().
+    equivalent to calling toLocal8Bit().\l{QByteArray::}{constData()}
+    on the QString.
 
     \section1 Manipulating string data
 
@@ -2022,7 +2006,7 @@ void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *whe
     \snippet qstring/main.cpp 8
 
     All functions except isNull() treat null strings the same as empty
-    strings. For example, toUtf8().constData() returns a valid pointer
+    strings. For example, toUtf8().\l{QByteArray::}{constData()} returns a valid pointer
     (not \nullptr) to a '\\0' character for a null string. We
     recommend that you always use the isEmpty() function and avoid isNull().
 
@@ -2082,9 +2066,7 @@ void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *whe
     \c{QStringBuilder}. This class is marked
     internal and does not appear in the documentation, because you
     aren't meant to instantiate it in your code. Its use will be
-    automatic, as described below. The class is found in
-    \c {src/corelib/tools/qstringbuilder.cpp} if you want to have a
-    look at it.
+    automatic, as described below.
 
     \c{QStringBuilder} uses expression templates and reimplements the
     \c{'%'} operator so that when you use \c{'%'} for string
@@ -2147,7 +2129,8 @@ void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *whe
     Mitigating or controlling the behavior these limits cause is beyond the
     scope of the Qt API.
 
-    \sa fromRawData(), QChar, QStringView, QLatin1StringView, QByteArray
+    \sa {Which string class to use?}, fromRawData(), QChar, QStringView,
+        QLatin1StringView, QByteArray
 */
 
 /*! \typedef QString::ConstIterator
@@ -2390,6 +2373,18 @@ void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *whe
     \sa fromLatin1(), fromLocal8Bit(), fromUtf8()
 */
 
+/*!
+    \fn QString::QString(QStringView sv)
+
+    Constructs a string initialized with the string view's data.
+
+    The QString will be null if and only if \a sv is null.
+
+    \since 6.8
+
+    \sa fromUtf16()
+*/
+
 /*
 //! [from-std-string]
 Returns a copy of the \a str string. The given string is assumed to be
@@ -2418,9 +2413,10 @@ encoded in \1, and is converted to QString using the \2 function.
 /*! \fn QString QString::fromWCharArray(const wchar_t *string, qsizetype size)
     \since 4.2
 
-    Returns a copy of the \a string, where the encoding of \a string depends on
-    the size of wchar. If wchar is 4 bytes, the \a string is interpreted as
-    UCS-4, if wchar is 2 bytes it is interpreted as UTF-16.
+    Reads the first \a size code units of the \c wchar_t array to whose start
+    \a string points, converting them to Unicode and returning the result as
+    a QString. The encoding used by \c wchar_t is assumed to be UTF-32 if the
+    type's size is four bytes or UTF-16 if its size is two bytes.
 
     If \a size is -1 (default), the \a string must be '\\0'-terminated.
 
@@ -2458,7 +2454,7 @@ qsizetype QString::toUcs4_helper(const char16_t *uc, qsizetype length, char32_t 
 
   Fills the \a array with the data contained in this QString object.
   The array is encoded in UTF-16 on platforms where
-  wchar_t is 2 bytes wide (e.g. windows) and in UCS-4 on platforms
+  wchar_t is 2 bytes wide (e.g. windows) and in UTF-32 on platforms
   where wchar_t is 4 bytes wide (most Unix systems).
 
   \a array has to be allocated by the caller and contain enough space to
@@ -2491,7 +2487,7 @@ qsizetype QString::toUcs4_helper(const char16_t *uc, qsizetype length, char32_t 
 
     If \a unicode is 0, a null string is constructed.
 
-    If \a size is negative, \a unicode is assumed to point to a \\0'-terminated
+    If \a size is negative, \a unicode is assumed to point to a '\\0'-terminated
     array and its length is determined dynamically. The terminating
     null character is not considered part of the string.
 
@@ -2612,14 +2608,13 @@ QString::QString(QChar ch)
 
 /*! \fn void QString::swap(QString &other)
     \since 4.8
-
-    Swaps string \a other with this string. This operation is very fast and
-    never fails.
+    \memberswap{string}
 */
 
 /*! \fn void QString::detach()
 
-    \internal
+    Ensures that this string's data is no longer
+    \l{Implicit Sharing}{shared} with other instances.
 */
 
 /*! \fn bool QString::isDetached() const
@@ -2633,6 +2628,7 @@ QString::QString(QChar ch)
 */
 
 /*! \fn QString::operator std::u16string_view() const
+    \target qstring-operator-std-u16string_view
     \since 6.7
 
     Converts this QString object to a \c{std::u16string_view} object.
@@ -2680,10 +2676,10 @@ void QString::resize(qsizetype size)
     if (size < 0)
         size = 0;
 
-    if (d->needsDetach() || needsReallocate(*this, size))
+    if (d.needsDetach() || needsReallocate(*this, size))
         reallocData(size, QArrayData::Grow);
     d.size = size;
-    if (d->allocatedCapacity())
+    if (d.allocatedCapacity())
         d.data()[size] = u'\0';
 }
 
@@ -2803,13 +2799,13 @@ void QString::reallocData(qsizetype alloc, QArrayData::AllocationOption option)
     // at the beginning: might shift data pointer outside of allocated space
     const bool cannotUseReallocate = d.freeSpaceAtBegin() > 0;
 
-    if (d->needsDetach() || cannotUseReallocate) {
+    if (d.needsDetach() || cannotUseReallocate) {
         DataPointer dd(alloc, qMin(alloc, d.size), option);
         Q_CHECK_PTR(dd.data());
         if (dd.size > 0)
             ::memcpy(dd.data(), d.data(), dd.size * sizeof(QChar));
         dd.data()[dd.size] = 0;
-        d = dd;
+        d.swap(dd);
     } else {
         d->reallocate(alloc, option);
     }
@@ -2820,12 +2816,12 @@ void QString::reallocGrowData(qsizetype n)
     if (!n)  // expected to always allocate
         n = 1;
 
-    if (d->needsDetach()) {
+    if (d.needsDetach()) {
         DataPointer dd(DataPointer::allocateGrow(d, n, QArrayData::GrowsAtEnd));
         Q_CHECK_PTR(dd.data());
         dd->copyAppend(d.data(), d.data() + d.size);
         dd.data()[dd.size] = 0;
-        d = dd;
+        d.swap(dd);
     } else {
         d->reallocate(d.constAllocatedCapacity() + n, QArrayData::Grow);
     }
@@ -2867,7 +2863,7 @@ QString &QString::operator=(const QString &other) noexcept
 QString &QString::operator=(QLatin1StringView other)
 {
     const qsizetype capacityAtEnd = capacity() - d.freeSpaceAtBegin();
-    if (isDetached() && other.size() <= capacityAtEnd) { // assumes d->alloc == 0 -> !isDetached() (sharedNull)
+    if (isDetached() && other.size() <= capacityAtEnd) { // assumes d.alloc == 0 -> !isDetached() (sharedNull)
         d.size = other.size();
         d.data()[other.size()] = 0;
         qt_from_latin1(d.data(), other.latin1(), other.size());
@@ -3118,7 +3114,7 @@ QString& QString::insert(qsizetype i, const QChar *unicode, qsizetype size)
         return *this;
 
     // In case when data points into "this"
-    if (!d->needsDetach() && QtPrivate::q_points_into_range(unicode, *this)) {
+    if (!d.needsDetach() && QtPrivate::q_points_into_range(unicode, *this)) {
         QVarLengthArray copy(unicode, unicode + size);
         insert(i, copy.data(), size);
     } else {
@@ -3393,7 +3389,10 @@ QString &QString::append(QChar ch)
     resulting string, exceeds the capacity of this string, or if this string is
     shared.
 
-    \note This function overload only participates in overload resolution if
+    \note The behavior is undefined if either argument is an iterator into *this or
+    [\a first, \a last) is not a valid range.
+
+    \constraints
     \c InputIterator meets the requirements of a
     \l {https://en.cppreference.com/w/cpp/named_req/InputIterator} {LegacyInputIterator}
     and the \c{value_type} of \c InputIterator is one of the following character types:
@@ -3408,9 +3407,6 @@ QString &QString::append(QChar ch)
     \li (on platforms, such as Windows, where it is a 16-bit type) \c wchar_t
     \li \c char32_t
     \endlist
-
-    \note The behavior is undefined if either argument is an iterator into *this or
-    [\a first, \a last) is not a valid range.
 */
 
 QString &QString::assign(QAnyStringView s)
@@ -3483,7 +3479,7 @@ QString &QString::remove(qsizetype pos, qsizetype len)
 
     len = std::min(len, size() - pos);
 
-    if (!d->isShared()) {
+    if (!d.isShared()) {
         d->erase(d.begin() + pos, len);
         d.data()[d.size] = u'\0';
     } else {
@@ -3528,7 +3524,7 @@ static void removeStringImpl(QString &s, const T &needle, Qt::CaseSensitivity cs
         return dst;
     };
 
-    if (!dptr->needsDetach()) {
+    if (!dptr.needsDetach()) {
         auto dst = begin + i;
         dst = copyFunc(dst);
         s.truncate(std::distance(begin, dst));
@@ -3650,7 +3646,7 @@ QString &QString::remove(QChar ch, Qt::CaseSensitivity cs)
     auto begin = d.begin();
     auto first_match = begin + idx;
     auto end = d.end();
-    if (!d->isShared()) {
+    if (!d.isShared()) {
         auto it = std::remove_if(first_match, end, match);
         d->erase(it, std::distance(it, end));
         d.data()[d.size] = u'\0';
@@ -3693,97 +3689,24 @@ QString &QString::remove(QChar ch, Qt::CaseSensitivity cs)
   \sa remove()
 */
 
-
-/*! \internal
-  Instead of detaching, or reallocating if "before" is shorter than "after"
-  and there isn't enough capacity, create a new string, copy characters to it
-  as needed, then swap it with "str".
-*/
-static void replace_with_copy(QString &str, QSpan<size_t> indices, qsizetype blen,
-                              QStringView after)
-{
-    const qsizetype alen = after.size();
-    const char16_t *after_b = after.utf16();
-
-    const QString::DataPointer &str_d = str.data_ptr();
-    auto src_start = str_d.begin();
-    const qsizetype newSize = str_d.size + indices.size() * (alen - blen);
-    QString copy{ newSize, Qt::Uninitialized };
-    QString::DataPointer &copy_d = copy.data_ptr();
-    auto dst = copy_d.begin();
-    for (size_t index : indices) {
-        auto hit = str_d.begin() + index;
-        dst = std::copy(src_start, hit, dst);
-        dst = std::copy_n(after_b, alen, dst);
-        src_start = hit + blen;
-    }
-    dst = std::copy(src_start, str_d.end(), dst);
-    str.swap(copy);
-}
-
-// No detaching or reallocation is needed
-static void replace_in_place(QString &str, QSpan<size_t> indices,
-                             qsizetype blen, QStringView after)
-{
-    const qsizetype alen = after.size();
-    const char16_t *after_b = after.utf16();
-    const char16_t *after_e = after.utf16() + after.size();
-
-    if (blen == alen) { // Replace in place
-        for (size_t index : indices)
-            std::copy_n(after_b, alen, str.data_ptr().begin() + index);
-    } else if (blen > alen) { // Replace from front
-        char16_t *begin = str.data_ptr().begin();
-        char16_t *hit = begin + indices.front();
-        char16_t *to = hit;
-        to = std::copy_n(after_b, alen, to);
-        char16_t *movestart = hit + blen;
-        for (size_t index : indices.sliced(1)) {
-            hit = begin + index;
-            to = std::move(movestart, hit, to);
-            to = std::copy_n(after_b, alen, to);
-            movestart = hit + blen;
-        }
-        to = std::move(movestart, str.data_ptr().end(), to);
-        str.resize(std::distance(begin, to));
-    } else { // blen < alen, Replace from back
-        const qsizetype oldSize = str.data_ptr().size;
-        const qsizetype adjust = indices.size() * (alen - blen);
-        const qsizetype newSize = oldSize + adjust;
-
-        str.resize(newSize);
-        char16_t *begin = str.data_ptr().begin();
-        char16_t *moveend = begin + oldSize;
-        char16_t *to = str.data_ptr().end();
-
-        for (auto it = indices.rbegin(), end = indices.rend(); it != end; ++it) {
-            char16_t *hit = begin + *it;
-            char16_t *movestart = hit + blen;
-            to = std::move_backward(movestart, moveend, to);
-            to = std::copy_backward(after_b, after_e, to);
-            moveend = hit;
-        }
-    }
-}
-
-static void replace_helper(QString &str, QSpan<size_t> indices, qsizetype blen, QStringView after)
+static void replace_helper(QString &str, QSpan<qsizetype> indices, qsizetype blen, QStringView after)
 {
     const qsizetype oldSize = str.data_ptr().size;
     const qsizetype adjust = indices.size() * (after.size() - blen);
     const qsizetype newSize = oldSize + adjust;
-    if (str.data_ptr().needsDetach()) {
-        replace_with_copy(str, indices, blen, after);
+    using A = QStringAlgorithms<QString>;
+    if (str.data_ptr().needsDetach() || needsReallocate(str, newSize)) {
+        A::replace_helper(str, blen, after, indices);
         return;
     }
 
-    str.reserve(newSize);
-
-    if (QtPrivate::q_points_into_range(after.begin(), str))
+    if (QtPrivate::q_points_into_range(after.begin(), str)) {
         // Copy after if it lies inside our own d.b area (which we could
         // possibly invalidate via a realloc or modify by replacement)
-        replace_in_place(str, indices, blen, QVarLengthArray(after.begin(), after.end()));
-    else
-        replace_in_place(str, indices, blen, after);
+        A::replace_helper(str, blen, QVarLengthArray(after.begin(), after.end()), indices);
+    } else {
+        A::replace_helper(str, blen, after, indices);
+    }
 }
 
 /*!
@@ -3813,16 +3736,20 @@ QString &QString::replace(qsizetype pos, qsizetype len, const QString &after)
   Replaces \a n characters beginning at index \a position with the
   first \a alen characters of the QChar array \a after and returns a
   reference to this string.
+
+  \a n must not be negative.
 */
 QString &QString::replace(qsizetype pos, qsizetype len, const QChar *after, qsizetype alen)
 {
+    Q_PRE(len >= 0);
+
     if (size_t(pos) > size_t(this->size()))
         return *this;
     if (len > this->size() - pos)
         len = this->size() - pos;
 
-    size_t index = pos;
-    replace_helper(*this, QSpan(&index, 1), len, QStringView{after, alen});
+    qsizetype indices[] = {pos};
+    replace_helper(*this, indices, len, QStringView{after, alen});
     return *this;
 }
 
@@ -3884,7 +3811,7 @@ QString &QString::replace(const QChar *before, qsizetype blen,
                           const QChar *after, qsizetype alen,
                           Qt::CaseSensitivity cs)
 {
-    if (d.size == 0) {
+    if (isEmpty()) {
         if (blen)
             return *this;
     } else {
@@ -3900,7 +3827,7 @@ QString &QString::replace(const QChar *before, qsizetype blen,
 
     qsizetype index = 0;
 
-    QVarLengthArray<size_t> indices;
+    QVarLengthArray<qsizetype> indices;
     while ((index = matcher.indexIn(*this, index)) != -1) {
         indices.push_back(index);
         if (blen) // Step over before:
@@ -3935,7 +3862,7 @@ QString& QString::replace(QChar ch, const QString &after, Qt::CaseSensitivity cs
 
     const char16_t cc = (cs == Qt::CaseSensitive ? ch.unicode() : ch.toCaseFolded().unicode());
 
-    QVarLengthArray<size_t> indices;
+    QVarLengthArray<qsizetype> indices;
     if (cs == Qt::CaseSensitive) {
         const char16_t *begin = d.begin();
         const char16_t *end = d.end();
@@ -4495,6 +4422,7 @@ QString &QString::replace(QChar c, QLatin1StringView after, Qt::CaseSensitivity 
 */
 
 /*!
+  \fn qsizetype QString::indexOf(const QString &str, qsizetype from, Qt::CaseSensitivity cs) const
   \include qstring.qdocinc {qstring-first-index-of} {string} {str}
 
   \include qstring.qdocinc {search-comparison-case-sensitivity} {search}
@@ -4507,10 +4435,6 @@ QString &QString::replace(QChar c, QLatin1StringView after, Qt::CaseSensitivity 
 
   \sa lastIndexOf(), contains(), count()
 */
-qsizetype QString::indexOf(const QString &str, qsizetype from, Qt::CaseSensitivity cs) const
-{
-    return QtPrivate::findString(QStringView(unicode(), size()), from, QStringView(str.unicode(), str.size()), cs);
-}
 
 /*!
     \fn qsizetype QString::indexOf(QStringView str, qsizetype from, Qt::CaseSensitivity cs) const
@@ -4527,6 +4451,7 @@ qsizetype QString::indexOf(const QString &str, qsizetype from, Qt::CaseSensitivi
 */
 
 /*!
+  \fn qsizetype QString::indexOf(QLatin1StringView str, qsizetype from, Qt::CaseSensitivity cs) const
   \since 4.5
 
   \include {qstring.qdocinc} {qstring-first-index-of} {Latin-1 string viewed by} {str}
@@ -4542,11 +4467,6 @@ qsizetype QString::indexOf(const QString &str, qsizetype from, Qt::CaseSensitivi
   \sa lastIndexOf(), contains(), count()
 */
 
-qsizetype QString::indexOf(QLatin1StringView str, qsizetype from, Qt::CaseSensitivity cs) const
-{
-    return QtPrivate::findString(QStringView(unicode(), size()), from, str, cs);
-}
-
 /*!
     \fn qsizetype QString::indexOf(QChar ch, qsizetype from, Qt::CaseSensitivity cs) const
     \overload indexOf()
@@ -4555,6 +4475,7 @@ qsizetype QString::indexOf(QLatin1StringView str, qsizetype from, Qt::CaseSensit
 */
 
 /*!
+  \fn qsizetype QString::lastIndexOf(const QString &str, qsizetype from, Qt::CaseSensitivity cs) const
   \include qstring.qdocinc {qstring-last-index-of} {string} {str}
 
   \include qstring.qdocinc negative-index-start-search-from-end
@@ -4576,10 +4497,6 @@ qsizetype QString::indexOf(QLatin1StringView str, qsizetype from, Qt::CaseSensit
 
   \sa indexOf(), contains(), count()
 */
-qsizetype QString::lastIndexOf(const QString &str, qsizetype from, Qt::CaseSensitivity cs) const
-{
-    return QtPrivate::lastIndexOf(QStringView(*this), from, str, cs);
-}
 
 /*!
   \fn qsizetype QString::lastIndexOf(const QString &str, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
@@ -4600,6 +4517,7 @@ qsizetype QString::lastIndexOf(const QString &str, qsizetype from, Qt::CaseSensi
 
 
 /*!
+  \fn qsizetype QString::lastIndexOf(QLatin1StringView str, qsizetype from, Qt::CaseSensitivity cs) const
   \since 4.5
   \overload lastIndexOf()
 
@@ -4624,10 +4542,6 @@ qsizetype QString::lastIndexOf(const QString &str, qsizetype from, Qt::CaseSensi
 
   \sa indexOf(), contains(), count()
 */
-qsizetype QString::lastIndexOf(QLatin1StringView str, qsizetype from, Qt::CaseSensitivity cs) const
-{
-    return QtPrivate::lastIndexOf(*this, from, str, cs);
-}
 
 /*!
   \fn qsizetype QString::lastIndexOf(QLatin1StringView str, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
@@ -4725,7 +4639,7 @@ Q_DECLARE_TYPEINFO(QStringCapture, Q_PRIMITIVE_TYPE);
 QString &QString::replace(const QRegularExpression &re, const QString &after)
 {
     if (!re.isValid()) {
-        qtWarnAboutInvalidRegularExpression(re.pattern(), "QString::replace");
+        qtWarnAboutInvalidRegularExpression(re, "QString", "replace");
         return *this;
     }
 
@@ -5162,10 +5076,8 @@ QString QString::section(const QString &sep, qsizetype start, qsizetype end, Sec
 }
 
 #if QT_CONFIG(regularexpression)
-class qt_section_chunk {
-public:
-    qt_section_chunk() {}
-    qt_section_chunk(qsizetype l, QStringView s) : length(l), string(std::move(s)) {}
+struct qt_section_chunk
+{
     qsizetype length;
     QStringView string;
 };
@@ -5247,7 +5159,7 @@ static QString extractSections(QSpan<qt_section_chunk> sections, qsizetype start
 QString QString::section(const QRegularExpression &re, qsizetype start, qsizetype end, SectionFlags flags) const
 {
     if (!re.isValid()) {
-        qtWarnAboutInvalidRegularExpression(re.pattern(), "QString::section");
+        qtWarnAboutInvalidRegularExpression(re, "QString", "section");
         return QString();
     }
 
@@ -5265,11 +5177,11 @@ QString QString::section(const QRegularExpression &re, qsizetype start, qsizetyp
     while (iterator.hasNext()) {
         QRegularExpressionMatch match = iterator.next();
         m = match.capturedStart();
-        sections.append(qt_section_chunk(last_len, QStringView{ *this }.sliced(last_m, m - last_m)));
+        sections.append(qt_section_chunk{last_len, QStringView{*this}.sliced(last_m, m - last_m)});
         last_m = m;
         last_len = match.capturedLength();
     }
-    sections.append(qt_section_chunk(last_len, QStringView{ *this }.sliced(last_m, n - last_m)));
+    sections.append(qt_section_chunk{last_len, QStringView{*this}.sliced(last_m, n - last_m)});
 
     return extractSections(sections, start, end, flags);
 }
@@ -5279,8 +5191,9 @@ QString QString::section(const QRegularExpression &re, qsizetype start, qsizetyp
     \fn QString QString::left(qsizetype n) const &
     \fn QString QString::left(qsizetype n) &&
 
-    Returns a substring that contains the \a n leftmost characters
-    of the string.
+    Returns a substring that contains the \a n leftmost characters of
+    this string (that is, from the beginning of this string up to, but not
+    including, the element at index position \a n).
 
     If you know that \a n cannot be out of bounds, use first() instead in new
     code, because it is faster.
@@ -5311,8 +5224,9 @@ QString QString::section(const QRegularExpression &re, qsizetype start, qsizetyp
     \fn QString QString::mid(qsizetype position, qsizetype n) const &
     \fn QString QString::mid(qsizetype position, qsizetype n) &&
 
-    Returns a string that contains \a n characters of this string,
-    starting at the specified \a position index.
+    Returns a string that contains \a n characters of this string, starting
+    at the specified \a position index up to, but not including, the element
+    at index position \tt {\a position + \a n}.
 
     If you know that \a position and \a n cannot be out of bounds, use sliced()
     instead in new code, because it is faster.
@@ -5367,8 +5281,9 @@ QString QString::mid(qsizetype position, qsizetype n) &&
     \fn QString QString::first(qsizetype n) &&
     \since 6.0
 
-    Returns a string that contains the first \a n characters
-    of this string.
+    Returns a string that contains the first \a n characters of this string,
+    (that is, from the beginning of this string up to, but not including,
+    the element at index position \a n).
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
@@ -5396,8 +5311,9 @@ QString QString::mid(qsizetype position, qsizetype n) &&
     \fn QString QString::sliced(qsizetype pos, qsizetype n) &&
     \since 6.0
 
-    Returns a string that contains \a n characters of this string,
-    starting at position \a pos.
+    Returns a string that contains \a n characters of this string, starting
+    at position \a pos up to, but not including, the element at index position
+    \tt {\a pos + \a n}.
 
     \note The behavior is undefined when \a pos < 0, \a n < 0,
     or \a pos + \a n > size().
@@ -5433,13 +5349,14 @@ QString QString::sliced_helper(QString &str, qsizetype pos, qsizetype n)
     \fn QString &QString::slice(qsizetype pos, qsizetype n)
     \since 6.8
 
-    Modifies this string to start at position \a pos, extending for \a n
-    characters (code points), and returns a reference to this string.
+    Modifies this string to start at position \a pos, up to, but not including,
+    the character (code point) at index position \tt {\a pos + \a n}; and
+    returns a reference to this string.
 
     \note The behavior is undefined if \a pos < 0, \a n < 0,
     or \a pos + \a n > size().
 
-    \snippet qstring/main.cpp 86
+    \snippet qstring/main.cpp slice97
 
     \sa sliced(), first(), last(), chopped(), chop(), truncate()
 */
@@ -5576,7 +5493,7 @@ static bool checkCase(QStringView s, QUnicodeTables::Case c) noexcept
     QStringIterator it(s);
     while (it.hasNext()) {
         const char32_t uc = it.next();
-        if (qGetProp(uc)->cases[c].diff)
+        if (caseConversion(uc)[c].diff)
             return false;
     }
     return true;
@@ -5694,7 +5611,7 @@ QByteArray QString::toLatin1_helper_inplace(QString &s)
     // First, do the in-place conversion. Since isDetached() == true, the data
     // was allocated by QArrayData, so the null terminator must be there.
     qsizetype length = s.size();
-    char16_t *sdata = s.d->data();
+    char16_t *sdata = s.d.data();
     Q_ASSERT(sdata[length] == u'\0');
     qt_to_latin1(reinterpret_cast<uchar *>(sdata), sdata, length + 1);
 
@@ -5709,6 +5626,26 @@ QByteArray QString::toLatin1_helper_inplace(QString &s)
     Q_ASSERT(s.constData() == QString().constData());
 
     return QByteArray(std::move(ba_d));
+}
+
+/*!
+    \since 6.9
+    \internal
+    \relates QLatin1StringView
+
+    Returns a UTF-8 representation of \a string as a QByteArray.
+*/
+QByteArray QtPrivate::convertToUtf8(QLatin1StringView string)
+{
+    if (Q_UNLIKELY(string.isNull()))
+        return QByteArray();
+
+    // create a QByteArray with the worst case scenario size
+    QByteArray ba(string.size() * 2, Qt::Uninitialized);
+    const qsizetype sz = QUtf8::convertFromLatin1(ba.data(), string) - ba.data();
+    ba.truncate(sz);
+
+    return ba;
 }
 
 // QLatin1 methods that use helpers from qstring.cpp
@@ -5838,12 +5775,12 @@ static QList<uint> qt_convert_to_ucs4(QStringView string);
 
     Returns a UCS-4/UTF-32 representation of the string as a QList<uint>.
 
-    UCS-4 is a Unicode codec and therefore it is lossless. All characters from
-    this string will be encoded in UCS-4. Any invalid sequence of code units in
-    this string is replaced by the Unicode's replacement character
+    UTF-32 is a Unicode codec and therefore it is lossless. All characters from
+    this string will be encoded in UTF-32. Any invalid sequence of code units in
+    this string is replaced by the Unicode replacement character
     (QChar::ReplacementCharacter, which corresponds to \c{U+FFFD}).
 
-    The returned list is not \\0'-terminated.
+    The returned list is not 0-terminated.
 
     \sa fromUtf8(), toUtf8(), toLatin1(), toLocal8Bit(), QStringEncoder,
         fromUcs4(), toWCharArray()
@@ -5871,12 +5808,12 @@ static QList<uint> qt_convert_to_ucs4(QStringView string)
 
     Returns a UCS-4/UTF-32 representation of \a string as a QList<uint>.
 
-    UCS-4 is a Unicode codec and therefore it is lossless. All characters from
-    this string will be encoded in UCS-4. Any invalid sequence of code units in
-    this string is replaced by the Unicode's replacement character
+    UTF-32 is a Unicode codec and therefore it is lossless. All characters from
+    this string will be encoded in UTF-32. Any invalid sequence of code units in
+    this string is replaced by the Unicode replacement character
     (QChar::ReplacementCharacter, which corresponds to \c{U+FFFD}).
 
-    The returned list is not \\0'-terminated.
+    The returned list is not 0-terminated.
 
     \sa QString::toUcs4(), QStringView::toUcs4(), QtPrivate::convertToLatin1(),
     QtPrivate::convertToLocal8Bit(), QtPrivate::convertToUtf8()
@@ -6058,7 +5995,7 @@ QString QString::fromUtf8(QByteArrayView ba)
     Returns a QString initialized with the first \a size characters
     of the Unicode string \a unicode (ISO-10646-UTF-16 encoded).
 
-    If \a size is -1 (default), \a unicode must be \\0'-terminated.
+    If \a size is -1 (default), \a unicode must be '\\0'-terminated.
 
     This function checks for a Byte Order Mark (BOM). If it is missing,
     host byte order is assumed.
@@ -6095,9 +6032,9 @@ QString QString::fromUtf16(const char16_t *unicode, qsizetype size)
     \since 5.3
 
     Returns a QString initialized with the first \a size characters
-    of the Unicode string \a unicode (ISO-10646-UCS-4 encoded).
+    of the Unicode string \a unicode (encoded as UTF-32).
 
-    If \a size is -1 (default), \a unicode must be \\0'-terminated.
+    If \a size is -1 (default), \a unicode must be '\\0'-terminated.
 
     \sa toUcs4(), fromUtf16(), utf16(), setUtf16(), fromWCharArray(),
         fromStdU32String()
@@ -6107,9 +6044,10 @@ QString QString::fromUcs4(const char32_t *unicode, qsizetype size)
     if (!unicode)
         return QString();
     if (size < 0) {
-        size = 0;
-        while (unicode[size] != 0)
-            ++size;
+        if constexpr (sizeof(char32_t) == sizeof(wchar_t))
+            size = wcslen(reinterpret_cast<const wchar_t *>(unicode));
+        else
+            size = std::char_traits<char32_t>::length(unicode);
     }
     QStringDecoder toUtf16(QStringDecoder::Utf32, QStringDecoder::Flag::Stateless);
     return toUtf16(QByteArrayView(reinterpret_cast<const char *>(unicode), size * 4));
@@ -6134,7 +6072,16 @@ QString& QString::setUnicode(const QChar *unicode, qsizetype size)
 }
 
 /*!
-    \fn QString &QString::setUtf16(const ushort *unicode, qsizetype size)
+    \fn QString::setUnicode(const char16_t *unicode, qsizetype size)
+    \overload
+    \since 6.9
+
+    \sa unicode(), setUtf16()
+*/
+
+/*!
+    \fn QString::setUtf16(const char16_t *unicode, qsizetype size)
+    \since 6.9
 
     Resizes the string to \a size characters and copies \a unicode
     into the string.
@@ -6146,6 +6093,11 @@ QString& QString::setUnicode(const QChar *unicode, qsizetype size)
     possibly differing byte ordering.
 
     \sa utf16(), setUnicode()
+*/
+
+/*!
+    \fn QString &QString::setUtf16(const ushort *unicode, qsizetype size)
+    \obsolete [6.10] Use the \c char16_t overload instead.
 */
 
 /*!
@@ -6330,7 +6282,8 @@ QString QString::trimmed_helper(QString &str)
 /*!
     \fn void QString::truncate(qsizetype position)
 
-    Truncates the string at the given \a position index.
+    Truncates the string starting from, and including, the element at index
+    \a position.
 
     If the specified \a position index is beyond the end of the
     string, nothing happens.
@@ -6613,6 +6566,16 @@ QString& QString::fill(QChar ch, qsizetype size)
     function).
 
     \sa QString::fromUtf8()
+*/
+
+/*!
+    \fn QString operator+(QStringView lhs, const QString &rhs)
+    \fn QString operator+(const QString &lhs, QStringView rhs)
+
+    \relates QString
+    \since 6.9
+
+    Returns a string that is the result of concatenating \a lhs and \a rhs.
 */
 
 /*!
@@ -7011,6 +6974,7 @@ int QString::localeAwareCompare_helper(const QChar *data1, qsizetype length1,
 
 /*!
     \fn const ushort *QString::utf16() const
+    \obsolete [6.11] Use nullTerminate() and cast data() to \c{const char16_t *}.
 
     Returns the QString as a '\\0\'-terminated array of unsigned
     shorts. The result remains valid until the string is modified.
@@ -7022,11 +6986,56 @@ int QString::localeAwareCompare_helper(const QChar *data1, qsizetype length1,
 
 const ushort *QString::utf16() const
 {
-    if (!d->isMutable()) {
+    if (!d.isMutable()) {
         // ensure '\0'-termination for ::fromRawData strings
         const_cast<QString*>(this)->reallocData(d.size, QArrayData::KeepSize);
     }
     return reinterpret_cast<const ushort *>(d.data());
+}
+
+/*!
+    \fn QString &QString::nullTerminate()
+    \since 6.10
+
+    If this string data isn't null-terminated, this method will make a deep
+    copy of the data and make it null-terminated.
+
+    A QString is null-terminated by default, however in some cases (e.g.
+    when using fromRawData()), the string data doesn't necessarily end
+    with a \c {\0} character, which could be a problem when calling methods
+    that expect a null-terminated string.
+
+    \sa nullTerminated(), fromRawData(), setRawData()
+*/
+QString &QString::nullTerminate()
+{
+    // ensure '\0'-termination for ::fromRawData strings
+    if (!d.isMutable())
+        *this = QString{constData(), size()};
+    return *this;
+}
+
+/*!
+    \fn QString QString::nullTerminated() const &
+    \fn QString QString::nullTerminated() &&
+    \since 6.10
+
+    Returns a copy of this string that is always null-terminated.
+
+    \sa nullTerminate(), fromRawData(), setRawData()
+*/
+QString QString::nullTerminated() const &
+{
+    // ensure '\0'-termination for ::fromRawData strings
+    if (!d.isMutable())
+        return QString{constData(), size()};
+    return *this;
+}
+
+QString QString::nullTerminated() &&
+{
+    nullTerminate();
+    return std::move(*this);
 }
 
 /*!
@@ -7195,7 +7204,7 @@ static QString convertCase(T &str, QUnicodeTables::Case which)
     QStringIterator it(p, e);
     while (it.hasNext()) {
         const char32_t uc = it.next();
-        if (qGetProp(uc)->cases[which].diff) {
+        if (caseConversion(uc)[which].diff) {
             it.recede();
             return detachAndConvertCase(str, it, which);
         }
@@ -7244,6 +7253,12 @@ QString QString::toCaseFolded_helper(QString &str)
     \note In some cases the uppercase form of a string may be longer than the
     original.
 
+    \note Since 2024, the German language officially prefers to uppercase ß
+    (U+00DF LATIN SMALL LETTER SHARP S) as ẞ (U+1E9E LATIN CAPITAL LETTER SHARP S).
+    Qt's implementation follows Unicode, which still mandates the use of "SS".
+    If you need to implement the new German rules, you need to manually do
+    \c{replace(u'ß', u'ẞ')} \e{before} calling this function.
+
     \sa toLower(), QLocale::toLower()
 */
 
@@ -7268,9 +7283,9 @@ QString QString::toUpper_helper(QString &str)
     string and \c{%s} arguments must be UTF-8 encoded.
 
     \note The \c{%lc} escape sequence expects a unicode character of type
-    \c char16_t, or \c ushort (as returned by QChar::unicode()).
+    \c char16_t (as returned by QChar::unicode()), or \c ushort.
     The \c{%ls} escape sequence expects a pointer to a zero-terminated array
-    of unicode characters of type \c char16_t, or ushort (as returned by
+    of unicode characters of type \c char16_t, or \c ushort (as returned by
     QString::utf16()). This is at odds with the printf() in the standard C++
     library, which defines \c {%lc} to print a wchar_t and \c{%ls} to print
     a \c{wchar_t*}, and might also produce compiler warnings on platforms
@@ -7295,7 +7310,7 @@ QString QString::asprintf(const char *cformat, ...)
 {
     va_list ap;
     va_start(ap, cformat);
-    const QString s = vasprintf(cformat, ap);
+    QString s = vasprintf(cformat, ap);
     va_end(ap);
     return s;
 }
@@ -7566,8 +7581,8 @@ QString QString::vasprintf(const char *cformat, va_list ap)
             }
             case 's': {
                 if (length_mod == lm_l) {
-                    const ushort *buff = va_arg(ap, const ushort*);
-                    const ushort *ch = buff;
+                    const char16_t *buff = va_arg(ap, const char16_t*);
+                    const auto *ch = buff;
                     while (precision != 0 && *ch != 0) {
                         ++ch;
                         --precision;
@@ -8051,7 +8066,7 @@ QString &QString::setNum(qulonglong n, int base)
     Sets the string to the printed value of \a n, formatted according to the
     given \a format and \a precision, and returns a reference to the string.
 
-    \sa number(), QLocale::FloatingPointPrecisionOption, {Number Formats}
+    \sa number(), QLocale::FloatingPointPrecisionOption, {Number formats}
 */
 
 QString &QString::setNum(double n, char format, int precision)
@@ -8168,7 +8183,7 @@ QString QString::number(qulonglong n, int base)
     For formats with an exponent, the exponent will show its sign and have at
     least two digits, left-padding the exponent with zero if needed.
 
-    \sa setNum(), QLocale::toString(), QLocale::FloatingPointPrecisionOption, {Number Formats}
+    \sa setNum(), QLocale::toString(), QLocale::FloatingPointPrecisionOption, {Number formats}
 */
 QString QString::number(double n, char format, int precision)
 {
@@ -8296,7 +8311,7 @@ static ResultList splitString(const String &source, const QRegularExpression &re
 {
     ResultList list;
     if (!re.isValid()) {
-        qtWarnAboutInvalidRegularExpression(re.pattern(), "QString::split");
+        qtWarnAboutInvalidRegularExpression(re, "QString", "split");
         return list;
     }
 
@@ -8461,18 +8476,45 @@ void qt_string_normalize(QString *data, QString::NormalizationForm mode, QChar::
                 if (QChar::requiresSurrogates(n.ucs4)) {
                     char16_t ucs4High = QChar::highSurrogate(n.ucs4);
                     char16_t ucs4Low = QChar::lowSurrogate(n.ucs4);
-                    char16_t oldHigh = QChar::highSurrogate(n.old_mapping);
-                    char16_t oldLow = QChar::lowSurrogate(n.old_mapping);
-                    while (pos < s.size() - 1) {
-                        if (s.at(pos).unicode() == ucs4High && s.at(pos + 1).unicode() == ucs4Low) {
-                            if (!d)
-                                d = data->data();
-                            d[pos] = QChar(oldHigh);
-                            d[++pos] = QChar(oldLow);
+
+                    // scan for this codepoint
+                    for ( ; pos < s.size() - 1; ++pos) {
+                        if (s.at(pos).unicode() == ucs4High && s.at(pos + 1).unicode() == ucs4Low)
+                            break;
+                    }
+                    if (pos == s.size())
+                        continue;   // no correction necessary
+
+                    // detach if necessary
+                    if (!d)
+                        d = data->data();
+                    if (QChar::requiresSurrogates(n.old_mapping)) {
+                        // no shrinking
+                        char16_t oldHigh = QChar::highSurrogate(n.old_mapping);
+                        char16_t oldLow = QChar::lowSurrogate(n.old_mapping);
+                        while (pos < s.size() - 1) {
+                            if (s.at(pos).unicode() == ucs4High && s.at(pos + 1).unicode() == ucs4Low) {
+                                d[pos] = QChar(oldHigh);
+                                d[++pos] = QChar(oldLow);
+                            }
+                            ++pos;
                         }
-                        ++pos;
+                    } else {
+                        // shrinking, so a little harder
+                        char16_t old = char16_t(n.old_mapping);
+                        qsizetype outpos = pos;
+                        for ( ; pos < s.size(); ++outpos, ++pos) {
+                            if (pos < s.size() - 1 && s.at(pos).unicode() == ucs4High
+                                    && s.at(pos + 1).unicode() == ucs4Low) {
+                                d[outpos] = QChar(old);
+                                ++pos;
+                            }
+                        }
+                        data->truncate(outpos);
+                        d = nullptr;
                     }
                 } else {
+                    Q_ASSERT(!QChar::requiresSurrogates(n.old_mapping));    // BMP maps to BMP
                     while (pos < s.size()) {
                         if (s.at(pos).unicode() == n.ucs4) {
                             if (!d)
@@ -8704,42 +8746,7 @@ static QString replaceArgEscapes(QStringView s, const ArgEscapeData &d, qsizetyp
 }
 
 /*!
-  Returns a copy of this string with the lowest numbered place marker
-  replaced by string \a a, i.e., \c %1, \c %2, ..., \c %99.
-
-  \a fieldWidth specifies the minimum amount of space that argument \a
-  a shall occupy. If \a a requires less space than \a fieldWidth, it
-  is padded to \a fieldWidth with character \a fillChar.  A positive
-  \a fieldWidth produces right-aligned text. A negative \a fieldWidth
-  produces left-aligned text.
-
-  This example shows how we might create a \c status string for
-  reporting progress while processing a list of files:
-
-  \snippet qstring/main.cpp 11
-
-  First, \c arg(i) replaces \c %1. Then \c arg(total) replaces \c
-  %2. Finally, \c arg(fileName) replaces \c %3.
-
-  One advantage of using arg() over asprintf() is that the order of the
-  numbered place markers can change, if the application's strings are
-  translated into other languages, but each arg() will still replace
-  the lowest numbered unreplaced place marker, no matter where it
-  appears. Also, if place marker \c %i appears more than once in the
-  string, the arg() replaces all of them.
-
-  If there is no unreplaced place marker remaining, a warning message
-  is output and the result is undefined. Place marker numbers must be
-  in the range 1 to 99.
-*/
-QString QString::arg(const QString &a, int fieldWidth, QChar fillChar) const
-{
-    return arg(qToStringViewIgnoringNull(a), fieldWidth, fillChar);
-}
-
-/*!
-    \overload
-    \since 5.10
+    \fn template <typename T, QString::if_string_like<T> = true> QString QString::arg(const T &a, int fieldWidth, QChar fillChar) const
 
     Returns a copy of this string with the lowest-numbered place-marker
     replaced by string \a a, i.e., \c %1, \c %2, ..., \c %99.
@@ -8768,50 +8775,44 @@ QString QString::arg(const QString &a, int fieldWidth, QChar fillChar) const
     If there is no unreplaced place-marker remaining, a warning message
     is printed and the result is undefined. Place-marker numbers must be
     in the range 1 to 99.
+
+    \note In Qt versions prior to 6.9, this function was overloaded on
+    \c{char}, QChar, QString, QStringView, and QLatin1StringView and in some
+    cases, \c{wchar_t} and \c{char16_t} arguments would resolve to the integer
+    overloads. In Qt versions prior to 5.10, this function lacked the
+    QStringView and QLatin1StringView overloads.
 */
-QString QString::arg(QStringView a, int fieldWidth, QChar fillChar) const
+QString QString::arg_impl(QAnyStringView a, int fieldWidth, QChar fillChar) const
 {
     ArgEscapeData d = findArgEscapes(*this);
 
     if (Q_UNLIKELY(d.occurrences == 0)) {
-        qWarning("QString::arg: Argument missing: %ls, %ls", qUtf16Printable(*this),
+        qWarning("QString::arg: Argument missing: \"%ls\", \"%ls\"", qUtf16Printable(*this),
                   qUtf16Printable(a.toString()));
         return *this;
     }
-    return replaceArgEscapes(*this, d, fieldWidth, a, a, fillChar);
+    struct {
+        QVarLengthArray<char16_t> out;
+        QStringView operator()(QStringView in) noexcept { return in; }
+        QStringView operator()(QLatin1StringView in)
+        {
+            out.resize(in.size());
+            qt_from_latin1(out.data(), in.data(), size_t(in.size()));
+            return out;
+        }
+        QStringView operator()(QUtf8StringView in)
+        {
+            out.resize(in.size());
+            return QStringView{out.data(), QUtf8::convertToUnicode(out.data(), in)};
+        }
+    } convert;
+
+    QStringView sv = a.visit(std::ref(convert));
+    return replaceArgEscapes(*this, d, fieldWidth, sv, sv, fillChar);
 }
 
 /*!
-    \overload
-    \since 5.10
-
-    Returns a copy of this string with the lowest-numbered place-marker
-    replaced by the Latin-1 string viewed by \a a, i.e., \c %1, \c %2, ..., \c %99.
-
-    \a fieldWidth specifies the minimum amount of space that \a a
-    shall occupy. If \a a requires less space than \a fieldWidth, it
-    is padded to \a fieldWidth with character \a fillChar.  A positive
-    \a fieldWidth produces right-aligned text. A negative \a fieldWidth
-    produces left-aligned text.
-
-    One advantage of using arg() over asprintf() is that the order of the
-    numbered place markers can change, if the application's strings are
-    translated into other languages, but each arg() will still replace
-    the lowest-numbered unreplaced place-marker, no matter where it
-    appears. Also, if place-marker \c %i appears more than once in the
-    string, arg() replaces all of them.
-
-    If there is no unreplaced place-marker remaining, a warning message
-    is printed and the result is undefined. Place-marker numbers must be
-    in the range 1 to 99.
-*/
-QString QString::arg(QLatin1StringView a, int fieldWidth, QChar fillChar) const
-{
-    QVarLengthArray<char16_t> utf16 = qt_from_latin1_to_qvla(a);
-    return arg(QStringView(utf16.data(), utf16.size()), fieldWidth, fillChar);
-}
-
-/*! \fn QString QString::arg(int a, int fieldWidth, int base, QChar fillChar) const
+  \fn template <typename T, QString::if_integral_non_char<T> = true> QString QString::arg(T a, int fieldWidth, int base, QChar fillChar) const
   \overload arg()
 
   The \a a argument is expressed in base \a base, which is 10 by
@@ -8832,78 +8833,25 @@ QString QString::arg(QLatin1StringView a, int fieldWidth, QChar fillChar) const
   \snippet qstring/main.cpp 12
   \snippet qstring/main.cpp 14
 
-  \sa {Number Formats}
+  \note In Qt versions prior to 6.10.1, this function accepted arguments of
+  types that implicitly convert to integral types. This is no longer supported,
+  except for (unscoped) enums, because it also accepted types convertible to
+  floating-point types, losing precision when those were printed as integers. A
+  backwards-compatible fix is to cast such types to a C++ type whose displayed
+  form matches your intent (\c int, \c float, ...).
+
+  \note In Qt versions prior to 6.9, this function was overloaded on various
+  integral types and sometimes incorrectly accepted \c char and \c char16_t
+  arguments.
+
+  \sa {Number formats}
 */
-
-/*! \fn QString QString::arg(uint a, int fieldWidth, int base, QChar fillChar) const
-  \overload arg()
-
-  The \a base argument specifies the base to use when converting the
-  integer \a a into a string. The base must be between 2 and 36.
-
-  \sa {Number Formats}
-*/
-
-/*! \fn QString QString::arg(long a, int fieldWidth, int base, QChar fillChar) const
-  \overload arg()
-
-  \a fieldWidth specifies the minimum amount of space that \a a is
-  padded to and filled with the character \a fillChar. A positive
-  value produces right-aligned text; a negative value produces
-  left-aligned text.
-
-  The \a a argument is expressed in the given \a base, which is 10 by
-  default and must be between 2 and 36.
-
-  The '%' can be followed by an 'L', in which case the sequence is
-  replaced with a localized representation of \a a. The conversion
-  uses the default locale. The default locale is determined from the
-  system's locale settings at application startup. It can be changed
-  using QLocale::setDefault(). The 'L' flag is ignored if \a base is
-  not 10.
-
-  \snippet qstring/main.cpp 12
-  \snippet qstring/main.cpp 14
-
-  \sa {Number Formats}
-*/
-
-/*!
-  \fn QString QString::arg(ulong a, int fieldWidth, int base, QChar fillChar) const
-  \overload arg()
-
-  \a fieldWidth specifies the minimum amount of space that \a a is
-  padded to and filled with the character \a fillChar. A positive
-  value produces right-aligned text; a negative value produces
-  left-aligned text.
-
-  The \a base argument specifies the base to use when converting the
-  integer \a a to a string. The base must be between 2 and 36, with 8
-  giving octal, 10 decimal, and 16 hexadecimal numbers.
-
-  \sa {Number Formats}
-*/
-
-/*!
-  \overload arg()
-
-  \a fieldWidth specifies the minimum amount of space that \a a is
-  padded to and filled with the character \a fillChar. A positive
-  value produces right-aligned text; a negative value produces
-  left-aligned text.
-
-  The \a base argument specifies the base to use when converting the
-  integer \a a into a string. The base must be between 2 and 36, with
-  8 giving octal, 10 decimal, and 16 hexadecimal numbers.
-
-  \sa {Number Formats}
-*/
-QString QString::arg(qlonglong a, int fieldWidth, int base, QChar fillChar) const
+QString QString::arg_impl(qlonglong a, int fieldWidth, int base, QChar fillChar) const
 {
     ArgEscapeData d = findArgEscapes(*this);
 
     if (d.occurrences == 0) {
-        qWarning() << "QString::arg: Argument missing:" << *this << ',' << a;
+        qWarning("QString::arg: Argument missing: \"%ls\", %llu", qUtf16Printable(*this), a);
         return *this;
     }
 
@@ -8930,26 +8878,12 @@ QString QString::arg(qlonglong a, int fieldWidth, int base, QChar fillChar) cons
     return replaceArgEscapes(*this, d, fieldWidth, arg, localeArg, fillChar);
 }
 
-/*!
-  \overload arg()
-
-  \a fieldWidth specifies the minimum amount of space that \a a is
-  padded to and filled with the character \a fillChar. A positive
-  value produces right-aligned text; a negative value produces
-  left-aligned text.
-
-  The \a base argument specifies the base to use when converting the
-  integer \a a into a string. \a base must be between 2 and 36, with 8
-  giving octal, 10 decimal, and 16 hexadecimal numbers.
-
-  \sa {Number Formats}
-*/
-QString QString::arg(qulonglong a, int fieldWidth, int base, QChar fillChar) const
+QString QString::arg_impl(qulonglong a, int fieldWidth, int base, QChar fillChar) const
 {
     ArgEscapeData d = findArgEscapes(*this);
 
     if (d.occurrences == 0) {
-        qWarning() << "QString::arg: Argument missing:" << *this << ',' << a;
+        qWarning("QString::arg: Argument missing: \"%ls\", %lld", qUtf16Printable(*this), a);
         return *this;
     }
 
@@ -8977,57 +8911,7 @@ QString QString::arg(qulonglong a, int fieldWidth, int base, QChar fillChar) con
 }
 
 /*!
-  \overload arg()
-
-  \fn QString QString::arg(short a, int fieldWidth, int base, QChar fillChar) const
-
-  \a fieldWidth specifies the minimum amount of space that \a a is
-  padded to and filled with the character \a fillChar. A positive
-  value produces right-aligned text; a negative value produces
-  left-aligned text.
-
-  The \a base argument specifies the base to use when converting the
-  integer \a a into a string. The base must be between 2 and 36, with
-  8 giving octal, 10 decimal, and 16 hexadecimal numbers.
-
-  \sa {Number Formats}
-*/
-
-/*!
-  \fn QString QString::arg(ushort a, int fieldWidth, int base, QChar fillChar) const
-  \overload arg()
-
-  \a fieldWidth specifies the minimum amount of space that \a a is
-  padded to and filled with the character \a fillChar. A positive
-  value produces right-aligned text; a negative value produces
-  left-aligned text.
-
-  The \a base argument specifies the base to use when converting the
-  integer \a a into a string. The base must be between 2 and 36, with
-  8 giving octal, 10 decimal, and 16 hexadecimal numbers.
-
-  \sa {Number Formats}
-*/
-
-/*!
-    \overload arg()
-*/
-QString QString::arg(QChar a, int fieldWidth, QChar fillChar) const
-{
-    return arg(QStringView{&a, 1}, fieldWidth, fillChar);
-}
-
-/*!
-  \overload arg()
-
-  The \a a argument is interpreted as a Latin-1 character.
-*/
-QString QString::arg(char a, int fieldWidth, QChar fillChar) const
-{
-    return arg(QLatin1Char(a), fieldWidth, fillChar);
-}
-
-/*!
+  \fn template <typename T, QString::if_floating_point<T> = true> QString QString::arg(T a, int fieldWidth, char format, int precision, QChar fillChar) const
   \overload arg()
 
   Argument \a a is formatted according to the specified \a format and
@@ -9040,14 +8924,20 @@ QString QString::arg(char a, int fieldWidth, QChar fillChar) const
 
   \snippet code/src_corelib_text_qstring.cpp 2
 
-  \sa QLocale::toString(), QLocale::FloatingPointPrecisionOption, {Number Formats}
+  \note In Qt versions prior to 6.9, this function was a regular function
+  taking \c double. As a consequence of being a template function now, it no
+  longer accepts arguments that merely implicitly convert to floating-point
+  types. A backwards-compatible fix is to cast such types to one of the C++
+  floating-point types.
+
+  \sa QLocale::toString(), QLocale::FloatingPointPrecisionOption, {Number formats}
 */
-QString QString::arg(double a, int fieldWidth, char format, int precision, QChar fillChar) const
+QString QString::arg_impl(double a, int fieldWidth, char format, int precision, QChar fillChar) const
 {
     ArgEscapeData d = findArgEscapes(*this);
 
     if (d.occurrences == 0) {
-        qWarning("QString::arg: Argument missing: %s, %g", toLocal8Bit().data(), a);
+        qWarning("QString::arg: Argument missing: \"%ls\", %g", qUtf16Printable(*this), a);
         return *this;
     }
 
@@ -9191,7 +9081,7 @@ typedef QVarLengthArray<Part, ExpectedParts> ParseResult;
 typedef QVarLengthArray<int, ExpectedParts/2> ArgIndexToPlaceholderMap;
 
 template <typename StringView>
-static ParseResult parseMultiArgFormatString(StringView s)
+static ParseResult parseMultiArgFormatString_impl(StringView s)
 {
     ParseResult result;
 
@@ -9220,6 +9110,11 @@ static ParseResult parseMultiArgFormatString(StringView s)
         result.push_back(Part{s.sliced(last, len - last)}); // trailing literal text
 
     return result;
+}
+
+static ParseResult parseMultiArgFormatString(QAnyStringView s)
+{
+    return s.visit([] (auto s) { return parseMultiArgFormatString_impl(s); });
 }
 
 static ArgIndexToPlaceholderMap makeArgIndexToPlaceholderMap(const ParseResult &parts)
@@ -9251,8 +9146,8 @@ static qsizetype resolveStringRefsAndReturnTotalSize(ParseResult &parts, const A
                 case ArgBase::L1:
                     part.reset(static_cast<const QLatin1StringArg&>(arg).string);
                     break;
-                case ArgBase::U8:
-                    Q_UNREACHABLE(); // waiting for QUtf8String...
+                case ArgBase::Any:
+                    part.reset(static_cast<const QAnyStringArg&>(arg).string);
                     break;
                 case ArgBase::U16:
                     part.reset(static_cast<const QStringViewArg&>(arg).string);
@@ -9267,8 +9162,7 @@ static qsizetype resolveStringRefsAndReturnTotalSize(ParseResult &parts, const A
 
 } // unnamed namespace
 
-template <typename StringView>
-static QString argToQStringImpl(StringView pattern, size_t numArgs, const QtPrivate::ArgBase **args)
+QString QtPrivate::argToQString(QAnyStringView pattern, size_t numArgs, const ArgBase **args)
 {
     // Step 1-2 above
     ParseResult parts = parseMultiArgFormatString(pattern);
@@ -9318,16 +9212,6 @@ static QString argToQStringImpl(StringView pattern, size_t numArgs, const QtPriv
     result.truncate(out - result.cbegin());
 
     return result;
-}
-
-QString QtPrivate::argToQString(QStringView pattern, size_t n, const ArgBase **args)
-{
-    return argToQStringImpl(pattern, n, args);
-}
-
-QString QtPrivate::argToQString(QLatin1StringView pattern, size_t n, const ArgBase **args)
-{
-    return argToQStringImpl(pattern, n, args);
 }
 
 /*! \fn bool QString::isRightToLeft() const
@@ -9485,8 +9369,31 @@ QString::iterator QString::erase(QString::const_iterator first, QString::const_i
 
     \sa toLatin1(), toUtf8(), toLocal8Bit(), QByteArray::toStdString()
 */
+std::string QString::toStdString() const
+{
+    std::string result;
+    if (isEmpty())
+        return result;
+
+    auto writeToBuffer = [this](char *out, size_t) {
+        char *last = QUtf8::convertFromUnicode(out, *this);
+        return last - out;
+    };
+    size_t maxSize = size() * 3;    // worst case for UTF-8
+#ifdef __cpp_lib_string_resize_and_overwrite
+    // C++23
+    result.resize_and_overwrite(maxSize, writeToBuffer);
+#else
+    result.resize(maxSize);
+    result.resize(writeToBuffer(result.data(), result.size()));
+#endif
+    return result;
+}
 
 /*!
+    \fn QString QString::fromRawData(const char16_t *unicode, qsizetype size)
+    \since 6.10
+
     Constructs a QString that uses the first \a size Unicode characters
     in the array \a unicode. The data in \a unicode is \e not
     copied. The caller must be able to guarantee that \a unicode will
@@ -9509,12 +9416,14 @@ QString::iterator QString::erase(QString::const_iterator first, QString::const_i
     '\\0'-terminated string (although utf16() does, at the cost of
     copying the raw data).
 
-    \sa fromUtf16(), setRawData()
+    \sa fromUtf16(), setRawData(), data(), constData(),
+    nullTerminate(), nullTerminated()
 */
-QString QString::fromRawData(const QChar *unicode, qsizetype size)
-{
-    return QString(DataPointer::fromRawData(const_cast<char16_t *>(reinterpret_cast<const char16_t *>(unicode)), size));
-}
+
+/*!
+    \fn QString QString::fromRawData(const QChar *unicode, qsizetype size)
+    \overload
+*/
 
 /*!
     \since 4.7
@@ -9528,7 +9437,7 @@ QString QString::fromRawData(const QChar *unicode, qsizetype size)
     This function can be used instead of fromRawData() to re-use
     existings QString objects to save memory re-allocations.
 
-    \sa fromRawData()
+    \sa fromRawData(), nullTerminate(), nullTerminated()
 */
 QString &QString::setRawData(const QChar *unicode, qsizetype size)
 {
@@ -9561,7 +9470,7 @@ QString &QString::setRawData(const QChar *unicode, qsizetype size)
 /*! \fn QString QString::fromStdU32String(const std::u32string &str)
     \since 5.5
 
-    \include qstring.cpp {from-std-string} {UCS-4} {fromUcs4()}
+    \include qstring.cpp {from-std-string} {UTF-32} {fromUcs4()}
 
     \sa fromUcs4(), fromStdWString(), fromStdU16String()
 */
@@ -10091,7 +10000,7 @@ qsizetype QtPrivate::lastIndexOf(QLatin1StringView haystack, qsizetype from, QLa
 qsizetype QtPrivate::indexOf(QStringView viewHaystack, const QString *stringHaystack, const QRegularExpression &re, qsizetype from, QRegularExpressionMatch *rmatch)
 {
     if (!re.isValid()) {
-        qtWarnAboutInvalidRegularExpression(re.pattern(), "QString(View)::indexOf");
+        qtWarnAboutInvalidRegularExpression(re, "QString(View)", "indexOf");
         return -1;
     }
 
@@ -10116,7 +10025,7 @@ qsizetype QtPrivate::indexOf(QStringView haystack, const QRegularExpression &re,
 qsizetype QtPrivate::lastIndexOf(QStringView viewHaystack, const QString *stringHaystack, const QRegularExpression &re, qsizetype from, QRegularExpressionMatch *rmatch)
 {
     if (!re.isValid()) {
-        qtWarnAboutInvalidRegularExpression(re.pattern(), "QString(View)::lastIndexOf");
+        qtWarnAboutInvalidRegularExpression(re, "QString(View)", "lastIndexOf");
         return -1;
     }
 
@@ -10148,7 +10057,7 @@ qsizetype QtPrivate::lastIndexOf(QStringView haystack, const QRegularExpression 
 bool QtPrivate::contains(QStringView viewHaystack, const QString *stringHaystack, const QRegularExpression &re, QRegularExpressionMatch *rmatch)
 {
     if (!re.isValid()) {
-        qtWarnAboutInvalidRegularExpression(re.pattern(), "QString(View)::contains");
+        qtWarnAboutInvalidRegularExpression(re, "QString(View)", "contains");
         return false;
     }
     QRegularExpressionMatch m = stringHaystack
@@ -10168,7 +10077,7 @@ bool QtPrivate::contains(QStringView haystack, const QRegularExpression &re, QRe
 qsizetype QtPrivate::count(QStringView haystack, const QRegularExpression &re)
 {
     if (!re.isValid()) {
-        qtWarnAboutInvalidRegularExpression(re.pattern(), "QString(View)::count");
+        qtWarnAboutInvalidRegularExpression(re, "QString(View)", "count");
         return 0;
     }
     qsizetype count = 0;
@@ -10269,6 +10178,9 @@ QString QString::toHtmlEscaped() const
   the US-ASCII character set. Make sure you prefix your string with \c{u} in
   those cases. It is optional otherwise.
 
+  \note QStringLiteral is interchangeable with \l operator""_s. The latter saves
+  typing when many string literals are present in the code.
+
   \sa QByteArrayLiteral
 */
 
@@ -10315,7 +10227,7 @@ QString QString::toHtmlEscaped() const
 
     The following code creates a QString:
     \code
-    using namespace Qt::Literals::StringLiterals;
+    using namespace Qt::StringLiterals;
 
     auto str = u"hello"_s;
     \endcode
@@ -10359,7 +10271,7 @@ void QAbstractConcatenable::appendLatin1To(QLatin1StringView in, QChar *out) noe
     \relates QString
 
     Returns \a str as a \c{const char *}. This is equivalent to
-    \a{str}.toLocal8Bit().constData().
+    \a{str}.toLocal8Bit().\l{QByteArray::}{constData()}.
 
     The char pointer will be invalid after the statement in which
     qPrintable() is used. This is because the array returned by
@@ -10379,7 +10291,7 @@ void QAbstractConcatenable::appendLatin1To(QLatin1StringView in, QChar *out) noe
     \since 5.4
 
     Returns \a str as a \c{const char *}. This is equivalent to
-    \a{str}.toUtf8().constData().
+    \a{str}.toUtf8().\l{QByteArray::}{constData()}.
 
     The char pointer will be invalid after the statement in which
     qUtf8Printable() is used. This is because the array returned by

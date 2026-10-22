@@ -55,7 +55,7 @@ public:
         deleteRowAction->setObjectName("deleteRowAction");
         deleteRowAction->setEnabled(false);
         vboxLayout = new QVBoxLayout(Browser);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
         vboxLayout->setContentsMargins(8, 8, 8, 8);
@@ -67,7 +67,7 @@ public:
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(splitter_2->sizePolicy().hasHeightForWidth());
         splitter_2->setSizePolicy(sizePolicy);
-        splitter_2->setOrientation(Qt::Horizontal);
+        splitter_2->setOrientation(Qt::Orientation::Horizontal);
         connectionWidget = new ConnectionWidget(splitter_2);
         connectionWidget->setObjectName("connectionWidget");
         QSizePolicy sizePolicy1(QSizePolicy::Policy::Ignored, QSizePolicy::Policy::Expanding);
@@ -83,8 +83,8 @@ public:
         sizePolicy2.setVerticalStretch(0);
         sizePolicy2.setHeightForWidth(table->sizePolicy().hasHeightForWidth());
         table->setSizePolicy(sizePolicy2);
-        table->setContextMenuPolicy(Qt::ActionsContextMenu);
-        table->setSelectionBehavior(QAbstractItemView::SelectRows);
+        table->setContextMenuPolicy(Qt::ContextMenuPolicy::ActionsContextMenu);
+        table->setSelectionBehavior(QAbstractItemView::SelectionBehavior::SelectRows);
         splitter_2->addWidget(table);
 
         vboxLayout->addWidget(splitter_2);
@@ -98,10 +98,10 @@ public:
         groupBox->setSizePolicy(sizePolicy3);
         groupBox->setMaximumSize(QSize(16777215, 180));
         vboxLayout1 = new QVBoxLayout(groupBox);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout1->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout1->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout1->setObjectName("vboxLayout1");
@@ -118,7 +118,7 @@ public:
         vboxLayout1->addWidget(sqlEdit);
 
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(1, 1, 1, 1);

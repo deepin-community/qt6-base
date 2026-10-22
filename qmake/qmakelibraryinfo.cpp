@@ -4,6 +4,7 @@
 
 #include "qmakelibraryinfo.h"
 
+#include <qcoreapplication.h>
 #include <qdir.h>
 #include <qfile.h>
 #include <qglobalstatic.h>
@@ -135,7 +136,7 @@ static QLibraryInfoPrivate::LocationInfo defaultLocationInfo(int loc)
 
 static QString libraryInfoPath(QLibraryInfo::LibraryPath location)
 {
-    return QLibraryInfoPrivate::path(location, QLibraryInfoPrivate::UsedFromQtBinDir);
+    return QLibraryInfoPrivate::path(location);
 }
 
 static QString storedPath(int loc)
@@ -211,31 +212,8 @@ QString QMakeLibraryInfo::rawLocation(int loc, QMakeLibraryInfo::PathGroup group
                 // All other keys have non-empty fallbacks to start with.
             }
 
-            // TODO: Might be replaced by common for qmake and qtcore function
-            int startIndex = 0;
-            forever {
-                startIndex = ret.indexOf(QLatin1Char('$'), startIndex);
-                if (startIndex < 0)
-                    break;
-                if (ret.size() < startIndex + 3)
-                    break;
-                if (ret.at(startIndex + 1) != QLatin1Char('(')) {
-                    startIndex++;
-                    continue;
-                }
-                int endIndex = ret.indexOf(QLatin1Char(')'), startIndex + 2);
-                if (endIndex < 0)
-                    break;
-                auto envVarName =
-                        QStringView { ret }.mid(startIndex + 2, endIndex - startIndex - 2);
-                QString value =
-                        QString::fromLocal8Bit(qgetenv(envVarName.toLocal8Bit().constData()));
-                ret.replace(startIndex, endIndex - startIndex + 1, value);
-                startIndex += value.size();
-            }
+            ret = QLibraryInfoPrivate::expandEnvVariables(ret);
             config->endGroup();
-
-            ret = QDir::fromNativeSeparators(ret);
         }
     }
 
@@ -249,12 +227,21 @@ QString QMakeLibraryInfo::rawLocation(int loc, QMakeLibraryInfo::PathGroup group
     if (!ret.isEmpty() && QDir::isRelativePath(ret)) {
         QString baseDir;
         if (loc == HostPrefixPath || loc == QLibraryInfo::PrefixPath || loc == SysrootPath) {
-            // We make the prefix/sysroot path absolute to the executable's directory.
+            // We make the prefix/sysroot path absolute to the directory of the qt.conf
+            // file. This is crucial for cross-builds, where the qmake wrapper passes a
+            // target_qt.conf located in the target prefix to the host qmake binary: the
+            // relative prefix must be resolved against that qt.conf, not against the host
+            // qmake's location.
             // loc == PrefixPath while a sysroot is set would make no sense here.
             // loc == SysrootPath only makes sense if qmake lives inside the sysroot itself.
-            QSettings *config = QLibraryInfoPrivate::configuration();
-            if (config != nullptr) {
-                baseDir = QFileInfo(config->fileName()).absolutePath();
+            if (QSettings *config = QLibraryInfoPrivate::configuration()) {
+                const QString configFileName = config->fileName();
+                if (configFileName.startsWith(u':')) {
+                    // qt.conf is embedded as resource. We can't resolve against a resource path.
+                    baseDir = QCoreApplication::applicationDirPath();
+                } else {
+                    baseDir = QFileInfo(configFileName).absolutePath();
+                }
             }
         } else if (loc >= FirstHostPath && loc <= LastHostPath) {
             // We make any other host path absolute to the host prefix directory.

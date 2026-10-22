@@ -138,3 +138,27 @@ do
     done
   done
 done
+
+#--- ML-DSA ------------------------------------------------------------------------
+for type in mldsa44 mldsa65 mldsa87
+do
+  # From https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf
+  # Sizes are in bits, using public key size for all filenames.
+  case $type in
+    mldsa44) pub_size=128;;
+    mldsa65) pub_size=192;;
+    mldsa87) pub_size=256;;
+  esac
+
+  echo -e "\ngenerating ML-DSA private key ($type) to PEM file ..."
+  openssl genpkey -algorithm $type -out $type-pri-$pub_size.pem
+
+  echo -e "\ngenerating ML-DSA private key ($type) to DER file ..."
+  openssl pkey -in $type-pri-$pub_size.pem -outform DER -out $type-pri-$pub_size.der
+
+  echo -e "\ngenerating ML-DSA public key ($type) to PEM file ..."
+  openssl pkey -in $type-pri-$pub_size.pem -pubout -out $type-pub-$pub_size.pem
+
+  echo -e "\ngenerating ML-DSA public key ($type) to DER file ..."
+  openssl pkey -in $type-pri-$pub_size.pem -pubout -outform DER -out $type-pub-$pub_size.der
+done

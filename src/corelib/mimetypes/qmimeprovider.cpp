@@ -2,6 +2,7 @@
 // Copyright (C) 2018 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
 // Copyright (C) 2019 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qmimeprovider_p.h"
 
@@ -49,6 +50,73 @@ __attribute__((section(".qtmimedatabase"), aligned(4096)))
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+// Position of the "list offsets" values, at the beginning of the mime.cache file
+enum {
+    PosAliasListOffset = 4,
+    PosParentListOffset = 8,
+    PosLiteralListOffset = 12,
+    PosReverseSuffixTreeOffset = 16,
+    PosGlobListOffset = 20,
+    PosMagicListOffset = 24,
+    // PosNamespaceListOffset = 28,
+    PosIconsListOffset = 32,
+    PosGenericIconsListOffset = 36
+};
+
+// Size of one record of each of the lists, as defined by the mime.cache format
+enum {
+    AliasRecordSize = 8,
+    ParentRecordSize = 8,
+    GlobRecordSize = 12,
+    IconRecordSize = 8,
+    SuffixNodeSize = 12,
+    MagicMatchSize = 16,
+    MagicMatchletSize = 32
+};
+
+enum {
+    PosFirstRootOffset = 4,
+    PosFirstMatchOffset = 8
+};
+
+/*
+   A list of fixed-size records in the mime.cache file, whose bounds have been
+   checked once: for any index below count, the whole record at
+   recordOffset(index) is inside the file, so walking the list needs no further
+   checking - read the fields with CacheFile::recordUint32(). An empty list
+   means either a mime.cache is empty or corrupted.
+
+   Anything reached by following an offset stored inside a record is still
+   untrusted and has to be checked where it is used.
+ */
+class QMimeBinaryProvider::RecordList
+{
+public:
+    // The lists whose offsets live in the first 40 bytes of the file are read
+    // by these two functions, once, when the cache file is loaded.
+    bool load(const CacheFile *cacheFile, quint64 posListOffset, quint32 stride);
+    bool loadIndirect(const CacheFile *cacheFile, quint64 posListOffset,
+                      quint64 firstRecordPos, quint32 stride);
+
+    quint32 count() const { return m_count; } // N_ALIASES/N_ENTRIES/N_PARENTS/etc => CARD32 type
+    quint32 stride() const { return m_stride; }
+    quint64 firstRecord() const { return m_firstRecord; }
+    quint64 recordOffset(quint32 index) const
+    {
+        Q_ASSERT(index < m_count);
+        return m_firstRecord + quint64(index) * m_stride;
+    }
+
+private:
+    // The state is private, and setRecords() is the only thing that writes it,
+    // so a RecordList that is not empty has been bounds-checked.
+    bool setRecords(const CacheFile *cacheFile, quint64 firstRecord,
+                    quint32 count, quint32 stride);
+
+    quint64 m_firstRecord = 0;
+    quint32 m_stride = 0;
+    quint32 m_count = 0;
+};
 
 struct QMimeBinaryProvider::CacheFile
 {
@@ -56,26 +124,119 @@ struct QMimeBinaryProvider::CacheFile
     ~CacheFile();
 
     bool isValid() const { return m_valid; }
-    inline quint16 getUint16(int offset) const
+    inline std::optional<quint16> getUint16(quint64 offset) const
     {
-        return qFromBigEndian(*reinterpret_cast<quint16 *>(data + offset));
+        if (offset > m_fileSize || m_fileSize - offset < sizeof(quint16))
+            return std::nullopt;
+        return qFromBigEndian<quint16>(m_data + offset);
     }
-    inline quint32 getUint32(int offset) const
+    inline std::optional<quint32> getUint32(quint64 offset, quint64 extra = 0) const
     {
-        return qFromBigEndian(*reinterpret_cast<quint32 *>(data + offset));
+        if (offset > m_fileSize || extra > m_fileSize - offset)
+            return std::nullopt;
+        const quint64 pos = offset + extra;
+        if (m_fileSize - pos < sizeof(quint32))
+            return std::nullopt;
+        return qFromBigEndian<quint32>(m_data + pos);
     }
-    inline const char *getCharStar(int offset) const
+    inline QLatin1StringView getLatin1String(quint64 offset) const
     {
-        return reinterpret_cast<const char *>(data + offset);
+        if (offset >= m_fileSize)
+            return QLatin1StringView();
+        const char *str = reinterpret_cast<const char *>(m_data + offset);
+        const void *end = std::memchr(str, '\0', m_fileSize - offset);
+        if (!end)
+            return QLatin1StringView();
+        return QLatin1StringView(str, static_cast<const char *>(end));
+    }
+    inline const char *getData(quint64 offset, quint64 length) const
+    {
+        if (offset > m_fileSize || length > m_fileSize - offset)
+            return nullptr;
+        return reinterpret_cast<const char *>(m_data + offset);
+    }
+    // Check base + headerSize + index * stride can not overflow.
+    std::optional<quint64> safeRecordOffset(quint64 base, quint64 headerSize,
+                                            quint32 index, quint32 stride) const
+    {
+        if (base > m_fileSize || headerSize > m_fileSize - base)
+            return std::nullopt;
+        const quint64 avail = m_fileSize - base - headerSize;
+        // A zero stride would make every index alias the same record: corrupt cache.
+        if (!stride || index >= avail / stride)
+            return std::nullopt;
+        return base + headerSize + quint64(index) * stride;
+    }
+    // A quint32 field of a record of a bounds-checked RecordList. load() has
+    // verified that every record below list.count() lies inside the mapping.
+    inline quint32 recordUint32(const RecordList &list, quint32 index, quint32 fieldOffset) const
+    {
+        // note: fieldOffset is in range: { 0, 4, 8, 12 }
+        const quint64 pos = list.recordOffset(index) + fieldOffset;
+        return qFromBigEndian<quint32>(m_data + pos);
     }
     bool load();
     bool reload();
 
-    QFile file;
-    uchar *data;
+    QFile m_file;
+    uchar *m_data = nullptr;
+    quint64 m_fileSize = 0;
     QDateTime m_mtime;
-    bool m_valid;
+    bool m_valid = false;
+
+    // The lists whose offsets are stored in the first 40 bytes of the file,
+    // bounds-checked once by load() so that lookups don't have to.
+    RecordList m_aliases;
+    RecordList m_parents;
+    RecordList m_literals;
+    RecordList m_globs;
+    RecordList m_suffixTreeRoots;
+    RecordList m_magicMatches;
+    RecordList m_icons;
+    RecordList m_genericIcons;
 };
+
+// Leaves the list empty if the records don't all fit.
+bool QMimeBinaryProvider::RecordList::setRecords(const CacheFile *cacheFile, quint64 firstRecord,
+                                                 quint32 count, quint32 stride)
+{
+    if (!stride || (firstRecord > cacheFile->m_fileSize)) // corrupt cache
+        return false;
+    if (count > (cacheFile->m_fileSize - firstRecord) / stride)
+        return false; // corrupt cache, or more records than can possibly fit
+    m_firstRecord = firstRecord;
+    m_stride = stride;
+    m_count = count;
+    return true;
+}
+
+// Reads the list header pointed to by the offset at posListOffset: the number
+// of records sits at +0 and the records themselves follow at +4.
+bool QMimeBinaryProvider::RecordList::load(const CacheFile *cacheFile, quint64 posListOffset,
+                                           quint32 stride)
+{
+    const std::optional<quint32> listOffset = cacheFile->getUint32(posListOffset);
+    if (!listOffset)
+        return false; // corrupt cache
+    const std::optional<quint32> n = cacheFile->getUint32(*listOffset);
+    if (!n)
+        return false; // corrupt cache
+    return setRecords(cacheFile, quint64(*listOffset) + 4, *n, stride);
+}
+
+bool QMimeBinaryProvider::RecordList::loadIndirect(const CacheFile *cacheFile,
+                                                   quint64 posListOffset, quint64 firstRecordPos,
+                                                   quint32 stride)
+{
+    const std::optional<quint32> listOffset = cacheFile->getUint32(posListOffset);
+    if (!listOffset)
+        return false; // corrupt cache
+    const std::optional<quint32> n = cacheFile->getUint32(*listOffset);
+    const std::optional<quint32> first = cacheFile->getUint32(*listOffset + firstRecordPos);
+    if (!n || !first)
+        return false; // corrupt cache
+    return setRecords(cacheFile, *first, *n, stride);
+}
 
 static inline void appendIfNew(QStringList &list, const QString &str)
 {
@@ -115,7 +276,7 @@ QMimeBinaryProvider::QMimeBinaryProvider(QMimeDatabasePrivate *db, const QString
 }
 
 QMimeBinaryProvider::CacheFile::CacheFile(const QString &fileName)
-    : file(fileName), m_valid(false)
+    : m_file(fileName)
 {
     load();
 }
@@ -126,25 +287,46 @@ QMimeBinaryProvider::CacheFile::~CacheFile()
 
 bool QMimeBinaryProvider::CacheFile::load()
 {
-    if (!file.open(QIODevice::ReadOnly))
+    if (!m_file.open(QIODevice::ReadOnly))
         return false;
-    data = file.map(0, file.size());
-    if (data) {
-        const int major = getUint16(0);
-        const int minor = getUint16(2);
-        m_valid = (major == 1 && minor >= 1 && minor <= 2);
+    const qint64 fileSize = m_file.size();
+    m_fileSize = fileSize > 0 ? fileSize : 0;
+    m_data = m_file.map(0, m_fileSize);
+    if (m_data && m_fileSize >= 4) {
+        const quint16 major = *getUint16(0);
+        const quint16 minor = *getUint16(2);
+        m_valid = (major == 1 && minor >= 1 && minor <= 2)
+                && m_aliases.load(this, PosAliasListOffset, AliasRecordSize)
+                && m_parents.load(this, PosParentListOffset, ParentRecordSize)
+                && m_literals.load(this, PosLiteralListOffset, GlobRecordSize)
+                && m_globs.load(this, PosGlobListOffset, GlobRecordSize)
+                && m_icons.load(this, PosIconsListOffset, IconRecordSize)
+                && m_genericIcons.load(this, PosGenericIconsListOffset, IconRecordSize)
+                && m_suffixTreeRoots.loadIndirect(this, PosReverseSuffixTreeOffset,
+                                                  PosFirstRootOffset, SuffixNodeSize)
+                && m_magicMatches.loadIndirect(this, PosMagicListOffset, PosFirstMatchOffset,
+                                               MagicMatchSize);
     }
-    m_mtime = QFileInfo(file).lastModified(QTimeZone::UTC);
+    m_mtime = QFileInfo(m_file).lastModified(QTimeZone::UTC);
     return m_valid;
 }
 
 bool QMimeBinaryProvider::CacheFile::reload()
 {
     m_valid = false;
-    if (file.isOpen()) {
-        file.close();
+    if (m_file.isOpen()) {
+        m_file.close();
     }
-    data = nullptr;
+    m_data = nullptr;
+    m_fileSize = 0;
+    m_aliases = RecordList();
+    m_parents = RecordList();
+    m_literals = RecordList();
+    m_globs = RecordList();
+    m_suffixTreeRoots = RecordList();
+    m_magicMatches = RecordList();
+    m_icons = RecordList();
+    m_genericIcons = RecordList();
     return load();
 }
 
@@ -160,22 +342,9 @@ bool QMimeBinaryProvider::isInternalDatabase() const
     return false;
 }
 
-// Position of the "list offsets" values, at the beginning of the mime.cache file
-enum {
-    PosAliasListOffset = 4,
-    PosParentListOffset = 8,
-    PosLiteralListOffset = 12,
-    PosReverseSuffixTreeOffset = 16,
-    PosGlobListOffset = 20,
-    PosMagicListOffset = 24,
-    // PosNamespaceListOffset = 28,
-    PosIconsListOffset = 32,
-    PosGenericIconsListOffset = 36
-};
-
 bool QMimeBinaryProvider::checkCacheChanged()
 {
-    QFileInfo fileInfo(m_cacheFile->file);
+    QFileInfo fileInfo(m_cacheFile->m_file);
     if (fileInfo.lastModified(QTimeZone::UTC) > m_cacheFile->m_mtime) {
         // Deletion can't happen by just running update-mime-database.
         // But the user could use rm -rf :-)
@@ -216,50 +385,47 @@ void QMimeBinaryProvider::addFileNameMatches(const QString &fileName, QMimeGlobM
     if (fileName.isEmpty())
         return;
     Q_ASSERT(m_cacheFile);
-    int numMatches = 0;
     // Check literals (e.g. "Makefile")
-    numMatches = matchGlobList(result, m_cacheFile.get(),
-                               m_cacheFile->getUint32(PosLiteralListOffset), fileName);
+    quint32 numMatches = matchGlobList(result, m_cacheFile.get(), m_cacheFile->m_literals, fileName);
     // Check the very common *.txt cases with the suffix tree
     if (numMatches == 0) {
         const QString lowerFileName = fileName.toLower();
-        const int reverseSuffixTreeOffset = m_cacheFile->getUint32(PosReverseSuffixTreeOffset);
-        const int numRoots = m_cacheFile->getUint32(reverseSuffixTreeOffset);
-        const int firstRootOffset = m_cacheFile->getUint32(reverseSuffixTreeOffset + 4);
-        if (matchSuffixTree(result, m_cacheFile.get(), numRoots, firstRootOffset, lowerFileName,
-                            lowerFileName.size() - 1, false)) {
+        const RecordList &roots = m_cacheFile->m_suffixTreeRoots;
+        if (matchSuffixTree(result, m_cacheFile.get(), roots.count(), roots.firstRecord(),
+                            lowerFileName, lowerFileName.size() - 1, false)) {
             ++numMatches;
-        } else if (matchSuffixTree(result, m_cacheFile.get(), numRoots, firstRootOffset, fileName,
-                                   fileName.size() - 1, true)) {
+        } else if (matchSuffixTree(result, m_cacheFile.get(), roots.count(), roots.firstRecord(),
+                                   fileName, fileName.size() - 1, true)) {
             ++numMatches;
         }
     }
     // Check complex globs (e.g. "callgrind.out[0-9]*" or "README*")
     if (numMatches == 0)
-        matchGlobList(result, m_cacheFile.get(), m_cacheFile->getUint32(PosGlobListOffset),
-                      fileName);
+        matchGlobList(result, m_cacheFile.get(), m_cacheFile->m_globs, fileName);
 }
 
-int QMimeBinaryProvider::matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile, int off,
-                                       const QString &fileName)
+quint32 QMimeBinaryProvider::matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile,
+                                           const RecordList &globs, const QString &fileName)
 {
-    int numMatches = 0;
-    const int numGlobs = cacheFile->getUint32(off);
-    //qDebug() << "Loading" << numGlobs << "globs from" << cacheFile->file.fileName() << "at offset" << cacheFile->globListOffset;
-    for (int i = 0; i < numGlobs; ++i) {
-        const int globOffset = cacheFile->getUint32(off + 4 + 12 * i);
-        const int mimeTypeOffset = cacheFile->getUint32(off + 4 + 12 * i + 4);
-        const int flagsAndWeight = cacheFile->getUint32(off + 4 + 12 * i + 8);
-        const int weight = flagsAndWeight & 0xff;
+    quint32 numMatches = 0;
+    //qDebug() << "Loading" << globs.count() << "globs from" << cacheFile->m_file.fileName();
+    for (quint32 i = 0; i < globs.count(); ++i) {
+        const quint32 globOffset = cacheFile->recordUint32(globs, i, 0);
+        const quint32 mimeTypeOffset = cacheFile->recordUint32(globs, i, 4);
+        const quint32 flagsAndWeight = cacheFile->recordUint32(globs, i, 8);
+        const quint32 weight = flagsAndWeight & 0xff;
         const bool caseSensitive = flagsAndWeight & 0x100;
         const Qt::CaseSensitivity qtCaseSensitive = caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
-        const QString pattern = QLatin1StringView(cacheFile->getCharStar(globOffset));
+        const QLatin1StringView patternL1 = cacheFile->getLatin1String(globOffset);
+        const QLatin1StringView mimeType = cacheFile->getLatin1String(mimeTypeOffset);
+        if (patternL1.isNull() || mimeType.isNull()) // corrupt cache: skip this record
+            continue;
 
-        const QLatin1StringView mimeType(cacheFile->getCharStar(mimeTypeOffset));
         //qDebug() << pattern << mimeType << weight << caseSensitive;
         if (isMimeTypeGlobsExcluded(mimeType))
             continue;
 
+        const QString pattern = patternL1;
         QMimeGlobPattern glob(pattern, QString() /*unused*/, weight, qtCaseSensitive);
         if (glob.matchFileName(fileName)) {
             result.addMatch(mimeType, weight, pattern);
@@ -270,41 +436,65 @@ int QMimeBinaryProvider::matchGlobList(QMimeGlobMatchResult &result, CacheFile *
 }
 
 bool QMimeBinaryProvider::matchSuffixTree(QMimeGlobMatchResult &result,
-                                          QMimeBinaryProvider::CacheFile *cacheFile, int numEntries,
-                                          int firstOffset, const QString &fileName,
+                                          QMimeBinaryProvider::CacheFile *cacheFile, quint32 numEntries,
+                                          quint64 firstOffset, const QString &fileName,
                                           qsizetype charPos, bool caseSensitiveCheck)
 {
     QChar fileChar = fileName[charPos];
-    int min = 0;
-    int max = numEntries - 1;
+    if (fileChar.isNull())
+        return false;
+    if (numEntries == 0)
+        return false;
+    quint32 min = 0;
+    quint32 max = numEntries - 1;
     while (min <= max) {
-        const int mid = (min + max) / 2;
-        const int off = firstOffset + 12 * mid;
-        const QChar ch = char16_t(cacheFile->getUint32(off));
-        if (ch < fileChar)
+        const quint32 mid = (min + max) / 2;
+        const std::optional<quint64> off = cacheFile->safeRecordOffset(firstOffset, 0, mid, SuffixNodeSize);
+        if (!off) // corrupt cache
+            break;
+        const std::optional<quint32> chValue = cacheFile->getUint32(*off);
+        if (!chValue) // corrupt cache
+            break;
+        const QChar ch = char16_t(*chValue);
+        if (ch < fileChar) {
             min = mid + 1;
-        else if (ch > fileChar)
+        } else if (ch > fileChar) {
+            if (!mid)
+                break;
             max = mid - 1;
-        else {
+        } else {
             --charPos;
-            int numChildren = cacheFile->getUint32(off + 4);
-            int childrenOffset = cacheFile->getUint32(off + 8);
+            const std::optional<quint32> numChildrenOpt = cacheFile->getUint32(*off, 4);
+            const std::optional<quint32> childrenOffsetOpt = cacheFile->getUint32(*off, 8);
+            if (!numChildrenOpt || !childrenOffsetOpt) // corrupt cache
+                return false;
+            const quint32 numChildren = *numChildrenOpt;
+            const quint32 childrenOffset = *childrenOffsetOpt;
             bool success = false;
             if (charPos > 0)
                 success = matchSuffixTree(result, cacheFile, numChildren, childrenOffset, fileName, charPos, caseSensitiveCheck);
             if (!success) {
-                for (int i = 0; i < numChildren; ++i) {
-                    const int childOff = childrenOffset + 12 * i;
-                    const int mch = cacheFile->getUint32(childOff);
-                    if (mch != 0)
+                for (quint32 i = 0; i < numChildren; ++i) {
+                    const std::optional<quint64> childOff =
+                            cacheFile->safeRecordOffset(childrenOffset, 0, i, SuffixNodeSize);
+                    if (!childOff) // corrupt cache, or numChildren bigger than can possibly fit
                         break;
-                    const int mimeTypeOffset = cacheFile->getUint32(childOff + 4);
-                    const QLatin1StringView mimeType(cacheFile->getCharStar(mimeTypeOffset));
+                    const std::optional<quint32> mchOpt = cacheFile->getUint32(*childOff);
+                    if (!mchOpt) // corrupt cache: no later record can be inside the file either
+                        break;
+                    if (*mchOpt != 0) // not a leaf entry: end of the leaf list
+                        break;
+                    const std::optional<quint32> mimeTypeOffset = cacheFile->getUint32(*childOff, 4);
+                    const std::optional<quint32> flagsAndWeight = cacheFile->getUint32(*childOff, 8);
+                    if (!mimeTypeOffset || !flagsAndWeight) // corrupt cache: nor is any later one
+                        break;
+                    const QLatin1StringView mimeType = cacheFile->getLatin1String(*mimeTypeOffset);
+                    if (mimeType.isNull()) // corrupt cache: skip this record
+                        continue;
                     if (isMimeTypeGlobsExcluded(mimeType))
                         continue;
-                    const int flagsAndWeight = cacheFile->getUint32(childOff + 8);
-                    const int weight = flagsAndWeight & 0xff;
-                    const bool caseSensitive = flagsAndWeight & 0x100;
+                    const quint32 weight = *flagsAndWeight & 0xff;
+                    const bool caseSensitive = *flagsAndWeight & 0x100;
                     if (caseSensitiveCheck || !caseSensitive) {
                         result.addMatch(mimeType, weight,
                                         u'*' + QStringView{ fileName }.mid(charPos + 1),
@@ -319,25 +509,42 @@ bool QMimeBinaryProvider::matchSuffixTree(QMimeGlobMatchResult &result,
     return false;
 }
 
-bool QMimeBinaryProvider::matchMagicRule(QMimeBinaryProvider::CacheFile *cacheFile, int numMatchlets, int firstOffset, const QByteArray &data)
+bool QMimeBinaryProvider::matchMagicRule(QMimeBinaryProvider::CacheFile *cacheFile, quint32 numMatchlets, quint64 firstOffset, const QByteArray &data)
 {
     const char *dataPtr = data.constData();
     const qsizetype dataSize = data.size();
-    for (int matchlet = 0; matchlet < numMatchlets; ++matchlet) {
-        const int off = firstOffset + matchlet * 32;
-        const int rangeStart = cacheFile->getUint32(off);
-        const int rangeLength = cacheFile->getUint32(off + 4);
-        //const int wordSize = cacheFile->getUint32(off + 8);
-        const int valueLength = cacheFile->getUint32(off + 12);
-        const int valueOffset = cacheFile->getUint32(off + 16);
-        const int maskOffset = cacheFile->getUint32(off + 20);
-        const char *mask = maskOffset ? cacheFile->getCharStar(maskOffset) : nullptr;
-
-        if (!QMimeMagicRule::matchSubstring(dataPtr, dataSize, rangeStart, rangeLength, valueLength, cacheFile->getCharStar(valueOffset), mask))
+    for (quint32 matchlet = 0; matchlet < numMatchlets; ++matchlet) {
+        const std::optional<quint64> off = cacheFile->safeRecordOffset(firstOffset, 0, matchlet, MagicMatchletSize);
+        if (!off) // corrupt cache, or numMatchlets bigger than can possibly fit
+            break;
+        const std::optional<quint32> rangeStartOpt = cacheFile->getUint32(*off);
+        const std::optional<quint32> rangeLengthOpt = cacheFile->getUint32(*off, 4);
+        //const auto wordSize = cacheFile->getUint32(*off, 8);
+        const std::optional<quint32> valueLengthOpt = cacheFile->getUint32(*off, 12);
+        const std::optional<quint32> valueOffsetOpt = cacheFile->getUint32(*off, 16);
+        const std::optional<quint32> maskOffsetOpt = cacheFile->getUint32(*off, 20);
+        if (!rangeStartOpt || !rangeLengthOpt || !valueLengthOpt || !valueOffsetOpt
+            || !maskOffsetOpt) // corrupt cache: no later matchlet can be inside the file either
+            break;
+        const quint32 rangeStart = *rangeStartOpt;
+        const quint32 rangeLength = *rangeLengthOpt;
+        const quint32 valueLength = *valueLengthOpt;
+        const quint32 valueOffset = *valueOffsetOpt;
+        const quint32 maskOffset = *maskOffsetOpt;
+        const char *value = cacheFile->getData(valueOffset, valueLength);
+        const char *mask = maskOffset ? cacheFile->getData(maskOffset, valueLength) : nullptr;
+        if (!value || (maskOffset && !mask)) // corrupt cache
             continue;
 
-        const int numChildren = cacheFile->getUint32(off + 24);
-        const int firstChildOffset = cacheFile->getUint32(off + 28);
+        if (!QMimeMagicRule::matchSubstring(dataPtr, dataSize, rangeStart, rangeLength, valueLength, value, mask))
+            continue;
+
+        const std::optional<quint32> numChildrenOpt = cacheFile->getUint32(*off, 24);
+        const std::optional<quint32> firstChildOffsetOpt = cacheFile->getUint32(*off, 28);
+        if (!numChildrenOpt || !firstChildOffsetOpt) // corrupt cache: nor is any later matchlet
+            break;
+        const quint32 numChildren = *numChildrenOpt;
+        const quint32 firstChildOffset = *firstChildOffsetOpt;
         if (numChildren == 0) // No submatch? Then we are done.
             return true;
         // Check that one of the submatches matches too
@@ -349,22 +556,19 @@ bool QMimeBinaryProvider::matchMagicRule(QMimeBinaryProvider::CacheFile *cacheFi
 
 void QMimeBinaryProvider::findByMagic(const QByteArray &data, QMimeMagicResult &result)
 {
-    const int magicListOffset = m_cacheFile->getUint32(PosMagicListOffset);
-    const int numMatches = m_cacheFile->getUint32(magicListOffset);
-    //const int maxExtent = cacheFile->getUint32(magicListOffset + 4);
-    const int firstMatchOffset = m_cacheFile->getUint32(magicListOffset + 8);
-
-    for (int i = 0; i < numMatches; ++i) {
-        const int off = firstMatchOffset + i * 16;
-        const int numMatchlets = m_cacheFile->getUint32(off + 8);
-        const int firstMatchletOffset = m_cacheFile->getUint32(off + 12);
+    const RecordList &matches = m_cacheFile->m_magicMatches;
+    for (quint32 i = 0; i < matches.count(); ++i) {
+        const quint32 numMatchlets = m_cacheFile->recordUint32(matches, i, 8);
+        const quint32 firstMatchletOffset = m_cacheFile->recordUint32(matches, i, 12);
         if (matchMagicRule(m_cacheFile.get(), numMatchlets, firstMatchletOffset, data)) {
-            const int mimeTypeOffset = m_cacheFile->getUint32(off + 4);
-            const char *mimeType = m_cacheFile->getCharStar(mimeTypeOffset);
-            const int accuracy = static_cast<int>(m_cacheFile->getUint32(off));
+            const int accuracy = static_cast<int>(m_cacheFile->recordUint32(matches, i, 0));
             if (accuracy > result.accuracy) {
+                const quint32 mimeTypeOffset = m_cacheFile->recordUint32(matches, i, 4);
+                const QLatin1StringView candidate = m_cacheFile->getLatin1String(mimeTypeOffset);
+                if (candidate.isNull()) // corrupt cache: skip this record
+                    continue;
                 result.accuracy = accuracy;
-                result.candidate = QString::fromLatin1(mimeType);
+                result.candidate = candidate;
                 // Return the first match, mime.cache is sorted
                 return;
             }
@@ -374,30 +578,45 @@ void QMimeBinaryProvider::findByMagic(const QByteArray &data, QMimeMagicResult &
 
 void QMimeBinaryProvider::addParents(const QString &mime, QStringList &result)
 {
-    const QByteArray mimeStr = mime.toLatin1();
-    const int parentListOffset = m_cacheFile->getUint32(PosParentListOffset);
-    const int numEntries = m_cacheFile->getUint32(parentListOffset);
-
-    int begin = 0;
-    int end = numEntries - 1;
+    const RecordList &parentList = m_cacheFile->m_parents;
+    const quint32 count = parentList.count();
+    if (!count)
+        return;
+    quint32 begin = 0;
+    quint32 end = count - 1;
     while (begin <= end) {
-        const int medium = (begin + end) / 2;
-        const int off = parentListOffset + 4 + 8 * medium;
-        const int mimeOffset = m_cacheFile->getUint32(off);
-        const char *aMime = m_cacheFile->getCharStar(mimeOffset);
-        const int cmp = qstrcmp(aMime, mimeStr);
+        const quint32 medium = (begin + end) / 2;
+        const quint32 mimeOffset = m_cacheFile->recordUint32(parentList, medium, 0);
+        const QLatin1StringView aMime = m_cacheFile->getLatin1String(mimeOffset);
+        if (aMime.isNull()) // corrupt cache: the search cannot continue
+            break;
+        const int cmp = aMime.compare(mime);
         if (cmp < 0) {
             begin = medium + 1;
         } else if (cmp > 0) {
+            if (!medium)
+                break;
             end = medium - 1;
         } else {
-            const int parentsOffset = m_cacheFile->getUint32(off + 4);
-            const int numParents = m_cacheFile->getUint32(parentsOffset);
-            for (int i = 0; i < numParents; ++i) {
-                const int parentOffset = m_cacheFile->getUint32(parentsOffset + 4 + 4 * i);
-                const char *aParent = m_cacheFile->getCharStar(parentOffset);
-                const QString strParent = QString::fromLatin1(aParent);
-                appendIfNew(result, strParent);
+            // The parent list is reached by following an offset stored in the
+            // record, so it has to be bounds-checked here.
+            const quint32 parentsOffset = m_cacheFile->recordUint32(parentList, medium, 4);
+            const std::optional<quint32> numParentsOpt = m_cacheFile->getUint32(parentsOffset);
+            if (!numParentsOpt) // corrupt cache
+                break;
+            const quint32 numParents = *numParentsOpt;
+            for (quint32 i = 0; i < numParents; ++i) {
+                const std::optional<quint64> parentOff =
+                        m_cacheFile->safeRecordOffset(parentsOffset, 4, i, 4);
+                if (!parentOff) // past end of file: no later index can be inside it
+                    break;
+                const std::optional<quint32> parentOffsetOpt = m_cacheFile->getUint32(*parentOff);
+                if (!parentOffsetOpt) // corrupt cache: no later index can be inside the file either
+                    break;
+                const QLatin1StringView parentL1 = m_cacheFile->getLatin1String(*parentOffsetOpt);
+                if (parentL1.isNull()) // corrupt cache: skip this record
+                    break;
+                appendIfNew(result, QString(parentL1));
             }
             break;
         }
@@ -406,25 +625,29 @@ void QMimeBinaryProvider::addParents(const QString &mime, QStringList &result)
 
 QString QMimeBinaryProvider::resolveAlias(const QString &name)
 {
-    const QByteArray input = name.toLatin1();
-    const int aliasListOffset = m_cacheFile->getUint32(PosAliasListOffset);
-    const int numEntries = m_cacheFile->getUint32(aliasListOffset);
-    int begin = 0;
-    int end = numEntries - 1;
+    const RecordList &aliases = m_cacheFile->m_aliases;
+    quint32 begin = 0;
+    const quint32 count = aliases.count();
+    if (!count)
+        return QString();
+    quint32 end = count - 1;
     while (begin <= end) {
-        const int medium = (begin + end) / 2;
-        const int off = aliasListOffset + 4 + 8 * medium;
-        const int aliasOffset = m_cacheFile->getUint32(off);
-        const char *alias = m_cacheFile->getCharStar(aliasOffset);
-        const int cmp = qstrcmp(alias, input);
+        const quint32 medium = (begin + end) / 2;
+        const quint32 aliasOffset = m_cacheFile->recordUint32(aliases, medium, 0);
+        const QLatin1StringView alias = m_cacheFile->getLatin1String(aliasOffset);
+        if (alias.isNull()) // corrupt cache: the search cannot continue
+            break;
+        const int cmp = alias.compare(name);
         if (cmp < 0) {
             begin = medium + 1;
         } else if (cmp > 0) {
+            if (!medium)
+                break;
             end = medium - 1;
         } else {
-            const int mimeOffset = m_cacheFile->getUint32(off + 4);
-            const char *mimeType = m_cacheFile->getCharStar(mimeOffset);
-            return QLatin1StringView(mimeType);
+            const quint32 mimeOffset = m_cacheFile->recordUint32(aliases, medium, 4);
+            // if corrupt cache, returns QLatin1StringView(), which converts to a null QString
+            return m_cacheFile->getLatin1String(mimeOffset);
         }
     }
     return QString();
@@ -432,19 +655,19 @@ QString QMimeBinaryProvider::resolveAlias(const QString &name)
 
 void QMimeBinaryProvider::addAliases(const QString &name, QStringList &result)
 {
-    const QByteArray input = name.toLatin1();
-    const int aliasListOffset = m_cacheFile->getUint32(PosAliasListOffset);
-    const int numEntries = m_cacheFile->getUint32(aliasListOffset);
-    for (int pos = 0; pos < numEntries; ++pos) {
-        const int off = aliasListOffset + 4 + 8 * pos;
-        const int mimeOffset = m_cacheFile->getUint32(off + 4);
-        const char *mimeType = m_cacheFile->getCharStar(mimeOffset);
+    const RecordList &aliases = m_cacheFile->m_aliases;
+    for (quint32 pos = 0; pos < aliases.count(); ++pos) {
+        const quint32 mimeOffset = m_cacheFile->recordUint32(aliases, pos, 4);
+        const QLatin1StringView mimeType = m_cacheFile->getLatin1String(mimeOffset);
+        if (mimeType.isNull()) // corrupt cache: skip this record
+            continue;
 
-        if (input == mimeType) {
-            const int aliasOffset = m_cacheFile->getUint32(off);
-            const char *alias = m_cacheFile->getCharStar(aliasOffset);
-            const QString strAlias = QString::fromLatin1(alias);
-            appendIfNew(result, strAlias);
+        if (name == QLatin1StringView(mimeType)) {
+            const quint32 aliasOffset = m_cacheFile->recordUint32(aliases, pos, 0);
+            const QLatin1StringView aliasL1 = m_cacheFile->getLatin1String(aliasOffset);
+            if (aliasL1.isNull()) // corrupt cache: skip this record
+                continue;
+            appendIfNew(result, QString(aliasL1));
         }
     }
 }
@@ -458,8 +681,8 @@ void QMimeBinaryProvider::loadMimeTypeList()
         // So we have to parse the plain-text files called "types".
         QFile file(m_directory + QStringView(u"/types"));
         if (file.open(QIODevice::ReadOnly)) {
-            while (!file.atEnd()) {
-                const QByteArray line = file.readLine();
+            QByteArray line;
+            while (file.readLineInto(&line)) {
                 auto lineView = QByteArrayView(line);
                 if (lineView.endsWith('\n'))
                     lineView.chop(1);
@@ -512,20 +735,21 @@ QMimeBinaryProvider::MimeTypeExtraMap::const_iterator
 QMimeBinaryProvider::loadMimeTypeExtra(const QString &mimeName)
 {
 #if QT_CONFIG(xmlstreamreader)
-    auto it = m_mimetypeExtra.find(mimeName);
-    if (it == m_mimetypeExtra.cend()) {
+    auto [it, insertionOccurred] = m_mimetypeExtra.try_emplace(mimeName);
+    if (insertionOccurred) {
         // load comment and globPatterns
 
         // shared-mime-info since 1.3 lowercases the xml files
-        QString mimeFile = m_directory + u'/' + mimeName.toLower() + ".xml"_L1;
-        if (!QFile::exists(mimeFile))
-            mimeFile = m_directory + u'/' + mimeName + ".xml"_L1; // pre-1.3
+        QFile qfile;
+        const QString mimeFile = m_directory + u'/' + mimeName.toLower() + ".xml"_L1;
+        qfile.setFileName(mimeFile);
+        if (!qfile.open(QFile::ReadOnly)) {
+            const QString fallbackMimeFile = m_directory + u'/' + mimeName + ".xml"_L1; // pre-1.3
+            qfile.setFileName(fallbackMimeFile);
+            if (!qfile.open(QFile::ReadOnly))
+                return it;
+        }
 
-        QFile qfile(mimeFile);
-        if (!qfile.open(QFile::ReadOnly))
-            return m_mimetypeExtra.cend();
-
-        it = m_mimetypeExtra.try_emplace(mimeName).first;
         MimeTypeExtra &extra = it->second;
         QString mainPattern;
 
@@ -582,26 +806,31 @@ QMimeBinaryProvider::loadMimeTypeExtra(const QString &mimeName)
 }
 
 // Binary search in the icons or generic-icons list
-QLatin1StringView QMimeBinaryProvider::iconForMime(CacheFile *cacheFile, int posListOffset,
-                                                   const QByteArray &inputMime)
+QLatin1StringView QMimeBinaryProvider::iconForMime(CacheFile *cacheFile, const RecordList &icons,
+                                                   QStringView inputMime)
 {
-    const int iconsListOffset = cacheFile->getUint32(posListOffset);
-    const int numIcons = cacheFile->getUint32(iconsListOffset);
-    int begin = 0;
-    int end = numIcons - 1;
+    quint32 begin = 0;
+    const quint32 count = icons.count();
+    if (!count)
+        return QLatin1StringView();
+    quint32 end = count - 1;
     while (begin <= end) {
-        const int medium = (begin + end) / 2;
-        const int off = iconsListOffset + 4 + 8 * medium;
-        const int mimeOffset = cacheFile->getUint32(off);
-        const char *mime = cacheFile->getCharStar(mimeOffset);
-        const int cmp = qstrcmp(mime, inputMime);
-        if (cmp < 0)
+        const quint32 medium = (begin + end) / 2;
+        const quint32 mimeOffset = cacheFile->recordUint32(icons, medium, 0);
+        const QLatin1StringView mime = cacheFile->getLatin1String(mimeOffset);
+        if (mime.isNull()) // corrupt cache: the search cannot continue
+            break;
+        const int cmp = mime.compare(inputMime);
+        if (cmp < 0) {
             begin = medium + 1;
-        else if (cmp > 0)
+        } else if (cmp > 0) {
+            if (!medium)
+                break;
             end = medium - 1;
-        else {
-            const int iconOffset = cacheFile->getUint32(off + 4);
-            return QLatin1StringView(cacheFile->getCharStar(iconOffset));
+        } else {
+            const quint32 iconOffset = cacheFile->recordUint32(icons, medium, 4);
+            // if corrupt cache, returns QLatin1StringView()
+            return cacheFile->getLatin1String(iconOffset);
         }
     }
     return QLatin1StringView();
@@ -609,14 +838,12 @@ QLatin1StringView QMimeBinaryProvider::iconForMime(CacheFile *cacheFile, int pos
 
 QString QMimeBinaryProvider::icon(const QString &name)
 {
-    const QByteArray inputMime = name.toLatin1();
-    return iconForMime(m_cacheFile.get(), PosIconsListOffset, inputMime);
+    return iconForMime(m_cacheFile.get(), m_cacheFile->m_icons, name);
 }
 
 QString QMimeBinaryProvider::genericIcon(const QString &name)
 {
-    const QByteArray inputMime = name.toLatin1();
-    return iconForMime(m_cacheFile.get(), PosGenericIconsListOffset, inputMime);
+    return iconForMime(m_cacheFile.get(), m_cacheFile->m_genericIcons, name);
 }
 
 ////
@@ -729,11 +956,9 @@ void QMimeXMLProvider::ensureLoaded()
 {
     QStringList allFiles;
     const QString packageDir = m_directory + QStringView(u"/packages");
-    QDir dir(packageDir);
-    const QStringList files = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
-    allFiles.reserve(files.size());
-    for (const QString &xmlFile : files)
-        allFiles.append(packageDir + u'/' + xmlFile);
+    for (const auto &entry : QDirListing(packageDir, QDirListing::IteratorFlag::FilesOnly
+                                         | QDirListing::IteratorFlag::ResolveSymlinks))
+        allFiles.emplace_back(packageDir + u'/' + entry.fileName());
 
     if (m_allFiles == allFiles)
         return;
@@ -824,7 +1049,8 @@ void QMimeXMLProvider::addMimeType(const QMimeTypeXMLData &mt)
 
 void QMimeXMLProvider::addParents(const QString &mime, QStringList &result)
 {
-    for (const QString &parent : m_parents.value(mime)) {
+    const QStringList parents = m_parents.value(mime);
+    for (const QString &parent : parents) {
         if (!result.contains(parent))
             result.append(parent);
     }

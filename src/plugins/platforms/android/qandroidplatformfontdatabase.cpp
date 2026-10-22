@@ -1,5 +1,6 @@
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QDir>
 #include <QLocale>
@@ -45,9 +46,14 @@ void QAndroidPlatformFontDatabase::populateFontDatabase()
 QStringList QAndroidPlatformFontDatabase::fallbacksForFamily(const QString &family,
                                                              QFont::Style style,
                                                              QFont::StyleHint styleHint,
-                                                             QChar::Script script) const
+                                                             QFontDatabasePrivate::ExtendedScript script) const
 {
     QStringList result;
+
+    if (script == QFontDatabasePrivate::Script_Emoji) {
+        result.append(QStringLiteral("Noto Color Emoji"));
+        result.append(QStringLiteral("Noto Color Emoji Flags"));
+    }
 
     // Prepend CJK fonts by the locale.
     QLocale locale = QLocale::system();

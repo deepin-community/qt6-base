@@ -25,6 +25,8 @@
 #include <qlayout.h>
 #include <qmenu.h>
 #include <qrandom.h>
+#include <qpointer.h>
+#include <qsettings.h>
 #include "../../../../../src/widgets/dialogs/qsidebar_p.h"
 #include "../../../../../src/gui/itemmodels/qfilesystemmodel_p.h"
 #include "../../../../../src/widgets/dialogs/qfiledialog_p.h"
@@ -45,6 +47,7 @@ Q_GUI_EXPORT void qt_test_resetFetchedRoot();
 QT_END_NAMESPACE
 #endif
 
+[[maybe_unused]]
 static QByteArray msgDoesNotExist(const QString &name)
 {
     return (QLatin1Char('"') + QDir::toNativeSeparators(name)
@@ -84,7 +87,7 @@ private slots:
     void task178897_minimumSize();
     void task180459_lastDirectory_data();
     void task180459_lastDirectory();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     void task227930_correctNavigationKeyboardBehavior();
 #endif
 #if defined(Q_OS_WIN)
@@ -104,6 +107,7 @@ private slots:
     void QTBUG4419_lineEditSelectAll();
     void QTBUG6558_showDirsOnly();
     void QTBUG4842_selectFilterWithHideNameFilterDetails();
+    void noCrashWhenParentIsDeleted();
     void dontShowCompleterOnRoot();
     void nameFilterParsing_data();
     void nameFilterParsing();
@@ -116,6 +120,7 @@ private:
     void cleanupSettingsFile();
 
     QTemporaryDir tempDir;
+    bool uncServerAvailable = false;
 };
 
 tst_QFileDialog2::tst_QFileDialog2()
@@ -140,7 +145,13 @@ void tst_QFileDialog2::initTestCase()
 {
     QVERIFY2(tempDir.isValid(), qPrintable(tempDir.errorString()));
     QStandardPaths::setTestModeEnabled(true);
-    cleanupSettingsFile();
+
+#ifdef Q_OS_WIN
+    // "When used with directories, _access determines only whether the specified directory exists"
+    if (_waccess(qUtf16Printable("//" + QTest::uncServerName() + "/TESTSHAREWRITABLE"), 0) == 0
+            && _waccess(qUtf16Printable("//" + QTest::uncServerName() + "/testshare"), 0) == 0)
+        uncServerAvailable = true;
+#endif
 }
 
 void tst_QFileDialog2::init()
@@ -258,16 +269,16 @@ void tst_QFileDialog2::showNameFilterDetails()
 void tst_QFileDialog2::unc()
 {
 #if defined(Q_OS_WIN)
-    // Only test UNC on Windows./
+    // Only test UNC on Windows.
+    if (!uncServerAvailable)
+        QSKIP("UNC server not available");
     QString dir("\\\\"  + QTest::uncServerName() + "\\testsharewritable");
-#else
-    QString dir(QDir::currentPath());
-#endif
     QVERIFY2(QFile::exists(dir), msgDoesNotExist(dir).constData());
     QFileDialog fd(0, QString(), dir);
     QFileSystemModel *model = fd.findChild<QFileSystemModel*>("qt_filesystem_model");
     QVERIFY(model);
     QCOMPARE(model->index(fd.directory().absolutePath()), model->index(dir));
+#endif
 }
 
 void tst_QFileDialog2::emptyUncPath()
@@ -466,8 +477,10 @@ void tst_QFileDialog2::settingsCompatibility()
 {
     static const QByteArray ba32 = QByteArrayLiteral("\x00\x00\x00\xFF\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xF7\x00\x00\x00\x04\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00""d\xFF\xFF\xFF\xFF\x00\x00\x00\x81\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x01\t\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00>\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00""B\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00n\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03\xE8\x00\xFF\xFF\xFF\xFF\x00\x00\x00\x00");
     static const QByteArray ba64 = QByteArrayLiteral("\x00\x00\x00\xFF\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\xF7\x00\x00\x00\x04\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00""d\xFF\xFF\xFF\xFF\x00\x00\x00\x81\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x01\t\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00>\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00""B\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00n\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03\xE8\x00\xFF\xFF\xFF\xFF\x00\x00\x00\x00");
+    QByteArray impHeaderData;
     QFETCH(QString, qtVersion);
     QFETCH(QDataStream::Version, dsVersion);
+
     // Create a header view, convert template to target format and store it in settings
     {
         QSettings settings(QSettings::UserScope, "QtProject");
@@ -475,18 +488,38 @@ void tst_QFileDialog2::settingsCompatibility()
         settings.setValue("sidebarWidth", 93); // random value
         settings.setValue("shortcuts", QStringList({settings.fileName(), "/tmp"}));
         settings.setValue("qtVersion", qtVersion);
-        settings.setValue("treeViewHeader", dsVersion < QDataStream::Qt_6_0 ? ba32 : ba64);
+        impHeaderData = dsVersion < QDataStream::Qt_6_0 ? ba32 : ba64;
+        settings.setValue("treeViewHeader", impHeaderData);
         settings.endGroup();
     }
     // Create a file dialog, read settings write them back
     {
         QFileDialog fd;
     }
-    // Read back settings and compare byte array
+
+    // This test has been changed a bit since a settings readback and compare likely isn't very useful.
+    // It would either require that we could centrally (and/or decentrally) can set the saveState and
+    // restoreState versions (which currently isn't the case) or it will block
+    // any (also backward compatible) extension of saveState and restoreState (which isn't acceptable).
+    // So we check that we can indeed import the old data and that a transient saveResult will result
+    // in the same data.
+    // That we are decent forward compatible from newer to older versions is difficult to test.
     QSettings settings(QSettings::UserScope, "QtProject");
     settings.beginGroup("FileDialog");
     const QByteArray savedState = settings.value("treeViewHeader").toByteArray();
-    QCOMPARE(savedState, ba32);
+
+    // Check that we can restore data from an old version.
+    QHeaderView header1(Qt::Horizontal);
+    QVERIFY(header1.restoreState(impHeaderData));
+
+    // Check that we can restore the now saved data.
+    QHeaderView header2(Qt::Horizontal);
+    QVERIFY(header2.restoreState(savedState));
+
+    // Check that these states provide the same result
+    QByteArray h2data = header2.saveState();
+    QCOMPARE(header1.saveState(), h2data);
+    QCOMPARE(h2data, savedState);
 }
 #endif
 
@@ -603,7 +636,7 @@ void tst_QFileDialog2::task227304_proxyOnFileDialog()
 }
 #endif
 
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
 // The following test implies the folder created will appear first in
 // the list. On Mac files sorting depends on the locale and the order
 // displayed cannot be known for sure.
@@ -712,16 +745,20 @@ void tst_QFileDialog2::completionOnLevelAfterRoot()
     }
     if (testDir.isEmpty())
         QSKIP("This test requires to have a unique directory of at least six ascii characters under c:/");
-#elif defined(Q_OS_ANDROID)
-    // Android 11 and above doesn't allow accessing root filesystem as before,
-    // so let's opt int for the app's home.
+#elif defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    // Android 11 and above and OHOS do not allow accessing the root filesystem
+    // as before, so let's opt into the app's home.
     const auto homePaths = QStandardPaths::standardLocations(QStandardPaths::HomeLocation);
     QVERIFY(!homePaths.isEmpty());
     fd.setFilter(QDir::Hidden | QDir::AllDirs | QDir::Files | QDir::System);
     fd.setDirectory(homePaths.first());
-    QDir(homePaths.first()).mkdir("etc");
+    QDir homeDir(homePaths.first());
+    const bool hadEtc = homeDir.exists(QLatin1String("etc"));
+    if (!hadEtc)
+        QVERIFY(homeDir.mkdir(QLatin1String("etc")));
     auto cleanup = qScopeGuard([&]() {
-        QDir(homePaths.first()).rmdir("etc");
+        if (!hadEtc)
+            QDir(homePaths.first()).rmdir(QLatin1String("etc"));
     });
 #else
     fd.setFilter(QDir::Hidden | QDir::AllDirs | QDir::Files | QDir::System);
@@ -762,9 +799,6 @@ void tst_QFileDialog2::task233037_selectingDirectory()
     fd.show();
     QListView *list = fd.findChild<QListView*>("listView");
     QTest::qWait(3000); // Wait for sort to settle (I need a signal).
-#ifdef QT_KEYPAD_NAVIGATION
-    list->setEditFocus(true);
-#endif
     QTest::keyClick(list, Qt::Key_Down);
     QDialogButtonBox *buttonBox = fd.findChild<QDialogButtonBox*>("buttonBox");
     QVERIFY(buttonBox);
@@ -1331,6 +1365,53 @@ void tst_QFileDialog2::QTBUG4842_selectFilterWithHideNameFilterDetails()
     //We compare the current combobox text with the non stripped version
     QCOMPARE(filters2->currentText(), chosenFilterString);
 
+}
+
+void tst_QFileDialog2::noCrashWhenParentIsDeleted()
+{
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        const QUrl url = QFileDialog::getOpenFileUrl(mainWindow.get(),
+                                                     QStringLiteral("getOpenFileUrl"));
+        QVERIFY(url.isEmpty());
+        QVERIFY(!url.isValid());
+        QVERIFY(!mainWindow.get());
+    }
+
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        const QUrl url = QFileDialog::getSaveFileUrl(mainWindow.get(),
+                                                     QStringLiteral("getSaveFileUrl"));
+        QVERIFY(url.isEmpty());
+        QVERIFY(!url.isValid());
+        QVERIFY(!mainWindow.get());
+    }
+
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        const QUrl url
+                = QFileDialog::getExistingDirectoryUrl(mainWindow.get(),
+                                                       QStringLiteral("getExistingDirectoryUrl"));
+        QVERIFY(url.isEmpty());
+        QVERIFY(!url.isValid());
+        QVERIFY(!mainWindow.get());
+    }
+
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        const QList<QUrl> url = QFileDialog::getOpenFileUrls(mainWindow.get(),
+                                                      QStringLiteral("getOpenFileUrls"));
+        QVERIFY(url.isEmpty());
+        QVERIFY(!mainWindow.get());
+    }
 }
 
 void tst_QFileDialog2::dontShowCompleterOnRoot()

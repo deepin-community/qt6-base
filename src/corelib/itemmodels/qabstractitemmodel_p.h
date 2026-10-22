@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTITEMMODEL_P_H
 #define QABSTRACTITEMMODEL_P_H
@@ -37,6 +38,26 @@ public:
     static void destroy(QPersistentModelIndexData *data);
 };
 
+namespace QtPrivate {
+// This class is just a wrapper so we can use the fixed qHash() function for QModelIndex.
+struct QModelIndexWrapper // ### Qt 7: Remove again, use QModelIndex directly.
+{
+    QModelIndex index;
+    Q_IMPLICIT QModelIndexWrapper(const QModelIndex &i) : index(i) { }
+    Q_IMPLICIT inline operator QModelIndex() const { return index; }
+    friend bool operator==(const QModelIndexWrapper &l, const QModelIndexWrapper &r) { return l.index == r.index; }
+    friend bool operator!=(const QModelIndexWrapper &l, const QModelIndexWrapper &r) { return !(operator==(l,r)); }
+    friend bool operator==(const QModelIndexWrapper &l, const QModelIndex &r) { return l.index == r; }
+    friend bool operator!=(const QModelIndexWrapper &l, const QModelIndex &r) { return !(operator==(l.index,r)); }
+    friend bool operator==(const QModelIndex &l, const QModelIndexWrapper &r) { return l == r.index; }
+    friend bool operator!=(const QModelIndex &l, const QModelIndexWrapper &r) { return !(operator==(l,r.index)); }
+    friend inline size_t qHash(const QtPrivate::QModelIndexWrapper &index, size_t seed = 0) noexcept
+    {
+        return qHashMulti(seed, index.index.row(), index.index.column(), index.index.internalId());
+    }
+};
+}
+
 class Q_CORE_EXPORT QAbstractItemModelPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QAbstractItemModel)
@@ -44,6 +65,8 @@ class Q_CORE_EXPORT QAbstractItemModelPrivate : public QObjectPrivate
 public:
     QAbstractItemModelPrivate();
     ~QAbstractItemModelPrivate();
+
+    static const QAbstractItemModelPrivate *get(const QAbstractItemModel *model) { return model->d_func(); }
 
     void removePersistentIndexData(QPersistentModelIndexData *data);
     void movePersistentIndexes(const QList<QPersistentModelIndexData *> &indexes, int change, const QModelIndex &parent,
@@ -62,6 +85,7 @@ public:
     void itemsAboutToBeMoved(const QModelIndex &srcParent, int srcFirst, int srcLast, const QModelIndex &destinationParent, int destinationChild, Qt::Orientation);
     void itemsMoved(const QModelIndex &srcParent, int srcFirst, int srcLast, const QModelIndex &destinationParent, int destinationChild, Qt::Orientation orientation);
     bool allowMove(const QModelIndex &srcParent, int srcFirst, int srcLast, const QModelIndex &destinationParent, int destinationChild, Qt::Orientation orientation);
+    bool dropOnItem(const QModelIndex &index, QDataStream &stream);
 
     // ugly hack for QTreeModel, see QTBUG-94546
     virtual void executePendingOperations() const;
@@ -109,15 +133,15 @@ public:
 
     struct Persistent {
         Persistent() {}
-        QMultiHash<QModelIndex, QPersistentModelIndexData *> indexes;
+        QMultiHash<QtPrivate::QModelIndexWrapper, QPersistentModelIndexData *> indexes;
         QStack<QList<QPersistentModelIndexData *>> moved;
         QStack<QList<QPersistentModelIndexData *>> invalidated;
         void insertMultiAtEnd(const QModelIndex& key, QPersistentModelIndexData *data);
     } persistent;
 
+    bool resetting = false;
+
     static const QHash<int,QByteArray> &defaultRoleNames();
-    static bool isVariantLessThan(const QVariant &left, const QVariant &right,
-                                  Qt::CaseSensitivity cs = Qt::CaseSensitive, bool isLocaleAware = false);
 };
 Q_DECLARE_TYPEINFO(QAbstractItemModelPrivate::Change, Q_RELOCATABLE_TYPE);
 

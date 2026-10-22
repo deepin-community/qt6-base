@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGTK3STORAGE_P_H
 #define QGTK3STORAGE_P_H
@@ -16,9 +17,6 @@
 //
 
 #include "qgtk3interface_p.h"
-#if QT_CONFIG(dbus)
-#include "qgtk3portalinterface_p.h"
-#endif
 
 #include <QtCore/QJsonDocument>
 #include <QtCore/QCache>
@@ -30,11 +28,17 @@
 #include <private/qflatmap_p.h>
 
 QT_BEGIN_NAMESPACE
+
+#if QT_CONFIG(dbus)
+class QGnomePortalInterface;
+#endif
+
 class QGtk3Storage
 {
     Q_GADGET
 public:
     QGtk3Storage();
+    ~QGtk3Storage();
 
     // Enum documented in cpp file. Please keep it in line with updates made here.
     enum class SourceType {
@@ -182,10 +186,10 @@ public:
         Source(const QBrush &brush) : sourceType(SourceType::Fixed)
         {
             fix.fixedBrush = brush;
-        };
+        }
 
         // Invalid constructor and getter
-        Source() : sourceType(SourceType::Invalid) {};
+        Source() : sourceType(SourceType::Invalid) {}
         bool isValid() const { return sourceType != SourceType::Invalid; }
 
         // Debug
@@ -204,11 +208,11 @@ public:
         // Generic constructor
         TargetBrush(QPalette::ColorGroup group, QPalette::ColorRole role,
                     Qt::ColorScheme scheme = Qt::ColorScheme::Unknown) :
-                    colorGroup(group), colorRole(role), colorScheme(scheme) {};
+                    colorGroup(group), colorRole(role), colorScheme(scheme) {}
 
         // Copy constructor with color scheme modifier for dark/light aware search
         TargetBrush(const TargetBrush &other, Qt::ColorScheme scheme) :
-            colorGroup(other.colorGroup), colorRole(other.colorRole), colorScheme(scheme) {};
+            colorGroup(other.colorGroup), colorRole(other.colorRole), colorScheme(scheme) {}
 
         // struct becomes key of a map, so operator< is needed
         bool operator<(const TargetBrush& other) const {
@@ -226,9 +230,9 @@ public:
     // Public getters
     const QPalette *palette(QPlatformTheme::Palette = QPlatformTheme::SystemPalette) const;
     QPixmap standardPixmap(QPlatformTheme::StandardPixmap standardPixmap, const QSizeF &size) const;
-    Qt::ColorScheme colorScheme() const { return m_colorScheme; };
+    Qt::ColorScheme colorScheme() const { return m_colorScheme; }
     static QPalette standardPalette();
-    const QString themeName() const { return m_interface ? m_interface->themeName() : QString(); };
+    const QString themeName() const { return m_interface ? m_interface->themeName() : QString(); }
     const QFont *font(QPlatformTheme::Font type) const;
     QIcon fileIcon(const QFileInfo &fileInfo) const;
 
@@ -242,7 +246,7 @@ private:
 
     std::unique_ptr<QGtk3Interface> m_interface;
 #if QT_CONFIG(dbus)
-    std::unique_ptr<QGtk3PortalInterface> m_portalInterface;
+    std::unique_ptr<QGnomePortalInterface> m_portalInterface;
 #endif
 
     Qt::ColorScheme m_colorScheme = Qt::ColorScheme::Unknown;

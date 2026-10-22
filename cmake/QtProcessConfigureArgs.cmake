@@ -11,22 +11,60 @@
 #              If empty, qtbase/top-level is assumed.
 # TOP_LEVEL: TRUE, if this is a top-level build.
 
+# The CMake version required for running the configure script.
+# This must be less than or equal to the lowest QT_SUPPORTED_MIN_CMAKE_VERSION_FOR_BUILDING_QT_*.
+cmake_minimum_required(VERSION 3.19)
+
 include(${CMAKE_CURRENT_LIST_DIR}/QtFeatureCommon.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/QtBuildInformation.cmake)
-
-cmake_policy(SET CMP0007 NEW)
-cmake_policy(SET CMP0057 NEW)
+include(${CMAKE_CURRENT_LIST_DIR}/QtVcpkgManifestHelpers.cmake)
 
 set(cmake_args "")
-macro(push)
+
+# Deliberately a function and not a macro: macro arguments are substituted textually and the
+# result is parsed as CMake code again, which turns any backslash that isn't a valid escape into
+# a syntax error. That made arguments like CMAKE_INSTALL_PREFIX=D:\some\path fail.
+function(push)
     list(APPEND cmake_args ${ARGN})
-endmacro()
+    set(cmake_args "${cmake_args}" PARENT_SCOPE)
+endfunction()
 
 macro(pop_path_argument)
     list(POP_FRONT configure_args path)
     string(REGEX REPLACE "^\"(.*)\"$" "\\1" path "${path}")
     file(TO_CMAKE_PATH "${path}" path)
 endmacro()
+
+function(qt_configure_print_to_stdout text)
+    set(tmp_candidates
+        "${CMAKE_CURRENT_BINARY_DIR}"
+        "$ENV{TMPDIR}"
+        "$ENV{TEMP}"
+        "/tmp"
+    )
+    set(tmp "")
+    foreach(dir IN LISTS tmp_candidates)
+        if(dir STREQUAL "")
+            continue()
+        endif()
+        set(candidate "${dir}/.qt_configure_stdout_tmp")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E touch "${candidate}"
+            RESULT_VARIABLE touch_result
+        )
+        if(touch_result EQUAL 0)
+            set(tmp "${candidate}")
+            break()
+        endif()
+    endforeach()
+    if(tmp STREQUAL "")
+        message("${text}")  # last resort fallback (stderr)
+        return()
+    endif()
+    file(WRITE "${tmp}" "${text}")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E cat "${tmp}")
+    file(REMOVE "${tmp}")
+endfunction()
 
 function(is_non_empty_valid_arg arg value)
     if(value STREQUAL "")
@@ -85,7 +123,11 @@ list(TRANSFORM configure_args STRIP)
 unset(generator)
 set(auto_detect_compiler TRUE)
 set(auto_detect_generator ${qtbase_or_top_level_build})
+set(dry_run FALSE)
 set(no_prefix_option FALSE)
+set(skipped_qtrepos "")
+set(use_vcpkg FALSE)
+set(generate_vcpkg_manifest "unknown")
 unset(device_options)
 unset(options_json_file)
 set_property(GLOBAL PROPERTY UNHANDLED_ARGS "")
@@ -99,10 +141,32 @@ while(NOT "${configure_args}" STREQUAL "")
         list(POP_FRONT configure_args generator)
     elseif(arg STREQUAL "-cmake-use-default-generator")
         set(auto_detect_generator FALSE)
+    elseif(arg STREQUAL "-dry-run")
+        set(dry_run TRUE)
+    elseif(arg MATCHES "^-(no-)?vcpkg$")
+        if(CMAKE_MATCH_1 STREQUAL "no-")
+            set(use_vcpkg FALSE)
+        else()
+            set(use_vcpkg TRUE)
+        endif()
+    elseif(arg MATCHES "^-(no-)?generate-vcpkg-manifest$")
+        if(CMAKE_MATCH_1 STREQUAL "no-")
+            set(generate_vcpkg_manifest FALSE)
+        else()
+            set(generate_vcpkg_manifest TRUE)
+        endif()
     elseif(arg STREQUAL "-no-guess-compiler")
         set(auto_detect_compiler FALSE)
     elseif(arg STREQUAL "-list-features")
         set(list_features TRUE)
+        if(configure_args)
+            list(GET configure_args 0 _next_arg)
+            if(NOT _next_arg MATCHES "^-")
+                list(POP_FRONT configure_args list_features_module)
+            endif()
+        endif()
+    elseif(arg STREQUAL "-list-modules")
+        set(list_modules TRUE)
     elseif(arg MATCHES "^-h(elp)?$")
         set(display_module_help TRUE)
     elseif(arg STREQUAL "-write-options-for-conan")
@@ -114,6 +178,7 @@ while(NOT "${configure_args}" STREQUAL "")
         list(TRANSFORM qtrepos REPLACE "," ";")
         foreach(qtrepo IN LISTS qtrepos)
             push("-DBUILD_${qtrepo}=OFF")
+            list(APPEND skipped_qtrepos "${qtrepo}")
         endforeach()
     elseif(arg STREQUAL "-skip-tests")
         list(POP_FRONT configure_args qtrepos)
@@ -150,8 +215,6 @@ while(NOT "${configure_args}" STREQUAL "")
     elseif(arg STREQUAL "-no-prefix")
         set(no_prefix_option TRUE)
         push("-DFEATURE_no_prefix=ON")
-    elseif(arg STREQUAL "-sbom")
-        push("-DQT_GENERATE_SBOM=ON")
     elseif(arg STREQUAL "-cmake-file-api")
         set(cmake_file_api TRUE)
     elseif(arg STREQUAL "-no-cmake-file-api")
@@ -170,6 +233,18 @@ while(NOT "${configure_args}" STREQUAL "")
         set_property(GLOBAL APPEND PROPERTY UNHANDLED_ARGS "${raw_arg}")
     endif()
 endwhile()
+
+# Turn on vcpkg usage if requested.
+# Set the manifest directory to where we generate the manifest file.
+if(use_vcpkg)
+    push(-DQT_USE_VCPKG=ON)
+    push("-DVCPKG_MANIFEST_DIR=${CMAKE_CURRENT_BINARY_DIR}")
+endif()
+
+# By default, generate a manifest if using vcpkg.
+if(generate_vcpkg_manifest STREQUAL "unknown")
+    set(generate_vcpkg_manifest ${use_vcpkg})
+endif()
 
 # Read the specified manually generator value from CMake command line.
 # The '-cmake-generator' argument has higher priority than CMake command line.
@@ -225,16 +300,215 @@ endif()
 
 set_property(GLOBAL PROPERTY COMMANDLINE_KNOWN_FEATURES "")
 
+# Define a Qt feature.
+#
+# Arguments that start with VCPKG_ affect the creation of vcpkg features. If
+# either VCPKG_DEFAULT or VCPGK_OPTIONAL are given, a corresponding vcpkg
+# feature will be created.
+#
+#   VCPKG_DEFAULT
+#     Specifies to create a vcpkg feature that will be added to the manifest's
+#     default features.
+#
+#   VCPKG_OPTIONAL
+#     Specifies to create an optional vcpkg feature.
+#
+#   VCPKG_DESCRIPTION <string>
+#     Optional description of the vcpkg feature. If not given, the description
+#     is derived from PURPOSE, or LABEL, or the feature name.
+#
+#   VCPKG_DEPENDENT_FEATURES <features>
+#     List of vcpkg features this feature depends upon.
+#     For example, the "jpeg" feature would use "VCPKG_DEPENDENT_FEATURES gui".
 function(qt_feature feature)
-    cmake_parse_arguments(arg "" "PURPOSE;SECTION;" "" ${ARGN})
+    set(no_value_options
+        VCPKG_DEFAULT
+        VCPKG_OPTIONAL
+    )
+    set(single_value_options
+        LABEL
+        PURPOSE
+        SECTION
+        VCPKG_DESCRIPTION
+    )
+    set(multi_value_options
+        VCPKG_DEPENDENT_FEATURES
+    )
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
+
+    get_property(_current_module GLOBAL PROPERTY COMMANDLINE_CURRENT_CONFIGURE_MODULE)
     set_property(GLOBAL APPEND PROPERTY COMMANDLINE_KNOWN_FEATURES "${feature}")
     set_property(GLOBAL PROPERTY COMMANDLINE_FEATURE_PURPOSE_${feature} "${arg_PURPOSE}")
     set_property(GLOBAL PROPERTY COMMANDLINE_FEATURE_SECTION_${feature} "${arg_SECTION}")
+    set_property(GLOBAL PROPERTY COMMANDLINE_FEATURE_MODULE_${feature} "${_current_module}")
+
+    if(NOT generate_vcpkg_manifest)
+        return()
+    endif()
+
+    set(unknown_vcpkg_args "${arg_UNPARSED_ARGUMENTS}")
+    list(FILTER unknown_vcpkg_args INCLUDE REGEX "^VCPKG_")
+    if(NOT "${unknown_vcpkg_args}" STREQUAL "")
+        message(FATAL_ERROR "Unknown arguments passed to qt_feature: ${unknown_vcpkg_args}")
+    endif()
+
+    set(create_vcpkg_feature FALSE)
+    if(arg_VCPKG_DEFAULT OR arg_VCPKG_OPTIONAL)
+        set(create_vcpkg_feature TRUE)
+    else()
+        get_cmake_property(vcpkg_features_to_create _QT_VCPKG_FEATURES_TO_CREATE)
+        if("${feature}" IN_LIST vcpkg_features_to_create)
+            set(create_vcpkg_feature TRUE)
+            list(REMOVE_ITEM vcpkg_features_to_create "${feature}")
+            set_property(GLOBAL PROPERTY
+                _QT_VCPKG_FEATURES_TO_CREATE ${vcpkg_features_to_create}
+            )
+        endif()
+    endif()
+
+    if(NOT create_vcpkg_feature)
+        return()
+    endif()
+
+    # Determine the description
+    if(DEFINED arg_VCPKG_DESCRIPTION)
+        set(description "${arg_VCPKG_DESCRIPTION}")
+    elseif(DEFINED arg_PURPOSE)
+        set(description "${arg_PURPOSE}")
+    elseif(DEFINED arg_LABEL)
+        set(description "${arg_LABEL}")
+    else()
+        set(description "${feature} support")
+    endif()
+
+    # Determine the dependent features (e.g. gui for freetype)
+    set(dependent_features "")
+    get_cmake_property(vcpkg_scope _QT_VCPKG_SCOPE)
+    if(vcpkg_scope)
+        list(APPEND dependent_features "${vcpkg_scope}")
+    endif()
+    if(DEFINED arg_VCPKG_DEPENDENT_FEATURES)
+        list(APPEND dependent_features "${arg_VCPKG_DEPENDENT_FEATURES}")
+    endif()
+
+    # Features that aren't dependencies of other features are added to default-features
+    # unless VCPKG_DEFAULT or VCPKG_OPTIONAL are specified.
+    set(additional_args "")
+    if(NOT arg_VCKG_DEFAULT AND NOT arg_VCPKG_OPTIONAL AND dependent_features STREQUAL "")
+        list(APPEND additional_args DEFAULT)
+    endif()
+    qt_vcpkg_feature("${feature}" "${description}" ${additional_args})
+
+    foreach(dependent_feature IN LISTS dependent_features)
+        qt_vcpkg_add_feature_dependencies("${dependent_feature}" "${feature}")
+    endforeach()
+endfunction()
+
+function(qt_feature_alias feature)
+    cmake_parse_arguments(arg "NEGATE" "PURPOSE;SECTION;MESSAGE;ALIAS_OF_FEATURE;ALIAS_OF_CACHE" ""
+        ${ARGN})
+    set_property(GLOBAL APPEND PROPERTY COMMANDLINE_KNOWN_FEATURES "${feature}")
+    # Mark the feature as aliased
+    set(alias_note "alias of ")
+    if(arg_NEGATE)
+        string(APPEND alias_note "NOT ")
+    endif()
+    if(arg_ALIAS_OF_FEATURE)
+        string(APPEND alias_note "${arg_ALIAS_OF_FEATURE} Feature")
+    else()
+        string(APPEND alias_note "${arg_ALIAS_OF_CACHE} Cache")
+    endif()
+    set(arg_PURPOSE "(${alias_note}) ${arg_PURPOSE}")
+    set_property(GLOBAL PROPERTY COMMANDLINE_FEATURE_PURPOSE_${feature} "${arg_PURPOSE}")
+    set_property(GLOBAL PROPERTY COMMANDLINE_FEATURE_SECTION_${feature} "${arg_SECTION}")
+endfunction()
+
+function(qt_feature_deprecated feature)
+    cmake_parse_arguments(arg "" "PURPOSE;SECTION;MESSAGE" "" ${ARGN})
+    set_property(GLOBAL APPEND PROPERTY COMMANDLINE_KNOWN_FEATURES "${feature}")
+    # Mark the feature as deprecated
+    set(arg_PURPOSE "(DEPRECATED) ${arg_PURPOSE} ${arg_MESSAGE}")
+    set_property(GLOBAL PROPERTY COMMANDLINE_FEATURE_PURPOSE_${feature} "${arg_PURPOSE}")
+    set_property(GLOBAL PROPERTY COMMANDLINE_FEATURE_SECTION_${feature} "${arg_SECTION}")
+endfunction()
+
+function(qt_feature_vcpkg_scope name)
+    set_property(GLOBAL PROPERTY _QT_VCPKG_SCOPE ${name})
 endfunction()
 
 function(find_package)
     message(FATAL_ERROR "find_package must not be used directly in configure.cmake. "
         "Use qt_find_package or guard the call with an if(NOT QT_CONFIGURE_RUNNING) block.")
+endfunction()
+
+function(qt_init_vcpkg_manifest_if_needed)
+    get_property(manifest_initialized GLOBAL PROPERTY _QT_VCPKG_MANIFEST_JSON SET)
+    if(manifest_initialized)
+        return()
+    endif()
+
+    if(TOP_LEVEL)
+        set(package_name "qt")
+    else()
+        get_filename_component(package_name "${MODULE_ROOT}" NAME)
+    endif()
+    qt_vcpkg_manifest_init(NAME "${package_name}")
+endfunction()
+
+function(qt_find_package name)
+    if(NOT generate_vcpkg_manifest)
+        return()
+    endif()
+
+    set(no_value_options "")
+    set(single_value_options
+        VCPKG_ADD_TO_FEATURE
+        VCPKG_DEFAULT_FEATURES
+        VCPKG_PLATFORM
+        VCPKG_PORT
+        VCPKG_VERSION
+    )
+    set(multi_value_options
+        VCPKG_FEATURES
+    )
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
+
+    set(unknown_vcpkg_args "${arg_UNPARSED_ARGUMENTS}")
+    list(FILTER unknown_vcpkg_args INCLUDE REGEX "^VCPKG_")
+    if(NOT "${unknown_vcpkg_args}" STREQUAL "")
+        message(FATAL_ERROR "Unknown arguments passed to qt_find_package: ${unknown_vcpkg_args}")
+    endif()
+
+    if(NOT DEFINED arg_VCPKG_PORT)
+        return()
+    endif()
+
+    qt_init_vcpkg_manifest_if_needed()
+
+    set(dependency_args "${arg_VCPKG_PORT}")
+    if(DEFINED arg_VCPKG_VERSION)
+        list(APPEND dependency_args VERSION "${arg_VCPKG_VERSION}")
+    endif()
+    if(DEFINED arg_VCPKG_PLATFORM)
+        list(APPEND dependency_args PLATFORM "${arg_VCPKG_PLATFORM}")
+    endif()
+    if(DEFINED arg_VCPKG_DEFAULT_FEATURES)
+        list(APPEND dependency_args DEFAULT_FEATURES "${arg_VCPKG_DEFAULT_FEATURES}")
+    endif()
+    if(DEFINED arg_VCPKG_ADD_TO_FEATURE)
+        list(APPEND dependency_args ADD_TO_FEATURE "${arg_VCPKG_ADD_TO_FEATURE}")
+        set_property(GLOBAL APPEND PROPERTY
+            _QT_VCPKG_FEATURES_TO_CREATE "${arg_VCPKG_ADD_TO_FEATURE}"
+        )
+    endif()
+    if(DEFINED arg_VCPKG_FEATURES)
+        list(APPEND dependency_args FEATURES "${arg_VCPKG_FEATURES}")
+    endif()
+    qt_vcpkg_add_dependency(${dependency_args})
 endfunction()
 
 macro(defstub name)
@@ -243,9 +517,12 @@ macro(defstub name)
 endmacro()
 
 defstub(qt_add_qmake_lib_dependency)
+defstub(qt_run_config_compile_test)
 defstub(qt_config_compile_test)
+defstub(qt_config_compile_test_armintrin)
 defstub(qt_config_compile_test_machine_tuple)
 defstub(qt_config_compile_test_x86simd)
+defstub(qt_config_compile_test_loongarchsimd)
 defstub(qt_config_compiler_supports_flag_test)
 defstub(qt_config_linker_supports_flag_test)
 defstub(qt_configure_add_report_entry)
@@ -258,10 +535,8 @@ defstub(qt_configure_end_summary_section)
 defstub(qt_extra_definition)
 defstub(qt_feature_config)
 defstub(qt_feature_definition)
-defstub(qt_find_package)
 defstub(set_package_properties)
 defstub(qt_qml_find_python)
-defstub(qt_set01)
 defstub(qt_internal_check_if_linker_is_available)
 defstub(qt_internal_add_sbom)
 defstub(qt_internal_extend_sbom)
@@ -287,7 +562,7 @@ endmacro()
 
 function(qt_commandline_option name)
     set(options CONTROLS_FEATURE)
-    set(oneValueArgs TYPE NAME VALUE)
+    set(oneValueArgs TYPE NAME VALUE CMAKE_VARIABLE)
     set(multiValueArgs VALUES MAPPING)
     cmake_parse_arguments(arg "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -297,6 +572,9 @@ function(qt_commandline_option name)
     if(NOT "${arg_NAME}" STREQUAL "")
         set(input_name ${arg_NAME})
         set(commandline_option_${name}_variable "${arg_NAME}" PARENT_SCOPE)
+    endif()
+    if(DEFINED arg_CMAKE_VARIABLE)
+        set_property(GLOBAL PROPERTY INPUTCMAKEVAR_${input_name} "${arg_CMAKE_VARIABLE}")
     endif()
     set(mapping_type "${arg_TYPE}")
     if(arg_CONTROLS_FEATURE)
@@ -316,6 +594,34 @@ endfunction()
 # Add the common command line options for every qt repo.
 macro(qt_add_common_commandline_options)
     qt_commandline_option(headersclean TYPE boolean)
+    qt_commandline_option(sbom TYPE boolean CMAKE_VARIABLE QT_GENERATE_SBOM)
+
+    # Semi-public, undocumented.
+    qt_commandline_option(sbom-all TYPE boolean CMAKE_VARIABLE QT_SBOM_GENERATE_AND_VERIFY_ALL)
+
+    qt_commandline_option(sbom-spdx-v2 TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_GENERATE_SPDX_V2)
+
+    qt_commandline_option(sbom-cyclonedx-v1_6 TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_GENERATE_CYDX_V1_6)
+
+    qt_commandline_option(sbom-cyclonedx-v1_6-required TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_REQUIRE_GENERATE_CYDX_V1_6)
+
+    qt_commandline_option(sbom-cyclonedx-v1_6-verify-required TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_REQUIRE_VERIFY_CYDX_V1_6)
+
+    qt_commandline_option(sbom-cyclonedx-v1_6-verbose TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_VERBOSE_CYDX_V1_6)
+
+    qt_commandline_option(sbom-json TYPE boolean CMAKE_VARIABLE QT_SBOM_GENERATE_SPDX_V2_JSON)
+    qt_commandline_option(sbom-json-required TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_REQUIRE_GENERATE_SPDX_V2_JSON
+    )
+
+    qt_commandline_option(sbom-verify TYPE boolean CMAKE_VARIABLE QT_SBOM_VERIFY_SPDX_V2)
+    qt_commandline_option(sbom-verify-required TYPE boolean
+        CMAKE_VARIABLE QT_SBOM_REQUIRE_VERIFY_SPDX_V2)
 endmacro()
 
 function(qt_commandline_prefix arg var)
@@ -329,6 +635,9 @@ endfunction()
 # stub functions above.
 set(QT_CONFIGURE_RUNNING ON)
 
+# Make sure that configure sees all qt_find_package calls.
+set(QT_FIND_ALL_PACKAGES_ALWAYS ON)
+
 
 ####################################################################################################
 # Load qt_cmdline.cmake files
@@ -336,13 +645,43 @@ set(QT_CONFIGURE_RUNNING ON)
 
 qt_add_common_commandline_options()
 
+set(cmdline_visited_dirs "")
 while(commandline_files)
     list(POP_FRONT commandline_files commandline_file)
     get_filename_component(commandline_file_directory "${commandline_file}" DIRECTORY)
+
+    # Skip qt_cmdline.cmake and configure.cmake files from skipped repositories.
+    if(TOP_LEVEL)
+        get_filename_component(repo "${commandline_file_directory}" NAME)
+        if(repo IN_LIST skipped_qtrepos)
+            continue()
+        endif()
+    endif()
+
+    get_filename_component(current_configure_module "${commandline_file_directory}" NAME)
+    if(current_configure_module STREQUAL "src")
+        get_filename_component(_parent_dir "${commandline_file_directory}" DIRECTORY)
+        get_filename_component(current_configure_module "${_parent_dir}" NAME)
+    endif()
+    set_property(GLOBAL PROPERTY COMMANDLINE_CURRENT_CONFIGURE_MODULE "${current_configure_module}")
+
+    # Record this directory as visited by the qt_cmdline.cmake traversal.
+    # Normalize both paths to absolute before computing the relative path, so the
+    # result matches the chain-coverage check in qt_internal_add_module regardless
+    # of whether MODULE_ROOT was passed as a relative path (e.g. when configuring a
+    # module in-source with '.').
+    get_filename_component(abs_module_root "${MODULE_ROOT}" ABSOLUTE)
+    get_filename_component(abs_commandline_file_directory "${commandline_file_directory}" ABSOLUTE)
+    file(RELATIVE_PATH cmdline_marker_rel "${abs_module_root}" "${abs_commandline_file_directory}")
+    if(NOT cmdline_marker_rel)
+        set(cmdline_marker_rel ".")
+    endif()
+    list(APPEND cmdline_visited_dirs "${cmdline_marker_rel}")
     set(configure_file "${commandline_file_directory}/${configure_filename}")
     unset(commandline_subconfigs)
     if(EXISTS "${configure_file}")
         include("${configure_file}")
+        set_property(GLOBAL PROPERTY _QT_VCPKG_SCOPE)
     endif()
     if(EXISTS "${commandline_file}")
         include("${commandline_file}")
@@ -354,6 +693,13 @@ while(commandline_files)
         list(PREPEND commandline_files "${commandline_subconfigs}")
     endif()
 endwhile()
+
+# Write the list of directories visited by the qt_cmdline.cmake traversal,
+# relative to MODULE_ROOT. It is consumed by the chain-coverage check in
+# qt_internal_add_module.
+list(REMOVE_DUPLICATES cmdline_visited_dirs)
+list(JOIN cmdline_visited_dirs "\n" cmdline_visited_dirs_content)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/.qt/cmdline_visited_dirs" "${cmdline_visited_dirs_content}\n")
 
 get_property(commandline_known_features GLOBAL PROPERTY COMMANDLINE_KNOWN_FEATURES)
 
@@ -499,6 +845,18 @@ function(qt_commandline_string arg val nextok)
     endif()
 endfunction()
 
+# Handle command line arguments of type "path" exactly like strings.
+# They are treated differently by translate_input, however.
+function(qt_commandline_path arg val nextok)
+    qt_commandline_string("${arg}" "${val}" "${nextok}")
+endfunction()
+
+# Handle command line arguments of type "stringList" exactly like strings.
+# They are treated differently by translate_input, however.
+function(qt_commandline_stringList arg val nextok)
+    qt_commandline_string("${arg}" "${val}" "${nextok}")
+endfunction()
+
 function(qt_commandline_optionalString arg val nextok)
     if("${val}" STREQUAL "")
         if(nextok)
@@ -583,22 +941,39 @@ function(qt_call_function func)
 endfunction()
 
 if(display_module_help)
-    message([[
+    set(help [[
 Options:
   -help, -h ............ Display this help screen
 
   -feature-<feature> ... Enable <feature>
   -no-feature-<feature>  Disable <feature> [none]
-  -list-features ....... List available features. Note that some features
-                         have dedicated command line options as well.
+  -list-features [module]  List available features, optionally filtered by
+                           module directory (e.g., sql, network). Note that some
+                           features have dedicated command line options as well.
+  -list-modules .......... List available module names for use with -list-features.
 ]])
-
     set(help_file "${MODULE_ROOT}/config_help.txt")
     if(EXISTS "${help_file}")
-        file(READ "${help_file}" content)
-        message("${content}")
+        file(READ "${help_file}" help_file_content)
+        string(APPEND help "${help_file_content}")
     endif()
+    qt_configure_print_to_stdout("${help}")
+    return()
+endif()
 
+if(list_modules)
+    unset(modules)
+    foreach(feature ${commandline_known_features})
+        get_property(purpose GLOBAL PROPERTY COMMANDLINE_FEATURE_PURPOSE_${feature})
+        if(purpose)
+            get_property(feature_module GLOBAL PROPERTY COMMANDLINE_FEATURE_MODULE_${feature})
+            list(APPEND modules "${feature_module}")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES modules)
+    list(SORT modules)
+    list(JOIN modules "\n" modules)
+    qt_configure_print_to_stdout("${modules}\n")
     return()
 endif()
 
@@ -608,6 +983,12 @@ if(list_features)
         get_property(section GLOBAL PROPERTY COMMANDLINE_FEATURE_SECTION_${feature})
         get_property(purpose GLOBAL PROPERTY COMMANDLINE_FEATURE_PURPOSE_${feature})
         if(purpose)
+            if(DEFINED list_features_module)
+                get_property(feature_module GLOBAL PROPERTY COMMANDLINE_FEATURE_MODULE_${feature})
+                if(NOT feature_module STREQUAL list_features_module)
+                    continue()
+                endif()
+            endif()
             if(NOT "${section}" STREQUAL "")
                 string(APPEND section ": ")
             endif()
@@ -618,7 +999,7 @@ if(list_features)
     endforeach()
     list(SORT lines)
     list(JOIN lines "\n" lines)
-    message("${lines}")
+    qt_configure_print_to_stdout("${lines}\n")
     return()
 endif()
 
@@ -792,9 +1173,10 @@ get_property(config_inputs GLOBAL PROPERTY CONFIG_INPUTS)
 list(REMOVE_DUPLICATES config_inputs)
 foreach(var ${config_inputs})
     get_property(INPUT_${var} GLOBAL PROPERTY INPUT_${var})
-    if("${commandline_input_type}" STREQUAL "")
+    if("${commandline_input_${var}_type}" STREQUAL "")
         get_property(commandline_input_${var}_type GLOBAL PROPERTY INPUTTYPE_${var})
     endif()
+    get_property(commandline_input_${var}_cmake_variable GLOBAL PROPERTY INPUTCMAKEVAR_${var})
 endforeach()
 
 macro(drop_input name)
@@ -836,6 +1218,24 @@ macro(translate_list_input name cmake_var)
     endif()
 endmacro()
 
+macro(translate_input name cmake_var)
+    if("${commandline_input_${name}_type}" STREQUAL "boolean")
+        translate_boolean_input(${name} ${cmake_var})
+    elseif("${commandline_input_${name}_type}" STREQUAL "path")
+        translate_path_input(${name} ${cmake_var})
+    elseif("${commandline_input_${name}_type}" STREQUAL "string")
+        translate_string_input(${name} ${cmake_var})
+    elseif("${commandline_input_${name}_type}" STREQUAL "addString"
+            OR "${commandline_input_${name}_type}" STREQUAL "stringList")
+        translate_list_input(${name} ${cmake_var})
+    else()
+        message(FATAL_ERROR
+            "translate_input cannot handle input '${name}' "
+            "of type '${commandline_input_${name}_type}'."
+        )
+    endif()
+endmacro()
+
 # Check whether to guess the compiler for the given language.
 #
 # Sets ${out_var} to FALSE if one of the following holds:
@@ -865,29 +1265,27 @@ function(guess_compiler_from_mkspec)
 
     check_whether_to_guess_compiler(guess_c_compiler CC CMAKE_C_COMPILER)
     check_whether_to_guess_compiler(guess_cxx_compiler CXX CMAKE_CXX_COMPILER)
-    if(NOT guess_c_compiler AND NOT guess_cxx_compiler)
-        return()
-    endif()
-
     string(REGEX MATCH "(^|;)-DQT_QMAKE_TARGET_MKSPEC=\([^;]+\)" m "${cmake_args}")
     set(mkspec ${CMAKE_MATCH_2})
-    set(c_compiler "")
-    set(cxx_compiler "")
-    if(mkspec MATCHES "-clang-msvc$")
-        set(c_compiler "clang-cl")
-        set(cxx_compiler "clang-cl")
-    elseif(mkspec MATCHES "-clang(-|$)" AND NOT mkspec MATCHES "android")
-        set(c_compiler "clang")
-        set(cxx_compiler "clang++")
-    elseif(mkspec MATCHES "-msvc(-|$)")
-        set(c_compiler "cl")
-        set(cxx_compiler "cl")
-    endif()
-    if(guess_c_compiler AND NOT c_compiler STREQUAL "")
-        push("-DCMAKE_C_COMPILER=${c_compiler}")
-    endif()
-    if(guess_cxx_compiler AND NOT cxx_compiler STREQUAL "")
-        push("-DCMAKE_CXX_COMPILER=${cxx_compiler}")
+    if(guess_c_compiler OR guess_cxx_compiler)
+        set(c_compiler "")
+        set(cxx_compiler "")
+        if(mkspec MATCHES "-clang-msvc$")
+            set(c_compiler "clang-cl")
+            set(cxx_compiler "clang-cl")
+        elseif(mkspec MATCHES "-clang(-|$)" AND NOT mkspec MATCHES "android")
+            set(c_compiler "clang")
+            set(cxx_compiler "clang++")
+        elseif(mkspec MATCHES "-msvc(-|$)")
+            set(c_compiler "cl")
+            set(cxx_compiler "cl")
+        endif()
+        if(guess_c_compiler AND NOT c_compiler STREQUAL "")
+            push("-DCMAKE_C_COMPILER=${c_compiler}")
+        endif()
+        if(guess_cxx_compiler AND NOT cxx_compiler STREQUAL "")
+            push("-DCMAKE_CXX_COMPILER=${cxx_compiler}")
+        endif()
     endif()
     if(mkspec MATCHES "-libc\\+\\+$")
         push("-DFEATURE_stdlib_libcpp=ON")
@@ -902,59 +1300,31 @@ function(check_qt_build_parts type)
         set(buildFlag "FALSE")
     endif()
 
-    list(APPEND knownParts "tests" "examples" "benchmarks" "manual-tests" "minimal-static-tests")
-
     foreach(part ${${input}})
-        if(part IN_LIST knownParts)
-            qt_feature_normalize_name("${part}" partUpperCase)
-            string(TOUPPER "${partUpperCase}" partUpperCase)
-            push("-DQT_BUILD_${partUpperCase}=${buildFlag}")
-            continue()
-        elseif("${part}" STREQUAL "tools" AND "${type}" STREQUAL "make")
-            # default true ignored
-            continue()
-        endif()
-        qtConfAddWarning("'-${type} ${part}' is not implemented yet.")
+        qt_feature_normalize_name("${part}" partUpperCase)
+        string(TOUPPER "${partUpperCase}" partUpperCase)
+        push("-DQT_BUILD_${partUpperCase}=${buildFlag}")
     endforeach()
     set(cmake_args "${cmake_args}" PARENT_SCOPE)
 endfunction()
 
+# Translate command line arguments that have CMAKE_VARIABLE set.
+foreach(input IN LISTS config_inputs)
+    if(NOT "${commandline_input_${input}_cmake_variable}" STREQUAL "")
+        translate_input("${input}" "${commandline_input_${input}_cmake_variable}")
+    endif()
+endforeach()
+
 drop_input(commercial)
 drop_input(confirm-license)
-translate_boolean_input(precompile_header BUILD_WITH_PCH)
-translate_boolean_input(unity_build QT_UNITY_BUILD)
-translate_string_input(unity_build_batch_size QT_UNITY_BUILD_BATCH_SIZE)
-translate_boolean_input(ccache QT_USE_CCACHE)
-translate_boolean_input(vcpkg QT_USE_VCPKG)
 translate_boolean_input(shared BUILD_SHARED_LIBS)
-translate_boolean_input(warnings_are_errors WARNINGS_ARE_ERRORS)
-translate_boolean_input(qtinlinenamespace QT_INLINE_NAMESPACE)
-translate_string_input(qt_namespace QT_NAMESPACE)
-translate_string_input(qt_libinfix QT_LIBINFIX)
-translate_string_input(qreal QT_COORD_TYPE)
-translate_path_input(prefix CMAKE_INSTALL_PREFIX)
-translate_path_input(extprefix CMAKE_STAGING_PREFIX)
-foreach(kind bin lib archdata libexec qml data doc sysconf examples tests)
-    string(TOUPPER ${kind} uc_kind)
-    translate_path_input(${kind}dir INSTALL_${uc_kind}DIR)
-endforeach()
-translate_path_input(headerdir INSTALL_INCLUDEDIR)
-translate_path_input(plugindir INSTALL_PLUGINSDIR)
-translate_path_input(translationdir INSTALL_TRANSLATIONSDIR)
-translate_path_input(sbomdir INSTALL_SBOMDIR)
 
 if(NOT "${INPUT_device}" STREQUAL "")
     push("-DQT_QMAKE_TARGET_MKSPEC=devices/${INPUT_device}")
     drop_input(device)
 endif()
-translate_string_input(platform QT_QMAKE_TARGET_MKSPEC)
-translate_string_input(xplatform QT_QMAKE_TARGET_MKSPEC)
 guess_compiler_from_mkspec()
-translate_string_input(qpa_default_platform QT_QPA_DEFAULT_PLATFORM)
-translate_list_input(qpa_platforms QT_QPA_PLATFORMS)
 
-translate_path_input(android-sdk ANDROID_SDK_ROOT)
-translate_path_input(android-ndk ANDROID_NDK_ROOT)
 if(DEFINED INPUT_android-ndk-platform)
     drop_input(android-ndk-platform)
     push("-DANDROID_PLATFORM=${INPUT_android-ndk-platform}")
@@ -966,14 +1336,9 @@ if(DEFINED INPUT_android-abis)
     endif()
     translate_string_input(android-abis ANDROID_ABI)
 endif()
-translate_string_input(android-javac-source QT_ANDROID_JAVAC_SOURCE)
-translate_string_input(android-javac-target QT_ANDROID_JAVAC_TARGET)
-
-translate_string_input(sdk QT_APPLE_SDK)
 
 drop_input(make)
 drop_input(nomake)
-translate_boolean_input(install-examples-sources QT_INSTALL_EXAMPLES_SOURCES)
 
 check_qt_build_parts(nomake)
 check_qt_build_parts(make)
@@ -1038,7 +1403,7 @@ if("${INPUT_ltcg}" STREQUAL "yes")
     endforeach()
 endif()
 
-translate_list_input(device-option QT_QMAKE_DEVICE_OPTIONS)
+# Handle -D, -I and friends.
 translate_list_input(defines QT_EXTRA_DEFINES)
 translate_list_input(fpaths QT_EXTRA_FRAMEWORKPATHS)
 translate_list_input(includes QT_EXTRA_INCLUDEPATHS)
@@ -1121,8 +1486,108 @@ if(INPUT_sysroot)
                      "to pass the sysroot to CMake.\n")
 endif()
 
+function(qt_generate_vcpkg_manifest)
+    # Check if manifest was initialized (i.e., any dependencies were found)
+    get_property(manifest_initialized GLOBAL PROPERTY _QT_VCPKG_MANIFEST_JSON SET)
+    if(NOT manifest_initialized)
+        # For repositories that don't need 3rd-party libs, generate an empty vcpkg.json.
+        qt_init_vcpkg_manifest_if_needed()
+    endif()
+
+    # Write the manifest file
+    set(manifest_file "${CMAKE_CURRENT_BINARY_DIR}/vcpkg.json")
+    qt_vcpkg_write_manifest("${manifest_file}")
+endfunction()
+
+function(qt_select_vcpkg_features out_var cmake_args)
+    # Extract enabled/disabled features from cmake_args.
+    set(normalized_enabled_features "")
+    set(normalized_disabled_features "")
+    foreach(arg IN LISTS cmake_args)
+        if(arg MATCHES "^-DFEATURE_([^=]+)=(.*)")
+            if(CMAKE_MATCH_2)
+                list(APPEND normalized_enabled_features "${CMAKE_MATCH_1}")
+            else()
+                list(APPEND normalized_disabled_features "${CMAKE_MATCH_1}")
+            endif()
+        endif()
+    endforeach()
+
+    if(normalized_enabled_features STREQUAL "" AND normalized_disabled_features STREQUAL "")
+        return()
+    endif()
+
+    # Convert normalized feature names back to original names
+    set(enabled_features "")
+    set(disabled_features "")
+    foreach(original_feature IN LISTS commandline_known_features)
+        qt_feature_normalize_name("${original_feature}" normalized_feature)
+        if(normalized_feature IN_LIST normalized_enabled_features)
+            list(APPEND enabled_features "${original_feature}")
+        endif()
+        if(normalized_feature IN_LIST normalized_disabled_features)
+            list(APPEND disabled_features "${original_feature}")
+        endif()
+    endforeach()
+
+    set(manifest_file_path "${CMAKE_CURRENT_BINARY_DIR}/vcpkg.json")
+    if(NOT EXISTS "${manifest_file_path}")
+        return()
+    endif()
+
+    file(READ "${manifest_file_path}" json)
+    qt_vcpkg_set_internal_manifest_data("${json}")
+
+    # Enable all default vcpkg feature that were not explicitly disabled.
+    qt_vcpkg_get_default_features(vcpkg_default_features "${json}")
+    set(vcpkg_features_to_enable ${vcpkg_default_features})
+    list(REMOVE_ITEM vcpkg_features_to_enable ${disabled_features})
+
+    # Enable all vcpkg features that were explicitly enabled. Filter out non-vcpkg features.
+    qt_vcpkg_get_features(all_vcpkg_features "${json}")
+    set(enabled_features_without_vcpkg_features "${enabled_features}")
+    list(REMOVE_ITEM enabled_features_without_vcpkg_features ${all_vcpkg_features})
+    list(APPEND vcpkg_features_to_enable ${enabled_features})
+    list(REMOVE_ITEM vcpkg_features_to_enable ${enabled_features_without_vcpkg_features})
+    list(REMOVE_DUPLICATES vcpkg_features_to_enable)
+
+    # If we're enabling exactly the default features, we don't have to explicitly enable them.
+    if(vcpkg_features_to_enable STREQUAL vcpkg_default_features)
+        return()
+    endif()
+
+    list(APPEND cmake_args "-DVCPKG_MANIFEST_NO_DEFAULT_FEATURES=ON")
+    list(JOIN vcpkg_features_to_enable "[[;]]" manifest_args)
+    list(APPEND cmake_args "-DVCPKG_MANIFEST_FEATURES=${manifest_args}")
+    set("${out_var}" "${cmake_args}" PARENT_SCOPE)
+endfunction()
+
+if(generate_vcpkg_manifest)
+    qt_generate_vcpkg_manifest()
+endif()
+
+if(use_vcpkg)
+    qt_select_vcpkg_features(cmake_args "${cmake_args}")
+endif()
+
 # Restore the escaped semicolons in arguments that are lists
 list(TRANSFORM cmake_args REPLACE "\\[\\[;\\]\\]" "\\\\;")
+
+if(dry_run)
+    if(CMAKE_COMMAND MATCHES " ")
+        set(pretty_command_line "\"${CMAKE_COMMAND}\"")
+    else()
+        set(pretty_command_line "${CMAKE_COMMAND}")
+    endif()
+    foreach(arg IN LISTS cmake_args)
+        if(arg MATCHES "[ ;]")
+            set(arg "\"${arg}\"")
+        endif()
+        string(APPEND pretty_command_line " ${arg}")
+    endforeach()
+    message("${pretty_command_line}")
+    return()
+endif()
 
 execute_process(COMMAND "${CMAKE_COMMAND}" ${cmake_args}
     COMMAND_ECHO STDOUT

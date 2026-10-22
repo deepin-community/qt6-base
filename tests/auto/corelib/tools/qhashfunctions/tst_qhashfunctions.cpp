@@ -5,6 +5,7 @@
 #include <QTest>
 
 #include <QtCore/qmap.h>
+#include <qplatformdefs.h>
 #include <QVarLengthArray>
 
 #include <qhash.h>
@@ -16,6 +17,9 @@
 
 #include <unordered_set>
 
+using namespace Qt::StringLiterals;
+
+static size_t seed = 0;
 class tst_QHashFunctions : public QObject
 {
     Q_OBJECT
@@ -23,8 +27,7 @@ public:
     // random values
     static constexpr quint64 ZeroSeed = 0;
     static constexpr quint64 RandomSeed32 = 1045982819;
-    static constexpr quint64 RandomSeed64 = QtPrivate::QHashCombine{}(RandomSeed32, RandomSeed32);
-    size_t seed;
+    static constexpr quint64 RandomSeed64 = qHashMulti(0, RandomSeed32, RandomSeed32);
 
     template <typename T1, typename T2> void stdPair_template(const T1 &t1, const T2 &t2);
 
@@ -33,6 +36,7 @@ public slots:
     void init();
 
 private Q_SLOTS:
+    void pointerConsistency();
     void boolIntegerConsistency();
     void unsignedIntegerConsistency_data();
     void unsignedIntegerConsistency();
@@ -43,10 +47,13 @@ private Q_SLOTS:
     void floatingPointConsistency();
     void stringConsistency_data();
     void stringConsistency();
+    void optionalConsistency();
     void qhash();
     void qhash_of_empty_and_null_qstring();
     void qhash_of_empty_and_null_qbytearray();
     void qhash_of_zero_floating_points();
+    void qhash_of_padded_floating_points_data();
+    void qhash_of_padded_floating_points();
     void qmap();
     void qthash_data();
     void qthash();
@@ -74,6 +81,51 @@ private Q_SLOTS:
 #endif
 };
 
+void tst_QHashFunctions::pointerConsistency()
+{
+    // const/mutable
+    {
+        int i = 0;
+        const auto h = qHash(&i, seed);
+        if (seed != 0) QEXPECT_FAIL("", "QTBUG-116074", Continue);
+        QCOMPARE(h, qHash(&std::as_const(i), seed));
+    }
+
+    // QObject base/derived (should all hash like a QObject*):
+    {
+        QFile file;
+        QObject *o = &file;
+        const QObject *co = &file;
+        const auto h = qHash(&file, seed);
+        QCOMPARE(h, qHash( o, seed));
+        if (seed != 0) QEXPECT_FAIL("", "QTBUG-116074", Continue);
+        QCOMPARE(h, qHash(co, seed));
+    }
+
+    // multiple inheritance (there is nothing we can do anything about this):
+    {
+        struct Base1 { int i; virtual ~Base1() = default; };
+        struct Base2 { long long i; virtual ~Base2() = default; };
+        struct MultipleInheritance : Base1, Base2 {};
+
+        MultipleInheritance mi;
+        Base1 *b1 = &mi;
+        Base2 *b2 = &mi;
+        const Base1 *cb1 = &mi;
+        const Base2 *cb2 = &mi;
+        const auto h = qHash(&mi, seed);
+        QCOMPARE(&mi, b1);
+        QCOMPARE(h, qHash( b1, seed));
+        QCOMPARE(&mi, b2);
+        //QCOMPARE(h, qHash( b2, seed)); // requires pointer adjustment
+        QCOMPARE(&mi, cb1);
+        if (seed != 0) QEXPECT_FAIL("", "QTBUG-116074", Continue);
+        QCOMPARE(h, qHash(cb1, seed));
+        QCOMPARE(&mi, cb2);
+        // QCOMPARE(h, qHash(cb2, seed)); // requires pointer adjustment
+    }
+}
+
 void tst_QHashFunctions::initTestCase()
 {
     QTest::addColumn<quint64>("seedValue");
@@ -97,9 +149,9 @@ void tst_QHashFunctions::init()
 
 void tst_QHashFunctions::boolIntegerConsistency()
 {
-    if (seed) QEXPECT_FAIL("", "QTBUG-126674", Continue);
+    QT6_ONLY(if (seed) QEXPECT_FAIL("", "QTBUG-126674", Continue));
     QCOMPARE(qHash(0, seed), qHash(false, seed));
-    if (seed) QEXPECT_FAIL("", "QTBUG-126674", Continue);
+    QT6_ONLY(if (seed) QEXPECT_FAIL("", "QTBUG-126674", Continue));
     QCOMPARE(qHash(1, seed), qHash(true, seed));
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     // check consistency with pre-6.9 incidental implementation:
@@ -353,6 +405,53 @@ void tst_QHashFunctions::stringConsistency()
     }
 }
 
+void tst_QHashFunctions::optionalConsistency()
+{
+    // guarantee #1: an engaged optional<T> hashes the same as its value()
+    {
+        for (int v : {0, 1, -47}) {
+            std::optional o(v);
+            QCOMPARE(qHash(o, seed), qHash(v, seed));
+            QCOMPARE(qHash(o, seed), qHash(*o, seed));
+        }
+    }
+    {
+        for (qint64 v : {Q_INT64_C(0), Q_INT64_C(-1), LLONG_MAX}) {
+            std::optional o(v);
+            QCOMPARE(qHash(o, seed), qHash(v, seed));
+            QCOMPARE(qHash(o, seed), qHash(*o, seed));
+        }
+    }
+    {
+        for (double v : {0.0, 1.0, -3.5}) {
+            std::optional o(v);
+            QCOMPARE(qHash(o, seed), qHash(v, seed));
+            QCOMPARE(qHash(o, seed), qHash(*o, seed));
+        }
+    }
+    {
+        for (const QString &v : {QString(), u"Hello"_s, u"World"_s}) {
+            std::optional o(v);
+            QCOMPARE(qHash(o, seed), qHash(v, seed));
+            QCOMPARE(qHash(o, seed), qHash(*o, seed));
+        }
+    }
+
+    // guarantee #2: all disengaged optionals, of any T, hash to the same value
+    {
+        std::optional<int> oi;
+        std::optional<qint64> oi64;
+        std::optional<double> od;
+        std::optional<QString> os;
+
+        const auto h = qHash(std::nullopt, seed);
+        QCOMPARE(qHash(oi, seed), h);
+        QCOMPARE(qHash(oi64, seed), h);
+        QCOMPARE(qHash(od, seed), h);
+        QCOMPARE(qHash(os, seed), h);
+    }
+}
+
 void tst_QHashFunctions::qhash()
 {
     {
@@ -401,15 +500,15 @@ void tst_QHashFunctions::qhash()
     }
 
     {
-        QPair<int, int> p12(1, 2);
-        QPair<int, int> p21(2, 1);
+        std::pair<int, int> p12(1, 2);
+        std::pair<int, int> p21(2, 1);
 
         QVERIFY(qHash(p12, seed) == qHash(p12, seed));
         QVERIFY(qHash(p21, seed) == qHash(p21, seed));
         QVERIFY(qHash(p12, seed) != qHash(p21, seed));  // not guaranteed
 
-        QPair<int, int> pA(0x12345678, 0x12345678);
-        QPair<int, int> pB(0x12345675, 0x12345675);
+        std::pair<int, int> pA(0x12345678, 0x12345678);
+        std::pair<int, int> pB(0x12345675, 0x12345675);
 
         QVERIFY(qHash(pA, seed) != qHash(pB, seed));    // not guaranteed
     }
@@ -454,6 +553,68 @@ void tst_QHashFunctions::qhash_of_zero_floating_points()
     QCOMPARE(qHash(-0.0f, seed), qHash(0.0f, seed));
     QCOMPARE(qHash(-0.0 , seed), qHash(0.0 , seed));
     QCOMPARE(qHash(-0.0L, seed), qHash(0.0L, seed));
+}
+
+static void forceBufferSpill(void *buf)
+{
+    std::atomic_signal_fence(std::memory_order_release);
+    std::ignore = QT_WRITE(1, buf, 0);    // we don't actually write anything
+}
+
+// Overwrite space in the stack that qHash() calls will use.
+// This function must be Q_NEVER_INLINE so the stack will get unwound
+// before qHash is called below from the helper.
+static Q_NEVER_INLINE void useStack(int fill)
+{
+    char buf[256];
+    memset(buf, fill, sizeof(buf));
+    forceBufferSpill(buf);
+}
+
+template <typename FP> [[maybe_unused]]
+static size_t qHashFloatingPointFromMemory(double v) noexcept
+{
+    alignas(long double) quint8 buffer[sizeof(long double)];
+    qToUnaligned(FP(v), buffer);
+    forceBufferSpill(buffer);
+    return qHash(qFromUnaligned<FP>(buffer), seed);
+}
+
+void tst_QHashFunctions::qhash_of_padded_floating_points_data()
+{
+    QTest::addColumn<void *>("wrapper");
+
+    // x86 uses IEEE 754 extended double precision with the x87 instructions.
+    // The FSTP instruction only writes 10 bytes, so it has padding bits.
+    QTest::newRow("long double") << (void *)qHashFloatingPointFromMemory<long double>;
+
+    // There are no platforms for which these are known to have padding bits
+    QTest::newRow("double") << (void *)qHashFloatingPointFromMemory<double>;
+    QTest::newRow("float") << (void *)qHashFloatingPointFromMemory<float>;
+    QTest::newRow("qfloat16") << (void *)qHashFloatingPointFromMemory<qfloat16>;
+}
+
+void tst_QHashFunctions::qhash_of_padded_floating_points()
+{
+    using Wrapper = size_t (*)(double) noexcept;
+    QFETCH(void *, wrapper);
+    auto fn = reinterpret_cast<Wrapper>(wrapper);
+
+    QTest::ThrowOnFailEnabler tof;
+    auto dotest = [fn](double value) {
+        useStack(0x55);
+        size_t hash1 = fn(value);
+        useStack(0xaa);
+        size_t hash2 = fn(value);
+        QCOMPARE(hash1, hash2);
+    };
+
+    dotest(0.0);
+    dotest(1.0);
+    dotest(M_PI);
+    dotest(qInf());
+    dotest(-qInf());
+    dotest(qQNaN());
 }
 
 void tst_QHashFunctions::qmap()

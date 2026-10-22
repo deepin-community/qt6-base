@@ -4,7 +4,7 @@
 #include <QtWidgets>
 #include <math.h>
 
-#include "mainwindow.h"
+#include "../include/mainwindow.h"
 
 MainWindow::MainWindow()
 {
@@ -21,24 +21,27 @@ MainWindow::MainWindow()
     menuBar()->addMenu(fileMenu);
     menuBar()->addMenu(itemsMenu);
 
-//! [0]
+    //! [0]
     tableWidget = new QTableWidget(12, 3, this);
-//! [0]
+    //! [0]
     tableWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
-//! [1]
+    //! [1]
     QTableWidgetItem *valuesHeaderItem = new QTableWidgetItem(tr("Values"));
     tableWidget->setHorizontalHeaderItem(0, valuesHeaderItem);
-//! [1]
+    //! [1]
+
     valuesHeaderItem->setTextAlignment(Qt::AlignVCenter);
     QTableWidgetItem *squaresHeaderItem = new QTableWidgetItem(tr("Squares"));
     squaresHeaderItem->setIcon(QIcon(QPixmap(":/Images/squared.png")));
     squaresHeaderItem->setTextAlignment(Qt::AlignVCenter);
-//! [2]
+
+    //! [2]
     QTableWidgetItem *cubesHeaderItem = new QTableWidgetItem(tr("Cubes"));
     cubesHeaderItem->setIcon(QIcon(QPixmap(":/Images/cubed.png")));
     cubesHeaderItem->setTextAlignment(Qt::AlignVCenter);
-//! [2]
+    //! [2]
+
     tableWidget->setHorizontalHeaderItem(1, squaresHeaderItem);
     tableWidget->setHorizontalHeaderItem(2, cubesHeaderItem);
 
@@ -56,11 +59,11 @@ void MainWindow::setupTableItems()
 {
     for (int row = 0; row < tableWidget->rowCount()-1; ++row) {
         for (int column = 0; column < tableWidget->columnCount(); ++column) {
-//! [3]
-    QTableWidgetItem *newItem = new QTableWidgetItem(tr("%1").arg(
-        pow(row, column+1)));
-    tableWidget->setItem(row, column, newItem);
-//! [3]
+            //! [3]
+            QTableWidgetItem *newItem = new QTableWidgetItem(tr("%1").arg(
+                pow(row, column+1)));
+            tableWidget->setItem(row, column, newItem);
+            //! [3]
         }
     }
     for (int column = 0; column < tableWidget->columnCount(); ++column) {
@@ -91,7 +94,7 @@ void MainWindow::averageItems()
 
 void MainWindow::sumItems()
 {
-//! [4]
+    //! [4]
     const QList<QTableWidgetItem *> selected = tableWidget->selectedItems();
     int number = 0;
     double total = 0;
@@ -105,7 +108,7 @@ void MainWindow::sumItems()
             number++;
         }
     }
-//! [4]
+    //! [4]
     if (number > 0)
         tableWidget->currentItem()->setText(QString::number(total));
 }

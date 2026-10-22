@@ -1,7 +1,10 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhttpheaders.h"
+
+#include <QtNetwork/private/qnetworkrequest_p.h>
 
 #include <private/qoffsetstringarray_p.h>
 
@@ -11,14 +14,353 @@
 #include <QtCore/qmap.h>
 #include <QtCore/qset.h>
 #include <QtCore/qttypetraits.h>
+#include <QtCore/qxpfunctional.h>
 
 #include <q20algorithm.h>
+#include <array>
+#include <limits>
+#include <q20memory.h>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcQHttpHeaders, "qt.network.http.headers");
+using namespace Qt::StringLiterals;
+
+Q_STATIC_LOGGING_CATEGORY(lcQHttpHeaders, "qt.network.http.headers");
+
+/*!
+    \class QHttpHeaderRangeSpec
+    \since 6.12
+    \inmodule QtNetwork
+    \preliminary
+    \compares equality
+
+    \brief QHttpHeaderRangeSpec represents a single byte range as used in
+    the HTTP \c{Range} and \c{Content-Range} headers, which RFC 9110 calls
+    a \e{range-spec}.
+
+    A range spec has an optional start and an optional end, both expressed
+    as byte offsets. A missing start or end is represented as
+    \c{std::nullopt}.
+
+    Use \l isValid() to check whether a range spec is well-formed before
+    passing it to \l QHttpHeaders::setRangeValues().
+
+    \sa QHttpHeaderRangeSet
+    \sa QHttpHeaders::rangeValues(), QHttpHeaders::setRangeValues()
+*/
+
+/*!
+    \variable std::optional<qint64> QHttpHeaderRangeSpec::start
+
+    Contains the start byte offset of the range, or \c{std::nullopt}
+    if no start was set. A range without a start but with an end
+    (e.g., \c{bytes=-500}) represents the last \e N bytes of the
+    resource.
+
+    \sa end
+*/
+
+/*!
+    \variable std::optional<qint64> QHttpHeaderRangeSpec::end
+
+    Contains the end byte offset of the range, or \c{std::nullopt}
+    if no end was set. A range with a start but without an end
+    (e.g., \c{bytes=500-}) requests all bytes from the given offset
+    to the end of the resource.
+
+    \sa start
+*/
+
+/*!
+    \fn bool QHttpHeaderRangeSpec::isValid() const noexcept
+
+    Returns \c true if the range spec is well-formed, \c false otherwise.
+
+    A range spec is considered invalid if:
+    \list
+        \li Both start and end are \c{std::nullopt}.
+        \li The start value is negative.
+        \li The end value is negative.
+        \li Both start and end are set, and start is greater than end.
+    \endlist
+*/
+
+/*!
+    \fn size_t qHash(QHttpHeaderRangeSpec key, size_t seed) noexcept
+    \qhashold{QHttpHeaderRangeSpec}
+    \since 6.12
+*/
+
+namespace {
+
+// ### replace with QSmallVector (QTBUG-131379) once available
+template <typename T, size_t N>
+class SmallVector
+{
+    std::array<T, N> m_data;
+    static_assert(N <= (std::numeric_limits<quint8>::max)());
+    quint8 m_size = 0;
+public:
+    SmallVector() = default;
+    // Rule Of Zero applies!
+
+    constexpr void resizeForOverwrite(qsizetype n)
+    {
+        Q_PRE(size_t(n) <= N);
+        m_size = quint8(n);
+    }
+
+    constexpr void assign(QSpan<const T> other)
+    {
+        Q_PRE(size_t(other.size()) <= N);
+        if (other.begin() != begin()) // the _one_ thing std::copy doesn't deal with is a no-op
+            q20::copy(other.begin(), other.end(), data());
+        else
+            Q_PRE(other.size() <= size()); // anything else would be UB
+        resizeForOverwrite(other.size());
+    }
+
+    constexpr T *data() noexcept { return m_data.data(); }
+    constexpr const T *data() const noexcept { return m_data.data(); }
+    constexpr qsizetype size() const noexcept { return qsizetype{m_size}; }
+
+    constexpr auto begin() noexcept { return data(); }
+    constexpr auto begin() const noexcept { return data(); }
+    constexpr auto end() noexcept { return data() + size(); }
+    constexpr auto end() const noexcept { return data() + size(); }
+};
+
+} // unnamed namespace
+
+class QHttpHeaderRangeSetPrivate : public QSharedData
+{
+    Q_DISABLE_COPY_MOVE(QHttpHeaderRangeSetPrivate)
+public:
+    static constexpr size_t InlineCapacity =
+            (std::max)(size_t(2), // e.g. "bytes=0-99, -100"
+                       sizeof(std::vector<QHttpHeaderRangeSpec>) / sizeof(QHttpHeaderRangeSpec));
+
+    using InlineBuffer = SmallVector<QHttpHeaderRangeSpec, InlineCapacity>;
+    using HeapBuffer = std::vector<QHttpHeaderRangeSpec>;
+    static_assert(std::is_trivially_destructible_v<InlineBuffer>,
+                  "add explicit ~InlineBuffer() calls");
+
+    explicit QHttpHeaderRangeSetPrivate(QSpan<const QHttpHeaderRangeSpec> rs)
+        : m_inlineBuffer{}, m_onHeap(false)
+    {
+        setRanges(rs);
+    }
+
+    ~QHttpHeaderRangeSetPrivate()
+    {
+        if (m_onHeap)
+            std::destroy_at(&m_heapBuffer);
+    }
+
+    bool isShared() const { return ref.loadRelaxed() != 1; }
+
+    QSpan<const QHttpHeaderRangeSpec> ranges() const
+    {
+        if (m_onHeap)
+            return m_heapBuffer;
+        return m_inlineBuffer;
+    }
+
+    void setRanges(QSpan<const QHttpHeaderRangeSpec> rs)
+    {
+        // Remember: `rs` may point into ranges()!
+        const auto rs_size = size_t(rs.size()); // cannot overflow!
+        if (m_onHeap) {
+            if (rs_size <= m_heapBuffer.size()) {
+                if (rs.begin() != m_heapBuffer.data()) // std::copy() would be UB (no-op, though)
+                    std::copy(rs.begin(), rs.end(), m_heapBuffer.begin());
+                m_heapBuffer.resize(rs_size);
+            } else {
+                // rs is too large to point into ranges(), so assign() is not UB:
+                m_heapBuffer.assign(rs.begin(), rs.end());
+            }
+        } else {
+            if (rs_size <= InlineCapacity) {
+                m_inlineBuffer.assign(rs); // robust under self-assignment
+            } else {
+                // rs is too large to point into ranges(), so this won't kill its backing store:
+                q20::construct_at(&m_heapBuffer, rs.begin(), rs.end());
+                m_onHeap = true;
+            }
+        }
+    }
+
+private:
+    union {
+        InlineBuffer m_inlineBuffer;
+        HeapBuffer m_heapBuffer;
+    };
+    bool m_onHeap;
+};
+
+QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QHttpHeaderRangeSetPrivate)
+
+/*!
+    \class QHttpHeaderRangeSet
+    \since 6.12
+    \inmodule QtNetwork
+    \preliminary
+    \compares equality
+
+    \brief QHttpHeaderRangeSet represents the byte ranges of an HTTP
+    \c{Range} header.
+
+    QHttpHeaderRangeSet holds a sequence of QHttpHeaderRangeSpec objects, as they
+    appear in such a header, which RFC 9110 calls a \e{range-set}.
+
+    The ranges are kept in the order in which they were given, because that
+    is the order in which a server is asked to send them. The class does not
+    interpret them: neither overlapping nor invalid ranges are rejected or
+    merged.
+
+    Each range is a byte range, as defined in
+    \l{https://datatracker.ietf.org/doc/html/rfc9110#section-14.1.1}{RFC 9110
+    Section 14.1.1}:
+    \list
+        \li If the start is specified but the end is not (e.g., "bytes=500-"),
+            the QHttpHeaderRangeSpec will have \c{start=500} and \c{end=std::nullopt}.
+        \li If the end is specified but the start is not (e.g., "bytes=-500"),
+            the QHttpHeaderRangeSpec will have \c{start=std::nullopt} and \c{end=500},
+            representing the last 500 bytes.
+        \li If both are specified (e.g., "bytes=0-499"), the QHttpHeaderRangeSpec will
+            have \c{start=0} and \c{end=499}.
+    \endlist
+
+    \sa QHttpHeaderRangeSpec, QHttpHeaders::rangeValues(),
+        QHttpHeaders::setRangeValues()
+*/
+
+/*!
+    Constructs a QHttpHeaderRangeSet object with no ranges.
+*/
+QHttpHeaderRangeSet::QHttpHeaderRangeSet()
+    = default;
+
+/*!
+    Constructs a QHttpHeaderRangeSet object holding \a r, in the given order.
+
+    \sa setRanges()
+*/
+QHttpHeaderRangeSet::QHttpHeaderRangeSet(QSpan<const QHttpHeaderRangeSpec> r)
+    : d_ptr(r.isEmpty() ? nullptr : new QHttpHeaderRangeSetPrivate(r))
+{
+}
+
+/*!
+    \fn QHttpHeaderRangeSet::QHttpHeaderRangeSet(std::initializer_list<QHttpHeaderRangeSpec> r)
+    \overload
+
+    Constructs a QHttpHeaderRangeSet object holding the ranges in \a r, in the
+    given order.
+*/
+
+/*!
+    Creates a copy of \a other.
+*/
+QHttpHeaderRangeSet::QHttpHeaderRangeSet(const QHttpHeaderRangeSet &other)
+    = default;
+
+/*!
+    Assigns the contents of \a other and returns a reference to this object.
+*/
+QHttpHeaderRangeSet &QHttpHeaderRangeSet::operator=(const QHttpHeaderRangeSet &other)
+    = default;
+
+/*!
+    Destroys the object.
+*/
+QHttpHeaderRangeSet::~QHttpHeaderRangeSet()
+    = default;
+
+/*!
+    \fn QHttpHeaderRangeSet::QHttpHeaderRangeSet(QHttpHeaderRangeSet &&other)
+
+    Move-constructs the object from \a other, which is left with no ranges.
+*/
+
+/*!
+    \fn QHttpHeaderRangeSet &QHttpHeaderRangeSet::operator=(QHttpHeaderRangeSet &&other)
+
+    Move-assigns \a other to this object and returns a reference to this
+    object. \a other is left with no ranges.
+*/
+
+/*!
+    \fn void QHttpHeaderRangeSet::swap(QHttpHeaderRangeSet &other)
+    \memberswap{ranges object}
+*/
+
+/*!
+    Returns a view of the ranges held by this object.
+
+    The returned view is valid until this object is modified or destroyed.
+
+    \sa setRanges()
+*/
+QSpan<const QHttpHeaderRangeSpec> QHttpHeaderRangeSet::ranges() const noexcept
+{
+    return d_ptr ? d_ptr->ranges() : QSpan<const QHttpHeaderRangeSpec>{};
+}
+
+/*!
+    Sets the ranges held by this object to \a r. Preserves the order of \a r.
+
+    \sa ranges()
+*/
+void QHttpHeaderRangeSet::setRanges(QSpan<const QHttpHeaderRangeSpec> r)
+{
+    if (d_ptr && !d_ptr->isShared())
+        d_ptr->setRanges(r); // reuse the buffer we already have
+    else
+        QHttpHeaderRangeSet(r).swap(*this);
+}
+
+/*!
+    \fn bool QHttpHeaderRangeSet::operator==(const QHttpHeaderRangeSet &lhs, const QHttpHeaderRangeSet &rhs)
+
+    Returns whether \a lhs and \a rhs hold the same ranges in the same order.
+
+    Like for other sequence containers, the ranges are compared element by
+    element, so objects that denote the same set of bytes, but hold different
+    ranges, or hold them in a different order, do not compare equal.
+
+    \sa operator!=()
+*/
+
+/*!
+    \fn bool QHttpHeaderRangeSet::operator!=(const QHttpHeaderRangeSet &lhs, const QHttpHeaderRangeSet &rhs)
+
+    Returns whether \a lhs and \a rhs hold different ranges, or hold them in a
+    different order.
+
+    \sa operator==()
+*/
+
+bool comparesEqual(const QHttpHeaderRangeSet &lhs, const QHttpHeaderRangeSet &rhs) noexcept
+{
+    if (lhs.d_ptr == rhs.d_ptr)
+        return true;
+    const auto l = lhs.ranges(), r = rhs.ranges();
+    return std::equal(l.begin(), l.end(), r.begin(), r.end());
+}
+
+/*!
+    \fn size_t QHttpHeaderRangeSet::qHash(const QHttpHeaderRangeSet &key, size_t seed)
+    \qhash{QHttpHeaderRangeSet}
+*/
+size_t qHash(const QHttpHeaderRangeSet &key, size_t seed) noexcept
+{
+    const auto ranges = key.ranges();
+    return qHashRange(ranges.begin(), ranges.end(), seed);
+}
 
 /*!
     \class QHttpHeaders
@@ -483,9 +825,11 @@ static constexpr quint8 orderedHeaderNameIndexes[] = {
     171, // x-frame-options
 };
 static_assert(std::size(orderedHeaderNameIndexes) == size_t(headerNames.count()));
+#if !defined(Q_CC_GNU_ONLY) || Q_CC_GNU_ONLY >= 1000
 static_assert(q20::is_sorted(std::begin(orderedHeaderNameIndexes),
                              std::end(orderedHeaderNameIndexes),
                              ByIndirectHeaderName{}));
+#endif
 
 /*!
     \enum QHttpHeaders::WellKnownHeader
@@ -672,6 +1016,8 @@ static_assert(q20::is_sorted(std::begin(orderedHeaderNameIndexes),
     \value ProtocolQuery
 */
 
+constexpr auto NonWellKnownHeader = QHttpHeaders::WellKnownHeader{-1};
+
 static QByteArray fieldToByteArray(QLatin1StringView s) noexcept
 {
     return QByteArray(s.data(), s.size());
@@ -692,9 +1038,13 @@ static QByteArray normalizedName(QAnyStringView name)
     return name.visit([](auto name){ return fieldToByteArray(name); }).toLower();
 }
 
+static bool headerNameValidImpl(QUtf8StringView) noexcept;
+
 struct HeaderName
 {
-    explicit HeaderName(QHttpHeaders::WellKnownHeader name) : data(name)
+    HeaderName() = default;  // // needed for QDataStream de-serialization; don't use
+
+    explicit HeaderName(QHttpHeaders::WellKnownHeader name) : wellKnownHeader(name)
     {
     }
 
@@ -702,9 +1052,9 @@ struct HeaderName
     {
         auto nname = normalizedName(name);
         if (auto h = HeaderName::toWellKnownHeader(nname))
-            data = *h;
+            wellKnownHeader = *h;
         else
-            data = std::move(nname);
+            headerName = std::move(nname);
     }
 
     // Returns an enum corresponding with the 'name' if possible. Uses binary search (O(logN)).
@@ -723,44 +1073,67 @@ struct HeaderName
 
     QByteArrayView asView() const noexcept
     {
-        return std::visit([](const auto &arg) -> QByteArrayView {
-            using T = decltype(arg);
-            if constexpr (std::is_same_v<T, const QByteArray &>)
-                return arg;
-            else if constexpr (std::is_same_v<T, const QHttpHeaders::WellKnownHeader &>)
-                return headerNames.viewAt(qToUnderlying(arg));
-            else
-                static_assert(QtPrivate::type_dependent_false<T>());
-        }, data);
+        if (wellKnownHeader != NonWellKnownHeader)
+            return headerNames.viewAt(qToUnderlying(wellKnownHeader));
+
+        return headerName;
     }
 
     QByteArray asByteArray() const noexcept
     {
-        return std::visit([](const auto &arg) -> QByteArray {
-            using T = decltype(arg);
-            if constexpr (std::is_same_v<T, const QByteArray &>) {
-                return arg;
-            } else if constexpr (std::is_same_v<T, const QHttpHeaders::WellKnownHeader &>) {
-                const auto view = headerNames.viewAt(qToUnderlying(arg));
-                return QByteArray::fromRawData(view.constData(), view.size());
-            } else {
-                static_assert(QtPrivate::type_dependent_false<T>());
-            }
-        }, data);
+        if (wellKnownHeader != NonWellKnownHeader) {
+            const auto view = headerNames.viewAt(qToUnderlying(wellKnownHeader));
+            return QByteArray::fromRawData(view.constData(), view.size());
+        }
+
+        return headerName;
     }
 
 private:
     // Store the data as 'enum' whenever possible; more performant, and comparison relies on that
-    std::variant<QHttpHeaders::WellKnownHeader, QByteArray> data;
+    QHttpHeaders::WellKnownHeader wellKnownHeader = NonWellKnownHeader;
+    QByteArray headerName;
+
+#ifndef QT_NO_DATASTREAM
+    friend QDataStream &operator<<(QDataStream &out, const HeaderName &headerName)
+    {
+        return out << headerName.asByteArray();
+    }
+
+    friend QDataStream &operator>>(QDataStream &in, HeaderName &headerName)
+    {
+        if (QByteArray ba; in >> ba) {
+            if (!headerNameValidImpl(QUtf8StringView{ba}))
+                in.setStatus(QDataStream::Status::ReadCorruptData);
+            else if (auto h = HeaderName::toWellKnownHeader(ba))
+                headerName.wellKnownHeader = *h;
+            else
+                headerName.headerName = std::move(ba);
+        }
+
+        return in;
+    }
+
+#endif // QT_NO_DATASTREAM
 
     friend bool comparesEqual(const HeaderName &lhs, const HeaderName &rhs) noexcept
     {
-        // Here we compare two std::variants, which will return false if the types don't match.
+        // Here we compare two HeaderNames and will return false if the types don't match.
         // That is beneficial here because we avoid unnecessary comparisons; but it also means
         // we must always store the data as WellKnownHeader when possible (in other words, if
-        // we get a string that is mappable to a WellKnownHeader). To guard against accidental
-        // misuse, the 'data' is private and the constructors must be used.
-        return lhs.data == rhs.data;
+        // we get a string that is mappable to a WellKnownHeader).
+
+        // if the wellKnownHeaders differ, they are not equal
+        if (lhs.wellKnownHeader != rhs.wellKnownHeader)
+            return false;
+
+        // from this point on we know that the two wellKnownHeaders are equal
+        // if they are NonWellKnownHeaders, check the QByteArrays
+        if (lhs.wellKnownHeader == NonWellKnownHeader)
+            return lhs.headerName == rhs.headerName;
+
+        // both of them are well-known headers and are equal
+        return true;
     }
     Q_DECLARE_EQUALITY_COMPARABLE(HeaderName)
 };
@@ -773,6 +1146,17 @@ private:
 struct Header {
     HeaderName name;
     QByteArray value;
+
+#ifndef QT_NO_DATASTREAM
+    friend QDataStream &operator<<(QDataStream &out, const Header &header)
+    {
+        return out << header.name << header.value;
+    }
+    friend QDataStream &operator>>(QDataStream &in, Header &header)
+    {
+        return in >> header.name >> header.value;
+    }
+#endif
 };
 
 auto headerNameMatches(const HeaderName &name)
@@ -789,11 +1173,14 @@ public:
     // we can define common methods which 'detach()' the private itself.
     using Self = QExplicitlySharedDataPointer<QHttpHeadersPrivate>;
     static void removeAll(Self &d, const HeaderName &name);
-    static void replaceOrAppend(Self &d, const HeaderName &name, const QByteArray &value);
+    static void replaceOrAppend(Self &d, const HeaderName &name, QByteArray value);
 
     void combinedValue(const HeaderName &name, QByteArray &result) const;
     void values(const HeaderName &name, QList<QByteArray> &result) const;
     QByteArrayView value(const HeaderName &name, QByteArrayView defaultValue) const noexcept;
+    void forEachHeader(QAnyStringView name,
+                       qxp::function_ref<void(QByteArrayView)> yield);
+    std::optional<QByteArrayView> findValue(const HeaderName &name) const noexcept;
 
     QList<Header> headers;
 };
@@ -802,7 +1189,7 @@ QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QHttpHeadersPrivate)
 template <> void QExplicitlySharedDataPointer<QHttpHeadersPrivate>::detach()
 {
     if (!d) {
-        d = new QHttpHeadersPrivate();
+        d.reset(new QHttpHeadersPrivate());
         d->ref.ref();
     } else if (d->ref.loadRelaxed() != 1) {
         detach_helper();
@@ -853,21 +1240,39 @@ QByteArrayView QHttpHeadersPrivate::value(const HeaderName &name, QByteArrayView
     return defaultValue;
 }
 
-void QHttpHeadersPrivate::replaceOrAppend(Self &d, const HeaderName &name, const QByteArray &value)
+void QHttpHeadersPrivate::replaceOrAppend(Self &d, const HeaderName &name, QByteArray value)
 {
     d.detach();
     auto it = std::find_if(d->headers.begin(), d->headers.end(), headerNameMatches(name));
     if (it != d->headers.end()) {
         // Found something to replace => replace, and then rearrange any remaining
         // matches to the end and erase them
-        it->value = value;
+        it->value = std::move(value);
         d->headers.erase(
                 std::remove_if(it + 1, d->headers.end(), headerNameMatches(name)),
                 d->headers.end());
     } else {
         // Found nothing to replace => append
-        d->headers.append(Header{name, value});
+        d->headers.append(Header{name, std::move(value)});
     }
+}
+
+void QHttpHeadersPrivate::forEachHeader(QAnyStringView name,
+                                        qxp::function_ref<void(QByteArrayView)> yield)
+{
+    for (const auto &h : std::as_const(headers)) {
+        if (h.name.asView() == name)
+            yield(h.value);
+    }
+}
+
+std::optional<QByteArrayView> QHttpHeadersPrivate::findValue(const HeaderName &name) const noexcept
+{
+    for (const auto &h : headers) {
+        if (h.name == name)
+            return h.value;
+    }
+    return std::nullopt;
 }
 
 /*!
@@ -957,9 +1362,7 @@ QHttpHeaders &QHttpHeaders::operator=(const QHttpHeaders &other)
 
 /*!
     \fn void QHttpHeaders::swap(QHttpHeaders &other)
-
-    Swaps this QHttpHeaders with \a other. This function is very fast and
-    never fails.
+    \memberswap{QHttpHeaders}
 */
 
 #ifndef QT_NO_DEBUG_STREAM
@@ -987,6 +1390,40 @@ QDebug operator<<(QDebug debug, const QHttpHeaders &headers)
     return debug;
 }
 #endif
+
+#ifndef QT_NO_DATASTREAM
+/*!
+    \since 6.12
+    \fn QDataStream& QHttpHeaders::operator<<(QDataStream &out, const QHttpHeaders &headers)
+
+    Writes \a headers to the \a out stream.
+
+    \sa {Serializing Qt Data Types}
+*/
+QDataStream &operator<<(QDataStream &out, const QHttpHeaders &headers)
+{
+    if (!headers.d)
+        return out << QList<Header>{};
+
+    return out << headers.d->headers;
+}
+
+/*!
+    \since 6.12
+    \fn QDataStream& QHttpHeaders::operator>>(QDataStream &in, QHttpHeaders &headers)
+
+    Reads headers from stream \a in into \a headers.
+
+    \sa {Serializing Qt Data Types}
+*/
+QDataStream &operator>>(QDataStream &in, QHttpHeaders &headers)
+{
+    headers.d.detach();
+
+    return in >> headers.d->headers;
+}
+#endif // QT_NO_DATASTREAM
+
 
 static constexpr auto isValidHttpHeaderNameChar = [](uchar c) noexcept
 {
@@ -1411,6 +1848,323 @@ QByteArray QHttpHeaders::combinedValue(WellKnownHeader name) const
 }
 
 /*!
+    \since 6.10
+
+    Returns the value of the first valid header \a name interpreted as a
+    64-bit integer.
+    If the header does not exist or cannot be parsed as an integer, returns
+    \c std::nullopt.
+
+    \sa intValues(QAnyStringView name), intValueAt(qsizetype i)
+*/
+std::optional<qint64> QHttpHeaders::intValue(QAnyStringView name) const noexcept
+{
+    std::optional<QByteArrayView> v = d->findValue(HeaderName{name});
+    if (!v)
+        return std::nullopt;
+    bool ok = false;
+    const qint64 result = v->toLongLong(&ok);
+    if (ok)
+        return result;
+    return std::nullopt;
+}
+
+/*!
+    \since 6.10
+    \overload intValue(QAnyStringView)
+*/
+std::optional<qint64> QHttpHeaders::intValue(WellKnownHeader name) const noexcept
+{
+    return intValue(wellKnownHeaderName(name));
+}
+
+/*!
+    \since 6.10
+
+    Returns the values of the header \a name interpreted as 64-bit integer
+    in a list. If the header does not exist or cannot be parsed as an integer,
+    returns \c std::nullopt.
+
+    \sa intValue(QAnyStringView name), intValueAt(qsizetype i)
+*/
+std::optional<QList<qint64>> QHttpHeaders::intValues(QAnyStringView name) const
+{
+    QList<qint64> results;
+    d->forEachHeader(name, [&](QByteArrayView value) {
+        bool ok = false;
+        qint64 result = value.toLongLong(&ok);
+        if (ok)
+            results.append(result);
+    });
+    return results.isEmpty() ? std::nullopt :
+                               std::make_optional(std::move(results));
+}
+
+/*!
+    \since 6.10
+    \overload intValues(QAnyStringView)
+*/
+std::optional<QList<qint64>> QHttpHeaders::intValues(WellKnownHeader name) const
+{
+    return intValues(wellKnownHeaderName(name));
+}
+
+/*!
+    \since 6.10
+
+    Returns the header value interpreted as 64-bit integer at index \a i.
+    The index \a i must be valid.
+
+    \sa intValues(QAnyStringView name), intValue(QAnyStringView name)
+*/
+std::optional<qint64> QHttpHeaders::intValueAt(qsizetype i) const noexcept
+{
+    verify(i);
+    QByteArrayView v = valueAt(i);
+    if (v.isEmpty())
+        return std::nullopt;
+    bool ok = false;
+    const qint64 result = v.toLongLong(&ok);
+    return ok ? std::optional<qint64>(result) :
+                std::nullopt;
+}
+
+/*!
+    \since 6.10
+
+    Converts the first found header value of \a name to a QDateTime object, following
+    the standard HTTP date formats. If the header does not exist or contains an invalid
+    QDateTime, returns \c std::nullopt.
+
+    \sa dateTimeValues(QAnyStringView name), dateTimeValueAt(qsizetype i)
+*/
+std::optional<QDateTime> QHttpHeaders::dateTimeValue(QAnyStringView name) const
+{
+    std::optional<QByteArrayView> v = d->findValue(HeaderName{name});
+    if (!v)
+        return std::nullopt;
+    QDateTime dt = QNetworkHeadersPrivate::fromHttpDate(*v);
+    if (dt.isValid())
+        return dt;
+    return std::nullopt;
+}
+
+/*!
+    \since 6.10
+    \overload dateTimeValue(QAnyStringView)
+*/
+std::optional<QDateTime> QHttpHeaders::dateTimeValue(WellKnownHeader name) const
+{
+    return dateTimeValue(wellKnownHeaderName(name));
+}
+
+/*!
+    \since 6.10
+
+    Sets the value of the header name \a name to \a dateTime,
+    following the
+    \l {https://datatracker.ietf.org/doc/html/rfc9110#name-date-time-formats}{standard HTTP IMF-fixdate format}.
+    If the header does not exist, adds a new one.
+
+    \sa dateTimeValue(QAnyStringView name), dateTimeValueAt(qsizetype i)
+ */
+void QHttpHeaders::setDateTimeValue(QAnyStringView name, const QDateTime &dateTime)
+{
+    if (!dateTime.isValid()) {
+        qWarning("QHttpHeaders::setDateTimeValue: invalid QDateTime value received");
+        return;
+    }
+    replaceOrAppend(name, QNetworkHeadersPrivate::toHttpDate(dateTime));
+}
+
+/*!
+    \since 6.10
+    \overload setDateTimeValue(QAnyStringView)
+*/
+void QHttpHeaders::setDateTimeValue(WellKnownHeader name, const QDateTime &dateTime)
+{
+    setDateTimeValue(wellKnownHeaderName(name), dateTime);
+}
+
+/*!
+    \since 6.10
+
+    Returns all the header values of \a name in a list of QDateTime objects, following
+    the standard HTTP date formats. If no valid date-time values are found, returns
+    \c std::nullopt.
+
+    \sa dateTimeValue(QAnyStringView name), dateTimeValueAt(qsizetype i)
+*/
+std::optional<QList<QDateTime>> QHttpHeaders::dateTimeValues(QAnyStringView name) const
+{
+    QList<QDateTime> results;
+    d->forEachHeader(name, [&](QByteArrayView value) {
+        QDateTime dt = QNetworkHeadersPrivate::fromHttpDate(value);
+        if (dt.isValid())
+            results.append(std::move(dt));
+    });
+    return results.isEmpty() ? std::nullopt :
+                               std::make_optional(std::move(results));
+}
+
+/*!
+    \since 6.10
+    \overload dateTimeValues(QAnyStringView)
+*/
+std::optional<QList<QDateTime>> QHttpHeaders::dateTimeValues(WellKnownHeader name) const
+{
+    return dateTimeValues(wellKnownHeaderName(name));
+}
+
+/*!
+    \since 6.10
+
+    Converts the header value at index \a i to a QDateTime object following the standard
+    HTTP date formats. The index \a i must be valid.
+
+    \sa dateTimeValue(QAnyStringView name), dateTimeValues(QAnyStringView name)
+*/
+std::optional<QDateTime> QHttpHeaders::dateTimeValueAt(qsizetype i) const
+{
+    verify(i);
+    QDateTime dt = QNetworkHeadersPrivate::fromHttpDate(valueAt(i));
+    return dt.isValid() ? std::make_optional(std::move(dt)) :
+                          std::nullopt;
+}
+
+/*!
+    \since 6.12
+
+    Returns the ranges of the \c Range HTTP header fields, or \c std::nullopt
+    if parsing failed.
+
+    Each range represents a byte range. According to RFC 9110:
+    \list
+        \li If the start is specified but the end is not (e.g., "bytes=500-"),
+            the QHttpHeaderRangeSpec will have \c{start=500} and \c{end=std::nullopt}.
+        \li If the end is specified but the start is not (e.g., "bytes=-500"),
+            the QHttpHeaderRangeSpec will have \c{start=std::nullopt} and \c{end=500},
+            representing the last 500 bytes.
+        \li If both are specified (e.g., "bytes=0-499"), the QHttpHeaderRangeSpec will
+            have \c{start=0} and \c{end=499}.
+    \endlist
+
+    The ranges are returned in the order in which they appear in the headers.
+
+    Parsing behaves as follows:
+    \list
+        \li If no \c Range header is present, an empty range set is returned.
+        \li According to RFC 9110 Section 14.2, any \c Range header containing a
+            unit other than "bytes" (e.g., "seconds=1-2") is ignored. These ignored
+            headers do not cause the parsing to fail.
+        \li If a \c Range header uses the "bytes" unit but is malformed (e.g.,
+            missing the hyphen, containing invalid characters, or invalid numbers),
+            the function returns \c std::nullopt.
+    \endlist
+
+    \sa setRangeValues, WellKnownHeader::Range
+*/
+std::optional<QHttpHeaderRangeSet> QHttpHeaders::rangeValues() const
+{
+    QList<QHttpHeaderRangeSpec> results;
+
+    const QList<QByteArray> rangesVals = values(WellKnownHeader::Range);
+
+    for (QByteArrayView rangesVal : rangesVals) {
+        if (!rangesVal.startsWith("bytes="_ba))
+            continue;
+
+        rangesVal = rangesVal.slice(6);
+
+        for (QLatin1StringView part : qTokenize(QLatin1StringView(rangesVal), u',')) {
+            const qsizetype dashPos = part.indexOf(u'-');
+            if (dashPos == -1)
+                return std::nullopt;
+
+            const QLatin1StringView startStr = part.sliced(0, dashPos).trimmed();
+            const QLatin1StringView endStr = part.sliced(dashPos + 1).trimmed();
+
+            bool okStart = false;
+            bool okEnd = false;
+
+            std::optional<qint64> start;
+            std::optional<qint64> end;
+
+            if (!startStr.isEmpty()) {
+                const qint64 startVal = startStr.toLongLong(&okStart);
+                if (okStart)
+                    start = startVal;
+            }
+
+            if (!endStr.isEmpty()) {
+                const qint64 endVal = endStr.toLongLong(&okEnd);
+                if (okEnd)
+                    end = endVal;
+            }
+
+            if ((!startStr.isEmpty() && !okStart) || (!endStr.isEmpty() && !okEnd))
+                return std::nullopt;
+
+            QHttpHeaderRangeSpec range{start, end};
+            if (!range.isValid())
+                return std::nullopt;
+
+            results.append(range);
+        }
+    }
+
+    return QHttpHeaderRangeSet(results);
+}
+
+/*!
+    \since 6.12
+
+    Sets the \c Range HTTP header field to the specified list of \a ranges.
+
+    The ranges are formatted using the "bytes" unit, in the order in which
+    \a ranges holds them. For each QHttpHeaderRangeSpec:
+    \list
+        \li A range with only a start (e.g., QHttpHeaderRangeSpec(500, std::nullopt))
+            is formatted as \c "500-".
+        \li A range with only an end (e.g., QHttpHeaderRangeSpec(std::nullopt, 500))
+            is formatted as \c "-500", representing the last 500 bytes.
+        \li A range with both start and end (e.g., QHttpHeaderRangeSpec(0, 499))
+            is formatted as \c "0-499".
+    \endlist
+
+    If multiple ranges are provided, they will be joined by commas, for example:
+    \c "bytes=0-499, 1000-".
+
+    If \a ranges is empty, the \c Range header is removed.
+
+    \sa rangeValues(), WellKnownHeader::Range
+*/
+void QHttpHeaders::setRangeValues(const QHttpHeaderRangeSet &ranges)
+{
+    const QSpan<const QHttpHeaderRangeSpec> rs = ranges.ranges();
+    if (rs.isEmpty()) {
+        removeAll(WellKnownHeader::Range);
+        return;
+    }
+
+    QByteArray result("bytes=");
+    for (qsizetype i = 0; i < rs.size(); ++i) {
+        const QHttpHeaderRangeSpec &range = rs[i];
+
+        if (i > 0)
+            result += ", "_ba;
+
+        if (range.start)
+            result += QByteArray::number(*range.start);
+        result += "-"_ba;
+        if (range.end)
+            result += QByteArray::number(*range.end);
+    }
+
+    replaceOrAppend(WellKnownHeader::Range, result);
+}
+
+/*!
     Returns the number of header entries.
 */
 qsizetype QHttpHeaders::size() const noexcept
@@ -1505,5 +2259,54 @@ void QHttpHeaders::clear()
     d.detach();
     d->headers.clear();
 }
+
+#ifndef QT_NO_DEBUG_STREAM
+/*!
+    \fn QDebug operator<<(QDebug debug, const QHttpHeaderRangeSpec &range)
+    \since 6.12
+    \relates QHttpHeaderRangeSpec
+
+    Writes \a range to the \a debug stream.
+*/
+QDebug operator<<(QDebug debug, const QHttpHeaderRangeSpec &range)
+{
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+    debug << "QHttpHeaderRangeSpec(bytes=";
+    if (range.start)
+        debug << *range.start;
+    debug << '-';
+    if (range.end)
+        debug << *range.end;
+    debug << ')';
+    return debug;
+}
+
+/*!
+    \fn QDebug operator<<(QDebug debug, const QHttpHeaderRangeSet &ranges)
+    \since 6.12
+    \relates QHttpHeaderRangeSet
+
+    Writes \a ranges to the stream \a debug.
+*/
+QDebug operator<<(QDebug debug, const QHttpHeaderRangeSet &ranges)
+{
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+    debug << "QHttpHeaderRangeSet(bytes=";
+    const char *separator = "";
+    for (QHttpHeaderRangeSpec range : ranges.ranges()) {
+        debug << separator;
+        if (range.start)
+            debug << *range.start;
+        debug << '-';
+        if (range.end)
+            debug << *range.end;
+        separator = ", ";
+    }
+    debug << ')';
+    return debug;
+}
+#endif
 
 QT_END_NAMESPACE

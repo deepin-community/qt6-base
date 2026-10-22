@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Pelagicore AG
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeglfskmsegldeviceintegration.h"
 #include "qeglfskmsegldevice.h"
@@ -213,9 +214,13 @@ QEglFSWindow *QEglFSKmsEglDeviceIntegration::createWindow(QWindow *window) const
     QEglFSKmsEglDeviceWindow *eglWindow = new QEglFSKmsEglDeviceWindow(window, this);
 
     m_funcs->initialize(eglWindow->screen()->display());
-    if (Q_UNLIKELY(!(m_funcs->has_egl_output_base && m_funcs->has_egl_output_drm && m_funcs->has_egl_stream &&
-                     m_funcs->has_egl_stream_producer_eglsurface && m_funcs->has_egl_stream_consumer_egloutput)))
+    if (Q_UNLIKELY(!(m_funcs->has_egl_output_base && m_funcs->has_egl_output_drm
+                     && m_funcs->has_egl_stream && m_funcs->has_egl_stream_producer_eglsurface
+                     && m_funcs->has_egl_stream_consumer_egloutput))) {
+        qCDebug(qLcEglfsKmsDebug, "EGL_EXTENSIONS %s",
+                eglQueryString(eglWindow->screen()->display(), EGL_EXTENSIONS));
         qFatal("Required extensions missing!");
+    }
 
     return eglWindow;
 }
@@ -225,11 +230,18 @@ QKmsDevice *QEglFSKmsEglDeviceIntegration::createDevice()
     if (Q_UNLIKELY(!query_egl_device()))
         qFatal("Could not set up EGL device!");
 
-    const char *deviceName = m_funcs->query_device_string(m_egl_device, EGL_DRM_DEVICE_FILE_EXT);
-    if (Q_UNLIKELY(!deviceName))
-        qFatal("Failed to query device name from EGLDevice");
+    QString path = screenConfig()->devicePath();
+    if (!path.isEmpty()) {
+        qCDebug(qLcEglfsKmsDebug) << "EGLDevice: Using DRM device" << path
+                                  << "specified in config file";
+    } else {
+        path = QLatin1StringView(
+                m_funcs->query_device_string(m_egl_device, EGL_DRM_DEVICE_FILE_EXT));
+        if (Q_UNLIKELY(path.isEmpty()))
+            qFatal("Failed to query device name from EGLDevice");
+    }
 
-    return new QEglFSKmsEglDevice(this, screenConfig(), QLatin1StringView(deviceName));
+    return new QEglFSKmsEglDevice(this, screenConfig(), path);
 }
 
 bool QEglFSKmsEglDeviceIntegration::query_egl_device()

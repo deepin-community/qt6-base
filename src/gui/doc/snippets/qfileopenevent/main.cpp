@@ -4,6 +4,7 @@
 //! [QApplication subclass]
 #include <QApplication>
 #include <QDebug>
+#include <QFile>
 #include <QFileOpenEvent>
 #include <QPushButton>
 

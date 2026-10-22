@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbuserror.h"
 
@@ -160,9 +161,11 @@ static inline QDBusError::ErrorType get(const char *name)
 QDBusError::QDBusError()
     : code(NoError)
 {
+#if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
     // ### This class has an implicit (therefore inline) destructor
     // so the following field cannot be used.
     Q_UNUSED(unused);
+#endif
 }
 
 #ifndef QT_BOOTSTRAPPED
@@ -314,8 +317,7 @@ QDebug operator<<(QDebug dbg, const QDBusError &msg)
 
 /*!
     \fn void QDBusError::swap(QDBusError &other)
-
-    Swaps this QDBusError instance with \a other.
+    \memberswap{error}
 */
 
 QT_END_NAMESPACE

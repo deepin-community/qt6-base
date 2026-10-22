@@ -18,9 +18,11 @@ int main(int argc, char *argv[])
 
 #if QT_CONFIG(translation)
     QTranslator translator;
-    if (translator.load(QLocale::system(), u"qtbase"_s, u"_"_s,
-                        QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
-        app.installTranslator(&translator);
+    for (const QString &trPath : QLibraryInfo::paths(QLibraryInfo::TranslationsPath)) {
+        if (translator.load(QLocale(), u"qtbase"_s, u"_"_s, trPath)) {
+            app.installTranslator(&translator);
+            break;
+        }
     }
 #endif
 
@@ -35,5 +37,5 @@ int main(int argc, char *argv[])
     }
     dialog.show();
 
-    return app.exec();
+    return QApplication::exec();
 }

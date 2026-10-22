@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtenvironmentvariables.h"
 #include "qtenvironmentvariables_p.h"
@@ -10,6 +11,7 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qvarlengtharray.h>
 
+#include <QtCore/private/qlocale_p.h>
 #include <QtCore/private/qlocking_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -17,6 +19,28 @@ QT_BEGIN_NAMESPACE
 // In the C runtime on all platforms access to the environment is not thread-safe. We
 // add thread-safety for the Qt wrappers.
 Q_CONSTINIT static QBasicMutex environmentMutex;
+
+/*!
+    \headerfile <QtEnvironmentVariables>
+    \inmodule QtCore
+    \ingroup funclists
+    \brief Helper functions for working with environment variables.
+
+    The functions in this header are used to manipulate the environment
+    variables.
+
+    \section2 Thread-safety
+
+    The Qt environment manipulation functions are thread-safe, but this requires
+    that the C library equivalent functions like \c {getenv} and \c {putenv}
+    are not directly called.
+
+    This is also relevant for the third-party libraries that are loaded by the
+    application. If such a library uses unsafe functions to manipulate the
+    environment from a secondary thread, it is recommended to do all the
+    environment setup in the main thread before loading the library and/or
+    creating secondary threads.
+*/
 
 /*!
     \relates <QtEnvironmentVariables>
@@ -38,26 +62,12 @@ Q_CONSTINIT static QBasicMutex environmentMutex;
     On Unix systems, this function is lossless.
 
     \sa qputenv(), qEnvironmentVariable(), qEnvironmentVariableIsSet(),
-    qEnvironmentVariableIsEmpty()
+    qEnvironmentVariableIsEmpty(), qEnvironmentVariableIntegerValue()
 */
 QByteArray qgetenv(const char *varName)
 {
     const auto locker = qt_scoped_lock(environmentMutex);
-#ifdef Q_CC_MSVC
-    size_t requiredSize = 0;
-    QByteArray buffer;
-    getenv_s(&requiredSize, 0, 0, varName);
-    if (requiredSize == 0)
-        return buffer;
-    buffer.resize(qsizetype(requiredSize));
-    getenv_s(&requiredSize, buffer.data(), requiredSize, varName);
-    // requiredSize includes the terminating null, which we don't want.
-    Q_ASSERT(buffer.endsWith('\0'));
-    buffer.chop(1);
-    return buffer;
-#else
     return QByteArray(::getenv(varName));
-#endif
 }
 
 /*!
@@ -104,7 +114,8 @@ QByteArray qgetenv(const char *varName)
 
     \note the variable name \a varName must contain only US-ASCII characters.
 
-    \sa qputenv(), qgetenv(), qEnvironmentVariableIsSet(), qEnvironmentVariableIsEmpty()
+    \sa qputenv(), qgetenv(), qEnvironmentVariableIsSet(), qEnvironmentVariableIsEmpty(),
+        qEnvironmentVariableIntegerValue()
 */
 QString qEnvironmentVariable(const char *varName, const QString &defaultValue)
 {
@@ -126,8 +137,9 @@ QString qEnvironmentVariable(const char *varName, const QString &defaultValue)
     buffer.chop(1);
     return buffer;
 #else
-    QByteArray value = qgetenv(varName);
-    if (value.isNull())
+    const auto locker = qt_scoped_lock(environmentMutex);
+    const char *value = ::getenv(varName);
+    if (!value)
         return defaultValue;
 // duplicated in qfile.h (QFile::decodeName)
 #if defined(Q_OS_DARWIN)
@@ -158,19 +170,12 @@ QString qEnvironmentVariable(const char *varName)
 bool qEnvironmentVariableIsEmpty(const char *varName) noexcept
 {
     const auto locker = qt_scoped_lock(environmentMutex);
-#ifdef Q_CC_MSVC
-    // we provide a buffer that can only hold the empty string, so
-    // when the env.var isn't empty, we'll get an ERANGE error (buffer
-    // too small):
-    size_t dummy;
-    char buffer = '\0';
-    return getenv_s(&dummy, &buffer, 1, varName) != ERANGE;
-#else
     const char * const value = ::getenv(varName);
     return !value || !*value;
-#endif
 }
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Wmaybe-uninitialized") // older GCC don't like libstdc++'s std::optional
 /*!
     \relates <QtEnvironmentVariables>
     \since 5.5
@@ -183,40 +188,55 @@ bool qEnvironmentVariableIsEmpty(const char *varName) noexcept
     \snippet code/src_corelib_global_qglobal.cpp to-int
     except that it's much faster, and can't throw exceptions.
 
-    \note there's a limit on the length of the value, which is sufficient for
-    all valid values of int, not counting leading zeroes or spaces. Values that
-    are too long will either be truncated or this function will set \a ok to \c
-    false.
-
     \sa qgetenv(), qEnvironmentVariable(), qEnvironmentVariableIsSet()
 */
 int qEnvironmentVariableIntValue(const char *varName, bool *ok) noexcept
 {
-    static const int NumBinaryDigitsPerOctalDigit = 3;
-    static const int MaxDigitsForOctalInt =
-        (std::numeric_limits<uint>::digits + NumBinaryDigitsPerOctalDigit - 1) / NumBinaryDigitsPerOctalDigit;
+    std::optional<qint64> value = qEnvironmentVariableIntegerValue(varName);
+    if (value && *value != int(*value))
+        value = std::nullopt;
+    if (ok)
+        *ok = bool(value);
+    return int(value.value_or(0));
+}
+QT_WARNING_POP
 
+/*!
+    \relates <QtEnvironmentVariables>
+    \since 6.10
+
+    Returns the numerical value of the environment variable \a varName. If the
+    variable is not set or could not be parsed as an integer, it returns
+    \c{std::nullopt}.
+
+    Similar to
+    \snippet code/src_corelib_global_qglobal.cpp to-int
+    except that it's much faster, and can't throw exceptions.
+
+    If a value of zero is semantically the same as an empty or unset variable,
+    applications can use
+    \snippet code/src_corelib_global_qglobal.cpp int-value_or
+    Do note in this case that failures to parse a value will also produce a
+    zero.
+
+    But if a value of zero can be used to disable some functionality,
+    applications can compare the returned \c{std::optional} to zero, which will
+    only be true if the variable was set and contained a number that parsed as
+    zero, as in:
+    \snippet code/src_corelib_global_qglobal.cpp int-eq0
+
+    \sa qgetenv(), qEnvironmentVariable(), qEnvironmentVariableIsSet()
+*/
+std::optional<qint64> qEnvironmentVariableIntegerValue(const char *varName) noexcept
+{
     const auto locker = qt_scoped_lock(environmentMutex);
-    size_t size;
-#ifdef Q_CC_MSVC
-    // we provide a buffer that can hold any int value:
-    char buffer[MaxDigitsForOctalInt + 2]; // +1 for NUL +1 for optional '-'
-    size_t dummy;
-    if (getenv_s(&dummy, buffer, sizeof buffer, varName) != 0) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    size = strlen(buffer);
-#else
     const char * const buffer = ::getenv(varName);
-    if (!buffer || (size = strlen(buffer)) > MaxDigitsForOctalInt + 2) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-#endif
-    return QByteArrayView(buffer, size).toInt(ok, 0);
+    if (!buffer)
+        return std::nullopt;
+    auto r = QLocaleData::bytearrayToLongLong(buffer, 0);
+    if (!r.ok())
+        return std::nullopt;
+    return r.result;
 }
 
 /*!
@@ -229,18 +249,13 @@ int qEnvironmentVariableIntValue(const char *varName, bool *ok) noexcept
     \snippet code/src_corelib_global_qglobal.cpp is-null
     except that it's potentially much faster, and can't throw exceptions.
 
-    \sa qgetenv(), qEnvironmentVariable(), qEnvironmentVariableIsEmpty()
+    \sa qgetenv(), qEnvironmentVariable(), qEnvironmentVariableIsEmpty(),
+        qEnvironmentVariableIntegerValue()
 */
 bool qEnvironmentVariableIsSet(const char *varName) noexcept
 {
     const auto locker = qt_scoped_lock(environmentMutex);
-#ifdef Q_CC_MSVC
-    size_t requiredSize = 0;
-    (void)getenv_s(&requiredSize, 0, 0, varName);
-    return requiredSize != 0;
-#else
     return ::getenv(varName) != nullptr;
-#endif
 }
 
 /*!
@@ -401,29 +416,33 @@ bool qLocalTime(time_t utc, struct tm *local)
    tzset() or anything that behaves as if it called tzset(). So also lock this
    access to prevent such collisions.
 
+   Note that, on Windows, the return is a Microsoft-specific full name for the
+   zone, not an abbreviation.
+
    Parameter dstIndex must be 1 for DST or 0 for standard time.
    Returns the relevant form of the name of local-time's zone.
 */
 QString qTzName(int dstIndex)
 {
+    Q_DECL_UNINITIALIZED
     char name[512];
     bool ok;
+    size_t size = 0;
+    {
+        const auto locker = qt_scoped_lock(environmentMutex);
 #if defined(_UCRT)  // i.e., MSVC and MinGW-UCRT
-    size_t s = 0;
-    {
-        const auto locker = qt_scoped_lock(environmentMutex);
-        ok = _get_tzname(&s, name, 512, dstIndex) != 0;
-    }
+        ok = _get_tzname(&size, name, sizeof(name), dstIndex) == 0;
+        size -= 1; // It includes space for '\0' (or !ok => we're going to ignore it).
+        Q_ASSERT(!ok || size < sizeof(name));
 #else
-    {
-        const auto locker = qt_scoped_lock(environmentMutex);
         const char *const src = tzname[dstIndex];
-        ok = src != nullptr;
+        size = src ? strlen(src) : 0;
+        ok = src != nullptr && size < sizeof(name);
         if (ok)
-            memcpy(name, src, std::min(sizeof(name), strlen(src) + 1));
+            memcpy(name, src, size + 1);
+#endif // _UCRT
     }
-#endif // Q_OS_WIN
-    return ok ? QString::fromLocal8Bit(name) : QString();
+    return ok ? QString::fromLocal8Bit(name, qsizetype(size)) : QString();
 }
 
 QT_END_NAMESPACE

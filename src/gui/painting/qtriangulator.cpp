@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtriangulator_p.h"
 
@@ -20,7 +21,17 @@ QT_BEGIN_NAMESPACE
 
 //#define Q_TRIANGULATOR_DEBUG
 
+// We assume 21 bits for the absolute value of vertices
+#define QTRIANGULATOR_MAX (1 << 21)
 #define Q_FIXED_POINT_SCALE 32
+#define QTRIANGULATOR_FIXED_POINT_MAX ((qreal(QTRIANGULATOR_MAX - 1)) / qreal(Q_FIXED_POINT_SCALE))
+
+static inline int qToClampedFixedPoint(qreal c)
+{
+    int ret = qRound(std::clamp(c, -QTRIANGULATOR_FIXED_POINT_MAX, QTRIANGULATOR_FIXED_POINT_MAX) * Q_FIXED_POINT_SCALE);
+    Q_ASSERT(qAbs(ret) < QTRIANGULATOR_MAX);
+    return ret;
+}
 
 template<typename T>
 struct QVertexSet
@@ -404,20 +415,21 @@ T QMaxHeap<T>::pop()
 //                                 QInt64Hash                                 //
 //============================================================================//
 
-// Copied from qhash.cpp
-static const uchar prime_deltas[] = {
-    0,  0,  1,  3,  1,  5,  3,  3,  1,  9,  7,  5,  3, 17, 27,  3,
-    1, 29,  3, 21,  7, 17, 15,  9, 43, 35, 15,  0,  0,  0,  0,  0
-};
-
-// Copied from qhash.cpp
-static inline int primeForNumBits(int numBits)
-{
-    return (1 << numBits) + prime_deltas[numBits];
-}
-
 static inline int primeForCount(int count)
 {
+    Q_ASSERT(count >= 0); // Q_PRE
+
+    // Copied from Qt 5 qhash.cpp
+    constexpr auto primeForNumBits = [](int numBits) -> int
+    {
+        constexpr uchar prime_deltas[] = {
+            0,  0,  1,  3,  1,  5,  3,  3,  1,  9,  7,  5,  3, 17, 27,  3,
+            1, 29,  3, 21,  7, 17, 15,  9, 43, 35, 15,  0,  0,  0,  0,  0
+        };
+
+        return (1 << numBits) + prime_deltas[numBits];
+    };
+
     int low = 0;
     int high = 32;
     for (int i = 0; i < 5; ++i) {
@@ -434,6 +446,7 @@ static inline int primeForCount(int count)
 // entire set. A value of -1 is used to mark unused entries.
 class QInt64Set
 {
+    Q_DISABLE_COPY_MOVE(QInt64Set)
 public:
     inline QInt64Set(int capacity = 64);
     inline ~QInt64Set() {delete[] m_array;}
@@ -605,8 +618,8 @@ public:
         bool edgeIsLeftOfEdge(int leftEdgeIndex, int rightEdgeIndex) const;
         QRBTree<int>::Node *searchEdgeLeftOf(int edgeIndex) const;
         QRBTree<int>::Node *searchEdgeLeftOf(int edgeIndex, QRBTree<int>::Node *after) const;
-        QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> bounds(const QPodPoint &point) const;
-        QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> outerBounds(const QPodPoint &point) const;
+        std::pair<QRBTree<int>::Node *, QRBTree<int>::Node *> bounds(const QPodPoint &point) const;
+        std::pair<QRBTree<int>::Node *, QRBTree<int>::Node *> outerBounds(const QPodPoint &point) const;
         void splitEdgeListRange(QRBTree<int>::Node *leftmost, QRBTree<int>::Node *rightmost, int vertex, const QIntersectionPoint &intersectionPoint);
         void reorderEdgeListRange(QRBTree<int>::Node *leftmost, QRBTree<int>::Node *rightmost);
         void sortEdgeList(const QPodPoint eventPoint);
@@ -740,8 +753,8 @@ template <typename T>
 QVertexSet<T> QTriangulator<T>::triangulate()
 {
     for (int i = 0; i < m_vertices.size(); ++i) {
-        Q_ASSERT(qAbs(m_vertices.at(i).x) < (1 << 21));
-        Q_ASSERT(qAbs(m_vertices.at(i).y) < (1 << 21));
+        Q_ASSERT(qAbs(m_vertices.at(i).x) < QTRIANGULATOR_MAX);
+        Q_ASSERT(qAbs(m_vertices.at(i).y) < QTRIANGULATOR_MAX);
     }
 
     if (!(m_hint & (QVectorPath::OddEvenFill | QVectorPath::WindingFill)))
@@ -770,8 +783,8 @@ template <typename T>
 QVertexSet<T> QTriangulator<T>::polyline()
 {
     for (int i = 0; i < m_vertices.size(); ++i) {
-        Q_ASSERT(qAbs(m_vertices.at(i).x) < (1 << 21));
-        Q_ASSERT(qAbs(m_vertices.at(i).y) < (1 << 21));
+        Q_ASSERT(qAbs(m_vertices.at(i).x) < QTRIANGULATOR_MAX);
+        Q_ASSERT(qAbs(m_vertices.at(i).y) < QTRIANGULATOR_MAX);
     }
 
     if (!(m_hint & (QVectorPath::OddEvenFill | QVectorPath::WindingFill)))
@@ -801,8 +814,8 @@ void QTriangulator<T>::initialize(const qreal *polygon, int count, uint hint, co
     for (int i = 0; i < count; ++i) {
         qreal x, y;
         matrix.map(polygon[2 * i + 0], polygon[2 * i + 1], &x, &y);
-        m_vertices.at(i).x = qRound(x * Q_FIXED_POINT_SCALE);
-        m_vertices.at(i).y = qRound(y * Q_FIXED_POINT_SCALE);
+        m_vertices.at(i).x = qToClampedFixedPoint(x);
+        m_vertices.at(i).y = qToClampedFixedPoint(y);
         m_indices[i] = i;
     }
     m_indices[count] = T(-1); //Q_TRIANGULATE_END_OF_POLYGON
@@ -829,8 +842,8 @@ void QTriangulator<T>::initialize(const QVectorPath &path, const QTransform &mat
                 m_vertices.resize(m_vertices.size() + 1);
                 qreal x, y;
                 matrix.map(p[0], p[1], &x, &y);
-                m_vertices.last().x = qRound(x * Q_FIXED_POINT_SCALE);
-                m_vertices.last().y = qRound(y * Q_FIXED_POINT_SCALE);
+                m_vertices.last().x = qToClampedFixedPoint(x);
+                m_vertices.last().y = qToClampedFixedPoint(y);
                 break;
             case QPainterPath::CurveToElement:
                 {
@@ -845,8 +858,8 @@ void QTriangulator<T>::initialize(const QVectorPath &path, const QTransform &mat
                     for (int j = 1; j < poly.size(); ++j) {
                         m_indices.push_back(T(m_vertices.size()));
                         m_vertices.resize(m_vertices.size() + 1);
-                        m_vertices.last().x = qRound(poly.at(j).x() * Q_FIXED_POINT_SCALE / lod);
-                        m_vertices.last().y = qRound(poly.at(j).y() * Q_FIXED_POINT_SCALE / lod);
+                        m_vertices.last().x = qToClampedFixedPoint(poly.at(j).x() / lod);
+                        m_vertices.last().y = qToClampedFixedPoint(poly.at(j).y() / lod);
                     }
                 }
                 i += 2;
@@ -864,8 +877,8 @@ void QTriangulator<T>::initialize(const QVectorPath &path, const QTransform &mat
             m_vertices.resize(m_vertices.size() + 1);
             qreal x, y;
             matrix.map(p[0], p[1], &x, &y);
-            m_vertices.last().x = qRound(x * Q_FIXED_POINT_SCALE);
-            m_vertices.last().y = qRound(y * Q_FIXED_POINT_SCALE);
+            m_vertices.last().x = qToClampedFixedPoint(x);
+            m_vertices.last().y = qToClampedFixedPoint(y);
         }
     }
     m_indices.push_back(T(-1)); // Q_TRIANGULATE_END_OF_POLYGON
@@ -1025,10 +1038,10 @@ QRBTree<int>::Node *QTriangulator<T>::ComplexToSimple::searchEdgeLeftOf(int edge
 }
 
 template <typename T>
-QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> QTriangulator<T>::ComplexToSimple::bounds(const QPodPoint &point) const
+std::pair<QRBTree<int>::Node *, QRBTree<int>::Node *> QTriangulator<T>::ComplexToSimple::bounds(const QPodPoint &point) const
 {
     QRBTree<int>::Node *current = m_edgeList.root;
-    QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> result(nullptr, nullptr);
+    std::pair<QRBTree<int>::Node *, QRBTree<int>::Node *> result(nullptr, nullptr);
     while (current) {
         const QPodPoint &v1 = m_parent->m_vertices.at(m_edges.at(current->data).lower());
         const QPodPoint &v2 = m_parent->m_vertices.at(m_edges.at(current->data).upper());
@@ -1074,10 +1087,10 @@ QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> QTriangulator<T>::ComplexToSim
 }
 
 template <typename T>
-QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> QTriangulator<T>::ComplexToSimple::outerBounds(const QPodPoint &point) const
+std::pair<QRBTree<int>::Node *, QRBTree<int>::Node *> QTriangulator<T>::ComplexToSimple::outerBounds(const QPodPoint &point) const
 {
     QRBTree<int>::Node *current = m_edgeList.root;
-    QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> result(nullptr, nullptr);
+    std::pair<QRBTree<int>::Node *, QRBTree<int>::Node *> result(nullptr, nullptr);
 
     while (current) {
         const QPodPoint &v1 = m_parent->m_vertices.at(m_edges.at(current->data).lower());
@@ -1271,7 +1284,7 @@ void QTriangulator<T>::ComplexToSimple::calculateIntersections()
         sortEdgeList(event.point);
 
         // Find all edges in the edge list that contain the current vertex and mark them to be split later.
-        QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> range = bounds(event.point);
+        std::pair<QRBTree<int>::Node *, QRBTree<int>::Node *> range = bounds(event.point);
         QRBTree<int>::Node *leftNode = range.first ? m_edgeList.previous(range.first) : nullptr;
         int vertex = (event.type == Event::Upper ? m_edges.at(event.edge).upper() : m_edges.at(event.edge).lower());
         QIntersectionPoint eventPoint = QT_PREPEND_NAMESPACE(qIntersectionPoint)(event.point);
@@ -1424,7 +1437,7 @@ void QTriangulator<T>::ComplexToSimple::removeUnwantedEdgesAndConnect()
         //}
 
         orderedEdges.clear();
-        QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> b = outerBounds(event.point);
+        std::pair<QRBTree<int>::Node *, QRBTree<int>::Node *> b = outerBounds(event.point);
         if (m_edgeList.root) {
             QRBTree<int>::Node *current = (b.first ? m_edgeList.next(b.first) : m_edgeList.front(m_edgeList.root));
             // Process edges that are going to be removed from the edge list at the current event point.
@@ -1978,7 +1991,7 @@ void QTriangulator<T>::SimpleToMonotone::monotoneDecomposition()
         return;
 
     Q_ASSERT(!m_edgeList.root);
-    QDataBuffer<QPair<int, int> > diagonals(m_upperVertex.size());
+    QDataBuffer<std::pair<int, int> > diagonals(m_upperVertex.size());
 
     int i = 0;
     for (int index = 1; index < m_edges.size(); ++index) {
@@ -2014,7 +2027,7 @@ void QTriangulator<T>::SimpleToMonotone::monotoneDecomposition()
                 if (m_edges.at(i).node) {
                     Q_ASSERT(!m_edges.at(j).node);
                     if (m_edges.at(m_edges.at(i).helper).type == MergeVertex)
-                        diagonals.add(QPair<int, int>(i, m_edges.at(i).helper));
+                        diagonals.add(std::pair<int, int>(i, m_edges.at(i).helper));
                     m_edges.at(j).node = m_edges.at(i).node;
                     m_edges.at(i).node = nullptr;
                     m_edges.at(j).node->data = j;
@@ -2022,7 +2035,7 @@ void QTriangulator<T>::SimpleToMonotone::monotoneDecomposition()
                 } else if (m_edges.at(j).node) {
                     Q_ASSERT(!m_edges.at(i).node);
                     if (m_edges.at(m_edges.at(j).helper).type == MergeVertex)
-                        diagonals.add(QPair<int, int>(i, m_edges.at(j).helper));
+                        diagonals.add(std::pair<int, int>(i, m_edges.at(j).helper));
                     m_edges.at(i).node = m_edges.at(j).node;
                     m_edges.at(j).node = nullptr;
                     m_edges.at(i).node->data = i;
@@ -2034,7 +2047,7 @@ void QTriangulator<T>::SimpleToMonotone::monotoneDecomposition()
                 leftEdgeNode = searchEdgeLeftOfPoint(m_edges.at(i).from);
                 if (leftEdgeNode) {
                     if (m_edges.at(m_edges.at(leftEdgeNode->data).helper).type == MergeVertex)
-                        diagonals.add(QPair<int, int>(i, m_edges.at(leftEdgeNode->data).helper));
+                        diagonals.add(std::pair<int, int>(i, m_edges.at(leftEdgeNode->data).helper));
                     m_edges.at(leftEdgeNode->data).helper = i;
                 } else {
                     qWarning("Inconsistent polygon. (#2)");
@@ -2044,7 +2057,7 @@ void QTriangulator<T>::SimpleToMonotone::monotoneDecomposition()
         case SplitVertex:
             leftEdgeNode = searchEdgeLeftOfPoint(m_edges.at(i).from);
             if (leftEdgeNode) {
-                diagonals.add(QPair<int, int>(i, m_edges.at(leftEdgeNode->data).helper));
+                diagonals.add(std::pair<int, int>(i, m_edges.at(leftEdgeNode->data).helper));
                 m_edges.at(leftEdgeNode->data).helper = i;
             } else {
                 qWarning("Inconsistent polygon. (#3)");
@@ -2073,7 +2086,7 @@ void QTriangulator<T>::SimpleToMonotone::monotoneDecomposition()
             leftEdgeNode = searchEdgeLeftOfPoint(m_edges.at(i).from);
             if (leftEdgeNode) {
                 if (m_edges.at(m_edges.at(leftEdgeNode->data).helper).type == MergeVertex)
-                    diagonals.add(QPair<int, int>(i, m_edges.at(leftEdgeNode->data).helper));
+                    diagonals.add(std::pair<int, int>(i, m_edges.at(leftEdgeNode->data).helper));
                 m_edges.at(leftEdgeNode->data).helper = i;
             } else {
                 qWarning("Inconsistent polygon. (#4)");
@@ -2082,7 +2095,7 @@ void QTriangulator<T>::SimpleToMonotone::monotoneDecomposition()
         case EndVertex:
             if (m_clockwiseOrder) {
                 if (m_edges.at(m_edges.at(i).helper).type == MergeVertex)
-                    diagonals.add(QPair<int, int>(i, m_edges.at(i).helper));
+                    diagonals.add(std::pair<int, int>(i, m_edges.at(i).helper));
                 if (m_edges.at(i).node) {
                     m_edgeList.deleteNode(m_edges.at(i).node);
                     Q_ASSERT(m_edgeList.validate());
@@ -2091,7 +2104,7 @@ void QTriangulator<T>::SimpleToMonotone::monotoneDecomposition()
                 }
             } else {
                 if (m_edges.at(m_edges.at(j).helper).type == MergeVertex)
-                    diagonals.add(QPair<int, int>(i, m_edges.at(j).helper));
+                    diagonals.add(std::pair<int, int>(i, m_edges.at(j).helper));
                 if (m_edges.at(j).node) {
                     m_edgeList.deleteNode(m_edges.at(j).node);
                     Q_ASSERT(m_edgeList.validate());

@@ -1,10 +1,13 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #include "language.h"
 
 #include <QtCore/qtextstream.h>
 #include <QtCore/QList>
+
+#include <algorithm>
 
 namespace language {
 
@@ -102,8 +105,14 @@ QLatin1StringView lookupEnum(const EnumLookup(&array)[N], int value, int default
 
 QString fixClassName(QString className)
 {
-    if (language() == Language::Python)
-        className.replace(cppQualifier, "_"_L1);
+    switch (language()) {
+    case Language::Cpp:
+        className.replace(u'.', cppQualifier); // Nested Python class name
+        break;
+    case Language::Python:
+        className.replace(cppQualifier, "."_L1);
+        break;
+    }
     return className;
 }
 
@@ -182,7 +191,7 @@ QLatin1StringView paletteColorRole(int v)
 // Helpers for formatting a character sequences
 
 // Format a special character like '\x0a'
-static int formatEscapedNumber(QTextStream &str, ushort value, int base, int width,
+static int formatEscapedNumber(QTextStream &str, uint value, int base, int width,
                                char prefix = 0)
 {
     int length = 1 + width;
@@ -236,24 +245,23 @@ static int formatSpecialCharacter(QTextStream &str, ushort value)
 
 enum : int { maxSegmentSize = 1024 };
 
-template <Encoding e>
-struct FormattingTraits
-{
-};
 
-template <>
-struct FormattingTraits<Encoding::Utf8>
+static uint characterCode(char c)
 {
-    static ushort code(char c) { return uchar(c); }
-};
+    return uchar(c);
+}
 
-template <>
-struct FormattingTraits<Encoding::Unicode>
+static uint characterCode(QChar c)
 {
-    static ushort code(QChar c) { return c.unicode(); }
-};
+    return c.unicode();
+}
 
-template <Encoding e, class Iterator>
+static uint characterCode(uint c)
+{
+    return c;
+}
+
+template <class Iterator>
 static void formatStringSequence(QTextStream &str, Iterator it, Iterator end,
                                  const QString &indent,
                                  int escapeIntegerBase, int escapeWidth,
@@ -262,13 +270,13 @@ static void formatStringSequence(QTextStream &str, Iterator it, Iterator end,
     str << '"';
     int length = 0;
     while (it != end) {
-        const auto code = FormattingTraits<e>::code(*it);
+        const auto code = characterCode(*it);
         if (code >= 0x80) {
             length += formatEscapedNumber(str, code, escapeIntegerBase, escapeWidth, escapePrefix);
         } else if (const int l = formatSpecialCharacter(str, code)) {
             length += l;
         } else if (code != '\r') {
-            str << *it;
+            str << char(code);
             ++length;
         }
         ++it;
@@ -280,6 +288,11 @@ static void formatStringSequence(QTextStream &str, Iterator it, Iterator end,
     str << '"';
 }
 
+static bool isSurrogate(QChar c)
+{
+    return c.isSurrogate();
+}
+
 void _formatString(QTextStream &str, const QString &value, const QString &indent,
                    bool qString)
 {
@@ -289,17 +302,20 @@ void _formatString(QTextStream &str, const QString &value, const QString &indent
         if (qString && _language == Language::Cpp)
             str << "QString::fromUtf8(";
         const QByteArray utf8 = value.toUtf8();
-        formatStringSequence<Encoding::Utf8>(str, utf8.cbegin(), utf8.cend(), indent,
-                                             8, 3);
+        formatStringSequence(str, utf8.cbegin(), utf8.cend(), indent, 8, 3);
         if (qString && _language == Language::Cpp)
             str << ')';
     }
         break;
     // Special characters as 4 digit hex Unicode points (u8"\u00dcmlaut")
     case Encoding::Unicode:
-        str << 'u'; // Python Unicode literal (would be UTF-16 in C++)
-        formatStringSequence<Encoding::Unicode>(str, value.cbegin(), value.cend(), indent,
-                                                16, 4, 'u');
+        str << 'u'; // Python Unicode literal
+        if (std::any_of(value.cbegin(), value.cend(), isSurrogate)) {
+            const auto ucs4 = value.toUcs4();
+            formatStringSequence(str, ucs4.cbegin(), ucs4.cend(), indent, 16, 8, 'U');
+        } else {
+            formatStringSequence(str, value.cbegin(), value.cend(), indent, 16, 4, 'u');
+        }
         break;
     }
 }

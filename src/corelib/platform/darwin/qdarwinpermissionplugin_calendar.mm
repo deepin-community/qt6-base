@@ -12,12 +12,7 @@
 @implementation QDarwinCalendarPermissionHandler
 - (Qt::PermissionStatus)checkPermission:(QPermission)permission
 {
-    Q_UNUSED(permission);
-    return [self currentStatus];
-}
-
-- (Qt::PermissionStatus)currentStatus
-{
+    auto accessMode = permission.value<QCalendarPermission>()->accessMode();
     auto status = [EKEventStore authorizationStatusForEntityType:EKEntityTypeEvent];
     switch (status) {
     case EKAuthorizationStatusNotDetermined:
@@ -25,13 +20,12 @@
     case EKAuthorizationStatusRestricted:
     case EKAuthorizationStatusDenied:
         return Qt::PermissionStatus::Denied;
-    case EKAuthorizationStatusAuthorized:
+    case EKAuthorizationStatusFullAccess:
         return Qt::PermissionStatus::Granted;
-#if QT_MACOS_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(140000, 170000)
     case EKAuthorizationStatusWriteOnly:
-        // FIXME: Add WriteOnly AccessMode
-        return Qt::PermissionStatus::Denied;
-#endif
+        return accessMode == QCalendarPermission::WriteOnly
+            ? Qt::PermissionStatus::Granted
+            : Qt::PermissionStatus::Denied;
     }
 
     qCWarning(lcPermissions) << "Unknown permission status" << status << "detected in" << self;
@@ -53,17 +47,20 @@
         self.eventStore = [[EKEventStore new] autorelease];
     }
 
-    [self.eventStore requestAccessToEntityType:EKEntityTypeEvent
-        completion:^(BOOL granted, NSError * _Nullable error) {
-            Q_UNUSED(granted); // We use status instead
-            // Permission denied will result in an error, which we don't
-            // want to report/log, so we ignore the error and just report
-            // the status.
-            Q_UNUSED(error);
+    auto accessMode = permission.value<QCalendarPermission>()->accessMode();
+    auto completionHandler = ^(BOOL granted, NSError * _Nullable error) {
+        Q_UNUSED(granted); // We use status instead
+        // Permission denied will result in an error, which we don't
+        // want to report/log, so we ignore the error and just report
+        // the status.
+        Q_UNUSED(error);
+        callback([self checkPermission:permission]);
+    };
 
-            callback([self currentStatus]);
-        }
-    ];
+    if (accessMode == QCalendarPermission::WriteOnly)
+        [self.eventStore requestWriteOnlyAccessToEventsWithCompletion:completionHandler];
+    else
+        [self.eventStore requestFullAccessToEventsWithCompletion:completionHandler];
 }
 
 @end

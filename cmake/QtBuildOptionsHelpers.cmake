@@ -1,6 +1,8 @@
 # Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+__qt_internal_cmake_include_guard(GLOBAL GUARD_KEY "QtBuildOptionsHelpers")
+
 # Try to detect if CMAKE_BUILD_TYPE is default initialized by CMake, or it was set by the user.
 #
 # CMake initializes CMAKE_BUILD_TYPE to the value of CMAKE_BUILD_TYPE_INIT during the first
@@ -114,6 +116,26 @@ function(qt_internal_set_cmake_build_type)
     endif()
 endfunction()
 
+# Set the build type for standalone tests and examples early enough.
+#
+# Specifically in qt_internal_project_setup() directly after find_package(Qt6BuildInternals) at
+# the top of qt repo CMakeLists.txt files, before we look for any 3rd party packages.
+#
+# This ensures that IMPORTED 3rd party targets are created with appropriate
+# MAP_IMPORTED_CONFIG_<CONFIG> properties based on the value of CMAKE_MAP_IMPORTED_CONFIG_<CONFIG>.
+# This ensures CMake links the correct variants of 3rd party libraries, which is especially relevant
+# on Windows where runtimes can't be mixed.
+# E.g. qtgrpc protobuf examples might link to a debug MSVC variant of the vcpkg protobuf 3rd
+# party dep, if the build type during the creation of the protobuf libraries is not the final one.
+#
+# Note that Qt itself doesn't set CMAKE_MAP_IMPORTED_CONFIG_<CONFIG>, but some toolchain files (like
+# the vcpkg one) do.
+function(qt_internal_set_cmake_build_type_for_standalone_parts)
+    if(NOT QT_NO_FORCE_SET_STANDALONE_PARTS_BUILD_TYPE)
+        qt_internal_set_cmake_build_type()
+    endif()
+endfunction()
+
 # Sets a default cmake build type for qtbase / top-level.
 macro(qt_internal_set_qt_appropriate_default_cmake_build_type)
     set(_default_build_type "Release")
@@ -132,12 +154,6 @@ macro(qt_internal_set_qt_appropriate_default_cmake_build_type)
             message(STATUS
                 "Default build configuration set to '${CMAKE_NINJA_MULTI_DEFAULT_BUILD_TYPE}'.")
         endif()
-        if(CMAKE_GENERATOR STREQUAL "Ninja")
-            message(FATAL_ERROR
-                "It's not possible to build multiple configurations with the single config Ninja "
-                "generator. Consider configuring with -G\"Ninja Multi-Config\" instead of -GNinja."
-            )
-        endif()
     else()
         message(STATUS "CMAKE_BUILD_TYPE was already explicitly set to: '${CMAKE_BUILD_TYPE}'")
     endif()
@@ -154,6 +170,19 @@ macro(qt_internal_set_configure_from_ide)
         set(QT_INTERNAL_CONFIGURE_FROM_IDE FALSE CACHE INTERNAL "Configuring Qt Project from IDE")
     endif()
 endmacro()
+
+function(qt_internal_set_ci_options)
+    # Do not install CI only files except for
+    # - developer-builds
+    # - in coin CI
+    if(QT_FEATURE_developer_build OR DEFINED ENV{COIN_UNIQUE_JOB_ID})
+        set(__QT_INSTALL_CI_FILES_default ON)
+    else()
+        set(__QT_INSTALL_CI_FILES_default OFF)
+    endif()
+    set(QT_INSTALL_CI_FILES ${__QT_INSTALL_CI_FILES_default} CACHE BOOL
+        "Install CI files for internal use only")
+endfunction()
 
 macro(qt_internal_set_sync_headers_at_configure_time)
     set(_qt_sync_headers_at_configure_time_default ${QT_INTERNAL_CONFIGURE_FROM_IDE})
@@ -270,12 +299,18 @@ macro(qt_internal_setup_build_tests)
 
     option(QT_BUILD_MINIMAL_STATIC_TESTS "Build minimal subset of tests for static Qt builds" ${_qt_wasm_and_batch_tests})
 
+    if((FEATURE_developer_build AND NOT FEATURE_doc_snippets STREQUAL "OFF") OR FEATURE_doc_snippets)
+        set(_qt_build_doc_snippets ON)
+    else()
+        set(_qt_build_doc_snippets OFF)
+    endif()
+    option(QT_BUILD_DOC_SNIPPETS "Build documentation snippets" ${_qt_build_doc_snippets})
+
     option(QT_BUILD_WASM_BATCHED_TESTS "Build subset of tests for wasm batched tests" ${_qt_wasm_and_batch_tests})
 
     option(QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS
         "Build minimal subset of tests for Android multi-ABI Qt builds" OFF)
 
-    include(CTest)
     enable_testing()
 endmacro()
 
@@ -298,6 +333,55 @@ macro(qt_internal_setup_build_tools)
     option(QT_BUILD_TOOLS_BY_DEFAULT "Should tools be built as part of the default 'all' target."
            "${_qt_build_tools_by_default_default}")
     unset(_qt_build_tools_by_default_default)
+endmacro()
+
+# A heuristic to determine that the currently processed project is a cmake build test project.
+function(qt_internal_current_project_is_cmake_build_test_project out_var)
+    set(current_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+
+    set(result FALSE)
+
+    if(current_dir MATCHES "tests/auto/cmake")
+        set(result TRUE)
+    endif()
+
+    set(${out_var} "${result}" PARENT_SCOPE)
+endfunction()
+
+function(qt_internal_compute_sbom_default out_var)
+    # Default to generating the SBOM, except for:
+    # - developer-builds
+    # - no-prefix builds.
+    # - standalone tests or examples
+    # - cmake build tests
+    # Regular developers of Qt (which would pass -developer-build) likely don't need SBOMs.
+    # -no-prefix builds don't make much sense for SBOMs because the installed file checksums
+    # will be missing, and thus the SBOMs will not be complete / valid.
+    # Honor any explicitly or previously set value.
+    qt_internal_current_project_is_cmake_build_test_project(is_cmake_build_test)
+
+    if(FEATURE_developer_build
+            OR QT_FEATURE_developer_build
+            OR FEATURE_no_prefix
+            OR QT_FEATURE_no_prefix
+            OR QT_BUILD_STANDALONE_EXAMPLES
+            OR QT_BUILD_STANDALONE_TESTS
+            OR QT_INTERNAL_BUILD_STANDALONE_PARTS
+            OR is_cmake_build_test
+        )
+        set(enable_sbom OFF)
+    else()
+        set(enable_sbom ON)
+    endif()
+    set(${out_var} "${enable_sbom}" PARENT_SCOPE)
+endfunction()
+
+macro(qt_internal_setup_sbom)
+    qt_internal_compute_sbom_default(_qt_generate_sbom_default)
+
+    _qt_internal_setup_sbom(
+        GENERATE_SBOM_DEFAULT "${_qt_generate_sbom_default}"
+    )
 endmacro()
 
 macro(qt_internal_setup_build_examples)
@@ -350,6 +434,20 @@ macro(qt_internal_set_qt_host_path)
         "Installed Qt host directory path, used for cross compiling.")
 endmacro()
 
+macro(qt_internal_setup_build_docs)
+    option(QT_BUILD_DOCS "Generate Qt documentation targets" ON)
+endmacro()
+
+macro(qt_internal_setup_build_java_docs_on_host)
+    option(QT_BUILD_HOST_JAVA_DOCS "Generate Java documentation targets on host" OFF)
+    if(QT_BUILD_HOST_JAVA_DOCS)
+        find_package(Java)
+        if(Java_FOUND)
+            include(UseJava)
+        endif()
+    endif()
+endmacro()
+
 macro(qt_internal_set_use_ccache)
     option(QT_USE_CCACHE "Enable the use of ccache")
     if(QT_USE_CCACHE)
@@ -368,10 +466,19 @@ endmacro()
 macro(qt_internal_set_unity_build)
     option(QT_UNITY_BUILD "Enable unity (jumbo) build")
     set(QT_UNITY_BUILD_BATCH_SIZE "32" CACHE STRING "Unity build batch size")
-    if(QT_UNITY_BUILD)
-        set(CMAKE_UNITY_BUILD ON)
-        set(CMAKE_UNITY_BUILD_BATCH_SIZE "${QT_UNITY_BUILD_BATCH_SIZE}")
-    endif()
+
+    include(CMakeDependentOption)
+    string(TOLOWER "${PROJECT_NAME}" project_name_lower)
+    cmake_dependent_option(
+        "QT_UNITY_BUILD_PROJECT_${project_name_lower}"
+        "Enable unity builds for project ${PROJECT_NAME}"
+        TRUE
+        QT_UNITY_BUILD
+        FALSE
+    )
+
+    set(CMAKE_UNITY_BUILD "${QT_UNITY_BUILD_PROJECT_${project_name_lower}}")
+    set(CMAKE_UNITY_BUILD_BATCH_SIZE "${QT_UNITY_BUILD_BATCH_SIZE}")
 endmacro()
 
 macro(qt_internal_set_allow_symlink_in_paths)

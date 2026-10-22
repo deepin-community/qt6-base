@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSYSTEMTRAYICON_P_H
 #define QSYSTEMTRAYICON_P_H
@@ -27,6 +28,7 @@
 #include "QtWidgets/qwidget.h"
 #include "QtGui/qpixmap.h"
 #include <qpa/qplatformsystemtrayicon.h>
+#include "QtCore/qbasictimer.h"
 #include "QtCore/qstring.h"
 #include "QtCore/qpointer.h"
 
@@ -103,7 +105,7 @@ protected:
 private:
     QSystemTrayIcon *trayIcon;
     QPixmap pixmap;
-    int timerId;
+    QBasicTimer timer;
     bool showArrow;
 };
 

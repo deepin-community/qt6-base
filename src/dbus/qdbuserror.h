@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDBUSERROR_H
 #define QDBUSERROR_H
@@ -92,9 +93,11 @@ private:
     ErrorType code;
     QString msg;
     QString nm;
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     // ### This class has an implicit (therefore inline) destructor
     // so the following field cannot be used:
     void *unused;
+#endif
 };
 Q_DECLARE_SHARED(QDBusError)
 

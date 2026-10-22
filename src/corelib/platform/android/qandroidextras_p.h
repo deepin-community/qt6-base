@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QANDROIDEXTRAS_H
 #define QANDROIDEXTRAS_H
@@ -27,6 +28,8 @@
 #if QT_CONFIG(future)
 #include <QtCore/qfuture.h>
 #endif
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -103,7 +106,7 @@ private:
     friend class QAndroidActivityResultReceiverPrivate;
     Q_DISABLE_COPY(QAndroidActivityResultReceiver)
 
-    QScopedPointer<QAndroidActivityResultReceiverPrivate> d;
+    std::unique_ptr<QAndroidActivityResultReceiverPrivate> d;
 };
 
 class Q_CORE_EXPORT QAndroidServiceConnection
@@ -170,7 +173,7 @@ private:
     friend class QAndroidServicePrivate;
     Q_DISABLE_COPY(QAndroidService)
 
-    QScopedPointer<QAndroidServicePrivate> d;
+    std::unique_ptr<QAndroidServicePrivate> d;
 };
 
 class QAndroidActivityCallbackResultReceiver: public QAndroidActivityResultReceiver
@@ -224,7 +227,8 @@ namespace QtAndroidPrivate
                                    const QAndroidServiceConnection &serviceConnection,
                                    BindFlags flags = BindFlag::None);
 
-#if QT_CONFIG(future)
+#if QT_CONFIG(permissions)
+    QT_REQUIRE_CONFIG(future);
     enum PermissionResult {
         Undetermined,
         Authorized,

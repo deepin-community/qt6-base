@@ -1,15 +1,19 @@
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
 #include "qandroidplatformtheme.h"
+#include "qandroidplatformfileiconengine.h"
 #include "qandroidplatformiconengine.h"
 #include "qandroidplatformmenubar.h"
 #include "qandroidplatformmenu.h"
 #include "qandroidplatformmenuitem.h"
 #include "qandroidplatformdialoghelpers.h"
 #include "qandroidplatformfiledialoghelper.h"
+#include "qandroidplatformwindow.h"
+#include "qandroidplatformfontdatabase.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -24,6 +28,8 @@
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcQpaMenus, "qt.qpa.menus")
+
+Q_DECLARE_JNI_CLASS(QtWindowInsetsController, "org/qtproject/qt/android/QtWindowInsetsController")
 
 using namespace Qt::StringLiterals;
 
@@ -145,12 +151,6 @@ static void setPaletteColor(const QVariantMap &object,
         palette.setColor(QPalette::Inactive, QPalette::Text, palette.color(QPalette::Inactive, role));
         palette.setColor(QPalette::Disabled, QPalette::Text, palette.color(QPalette::Disabled, role));
         palette.setColor(QPalette::Current, QPalette::Text, palette.color(QPalette::Current, role));
-
-        // And for ButtonText
-        palette.setColor(QPalette::Active, QPalette::ButtonText, palette.color(QPalette::Active, role));
-        palette.setColor(QPalette::Inactive, QPalette::ButtonText, palette.color(QPalette::Inactive, role));
-        palette.setColor(QPalette::Disabled, QPalette::ButtonText, palette.color(QPalette::Disabled, role));
-        palette.setColor(QPalette::Current, QPalette::ButtonText, palette.color(QPalette::Current, role));
     }
 }
 
@@ -227,8 +227,9 @@ static void loadAndroidStyle(QPalette *defaultPalette, std::shared_ptr<AndroidSt
         }
         const int ft = fontType(key);
         if (ft > -1 || !qtClassName.isEmpty()) {
-            // Extract font information
-            QFont font;
+            // Extract font information, calling default QFont constructor breaks
+            // initialization order. See QTQAINFRA-6893
+            QFont font(QGuiApplicationPrivate::platformIntegration()->fontDatabase()->defaultFont());
 
             // Font size (in pixels)
             attributeIterator = item.find("TextAppearance_textSize"_L1);
@@ -238,9 +239,9 @@ static void loadAndroidStyle(QPalette *defaultPalette, std::shared_ptr<AndroidSt
             // Font style
             attributeIterator = item.find("TextAppearance_textStyle"_L1);
             if (attributeIterator != item.constEnd()) {
-                const int style = int(attributeIterator.value().toDouble());
-                font.setBold(style & textStyle_bold);
-                font.setItalic(style & textStyle_italic);
+                const int textStyle = int(attributeIterator.value().toDouble());
+                font.setBold(textStyle & textStyle_bold);
+                font.setItalic(textStyle & textStyle_italic);
             }
 
             // Font typeface
@@ -265,8 +266,6 @@ static void loadAndroidStyle(QPalette *defaultPalette, std::shared_ptr<AndroidSt
 
             if (ft > -1) {
                 style->m_fonts.insert(ft, font);
-                if (ft == QPlatformTheme::SystemFont)
-                    QGuiApplication::setFont(font);
             }
             // Extract font information
         }
@@ -324,12 +323,13 @@ QAndroidPlatformTheme::QAndroidPlatformTheme(QAndroidPlatformNativeInterface *an
     androidPlatformNativeInterface->m_androidStyle = m_androidStyleData;
 
     // default in case the style has not set a font
-    m_systemFont = QFont("Roboto"_L1, 14.0 * 100 / 72); // keep default size the same after changing from 100 dpi to 72 dpi
+    m_systemFont = new QFont("Roboto"_L1, 14.0 * 100 / 72); // keep default size the same after changing from 100 dpi to 72 dpi
 }
 
 QAndroidPlatformTheme::~QAndroidPlatformTheme()
 {
     m_instance = nullptr;
+    delete m_systemFont;
 }
 
 void QAndroidPlatformTheme::updateColorScheme()
@@ -437,6 +437,83 @@ void QAndroidPlatformTheme::requestColorScheme(Qt::ColorScheme scheme)
     QMetaObject::invokeMethod(qGuiApp, [this]{
         updateColorScheme();
     });
+
+    if (m_colorSchemeOverride == Qt::ColorScheme::Unknown)
+        return;
+
+    const auto iface = qGuiApp->nativeInterface<QNativeInterface::QAndroidApplication>();
+    iface->runOnAndroidMainThread([=]() {
+        bool isLight = scheme == Qt::ColorScheme::Light;
+        QtJniTypes::QtWindowInsetsController::callStaticMethod("setStatusBarColorHint",
+            iface->context().object<QtJniTypes::Activity>(), isLight);
+        QtJniTypes::QtWindowInsetsController::callStaticMethod("setNavigationBarColorHint",
+            iface->context().object<QtJniTypes::Activity>(), isLight);
+    });
+}
+
+extern "C" JNIEXPORT bool JNICALL
+Java_org_qtproject_qt_android_QtActivityDelegateBase_canOverrideColorSchemeHint(JNIEnv *, jobject)
+{
+    if (!QAndroidPlatformTheme::instance())
+        return true;
+
+    return QAndroidPlatformTheme::instance()->colorSchemeOverride() == Qt::ColorScheme::Unknown;
+}
+
+static Qt::ContrastPreference s_contrastPreference = Qt::ContrastPreference::NoPreference;
+
+Qt::ContrastPreference QAndroidPlatformTheme::contrastPreference() const
+{
+    return s_contrastPreference;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_qtproject_qt_android_QtActivityDelegateBase_updateUiContrast(JNIEnv *, jobject,
+                                                                      jfloat newUiContrast)
+{
+    const Qt::ContrastPreference contrastPreference = newUiContrast > 0.5f
+                                                ? Qt::ContrastPreference::HighContrast
+                                                : Qt::ContrastPreference::NoPreference;
+
+    if (!qGuiApp) {
+        s_contrastPreference = contrastPreference;
+        return;
+    }
+
+    QMetaObject::invokeMethod(qGuiApp, [contrastPreference] {
+        if (s_contrastPreference == contrastPreference)
+            return;
+        s_contrastPreference = contrastPreference;
+        QWindowSystemInterface::handleThemeChange();
+    });
+}
+
+static Qt::MotionPreference s_motionPreference = Qt::MotionPreference::NoPreference;
+
+Qt::MotionPreference QAndroidPlatformTheme::motionPreference() const
+{
+    return s_motionPreference;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_qtproject_qt_android_QtActivityDelegateBase_updateUiMotionScale(JNIEnv *, jobject,
+                                                                         jfloat newUiMotion)
+{
+    const Qt::MotionPreference preference = qFuzzyIsNull(newUiMotion)
+                                                ? Qt::MotionPreference::ReducedMotion
+                                                : Qt::MotionPreference::NoPreference;
+
+    if (!qGuiApp) {
+        s_motionPreference = preference;
+        return;
+    }
+
+    QMetaObject::invokeMethod(qGuiApp, [preference] {
+        if (s_motionPreference == preference)
+            return;
+        s_motionPreference = preference;
+        QWindowSystemInterface::handleThemeChange();
+    });
 }
 
 static inline int paletteType(QPlatformTheme::Palette type)
@@ -500,13 +577,30 @@ const QFont *QAndroidPlatformTheme::font(Font type) const
     }
 
     if (type == QPlatformTheme::SystemFont)
-        return &m_systemFont;
+        return m_systemFont;
     return 0;
 }
 
 QIconEngine *QAndroidPlatformTheme::createIconEngine(const QString &iconName) const
 {
     return new QAndroidPlatformIconEngine(iconName);
+}
+
+QIcon QAndroidPlatformTheme::fileIcon(const QFileInfo &fileInfo,
+                                      QPlatformTheme::IconOptions options) const
+{
+#ifndef QT_NO_ICON
+    std::unique_ptr<QIconEngine> iconEngine(new QAndroidPlatformFileIconEngine(fileInfo, options));
+    if (iconEngine->isNull()) {
+        // If we didn't get an icon for the file type, return a generic file
+        // icon. Assuming the Material Symbols font, this is the "draft" icon
+        // with code point e66d.
+        iconEngine.reset(new QAndroidPlatformIconEngine(u"\ue66d"_s));
+    }
+    return QIcon(iconEngine.release());
+#else
+    return {};
+#endif
 }
 
 QVariant QAndroidPlatformTheme::themeHint(ThemeHint hint) const
@@ -520,6 +614,8 @@ QVariant QAndroidPlatformTheme::themeHint(ThemeHint hint) const
         return QStringList("Fusion"_L1);
     case DialogButtonBoxLayout:
         return QVariant(QPlatformDialogHelper::AndroidLayout);
+    case PreferFileIconFromTheme:
+        return true;
     case MouseDoubleClickDistance:
     {
             int minimumDistance = qEnvironmentVariableIntValue("QT_ANDROID_MINIMUM_MOUSE_DOUBLE_CLICK_DISTANCE");

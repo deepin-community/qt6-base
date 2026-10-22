@@ -1,21 +1,9 @@
 # This file is mainly used for Android tests since Android
 # packages "test" instead of "qapplication" folder
 # QTBUG-87025
-[libraryPaths]
-android
-[setFont]
-android
-[closeAllWindows]
-android
-[libraryPaths_qt_plugin_path_2]
-android
 [desktopSettingsAware]
 android
-[applicationPalettePolish]
+[modalDialog]
 android
-[touchEventPropagation]
-android
-[wheelEventPropagation]
-android
-[qtbug_12673]
-android
+[exitFromEventLoop]
+wayland

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFSFILEENGINE_P_H
 #define QFSFILEENGINE_P_H
@@ -50,7 +51,6 @@ public:
     ~QFSFileEngine();
 
     bool open(QIODevice::OpenMode openMode, std::optional<QFile::Permissions> permissions) override;
-    bool open(QIODevice::OpenMode flags, FILE *fh);
     bool close() override;
     bool flush() override;
     bool syncToDisk() override;
@@ -82,12 +82,10 @@ public:
     bool setFileTime(const QDateTime &newDate, QFile::FileTime time) override;
     QDateTime fileTime(QFile::FileTime time) const override;
     void setFileName(const QString &file) override;
-    void setFileEntry(QFileSystemEntry &&entry);
+    virtual void setFileEntry(QFileSystemEntry &&entry);
     int handle() const override;
 
 #ifndef QT_NO_FILESYSTEMITERATOR
-    IteratorUniquePtr beginEntryList(const QString &path, QDir::Filters filters,
-                                     const QStringList &filterNames) override;
     IteratorUniquePtr beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
                                      const QStringList &filterNames) override;
 #endif
@@ -95,7 +93,7 @@ public:
     qint64 read(char *data, qint64 maxlen) override;
     qint64 readLine(char *data, qint64 maxlen) override;
     qint64 write(const char *data, qint64 len) override;
-    bool cloneTo(QAbstractFileEngine *target) override;
+    TriStateResult cloneTo(QAbstractFileEngine *target) override;
 
     virtual bool isUnnamedFile() const
     { return false; }
@@ -104,14 +102,10 @@ public:
     bool supportsExtension(Extension extension) const override;
 
     //FS only!!
-    bool open(QIODevice::OpenMode flags, int fd);
     bool open(QIODevice::OpenMode flags, int fd, QFile::FileHandleFlags handleFlags);
     bool open(QIODevice::OpenMode flags, FILE *fh, QFile::FileHandleFlags handleFlags);
     static bool setCurrentPath(const QString &path);
     static QString currentPath(const QString &path = QString());
-    static QString homePath();
-    static QString rootPath();
-    static QString tempPath();
     static QFileInfoList drives();
 
 protected:
@@ -221,8 +215,42 @@ public:
         // ReadOnly by itself never creates.
         return (openMode & QFile::WriteOnly) && !(openMode & QFile::ExistingOnly);
     }
+
+#if defined(Q_OS_UNIX)
+    /*!
+        \internal
+
+        Returns the stdio open flags corresponding to a QIODevice::OpenMode.
+    */
+    static int openModeToOpenFlags(QIODevice::OpenMode mode)
+    {
+        int oflags = QT_OPEN_RDONLY;
+        if ((mode & QIODevice::ReadWrite) == QIODevice::ReadWrite)
+            oflags = QT_OPEN_RDWR;
+        else if (mode & QIODevice::WriteOnly)
+            oflags = QT_OPEN_WRONLY;
+
+        if (openModeCanCreate(mode))
+            oflags |= QT_OPEN_CREAT;
+
+        if (mode & QIODevice::Truncate)
+            oflags |= QT_OPEN_TRUNC;
+
+        if (mode & QIODevice::Append)
+            oflags |= QT_OPEN_APPEND;
+
+        if (mode & QIODevice::NewOnly)
+            oflags |= QT_OPEN_EXCL;
+
+#  ifdef QT_LARGEFILE_SUPPORT
+        oflags |= QT_OPEN_LARGEFILE;
+#  endif
+        return oflags;
+    }
+#endif // Q_OS_UNIX
+
 protected:
-    QFSFileEnginePrivate();
+    QFSFileEnginePrivate(QAbstractFileEngine *q);
 
     void init();
 

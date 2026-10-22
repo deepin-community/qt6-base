@@ -1,16 +1,19 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2019 Intel Corporation
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLIST_H
 #define QLIST_H
 
 #include <QtCore/qarraydatapointer.h>
+#include <QtCore/qcompare.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qhashfunctions.h>
 #include <QtCore/qiterator.h>
 #include <QtCore/qcontainertools_impl.h>
 #include <QtCore/qnamespace.h>
+#include <QtCore/qscopeguard.h>
 #include <QtCore/qttypetraits.h>
 
 #include <functional>
@@ -30,7 +33,8 @@ namespace QtPrivate {
 template <typename T> struct QListSpecialMethodsBase
 {
 protected:
-    ~QListSpecialMethodsBase() = default;
+    QListSpecialMethodsBase() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QListSpecialMethodsBase)
 
     using Self = QList<T>;
     Self *self() { return static_cast<Self *>(this); }
@@ -51,7 +55,9 @@ public:
 template <typename T> struct QListSpecialMethods : QListSpecialMethodsBase<T>
 {
 protected:
-    ~QListSpecialMethods() = default;
+    QListSpecialMethods() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QListSpecialMethods)
+
 public:
     using QListSpecialMethodsBase<T>::indexOf;
     using QListSpecialMethodsBase<T>::lastIndexOf;
@@ -106,6 +112,11 @@ public:
     using rvalue_ref = T &&;
 #endif
 
+    DataPointer &data_ptr() &             { return d; }
+    const DataPointer &data_ptr() const & { return d; }
+    DataPointer &&data_ptr() &&           { return std::move(d); }
+    // No current use-case for a `const &&` overload
+
     class const_iterator;
     class iterator {
         friend class QList<T>;
@@ -120,8 +131,8 @@ public:
         using value_type = T;
 #ifdef QT_COMPILER_HAS_LWG3346
         using iterator_concept = std::contiguous_iterator_tag;
-        using element_type = value_type;
 #endif
+        using element_type = value_type;
         using iterator_category = std::random_access_iterator_tag;
         using pointer = T *;
         using reference = T &;
@@ -133,6 +144,10 @@ public:
         inline T &operator*() const { return *i; }
         inline T *operator->() const { return i; }
         inline T &operator[](qsizetype j) const { return *(i + j); }
+#ifdef __cpp_lib_three_way_comparison
+        friend constexpr auto operator<=>(iterator, iterator) noexcept = default;
+        friend constexpr bool operator==(iterator, iterator) noexcept = default;
+#else
         inline constexpr bool operator==(iterator o) const { return i == o.i; }
         inline constexpr bool operator!=(iterator o) const { return i != o.i; }
         inline constexpr bool operator<(iterator other) const { return i < other.i; }
@@ -145,6 +160,7 @@ public:
         inline constexpr bool operator<=(const_iterator other) const { return i <= other.i; }
         inline constexpr bool operator>(const_iterator other) const { return i > other.i; }
         inline constexpr bool operator>=(const_iterator other) const { return i >= other.i; }
+#endif // __cpp_lib_three_way_comparison
         inline constexpr bool operator==(pointer p) const { return i == p; }
         inline constexpr bool operator!=(pointer p) const { return i != p; }
         inline iterator &operator++() { ++i; return *this; }
@@ -190,8 +206,8 @@ public:
         using value_type = T;
 #ifdef QT_COMPILER_HAS_LWG3346
         using iterator_concept = std::contiguous_iterator_tag;
-        using element_type = const value_type;
 #endif
+        using element_type = const value_type;
         using iterator_category = std::random_access_iterator_tag;
         using pointer = const T *;
         using reference = const T &;
@@ -204,6 +220,14 @@ public:
         inline const T &operator*() const { return *i; }
         inline const T *operator->() const { return i; }
         inline const T &operator[](qsizetype j) const { return *(i + j); }
+#ifdef __cpp_lib_three_way_comparison
+        friend constexpr auto operator<=>(const_iterator, const_iterator) noexcept = default;
+        friend constexpr auto operator<=>(const_iterator a, iterator b) noexcept
+        { return a <=> const_iterator(b); }
+        friend constexpr bool operator==(const_iterator, const_iterator) noexcept = default;
+        friend constexpr bool operator==(const_iterator a, iterator b) noexcept
+        { return a == const_iterator(b); }
+#else
         inline constexpr bool operator==(const_iterator o) const { return i == o.i; }
         inline constexpr bool operator!=(const_iterator o) const { return i != o.i; }
         inline constexpr bool operator<(const_iterator other) const { return i < other.i; }
@@ -216,6 +240,7 @@ public:
         inline constexpr bool operator<=(iterator other) const { return i <= other.i; }
         inline constexpr bool operator>(iterator other) const { return i > other.i; }
         inline constexpr bool operator>=(iterator other) const { return i >= other.i; }
+#endif // __cpp_lib_three_way_comparison
         inline constexpr bool operator==(pointer p) const { return i == p; }
         inline constexpr bool operator!=(pointer p) const { return i != p; }
         inline const_iterator &operator++() { ++i; return *this; }
@@ -257,7 +282,7 @@ private:
     bool isValidIterator(const_iterator i) const
     {
         const std::less<const T*> less = {};
-        return !less(d->end(), i.i) && !less(i.i, d->begin());
+        return !less(d.end(), i.i) && !less(i.i, d.begin());
     }
 
     void verify([[maybe_unused]] qsizetype pos = 0, [[maybe_unused]] qsizetype n = 1) const
@@ -274,25 +299,31 @@ public:
     }
 
 public:
-    QList() = default;
+    constexpr QList() noexcept = default;
     explicit QList(qsizetype size)
         : d(size)
     {
-        if (size)
-            d->appendInitialize(size);
+        if (size) {
+            Q_CHECK_PTR(d.data());
+            d.appendInitialize(size);
+        }
     }
     QList(qsizetype size, parameter_type t)
         : d(size)
     {
-        if (size)
+        if (size) {
+            Q_CHECK_PTR(d.data());
             d->copyAppend(size, t);
+        }
     }
 
     inline QList(std::initializer_list<T> args)
         : d(qsizetype(args.size()))
     {
-        if (args.size())
+        if (args.size()) {
+            Q_CHECK_PTR(d.data());
             d->copyAppend(args.begin(), args.end());
+        }
     }
 
     QList<T> &operator=(std::initializer_list<T> args)
@@ -309,6 +340,7 @@ public:
             const auto distance = std::distance(i1, i2);
             if (distance) {
                 d = DataPointer(qsizetype(distance));
+                Q_CHECK_PTR(d.data());
                 // appendIteratorRange can deal with contiguous iterators on its own,
                 // this is an optimization for C++17 code.
                 if constexpr (std::is_same_v<std::decay_t<InputIterator>, iterator> ||
@@ -329,8 +361,10 @@ public:
     QList(qsizetype size, Qt::Initialization)
         : d(size)
     {
-        if (size)
+        if (size) {
+            Q_CHECK_PTR(d.data());
             d->appendUninitialized(size);
+        }
     }
 
     // compiler-generated special member functions are fine!
@@ -338,6 +372,27 @@ public:
     void swap(QList &other) noexcept { d.swap(other.d); }
 
 #ifndef Q_QDOC
+private:
+    template <typename U = T,
+              Qt::if_has_qt_compare_three_way<U, U> = true>
+    friend auto compareThreeWay(const QList &lhs, const QList &rhs)
+    {
+        return QtOrderingPrivate::lexicographicalCompareThreeWay(lhs.begin(), lhs.end(),
+                                                                 rhs.begin(), rhs.end());
+    }
+
+#if defined(__cpp_lib_three_way_comparison) && defined(__cpp_lib_concepts)
+    template <typename U = T,
+              QtOrderingPrivate::if_has_op_less_or_op_compare_three_way<QList, U> = true>
+    friend auto operator<=>(const QList &lhs, const QList &rhs)
+    {
+        return std::lexicographical_compare_three_way(lhs.begin(), lhs.end(),
+                                                      rhs.begin(), rhs.end(),
+                                                      QtOrderingPrivate::synthThreeWay);
+    }
+#endif // __cpp_lib_three_way_comparison && __cpp_lib_concepts
+
+public:
     template <typename U = T>
     QTypeTraits::compare_eq_result_container<QList, U> operator==(const QList &other) const
     {
@@ -349,12 +404,14 @@ public:
         // do element-by-element comparison
         return std::equal(begin(), end(), other.begin(), other.end());
     }
+
     template <typename U = T>
     QTypeTraits::compare_eq_result_container<QList, U> operator!=(const QList &other) const
     {
         return !(*this == other);
     }
 
+#ifndef __cpp_lib_three_way_comparison
     template <typename U = T>
     QTypeTraits::compare_lt_result_container<QList, U> operator<(const QList &other) const
         noexcept(noexcept(std::lexicographical_compare<typename QList<U>::const_iterator,
@@ -386,6 +443,7 @@ public:
     {
         return !(*this < other);
     }
+#endif // __cpp_lib_three_way_comparison
 #else
     bool operator==(const QList &other) const;
     bool operator!=(const QList &other) const;
@@ -393,20 +451,26 @@ public:
     bool operator>(const QList &other) const;
     bool operator<=(const QList &other) const;
     bool operator>=(const QList &other) const;
+    friend auto operator<=>(const QList &lhs, const QList &rhs);
 #endif // Q_QDOC
 
     static constexpr qsizetype maxSize() { return Data::maxSize(); }
-    qsizetype size() const noexcept { return d->size; }
-    qsizetype count() const noexcept { return size(); }
-    qsizetype length() const noexcept { return size(); }
+    constexpr qsizetype size() const noexcept
+    {
+        constexpr size_t MaxSize = maxSize();
+        Q_PRESUME(size_t(d.size) <= MaxSize);
+        return d.size;
+    }
+    constexpr qsizetype count() const noexcept { return size(); }
+    constexpr qsizetype length() const noexcept { return size(); }
 
-    inline bool isEmpty() const noexcept { return d->size == 0; }
+    constexpr bool isEmpty() const noexcept { return size() == 0; }
 
     void resize(qsizetype size)
     {
         resize_internal(size);
         if (size > this->size())
-            d->appendInitialize(size);
+            d.appendInitialize(size);
     }
     void resize(qsizetype size, parameter_type c)
     {
@@ -421,22 +485,22 @@ public:
             d->appendUninitialized(size);
     }
 
-    inline qsizetype capacity() const { return qsizetype(d->constAllocatedCapacity()); }
+    inline qsizetype capacity() const { return qsizetype(d.constAllocatedCapacity()); }
     void reserve(qsizetype size);
     inline void squeeze();
 
     void detach() { d.detach(); }
-    bool isDetached() const noexcept { return !d->isShared(); }
+    bool isDetached() const noexcept { return !d.isShared(); }
 
     inline bool isSharedWith(const QList<T> &other) const { return d == other.d; }
 
-    pointer data() { detach(); return d->data(); }
-    const_pointer data() const noexcept { return d->data(); }
-    const_pointer constData() const noexcept { return d->data(); }
+    pointer data() { detach(); return d.data(); }
+    const_pointer data() const noexcept { return d.data(); }
+    const_pointer constData() const noexcept { return d.data(); }
     void clear() {
         if (!size())
             return;
-        if (d->needsDetach()) {
+        if (d.needsDetach()) {
             // must allocate memory
             DataPointer detached(d.allocatedCapacity());
             d.swap(detached);
@@ -447,12 +511,12 @@ public:
 
     const_reference at(qsizetype i) const noexcept
     {
-        Q_ASSERT_X(size_t(i) < size_t(d->size), "QList::at", "index out of range");
+        Q_ASSERT_X(size_t(i) < size_t(d.size), "QList::at", "index out of range");
         return data()[i];
     }
     reference operator[](qsizetype i)
     {
-        Q_ASSERT_X(size_t(i) < size_t(d->size), "QList::operator[]", "index out of range");
+        Q_ASSERT_X(size_t(i) < size_t(d.size), "QList::operator[]", "index out of range");
         // don't detach() here, we detach in data below:
         return data()[i];
     }
@@ -523,10 +587,15 @@ public:
 
     template <typename InputIterator, if_input_iterator<InputIterator> = true>
     QList &assign(InputIterator first, InputIterator last)
-    { d.assign(first, last); return *this; }
+    { d->assign(first, last); return *this; }
 
     QList &assign(std::initializer_list<T> l)
-    { return assign(l.begin(), l.end()); }
+    {
+        if (l.size())
+            return assign(l.begin(), l.end());
+        clear();
+        return *this;
+    }
 
     template <typename ...Args>
     iterator emplace(const_iterator before, Args&&... args)
@@ -544,7 +613,7 @@ public:
 #endif
     void replace(qsizetype i, parameter_type t)
     {
-        Q_ASSERT_X(i >= 0 && i < d->size, "QList<T>::replace", "index out of range");
+        Q_ASSERT_X(i >= 0 && i < d.size, "QList<T>::replace", "index out of range");
         DataPointer oldData;
         d.detach(&oldData);
         d.data()[i] = t;
@@ -555,7 +624,7 @@ public:
             Q_UNUSED(i);
             Q_UNUSED(t);
         } else {
-            Q_ASSERT_X(i >= 0 && i < d->size, "QList<T>::replace", "index out of range");
+            Q_ASSERT_X(i >= 0 && i < d.size, "QList<T>::replace", "index out of range");
             DataPointer oldData;
             d.detach(&oldData);
             d.data()[i] = std::move(t);
@@ -565,8 +634,18 @@ public:
     void remove(qsizetype i, qsizetype n = 1);
     void removeFirst() noexcept;
     void removeLast() noexcept;
-    value_type takeFirst() { Q_ASSERT(!isEmpty()); value_type v = std::move(first()); d->eraseFirst(); return v; }
-    value_type takeLast() { Q_ASSERT(!isEmpty()); value_type v = std::move(last()); d->eraseLast(); return v; }
+    value_type takeFirst()
+    {
+        Q_ASSERT(!isEmpty());
+        const auto eraser = qScopeGuard([&] { d->eraseFirst(); });
+        return std::move(first());
+    }
+    value_type takeLast()
+    {
+        Q_ASSERT(!isEmpty());
+        const auto eraser = qScopeGuard([&] { d->eraseLast(); });
+        return std::move(last());
+    }
 
     QList<T> &fill(parameter_type t, qsizetype size = -1);
 
@@ -608,7 +687,13 @@ public:
         return QtPrivate::sequential_erase_if(*this, pred);
     }
 
-    T takeAt(qsizetype i) { T t = std::move((*this)[i]); remove(i); return t; }
+    T takeAt(qsizetype i)
+    {
+        T &t = (*this)[i]; // trigger assert, if any
+        const auto remover = qScopeGuard([&] { remove(i); });
+        return std::move(t);
+    }
+
     void move(qsizetype from, qsizetype to)
     {
         Q_ASSERT_X(from >= 0 && from < size(), "QList::move(qsizetype, qsizetype)", "'from' is out-of-range");
@@ -616,7 +701,7 @@ public:
         if (from == to) // don't detach when no-op
             return;
         detach();
-        T * const b = d->begin();
+        T * const b = d.begin();
         if (from < to)
             std::rotate(b + from, b + from + 1, b + to + 1);
         else
@@ -624,15 +709,15 @@ public:
     }
 
     // STL-style
-    iterator begin() { detach(); return iterator(d->begin()); }
-    iterator end() { detach(); return iterator(d->end()); }
+    iterator begin() { detach(); return iterator(d.begin()); }
+    iterator end() { detach(); return iterator(d.end()); }
 
-    const_iterator begin() const noexcept { return const_iterator(d->constBegin()); }
-    const_iterator end() const noexcept { return const_iterator(d->constEnd()); }
-    const_iterator cbegin() const noexcept { return const_iterator(d->constBegin()); }
-    const_iterator cend() const noexcept { return const_iterator(d->constEnd()); }
-    const_iterator constBegin() const noexcept { return const_iterator(d->constBegin()); }
-    const_iterator constEnd() const noexcept { return const_iterator(d->constEnd()); }
+    const_iterator begin() const noexcept { return const_iterator(d.constBegin()); }
+    const_iterator end() const noexcept { return const_iterator(d.constEnd()); }
+    const_iterator cbegin() const noexcept { return const_iterator(d.constBegin()); }
+    const_iterator cend() const noexcept { return const_iterator(d.constEnd()); }
+    const_iterator constBegin() const noexcept { return const_iterator(d.constBegin()); }
+    const_iterator constEnd() const noexcept { return const_iterator(d.constEnd()); }
     reverse_iterator rbegin() { return reverse_iterator(end()); }
     reverse_iterator rend() { return reverse_iterator(begin()); }
     const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
@@ -670,7 +755,7 @@ public:
         Q_ASSERT_X(i >= 0 && i < size() && j >= 0 && j < size(),
                     "QList<T>::swap", "index out of range");
         detach();
-        qSwap(d->begin()[i], d->begin()[j]);
+        qSwap(d.begin()[i], d.begin()[j]);
     }
 
     // STL compatibility
@@ -685,7 +770,7 @@ public:
     reference emplace_back(Args&&... args) { return emplaceBack(std::forward<Args>(args)...); }
 
     inline bool empty() const noexcept
-    { return d->size == 0; }
+    { return d.size == 0; }
     inline reference front() { return first(); }
     inline const_reference front() const noexcept { return first(); }
     inline reference back() { return last(); }
@@ -744,7 +829,7 @@ inline void QList<T>::resize_internal(qsizetype newSize)
 {
     Q_ASSERT(newSize >= 0);
 
-    if (d->needsDetach() || newSize > capacity() - d.freeSpaceAtBegin()) {
+    if (d.needsDetach() || newSize > capacity() - d.freeSpaceAtBegin()) {
         d.detachAndGrow(QArrayData::GrowsAtEnd, newSize - d.size, nullptr, nullptr);
     } else if (newSize < size()) {
         d->truncate(newSize);
@@ -756,19 +841,22 @@ void QList<T>::reserve(qsizetype asize)
 {
     // capacity() == 0 for immutable data, so this will force a detaching below
     if (asize <= capacity() - d.freeSpaceAtBegin()) {
-        if (d->flags() & Data::CapacityReserved)
+        if (d.flags() & Data::CapacityReserved)
             return;  // already reserved, don't shrink
-        if (!d->isShared()) {
+        if (!d.isShared()) {
             // accept current allocation, don't shrink
-            d->setFlag(Data::CapacityReserved);
+            d.setFlag(Data::CapacityReserved);
             return;
         }
     }
 
-    DataPointer detached(qMax(asize, size()));
-    detached->copyAppend(d->begin(), d->end());
+    qsizetype newSize = qMax(asize, size());
+    DataPointer detached(newSize);
+    if (newSize)
+        Q_CHECK_PTR(detached.data());
+    detached->copyAppend(d.begin(), d.end());
     if (detached.d_ptr())
-        detached->setFlag(Data::CapacityReserved);
+        detached.setFlag(Data::CapacityReserved);
     d.swap(detached);
 }
 
@@ -777,10 +865,11 @@ inline void QList<T>::squeeze()
 {
     if (!d.isMutable())
         return;
-    if (d->needsDetach() || size() < capacity()) {
+    if (d.needsDetach() || size() < capacity()) {
         // must allocate memory
         DataPointer detached(size());
         if (size()) {
+            Q_CHECK_PTR(detached.data());
             if (d.needsDetach())
                 detached->copyAppend(d.data(), d.data() + d.size);
             else
@@ -789,20 +878,20 @@ inline void QList<T>::squeeze()
         d.swap(detached);
     }
     // We're detached so this is fine
-    d->clearFlag(Data::CapacityReserved);
+    d.clearFlag(Data::CapacityReserved);
 }
 
 template <typename T>
 inline void QList<T>::remove(qsizetype i, qsizetype n)
 {
-    Q_ASSERT_X(size_t(i) + size_t(n) <= size_t(d->size), "QList::remove", "index out of range");
+    Q_ASSERT_X(size_t(i) + size_t(n) <= size_t(d.size), "QList::remove", "index out of range");
     Q_ASSERT_X(n >= 0, "QList::remove", "invalid count");
 
     if (n == 0)
         return;
 
     d.detach();
-    d->erase(d->begin() + i, n);
+    d->erase(d.begin() + i, n);
 }
 
 template <typename T>
@@ -825,7 +914,7 @@ inline void QList<T>::removeLast() noexcept
 template<typename T>
 inline T QList<T>::value(qsizetype i, parameter_type defaultValue) const
 {
-    return size_t(i) < size_t(d->size) ? at(i) : defaultValue;
+    return size_t(i) < size_t(d.size) ? at(i) : defaultValue;
 }
 
 template <typename T>
@@ -840,13 +929,13 @@ inline void QList<T>::append(QList<T> &&other)
     Q_ASSERT(&other != this);
     if (other.isEmpty())
         return;
-    if (other.d->needsDetach() || !std::is_nothrow_move_constructible_v<T>)
+    if (other.d.needsDetach() || !std::is_nothrow_move_constructible_v<T>)
         return append(other);
 
     // due to precondition &other != this, we can unconditionally modify 'this'
     d.detachAndGrow(QArrayData::GrowsAtEnd, other.size(), nullptr, nullptr);
     Q_ASSERT(d.freeSpaceAtEnd() >= other.size());
-    d->moveAppend(other.d->begin(), other.d->end());
+    d->moveAppend(other.d.begin(), other.d.end());
 }
 
 template<typename T>
@@ -862,7 +951,7 @@ template <typename T>
 inline typename QList<T>::iterator
 QList<T>::insert(qsizetype i, qsizetype n, parameter_type t)
 {
-    Q_ASSERT_X(size_t(i) <= size_t(d->size), "QList<T>::insert", "index out of range");
+    Q_ASSERT_X(size_t(i) <= size_t(d.size), "QList<T>::insert", "index out of range");
     Q_ASSERT_X(n >= 0, "QList::insert", "invalid count");
     if (Q_LIKELY(n))
         d->insert(i, n, t);
@@ -874,7 +963,7 @@ template <typename ...Args>
 typename QList<T>::iterator
 QList<T>::emplace(qsizetype i, Args&&... args)
 {
-    Q_ASSERT_X(i >= 0 && i <= d->size, "QList<T>::insert", "index out of range");
+    Q_ASSERT_X(i >= 0 && i <= d.size, "QList<T>::insert", "index out of range");
     d->emplace(i, std::forward<Args>(args)...);
     return begin() + i;
 }
@@ -883,7 +972,7 @@ template<typename T>
 template<typename... Args>
 inline typename QList<T>::reference QList<T>::emplaceBack(Args &&... args)
 {
-    d->emplace(d->size, std::forward<Args>(args)...);
+    d->emplace(d.size, std::forward<Args>(args)...);
     return *(end() - 1);
 }
 
@@ -906,9 +995,9 @@ inline QList<T> &QList<T>::fill(parameter_type t, qsizetype newSize)
 {
     if (newSize == -1)
         newSize = size();
-    if (d->needsDetach() || newSize > capacity()) {
+    if (d.needsDetach() || newSize > capacity()) {
         // must allocate memory
-        DataPointer detached(d->detachCapacity(newSize));
+        DataPointer detached(d.detachCapacity(newSize));
         detached->copyAppend(newSize, t);
         d.swap(detached);
     } else {
@@ -944,7 +1033,7 @@ template <typename T, typename U>
 qsizetype lastIndexOf(const QList<T> &vector, const U &u, qsizetype from) noexcept
 {
     if (from < 0)
-        from += vector.d->size;
+        from += vector.d.size;
     else if (from >= vector.size())
         from = vector.size() - 1;
     if (from >= 0) {

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QJSONVALUE_H
 #define QJSONVALUE_H
@@ -7,6 +8,10 @@
 #include <QtCore/qcborvalue.h>
 #include <QtCore/qcompare.h>
 #include <QtCore/qglobal.h>
+#if (QT_VERSION < QT_VERSION_CHECK(7, 0, 0)) && !defined(QT_BOOTSTRAPPED)
+#include <QtCore/qjsondocument.h>
+#endif
+#include <QtCore/qjsonparseerror.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qshareddata.h>
 
@@ -34,6 +39,15 @@ public:
         Undefined = 0x80
     };
 
+#if (QT_VERSION < QT_VERSION_CHECK(7, 0, 0)) && !defined(QT_BOOTSTRAPPED)
+    using JsonFormat = QJsonDocument::JsonFormat;
+#else
+    enum class JsonFormat {
+        Indented,
+        Compact,
+    };
+#endif
+
     QJsonValue(Type = Null);
     QJsonValue(bool b);
     QJsonValue(double n);
@@ -55,18 +69,19 @@ public:
     QJsonValue(const QJsonValue &other) noexcept;
     QJsonValue &operator =(const QJsonValue &other) noexcept;
 
+    QT_CORE_INLINE_SINCE(6, 12)
     QJsonValue(QJsonValue &&other) noexcept;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QJsonValue)
 
-    QJsonValue &operator =(QJsonValue &&other) noexcept
-    {
-        swap(other);
-        return *this;
-    }
-
+    QT_CORE_INLINE_SINCE(6, 12)
     void swap(QJsonValue &other) noexcept;
 
     static QJsonValue fromVariant(const QVariant &variant);
     QVariant toVariant() const;
+
+    static QJsonValue fromJson(QByteArrayView json, QJsonParseError *error = nullptr);
+
+    QByteArray toJson(JsonFormat format = JsonFormat::Indented) const;
 
     Type type() const;
     inline bool isNull() const { return type() == Null; }
@@ -83,6 +98,7 @@ public:
     double toDouble(double defaultValue = 0) const;
     QString toString() const;
     QString toString(const QString &defaultValue) const;
+    QAnyStringView toStringView(QAnyStringView defaultValue = {}) const;
     QJsonArray toArray() const;
     QJsonArray toArray(const QJsonArray &defaultValue) const;
     QJsonObject toObject() const;
@@ -118,8 +134,9 @@ private:
     static_assert(sizeof(QExplicitlySharedDataPointer<QCborContainerPrivate>) == sizeof(void *));
     static_assert(sizeof(QCborValue::Type) == sizeof(QJsonValue::Type));
 };
-
 Q_DECLARE_SHARED(QJsonValue)
+
+Q_CORE_EXPORT size_t qHash(const QJsonValue &value, size_t seed = 0);
 
 class QJsonValueConstRef
 {
@@ -148,6 +165,8 @@ public:
     { return concreteDouble(*this, defaultValue); }
     QString toString(const QString &defaultValue = {}) const
     { return concreteString(*this, defaultValue); }
+    QAnyStringView toStringView(QAnyStringView defaultValue = {}) const
+    { return concreteStringView(*this, defaultValue); }
     Q_CORE_EXPORT QJsonArray toArray() const;
     Q_CORE_EXPORT QJsonObject toObject() const;
 
@@ -156,6 +175,9 @@ public:
     const QJsonValue operator[](qsizetype i) const { return concrete(*this)[i]; }
 
 protected:
+    friend size_t qHash(const QJsonValueConstRef &key, size_t seed = 0) noexcept
+    { return QHashPrivate::ex1to2arg(concrete(key), seed); }
+
     friend bool comparesEqual(const QJsonValueConstRef &lhs,
                               const QJsonValueConstRef &rhs)
     {
@@ -170,19 +192,23 @@ protected:
     Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QJsonValueConstRef, QJsonValue)
 
     Q_CORE_EXPORT static QJsonValue::Type
-    concreteType(QJsonValueConstRef self) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION concreteType(QJsonValueConstRef self) noexcept;
     Q_CORE_EXPORT static bool
-    concreteBool(QJsonValueConstRef self, bool defaultValue) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION concreteBool(QJsonValueConstRef self, bool defaultValue) noexcept;
     Q_CORE_EXPORT static qint64
-    concreteInt(QJsonValueConstRef self, qint64 defaultValue, bool clamp) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION concreteInt(QJsonValueConstRef self, qint64 defaultValue, bool clamp) noexcept;
     Q_CORE_EXPORT static double
-    concreteDouble(QJsonValueConstRef self, double defaultValue) noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION concreteDouble(QJsonValueConstRef self, double defaultValue) noexcept;
     Q_CORE_EXPORT static QString concreteString(QJsonValueConstRef self, const QString &defaultValue);
+    Q_CORE_EXPORT static QAnyStringView concreteStringView(QJsonValueConstRef self, QAnyStringView defaultValue);
     Q_CORE_EXPORT static QJsonValue concrete(QJsonValueConstRef self) noexcept;
 
     // for iterators
     Q_CORE_EXPORT static QString objectKey(QJsonValueConstRef self);
     QString objectKey() const { return objectKey(*this); }
+
+    Q_CORE_EXPORT static QAnyStringView objectKeyView(QJsonValueConstRef self);
+    QAnyStringView objectKeyView() const { return objectKeyView(*this); }
 
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
     QJsonValueConstRef(QJsonArray *array, qsizetype idx)
@@ -267,6 +293,8 @@ public:
     inline qint64 toInteger(qint64 defaultValue = 0) const { return QJsonValueConstRef::toInteger(defaultValue); }
     inline double toDouble(double defaultValue = 0) const { return QJsonValueConstRef::toDouble(defaultValue); }
     inline QString toString(const QString &defaultValue = {}) const { return QJsonValueConstRef::toString(defaultValue); }
+    QAnyStringView toStringView(QAnyStringView defaultValue = {}) const
+    { return QJsonValueConstRef::toStringView(defaultValue); }
     QJsonArray toArray() const;
     QJsonObject toObject() const;
 
@@ -312,9 +340,16 @@ inline QJsonValue QCborValueConstRef::toJsonValue() const
     return concrete().toJsonValue();
 }
 
-Q_CORE_EXPORT size_t qHash(const QJsonValue &value, size_t seed = 0);
+#if QT_CORE_INLINE_IMPL_SINCE(6, 12)
+QJsonValue::QJsonValue(QJsonValue &&other) noexcept = default;
 
-#if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
+void QJsonValue::swap(QJsonValue &other) noexcept
+{
+    value.swap(other.value);
+}
+#endif
+
+#if !defined(QT_NO_DEBUG_STREAM)
 Q_CORE_EXPORT QDebug operator<<(QDebug, const QJsonValue &);
 #endif
 

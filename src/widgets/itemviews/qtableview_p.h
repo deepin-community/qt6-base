@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTABLEVIEW_P_H
 #define QTABLEVIEW_P_H
@@ -19,15 +20,14 @@
 #include "qtableview.h"
 #include "qheaderview.h"
 
+#include <QtCore/QBasicTimer>
 #include <QtCore/QList>
 #include <QtCore/QMap>
 #include <QtCore/QSet>
-#include <QtCore/QDebug>
 #include "private/qabstractitemview_p.h"
 
 #include <array>
 #include <list>
-#include <vector>
 
 QT_REQUIRE_CONFIG(tableview);
 
@@ -107,7 +107,6 @@ class Q_AUTOTEST_EXPORT QTableViewPrivate : public QAbstractItemViewPrivate
 public:
     QTableViewPrivate()
         : showGrid(true), gridStyle(Qt::SolidLine),
-          columnResizeTimerID(0), rowResizeTimerID(0),
           horizontalHeader(nullptr), verticalHeader(nullptr),
           sortingEnabled(false), geometryRecursionBlock(false),
           visualCursor(QPoint())
@@ -139,11 +138,17 @@ public:
         return horizontalHeader->logicalIndex(visualCol);
     }
 
-    inline int accessibleTable2Index(const QModelIndex &index) const {
+    QStyleOptionViewItem::ViewItemPosition viewItemPosition(const QModelIndex &index) const;
+
+#if QT_CONFIG(accessibility)
+    inline int accessibleChildIndex(const QModelIndex &index) const override
+    {
+        Q_ASSERT(index.isValid());
         const int vHeader = verticalHeader ? 1 : 0;
         return (index.row() + (horizontalHeader ? 1 : 0)) * (index.model()->columnCount() + vHeader)
             + index.column() + vHeader;
     }
+#endif
 
     int sectionSpanEndLogical(const QHeaderView *header, int logical, int span) const;
     int sectionSpanSize(const QHeaderView *header, int logical, int span) const;
@@ -157,8 +162,8 @@ public:
 
     bool showGrid;
     Qt::PenStyle gridStyle;
-    int columnResizeTimerID;
-    int rowResizeTimerID;
+    QBasicTimer columnResizeTimer;
+    QBasicTimer rowResizeTimer;
     QList<int> columnsToUpdate;
     QList<int> rowsToUpdate;
     QHeaderView *horizontalHeader;
@@ -171,7 +176,7 @@ public:
     std::array<QMetaObject::Connection, 4> modelConnections;
     std::array<QMetaObject::Connection, 7> verHeaderConnections;
     std::array<QMetaObject::Connection, 5> horHeaderConnections;
-    std::vector<QMetaObject::Connection> dynHorHeaderConnections;
+    std::array<QMetaObject::Connection, 2> dynHorHeaderConnections;
 
     bool sortingEnabled;
     bool geometryRecursionBlock;

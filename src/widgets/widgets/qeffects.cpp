@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qapplication.h"
 #include "qdebug.h"
@@ -18,6 +19,15 @@
 
 
 QT_BEGIN_NAMESPACE
+
+struct DeleteLater
+{
+    void operator()(QObject *o) const
+    {
+        if (o)
+            o->deleteLater();
+    }
+};
 
 /*
   Internal class QAlphaWidget.
@@ -58,7 +68,7 @@ private:
     QElapsedTimer checkTime;
 };
 
-static QAlphaWidget* q_blend = nullptr;
+static std::unique_ptr<QAlphaWidget, DeleteLater> q_blend;
 
 /*
   Constructs a QAlphaWidget.
@@ -73,6 +83,7 @@ QAlphaWidget::QAlphaWidget(QWidget* w, Qt::WindowFlags f)
     setAttribute(Qt::WA_NoSystemBackground, true);
     widget = w;
     alpha = 0;
+    connect(w, &QWidget::destroyed, this, []() { q_blend.reset(); });
 }
 
 QAlphaWidget::~QAlphaWidget()
@@ -227,8 +238,7 @@ void QAlphaWidget::render()
         anim.stop();
         qApp->removeEventFilter(this);
         widget->setWindowOpacity(1);
-        q_blend = 0;
-        deleteLater();
+        q_blend.reset();
     } else {
         widget->setWindowOpacity(alpha);
     }
@@ -248,8 +258,7 @@ void QAlphaWidget::render()
                 lower();
             }
         }
-        q_blend = nullptr;
-        deleteLater();
+        q_blend.reset();
     } else {
         alphaBlend();
         pm = QPixmap::fromImage(mixedImage);
@@ -341,7 +350,7 @@ private:
     QPixmap pm;
 };
 
-static QRollEffect* q_roll = nullptr;
+static std::unique_ptr<QRollEffect, DeleteLater> q_roll;
 
 /*
   Construct a QRollEffect widget.
@@ -376,6 +385,7 @@ QRollEffect::QRollEffect(QWidget* w, Qt::WindowFlags f, DirFlags orient)
         currentHeight = 0;
 
     pm = widget->grab();
+    connect(w, &QWidget::destroyed, this, []() { q_roll.reset(); });
 }
 
 /*
@@ -513,8 +523,7 @@ void QRollEffect::scroll()
                 lower();
             }
         }
-        q_roll = nullptr;
-        deleteLater();
+        q_roll.reset();
     }
 }
 
@@ -524,10 +533,7 @@ void QRollEffect::scroll()
 */
 void qScrollEffect(QWidget* w, QEffects::DirFlags orient, int time)
 {
-    if (q_roll) {
-        q_roll->deleteLater();
-        q_roll = nullptr;
-    }
+    q_roll.reset();
 
     if (!w)
         return;
@@ -537,7 +543,7 @@ void qScrollEffect(QWidget* w, QEffects::DirFlags orient, int time)
     Qt::WindowFlags flags = Qt::ToolTip;
 
     // those can be popups - they would steal the focus, but are disabled
-    q_roll = new QRollEffect(w, flags, orient);
+    q_roll.reset(new QRollEffect(w, flags, orient));
     q_roll->run(time);
 }
 
@@ -546,10 +552,7 @@ void qScrollEffect(QWidget* w, QEffects::DirFlags orient, int time)
 */
 void qFadeEffect(QWidget* w, int time)
 {
-    if (q_blend) {
-        q_blend->deleteLater();
-        q_blend = nullptr;
-    }
+    q_blend.reset();
 
     if (!w)
         return;
@@ -560,7 +563,7 @@ void qFadeEffect(QWidget* w, int time)
     Qt::WindowFlags flags = Qt::ToolTip;
 
     // those can be popups - they would steal the focus, but are disabled
-    q_blend = new QAlphaWidget(w, flags);
+    q_blend.reset(new QAlphaWidget(w, flags));
 
     q_blend->run(time);
 }

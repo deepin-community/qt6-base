@@ -35,26 +35,27 @@ int main(int argc, char *argv[])
     title->setMargin(8);
     layout->addWidget(title);
 
-//! [0]
+    //! [0]
     auto *model = new QFileSystemModel;
 
     auto onDirectoryLoaded = [model, layout, &window](const QString &directory) {
         QModelIndex parentIndex = model->index(directory);
         const int numRows = model->rowCount(parentIndex);
-//! [1]
+        //! [1]
         for (int row = 0; row < numRows; ++row) {
             QModelIndex index = model->index(row, 0, parentIndex);
-//! [1]
+        //! [1]
 
-//! [2]
+        //! [2]
             QString text = model->data(index, Qt::DisplayRole).toString();
-//! [2]
+        //! [2]
+
             // Display the text in a widget.
             auto *label = new QLabel(text, &window);
             layout->addWidget(label);
-//! [3]
+        //! [3]
         }
-//! [3]
+        //! [3]
     };
 
     QObject::connect(model, &QFileSystemModel::directoryLoaded, onDirectoryLoaded);

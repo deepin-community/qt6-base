@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtGui>
-#include <QApplication>
+#include <QtWidgets>
 
 class MyPushButton : public QPushButton
 {
@@ -40,7 +40,7 @@ class MyStyle : public QStyle
 public:
 
     void drawPrimitive(PrimitiveElement element, const QStyleOption *option,
-                       QPainter *painter, const QWidget *widget) override;
+                       QPainter *painter, const QWidget *widget);
 };
 
 //! [4]

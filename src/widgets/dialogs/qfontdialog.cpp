@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowdefs.h"
 #include "qfontdialog.h"
@@ -107,6 +108,37 @@ QFontDialogPrivate::~QFontDialogPrivate()
       {Standard Dialogs Example}
 */
 
+/*
+    Internal event filter used to adjust dialog options during widget polish.
+
+    Enables DontUseNativeDialog automatically when QFontDialog is subclassed
+    and no explicit options were set by the user.
+*/
+
+class QFontPolishFilter : public QObject
+{
+public:
+    explicit QFontPolishFilter(QFontDialog *fd) : QObject(fd)
+    {
+        fd->installEventFilter(this);
+    }
+
+    bool eventFilter(QObject *obj, QEvent *event) override
+    {
+        if (event->type() == QEvent::Polish ) {
+            Q_ASSERT(qobject_cast<QFontDialog *>(obj));
+            auto *fd = static_cast<QFontDialog *>(obj);
+            auto *d = static_cast<QFontDialogPrivate *>(QObjectPrivate::get(fd));
+
+            if (fd->metaObject() != &QFontDialog::staticMetaObject && !d->optionsExplicitlySet)
+                fd->setOption(QFontDialog::DontUseNativeDialog);
+
+            deleteLater(); // no longer needed after first polish
+        }
+        return false;
+    }
+};
+
 /*!
     Constructs a standard font dialog.
 
@@ -120,6 +152,7 @@ QFontDialog::QFontDialog(QWidget *parent)
     : QDialog(*new QFontDialogPrivate, parent, qfd_DefaultWindowFlags)
 {
     Q_D(QFontDialog);
+    new QFontPolishFilter(this);
     d->init();
 }
 
@@ -131,6 +164,7 @@ QFontDialog::QFontDialog(const QFont &initial, QWidget *parent)
     : QFontDialog(parent)
 {
     setCurrentFont(initial);
+    new QFontPolishFilter(this);
 }
 
 void QFontDialogPrivate::init()
@@ -171,7 +205,7 @@ void QFontDialogPrivate::init()
 
     sizeAccel = new QLabel(q);
 #ifndef QT_NO_SHORTCUT
-    sizeAccel->setBuddy(sizeEdit);
+    sizeAccel->setBuddy(sizeList);
 #endif
     sizeAccel->setIndent(2);
 
@@ -326,10 +360,6 @@ QFontDialog::~QFontDialog()
   \snippet code/src_gui_dialogs_qfontdialog.cpp 3
   In this example, if the user clicks OK the font they chose will be
   used, and if they click Cancel the original font is used.
-
-  \warning Do not delete \a parent during the execution of the dialog.
-           If you want to do this, you should create the dialog
-           yourself using one of the QFontDialog constructors.
 */
 QFont QFontDialog::getFont(bool *ok, const QFont &initial, QWidget *parent, const QString &title,
                            FontDialogOptions options)
@@ -352,10 +382,6 @@ QFont QFontDialog::getFont(bool *ok, const QFont &initial, QWidget *parent, cons
 
   Example:
   \snippet code/src_gui_dialogs_qfontdialog.cpp 4
-
-  \warning Do not delete \a parent during the execution of the dialog.
-           If you want to do this, you should create the dialog
-           yourself using one of the QFontDialog constructors.
 */
 QFont QFontDialog::getFont(bool *ok, QWidget *parent)
 {
@@ -366,17 +392,17 @@ QFont QFontDialog::getFont(bool *ok, QWidget *parent)
 QFont QFontDialogPrivate::getFont(bool *ok, const QFont &initial, QWidget *parent,
                                   const QString &title, QFontDialog::FontDialogOptions options)
 {
-    QFontDialog dlg(parent);
-    dlg.setOptions(options);
-    dlg.setCurrentFont(initial);
+    QAutoPointer<QFontDialog> dlg(new QFontDialog(parent));
+    dlg->setOptions(options);
+    dlg->setCurrentFont(initial);
     if (!title.isEmpty())
-        dlg.setWindowTitle(title);
+        dlg->setWindowTitle(title);
 
-    int ret = (dlg.exec() || (options & QFontDialog::NoButtons));
+    int ret = (dlg->exec() || (options & QFontDialog::NoButtons));
     if (ok)
         *ok = !!ret;
-    if (ret) {
-        return dlg.selectedFont();
+    if (ret && bool(dlg)) {
+        return dlg->selectedFont();
     } else {
         return initial;
     }
@@ -507,7 +533,7 @@ void QFontDialogPrivate::updateFamilies()
         match_t type = MATCH_NONE;
         if (bestFamilyType <= MATCH_NONE && familyName2 == "helvetica"_L1)
             type = MATCH_LAST_RESORT;
-        if (bestFamilyType <= MATCH_LAST_RESORT && familyName2 == f.families().constFirst())
+        if (bestFamilyType <= MATCH_LAST_RESORT && familyName2 == f.family())
             type = MATCH_APP;
         // ### add fallback for writingSystem
         if (type != MATCH_NONE) {
@@ -860,6 +886,9 @@ QFont QFontDialog::selectedFont() const
 */
 void QFontDialog::setOption(FontDialogOption option, bool on)
 {
+    Q_D(QFontDialog);
+    d->optionsExplicitlySet = true;
+
     const QFontDialog::FontDialogOptions previousOptions = options();
     if (!(previousOptions & option) != !on)
         setOptions(previousOptions ^ option);
@@ -892,6 +921,7 @@ bool QFontDialog::testOption(FontDialogOption option) const
 void QFontDialog::setOptions(FontDialogOptions options)
 {
     Q_D(QFontDialog);
+    d->optionsExplicitlySet = true;
 
     if (QFontDialog::options() == options)
         return;
@@ -964,7 +994,9 @@ void QFontDialog::setVisible(bool visible)
 */
 void QFontDialogPrivate::setVisible(bool visible)
 {
-    Q_Q(QFontDialog);
+    // Don't use Q_Q here! This function is called from ~QDialog,
+    // so Q_Q calling q_func() invokes undefined behavior (invalid cast in q_func()).
+    const auto q = static_cast<QDialog *>(q_ptr);
 
     if (canBeNativeDialog())
         setNativeDialogVisible(visible);

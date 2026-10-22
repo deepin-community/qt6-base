@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //
 //  W A R N I N G
@@ -21,6 +22,7 @@
 #include "qgraphicsitem_p.h"
 #include "qgraphicsscene_bsp_p.h"
 
+#include <QtCore/qbasictimer.h>
 #include <QtCore/qrect.h>
 #include <QtCore/qlist.h>
 
@@ -80,7 +82,7 @@ public:
     QGraphicsSceneBspTree bsp;
     QRectF sceneRect;
     int bspTreeDepth;
-    int indexTimerId;
+    QBasicTimer indexTimer;
     bool restartIndexTimer;
     bool regenerateIndex;
     int lastItemCount;

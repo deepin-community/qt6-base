@@ -1,8 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhttpnetworkrequest_p.h"
 #include "private/qnoncontiguousbytedevice_p.h"
+
+#include <QtCore/private/qtools_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -21,6 +24,7 @@ QHttpNetworkRequestPrivate::QHttpNetworkRequestPrivate(const QHttpNetworkRequest
     : QHttpNetworkHeaderPrivate(other),
       operation(other.operation),
       customVerb(other.customVerb),
+      fullLocalServerName(other.fullLocalServerName),
       priority(other.priority),
       uploadByteDevice(other.uploadByteDevice),
       autoDecompress(other.autoDecompress),
@@ -46,6 +50,7 @@ bool QHttpNetworkRequestPrivate::operator==(const QHttpNetworkRequestPrivate &ot
 {
     return QHttpNetworkHeaderPrivate::operator==(other)
         && (operation == other.operation)
+        && (fullLocalServerName == other.fullLocalServerName)
         && (priority == other.priority)
         && (uploadByteDevice == other.uploadByteDevice)
         && (autoDecompress == other.autoDecompress)
@@ -126,8 +131,19 @@ QByteArray QHttpNetworkRequestPrivate::header(const QHttpNetworkRequest &request
     ba += QByteArray::number(request.minorVersion());
     ba += "\r\n";
 
+    constexpr auto titlecase = [](QByteArrayView name) {
+        std::string n;
+        n.reserve(size_t(name.size()));
+        bool toUpperNext = true;
+        for (char c : name) {
+            n += toUpperNext ? QtMiscUtils::toAsciiUpper(c) : c;
+            toUpperNext = c == '-';
+        }
+        return n;
+    };
+
     for (qsizetype i = 0; i < headers.size(); ++i) {
-        ba += headers.nameAt(i);
+        ba += titlecase(headers.nameAt(i));
         ba += ": ";
         ba += headers.valueAt(i);
         ba += "\r\n";
@@ -390,6 +406,14 @@ QString QHttpNetworkRequest::fullLocalServerName() const
 void QHttpNetworkRequest::setFullLocalServerName(const QString &fullServerName)
 {
     d->fullLocalServerName = fullServerName;
+}
+
+bool QHttpNetworkRequest::methodIsIdempotent() const
+{
+    using Op = Operation;
+    constexpr auto knownSafe = std::array{ Op::Get, Op::Head, Op::Put, Op::Trace, Op::Options };
+    return std::any_of(knownSafe.begin(), knownSafe.end(),
+                       [currentOp = d->operation](auto op) { return op == currentOp; });
 }
 
 QT_END_NAMESPACE

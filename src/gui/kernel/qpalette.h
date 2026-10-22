@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPALETTE_H
 #define QPALETTE_H
@@ -45,7 +46,8 @@ public:
     operator QVariant() const;
 
     // Do not change the order, the serialization format depends on it
-    // Ensure these values are kept in sync with QQuickColorGroup's properties.
+    // Ensure these values are kept in sync with QQuickColorGroup's properties
+    // and QCss::KnownValue!
     enum ColorGroup { Active, Disabled, Inactive, NColorGroups, Current, All, Normal = Active };
     Q_ENUM(ColorGroup)
     enum ColorRole { WindowText, Button, Light, Midlight, Dark, Mid,

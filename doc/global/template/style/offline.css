@@ -120,11 +120,11 @@ NOTE styles
 }
 
 .admonition.note, .admonition.important {
-    background: #f2f2f2 3px 6px no-repeat url(../images/ico_note.png);
+    background: #f2f2f2 3px 6px no-repeat;
 }
 
 .admonition.warning {
-    background: #f2f2f2 3px 6px no-repeat url(../images/ico_note_attention.png);
+    background: #f2f2f2 3px 6px no-repeat;
 }
 /*
 -------------------------------
@@ -393,6 +393,10 @@ h3.fn:target {
     color: #808080
 }
 
+.template-block {
+    white-space: pre-wrap
+}
+
 @media print {
     .title {
         color: #0066CB;
@@ -477,6 +481,10 @@ table, pre, .LegaleseLeft {
 
  table p {
      margin: 0px
+ }
+
+ table.qmlname {
+     width: 75%;
  }
 
 .LegaleseLeft {
@@ -565,14 +573,12 @@ ol.I > li {
     display: block;
     margin: 10px;
     overflow: auto;
-    padding: 20px 20px 20px 20px;
 }
 
 .js {
     display: block;
     margin: 10px;
     overflow: auto;
-    padding: 20px 20px 20px 20px;
 }
 
 .memItemLeft {
@@ -601,7 +607,6 @@ td.memItemRight span.status {
     display: block;
     margin: 10px;
     overflow: auto;
-    padding: 20px 20px 20px 20px;
 }
 
 .qmlextra {

@@ -19,6 +19,10 @@
 #include <unistd.h>
 #endif
 
+#if defined(Q_OS_WINDOWS)
+#include <io.h>
+#endif
+
 #ifdef Q_OS_ANDROID
 #include <sys/stat.h>
 #endif
@@ -190,22 +194,37 @@ void QAbstractTestLogger::filterUnprintable(char *str) const
     Convenience method to write \a msg to the output stream.
 
     The output \a msg must be a \c{'\0'}-terminated string (and not \nullptr).
-    A copy of it is passed to \l filterUnprintable() and the result written to
-    the output \c stream, which is then flushed.
+
+    If the output \c stream is TTY the message is printed as is. If not, the
+    message is filtered via filterUnprintable() first. In both cases the output
+    \c stream is flushed after printing.
 */
 void QAbstractTestLogger::outputString(const char *msg)
 {
     QTEST_ASSERT(stream);
     QTEST_ASSERT(msg);
 
-    char *filtered = new char[strlen(msg) + 1];
-    strcpy(filtered, msg);
-    filterUnprintable(filtered);
+#if defined(Q_OS_WINDOWS)
+#define isatty _isatty
+#define fileno _fileno
+#endif
 
-    ::fputs(filtered, stream);
-    ::fflush(stream);
+    if (isatty(fileno(stream))) {
+        ::fputs(msg, stream);
+        ::fflush(stream);
+    } else {
+        char *filtered = new char[strlen(msg) + 1];
+        strcpy(filtered, msg);
+        filterUnprintable(filtered);
+        ::fputs(filtered, stream);
+        ::fflush(stream);
+        delete [] filtered;
+    }
 
-    delete [] filtered;
+#if defined(Q_OS_WINDOWS)
+#undef isatty
+#undef fileno
+#endif
 }
 
 /*!
@@ -430,14 +449,20 @@ namespace QTestPrivate
 
 void generateTestIdentifier(QTestCharBuffer *identifier, int parts)
 {
-    const char *testObject = parts & TestObject ? QTestResult::currentTestObjectName() : "";
-    const char *testFunction = parts & TestFunction ? (QTestResult::currentTestFunction() ? QTestResult::currentTestFunction() : "UnknownTestFunc") : "";
+    // We may run on any thread, while the main thread moves on to the next data row or test
+    // function. Hold the lock until we're done copying the strings.
+    const QTestResult::IdentifierLocker locker;
+
+    const char *function = locker.testFunction() ? locker.testFunction() : "UnknownTestFunc";
+    const char *testObject = parts & TestObject ? locker.objectName() : "";
+    const char *testFunction = parts & TestFunction ? function : "";
     const char *objectFunctionFiller = parts & TestObject && parts & (TestFunction | TestDataTag) ? "::" : "";
     const char *testFuctionStart = parts & TestFunction ? "(" : "";
     const char *testFuctionEnd = parts & TestFunction ? ")" : "";
 
-    const char *dataTag = (parts & TestDataTag) && QTestResult::currentDataTag() ? QTestResult::currentDataTag() : "";
-    const char *globalDataTag = (parts & TestDataTag) && QTestResult::currentGlobalDataTag() ? QTestResult::currentGlobalDataTag() : "";
+    const char *dataTag = (parts & TestDataTag) && locker.dataTag() ? locker.dataTag() : "";
+    const char *globalDataTag =
+            (parts & TestDataTag) && locker.globalDataTag() ? locker.globalDataTag() : "";
     const char *tagFiller = (dataTag[0] && globalDataTag[0]) ? ":" : "";
 
     QTest::qt_asprintf(identifier, "%s%s%s%s%s%s%s%s",

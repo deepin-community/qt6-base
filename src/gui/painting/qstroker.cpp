@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "private/qstroker_p.h"
 #include "private/qbezier_p.h"
@@ -145,6 +146,11 @@ static inline qreal adapted_angle_on_x(const QLineF &line)
     return QLineF(0, 0, 1, 0).angleTo(line);
 }
 
+/*!
+    \class QStrokerOps
+    \inmodule QtGui
+    \internal
+*/
 QStrokerOps::QStrokerOps()
     : m_elements(0)
     , m_curveThreshold(qt_real_to_fixed(0.25))
@@ -373,6 +379,7 @@ QStroker::LineJoinMode QStroker::joinModeForJoin(Qt::PenJoinStyle joinStyle)
 
 
 /*!
+    \internal
     This function is called to stroke the currently built up
     subpath. The subpath is cleared when the function completes.
 */
@@ -1154,7 +1161,8 @@ void QDashStroker::processCurrentSubpath()
             elen -= std::floor(elen * invSumLength) * sumLength;
             // Update dash offset.
             while (!done) {
-                qreal dpos = pos + dashes[idash] - doffset - estart;
+                // parentheses to avoid float rounding issues: qreal(4) + 0.1 - 0.1 - 4 < 0
+                qreal dpos = (pos + dashes[idash]) - (doffset + estart);
 
                 Q_ASSERT(dpos >= 0);
 
@@ -1189,7 +1197,8 @@ void QDashStroker::processCurrentSubpath()
 
             bool has_offset = doffset > 0;
             bool evenDash = (idash & 1) == 0;
-            qreal dpos = pos + dashes[idash] - doffset - estart;
+            // parentheses to avoid float rounding issues: qreal(4) + 0.1 - 0.1 - 4 < 0
+            qreal dpos = (pos + dashes[idash]) - (doffset + estart);
 
             Q_ASSERT(dpos >= 0);
 

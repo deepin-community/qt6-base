@@ -3,15 +3,18 @@
 // Copyright (C) 2019 Mail.ru Group.
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QLATIN1STRINGVIEW_H
 #define QLATIN1STRINGVIEW_H
 
+#include <QtCore/qbytearrayview.h>
 #include <QtCore/qchar.h>
 #include <QtCore/qcompare.h>
 #include <QtCore/qcontainerfwd.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qtversionchecks.h>
+#include <QtCore/qstringfwd.h>
 #include <QtCore/qstringview.h>
 
 #if 0
@@ -24,8 +27,7 @@ QT_BEGIN_NAMESPACE
 
 class QString;
 
-#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED) || defined(Q_QDOC)
-#    define Q_L1S_VIEW_IS_PRIMARY
+#ifdef Q_L1S_VIEW_IS_PRIMARY
 class QLatin1StringView
 #else
 class QLatin1String
@@ -58,6 +60,7 @@ public:
 #endif // !Q_L1S_VIEW_IS_PRIMARY
 
     inline QString toString() const;
+    QByteArray toUtf8() const { return QtPrivate::convertToUtf8(*this); }
 
     constexpr const char *latin1() const noexcept { return m_data; }
     constexpr qsizetype size() const noexcept { return m_size; }
@@ -122,15 +125,21 @@ public:
     { return QtPrivate::findString(*this, from, s, cs); }
     [[nodiscard]] qsizetype indexOf(QLatin1StringView s, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return QtPrivate::findString(*this, from, s, cs); }
-    [[nodiscard]] qsizetype indexOf(QChar c, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::findString(*this, from, QStringView(&c, 1), cs); }
+    [[nodiscard]] qsizetype indexOf(QChar c, qsizetype from = 0) const noexcept
+    { return c.unicode() <= 0xff ? QByteArrayView(*this).indexOf(char(c.unicode()), from) : -1; }
+    [[nodiscard]] qsizetype indexOf(QChar c, qsizetype from, Qt::CaseSensitivity cs) const noexcept
+    {
+        if (cs == Qt::CaseInsensitive)
+            return QtPrivate::findString(*this, from, QStringView(&c, 1), cs);
+        return indexOf(c, from);
+    }
 
     [[nodiscard]] bool contains(QStringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return indexOf(s, 0, cs) != -1; }
     [[nodiscard]] bool contains(QLatin1StringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return indexOf(s, 0, cs) != -1; }
     [[nodiscard]] bool contains(QChar c, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return indexOf(QStringView(&c, 1), 0, cs) != -1; }
+    { return indexOf(c, 0, cs) != -1; }
 
     [[nodiscard]] qsizetype lastIndexOf(QStringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return lastIndexOf(s, size(), cs); }
@@ -140,10 +149,18 @@ public:
     { return lastIndexOf(s, size(), cs); }
     [[nodiscard]] qsizetype lastIndexOf(QLatin1StringView s, qsizetype from, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return QtPrivate::lastIndexOf(*this, from, s, cs); }
-    [[nodiscard]] qsizetype lastIndexOf(QChar c, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
+    [[nodiscard]] qsizetype lastIndexOf(QChar c) const noexcept
+    { return lastIndexOf(c, -1); }
+    [[nodiscard]] qsizetype lastIndexOf(QChar c, Qt::CaseSensitivity cs) const noexcept
     { return lastIndexOf(c, -1, cs); }
-    [[nodiscard]] qsizetype lastIndexOf(QChar c, qsizetype from, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::lastIndexOf(*this, from, QStringView(&c, 1), cs); }
+    [[nodiscard]] qsizetype lastIndexOf(QChar c, qsizetype from) const noexcept
+    { return c.unicode() <= 0xff ? QByteArrayView(*this).lastIndexOf(char(c.unicode()), from) : -1; }
+    [[nodiscard]] qsizetype lastIndexOf(QChar c, qsizetype from, Qt::CaseSensitivity cs) const noexcept
+    {
+        if (cs == Qt::CaseInsensitive)
+            return QtPrivate::lastIndexOf(*this, from, QStringView(&c, 1), cs);
+        return lastIndexOf(c, from);
+    }
 
     [[nodiscard]] qsizetype count(QStringView str, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
     { return QtPrivate::count(*this, str, cs); }
@@ -356,6 +373,8 @@ private:
     qsizetype m_size;
     const char *m_data;
 #endif
+
+    friend class QStringView;
 };
 #ifdef Q_L1S_VIEW_IS_PRIMARY
 Q_DECLARE_TYPEINFO(QLatin1StringView, Q_RELOCATABLE_TYPE);

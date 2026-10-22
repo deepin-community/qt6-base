@@ -1,5 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #include "qibusplatforminputcontext.h"
 
 #include <QDebug>
@@ -45,7 +47,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-enum { debug = 0 };
+Q_LOGGING_CATEGORY(lcQpaInputMethods, "qt.qpa.input.methods");
 
 class QIBusPlatformInputContextPrivate
 {
@@ -247,8 +249,7 @@ void QIBusPlatformInputContext::cursorRectChanged()
         r.translate(margins.left(), margins.top());
         qreal scale = inputWindow->devicePixelRatio();
         QRect newRect = QRect(r.x() * scale, r.y() * scale, r.width() * scale, r.height() * scale);
-        if (debug)
-            qDebug() << "microFocus" << newRect;
+        qCDebug(lcQpaInputMethods) << "microFocus" << newRect;
         d->context->SetCursorLocationRelative(newRect.x(), newRect.y(),
                                               newRect.width(), newRect.height());
         return;
@@ -260,8 +261,7 @@ void QIBusPlatformInputContext::cursorRectChanged()
     qreal scale = inputWindow->devicePixelRatio();
     auto native = (point - screenGeometry.topLeft()) * scale + screenGeometry.topLeft();
     QRect newRect(native, r.size() * scale);
-    if (debug)
-        qDebug() << "microFocus" << newRect;
+    qCDebug(lcQpaInputMethods) << "microFocus" << newRect;
     d->context->SetCursorLocation(newRect.x(), newRect.y(),
                                   newRect.width(), newRect.height());
 }
@@ -277,8 +277,7 @@ void QIBusPlatformInputContext::setFocusObject(QObject *object)
     if (object && !inputMethodAccepted())
         return;
 
-    if (debug)
-        qDebug() << "setFocusObject" << object;
+    qCDebug(lcQpaInputMethods) << "setFocusObject" << object;
     if (object)
         d->context->FocusIn();
     else
@@ -294,11 +293,9 @@ void QIBusPlatformInputContext::commitText(const QDBusVariant &text)
     const QDBusArgument arg = qvariant_cast<QDBusArgument>(text.variant());
 
     QIBusText t;
-    if (debug)
-        qDebug() << arg.currentSignature();
+    qCDebug(lcQpaInputMethods) << arg.currentSignature();
     arg >> t;
-    if (debug)
-        qDebug() << "commit text:" << t.text;
+    qCDebug(lcQpaInputMethods) << "commit text:" << t.text;
 
     QInputMethodEvent event;
     event.setCommitString(t.text);
@@ -321,8 +318,7 @@ void QIBusPlatformInputContext::updatePreeditText(const QDBusVariant &text, uint
 
     QIBusText t;
     arg >> t;
-    if (debug)
-        qDebug() << "preedit text:" << t.text;
+    qCDebug(lcQpaInputMethods) << "preedit text:" << t.text;
 
     d->attributes = t.attributes.imAttributes();
     if (!t.text.isEmpty())
@@ -372,8 +368,7 @@ void QIBusPlatformInputContext::forwardKeyEvent(uint keyval, uint keycode, uint 
     int qtcode = QXkbCommon::keysymToQtKey(keyval, modifiers);
     QString text = QXkbCommon::lookupStringNoKeysymTransformations(keyval);
 
-    if (debug)
-        qDebug() << "forwardKeyEvent" << keyval << keycode << state << modifiers << qtcode << text;
+    qCDebug(lcQpaInputMethods) << "forwardKeyEvent" << keyval << keycode << state << modifiers << qtcode << text;
 
     QKeyEvent event(type, qtcode, modifiers, keycode, keyval, state, text);
     QCoreApplication::sendEvent(input, &event);
@@ -381,8 +376,7 @@ void QIBusPlatformInputContext::forwardKeyEvent(uint keyval, uint keycode, uint 
 
 void QIBusPlatformInputContext::surroundingTextRequired()
 {
-    if (debug)
-        qDebug("surroundingTextRequired");
+    qCDebug(lcQpaInputMethods) << "surroundingTextRequired";
     d->needsSurroundingText = true;
     update(Qt::ImSurroundingText);
 }
@@ -393,8 +387,7 @@ void QIBusPlatformInputContext::deleteSurroundingText(int offset, uint n_chars)
     if (!input)
         return;
 
-    if (debug)
-        qDebug() << "deleteSurroundingText" << offset << n_chars;
+    qCDebug(lcQpaInputMethods) << "deleteSurroundingText" << offset << n_chars;
 
     QInputMethodEvent event;
     event.setCommitString("", offset, n_chars);
@@ -640,8 +633,7 @@ QIBusPlatformInputContextPrivate::QIBusPlatformInputContextPrivate()
 {
     if (usePortal) {
         valid = true;
-        if (debug)
-            qDebug() << "use IBus portal";
+        qCDebug(lcQpaInputMethods) << "use IBus portal";
     } else {
         valid = !QStandardPaths::findExecutable(QString::fromLocal8Bit("ibus-daemon"), QStringList()).isEmpty();
     }
@@ -720,8 +712,7 @@ void QIBusPlatformInputContextPrivate::createBusProxy()
 
     context->setClientCommitPreedit(QIBusPropTypeClientCommitPreedit(true));
 
-    if (debug)
-        qDebug(">>>> bus connected!");
+    qCDebug(lcQpaInputMethods) << ">>>> bus connected!";
     busConnected = true;
 }
 
@@ -731,11 +722,9 @@ QString QIBusPlatformInputContextPrivate::getSocketPath()
     QByteArray displayNumber = "0";
     bool isWayland = false;
 
-    if (qEnvironmentVariableIsSet("IBUS_ADDRESS_FILE")) {
-        QByteArray path = qgetenv("IBUS_ADDRESS_FILE");
-        return QString::fromLocal8Bit(path);
-    } else  if (qEnvironmentVariableIsSet("WAYLAND_DISPLAY")) {
-        display = qgetenv("WAYLAND_DISPLAY");
+    if (QString path = qEnvironmentVariable("IBUS_ADDRESS_FILE"); !path.isNull()) {
+        return path;
+    } else if (display = qgetenv("WAYLAND_DISPLAY"); !display.isEmpty()) {
         isWayland = true;
     } else {
         display = qgetenv("DISPLAY");
@@ -756,8 +745,7 @@ QString QIBusPlatformInputContextPrivate::getSocketPath()
             displayNumber = display.mid(pos);
     }
 
-    if (debug)
-        qDebug() << "host=" << host << "displayNumber" << displayNumber;
+    qCDebug(lcQpaInputMethods) << "host=" << host << "displayNumber" << displayNumber;
 
     return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) +
                "/ibus/bus/"_L1 +
@@ -778,20 +766,20 @@ void QIBusPlatformInputContextPrivate::createConnection()
 
     QByteArray address;
     int pid = -1;
+    QByteArray lineArray;
 
-    while (!file.atEnd()) {
-        QByteArray line = file.readLine().trimmed();
+    while (file.readLineInto(&lineArray)) {
+        QByteArrayView line = QByteArrayView(lineArray).trimmed();
         if (line.startsWith('#'))
             continue;
 
         if (line.startsWith("IBUS_ADDRESS="))
-            address = line.mid(sizeof("IBUS_ADDRESS=") - 1);
+            address = line.mid(sizeof("IBUS_ADDRESS=") - 1).toByteArray();
         if (line.startsWith("IBUS_DAEMON_PID="))
             pid = line.mid(sizeof("IBUS_DAEMON_PID=") - 1).toInt();
     }
 
-    if (debug)
-        qDebug() << "IBUS_ADDRESS=" << address << "PID=" << pid;
+    qCDebug(lcQpaInputMethods) << "IBUS_ADDRESS=" << address << "PID=" << pid;
     if (address.isEmpty() || pid < 0 || kill(pid, 0) != 0)
         return;
 

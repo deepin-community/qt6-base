@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qevent.h"
 
@@ -523,14 +524,13 @@ QSinglePointEvent::QSinglePointEvent(QEvent::Type type, const QPointingDevice *d
       m_reserved(0), m_reserved2(0),
       m_doubleClick(false), m_phase(0), m_invertedScrolling(0)
 {
-    bool isPress = (button != Qt::NoButton && (button | buttons) == buttons);
-    bool isWheel = (type == QEvent::Type::Wheel);
+    const bool isPress = (button != Qt::NoButton && (button | buttons) == buttons);
+    const bool isWheel = (type == QEvent::Type::Wheel);
     auto devPriv = QPointingDevicePrivate::get(const_cast<QPointingDevice *>(pointingDevice()));
     auto epd = devPriv->pointById(0);
     QEventPoint &p = epd->eventPoint;
+    QMutableEventPoint::detach(p);
     Q_ASSERT(p.device() == dev);
-    // p is a reference to a non-detached instance that lives in QPointingDevicePrivate::activePoints.
-    // Update persistent info in that instance.
     if (isPress || isWheel)
         QMutableEventPoint::setGlobalLastPosition(p, globalPos);
     else
@@ -547,8 +547,6 @@ QSinglePointEvent::QSinglePointEvent(QEvent::Type type, const QPointingDevice *d
     else
         QMutableEventPoint::setState(p, QEventPoint::State::Released);
     QMutableEventPoint::setScenePosition(p, scenePos);
-    // Now detach, and update the detached instance with ephemeral state.
-    QMutableEventPoint::detach(p);
     QMutableEventPoint::setPosition(p, localPos);
     m_points.append(p);
 }
@@ -952,7 +950,7 @@ Qt::MouseEventFlags QMouseEvent::flags() const
     Mouse events occur when a mouse cursor is moved into, out of, or within a
     widget, and if the widget has the Qt::WA_Hover attribute.
 
-    The function pos() gives the current cursor position, while oldPos() gives
+    The function position() gives the current cursor position, while oldPos() gives
     the old mouse position.
 
     There are a few similarities between the events QEvent::HoverEnter
@@ -964,7 +962,8 @@ Qt::MouseEventFlags QMouseEvent::flags() const
     consider a top-level window A containing a child B which in turn contains a
     child C (all with mouse tracking enabled):
 
-    \image hoverevents.png
+    \image hoverevents.png {Screenshot showing widgets A, B, C stacked on top
+           of each other}
 
     Now, if you move the cursor from the top to the bottom in the middle of A,
     you will get the following QEvent::MouseMove events:
@@ -1008,12 +1007,12 @@ Qt::MouseEventFlags QMouseEvent::flags() const
 
     Returns the previous position of the mouse cursor, relative to the widget
     that received the event. If there is no previous position, oldPos() will
-    return the same position as pos().
+    return the same position as position().
 
     On QEvent::HoverEnter events, this position will always be
     QPoint(-1, -1).
 
-    \sa pos()
+    \sa position()
 */
 
 /*!
@@ -1034,12 +1033,12 @@ Qt::MouseEventFlags QMouseEvent::flags() const
 
     Returns the previous position of the mouse cursor, relative to the widget
     that received the event. If there is no previous position, oldPosF() will
-    return the same position as posF().
+    return the same position as position().
 
     On QEvent::HoverEnter events, this position will always be
     QPointF(-1, -1).
 
-    \sa posF()
+    \sa position()
 */
 
 /*!
@@ -1145,6 +1144,33 @@ Q_IMPL_POINTER_EVENT(QHoverEvent)
 */
 
 /*!
+    \property QWheelEvent::device
+    \brief the device from which the wheel event originated
+
+    \sa pointingDevice()
+*/
+
+/*!
+    \property QWheelEvent::inverted
+    \since 5.7
+    \brief whether the delta values delivered with the event are inverted
+
+    Normally, a vertical wheel will produce a QWheelEvent with positive delta
+    values if the top of the wheel is rotating away from the hand operating it.
+    Similarly, a horizontal wheel movement will produce a QWheelEvent with
+    positive delta values if the top of the wheel is moved to the left.
+
+    However, on some platforms this is configurable, so that the same
+    operations described above will produce negative delta values (but with the
+    same magnitude). With the inverted property a wheel event consumer can
+    choose to always follow the direction of the wheel, regardless of the
+    system settings, but only for specific widgets.
+
+    \note Many platforms provide no such information. On such platforms
+    \l inverted always returns false.
+*/
+
+/*!
     \fn bool QWheelEvent::inverted() const
     \since 5.7
 
@@ -1235,6 +1261,24 @@ bool QWheelEvent::isEndEvent() const
 #endif // QT_CONFIG(wheelevent)
 
 /*!
+    \property QWheelEvent::pixelDelta
+    \brief the scrolling distance in pixels on screen
+
+    This value is provided on platforms that support high-resolution
+    pixel-based delta values, such as \macos. The value should be used
+    directly to scroll content on screen.
+
+    \note On platforms that support scrolling \l{phase()}{phases}, the delta
+    may be null when scrolling is about to begin (Qt::ScrollBegin) or has
+    ended (Qt::ScrollEnd).
+
+    \note On X11 this value is driver-specific and unreliable, use
+    angleDelta() instead.
+
+    \sa angleDelta()
+*/
+
+/*!
     \fn QPoint QWheelEvent::pixelDelta() const
 
     Returns the scrolling distance in pixels on screen. This value is
@@ -1252,6 +1296,27 @@ bool QWheelEvent::isEndEvent() const
     \li or scrolling has ended and the distance did not change anymore (Qt::ScrollEnd).
     \endlist
     \note On X11 this value is driver-specific and unreliable, use angleDelta() instead.
+*/
+
+/*!
+    \property QWheelEvent::angleDelta
+    \brief the relative amount that the wheel was rotated, in eighths of a degree
+
+    A positive value indicates that the wheel was rotated forwards away from the
+    user; a negative value indicates that the wheel was rotated backwards toward
+    the user. \c angleDelta().y() provides the angle through which the common
+    vertical mouse wheel was rotated since the previous event. \c angleDelta().x()
+    provides the angle through which the horizontal mouse wheel was rotated, if
+    the mouse has a horizontal wheel; otherwise it stays at zero.
+
+    Most mouse types work in steps of 15 degrees, in which case the delta value
+    is a multiple of 120; i.e., 120 units * 1/8 = 15 degrees.
+
+    \note On platforms that support scrolling \l{phase()}{phases}, the delta
+    may be null when scrolling is about to begin (Qt::ScrollBegin) or has
+    ended (Qt::ScrollEnd).
+
+    \sa pixelDelta()
 */
 
 /*!
@@ -1290,6 +1355,15 @@ bool QWheelEvent::isEndEvent() const
     \endlist
 
     \sa pixelDelta()
+*/
+
+/*!
+    \property QWheelEvent::phase
+    \since 5.2
+    \brief the scrolling phase of this wheel event
+
+    \note The Qt::ScrollBegin and Qt::ScrollEnd phases are currently
+    supported only on \macos.
 */
 
 /*!
@@ -1907,14 +1981,65 @@ Q_IMPL_EVENT_COMMON(QIconDragEvent)
 
     \ingroup events
 
-    Context menu events are sent to widgets when a user performs
-    an action associated with opening a context menu.
-    The actions required to open context menus vary between platforms;
-    for example, on Windows, pressing the menu button or clicking the
-    right mouse button will cause this event to be sent.
+    A context menu event is sent when a user performs an action that should
+    open a contextual menu:
+    \list
+    \li clicking the right mouse button
+    \li pressing a dedicated keyboard menu key (if the keyboard has one,
+        such as the menu key on standard 104-key PC keyboards)
+    \li pressing some other keyboard shortcut (such as "Ctrl+Return" by
+        default on macOS 15 and newer)
+    \endlist
 
-    When this event occurs it is customary to show a QMenu with a
-    context menu, if this is relevant to the context.
+    The expected context menu should contain \l {QAction}{actions} that are
+    relevant to some content within the application (the "context"). In Qt, the
+    context is at least the particular \l {QWidget}{widget} or Qt Quick \l Item
+    that receives the QContextMenuEvent. If there is a selection, that should
+    probably be treated as the context. The context can be further refined
+    using \l QContextMenuEvent::pos() to pinpoint the content within the
+    widget, item or selection.
+
+    Widgets can override \l QWidget::contextMenuEvent() to handle this event.
+    Many widgets already do that, and have useful context menus by default.
+    Some widgets have a function such as
+    \l {QLineEdit::createStandardContextMenu()}{createStandardContextMenu()}
+    to populate the default set of actions into a \l QMenu, which can be
+    customized further in your subclass and then shown.
+
+    In Qt Quick, the event can be handled via the
+    \l {QtQuick.Controls::}{ContextMenu} attached property. Some
+    \l {QtQuick.Controls} Controls already provide context menus by default.
+
+    Unlike most synthetic events (such as a QMouseEvent that is sent only after
+    a QTouchEvent or QTabletEvent was not accepted), QContextMenuEvent is sent
+    regardless of whether the original mouse or key event was already handled
+    and \l {QEvent::isAccepted()}{accepted}. This is to accommodate the Windows
+    UI pattern of selecting some kind of items (icons, drawing elements, or
+    cells in an Item View) using the right mouse button (clicking or dragging),
+    and then getting a context menu as soon as you release the right mouse
+    button. (The actions on the menu are meant to apply to the selection.)
+    Therefore, on Windows the QContextMenuEvent is sent on mouse release; while
+    on other platforms, it's sent on press. Qt follows the
+    \l {QStyleHints::contextMenuTrigger()}{platform convention} by default.
+
+    There are also some Qt Quick Controls such as \l {QtQuick.Controls::}{Pane}
+    that accept mouse events, and nevertheless receive a QContextMenuEvent
+    after a mouse press or click.
+
+    If you prefer to support the press-drag-release UI pattern to open a
+    context menu on press, and drag over a menu item to select it on release,
+    you will need to do that by handling \l {QMouseEvent}{QMouseEvents} directly
+    (by overriding \l {QWidget::mousePressEvent()}{virtual functions} in
+    QWidget subclasses, or using \l TapHandler to open a \l Menu in Qt Quick);
+    and then the QContextMenuEvent will be redundant when the \l reason() is
+    \c Mouse. You should \l ignore() the event in that case; but you should
+    still ensure that the widget, custom control or application can respond to
+    a QContextMenuEvent that \l {reason()}{comes from} the platform-specific
+    keyboard shortcut.
+
+    When a QContextMenuEvent is \l {ignore()}{ignored}, Qt attempts to deliver
+    it to other widgets and/or Items under the \l {pos()}{position} (which
+    is usually translated from the cursor position).
 */
 
 #ifndef QT_NO_CONTEXTMENU
@@ -1967,6 +2092,9 @@ QContextMenuEvent::QContextMenuEvent(Reason reason, const QPoint &pos)
 
     Returns the position of the mouse pointer relative to the widget
     that received the event.
+
+    \note If the QContextMenuEvent did not come from the right mouse button,
+    \c pos() may be \l {QPoint::isNull()}{null}.
 
     \sa x(), y(), globalPos()
 */
@@ -2195,6 +2323,11 @@ QContextMenuEvent::QContextMenuEvent(Reason reason, const QPoint &pos)
     The start position specifies the new position and the length
     variable can be used to set a selection starting from that point.
     The value is unused.
+
+    \value MimeData
+    If set, the variant contains a QMimeData object representing the
+    committed text. The commitString() still provides the plain text
+    representation of the committed text.
 
     \sa Attribute
 */
@@ -2554,7 +2687,8 @@ Q_IMPL_POINTER_EVENT(QTabletEvent)
     Positive values are towards the tablet's physical right. The angle
     is in the range -60 to +60 degrees.
 
-    \image qtabletevent-tilt.png
+    \image qtabletevent-tilt.png {Illustration of a device that is tilted
+           in a 3 Dimensional coordinate system}
 
     \note The value is stored as a single-precision float.
 
@@ -2919,6 +3053,28 @@ Q_IMPL_POINTER_EVENT(QNativeGestureEvent)
 #endif // QT_NO_GESTURES
 
 #if QT_CONFIG(draganddrop)
+
+#if QT_DEPRECATED_SINCE(6, 16)
+/*!
+    Creates a QDragMoveEvent of the required \a type indicating
+    that the mouse is at position \a pos given within a widget.
+
+    The mouse and keyboard states are specified by \a buttons and
+    \a modifiers, and the \a actions describe the types of drag
+    and drop operation that are possible.
+    The drag data is passed as MIME-encoded information in \a data.
+
+    \warning Do not attempt to create a QDragMoveEvent yourself.
+    These objects rely on Qt's internal state.
+    \deprecated
+*/
+QDragMoveEvent::QDragMoveEvent(const QPoint& pos, Qt::DropActions actions, const QMimeData *data,
+                               Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers, Type type)
+    : QDropEvent(QPointF(pos), actions, data, buttons, modifiers, type)
+    , m_rect(pos, QSize(1, 1))
+{}
+#endif
+
 /*!
     Creates a QDragMoveEvent of the required \a type indicating
     that the mouse is at position \a pos given within a widget.
@@ -2931,10 +3087,10 @@ Q_IMPL_POINTER_EVENT(QNativeGestureEvent)
     \warning Do not attempt to create a QDragMoveEvent yourself.
     These objects rely on Qt's internal state.
 */
-QDragMoveEvent::QDragMoveEvent(const QPoint& pos, Qt::DropActions actions, const QMimeData *data,
+QDragMoveEvent::QDragMoveEvent(QPointF pos, Qt::DropActions actions, const QMimeData *data,
                                Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers, Type type)
     : QDropEvent(pos, actions, data, buttons, modifiers, type)
-    , m_rect(pos, QSize(1, 1))
+    , m_rect(pos.toPoint(), QSize(1, 1))
 {}
 
 Q_IMPL_EVENT_COMMON(QDragMoveEvent)
@@ -3199,6 +3355,26 @@ void QDropEvent::setDropAction(Qt::DropAction action)
     \sa QDragLeaveEvent, QDragMoveEvent, QDropEvent
 */
 
+#if QT_DEPRECATED_SINCE(6, 16)
+/*!
+    Constructs a QDragEnterEvent that represents a drag entering a
+    widget at the given \a point with mouse and keyboard states specified by
+    \a buttons and \a modifiers.
+
+    The drag data is passed as MIME-encoded information in \a data, and the
+    specified \a actions describe the possible types of drag and drop
+    operation that can be performed.
+
+    \warning Do not create a QDragEnterEvent yourself since these
+    objects rely on Qt's internal state.
+    \deprecated
+*/
+QDragEnterEvent::QDragEnterEvent(const QPoint& point, Qt::DropActions actions, const QMimeData *data,
+                                 Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
+    : QDragMoveEvent(QPointF(point), actions, data, buttons, modifiers, DragEnter)
+{}
+#endif
+
 /*!
     Constructs a QDragEnterEvent that represents a drag entering a
     widget at the given \a point with mouse and keyboard states specified by
@@ -3211,7 +3387,7 @@ void QDropEvent::setDropAction(Qt::DropAction action)
     \warning Do not create a QDragEnterEvent yourself since these
     objects rely on Qt's internal state.
 */
-QDragEnterEvent::QDragEnterEvent(const QPoint& point, Qt::DropActions actions, const QMimeData *data,
+QDragEnterEvent::QDragEnterEvent(QPointF point, Qt::DropActions actions, const QMimeData *data,
                                  Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
     : QDragMoveEvent(point, actions, data, buttons, modifiers, DragEnter)
 {}
@@ -3575,23 +3751,27 @@ Q_IMPL_EVENT_COMMON(QShowEvent)
     File open events will be sent to the QApplication::instance()
     when the operating system requests that a file or URL should be opened.
     This is a high-level event that can be caused by different user actions
-    depending on the user's desktop environment; for example, double
-    clicking on an file icon in the Finder on \macos.
+    depending on the platform; for example, double clicking on an file in the
+    Finder or dragging a file to the application's Dock icon on \macos,
+    or sharing a file from another application on iOS.
 
     This event is only used to notify the application of a request.
-    It may be safely ignored.
+    It may be safely ignored if the file should not be opened.
 
-    \note This class is currently supported for \macos only.
+    \section1 Apple platforms
 
-    \section1 \macos Example
-
-    In order to trigger the event on \macos, the application must be configured
-    to let the OS know what kind of file(s) it should react on.
+    In order to trigger the event on Apple platforms, the application must be
+    configured to let the OS know what kind of file(s) it should react on.
 
     For example, the following \c Info.plist file declares that the application
-    can act as a viewer for files with a PNG extension:
+    can act as a viewer for PNG files:
 
     \snippet qfileopenevent/Info.plist Custom Info.plist
+
+    The following key is also necessary on iOS for the application to
+    show up as an "Open With" action in e.g. the Files application:
+
+    \snippet qfileopenevent/Info.plist iOS
 
     The following implementation of a QApplication subclass shows how to handle
     QFileOpenEvent to open the file that was, for example, dropped on the Dock
@@ -3645,7 +3825,7 @@ Q_IMPL_EVENT_COMMON(QFileOpenEvent)
 #if QT_DEPRECATED_SINCE(6, 6)
 /*!
     \fn bool QFileOpenEvent::openFile(QFile &file, QIODevice::OpenMode flags) const
-    \deprecated [6.6] interpret the string returned by file()
+    \deprecated [6.6] interpret the string returned by file().
 
     Opens a QFile on the \a file referenced by this event in the mode specified
     by \a flags. Returns \c true if successful; otherwise returns \c false.
@@ -3712,7 +3892,7 @@ Q_IMPL_EVENT_COMMON(QToolBarChangeEvent)
     Constructs a shortcut event for the given \a key press,
     associated with the QShortcut ID \a id.
 
-    \deprecated use the other constructor
+    \deprecated use the other constructor.
 
     \a ambiguous specifies whether there is more than one QShortcut
     for the same key sequence.
@@ -4001,10 +4181,9 @@ static void formatTabletEvent(QDebug d, const QTabletEvent *e)
 
 QDebug operator<<(QDebug dbg, const QEventPoint *tp)
 {
-    if (!tp) {
-        dbg << "QEventPoint(0x0)";
-        return dbg;
-    }
+    if (!tp)
+        return dbg << "QEventPoint(0x0)";
+
     return operator<<(dbg, *tp);
 }
 
@@ -4044,10 +4223,9 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
 {
     QDebugStateSaver saver(dbg);
     dbg.nospace();
-    if (!e) {
-        dbg << "QEvent(this = 0x0)";
-        return dbg;
-    }
+    if (!e)
+        return dbg << "QEvent(0x0)";
+
     // More useful event output could be added here
     const QEvent::Type type = e->type();
     bool isMouse = false;
@@ -4077,7 +4255,8 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
         const Qt::MouseButtons buttons = spe->buttons();
         dbg << eventClassName(type) << '(';
         QtDebugUtils::formatQEnum(dbg, type);
-        dbg << " ts=" << spe->timestamp();
+        if (dbg.verbosity() > QDebug::DefaultVerbosity)
+            dbg << " ts=" << spe->timestamp();
         if (isMouse) {
             if (type != QEvent::MouseMove && type != QEvent::NonClientAreaMouseMove) {
                 dbg << ' ';
@@ -4111,6 +4290,7 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
         dbg << "QWheelEvent(" << we->phase();
         if (!we->pixelDelta().isNull() || !we->angleDelta().isNull())
             dbg << ", pixelDelta=" << we->pixelDelta() << ", angleDelta=" << we->angleDelta();
+        dbg << " dev=" << we->device() << ')';
         dbg << ')';
     }
         break;
@@ -4203,6 +4383,8 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
         const QNativeGestureEvent *ne = static_cast<const QNativeGestureEvent *>(e);
         dbg << "QNativeGestureEvent(";
         QtDebugUtils::formatQEnum(dbg, ne->gestureType());
+        if (dbg.verbosity() > QDebug::DefaultVerbosity)
+            dbg << ", ts=" << ne->timestamp();
         dbg << ", fingerCount=" << ne->fingerCount() << ", localPos=";
         QtDebugUtils::formatQPoint(dbg, ne->position());
         if (!qIsNull(ne->value()))
@@ -4804,18 +4986,26 @@ QMutableTouchEvent::~QMutableTouchEvent()
 /*! \internal
     Add the given \a point.
 */
-void QMutableTouchEvent::addPoint(const QEventPoint &point)
+void QMutableTouchEvent::addPoint(QTouchEvent *e, const QEventPoint &point)
 {
-    m_points.append(point);
-    auto &added = m_points.last();
+    e->m_points.append(point);
+    auto &added = e->m_points.last();
     if (!added.device())
-        QMutableEventPoint::setDevice(added, pointingDevice());
-    m_touchPointStates |= point.state();
+        QMutableEventPoint::setDevice(added, e->pointingDevice());
+    e->m_touchPointStates |= point.state();
 }
 
 
 QMutableSinglePointEvent::~QMutableSinglePointEvent()
     = default;
+
+/*! \internal
+    Add the given \a point.
+*/
+void QMutableTouchEvent::addPoint(const QEventPoint &point)
+{
+    addPoint(this, point);
+}
 
 QT_END_NAMESPACE
 

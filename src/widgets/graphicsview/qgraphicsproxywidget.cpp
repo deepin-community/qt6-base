@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qglobal.h"
 
@@ -73,6 +74,7 @@ QT_BEGIN_NAMESPACE
     contents rect labeled.
 
     \image qgraphicsproxywidget-embed.png
+           {Proxy widget and its embedded widget with their positions}
 
     Alternatively, you can start by creating a new QGraphicsProxyWidget item,
     and then call setWidget() to embed a QWidget later. The widget() function
@@ -219,7 +221,7 @@ void QGraphicsProxyWidgetPrivate::sendWidgetMouseEvent(QGraphicsSceneMouseEvent 
 
     // Find widget position and receiver.
     QPointF pos = event->pos();
-    QPointer<QWidget> alienWidget = widget->childAt(pos.toPoint());
+    QPointer<QWidget> alienWidget = widget->childAt(pos);
     QPointer<QWidget> receiver =  alienWidget ? alienWidget : widget;
 
     if (QWidgetPrivate::nearestGraphicsProxyWidget(receiver) != q)
@@ -266,8 +268,8 @@ void QGraphicsProxyWidgetPrivate::sendWidgetMouseEvent(QGraphicsSceneMouseEvent 
     pos = mapToReceiver(pos, receiver);
 
     // Send mouse event.
-    QMouseEvent mouseEvent(type, pos, receiver->mapTo(receiver->topLevelWidget(), pos.toPoint()),
-                           receiver->mapToGlobal(pos.toPoint()),
+    QMouseEvent mouseEvent(type, pos, receiver->mapTo(receiver->topLevelWidget(), pos),
+                           receiver->mapToGlobal(pos),
                            event->button(), event->buttons(), event->modifiers(), event->source());
     mouseEvent.setTimestamp(event->timestamp());
 
@@ -294,6 +296,15 @@ void QGraphicsProxyWidgetPrivate::sendWidgetMouseEvent(QGraphicsSceneMouseEvent 
             q->unsetCursor();
 #endif
     }
+
+#ifndef QT_NO_CURSOR
+    // Keep cursor in sync
+    if (lastWidgetUnderMouse) {
+        QCursor widgetsCursor = lastWidgetUnderMouse->cursor();
+        if (q->cursor() != widgetsCursor)
+            q->setCursor(widgetsCursor);
+    }
+#endif
 
     event->setAccepted(mouseEvent.isAccepted());
 }
@@ -993,13 +1004,13 @@ void QGraphicsProxyWidget::contextMenuEvent(QGraphicsSceneContextMenuEvent *even
 
     // Find widget position and receiver.
     QPointF pos = event->pos();
-    QPointer<QWidget> alienWidget = d->widget->childAt(pos.toPoint());
+    QPointer<QWidget> alienWidget = d->widget->childAt(pos);
     QPointer<QWidget> receiver =  alienWidget ? alienWidget : d->widget;
 
     // Map event position from us to the receiver
     pos = d->mapToReceiver(pos, receiver);
 
-    QPoint globalPos = receiver->mapToGlobal(pos.toPoint());
+    QPoint globalPos = receiver->mapToGlobal(pos).toPoint();
     //If the receiver by-pass the proxy its popups
     //will be top level QWidgets therefore they need
     //the screen position. mapToGlobal expect the widget to
@@ -1031,7 +1042,7 @@ void QGraphicsProxyWidget::dragEnterEvent(QGraphicsSceneDragDropEvent *event)
     if (!d->widget)
         return;
 
-    QDragEnterEvent proxyDragEnter(event->pos().toPoint(), event->dropAction(), event->mimeData(), event->buttons(), event->modifiers());
+    QDragEnterEvent proxyDragEnter(event->pos(), event->dropAction(), event->mimeData(), event->buttons(), event->modifiers());
     proxyDragEnter.setAccepted(event->isAccepted());
     QCoreApplication::sendEvent(d->widget, &proxyDragEnter);
     event->setAccepted(proxyDragEnter.isAccepted());
@@ -1068,14 +1079,14 @@ void QGraphicsProxyWidget::dragMoveEvent(QGraphicsSceneDragDropEvent *event)
         return;
     QPointF p = event->pos();
     event->ignore();
-    QPointer<QWidget> subWidget = d->widget->childAt(p.toPoint());
+    QPointer<QWidget> subWidget = d->widget->childAt(p);
     QPointer<QWidget> receiver =  subWidget ? subWidget : d->widget;
     bool eventDelivered = false;
     for (; receiver; receiver = receiver->parentWidget()) {
         if (!receiver->isEnabled() || !receiver->acceptDrops())
             continue;
         // Map event position from us to the receiver
-        QPoint receiverPos = d->mapToReceiver(p, receiver).toPoint();
+        QPointF receiverPos = d->mapToReceiver(p, receiver);
         if (receiver != d->dragDropWidget) {
             // Try to enter before we leave
             QDragEnterEvent dragEnter(receiverPos, event->possibleActions(), event->mimeData(), event->buttons(), event->modifiers());
@@ -1131,7 +1142,7 @@ void QGraphicsProxyWidget::dropEvent(QGraphicsSceneDragDropEvent *event)
 #else
     Q_D(QGraphicsProxyWidget);
     if (d->widget && d->dragDropWidget) {
-        QPoint widgetPos = d->mapToReceiver(event->pos(), d->dragDropWidget).toPoint();
+        const QPointF widgetPos = d->mapToReceiver(event->pos(), d->dragDropWidget);
         QDropEvent dropEvent(widgetPos, event->possibleActions(), event->mimeData(), event->buttons(), event->modifiers());
         QCoreApplication::sendEvent(d->dragDropWidget, &dropEvent);
         event->setAccepted(dropEvent.isAccepted());
@@ -1253,7 +1264,7 @@ void QGraphicsProxyWidget::wheelEvent(QGraphicsSceneWheelEvent *event)
         return;
 
     QPointF pos = event->pos();
-    QPointer<QWidget> receiver = d->widget->childAt(pos.toPoint());
+    QPointer<QWidget> receiver = d->widget->childAt(pos);
     if (!receiver)
         receiver = d->widget;
 

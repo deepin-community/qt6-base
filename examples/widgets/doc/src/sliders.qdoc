@@ -21,7 +21,8 @@
     synchronize the behavior of two or more widgets, and how to override
     \l{QWidget::}{resizeEvent()} to implement a responsive layout.
 
-    \borderedimage sliders-example.png
+    \image sliders-example.png
+           {Gallery of different sliders, scroll bars, and dials}
     \caption Screenshot of the Sliders example
 
     The Sliders example consists of two classes:
@@ -57,7 +58,7 @@
 
     In the constructor we first create the \c SlidersGroup widget
     that displays the slider widgets. With \c createControls() we
-    create the controlling widgets, and connect those to to the
+    create the controlling widgets, and connect those to the
     sliders.
 
     \snippet widgets/sliders/window.cpp 1

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMDIALOGHELPER_H
 #define QPLATFORMDIALOGHELPER_H
@@ -242,6 +243,8 @@ private:
     QFontDialogOptionsPrivate *d;
 };
 
+Q_DECLARE_OPERATORS_FOR_FLAGS(QFontDialogOptions::FontDialogOptions)
+
 class Q_GUI_EXPORT QPlatformFontDialogHelper : public QPlatformDialogHelper
 {
     Q_OBJECT
@@ -408,8 +411,8 @@ public:
     enum class Option {
         DontUseNativeDialog = 0x00000001,
     };
-    Q_DECLARE_FLAGS(Options, Option);
-    Q_FLAG(Options);
+    Q_DECLARE_FLAGS(Options, Option)
+    Q_FLAG(Options)
 
     // Keep in sync with QMessageBox::Icon
     enum StandardIcon { NoIcon, Information, Warning, Critical, Question };

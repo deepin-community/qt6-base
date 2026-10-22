@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDARWINPERMISSIONPLUGIN_P_P_H
 #define QDARWINPERMISSIONPLUGIN_P_P_H
@@ -61,7 +62,9 @@ QT_END_NAMESPACE
 
 // Request
 #if defined(BUILDING_PERMISSION_REQUEST)
-extern "C" void PERMISSION_PLUGIN_NAME(Request)() {}
+// dummy symbol to be resolved by the linker to force loading of static library
+// (compare -Wl,-u)
+extern "C" void QT_MANGLE_NAMESPACE(PERMISSION_PLUGIN_NAME(Request))() { }
 #endif
 
 // -------------------------------------------------------

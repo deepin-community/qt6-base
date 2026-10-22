@@ -62,9 +62,8 @@
 
     \ingroup tools
 
-    The QFlags<Enum> class is a template class, where Enum is an enum
-    type. QFlags is used throughout Qt for storing combinations of
-    enum values.
+    QFlags\<Enum\> is a template class where \a Enum is an enumeration type.
+    QFlags is used throughout Qt for storing combinations of enum values.
 
     The traditional C++ approach for storing OR-combinations of enum
     values is to use an \c int or \c uint variable. The inconvenience
@@ -72,13 +71,19 @@
     enum value can be OR'd with any other enum value and passed on to
     a function that takes an \c int or \c uint.
 
+    Since Qt 6.9, QFlags supports 64-bit enumerations. It is recommended to use
+    explicit (fixed) underlying types when going above 32 bits, to ensure
+    neither the enumeration nor the QFlags type change sizes if an enumerator
+    is removed. Some compilers will also only make the \c enum type larger than
+    32 bits with explicit underlying types.
+
     Qt uses QFlags to provide type safety. For example, the
     Qt::Alignment type is simply a typedef for
     QFlags<Qt::AlignmentFlag>. QLabel::setAlignment() takes a
     Qt::Alignment parameter, which means that any combination of
     Qt::AlignmentFlag values, or \c{{ }}, is legal:
 
-    \snippet code/src_corelib_global_qglobal.cpp 0
+    \snippet code/src_corelib_global_qglobal_widgets.cpp 0
 
     If you try to pass a value from another enum or just a plain
     integer other than 0, the compiler will report an error. If you
@@ -87,6 +92,8 @@
 
     If you want to use QFlags for your own enum types, use
     the Q_DECLARE_FLAGS() and Q_DECLARE_OPERATORS_FOR_FLAGS().
+    In this case Q_DECLARE_FLAGS() must appear in the same scope (class or
+    namespace) as the corresponding enum.
 
     Example:
 
@@ -112,8 +119,6 @@
     When a singular name is desired for the QFlags type (e.g., \c
     Alignment), you can use \c Flag as the suffix for the enum type
     (e.g., \c AlignmentFlag).
-
-    \sa QFlag
 */
 
 /*!
@@ -121,8 +126,10 @@
     \since 5.0
 
     Typedef for the integer type used for storage as well as for
-    implicit conversion. Either \c int or \c{unsigned int}, depending
-    on whether the enum's underlying type is signed or unsigned.
+    implicit conversion. Either \c qintXX or \c quintXX, depending on
+    whether the enum's underlying type is signed or unsigned and, since Qt 6.9,
+    the enum's size. Typically, it will be \c qint32 (\c{int}) or \c quint32
+    (\c{unsigned}).
 */
 
 /*!
@@ -159,6 +166,16 @@
     int, we effectively ensure that arbitrary enum values cannot be
     cast to a QFlags, whereas untyped enum values (i.e., \c int
     values) can.
+
+    This constructor is only present for 32-bit \c Enum types. To support all
+    enum sizes, consider the constructor using \c{std::in_place_t}.
+*/
+
+/*!
+    \fn template <typename Enum> QFlags<Enum>::QFlags(std::in_place_t, Int flags)
+    \since 6.9
+
+    Constructs a QFlags object initialized with the integer \a flags.
 */
 
 /*!
@@ -184,6 +201,12 @@
     Performs a bitwise AND operation with \a mask and stores the
     result in this QFlags object. Returns a reference to this object.
 
+//! [unsafe-integer]
+    This operator is disabled if the \c{QT_TYPESAFE_FLAGS} macro is defined.
+    Note that it is not extended to 64-bit for 64-bit QFlags either: for 64-bit
+    support, use the type-safe overload.
+//! [unsafe-integer]
+
     \sa operator&(), operator|=(), operator^=()
 */
 
@@ -191,6 +214,7 @@
     \fn template <typename Enum> QFlags &QFlags<Enum>::operator&=(uint mask)
 
     \overload
+    \include qflags.qdoc unsafe-integer
 */
 
 /*!
@@ -280,6 +304,8 @@
     Returns a QFlags object containing the result of the bitwise AND
     operation on this object and \a mask.
 
+    \include qflags.qdoc unsafe-integer
+
     \sa operator&=(), operator|(), operator^(), operator~()
 */
 
@@ -287,6 +313,7 @@
     \fn template <typename Enum> QFlags QFlags<Enum>::operator&(uint mask) const
 
     \overload
+    \include qflags.qdoc unsafe-integer
 */
 
 /*!
@@ -398,20 +425,16 @@
 */
 
 /*!
-    \fn template <typename Enum> size_t qHash(QFlags<Enum> flags, size_t seed = 0) noexcept
+    \fn template <typename Enum> size_t qHash(QFlags<Enum> key, size_t seed)
     \since 6.2
-    \relates QFlags
-
-    Calculates the hash for the flags \a flags, using \a seed
-    to seed the calculation.
+    \qhashold{QFlags}
 */
 
 /*!
-    \fn template <typename Enum> bool operator==(QFlags<Enum> lhs, QFlags<Enum> rhs)
-    \fn template <typename Enum> bool operator==(QFlags<Enum> lhs, Enum rhs)
-    \fn template <typename Enum> bool operator==(Enum lhs, QFlags<Enum> rhs)
+    \fn template <typename Enum> bool QFlags<Enum>::operator==(QFlags<Enum> lhs, QFlags<Enum> rhs)
+    \fn template <typename Enum> bool QFlags<Enum>::operator==(QFlags<Enum> lhs, Enum rhs)
+    \fn template <typename Enum> bool QFlags<Enum>::operator==(Enum lhs, QFlags<Enum> rhs)
     \since 6.2
-    \relates QFlags
 
     Compares \a lhs and \a rhs for equality; the two arguments are
     considered equal if they represent exactly the same value
@@ -419,11 +442,10 @@
 */
 
 /*!
-    \fn template <typename Enum> bool operator!=(QFlags<Enum> lhs, QFlags<Enum> rhs)
-    \fn template <typename Enum> bool operator!=(QFlags<Enum> lhs, Enum rhs)
-    \fn template <typename Enum> bool operator!=(Enum lhs, QFlags<Enum> rhs)
+    \fn template <typename Enum> bool QFlags<Enum>::operator!=(QFlags<Enum> lhs, QFlags<Enum> rhs)
+    \fn template <typename Enum> bool QFlags<Enum>::operator!=(QFlags<Enum> lhs, Enum rhs)
+    \fn template <typename Enum> bool QFlags<Enum>::operator!=(Enum lhs, QFlags<Enum> rhs)
     \since 6.2
-    \relates QFlags
 
     Compares \a lhs and \a rhs for inequality; the two arguments are
     considered different if they don't represent exactly the same value
@@ -450,8 +472,10 @@
     \macro Q_DECLARE_OPERATORS_FOR_FLAGS(Flags)
     \relates QFlags
 
-    The Q_DECLARE_OPERATORS_FOR_FLAGS() macro declares global \c
-    operator|() functions for \a Flags, which is of type QFlags<T>.
+    The Q_DECLARE_OPERATORS_FOR_FLAGS() macro declares global
+    bitwise operator functions \c operator|(), \c operator&(),
+    \c operator^(), \c operator~() and their assignment forms:
+    &=, |=, and ^=. for \a Flags, which is of type QFlags<T>.
 
     See the QFlags documentation for details.
 

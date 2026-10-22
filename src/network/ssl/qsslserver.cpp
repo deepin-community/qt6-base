@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QSslServer
@@ -339,11 +340,15 @@ void QSslServerPrivate::initializeHandshakeProcess(QSslSocket *socket)
                 // QObject dtor, but we only use the pointer value!
                 removeSocketData(quintptr(obj));
             });
-    auto it = socketData.emplace(quintptr(socket), readyRead, destroyed, std::make_shared<QTimer>());
-    it->timeoutTimer->setSingleShot(true);
-    it->timeoutTimer->callOnTimeout(q, [this, socket]() { handleHandshakeTimedOut(socket); });
-    it->timeoutTimer->setInterval(handshakeTimeout);
-    it->timeoutTimer->start();
+    const auto [it, ins] = socketData.try_emplace(quintptr(socket), std::move(readyRead),
+                                                  std::move(destroyed), std::make_shared<QTimer>());
+    if (!ins)
+        qFatal("if this fires, we have an ABA problem");
+    auto &e = it->second;
+    e.timeoutTimer->setSingleShot(true);
+    e.timeoutTimer->callOnTimeout(q, [this, socket]() { handleHandshakeTimedOut(socket); });
+    e.timeoutTimer->setInterval(handshakeTimeout);
+    e.timeoutTimer->start();
 }
 
 // This function may be called while in the socket's QObject dtor, __never__ use

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcommandlinkbutton.h"
 #include "qstylepainter.h"
@@ -11,6 +12,7 @@
 #include <qmath.h>
 
 #include "private/qpushbutton_p.h"
+#include "private/qstylesheetstyle_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -276,6 +278,21 @@ QCommandLinkButton::~QCommandLinkButton()
 /*! \reimp */
 bool QCommandLinkButton::event(QEvent *e)
 {
+    if (e->type() == QEvent::StyleChange) {
+        // If the new style is a QStyleSheetStyle, don't reset the icon, because:
+        // - either it has been explicitly set, in which case we want to keep it.
+        // - or it has been initialised by the previous style, which is now the base style,
+        //   in which case we want to keep it as well.
+        // - or it has been set in the style sheet, in which case we don't want to override it here.
+        // When a style sheet with an icon is replaced by one without an icon, the old icon
+        // will be reset, when baseStyle()->repolish() is called.
+        if (!qobject_cast<QStyleSheetStyle *>(style())) {
+            QStyleOptionButton opt;
+            initStyleOption(&opt);
+            setIcon(style()->standardIcon(QStyle::SP_CommandLink, &opt, this));
+        }
+    }
+
     return QPushButton::event(e);
 }
 
@@ -315,14 +332,12 @@ void QCommandLinkButton::paintEvent(QPaintEvent *)
 {
     Q_D(QCommandLinkButton);
     QStylePainter p(this);
-    p.save();
 
     QStyleOptionButton option;
     initStyleOption(&option);
 
     option.text = QString();
     option.icon = QIcon(); //we draw this ourselves
-    QSize pixmapSize = icon().actualSize(iconSize());
 
     const int vOffset = isDown()
         ? style()->pixelMetric(QStyle::PM_ButtonShiftVertical, &option, this) : 0;
@@ -331,10 +346,14 @@ void QCommandLinkButton::paintEvent(QPaintEvent *)
 
     //Draw icon
     p.drawControl(QStyle::CE_PushButton, option);
-    if (!icon().isNull())
-        p.drawPixmap(d->leftMargin() + hOffset, d->topMargin() + vOffset,
-        icon().pixmap(pixmapSize, isEnabled() ? QIcon::Normal : QIcon::Disabled,
-                                  isChecked() ? QIcon::On : QIcon::Off));
+    if (!icon().isNull()) {
+        const auto size = icon().actualSize(iconSize());
+        const auto mode = isEnabled() ? QIcon::Normal : QIcon::Disabled;
+        const auto state = isChecked() ? QIcon::On : QIcon::Off;
+        const auto rect = QRect(d->leftMargin() + hOffset, d->topMargin() + vOffset,
+                                size.width(), size.height());
+        icon().paint(&p, rect, Qt::AlignCenter, mode, state);
+    }
 
     //Draw title
     QColor textColor = palette().buttonText().color();
@@ -360,7 +379,6 @@ void QCommandLinkButton::paintEvent(QPaintEvent *)
     p.setFont(d->descriptionFont());
     p.drawItemText(d->descriptionRect().translated(hOffset, vOffset), textflags,
                     option.palette, isEnabled(), description(), QPalette::ButtonText);
-    p.restore();
 }
 
 void QCommandLinkButton::setDescription(const QString &description)

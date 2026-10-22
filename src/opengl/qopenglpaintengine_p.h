@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOPENGLPAINTENGINE_P_H
 #define QOPENGLPAINTENGINE_P_H
@@ -14,8 +15,6 @@
 //
 // We mean it.
 //
-
-#include <QDebug>
 
 #include <qopenglpaintdevice.h>
 
@@ -54,7 +53,7 @@ class QOpenGL2PaintEngineExPrivate;
 class QOpenGL2PaintEngineState : public QPainterState
 {
 public:
-    QOpenGL2PaintEngineState(QOpenGL2PaintEngineState &other);
+    QOpenGL2PaintEngineState(const QOpenGL2PaintEngineState &other);
     QOpenGL2PaintEngineState();
     ~QOpenGL2PaintEngineState();
 

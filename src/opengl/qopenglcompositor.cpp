@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtOpenGL/QOpenGLFramebufferObject>
 #include <QtGui/QOpenGLContext>
@@ -273,9 +274,9 @@ void QOpenGLCompositor::addWindow(QOpenGLCompositorWindow *window)
 
 void QOpenGLCompositor::removeWindow(QOpenGLCompositorWindow *window)
 {
-    m_windows.removeOne(window);
-    if (!m_windows.isEmpty())
-        emit topWindowChanged(m_windows.last());
+    bool couldChangeTopWindow = (m_windows.size() > 1) ? (window == m_windows.constLast()) : false;
+    if (m_windows.removeOne(window) && couldChangeTopWindow)
+        emit topWindowChanged(m_windows.constLast());
 }
 
 void QOpenGLCompositor::moveToTop(QOpenGLCompositorWindow *window)

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qplatformdefs.h"
 
@@ -15,10 +16,12 @@
 #include "qdatastream.h"
 #include "qendian.h"
 #include "qfile.h"
-#include "qmap.h"
 #include "qalgorithms.h"
 #include "qtranslator_p.h"
 #include "qlocale.h"
+#include "qlogging.h"
+#include "qloggingcategory.h"
+#include "qdebug.h"
 #include "qendian.h"
 #include "qresource.h"
 
@@ -37,7 +40,11 @@
 #include <vector>
 #include <memory>
 
+#include <QtCore/qmutex.h>
+
 QT_BEGIN_NAMESPACE
+
+Q_STATIC_LOGGING_CATEGORY(lcTranslator, "qt.core.qtranslator")
 
 namespace {
 enum Tag { Tag_End = 1, Tag_SourceText16, Tag_Translation, Tag_Context16, Tag_Obsolete1,
@@ -255,6 +262,8 @@ class QTranslatorPrivate : public QObjectPrivate
 public:
     enum { Contexts = 0x2f, Hashes = 0x42, Messages = 0x69, NumerusRules = 0x88, Dependencies = 0x96, Language = 0xa7 };
 
+    mutable QMutex lock;
+
     QTranslatorPrivate() :
 #if defined(QT_USE_MMAP)
           used_mmap(0),
@@ -289,6 +298,8 @@ public:
     QString language;
     QString filePath;
 
+    bool load_translation(const QStringList &languages, const QString &filename, const QString &prefix,
+                          const QString &directory, const QString &suffix);
     bool do_load(const QString &filename, const QString &directory);
     bool do_load(const uchar *data, qsizetype len, const QString &directory);
     QString do_translate(const char *context, const char *sourceText, const char *comment,
@@ -370,9 +381,19 @@ public:
     QCoreApplication::installTranslator(). It will then be the first
     translation to be searched for matching strings.
 
+    \section1 Security Considerations
+
+    Only install translation files from trusted sources.
+
+    Translation files are binary files that are generated from text-based
+    translation source files. The format of these binary files is strictly
+    defined by Qt and any manipulation of the data in the binary file may
+    crash the application when the file is loaded. Furthermore, even well-formed
+    translation files may contain misleading or malicious translations.
+
     \sa QCoreApplication::installTranslator(), QCoreApplication::removeTranslator(),
-        QObject::tr(), QCoreApplication::translate(), {I18N Example},
-        {Hello tr() Example}, {Arrow Pad Example}, {Troll Print Example}
+        QObject::tr(), QCoreApplication::translate(),
+        {Localized Clock Example}, {Arrow Pad Example}, {Troll Print Example}
 */
 
 /*!
@@ -391,7 +412,7 @@ QTranslator::QTranslator(QObject * parent)
 
 QTranslator::~QTranslator()
 {
-    if (QCoreApplication::instance())
+    if (QCoreApplication::instanceExists())
         QCoreApplication::removeTranslator(this);
     Q_D(QTranslator);
     d->clear();
@@ -447,6 +468,7 @@ bool QTranslator::load(const QString & filename, const QString & directory,
                        const QString & suffix)
 {
     Q_D(QTranslator);
+    QMutexLocker locker(&d->lock);
     d->clear();
 
     QString prefix;
@@ -474,12 +496,9 @@ bool QTranslator::load(const QString & filename, const QString & directory,
         if (fi.isReadable() && fi.isFile())
             break;
 
-        int rightmost = 0;
-        for (int i = 0; i < (int)delims.size(); i++) {
-            int k = fname.lastIndexOf(delims[i]);
-            if (k > rightmost)
-                rightmost = k;
-        }
+        qsizetype rightmost = 0;
+        for (auto ch : delims)
+            rightmost = std::max(rightmost, fname.lastIndexOf(ch));
 
         // no truncations? fail
         if (rightmost == 0)
@@ -596,19 +615,15 @@ bool QTranslatorPrivate::do_load(const QString &realname, const QString &directo
     return false;
 }
 
-Q_NEVER_INLINE
-static bool is_readable_file(const QString &name)
+bool QTranslatorPrivate::load_translation(const QStringList &languages,
+                                          const QString &filename,
+                                          const QString &prefix,
+                                          const QString &directory,
+                                          const QString &suffix)
 {
-    const QFileInfo fi(name);
-    return fi.isReadable() && fi.isFile();
-}
-
-static QString find_translation(const QLocale & locale,
-                                const QString & filename,
-                                const QString & prefix,
-                                const QString & directory,
-                                const QString & suffix)
-{
+    qCDebug(lcTranslator).noquote().nospace() << "Searching translation for "
+                          << filename << prefix << languages << suffix
+                          << " in " << directory;
     QString path;
     if (QFileInfo(filename).isRelative()) {
         path = directory;
@@ -619,68 +634,62 @@ static QString find_translation(const QLocale & locale,
 
     QString realname;
     realname += path + filename + prefix; // using += in the hope for some reserve capacity
-    const int realNameBaseSize = realname.size();
+    const qsizetype realNameBaseSize = realname.size();
 
     // see http://www.unicode.org/reports/tr35/#LanguageMatching for inspiration
 
-    // For each language_country returned by locale.uiLanguages(), add
-    // also a lowercase version to the list. Since these languages are
-    // used to create file names, this is important on case-sensitive
-    // file systems, where otherwise a file called something like
-    // "prefix_en_us.qm" won't be found under the "en_US" locale. Note
-    // that the Qt resource system is always case-sensitive, even on
-    // Windows (in other words: this codepath is *not* UNIX-only).
-    QStringList languages = locale.uiLanguages(QLocale::TagSeparator::Underscore);
-    for (int i = languages.size()-1; i >= 0; --i) {
-        QString lang = languages.at(i);
-        QString lowerLang = lang.toLower();
-        if (lang != lowerLang)
-            languages.insert(i + 1, lowerLang);
-    }
+    // For each name returned by locale.uiLanguages(), also try a lowercase
+    // version. Since these languages are used to create file names, this is
+    // important on case-sensitive file systems, where otherwise a file called
+    // something like "prefix_en_us.qm" won't be found under the "en_US"
+    // locale. Note that the Qt resource system is always case-sensitive, even
+    // on Windows (in other words: this codepath is *not* UNIX-only).
 
-    for (QString localeName : std::as_const(languages)) {
-        // try the complete locale name first and progressively truncate from
-        // the end until a matching language tag is found (with or without suffix)
-        for (;;) {
-            realname += localeName + suffixOrDotQM;
-            if (is_readable_file(realname))
-                return realname;
+    auto loadFile = [this, &realname, &directory] { return do_load(realname, directory); };
 
-            realname.truncate(realNameBaseSize + localeName.size());
-            if (is_readable_file(realname))
-                return realname;
+    for (const QString &localeName : languages) {
+        QString loc = localeName;
+        // First try this given name, then in lower-case form (if different):
+        while (true) {
+            // First, try with suffix:
+            realname += loc + suffixOrDotQM;
+            if (loadFile())
+                return true;
 
+            // Next, try without:
+            realname.truncate(realNameBaseSize + loc.size());
+            if (loadFile())
+                return true;
+            // Reset realname:
             realname.truncate(realNameBaseSize);
 
-            int rightmost = localeName.lastIndexOf(u'_');
-            if (rightmost <= 0)
-                break; // no truncations anymore, break
-            localeName.truncate(rightmost);
+            // Non-trivial while-loop condition:
+            if (loc != localeName) // loc was the lower-case form, we're done.
+                break;
+            loc = std::move(loc).toLower(); // Try lower-case next,
+            if (loc == localeName) // but only if different.
+                break;
         }
     }
 
-    const int realNameBaseSizeFallbacks = path.size() + filename.size();
+    const qsizetype realNameBaseSizeFallbacks = path.size() + filename.size();
 
     // realname == path + filename + prefix;
     if (!suffix.isNull()) {
         realname.replace(realNameBaseSizeFallbacks, prefix.size(), suffix);
         // realname == path + filename;
-        if (is_readable_file(realname))
-            return realname;
+        if (loadFile())
+            return true;
         realname.replace(realNameBaseSizeFallbacks, suffix.size(), prefix);
     }
 
     // realname == path + filename + prefix;
-    if (is_readable_file(realname))
-        return realname;
+    if (loadFile())
+        return true;
 
     realname.truncate(realNameBaseSizeFallbacks);
     // realname == path + filename;
-    if (is_readable_file(realname))
-        return realname;
-
-    realname.truncate(0);
-    return realname;
+    return loadFile();
 }
 
 /*!
@@ -733,9 +742,11 @@ bool QTranslator::load(const QLocale & locale,
                        const QString & suffix)
 {
     Q_D(QTranslator);
+    const QStringList languages = locale.uiLanguages(QLocale::TagSeparator::Underscore);
+    qCDebug(lcTranslator) << "Requested UI languages" << languages;
+    QMutexLocker locker(&d->lock);
     d->clear();
-    QString fname = find_translation(locale, filename, prefix, directory, suffix);
-    return !fname.isEmpty() && d->do_load(fname, directory);
+    return d->load_translation(languages, filename, prefix, directory, suffix);
 }
 
 /*!
@@ -753,6 +764,7 @@ bool QTranslator::load(const QLocale & locale,
 bool QTranslator::load(const uchar *data, int len, const QString &directory)
 {
     Q_D(QTranslator);
+    QMutexLocker locker(&d->lock);
     d->clear();
 
     if (!data || len < MagicLength || memcmp(data, magic, MagicLength))
@@ -1022,8 +1034,6 @@ searchDependencies:
 
 /*
     Empties this translator of all contents.
-
-    This function works with stripped translator files.
 */
 
 void QTranslatorPrivate::clear()
@@ -1063,6 +1073,8 @@ void QTranslatorPrivate::clear()
 }
 
 /*!
+    \threadsafe
+
     Returns the translation for the key (\a context, \a sourceText,
     \a disambiguation). If none is found, also tries (\a context, \a
     sourceText, ""). If that still fails, returns a null string.
@@ -1084,12 +1096,18 @@ QString QTranslator::translate(const char *context, const char *sourceText, cons
                                int n) const
 {
     Q_D(const QTranslator);
-    return d->do_translate(context, sourceText, disambiguation, n);
+
+    // Return early to avoid a deadlock in case translate() is called
+    // from a code path triggered by QTranslator::load()
+    if (!d->lock.tryLock())
+        return QString();
+    QString result = d->do_translate(context, sourceText, disambiguation, n);
+    d->lock.unlock();
+    return result;
 }
 
 /*!
     Returns \c true if this translator is empty, otherwise returns \c false.
-    This function works with stripped and unstripped translation files.
 */
 bool QTranslator::isEmpty() const
 {

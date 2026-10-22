@@ -7,6 +7,8 @@
 
 #include <qvalidator.h>
 
+#include <cmath>
+
 class tst_QDoubleValidator : public QObject
 {
     Q_OBJECT
@@ -200,6 +202,44 @@ void tst_QDoubleValidator::validate_data()
     QTest::newRow("data_de48") << "de" << 0.0 << 2.0 << 2 << QString("9,9999") << INV << INV;
     QTest::newRow("data_de49") << "de" << 100.0 << 200.0 << 4 << QString("9999,9999") << ITM << INV;
 
+    QTest::newRow("below-range-with-infinite-top")
+            << "C" << 1.0 << HUGE_VAL << -1 << QString("0") << ITM << ITM;
+    QTest::newRow("above-range-with-infinite-bottom")
+            << "C" << -HUGE_VAL << -1.0 << -1 << QString("0") << ITM << ITM;
+    QTest::newRow("below-range-with-bound-beyond-int")
+            << "C" << 1e10 << 2e10 << 0 << QString("999999999999") << ITM << INV;
+    QTest::newRow("fraction-bound-same-digits")
+            << "C" << 0.01 << 0.09 << 2 << QString("1") << ITM << ITM;
+    QTest::newRow("fraction-bound-more-digits")
+            << "C" << 0.01 << 0.09 << 2 << QString("10") << ITM << INV;
+    QTest::newRow("widest-value-in-bound-digits")
+            << "C" << 0.0 << 9.0 << 2 << QString("9.99") << ITM << ITM;
+    QTest::newRow("first-value-beyond-bound-digits")
+            << "C" << 0.0 << 9.0 << 2 << QString("10.00") << ITM << INV;
+    // 9.995 would round up to 10.00, which needs a digit the bound has not got.
+    QTest::newRow("value-between-takes-more-decimals")
+            << "C" << 0.0 << 9.0 << 2 << QString("9.995") << INV << INV;
+    // Bounds past the point where a double can hold a fractional part.
+    QTest::newRow("bound-beyond-mantissa-digits-fit")
+            << "C" << 1e18 << 2e18 << 0 << QString("0") << ITM << ITM;
+    QTest::newRow("bound-beyond-mantissa-digits-fit-wide")
+            << "C" << 1e18 << 2e18 << 0 << QString("3000000000000000000") << ITM << ITM;
+    QTest::newRow("bound-beyond-mantissa-too-many-digits")
+            << "C" << 1e18 << 2e18 << 0 << QString("10000000000000000000") << ITM << INV;
+    QTest::newRow("bound-just-below-power-of-ten")
+            << "C" << 1e17 << std::nextafter(1e18, 0.0) << 0
+            << QString("1") << ITM << ITM;
+    QTest::newRow("bound-just-below-power-of-ten-too-many-digits")
+            << "C" << 1e17 << std::nextafter(1e18, 0.0) << 0
+            << QString("1000000000000000000") << ITM << INV;
+    QTest::newRow("bound-just-below-power-of-ten-within-mantissa")
+            << "C" << 1e14 << std::nextafter(1e15, 0.0) << 0
+            << QString("1000000000000000") << ITM << INV;
+    QTest::newRow("below-range-unlimited-decimals")
+            << "C" << 5.0 << 9.0 << -1 << QString("1") << ITM << ITM;
+    QTest::newRow("below-range-unlimited-decimals-too-many-digits")
+            << "C" << 5.0 << 9.0 << -1 << QString("11") << ITM << INV;
+
     // using default QDoubleValidator parameters for initialization
     QTest::newRow("inf") << "C" << -HUGE_VAL << HUGE_VAL << 1000 << QString("inf") << INV << INV;
     QTest::newRow("+inf") << "C" << -HUGE_VAL << HUGE_VAL << 1000 << QString("+inf") << INV << INV;
@@ -230,6 +270,9 @@ void tst_QDoubleValidator::validate()
     QFETCH(QValidator::State, scientific_state);
     QFETCH(QValidator::State, standard_state);
 
+    const auto restoreLocale = qScopeGuard([prior = QLocale()] {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(QLocale(localeName));
 
     QDoubleValidator dv(minimum, maximum, decimals, 0);
@@ -295,6 +338,9 @@ void tst_QDoubleValidator::zeroPaddedExponent()
 
 void tst_QDoubleValidator::notifySignals()
 {
+    const auto restoreLocale = qScopeGuard([prior = QLocale()] {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(QLocale("C"));
 
     QDoubleValidator dv(0.1, 0.9, 10, 0);
@@ -495,21 +541,21 @@ void tst_QDoubleValidator::fixup_data()
 
     QTest::newRow("en scientific no digit grouping")
             << "en" << QDoubleValidator::ScientificNotation << -1 << "-0.98765e2"
-            << "-9.8765E+01";
+            << "-9.8765e+01";
     QTest::newRow("en scientific with digit grouping")
             << "en" << QDoubleValidator::ScientificNotation << -1 << "1,234.98765E-4"
             << "1.23498765E-01";
     QTest::newRow("en scientific with invalid digit grouping")
             << "en" << QDoubleValidator::ScientificNotation << -1 << "-12,34.98765e2"
-            << "-1.23498765E+05";
+            << "-1.23498765e+05";
     QTest::newRow("en scientific with invalid group size")
-            << "en" << QDoubleValidator::ScientificNotation << 2 << "12,34.98765e2"
+            << "en" << QDoubleValidator::ScientificNotation << 2 << "12,34.98765E2"
             << "1.23E+05";
     QTest::newRow("en scientific no fractional part")
             << "en" << QDoubleValidator::ScientificNotation << -1 << "12,34e2"
-            << "1.234E+05";
+            << "1.234e+05";
     QTest::newRow("en scientific negative no fractional part")
-            << "en" << QDoubleValidator::ScientificNotation << -1 << "-12,34e2"
+            << "en" << QDoubleValidator::ScientificNotation << -1 << "-12,34E2"
             << "-1.234E+05";
     QTest::newRow("en scientific no fractional and exponent")
             << "en" << QDoubleValidator::ScientificNotation << -1 << "1,234"
@@ -537,21 +583,21 @@ void tst_QDoubleValidator::fixup_data()
 
     QTest::newRow("de scientific no digit grouping")
             << "de" << QDoubleValidator::ScientificNotation << -1 << "0,98765e2"
-            << "9,8765E+01";
+            << "9,8765e+01";
     QTest::newRow("de scientific with digit grouping")
             << "de" << QDoubleValidator::ScientificNotation << -1 << "-1.234,98765E-4"
             << "-1,23498765E-01";
     QTest::newRow("de scientific with invalid digit grouping")
             << "de" << QDoubleValidator::ScientificNotation << -1 << "12.34,98765e2"
-            << "1,23498765E+05";
+            << "1,23498765e+05";
     QTest::newRow("de scientific with invalid group size")
-            << "de" << QDoubleValidator::ScientificNotation << 2 << "-12.34,98765e2"
+            << "de" << QDoubleValidator::ScientificNotation << 2 << "-12.34,98765E2"
             << "-1,23E+05";
     QTest::newRow("de scientific no fractional part")
             << "de" << QDoubleValidator::ScientificNotation << -1 << "1.234e2"
-            << "1,234E+05";
+            << "1,234e+05";
     QTest::newRow("de scientific negative no fractional part")
-            << "de" << QDoubleValidator::ScientificNotation << -1 << "-1.234e2"
+            << "de" << QDoubleValidator::ScientificNotation << -1 << "-1.234E2"
             << "-1,234E+05";
     QTest::newRow("de scientific no fractional and exponent")
             << "de" << QDoubleValidator::ScientificNotation << -1 << "12.34"
@@ -594,19 +640,19 @@ void tst_QDoubleValidator::fixup_data()
 
     QTest::newRow("hi scientific no digit grouping")
             << "hi" << QDoubleValidator::ScientificNotation << -1 << "-0.123e-2"
-            << "-1.23E-03";
+            << "-1.23e-03";
     QTest::newRow("hi scientific with digit grouping")
-            << "hi" << QDoubleValidator::ScientificNotation << -1 << "12,345.678e-2"
+            << "hi" << QDoubleValidator::ScientificNotation << -1 << "12,345.678E-2"
             << "1.2345678E+02";
     QTest::newRow("hi scientific with invalid digit grouping")
             << "hi" << QDoubleValidator::ScientificNotation << -1 << "-1,23,45.678e-2"
-            << "-1.2345678E+02";
+            << "-1.2345678e+02";
     QTest::newRow("hi scientific no fractional part")
-            << "hi" << QDoubleValidator::ScientificNotation << -1 << "1,23,456e2"
+            << "hi" << QDoubleValidator::ScientificNotation << -1 << "1,23,456E2"
             << "1.23456E+07";
     QTest::newRow("hi scientific negative no fractional part")
             << "hi" << QDoubleValidator::ScientificNotation << -1 << "-1,23,456e2"
-            << "-1.23456E+07";
+            << "-1.23456e+07";
     QTest::newRow("hi scientific no fractional and exponent")
             << "hi" << QDoubleValidator::ScientificNotation << -1 << "1,234,56"
             << "1.23456E+05";
@@ -751,6 +797,9 @@ void tst_QDoubleValidator::validateIntEquiv()
     QFETCH(QString, input);
     QFETCH(QValidator::State, state);
 
+    const auto restoreLocale = qScopeGuard([prior = QLocale()] {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(QLocale("C"));
 
     QDoubleValidator dv(minimum, maximum, 0, 0);

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsurfaceformat.h"
 
@@ -8,6 +9,10 @@
 #include <QOpenGLContext>
 #include <QtGui/qcolorspace.h>
 #include <QtGui/qguiapplication.h>
+
+#ifndef QT_NO_OPENGL
+#include <QtGui/private/qopenglcontext_p.h>
+#endif
 
 #ifdef major
 #undef major
@@ -179,6 +184,7 @@ public:
 
 /*!
     \enum QSurfaceFormat::ColorSpace
+    \deprecated [6.0] Use setColorSpace(QColorSpace) instead.
 
     This enum is used to specify the preferred color space, controlling if the
     window's associated default framebuffer is able to do updates and blending
@@ -625,13 +631,13 @@ int QSurfaceFormat::minorVersion() const
 }
 
 /*!
-    Returns a QPair<int, int> representing the OpenGL version.
+    Returns a std::pair<int, int> representing the OpenGL version.
 
-    Useful for version checks, for example format.version() >= qMakePair(3, 2)
+    Useful for version checks, for example format.version() >= std::pair(3, 2)
 */
-QPair<int, int> QSurfaceFormat::version() const
+std::pair<int, int> QSurfaceFormat::version() const
 {
-    return qMakePair(d->major, d->minor);
+    return std::pair(d->major, d->minor);
 }
 
 /*!
@@ -769,12 +775,6 @@ Q_GLOBAL_STATIC(QSurfaceFormat, qt_default_surface_format)
     and surfaces, even the ones created internally by Qt, will use the same
     format.
 
-    \note When setting Qt::AA_ShareOpenGLContexts, it is strongly recommended to
-    place the call to this function before the construction of the
-    QGuiApplication or QApplication. Otherwise \a format will not be applied to
-    the global share context and therefore issues may arise with context sharing
-    afterwards.
-
     \since 5.4
     \sa defaultFormat()
  */
@@ -782,7 +782,7 @@ void QSurfaceFormat::setDefaultFormat(const QSurfaceFormat &format)
 {
 #ifndef QT_NO_OPENGL
     if (qApp) {
-        QOpenGLContext *globalContext = QOpenGLContext::globalShareContext();
+        QOpenGLContext *globalContext = qt_gl_global_share_context();
         if (globalContext && globalContext->isValid()) {
             qWarning("Warning: Setting a new default format with a different version or profile "
                      "after the global shared context is created may cause issues with context "

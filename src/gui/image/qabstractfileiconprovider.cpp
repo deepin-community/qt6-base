@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qabstractfileiconprovider.h"
 
@@ -75,7 +76,7 @@ QIcon QAbstractFileIconProviderPrivate::getPlatformThemeIcon(QAbstractFileIconPr
             sizes.append({64, 64});
 
         QIcon icon;
-        for (const auto &size : sizes)
+        for (const auto &size : std::as_const(sizes))
             icon.addPixmap(theme->standardPixmap(sp, size));
         it = cache.insert(type, icon);
     }
@@ -288,3 +289,5 @@ QString QAbstractFileIconProvider::type(const QFileInfo &info) const
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qabstractfileiconprovider.cpp"

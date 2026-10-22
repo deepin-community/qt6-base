@@ -23,7 +23,7 @@ MyWidget::MyWidget()
 //! [3]
     QLabel *label = qobject_cast<QLabel *>(obj);
 //! [3] //! [4]
-    // label is 0
+    // label is nullptr
 //! [4]
 
 //! [5]
@@ -34,9 +34,4 @@ MyWidget::MyWidget()
         button->setText(tr("Pong!"));
     }
 //! [6]
-}
-
-int main()
-{
-    return 0;
 }

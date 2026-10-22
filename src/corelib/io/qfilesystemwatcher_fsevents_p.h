@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILESYSTEMWATCHER_FSEVENTS_P_H
 #define QFILESYSTEMWATCHER_FSEVENTS_P_H
@@ -47,12 +48,12 @@ Q_SIGNALS:
     void emitDirectoryChanged(const QString &path, bool removed);
     void scheduleStreamRestart();
 
-private slots:
+private Q_SLOTS:
     void doEmitFileChanged(const QString &path, bool removed);
     void doEmitDirectoryChanged(const QString &path, bool removed);
     bool restartStream();
 
-private:
+public:
     struct Info {
         QString origPath;
         timespec ctime;
@@ -72,6 +73,8 @@ private:
             , watchedPath(watchedPath)
         {}
     };
+
+private:
     typedef QHash<QString, Info> InfoByName;
     typedef QHash<QString, InfoByName> FilesByPath;
     struct DirInfo {

@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2014 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMETAOBJECT_H
 #define QMETAOBJECT_H
@@ -13,7 +14,9 @@ QT_BEGIN_NAMESPACE
 
 class QUntypedBindable;
 
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
 #define Q_METAMETHOD_INVOKE_MAX_ARGS 10
+#endif
 
 class Q_CORE_EXPORT QMetaMethod
 {
@@ -22,6 +25,7 @@ public:
 
     QByteArray methodSignature() const;
     QByteArray name() const;
+    QByteArrayView nameView() const;
     const char *typeName() const;
     int returnType() const;
     QMetaType returnMetaType() const;
@@ -35,7 +39,12 @@ public:
     const char *tag() const;
     enum Access { Private, Protected, Public };
     Access access() const;
-    enum MethodType { Method, Signal, Slot, Constructor };
+    enum MethodType {
+        Method = QMETHOD_CODE,
+        Signal QT7_ONLY(= QSIGNAL_CODE),
+        Slot QT7_ONLY(= QSLOT_CODE),
+        Constructor = 3,    // no Q*_CODE
+    };
     MethodType methodType() const;
     enum Attributes { Compatibility = 0x1, Cloned = 0x2, Scriptable = 0x4 };
     int attributes() const;
@@ -271,17 +280,25 @@ public:
 
     bool isFlag() const;
     bool isScoped() const;
+    bool is64Bit() const;
 
     int keyCount() const;
     const char *key(int index) const;
     int value(int index) const;
+    std::optional<quint64> value64(int index) const;
 
     const char *scope() const;
 
     int keyToValue(const char *key, bool *ok = nullptr) const;
-    const char *valueToKey(int value) const;
     int keysToValue(const char *keys, bool *ok = nullptr) const;
+    std::optional<quint64> keyToValue64(const char *key) const;
+    std::optional<quint64> keysToValue64(const char *keys) const;
+#if QT_CORE_REMOVED_SINCE(6, 9)
+    const char *valueToKey(int value) const;
     QByteArray valueToKeys(int value) const;
+#endif
+    const char *valueToKey(quint64 value) const;
+    QByteArray valueToKeys(quint64 value) const;
 
     inline const QMetaObject *enclosingMetaObject() const { return mobj; }
 
@@ -312,6 +329,7 @@ private:
     };
 
     QMetaEnum(const QMetaObject *mobj, int index);
+    template <typename... Args> quint64 value_helper(uint index, Args...) const noexcept;
 
     const QMetaObject *mobj;
     Data data;
@@ -336,7 +354,7 @@ public:
     QT_WARNING_POP
 #endif
     int userType() const { return typeId(); }
-    int typeId() const { return metaType().id(); }
+    int typeId() const { return metaType().rawId(); }
     QMetaType metaType() const;
     int propertyIndex() const;
     int relativePropertyIndex() const;
@@ -350,6 +368,8 @@ public:
     bool isUser() const;
     bool isConstant() const;
     bool isFinal() const;
+    bool isVirtual() const;
+    bool isOverride() const;
     bool isRequired() const;
     bool isBindable() const;
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qplatformdefs.h"
 #include "private/qabstractfileengine_p.h"
@@ -26,38 +27,6 @@
 #endif
 
 QT_BEGIN_NAMESPACE
-
-/*!
-    \internal
-
-    Returns the stdio open flags corresponding to a QIODevice::OpenMode.
-*/
-static inline int openModeToOpenFlags(QIODevice::OpenMode mode)
-{
-    int oflags = QT_OPEN_RDONLY;
-#ifdef QT_LARGEFILE_SUPPORT
-    oflags |= QT_OPEN_LARGEFILE;
-#endif
-
-    if ((mode & QFile::ReadWrite) == QFile::ReadWrite)
-        oflags = QT_OPEN_RDWR;
-    else if (mode & QFile::WriteOnly)
-        oflags = QT_OPEN_WRONLY;
-
-    if (QFSFileEnginePrivate::openModeCanCreate(mode))
-        oflags |= QT_OPEN_CREAT;
-
-    if (mode & QFile::Truncate)
-        oflags |= QT_OPEN_TRUNC;
-
-    if (mode & QFile::Append)
-        oflags |= QT_OPEN_APPEND;
-
-    if (mode & QFile::NewOnly)
-        oflags |= QT_OPEN_EXCL;
-
-    return oflags;
-}
 
 static inline QString msgOpenDirectory()
 {
@@ -294,11 +263,6 @@ qint64 QFSFileEnginePrivate::nativeSize() const
     return sizeFdFh();
 }
 
-bool QFSFileEngine::caseSensitive() const
-{
-    return true;
-}
-
 QString QFSFileEngine::currentPath(const QString &)
 {
     return QFileSystemEngine::currentPath().filePath();
@@ -308,7 +272,7 @@ QString QFSFileEngine::currentPath(const QString &)
 QFileInfoList QFSFileEngine::drives()
 {
     QFileInfoList ret;
-    ret.append(QFileInfo(rootPath()));
+    ret.append(QFileInfo(QFileSystemEngine::rootPath()));
     return ret;
 }
 
@@ -653,15 +617,18 @@ bool QFSFileEnginePrivate::unmap(uchar *ptr)
 /*!
     \reimp
 */
-bool QFSFileEngine::cloneTo(QAbstractFileEngine *target)
+QAbstractFileEngine::TriStateResult QFSFileEngine::cloneTo(QAbstractFileEngine *target)
 {
     Q_D(QFSFileEngine);
     if ((target->fileFlags(LocalDiskFlag) & LocalDiskFlag) == 0)
-        return false;
+        return TriStateResult::NotSupported;
 
     int srcfd = d->nativeHandle();
     int dstfd = target->handle();
-    return QFileSystemEngine::cloneFile(srcfd, dstfd, d->metaData);
+    TriStateResult r = QFileSystemEngine::cloneFile(srcfd, dstfd, d->metaData);
+    if (r == TriStateResult::Failed)
+        setError(QFile::CopyError, qt_error_string(errno));
+    return r;
 }
 
 QT_END_NAMESPACE

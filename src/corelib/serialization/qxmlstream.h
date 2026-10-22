@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QXMLSTREAM_H
 #define QXMLSTREAM_H
@@ -12,6 +13,8 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qstring.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -221,7 +224,17 @@ class Q_CORE_EXPORT QXmlStreamEntityResolver
 public:
     QXmlStreamEntityResolver() = default;
     virtual ~QXmlStreamEntityResolver();
-    virtual QString resolveEntity(const QString& publicId, const QString& systemId);
+    QT_WARNING_PUSH
+    #if defined(__has_warning)
+    #  if __has_warning("-Wunnecessary-virtual-specifier")
+    QT_WARNING_DISABLE_CLANG("-Wunnecessary-virtual-specifier")
+    #  endif
+    #endif
+    // This isn't called anywhere, and marked as \internal. It merely reserves a slot in
+    // the vtable. In particular, we reserve the right to change the signature before
+    // taking the API into use, so mark final to prevent users from overriding before that:
+    virtual QString resolveEntity(const QString& publicId, const QString& systemId) final;
+    QT_WARNING_POP
     virtual QString resolveUndeclaredEntity(const QString &name);
 };
 
@@ -276,6 +289,7 @@ public:
 
     bool readNextStartElement();
     void skipCurrentElement();
+    QString readRawInnerData();
 
     TokenType tokenType() const;
     QString tokenString() const;
@@ -361,7 +375,7 @@ private:
 
     Q_DISABLE_COPY(QXmlStreamReader)
     Q_DECLARE_PRIVATE(QXmlStreamReader)
-    QScopedPointer<QXmlStreamReaderPrivate> d_ptr;
+    std::unique_ptr<QXmlStreamReaderPrivate> d_ptr;
 
 };
 #endif // feature xmlstreamreader
@@ -374,6 +388,7 @@ class Q_CORE_EXPORT QXmlStreamWriter
 {
     QDOC_PROPERTY(bool autoFormatting READ autoFormatting WRITE setAutoFormatting)
     QDOC_PROPERTY(int autoFormattingIndent READ autoFormattingIndent WRITE setAutoFormattingIndent)
+    QDOC_PROPERTY(bool stopWritingOnError READ stopWritingOnError WRITE setStopWritingOnError)
 public:
     QXmlStreamWriter();
     explicit QXmlStreamWriter(QIODevice *device);
@@ -389,6 +404,9 @@ public:
 
     void setAutoFormattingIndent(int spacesOrTabs);
     int autoFormattingIndent() const;
+
+    void setStopWritingOnError(bool stop);
+    bool stopWritingOnError() const;
 
 #if QT_CORE_REMOVED_SINCE(6,5)
     void writeAttribute(const QString &qualifiedName, const QString &value);
@@ -456,12 +474,23 @@ public:
     void writeCurrentToken(const QXmlStreamReader &reader);
 #endif
 
+    enum class Error {
+        None,
+        IO,
+        Encoding,
+        InvalidCharacter,
+        Custom,
+    };
+
+    void raiseError(QAnyStringView message);
+    QString errorString() const;
+    Error error() const;
     bool hasError() const;
 
 private:
     Q_DISABLE_COPY(QXmlStreamWriter)
     Q_DECLARE_PRIVATE(QXmlStreamWriter)
-    QScopedPointer<QXmlStreamWriterPrivate> d_ptr;
+    std::unique_ptr<QXmlStreamWriterPrivate> d_ptr;
 };
 #endif // feature xmlstreamwriter
 

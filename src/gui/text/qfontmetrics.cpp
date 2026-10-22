@@ -31,8 +31,13 @@ extern void qt_format_text(const QFont& font, const QRectF &_r,
     \ingroup shared
 
     QFontMetrics functions calculate the size of characters and
-    strings for a given font. There are three ways you can create a
-    QFontMetrics object:
+    strings for a given font. The class is an integer-based version
+    of QFontMetricsF and will round all numbers to the nearest
+    integer. This means its results will be inaccurate for any font
+    with fractional metrics. In most cases QFontMetricsF should be
+    used instead.
+
+    There are three ways you can create a QFontMetrics object:
 
     \list 1
     \li Calling the QFontMetrics constructor with a QFont creates a
@@ -79,6 +84,12 @@ extern void qt_format_text(const QFont& font, const QRectF &_r,
     width of a string in pixels (or points, for a printer), boundingRect(),
     to return a rectangle large enough to contain the rendered string,
     and size(), to return the size of that rectangle.
+
+    QFontMetrics has two different functions for calculating the bounds of a string, each with
+    multiple overloads: boundingRect() and tightBoundingRect(). If a precise bounding rect is
+    needed, then tightBoundingRect() should be preferred. This will measure each glyph individually
+    to return a bounding rect that fits tightly around the rendered text. Depending on the platform,
+    the boundingRect() function may return approximated bounds, but require less computation.
 
     \note The advance width can be different from the width of the actual
     rendered text. It refers to the distance from the origin of the string to
@@ -195,9 +206,7 @@ QFontMetrics &QFontMetrics::operator=(const QFontMetrics &fm)
 /*!
     \fn void QFontMetrics::swap(QFontMetrics &other)
     \since 5.0
-
-    Swaps this font metrics instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{font metrics instance}
 */
 
 /*!
@@ -407,9 +416,8 @@ bool QFontMetrics::inFont(QChar ch) const
 */
 bool QFontMetrics::inFontUcs4(uint ucs4) const
 {
-    const int script = QChar::script(ucs4);
-    QFontEngine *engine = d->engineForScript(script);
-    Q_ASSERT(engine != nullptr);
+    constexpr auto Ignore = QFontPrivate::EngineQueryOption::IgnoreSmallCapsEngine;
+    QFontEngine *engine = d->engineForCharacter(ucs4, Ignore);
     if (engine->type() == QFontEngine::Box)
         return false;
     return engine->canRender(ucs4);
@@ -429,13 +437,7 @@ bool QFontMetrics::inFontUcs4(uint ucs4) const
 */
 int QFontMetrics::leftBearing(QChar ch) const
 {
-    const int script = ch.script();
-    QFontEngine *engine;
-    if (d->capital == QFont::SmallCaps && ch.isLower())
-        engine = d->smallCapsFontPrivate()->engineForScript(script);
-    else
-        engine = d->engineForScript(script);
-    Q_ASSERT(engine != nullptr);
+    QFontEngine *engine = d->engineForCharacter(ch.unicode());
     if (engine->type() == QFontEngine::Box)
         return 0;
 
@@ -462,12 +464,7 @@ int QFontMetrics::leftBearing(QChar ch) const
 */
 int QFontMetrics::rightBearing(QChar ch) const
 {
-    const int script = ch.script();
-    QFontEngine *engine;
-    if (d->capital == QFont::SmallCaps && ch.isLower())
-        engine = d->smallCapsFontPrivate()->engineForScript(script);
-    else
-        engine = d->engineForScript(script);
+    QFontEngine *engine = d->engineForCharacter(ch.unicode());
     Q_ASSERT(engine != nullptr);
     if (engine->type() == QFontEngine::Box)
         return 0;
@@ -509,7 +506,7 @@ int QFontMetrics::horizontalAdvance(const QString &text, int len) const
     if (len == 0)
         return 0;
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     return qRound(layout.width(0, len));
 }
 
@@ -535,7 +532,7 @@ int QFontMetrics::horizontalAdvance(const QString &text, const QTextOption &opti
     if (len == 0)
         return 0;
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.option = option;
     return qRound(layout.width(0, len));
 }
@@ -571,13 +568,7 @@ int QFontMetrics::horizontalAdvance(QChar ch) const
     if (QChar::category(ch.unicode()) == QChar::Mark_NonSpacing)
         return 0;
 
-    const int script = ch.script();
-    QFontEngine *engine;
-    if (d->capital == QFont::SmallCaps && ch.isLower())
-        engine = d->smallCapsFontPrivate()->engineForScript(script);
-    else
-        engine = d->engineForScript(script);
-    Q_ASSERT(engine != nullptr);
+    QFontEngine *engine = d->engineForCharacter(ch.unicode());
 
     d->alterCharForCapitalization(ch);
 
@@ -620,7 +611,7 @@ QRect QFontMetrics::boundingRect(const QString &text) const
     if (text.size() == 0)
         return QRect();
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.itemize();
     glyph_metrics_t gm = layout.boundingBox(0, text.size());
     return QRect(qRound(gm.x), qRound(gm.y), qRound(gm.width), qRound(gm.height));
@@ -655,7 +646,7 @@ QRect QFontMetrics::boundingRect(const QString &text, const QTextOption &option)
     if (text.size() == 0)
         return QRect();
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.option = option;
     layout.itemize();
     glyph_metrics_t gm = layout.boundingBox(0, text.size());
@@ -681,13 +672,7 @@ QRect QFontMetrics::boundingRect(const QString &text, const QTextOption &option)
 */
 QRect QFontMetrics::boundingRect(QChar ch) const
 {
-    const int script = ch.script();
-    QFontEngine *engine;
-    if (d->capital == QFont::SmallCaps && ch.isLower())
-        engine = d->smallCapsFontPrivate()->engineForScript(script);
-    else
-        engine = d->engineForScript(script);
-    Q_ASSERT(engine != nullptr);
+    QFontEngine *engine = d->engineForCharacter(ch.unicode());
 
     d->alterCharForCapitalization(ch);
 
@@ -742,14 +727,6 @@ QRect QFontMetrics::boundingRect(QChar ch) const
 
     Despite the different actual character heights, the heights of the
     bounding rectangles of "Yes" and "yes" are the same.
-
-    The bounding rectangle returned by this function is somewhat larger
-    than that calculated by the simpler boundingRect() function. This
-    function uses the \l{minLeftBearing()}{maximum left} and
-    \l{minRightBearing()}{right} font bearings as is
-    necessary for multi-line text to align correctly. Also,
-    fontHeight() and lineSpacing() are used to calculate the height,
-    rather than individual character heights.
 
     \sa horizontalAdvance(), QPainter::boundingRect(), Qt::Alignment
 */
@@ -823,7 +800,7 @@ QRect QFontMetrics::tightBoundingRect(const QString &text) const
     if (text.size() == 0)
         return QRect();
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.itemize();
     glyph_metrics_t gm = layout.tightBoundingBox(0, text.size());
     return QRect(qRound(gm.x), qRound(gm.y), qRound(gm.width), qRound(gm.height));
@@ -855,7 +832,7 @@ QRect QFontMetrics::tightBoundingRect(const QString &text, const QTextOption &op
     if (text.size() == 0)
         return QRect();
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.option = option;
     layout.itemize();
     glyph_metrics_t gm = layout.tightBoundingBox(0, text.size());
@@ -899,7 +876,7 @@ QString QFontMetrics::elidedText(const QString &text, Qt::TextElideMode mode, in
         }
         _text = _text.mid(posA);
     }
-    QStackTextEngine engine(_text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine engine(_text, QFont(d.data()));
     return engine.elidedText(mode, width, flags);
 }
 
@@ -1007,6 +984,12 @@ qreal QFontMetrics::fontDpi() const
     return a rectangle large enough to contain the rendered string,
     and size(), to return the size of that rectangle.
 
+    QFontMetrics has two different functions for calculating the bounds of a string, each with
+    multiple overloads: boundingRect() and tightBoundingRect(). If a precise bounding rect is
+    needed, then tightBoundingRect() should be preferred. This will measure each glyph individually
+    to return a bounding rect that fits tightly around the rendered text. Depending on the platform,
+    the boundingRect() function may return approximated bounds, but require less computation.
+
     Example:
     \snippet code/src_gui_text_qfontmetrics.cpp 1
 
@@ -1038,9 +1021,7 @@ QFontMetricsF &QFontMetricsF::operator=(const QFontMetrics &other)
 /*!
     \fn void QFontMetricsF::swap(QFontMetricsF &other)
     \since 5.0
-
-    Swaps this font metrics instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{font metrics instance}
 */
 
 
@@ -1344,13 +1325,7 @@ bool QFontMetricsF::inFontUcs4(uint ucs4) const
 */
 qreal QFontMetricsF::leftBearing(QChar ch) const
 {
-    const int script = ch.script();
-    QFontEngine *engine;
-    if (d->capital == QFont::SmallCaps && ch.isLower())
-        engine = d->smallCapsFontPrivate()->engineForScript(script);
-    else
-        engine = d->engineForScript(script);
-    Q_ASSERT(engine != nullptr);
+    QFontEngine *engine = d->engineForCharacter(ch.unicode());
     if (engine->type() == QFontEngine::Box)
         return 0;
 
@@ -1423,7 +1398,7 @@ qreal QFontMetricsF::horizontalAdvance(const QString &text, int length) const
     if (length == 0)
         return 0;
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.itemize();
     return layout.width(0, length).toReal();
 }
@@ -1450,7 +1425,7 @@ qreal QFontMetricsF::horizontalAdvance(const QString &text, const QTextOption &o
     if (length == 0)
         return 0;
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.option = option;
     layout.itemize();
     return layout.width(0, length).toReal();
@@ -1536,7 +1511,7 @@ QRectF QFontMetricsF::boundingRect(const QString &text) const
     if (len == 0)
         return QRectF();
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.itemize();
     glyph_metrics_t gm = layout.boundingBox(0, len);
     return QRectF(gm.x.toReal(), gm.y.toReal(),
@@ -1570,7 +1545,7 @@ QRectF QFontMetricsF::boundingRect(const QString &text, const QTextOption &optio
     if (text.size() == 0)
         return QRectF();
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.option = option;
     layout.itemize();
     glyph_metrics_t gm = layout.boundingBox(0, text.size());
@@ -1744,7 +1719,7 @@ QRectF QFontMetricsF::tightBoundingRect(const QString &text) const
     if (text.size() == 0)
         return QRectF();
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.itemize();
     glyph_metrics_t gm = layout.tightBoundingBox(0, text.size());
     return QRectF(gm.x.toReal(), gm.y.toReal(), gm.width.toReal(), gm.height.toReal());
@@ -1776,7 +1751,7 @@ QRectF QFontMetricsF::tightBoundingRect(const QString &text, const QTextOption &
     if (text.size() == 0)
         return QRectF();
 
-    QStackTextEngine layout(text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine layout(text, QFont(d.data()));
     layout.option = option;
     layout.itemize();
     glyph_metrics_t gm = layout.tightBoundingBox(0, text.size());
@@ -1819,7 +1794,7 @@ QString QFontMetricsF::elidedText(const QString &text, Qt::TextElideMode mode, q
         }
         _text = _text.mid(posA);
     }
-    QStackTextEngine engine(_text, QFont(d.data()));
+    Q_DECL_UNINITIALIZED QStackTextEngine engine(_text, QFont(d.data()));
     return engine.elidedText(mode, QFixed::fromReal(width), flags);
 }
 

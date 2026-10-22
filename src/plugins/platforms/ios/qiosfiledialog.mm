@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #import <UIKit/UIKit.h>
 
@@ -24,6 +25,11 @@ using namespace Qt::StringLiterals;
 QIOSFileDialog::QIOSFileDialog()
     : m_viewController(nullptr)
 {
+    // The photos picker can only communicate with the QPlatformFileDialogHelper
+    // API, as it lives in a separate plugin, so we tie into its signaling here
+    // to update our own state, and emit single file change.
+    connect(this, &QPlatformFileDialogHelper::filesSelected,
+            this, &QIOSFileDialog::selectedFilesChanged);
 }
 
 QIOSFileDialog::~QIOSFileDialog()
@@ -48,14 +54,10 @@ bool QIOSFileDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality window
     // when converted to QUrl, it becames a scheme.
     const QString scheme = initialDir.scheme();
 
-    if (acceptOpen) {
-        if (directory.startsWith("assets-library:"_L1) || scheme == "assets-library"_L1)
-            return showImagePickerDialog(parent);
-        else
-            return showNativeDocumentPickerDialog(parent);
-    }
+    if (acceptOpen && (directory.startsWith("assets-library:"_L1) || scheme == "assets-library"_L1))
+        return showImagePickerDialog(parent);
 
-    return false;
+    return showNativeDocumentPickerDialog(parent);
 }
 
 void QIOSFileDialog::showImagePickerDialog_helper(QWindow *parent)
@@ -100,7 +102,7 @@ bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
         [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (status == PHAuthorizationStatusAuthorized) {
-                    if (thisGuard && winGuard)
+                    if (thisGuard && (winGuard || !parent))
                         thisGuard->showImagePickerDialog_helper(winGuard);
 
                 } else if (thisGuard) {
@@ -156,7 +158,6 @@ QList<QUrl> QIOSFileDialog::selectedFiles() const
 void QIOSFileDialog::selectedFilesChanged(const QList<QUrl> &selection)
 {
     m_selection = selection;
-    emit filesSelected(m_selection);
     if (m_selection.count() == 1)
         emit fileSelected(m_selection[0]);
 }

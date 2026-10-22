@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2015 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGLOBAL_P_H
 #define QGLOBAL_P_H
@@ -20,8 +21,7 @@
 #include "qglobal_p.h"      // include self to avoid syncqt warning - no-op
 
 #ifndef QT_BOOTSTRAPPED
-#include <QtCore/private/qconfig_p.h>
-#include <QtCore/private/qtcore-config_p.h>
+#include <QtCore/private/qtcoreglobal_p.h>
 #endif
 
 #if defined(Q_CC_MSVC)

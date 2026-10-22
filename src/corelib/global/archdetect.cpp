@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qprocessordetection.h"
 
@@ -97,6 +98,8 @@
 #  elif _MIPS_SIM == _ABIO64
 #    define ARCH_ABI1 "-o64"
 #  endif
+#elif defined(Q_PROCESSOR_ARM_64_EC)
+#  define ARCH_ABI1 "-ec"
 #else
 #  define ARCH_ABI1 ""
 #endif

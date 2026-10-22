@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qtextlayout.h"
 #include "qtextengine_p.h"
@@ -8,6 +9,7 @@
 #include <qfont.h>
 #include <qmath.h>
 #include <qpainter.h>
+#include <qimage.h>
 #include <qvarlengtharray.h>
 #include <qtextformat.h>
 #include <qabstracttextdocumentlayout.h>
@@ -1039,7 +1041,7 @@ QList<QGlyphRun> QTextLayout::glyphRuns(int from,
     if (length < 0)
         length = text().size();
 
-    QHash<QPair<QFontEngine *, int>, QGlyphRun> glyphRunHash;
+    QHash<std::pair<QFontEngine *, int>, QGlyphRun> glyphRunHash;
     for (int i=0; i<d->lines.size(); ++i) {
         if (d->lines.at(i).from > from + length)
             break;
@@ -1050,7 +1052,7 @@ QList<QGlyphRun> QTextLayout::glyphRuns(int from,
 
                 QFontEngine *fontEngine = rawFont.d->fontEngine;
                 QGlyphRun::GlyphRunFlags flags = glyphRun.flags();
-                QPair<QFontEngine *, int> key(fontEngine, int(flags));
+                std::pair<QFontEngine *, int> key(fontEngine, int(flags));
                 // merge the glyph runs using the same font
                 QGlyphRun &oldGlyphRun = glyphRunHash[key];
                 if (oldGlyphRun.isEmpty()) {
@@ -1120,6 +1122,11 @@ void QTextLayout::draw(QPainter *p, const QPointF &pos, const QList<FormatRange>
     QPainterPath textDoneRegion;
     for (int i = 0; i < selections.size(); ++i) {
         FormatRange selection = selections.at(i);
+        // Don't clip the selection region when it has an outline pen,
+        // because clipping creates artificial edges that get stroked (QTBUG-115232)
+        const QPen pen = selection.format.penProperty(QTextFormat::OutlinePen);
+        const bool hasOutline = (pen.style() != Qt::NoPen && pen.widthF() > 0);
+        const QRectF selectionClip = hasOutline ? QRectF() : clip;
         QPainterPath region;
         region.setFillRule(Qt::WindingFill);
 
@@ -1143,9 +1150,9 @@ void QTextLayout::draw(QPainter *p, const QPointF &pos, const QList<FormatRange>
             const bool selectionEndInLine = selection.start + selection.length < sl.from + sl_length;
 
             if (sl.length && (selectionStartInLine || selectionEndInLine)) {
-                addSelectedRegionsToPath(d, line, position, &selection, &region, clipIfValid(lineRect, clip));
+                addSelectedRegionsToPath(d, line, position, &selection, &region, clipIfValid(lineRect, selectionClip));
             } else {
-                region.addRect(clipIfValid(lineRect, clip));
+                region.addRect(clipIfValid(lineRect, selectionClip));
             }
 
             if (selection.format.boolProperty(QTextFormat::FullWidthSelection)) {
@@ -1158,17 +1165,17 @@ void QTextLayout::draw(QPainter *p, const QPointF &pos, const QList<FormatRange>
 
                 if (!selectionEndInLine) {
                     region.addRect(clipIfValid(rightToLeft ? QRectF(fullLineRect.topLeft(), lineRect.bottomLeft())
-                                                           : QRectF(lineRect.topRight(), fullLineRect.bottomRight()), clip));
+                                                           : QRectF(lineRect.topRight(), fullLineRect.bottomRight()), selectionClip));
                 }
                 if (!selectionStartInLine) {
                     region.addRect(clipIfValid(rightToLeft ? QRectF(lineRect.topRight(), fullLineRect.bottomRight())
-                                                           : QRectF(fullLineRect.topLeft(), lineRect.bottomLeft()), clip));
+                                                           : QRectF(fullLineRect.topLeft(), lineRect.bottomLeft()), selectionClip));
                 }
             } else if (!selectionEndInLine
                 && isLastLineInBlock
                 &&!(d->option.flags() & QTextOption::ShowLineAndParagraphSeparators)) {
                 region.addRect(clipIfValid(QRectF(lineRect.right(), lineRect.top(),
-                                                  lineRect.height()/4, lineRect.height()), clip));
+                                                  lineRect.height()/4, lineRect.height()), selectionClip));
             }
 
         }
@@ -1176,12 +1183,20 @@ void QTextLayout::draw(QPainter *p, const QPointF &pos, const QList<FormatRange>
             const QPen oldPen = p->pen();
             const QBrush oldBrush = p->brush();
 
+            if (hasOutline) {
+                p->save();
+                p->setClipRect(clip, Qt::IntersectClip);
+            }
+
             p->setPen(selection.format.penProperty(QTextFormat::OutlinePen));
             p->setBrush(selection.format.brushProperty(QTextFormat::BackgroundBrush));
             p->drawPath(region);
 
             p->setPen(oldPen);
             p->setBrush(oldBrush);
+
+            if (hasOutline)
+                p->restore();
         }
 
 
@@ -1347,7 +1362,16 @@ void QTextLayout::drawCursor(QPainter *p, const QPointF &pos, int cursorPosition
     if (toggleAntialiasing)
         p->setRenderHint(QPainter::Antialiasing);
     QPainter::CompositionMode origCompositionMode = p->compositionMode();
-    if (p->paintEngine()->hasFeature(QPaintEngine::RasterOpModes))
+    // Raster ops are bitwise and break the premultiplied-alpha invariant when
+    // the target has an alpha channel (e.g. QGraphicsEffect's offscreen buffer,
+    // or a translucent top-level backing store), making the cursor vanish or
+    // punch an opaque hole. Fall back to SourceOver with the pen color in that
+    // case (QTBUG-109173).
+    QPaintDevice *targetDevice = p->paintEngine()->paintDevice();
+    const bool targetHasAlphaChannel = targetDevice
+            && targetDevice->devType() == QInternal::Image
+            && static_cast<QImage *>(targetDevice)->hasAlphaChannel();
+    if (!targetHasAlphaChannel && p->paintEngine()->hasFeature(QPaintEngine::RasterOpModes))
         p->setCompositionMode(QPainter::RasterOp_NotDestination);
     const QTransform &deviceTransform = p->deviceTransform();
     const qreal xScale = deviceTransform.m11();
@@ -1860,7 +1884,10 @@ void QTextLine::layout_helper(int maxGlyphs)
 
     bool manuallyWrapped = false;
     bool hasInlineObject = false;
+    bool reachedEndOfLine = false;
     QFixed maxInlineObjectHeight = 0;
+
+    const bool includeTrailingSpaces = eng->option.flags() & QTextOption::IncludeTrailingSpaces;
 
     while (newItem < eng->layoutData->items.size()) {
         lbh.resetRightBearing();
@@ -1889,8 +1916,12 @@ void QTextLine::layout_helper(int maxGlyphs)
         lbh.tmpData.leading = qMax(lbh.tmpData.leading + lbh.tmpData.ascent,
                                    current.leading + current.ascent) - qMax(lbh.tmpData.ascent,
                                                                             current.ascent);
-        if (current.analysis.flags != QScriptAnalysis::Object) {
-            // objects need some special treatment as they can special alignment or be floating
+        if (current.analysis.flags != QScriptAnalysis::Object
+            || QTextDocumentPrivate::get(eng->block) == nullptr) {
+            // Objects with a QTextDocument may need special vertical alignment
+            // or floating treatment handled later, so skip the ascent/descent
+            // update for them here.  Standalone objects (no document) are
+            // always included because no such post-processing exists.
             lbh.tmpData.ascent = qMax(lbh.tmpData.ascent, current.ascent);
             lbh.tmpData.descent = qMax(lbh.tmpData.descent, current.descent);
         }
@@ -1951,17 +1982,22 @@ void QTextLine::layout_helper(int maxGlyphs)
                 }
             }
 
-            hasInlineObject = true;
-            maxInlineObjectHeight = qMax(maxInlineObjectHeight, current.ascent + current.descent);
-
             lbh.tmpData.textWidth += current.width;
 
             newItem = item + 1;
             ++lbh.glyphCount;
             if (lbh.checkFullOtherwiseExtend(line))
                 goto found;
+
+            hasInlineObject = true;
+            maxInlineObjectHeight = qMax(maxInlineObjectHeight, current.ascent + current.descent);
+
         } else if (attributes[lbh.currentPosition].whiteSpace
                    && eng->layoutData->string.at(lbh.currentPosition).decompositionTag() != QChar::NoBreak) {
+            // If we are adding a space block, we save the last non-whitespace glyph for calculating
+            // the right bearing later
+            if (lbh.currentPosition > 0 && !attributes[lbh.currentPosition - 1].whiteSpace)
+                lbh.saveCurrentGlyph();
             lbh.whiteSpaceOrObject = true;
             while (lbh.currentPosition < end
                    && attributes[lbh.currentPosition].whiteSpace
@@ -1975,7 +2011,15 @@ void QTextLine::layout_helper(int maxGlyphs)
 
             lbh.whiteSpaceOrObject = false;
             bool sb_or_ws = false;
-            lbh.saveCurrentGlyph();
+            // We save the previous glyph so we can use it for calculating the right bearing
+            // later. If we are trimming trailing spaces, the previous glyph is whitespace
+            // and we have already recorded a non-whitespace glyph, we keep that one instead.
+            if (lbh.currentPosition == 0
+                || lbh.previousGlyph == 0
+                || includeTrailingSpaces
+                || !attributes[lbh.currentPosition - 1].whiteSpace) {
+                lbh.saveCurrentGlyph();
+            }
             QFixed accumulatedTextWidth;
             do {
                 addNextCluster(lbh.currentPosition, end, lbh.tmpData, lbh.glyphCount,
@@ -2072,6 +2116,7 @@ void QTextLine::layout_helper(int maxGlyphs)
             newItem = item + 1;
     }
     LB_DEBUG("reached end of line");
+    reachedEndOfLine = true;
     lbh.checkFullOtherwiseExtend(line);
     line.textWidth += lbh.commitedSoftHyphenWidth;
 found:
@@ -2082,6 +2127,7 @@ found:
         lbh.calculateRightBearing();
 
     // Then apply any negative right bearing
+    const QFixed textWidthWithoutBearing = line.textWidth;
     line.textWidth += lbh.negativeRightBearing();
 
     if (line.length == 0) {
@@ -2136,9 +2182,7 @@ found:
            line.descent.toReal(), line.textWidth.toReal(), lbh.spaceData.width.toReal());
     LB_DEBUG("        : '%s'", eng->layoutData->string.mid(line.from, line.length).toUtf8().data());
 
-    const QFixed trailingSpace = (eng->option.flags() & QTextOption::IncludeTrailingSpaces
-                              ? lbh.spaceData.textWidth
-                              : QFixed(0));
+    const QFixed trailingSpace = (includeTrailingSpaces ? lbh.spaceData.textWidth : QFixed(0));
     if (eng->option.wrapMode() == QTextOption::WrapAtWordBoundaryOrAnywhere) {
         if ((lbh.maxGlyphs != INT_MAX && lbh.glyphCount > lbh.maxGlyphs)
             || (lbh.maxGlyphs == INT_MAX && line.textWidth > (line.width -  trailingSpace))) {
@@ -2155,7 +2199,11 @@ found:
         eng->maxWidth = qMax(eng->maxWidth, line.textWidth);
     } else {
         eng->minWidth = qMax(eng->minWidth, lbh.minw);
-        if (qAddOverflow(eng->layoutData->currentMaxWidth, line.textWidth, &eng->layoutData->currentMaxWidth))
+
+        const QFixed actualTextWidth = manuallyWrapped || reachedEndOfLine
+                                           ? line.textWidth
+                                           : textWidthWithoutBearing;
+        if (qAddOverflow(eng->layoutData->currentMaxWidth, actualTextWidth, &eng->layoutData->currentMaxWidth))
             eng->layoutData->currentMaxWidth = QFIXED_MAX;
         if (!manuallyWrapped) {
             if (qAddOverflow(eng->layoutData->currentMaxWidth, lbh.spaceData.textWidth, &eng->layoutData->currentMaxWidth))

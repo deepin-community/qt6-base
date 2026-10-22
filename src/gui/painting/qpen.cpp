@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #include "qpen.h"
 #include "qpen_p.h"
 #include "qdatastream.h"
@@ -63,17 +64,17 @@ QT_BEGIN_NAMESPACE
 
     \table
     \row
-    \li \inlineimage qpen-solid.png
-    \li \inlineimage qpen-dash.png
-    \li \inlineimage qpen-dot.png
+    \li \inlineimage qpen-solid.png {Solid line}
+    \li \inlineimage qpen-dash.png {Dashed line}
+    \li \inlineimage qpen-dot.png {Dotted line}
     \row
     \li Qt::SolidLine
     \li Qt::DashLine
     \li Qt::DotLine
     \row
-    \li \inlineimage qpen-dashdot.png
-    \li \inlineimage qpen-dashdotdot.png
-    \li \inlineimage qpen-custom.png
+    \li \inlineimage qpen-dashdot.png {Dash-dot line}
+    \li \inlineimage qpen-dashdotdot.png {Dash-dot-dot line}
+    \li \inlineimage qpen-custom.png {Custom dash line}
     \row
     \li Qt::DashDotLine
     \li Qt::DashDotDotLine
@@ -112,9 +113,9 @@ QT_BEGIN_NAMESPACE
 
     \table
     \row
-    \li \inlineimage qpen-square.png
-    \li \inlineimage qpen-flat.png
-    \li \inlineimage qpen-roundcap.png
+    \li \inlineimage qpen-square.png {Square cap}
+    \li \inlineimage qpen-flat.png {Flat cap}
+    \li \inlineimage qpen-roundcap.png {Round cap}
     \row
     \li Qt::SquareCap
     \li Qt::FlatCap
@@ -142,9 +143,9 @@ QT_BEGIN_NAMESPACE
 
     \table
     \row
-    \li \inlineimage qpen-bevel.png
-    \li \inlineimage qpen-miter.png
-    \li \inlineimage qpen-roundjoin.png
+    \li \inlineimage qpen-bevel.png {Bevel join}
+    \li \inlineimage qpen-miter.png {Miter join}
+    \li \inlineimage qpen-roundjoin.png {Round join}
     \row
     \li Qt::BevelJoin
     \li Qt::MiterJoin
@@ -158,7 +159,8 @@ QT_BEGIN_NAMESPACE
 
     The default is Qt::BevelJoin.
 
-    \image qpen-miterlimit.png
+    \image qpen-miterlimit.png {Illustration showing how miterLimit controls
+           the length of the sharp corner for miterJoin}
 
     When the Qt::MiterJoin style is applied, it is possible to use the
     setMiterLimit() function to specify how far the miter join can
@@ -172,7 +174,7 @@ QT_BEGIN_NAMESPACE
 
     \table 100%
     \row
-    \li \inlineimage qpen-demo.png
+    \li \inlineimage qpen-demo.png {Path Stroking application with pen options}
     \li \b {\l {painting/pathstroke}{The Path Stroking Example}}
 
     The Path Stroking example shows Qt's built-in dash patterns and shows
@@ -199,8 +201,8 @@ QPenPrivate::QPenPrivate(const QBrush &_brush, qreal _width, Qt::PenStyle penSty
     joinStyle = _joinStyle;
 }
 
-static const Qt::PenCapStyle qpen_default_cap = Qt::SquareCap;
-static const Qt::PenJoinStyle qpen_default_join = Qt::BevelJoin;
+static constexpr Qt::PenCapStyle qpen_default_cap = Qt::SquareCap;
+static constexpr Qt::PenJoinStyle qpen_default_join = Qt::BevelJoin;
 
 class QPenDataHolder
 {
@@ -341,10 +343,49 @@ QPen &QPen::operator=(const QPen &p) noexcept
 /*!
     \fn void QPen::swap(QPen &other)
     \since 4.8
-
-    Swaps pen \a other with this pen. This operation is very
-    fast and never fails.
+    \memberswap{pen}
 */
+
+/*!
+    \overload
+    \since 6.9
+
+    Makes this pen a solid pen with the given color, and default
+    cap and join styles, and returns a reference to \e this pen.
+*/
+QPen &QPen::operator=(QColor color)
+{
+    detach();
+    d->brush = color;
+    d->width = 1;
+    d->style = Qt::SolidLine;
+    d->capStyle = qpen_default_cap;
+    d->joinStyle = qpen_default_join;
+
+    return *this;
+}
+
+/*!
+    \overload
+    \since 6.9
+
+    Makes this pen a solid, black pen with default cap and join styles,
+    and returns a reference to \e this pen.
+*/
+QPen &QPen::operator=(Qt::PenStyle style)
+{
+    detach();
+    if (style == Qt::NoPen) {
+        d = nullPenInstance()->pen;
+    } else {
+        d->brush = Qt::black;
+        d->width = 1;
+        d->style = style;
+        d->capStyle = qpen_default_cap;
+        d->joinStyle = qpen_default_join;
+    }
+    return *this;
+}
 
 /*!
    Returns the pen as a QVariant.
@@ -438,7 +479,7 @@ QList<qreal> QPen::dashPattern() const
 
     \table 100%
     \row
-    \li \inlineimage qpen-custom.png
+    \li \inlineimage qpen-custom.png {Custom dash line}
     \li
     \snippet code/src_gui_painting_qpen.cpp 3
     \endtable
@@ -490,6 +531,7 @@ qreal QPen::dashOffset() const
 
     \table
     \row \li \inlineimage qpen-dashpattern.png
+                          {Dash patterns with different offsets}
     \li For example, a pattern where each stroke is four units long, followed by a gap
     of two units, will begin with the stroke when drawn as a line.
 
@@ -527,7 +569,7 @@ qreal QPen::miterLimit() const
 /*!
     Sets the miter limit of this pen to the given \a limit.
 
-    \image qpen-miterlimit.png
+    \image qpen-miterlimit.png {Miter join with width and miterLimit labeled}
 
     The miter limit describes how far a miter join can extend from the
     join point. This is used to reduce artifacts between line joins
@@ -771,7 +813,16 @@ void QPen::setCosmetic(bool cosmetic)
     d->cosmetic = cosmetic;
 }
 
-
+/*!
+    \internal
+*/
+bool QPen::isSolidDefaultLine() const noexcept
+{
+    return d->style == Qt::SolidLine && d->width == 1
+        && d->capStyle == qpen_default_cap && d->joinStyle == qpen_default_join
+        && qFuzzyCompare(d->dashOffset, 0) && qFuzzyCompare(d->miterLimit, 2)
+        && d->cosmetic == false;
+}
 
 /*!
     \fn bool QPen::operator!=(const QPen &pen) const
@@ -808,6 +859,23 @@ bool QPen::operator==(const QPen &p) const
             && p.d->cosmetic == d->cosmetic);
 }
 
+/*!
+    \internal
+*/
+bool QPen::doCompareEqualColor(QColor rhs) const noexcept
+{
+    return d->brush == rhs && isSolidDefaultLine();
+}
+
+/*!
+    \internal
+*/
+bool QPen::doCompareEqualStyle(Qt::PenStyle rhs) const
+{
+    if (rhs == Qt::NoPen)
+        return style() == Qt::NoPen;
+    return *this == QPen(rhs); // ### optimize (allocates)
+}
 
 /*!
     \fn bool QPen::isDetached()
@@ -949,20 +1017,10 @@ QDataStream &operator>>(QDataStream &s, QPen &p)
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QPen &p)
 {
-    const char *PEN_STYLES[] = {
-        "NoPen",
-        "SolidLine",
-        "DashLine",
-        "DotLine",
-        "DashDotLine",
-        "DashDotDotLine",
-        "CustomDashLine"
-    };
-
     QDebugStateSaver saver(dbg);
     dbg.nospace() << "QPen(" << p.width() << ',' << p.brush()
-                  << ',' << PEN_STYLES[p.style()] << ',' << int(p.capStyle())
-                  << ',' << int(p.joinStyle()) << ',' << p.dashPattern()
+                  << ',' << p.style() << ',' << p.capStyle()
+                  << ',' << p.joinStyle() << ',' << p.dashPattern()
                   << ',' << p.dashOffset()
                   << ',' << p.miterLimit() << ')';
     return dbg;

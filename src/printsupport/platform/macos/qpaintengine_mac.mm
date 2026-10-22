@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -256,10 +257,10 @@ static void qt_mac_draw_pattern(void *info, CGContextRef c)
             CGDataProviderRelease(provider);
 #else
             const int numBytes = (w*h)/sizeof(uchar);
-            uchar xor_bytes[numBytes];
+            QVarLengthArray<uchar> xor_bytes(numBytes);
             for (int i = 0; i < numBytes; ++i)
                 xor_bytes[i] = pat->data.bytes[i] ^ 0xFF;
-            CGDataProviderRef provider = CGDataProviderCreateWithData(nullptr, xor_bytes, w*h, nullptr);
+            CGDataProviderRef provider = CGDataProviderCreateWithData(nullptr, xor_bytes.constData(), w*h, nullptr);
             CGImageRef swatch = CGImageMaskCreate(w, h, 1, 1, 1, provider, nullptr, false);
             CGDataProviderRelease(provider);
 
@@ -376,11 +377,7 @@ QCoreGraphicsPaintEngine::begin(QPaintDevice *pdev)
         QWidget *w = (QWidget*)d->pdev;
         bool unclipped = w->testAttribute(Qt::WA_PaintUnclipped);
 
-        if ((w->windowType() == Qt::Desktop)) {
-            if (!unclipped)
-                qWarning("QCoreGraphicsPaintEngine::begin: Does not support clipped desktop on OS X");
-            // ## need to do [qt_mac_window_for(w) makeKeyAndOrderFront]; (need to rename the file)
-        } else if (unclipped) {
+        if (unclipped) {
             qWarning("QCoreGraphicsPaintEngine::begin: Does not support unclipped painting");
         }
     } else if (d->pdev->devType() == QInternal::Pixmap) {             // device is a pixmap
@@ -404,9 +401,6 @@ QCoreGraphicsPaintEngine::end()
 {
     Q_D(QCoreGraphicsPaintEngine);
     setActive(false);
-    if (d->pdev->devType() == QInternal::Widget && static_cast<QWidget*>(d->pdev)->windowType() == Qt::Desktop) {
-        // ### need to do [qt_mac_window_for(static_cast<QWidget *>(d->pdev)) orderOut]; (need to rename)
-    }
     if (d->shading) {
         CGShadingRelease(d->shading);
         d->shading = 0;

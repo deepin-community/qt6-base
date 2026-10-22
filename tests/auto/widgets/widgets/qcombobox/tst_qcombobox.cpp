@@ -6,8 +6,10 @@
 #include <QSortFilterProxyModel>
 
 #include "qcombobox.h"
+
 #include <private/qcombobox_p.h>
 #include <private/qguiapplication_p.h>
+#include <QtWidgets/private/qstyle_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformtheme.h>
 
@@ -103,6 +105,8 @@ private slots:
     void mouseWheel_data();
     void mouseWheel();
     void popupWheelHandling();
+    void ignoreWheelEvents_data();
+    void ignoreWheelEvents();
 #endif // QT_CONFIG(wheelevent)
     void sendKeyEventToPopup();
     void layoutDirection();
@@ -248,9 +252,11 @@ void tst_QComboBox::getSetCheck()
 
     // QCompleter *QComboBox::completer()
     // void QComboBox::setCompleter(QCompleter *)
+    QTest::ignoreMessage(QtWarningMsg, "Setting a QCompleter on non-editable QComboBox is not allowed.");
     obj1.setCompleter(nullptr);
     QCOMPARE(nullptr, obj1.completer());
     QCompleter completer;
+    QTest::ignoreMessage(QtWarningMsg, "Setting a QCompleter on non-editable QComboBox is not allowed.");
     obj1.setCompleter(&completer);
     QVERIFY(obj1.completer() == nullptr); // no QLineEdit is set
 
@@ -295,6 +301,10 @@ void tst_QComboBox::getSetCheck()
     QCOMPARE(100, obj1.minimumContentsLength());
     obj1.setMinimumContentsLength(INT_MIN);
     QCOMPARE(100, obj1.minimumContentsLength()); // Cannot be set to something negative => old value
+    QTest::ignoreMessage(QtWarningMsg, // not necessarily here, but upon first sizeHint() call
+                         "QComboBox: cannot take minimumContentsLength 2147483647 into account for sizeHint(), "
+                         "since it causes the widget to be wider than QWIDGETSIZE_MAX. "
+                         "Consider setting it to a less extreme value.");
     obj1.setMinimumContentsLength(INT_MAX);
     QCOMPARE(INT_MAX, obj1.minimumContentsLength());
 
@@ -322,13 +332,13 @@ void tst_QComboBox::getSetCheck()
 
     // QAbstractItemDelegate * QComboBox::itemDelegate()
     // void QComboBox::setItemDelegate(QAbstractItemDelegate *)
-    MyAbstractItemDelegate *var10 = new MyAbstractItemDelegate;
-    obj1.setItemDelegate(var10);
-    QCOMPARE(obj1.itemDelegate(), var10);
+    auto var10 = std::make_unique<MyAbstractItemDelegate>();
+    obj1.setItemDelegate(var10.get());
+    QCOMPARE(obj1.itemDelegate(), var10.get());
     QTest::ignoreMessage(QtWarningMsg, "QComboBox::setItemDelegate: cannot set a 0 delegate");
     obj1.setItemDelegate((QAbstractItemDelegate *)0);
-    QCOMPARE(obj1.itemDelegate(), var10);
-    // delete var10; // No delete, since QComboBox takes ownership
+    QCOMPARE(obj1.itemDelegate(), var10.get());
+    var10.reset();
 
     // QAbstractItemModel * QComboBox::model()
     // void QComboBox::setModel(QAbstractItemModel *)
@@ -832,6 +842,20 @@ void tst_QComboBox::virtualAutocompletion()
     QApplication::sendEvent(testWidget, &kp2);
     QApplication::sendEvent(testWidget, &kr2);
     QTRY_COMPARE(testWidget->currentIndex(), 3);
+
+    QKeyEvent kp3(QEvent::KeyPress, Qt::Key_R, {}, "r");
+    QKeyEvent kr3(QEvent::KeyRelease, Qt::Key_R, {}, "r");
+    QApplication::sendEvent(testWidget, &kp3);
+    QTest::qWait(QApplication::keyboardInputInterval());
+    QApplication::sendEvent(testWidget, &kr3);
+    QTRY_COMPARE(testWidget->currentIndex(), 3);
+
+    QTest::qWait(2 * QApplication::keyboardInputInterval());
+    testWidget->view()->setKeyboardSearchFlags(Qt::MatchContains | Qt::MatchWrap);
+    QApplication::sendEvent(testWidget, &kp3);
+    QApplication::sendEvent(testWidget, &kr3);
+    QTRY_COMPARE(testWidget->currentIndex(), 1);
+
 #if defined(Q_PROCESSOR_ARM) || defined(Q_PROCESSOR_MIPS)
     QApplication::setKeyboardInputInterval(oldInterval);
 #endif
@@ -839,9 +863,6 @@ void tst_QComboBox::virtualAutocompletion()
 
 void tst_QComboBox::autoCompletionCaseSensitivity()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     //we have put the focus because the completer
     //is only used when the widget actually has the focus
     TestWidget topLevel;
@@ -2020,9 +2041,6 @@ void tst_QComboBox::flaggedItems_data()
 
 void tst_QComboBox::flaggedItems()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(QStringList, itemList);
     QFETCH(const IntList, deselectFlagList);
     QFETCH(const IntList, disableFlagList);
@@ -2184,6 +2202,64 @@ void tst_QComboBox::popupWheelHandling()
     QVERIFY(comboBox->view()->isVisible());
     QCOMPARE(comboBox->view()->pos(), popupPos);
 }
+
+void tst_QComboBox::ignoreWheelEvents_data()
+{
+    QTest::addColumn<bool>("allowWheelScrolling");
+    QTest::newRow("Check that QComboBox ignores wheel scrolling and propagates") << false;
+    QTest::newRow("Check that QComboBox allows wheel scrolling and doesn't propagate") << true;
+}
+
+void tst_QComboBox::ignoreWheelEvents()
+{
+    class AllowWheelScrollStyle : public QProxyStyle
+    {
+    public:
+        explicit AllowWheelScrollStyle(bool allowWheelScroll) : allow(allowWheelScroll) { }
+
+        int styleHint(const QStyle::StyleHint hint, const QStyleOption *opt, const QWidget *widget,
+                      QStyleHintReturn *returnData) const override
+        {
+            if (hint == QStyle::SH_ComboBox_AllowWheelScrolling)
+                return allow;
+
+            return QProxyStyle::styleHint(hint, opt, widget, returnData);
+        }
+
+        bool allow;
+    };
+    class WheelEventTestWidget : public QWidget
+    {
+    public:
+        bool eventReceived = false;
+        void wheelEvent(QWheelEvent *e) override
+        {
+            eventReceived = true;
+            e->accept();
+        }
+    };
+
+    QFETCH(bool, allowWheelScrolling);
+
+    AllowWheelScrollStyle style(allowWheelScrolling);
+    WheelEventTestWidget widget;
+    QComboBox *comboBox = new QComboBox(&widget);
+    comboBox->addItems({ "0", "1" });
+    comboBox->setStyle(&style);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    const QPoint wheelPoint = comboBox->rect().center();
+    QWheelEvent event(wheelPoint, comboBox->mapToGlobal(wheelPoint), {}, { 0, -WHEEL_DELTA },
+                      Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QSpontaneKeyEvent::setSpontaneous(&event);
+    QVERIFY(QCoreApplication::instance()->notify(comboBox, &event));
+
+    const int expectedComboBoxIndex = allowWheelScrolling ? 1 : 0;
+    QCOMPARE(comboBox->currentIndex(), expectedComboBoxIndex);
+    QCOMPARE(widget.eventReceived, !allowWheelScrolling);
+}
+
 #endif // QT_CONFIG(wheelevent)
 
 void tst_QComboBox::sendKeyEventToPopup()
@@ -2471,7 +2547,7 @@ void tst_QComboBox::task190205_setModelAdjustToContents()
     //wait needed in order to get the combo initial size
     QTRY_VERIFY(box.isVisible());
 
-    box.setModel(new QStringListModel(finalContent));
+    box.setModel(new QStringListModel(finalContent, &box));
 
     QComboBox correctBox;
     setFrameless(&correctBox);
@@ -2537,9 +2613,6 @@ void tst_QComboBox::task247863_keyBoardSelection()
 
 void tst_QComboBox::task220195_keyBoardSelection2()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QComboBox combo;
     setFrameless(&combo);
     combo.move(200, 200);
@@ -2662,7 +2735,7 @@ void tst_QComboBox::noScrollbar()
 void tst_QComboBox::setItemDelegate()
 {
     QComboBox comboBox;
-    QStyledItemDelegate *itemDelegate = new QStyledItemDelegate;
+    QStyledItemDelegate *itemDelegate = new QStyledItemDelegate(&comboBox);
     comboBox.setItemDelegate(itemDelegate);
     // the cast is a workaround for the XLC and Metrowerks compilers
     QCOMPARE(static_cast<QStyledItemDelegate *>(comboBox.itemDelegate()), itemDelegate);
@@ -2671,7 +2744,7 @@ void tst_QComboBox::setItemDelegate()
 void tst_QComboBox::task253944_itemDelegateIsReset()
 {
     QComboBox comboBox;
-    QStyledItemDelegate *itemDelegate = new QStyledItemDelegate;
+    QStyledItemDelegate *itemDelegate = new QStyledItemDelegate(&comboBox);
     comboBox.setItemDelegate(itemDelegate);
 
     // the casts are workarounds for the XLC and Metrowerks compilers
@@ -2871,9 +2944,6 @@ void tst_QComboBox::keyBoardNavigationWithMouse()
 
 void tst_QComboBox::task_QTBUG_1071_changingFocusEmitsActivated()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QWidget w;
     w.move(200, 200);
     QVBoxLayout layout(&w);
@@ -3140,9 +3210,6 @@ void tst_QComboBox::itemData()
 
 void tst_QComboBox::task_QTBUG_31146_popupCompletion()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QComboBox comboBox;
     comboBox.setEditable(true);
     comboBox.setInsertPolicy(QComboBox::NoInsert);
@@ -3176,9 +3243,6 @@ void tst_QComboBox::task_QTBUG_31146_popupCompletion()
 
 void tst_QComboBox::task_QTBUG_41288_completerChangesCurrentIndex()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QComboBox comboBox;
     comboBox.setEditable(true);
 
@@ -3401,11 +3465,25 @@ public:
 
 class QTBUG_56693_ProxyStyle : public QProxyStyle
 {
+    QStyle *oldProxyStyle;
 public:
     QTBUG_56693_ProxyStyle(QStyle *style)
-        : QProxyStyle(style), italicItemsNo(0)
-    {
+        : QTBUG_56693_ProxyStyle(style, style->parent(),
+                                 QStylePrivate::get(style)->proxyStyle) {}
 
+private:
+    QTBUG_56693_ProxyStyle(QStyle *style, QObject *styleParent, QStyle *proxy)
+        : QProxyStyle(style), oldProxyStyle(proxy), italicItemsNo(0)
+    {
+        // Undo the reparenting of QProxyStyle ctor again:
+        // We should not take ownership of the qApp->style()!
+        style->setParent(styleParent);
+    }
+public:
+    ~QTBUG_56693_ProxyStyle()
+    {
+        // private in QStyle: baseStyle()->setProxy(nullptr);
+        QStylePrivate::get(baseStyle())->proxyStyle = oldProxyStyle;
     }
 
     void drawControl(ControlElement element, const QStyleOption *opt, QPainter *p, const QWidget *w = nullptr) const override
@@ -3418,6 +3496,7 @@ public:
         baseStyle()->drawControl(element, opt, p, w);
     }
 
+public:
     mutable int italicItemsNo;
 };
 
@@ -3430,8 +3509,8 @@ void tst_QComboBox::task_QTBUG_56693_itemFontFromModel()
     QTBUG_56693_Model model;
     box.setModel(&model);
 
-    QTBUG_56693_ProxyStyle *proxyStyle = new QTBUG_56693_ProxyStyle(box.style());
-    box.setStyle(proxyStyle);
+    QTBUG_56693_ProxyStyle proxyStyle{box.style()}; // does _not_ take ownership of box.style()!
+    box.setStyle(&proxyStyle);
     box.setFont(QApplication::font());
 
     for (int i = 0; i < 10; i++)
@@ -3444,7 +3523,7 @@ void tst_QComboBox::task_QTBUG_56693_itemFontFromModel()
     QVERIFY(container);
     QVERIFY(QTest::qWaitForWindowExposed(container));
 
-    QCOMPARE(proxyStyle->italicItemsNo, 5);
+    QCOMPARE(proxyStyle.italicItemsNo, 5);
 
     box.hidePopup();
 }
@@ -3467,6 +3546,7 @@ void tst_QComboBox::popupPositionAfterStyleChange()
         QSKIP("Flaky on QEMU, QTBUG-114760");
 
     box.addItems({"first", "middle", "last"});
+    centerOnScreen(&box);
     box.show();
     QVERIFY(QTest::qWaitForWindowExposed(&box));
     box.showPopup();
@@ -3474,6 +3554,7 @@ void tst_QComboBox::popupPositionAfterStyleChange()
     QFrame *container = box.findChild<QComboBoxPrivateContainer *>();
     QVERIFY(container);
     QVERIFY(QTest::qWaitForWindowExposed(container));
+    container->resize(80, 80);
 
     // Select the last menu item, which will close the popup. This item is then expected
     // to be centered on top of the combobox the next time the popup opens.
@@ -3510,9 +3591,6 @@ void tst_QComboBox::popupPositionAfterStyleChange()
 
 void tst_QComboBox::inputMethodUpdate()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     TestWidget topLevel;
     topLevel.show();
     QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
@@ -3567,9 +3645,6 @@ void tst_QComboBox::inputMethodUpdate()
 
 void tst_QComboBox::task_QTBUG_52027_mapCompleterIndex()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QStringList words;
     words << "" << "foobar1" << "foobar2";
 
@@ -3582,7 +3657,7 @@ void tst_QComboBox::task_QTBUG_52027_mapCompleterIndex()
     cbox.setInsertPolicy(QComboBox::NoInsert);
     cbox.addItems(words);
 
-    QCompleter *completer = new QCompleter(altWords);
+    QCompleter *completer = new QCompleter(altWords, &cbox);
     completer->setCaseSensitivity(Qt::CaseInsensitive);
     cbox.setCompleter(completer);
 
@@ -3605,7 +3680,7 @@ void tst_QComboBox::task_QTBUG_52027_mapCompleterIndex()
     cbox.lineEdit()->selectAll();
     cbox.lineEdit()->del();
 
-    QSortFilterProxyModel* model = new QSortFilterProxyModel();
+    QSortFilterProxyModel* model = new QSortFilterProxyModel(&cbox);
     model->setSourceModel(cbox.model());
     model->setFilterFixedString("foobar1");
     completer->setModel(model);
@@ -3794,9 +3869,6 @@ void tst_QComboBox::cancelClosesPopupNotDialog()
 {
     if (QGuiApplication::platformName() == "offscreen")
         QSKIP("The offscreen platform plugin doesn't activate popups.");
-
-    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
-        QSKIP("QWindow::requestActivate() is not supported.");
 
     QDialog dialog;
     QComboBox combobox;

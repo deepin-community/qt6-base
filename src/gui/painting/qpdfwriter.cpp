@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qpdfwriter.h>
 
@@ -209,6 +210,26 @@ void QPdfWriter::setDocumentId(QUuid documentId)
 {
     Q_D(QPdfWriter);
     d->engine->d_func()->documentId = documentId;
+}
+
+/*!
+  \since 6.9
+  Returns the author of the document.
+  */
+QString QPdfWriter::author() const
+{
+    Q_D(const QPdfWriter);
+    return d->engine->d_func()->author;
+}
+
+/*!
+  \since 6.9
+  Sets the author of the document to \a author.
+  */
+void QPdfWriter::setAuthor(const QString &author)
+{
+    Q_D(QPdfWriter);
+    d->engine->d_func()->author = author;
 }
 
 /*!

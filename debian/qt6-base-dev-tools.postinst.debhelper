@@ -1,0 +1,10 @@
+
+# Automatically added by dh_python3
+if command -v py3compile >/dev/null 2>&1; then
+	py3compile -p qt6-base-dev-tools:amd64 /usr/lib/qt6/libexec
+fi
+if command -v pypy3compile >/dev/null 2>&1; then
+	pypy3compile -p qt6-base-dev-tools:amd64 /usr/lib/qt6/libexec || true
+fi
+
+# End automatically added section

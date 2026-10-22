@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qbitmap.h"
 #include "qpixmap.h"
@@ -48,7 +49,8 @@ static inline void initBitMapInfoHeader(int width, int height, bool topToBottom,
     bih->biBitCount    = WORD(bitCount);
     bih->biCompression = compression;
      // scan lines are word-aligned (unless RLE)
-    const DWORD bytesPerLine = pad4(DWORD(width) * bitCount / 8);
+    const DWORD bytesPerLine = bitCount == 1 ? pad4(DWORD(qCeil(width / 8.0)))
+                                             : pad4(DWORD(width) * bitCount / 8);
     bih->biSizeImage   = bytesPerLine * DWORD(height);
 }
 

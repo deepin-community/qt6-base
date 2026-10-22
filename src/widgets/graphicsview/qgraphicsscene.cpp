@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QGraphicsScene
@@ -186,7 +187,6 @@
 #include <QtCore/qrect.h>
 #include <QtCore/qset.h>
 #include <QtCore/qstack.h>
-#include <QtCore/qtimer.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/QMetaMethod>
 #include <QtWidgets/qapplication.h>
@@ -1085,6 +1085,12 @@ void QGraphicsScenePrivate::enableMouseTrackingOnViews()
     for (QGraphicsView *view : std::as_const(views))
         view->viewport()->setMouseTracking(true);
 }
+
+/*!
+    \class QGraphicsScenePrivate
+    \inmodule QtWidgets
+    \internal
+*/
 
 /*!
     Returns all items for the screen position in \a event.
@@ -2712,8 +2718,7 @@ QGraphicsPolygonItem *QGraphicsScene::addPolygon(const QPolygonF &polygon,
     QGraphicsScene will emit changed() once control goes back to the event
     loop.
 
-    \sa addEllipse(), addLine(), addPixmap(), addPixmap(), addText(),
-    addItem(), addWidget()
+    \sa addEllipse(), addLine(), addPixmap(), addText(), addItem(), addWidget()
 */
 QGraphicsRectItem *QGraphicsScene::addRect(const QRectF &rect, const QPen &pen, const QBrush &brush)
 {
@@ -2743,8 +2748,7 @@ QGraphicsRectItem *QGraphicsScene::addRect(const QRectF &rect, const QPen &pen, 
     QGraphicsScene will emit changed() once control goes back to the event
     loop.
 
-    \sa addEllipse(), addLine(), addPixmap(), addPixmap(), addRect(),
-    addItem(), addWidget()
+    \sa addEllipse(), addLine(), addPixmap(), addRect(), addItem(), addWidget()
 */
 QGraphicsTextItem *QGraphicsScene::addText(const QString &text, const QFont &font)
 {
@@ -2765,8 +2769,7 @@ QGraphicsTextItem *QGraphicsScene::addText(const QString &text, const QFont &fon
     QGraphicsScene will emit changed() once control goes back to the event
     loop.
 
-    \sa addEllipse(), addLine(), addPixmap(), addPixmap(), addRect(),
-    addItem(), addWidget()
+    \sa addEllipse(), addLine(), addPixmap(), addRect(), addItem(), addWidget()
 */
 QGraphicsSimpleTextItem *QGraphicsScene::addSimpleText(const QString &text, const QFont &font)
 {
@@ -2791,7 +2794,7 @@ QGraphicsSimpleTextItem *QGraphicsScene::addSimpleText(const QString &text, cons
     set and widgets that wrap an external application or controller
     are not supported. Examples are QOpenGLWidget and QAxWidget.
 
-    \sa addEllipse(), addLine(), addPixmap(), addPixmap(), addRect(),
+    \sa addEllipse(), addLine(), addPixmap(), addRect(),
     addText(), addSimpleText(), addItem()
 */
 QGraphicsProxyWidget *QGraphicsScene::addWidget(QWidget *widget, Qt::WindowFlags wFlags)
@@ -4772,7 +4775,7 @@ static inline void setClip(QPainter *painter, QGraphicsItem *item)
     QRectF clipRect;
     const QPainterPath clipPath(item->shape());
     if (QPathClipper::pathToRect(clipPath, &clipRect))
-        painter->setClipRect(clipRect, Qt::IntersectClip);
+        painter->setClipRect(clipRect.normalized(), Qt::IntersectClip);
     else
         painter->setClipPath(clipPath, Qt::IntersectClip);
 }
@@ -5832,7 +5835,7 @@ int QGraphicsScenePrivate::findClosestTouchPointId(const QPointF &scenePos)
 
 void QGraphicsScenePrivate::touchEventHandler(QTouchEvent *sceneTouchEvent)
 {
-    typedef QPair<QEventPoint::States, QList<QEventPoint> > StatesAndTouchPoints;
+    typedef std::pair<QEventPoint::States, QList<QEventPoint> > StatesAndTouchPoints;
     QHash<QGraphicsItem *, StatesAndTouchPoints> itemsNeedingEvents;
 
     const auto &touchPoints = sceneTouchEvent->points();

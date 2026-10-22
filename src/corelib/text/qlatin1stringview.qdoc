@@ -2,6 +2,7 @@
 // Copyright (C) 2022 Intel Corporation.
 // Copyright (C) 2019 Mail.ru Group.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+// Qt-Security score:insignificant reason:docs
 
 /*! \class QLatin1StringView
     \inmodule QtCore
@@ -16,7 +17,7 @@
                   {const char16_t *}
     \endcompareswith
     \compareswith strong {const char *} QByteArray QByteArrayView
-    The byte array data is interpreted as utf-8.
+    The byte array data is interpreted as UTF-8.
     \endcompareswith
 
     Many of QString's member functions are overloaded to accept
@@ -68,6 +69,13 @@
     which is usually what you want to avoid by using QLatin1StringView
     in the first place. In those cases, using QStringLiteral may be
     the better option.
+
+    \note Only US-ASCII literals can be used in QLatin1StringView if the source
+    code file is encoded in UTF-8, as \l{unicode}{Qt requires}. Non-US-ASCII
+    literals like \c{QLatin1StringView("é")} will not be represented correctly.
+    You can use octal or hex notation instead:
+    \c{QLatin1StringView("\351")} or \c{QLatin1StringView("\xe9")},
+    respectively.
 
     \sa QString, QLatin1Char, {QStringLiteral()}{QStringLiteral},
     QT_NO_CAST_FROM_ASCII
@@ -263,6 +271,18 @@
     \code
     return QString(*this);
     \endcode
+
+    \sa toUtf8()
+*/
+
+/*!
+    \fn QByteArray QLatin1StringView::toUtf8() const
+    \since 6.9
+
+    Returns a UTF-8 representation of the string as a QByteArray. This function
+    is more efficient than converting first to QString.
+
+    \sa toString(), QString::toUtf8()
 */
 
 /*! \fn const char *QLatin1StringView::latin1() const
@@ -485,7 +505,8 @@
 /*!
     \fn qsizetype QLatin1StringView::indexOf(QStringView str, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
     \fn qsizetype QLatin1StringView::indexOf(QLatin1StringView l1, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
-    \fn qsizetype QLatin1StringView::indexOf(QChar c, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
+    \fn qsizetype QLatin1StringView::indexOf(QChar c, qsizetype from = 0) const
+    \fn qsizetype QLatin1StringView::indexOf(QChar c, qsizetype from, Qt::CaseSensitivity cs) const
     \since 5.14
 
     Returns the index position in this Latin-1 string view of the first
@@ -520,6 +541,9 @@
 /*!
     \fn qsizetype QLatin1StringView::lastIndexOf(QStringView str, qsizetype from, Qt::CaseSensitivity cs) const
     \fn qsizetype QLatin1StringView::lastIndexOf(QLatin1StringView l1, qsizetype from, Qt::CaseSensitivity cs) const
+    \fn qsizetype QLatin1StringView::lastIndexOf(QChar c) const
+    \fn qsizetype QLatin1StringView::lastIndexOf(QChar c, Qt::CaseSensitivity cs) const
+    \fn qsizetype QLatin1StringView::lastIndexOf(QChar c, qsizetype from) const
     \fn qsizetype QLatin1StringView::lastIndexOf(QChar c, qsizetype from, Qt::CaseSensitivity cs) const
     \since 5.14
 
@@ -1311,7 +1335,7 @@
 
     The following code creates a QLatin1StringView:
     \code
-    using namespace Qt::Literals::StringLiterals;
+    using namespace Qt::StringLiterals;
 
     auto str = "hello"_L1;
     \endcode

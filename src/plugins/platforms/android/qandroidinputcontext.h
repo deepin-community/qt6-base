@@ -1,6 +1,7 @@
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef ANDROIDINPUTCONTEXT_H
 #define ANDROIDINPUTCONTEXT_H
@@ -66,6 +67,8 @@ public:
     static QAndroidInputContext * androidInputContext();
     bool isValid() const override { return true; }
 
+    void setAccessibilityFocusInProgress(bool inProgress) { m_accessibilityFocusInProgress = inProgress; }
+
     void reset() override;
     void commit() override;
     void update(Qt::InputMethodQueries queries) override;
@@ -79,6 +82,7 @@ public:
     bool isComposing() const;
     void clear();
     void setFocusObject(QObject *object) override;
+    QObject *focusObject();
     void sendShortcut(const QKeySequence &);
 
     //---------------//
@@ -92,6 +96,7 @@ public:
     QString getSelectedText(jint flags);
     QString getTextAfterCursor(jint length, jint flags);
     QString getTextBeforeCursor(jint length, jint flags);
+    jboolean replaceText(jint start, jint end, const QString text, jint newCursorPosition);
     jboolean setComposingText(const QString &text, jint newCursorPosition);
     jboolean setComposingRegion(jint start, jint end);
     jboolean setSelection(jint start, jint end);
@@ -117,12 +122,23 @@ private slots:
     void showInputPanelLater(Qt::ApplicationState);
 
 private:
+    bool isImhNoEditMenuSet();
     bool isImhNoTextHandlesSet();
     void sendInputMethodEvent(QInputMethodEvent *event);
     QSharedPointer<QInputMethodQueryEvent> focusObjectInputMethodQuery(Qt::InputMethodQueries queries = Qt::ImQueryAll);
     bool focusObjectIsComposing() const;
     void focusObjectStartComposing();
     bool focusObjectStopComposing();
+#if QT_CONFIG(accessibility)
+    // Synthesize the Android text-change events QML text items don't emit on the
+    // input path, so a screen reader echoes typed/deleted characters. Generated
+    // at the platform chokepoints: endBatchEdit() for IME edits, update() for the
+    // rest (key events, programmatic changes).
+    void notifyTextChangedForAccessibility();
+    // Flag a pending edit (and lazily capture the pre-edit baseline) from the IME
+    // mutators, so focus-time batch edits don't fire a spurious announcement.
+    void markTextEditForAccessibility();
+#endif
 
 private:
     ExtractedText m_extractedText;
@@ -132,9 +148,16 @@ private:
     QMetaObject::Connection m_updateCursorPosConnection;
     HandleModes m_handleMode;
     int m_batchEditNestingLevel;
+#if QT_CONFIG(accessibility)
+    // Per-focus text baseline used to diff edits for the screen-reader echo.
+    QString m_a11yLastText;
+    bool m_a11yTextEditPending = false;
+    bool m_a11yBaselineValid = false;
+#endif
     QPointer<QObject> m_focusObject;
     QTimer m_hideCursorHandleTimer;
     bool m_fullScreenMode;
+    bool m_accessibilityFocusInProgress = false;
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(QAndroidInputContext::HandleModes)
 QT_END_NAMESPACE

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 /*!
@@ -31,9 +32,6 @@
 #endif
 
 QT_BEGIN_NAMESPACE
-
-static_assert(QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
-           && sizeof(QScopedPointer<QSslCipherPrivate>) == sizeof(std::unique_ptr<QSslCipherPrivate>));
 
 /*!
     Constructs an empty QSslCipher object.
@@ -117,9 +115,7 @@ QSslCipher &QSslCipher::operator=(const QSslCipher &other)
 /*!
     \fn void QSslCipher::swap(QSslCipher &other)
     \since 5.0
-
-    Swaps this cipher instance with \a other. This function is very
-    fast and never fails.
+    \memberswap{cipher instance}
 */
 
 /*!

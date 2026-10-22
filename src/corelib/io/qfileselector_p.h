@@ -1,5 +1,6 @@
 // Copyright (C) 2013 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILESELECTOR_P_H
 #define QFILESELECTOR_P_H
@@ -34,6 +35,7 @@ public:
     static void updateSelectors();
     static QStringList platformSelectors();
     static void addStatics(const QStringList &); //For loading GUI statics from other Qt modules
+    static qsizetype removeStatics(const QStringList &);
     static QString selectionHelper(const QString &path, const QString &fileName,
                                    const QStringList &selectors, QChar indicator = u'+');
     QFileSelectorPrivate();

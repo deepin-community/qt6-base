@@ -34,6 +34,7 @@ bool DragDropListModel::canDropMimeData(const QMimeData *data,
     return true;
 }
 //! [0]
+
 //! [1]
 bool DragDropListModel::dropMimeData(const QMimeData *data,
     Qt::DropAction action, int row, int column, const QModelIndex &parent)
@@ -43,22 +44,26 @@ bool DragDropListModel::dropMimeData(const QMimeData *data,
 
     if (action == Qt::IgnoreAction)
         return true;
-//! [1]
+    //! [1]
 
-//! [2]
+    //! [2]
     int beginRow;
 
     if (row != -1)
         beginRow = row;
-//! [2] //! [3]
+    //! [2] 
+
+    //! [3]
     else if (parent.isValid())
         beginRow = parent.row();
-//! [3] //! [4]
+    //! [3]
+
+    //! [4]
     else
         beginRow = rowCount(QModelIndex());
-//! [4]
+    //! [4]
 
-//! [5]
+    //! [5]
     QByteArray encodedData = data->data("application/vnd.text.list");
     QDataStream stream(&encodedData, QIODevice::ReadOnly);
     QStringList newItems;
@@ -70,7 +75,7 @@ bool DragDropListModel::dropMimeData(const QMimeData *data,
         newItems << text;
         ++rows;
     }
-//! [5]
+    //! [5]
 
 //! [6]
     insertRows(beginRow, rows, QModelIndex());

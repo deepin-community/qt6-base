@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //#define QABSTRACTSOCKET_DEBUG
 
@@ -359,6 +360,21 @@
     allow setting the MTU for transmission.
     This enum value was introduced in Qt 5.11.
 
+    \value KeepAliveIdleOption The time in seconds the connection needs to
+    remain idle before TCP starts sending keepalive probes if
+    KeepAliveOption is enabled.
+    This enum value was introduced in Qt 6.11.
+
+    \value KeepAliveIntervalOption The time in seconds between individual
+    keepalive probes, if KeepAliveOption is enabled. This option is not
+    supported in all OSes.
+    This enum value was introduced in Qt 6.11.
+
+    \value KeepAliveCountOption The maximum number of keepalive probes to
+    send before TCP drops the connection, if KeepAliveOption is enabled.
+    This option is not supported in all OSes.
+    This enum value was introduced in Qt 6.11.
+
     Possible values for \e{TypeOfServiceOption} are:
 
     \table
@@ -431,10 +447,13 @@
 
 #include "qabstractsocket.h"
 #include "qabstractsocket_p.h"
+#include "qabstractsocketengine_p.h"
+#include "qnetworkinterface.h"
 
 #include "private/qhostinfo_p.h"
 
 #include <qabstracteventdispatcher.h>
+#include <QtCore/qdebug.h>
 #include <qhostaddress.h>
 #include <qhostinfo.h>
 #include <qmetaobject.h>
@@ -451,8 +470,6 @@
 #include <private/qdebug_p.h>
 #endif
 
-#include <time.h>
-
 #define Q_CHECK_SOCKETENGINE(returnValue) do { \
     if (!d->socketEngine) { \
         return returnValue; \
@@ -461,7 +478,6 @@
 #ifndef QABSTRACTSOCKET_BUFFERSIZE
 #define QABSTRACTSOCKET_BUFFERSIZE 32768
 #endif
-#define QT_TRANSFER_TIMEOUT 120000
 
 QT_BEGIN_NAMESPACE
 
@@ -492,7 +508,8 @@ static bool isProxyError(QAbstractSocket::SocketError error)
 
     Constructs a QAbstractSocketPrivate. Initializes all members.
 */
-QAbstractSocketPrivate::QAbstractSocketPrivate()
+QAbstractSocketPrivate::QAbstractSocketPrivate(decltype(QObjectPrivateVersion) version)
+    : QIODevicePrivate(version)
 {
     writeBufferChunkSize = QABSTRACTSOCKET_BUFFERSIZE;
 }
@@ -1028,7 +1045,7 @@ void QAbstractSocketPrivate::_q_connectToNextAddress()
         host = addresses.takeFirst();
 #if defined(QABSTRACTSOCKET_DEBUG)
         qDebug("QAbstractSocketPrivate::_q_connectToNextAddress(), connecting to %s:%i, %d left to try",
-               host.toString().toLatin1().constData(), port, addresses.count());
+               host.toString().toLatin1().constData(), port, int(addresses.count()));
 #endif
 
         if (cachedSocketDescriptor == -1 && !initSocketLayer(host.protocol())) {
@@ -1173,12 +1190,11 @@ bool QAbstractSocketPrivate::readFromSocket()
         // Read from the socket, store data in the read buffer.
         char *ptr = buffer.reserve(bytesToRead);
         qint64 readBytes = socketEngine->read(ptr, bytesToRead);
+        buffer.chop(bytesToRead - (readBytes < 0 ? qint64(0) : readBytes));
         if (readBytes == -2) {
             // No bytes currently available for reading.
-            buffer.chop(bytesToRead);
             return true;
         }
-        buffer.chop(bytesToRead - (readBytes < 0 ? qint64(0) : readBytes));
 #if defined(QABSTRACTSOCKET_DEBUG)
         qDebug("QAbstractSocketPrivate::readFromSocket() got %lld bytes, buffer size = %lld",
                readBytes, buffer.size());
@@ -1231,6 +1247,9 @@ void QAbstractSocketPrivate::emitReadyRead(int channel)
 void QAbstractSocketPrivate::emitBytesWritten(qint64 bytes, int channel)
 {
     Q_Q(QAbstractSocket);
+
+    bytesWrittenEmissionCount++;
+
     // Only emit bytesWritten() when not recursing.
     if (!emittedBytesWritten && channel == currentWriteChannel) {
         QScopedValueRollback<bool> r(emittedBytesWritten);
@@ -1498,7 +1517,8 @@ bool QAbstractSocket::bind(const QHostAddress &address, quint16 port, BindMode m
     return d->bind(address, port, mode);
 }
 
-bool QAbstractSocketPrivate::bind(const QHostAddress &address, quint16 port, QAbstractSocket::BindMode mode)
+bool QAbstractSocketPrivate::bind(const QHostAddress &address, quint16 port, QAbstractSocket::BindMode mode,
+                                  const QNetworkInterface *iface)
 {
     Q_Q(QAbstractSocket);
 
@@ -1533,6 +1553,10 @@ bool QAbstractSocketPrivate::bind(const QHostAddress &address, quint16 port, QAb
         socketEngine->setOption(QAbstractSocketEngine::BindExclusively, 0);
 #endif
     }
+#if QT_CONFIG(networkinterface)
+    if (iface && iface->isValid())
+        socketEngine->setOption(QAbstractSocketEngine::BindInterfaceIndex, iface->index());
+#endif
     bool result = socketEngine->bind(address, port);
     cachedSocketDescriptor = socketEngine->socketDescriptor();
 
@@ -1967,6 +1991,18 @@ void QAbstractSocket::setSocketOption(QAbstractSocket::SocketOption option, cons
         case PathMtuSocketOption:
             d_func()->socketEngine->setOption(QAbstractSocketEngine::PathMtuInformation, value.toInt());
             break;
+
+        case KeepAliveIdleOption:
+            d_func()->socketEngine->setOption(QAbstractSocketEngine::KeepAliveIdleOption, value.toInt());
+            break;
+
+        case KeepAliveIntervalOption:
+            d_func()->socketEngine->setOption(QAbstractSocketEngine::KeepAliveIntervalOption, value.toInt());
+            break;
+
+        case KeepAliveCountOption:
+            d_func()->socketEngine->setOption(QAbstractSocketEngine::KeepAliveCountOption, value.toInt());
+            break;
     }
 }
 
@@ -2013,6 +2049,18 @@ QVariant QAbstractSocket::socketOption(QAbstractSocket::SocketOption option)
         case PathMtuSocketOption:
                 ret = d_func()->socketEngine->option(QAbstractSocketEngine::PathMtuInformation);
                 break;
+
+        case KeepAliveIdleOption:
+            ret = d_func()->socketEngine->option(QAbstractSocketEngine::KeepAliveIdleOption);
+            break;
+
+        case KeepAliveIntervalOption:
+            ret = d_func()->socketEngine->option(QAbstractSocketEngine::KeepAliveIntervalOption);
+            break;
+
+        case KeepAliveCountOption:
+            ret = d_func()->socketEngine->option(QAbstractSocketEngine::KeepAliveCountOption);
+            break;
     }
     if (ret == -1)
         return QVariant();
@@ -2220,6 +2268,8 @@ bool QAbstractSocket::waitForBytesWritten(int msecs)
     if (d->writeBuffer.isEmpty())
         return false;
 
+    const quint32 bwEmissionCountAtEntry = d->bytesWrittenEmissionCount;
+
     QDeadlineTimer deadline{msecs};
 
     // handle a socket in connecting state
@@ -2257,6 +2307,13 @@ bool QAbstractSocket::waitForBytesWritten(int msecs)
             if (d->canWriteNotification()) {
 #if defined (QABSTRACTSOCKET_DEBUG)
                 qDebug("QAbstractSocket::waitForBytesWritten returns true");
+#endif
+                return true;
+            } else if (d->bytesWrittenEmissionCount != bwEmissionCountAtEntry) {
+                // A slot connected to any signal emitted by this method has written data, which
+                // fulfills the condition to return true that at least one byte has been written.
+#if defined (QABSTRACTSOCKET_DEBUG)
+                qDebug("QAbstractSocket::waitForBytesWritten returns true (write in signal handler)");
 #endif
                 return true;
             }
@@ -2872,110 +2929,6 @@ void QAbstractSocket::setProtocolTag(const QString &tag)
 }
 
 #endif // QT_NO_NETWORKPROXY
-
-#ifndef QT_NO_DEBUG_STREAM
-Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, QAbstractSocket::SocketError error)
-{
-    QDebugStateSaver saver(debug);
-    debug.resetFormat().nospace();
-    switch (error) {
-    case QAbstractSocket::ConnectionRefusedError:
-        debug << "QAbstractSocket::ConnectionRefusedError";
-        break;
-    case QAbstractSocket::RemoteHostClosedError:
-        debug << "QAbstractSocket::RemoteHostClosedError";
-        break;
-    case QAbstractSocket::HostNotFoundError:
-        debug << "QAbstractSocket::HostNotFoundError";
-        break;
-    case QAbstractSocket::SocketAccessError:
-        debug << "QAbstractSocket::SocketAccessError";
-        break;
-    case QAbstractSocket::SocketResourceError:
-        debug << "QAbstractSocket::SocketResourceError";
-        break;
-    case QAbstractSocket::SocketTimeoutError:
-        debug << "QAbstractSocket::SocketTimeoutError";
-        break;
-    case QAbstractSocket::DatagramTooLargeError:
-        debug << "QAbstractSocket::DatagramTooLargeError";
-        break;
-    case QAbstractSocket::NetworkError:
-        debug << "QAbstractSocket::NetworkError";
-        break;
-    case QAbstractSocket::AddressInUseError:
-        debug << "QAbstractSocket::AddressInUseError";
-        break;
-    case QAbstractSocket::SocketAddressNotAvailableError:
-        debug << "QAbstractSocket::SocketAddressNotAvailableError";
-        break;
-    case QAbstractSocket::UnsupportedSocketOperationError:
-        debug << "QAbstractSocket::UnsupportedSocketOperationError";
-        break;
-    case QAbstractSocket::UnfinishedSocketOperationError:
-        debug << "QAbstractSocket::UnfinishedSocketOperationError";
-        break;
-    case QAbstractSocket::ProxyAuthenticationRequiredError:
-        debug << "QAbstractSocket::ProxyAuthenticationRequiredError";
-        break;
-    case QAbstractSocket::UnknownSocketError:
-        debug << "QAbstractSocket::UnknownSocketError";
-        break;
-    case QAbstractSocket::ProxyConnectionRefusedError:
-        debug << "QAbstractSocket::ProxyConnectionRefusedError";
-        break;
-    case QAbstractSocket::ProxyConnectionClosedError:
-        debug << "QAbstractSocket::ProxyConnectionClosedError";
-        break;
-    case QAbstractSocket::ProxyConnectionTimeoutError:
-        debug << "QAbstractSocket::ProxyConnectionTimeoutError";
-        break;
-    case QAbstractSocket::ProxyNotFoundError:
-        debug << "QAbstractSocket::ProxyNotFoundError";
-        break;
-    case QAbstractSocket::ProxyProtocolError:
-        debug << "QAbstractSocket::ProxyProtocolError";
-        break;
-    default:
-        debug << "QAbstractSocket::SocketError(" << int(error) << ')';
-        break;
-    }
-    return debug;
-}
-
-Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, QAbstractSocket::SocketState state)
-{
-    QDebugStateSaver saver(debug);
-    debug.resetFormat().nospace();
-    switch (state) {
-    case QAbstractSocket::UnconnectedState:
-        debug << "QAbstractSocket::UnconnectedState";
-        break;
-    case QAbstractSocket::HostLookupState:
-        debug << "QAbstractSocket::HostLookupState";
-        break;
-    case QAbstractSocket::ConnectingState:
-        debug << "QAbstractSocket::ConnectingState";
-        break;
-    case QAbstractSocket::ConnectedState:
-        debug << "QAbstractSocket::ConnectedState";
-        break;
-    case QAbstractSocket::BoundState:
-        debug << "QAbstractSocket::BoundState";
-        break;
-    case QAbstractSocket::ListeningState:
-        debug << "QAbstractSocket::ListeningState";
-        break;
-    case QAbstractSocket::ClosingState:
-        debug << "QAbstractSocket::ClosingState";
-        break;
-    default:
-        debug << "QAbstractSocket::SocketState(" << int(state) << ')';
-        break;
-    }
-    return debug;
-}
-#endif
 
 QT_END_NAMESPACE
 

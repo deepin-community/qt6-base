@@ -1,10 +1,12 @@
 // Copyright (C) 2011 - 2013 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qqnxglcontext.h"
 #include "qqnxintegration.h"
 #include "qqnxscreen.h"
 #include "qqnxeglwindow.h"
+#include "qqnxwindow.h"
 
 #include "private/qeglconvenience_p.h"
 
@@ -55,10 +57,9 @@ void QQnxGLContext::swapBuffers(QPlatformSurface *surface)
 {
     qCDebug(lcQpaGLContext) << Q_FUNC_INFO;
 
-    QEGLPlatformContext::swapBuffers(surface);
-
     QQnxEglWindow *platformWindow = static_cast<QQnxEglWindow*>(surface);
     platformWindow->windowPosted();
+    QEGLPlatformContext::swapBuffers(surface);
 }
 
 void QQnxGLContext::doneCurrent()

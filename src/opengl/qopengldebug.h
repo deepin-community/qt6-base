@@ -1,5 +1,6 @@
 // Copyright (C) 2013 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOPENGLDEBUG_H
 #define QOPENGLDEBUG_H
@@ -12,7 +13,6 @@
 #include <QtCore/qflags.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qmetatype.h>
-#include <QtCore/qdebug.h>
 #include <QtGui/qopenglcontext.h>
 
 #if defined(Q_QDOC)
@@ -22,6 +22,7 @@ typedef unsigned int GLuint;
 
 QT_BEGIN_NAMESPACE
 
+class QDebug;
 class QOpenGLDebugLogger;
 class QOpenGLDebugLoggerPrivate;
 class QOpenGLDebugMessagePrivate;

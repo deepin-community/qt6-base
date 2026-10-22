@@ -26,7 +26,7 @@ QT_BEGIN_NAMESPACE
 namespace QTest {
 class TestRegistry {
 public:
-    using TestEntryFunction = int(*)(int argv, char** argc);
+    using TestEntryFunction = std::function<int(int, char **)>;
 
     static TestRegistry* instance();
 

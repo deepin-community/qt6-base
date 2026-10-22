@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2014 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMETAOBJECT_P_H
 #define QMETAOBJECT_P_H
@@ -23,6 +24,7 @@
 #ifndef QT_NO_QOBJECT
 #include <private/qobject_p.h> // For QObjectPrivate::Connection
 #endif
+#include <QtCore/qtmocconstants.h>
 #include <private/qtools_p.h>
 #include <QtCore/qvarlengtharray.h>
 
@@ -30,85 +32,29 @@ QT_BEGIN_NAMESPACE
 // ### TODO - QTBUG-87869: wrap in a proper Q_NAMESPACE and use scoped enums, to avoid name clashes
 
 using namespace QtMiscUtils;
+using namespace QtMocConstants;
 
-enum PropertyFlags {
-    Invalid = 0x00000000,
-    Readable = 0x00000001,
-    Writable = 0x00000002,
-    Resettable = 0x00000004,
-    EnumOrFlag = 0x00000008,
-    Alias = 0x00000010,
-    // Reserved for future usage = 0x00000020,
-    StdCppSet = 0x00000100,
-    Constant = 0x00000400,
-    Final = 0x00000800,
-    Designable = 0x00001000,
-    Scriptable = 0x00004000,
-    Stored = 0x00010000,
-    User = 0x00100000,
-    Required = 0x01000000,
-    Bindable = 0x02000000
-};
-
-enum MethodFlags {
-    AccessPrivate = 0x00,
-    AccessProtected = 0x01,
-    AccessPublic = 0x02,
-    AccessMask = 0x03, // mask
-
-    MethodMethod = 0x00,
-    MethodSignal = 0x04,
-    MethodSlot = 0x08,
-    MethodConstructor = 0x0c,
-    MethodTypeMask = 0x0c,
-
-    MethodCompatibility = 0x10,
-    MethodCloned = 0x20,
-    MethodScriptable = 0x40,
-    MethodRevisioned = 0x80,
-
-    MethodIsConst = 0x100, // no use case for volatile so far
-};
-
-enum MetaObjectFlag {
-    DynamicMetaObject = 0x01,
-    RequiresVariantMetaObject = 0x02,
-    PropertyAccessInStaticMetaCall = 0x04 // since Qt 5.5, property code is in the static metacall
-};
 Q_DECLARE_FLAGS(MetaObjectFlags, MetaObjectFlag)
 Q_DECLARE_OPERATORS_FOR_FLAGS(MetaObjectFlags)
 
-enum MetaDataFlags {
-    IsUnresolvedType = 0x80000000,
-    TypeNameIndexMask = 0x7FFFFFFF,
-    IsUnresolvedSignal = 0x70000000
-};
-
-enum EnumFlags {
-    EnumIsFlag = 0x1,
-    EnumIsScoped = 0x2
-};
-
-Q_CORE_EXPORT int qMetaTypeTypeInternal(const char *);
+int qMetaTypeTypeInternal(QByteArrayView name); // in qmetatype.cpp
 
 class QArgumentType
 {
 public:
-    QArgumentType(int type)
-        : _type(type)
+    QArgumentType() = default;
+    QArgumentType(QMetaType metaType)
+        : _metaType(metaType)
     {}
-    QArgumentType(const QByteArray &name)
-        : _type(qMetaTypeTypeInternal(name.constData())), _name(name)
+    explicit QArgumentType(QByteArrayView name)
+        : _metaType(QMetaType{qMetaTypeTypeInternal(name)}), _name(name)
     {}
-    QArgumentType()
-        : _type(0)
-    {}
-    int type() const
-    { return _type; }
-    QByteArray name() const
+    QMetaType metaType() const noexcept
+    { return _metaType; }
+    QByteArrayView name() const noexcept
     {
-        if (_type && _name.isEmpty())
-            const_cast<QArgumentType *>(this)->_name = QMetaType(_type).name();
+        if (_name.isEmpty())
+            return metaType().name();
         return _name;
     }
 
@@ -116,15 +62,15 @@ private:
     friend bool comparesEqual(const QArgumentType &lhs,
                               const QArgumentType &rhs)
     {
-        if (lhs._type && rhs._type)
-            return lhs._type == rhs._type;
+        if (lhs.metaType().isValid() && rhs.metaType().isValid())
+            return lhs.metaType() == rhs.metaType();
         else
             return lhs.name() == rhs.name();
     }
     Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QArgumentType)
 
-    int _type;
-    QByteArray _name;
+    QMetaType _metaType;
+    QByteArrayView _name;
 };
 Q_DECLARE_TYPEINFO(QArgumentType, Q_RELOCATABLE_TYPE);
 
@@ -165,14 +111,7 @@ public:
 
 struct QMetaObjectPrivate
 {
-    // revision 7 is Qt 5.0 everything lower is not supported
-    // revision 8 is Qt 5.12: It adds the enum name to QMetaEnum
-    // revision 9 is Qt 6.0: It adds the metatype of properties and methods
-    // revision 10 is Qt 6.2: The metatype of the metaobject is stored in the metatypes array
-    //                        and metamethods store a flag stating whether they are const
-    // revision 11 is Qt 6.5: The metatype for void is stored in the metatypes array
-    // revision 12 is Qt 6.6: It adds the metatype for enums
-    enum { OutputRevision = 12 }; // Used by moc, qmetaobjectbuilder and qdbus
+    enum { OutputRevision = QtMocConstants::OutputRevision }; // Used by moc, qmetaobjectbuilder and qdbus
     enum { IntsPerMethod = QMetaMethod::Data::Size };
     enum { IntsPerEnum = QMetaEnum::Data::Size };
     enum { IntsPerProperty = QMetaProperty::Data::Size };
@@ -192,22 +131,23 @@ struct QMetaObjectPrivate
 
     static int originalClone(const QMetaObject *obj, int local_method_index);
 
-    static QByteArray decodeMethodSignature(const char *signature,
-                                            QArgumentTypeArray &types);
+    static QByteArray normalizedSignature(QByteArrayView method);
+    static QByteArrayView decodeMethodSignature(QByteArrayView signature,
+                                                QArgumentTypeArray &types);
     static int indexOfSignalRelative(const QMetaObject **baseObject,
-                                     const QByteArray &name, int argc,
-                                     const QArgumentType *types);
+                                     QByteArrayView name,
+                                     QSpan<const QArgumentType> types);
     static int indexOfSlotRelative(const QMetaObject **m,
-                                   const QByteArray &name, int argc,
-                                   const QArgumentType *types);
-    static int indexOfSignal(const QMetaObject *m, const QByteArray &name,
-                             int argc, const QArgumentType *types);
-    static int indexOfSlot(const QMetaObject *m, const QByteArray &name,
-                           int argc, const QArgumentType *types);
-    static int indexOfMethod(const QMetaObject *m, const QByteArray &name,
-                             int argc, const QArgumentType *types);
-    static int indexOfConstructor(const QMetaObject *m, const QByteArray &name,
-                                  int argc, const QArgumentType *types);
+                                   QByteArrayView name,
+                                   QSpan<const QArgumentType> types);
+    static int indexOfSignal(const QMetaObject *m, QByteArrayView name,
+                             QSpan<const QArgumentType> types);
+    static int indexOfSlot(const QMetaObject *m, QByteArrayView name,
+                           QSpan<const QArgumentType> types);
+    static int indexOfMethod(const QMetaObject *m, QByteArrayView name,
+                             QSpan<const QArgumentType> types);
+    static int indexOfConstructor(const QMetaObject *m, QByteArrayView name,
+                                  QSpan<const QArgumentType> types);
 
     enum class Which { Name, Alias };
     static int indexOfEnumerator(const QMetaObject *m, QByteArrayView name, Which which);
@@ -224,12 +164,14 @@ struct QMetaObjectPrivate
     }
     Q_CORE_EXPORT static int absoluteSignalCount(const QMetaObject *m);
     Q_CORE_EXPORT static int signalIndex(const QMetaMethod &m);
-    static bool checkConnectArgs(int signalArgc, const QArgumentType *signalTypes,
-                                 int methodArgc, const QArgumentType *methodTypes);
+    static bool checkConnectArgs(QSpan<const QArgumentType> signalTypes,
+                                 QSpan<const QArgumentType> methodTypes);
     static bool checkConnectArgs(const QMetaMethodPrivate *signal,
                                  const QMetaMethodPrivate *method);
 
-    static QList<QByteArray> parameterTypeNamesFromSignature(const char *signature);
+    static QByteArrayView
+    parameterTypeNamesFromSignature(QByteArrayView signature,
+                                    QVarLengthArray<QByteArrayView, 10> &typeNames);
 
 #ifndef QT_NO_QOBJECT
     // defined in qobject.cpp
@@ -250,14 +192,14 @@ struct QMetaObjectPrivate
                                         QBasicMutex *senderMutex, DisconnectType = DisconnectAll);
 #endif
 
-    template<int MethodType>
     static inline int indexOfMethodRelative(const QMetaObject **baseObject,
-                                            const QByteArray &name, int argc,
-                                            const QArgumentType *types);
+                                            QByteArrayView name,
+                                            QSpan<const QArgumentType> types,
+                                            QMetaMethod::MethodType what);
 
     static bool methodMatch(const QMetaObject *m, const QMetaMethod &method,
-                            const QByteArray &name, int argc,
-                            const QArgumentType *types);
+                            QByteArrayView name,
+                            QSpan<const QArgumentType> types);
     Q_CORE_EXPORT static QMetaMethod firstMethod(const QMetaObject *baseObject, QByteArrayView name);
 
 };
@@ -278,14 +220,6 @@ static inline bool is_space(char s)
     return (s == ' ' || s == '\t');
 }
 #endif
-
-/*
-    This function is shared with moc.cpp. The implementation lives in qmetaobject_moc_p.h, which
-    should be included where needed. The declaration here is not used to avoid warnings from
-    the compiler about unused functions.
-
-static QByteArray normalizeTypeInternal(const char *t, const char *e, bool fixScope = false, bool adjustConst = true);
-*/
 
 QT_END_NAMESPACE
 

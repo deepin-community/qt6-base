@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qicc_p.h"
 
@@ -20,7 +21,7 @@
 #include <array>
 
 QT_BEGIN_NAMESPACE
-Q_LOGGING_CATEGORY(lcIcc, "qt.gui.icc", QtWarningMsg)
+Q_STATIC_LOGGING_CATEGORY(lcIcc, "qt.gui.icc", QtWarningMsg)
 
 namespace QIcc {
 
@@ -127,11 +128,6 @@ enum class Tag : quint32 {
 };
 
 } // namespace QIcc
-
-inline size_t qHash(const QIcc::Tag &key, size_t seed = 0)
-{
-    return qHash(quint32(key), seed);
-}
 
 namespace QIcc {
 

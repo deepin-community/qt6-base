@@ -19,6 +19,8 @@
 #include <qsignalspy.h>
 
 #include <QtWidgets/private/qapplication_p.h>
+#include <QtGui/private/qguiapplication_p.h>
+#include <qpa/qplatformintegration.h>
 
 typedef QList<QGraphicsItem *> QGraphicsItemList;
 
@@ -289,9 +291,8 @@ void tst_QGraphicsWidget::qgraphicswidget()
     QCOMPARE(widget.call_propertyChange(QString(), QVariant()), QVariant());
     widget.call_sizeHint(Qt::PreferredSize, QSizeF());
 
-    QGraphicsScene scene;
-    QGraphicsWidget *parent = new QGraphicsWidget;
-    SizeHinter *child = new SizeHinter(parent);
+    QGraphicsWidget parent;
+    SizeHinter *child = new SizeHinter(&parent);
 
     QCOMPARE(child->minimumSize(), QSizeF(5, 5));
 }
@@ -1085,8 +1086,11 @@ void tst_QGraphicsWidget::initStyleOption()
     }
     QFETCH(bool, underMouse);
     if (underMouse) {
-        QCursor::setPos(view.viewport()->mapToGlobal(view.mapFromScene(widget->mapToScene(widget->boundingRect().center()))));
-        QTest::qWait(100);
+        if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::MouseCursorPositioning))
+            QSKIP("Platform does not support cursor positioning");
+        const auto pos = view.viewport()->mapToGlobal(view.mapFromScene(widget->mapToScene(widget->boundingRect().center())));
+        QCursor::setPos(pos);
+        QTRY_COMPARE(QCursor::pos(), pos);
     }
 
     QFETCH(QPalette, palette);
@@ -1354,14 +1358,17 @@ void tst_QGraphicsWidget::setStyle()
 
     int oldEventCounts = widget.eventCount;
 
+    std::unique_ptr<QStyle> reaper;
+
     QFETCH(QString, style);
     if (!style.isEmpty()) {
         QStyle *fstyle = QStyleFactory::create(style);
+        reaper.reset(fstyle);
         widget.setStyle(fstyle);
-        QCOMPARE(widget.style(), static_cast<QStyle*>(fstyle));
+        QCOMPARE(widget.style(), fstyle);
     } else {
         widget.setStyle(0);
-        QVERIFY(widget.style() != (QStyle *)0);
+        QVERIFY(widget.style() != nullptr);
     }
     QCOMPARE(widget.eventCount, oldEventCounts + 1);
     QCOMPARE(widget.testAttribute(Qt::WA_SetStyle), !style.isEmpty());
@@ -1459,7 +1466,7 @@ void tst_QGraphicsWidget::setTabOrderAndReparent()
     QGraphicsScene scene;
     QGraphicsView view(&scene);
     view.show();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(QTest::qWaitForWindowFocused(&view));
     QCOMPARE(QApplication::activeWindow(), (QWidget*)&view);
 
     QGraphicsWidget *w[4];
@@ -1588,7 +1595,7 @@ void tst_QGraphicsWidget::verifyFocusChain()
     QGraphicsScene scene;
     QGraphicsView view(&scene);
     view.show();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QVERIFY(QTest::qWaitForWindowFocused(&view));
 
     {
         // parent/child focus
@@ -1855,9 +1862,7 @@ enum WhichSize {
     None,
 };
 
-typedef QPair<int, QVariant> Inst;
-
-Q_DECLARE_METATYPE(Inst)
+using Inst = std::pair<int, QVariant>;
 
 void tst_QGraphicsWidget::setSizes_data()
 {
@@ -2288,6 +2293,7 @@ void tst_QGraphicsWidget::implicitMouseGrabber()
     QCOMPARE(widget2UngrabEventSpy.count(), 0);
 
     scene.removeItem(widget);
+    const auto reaper = qScopeGuard([=] { delete widget; });
     QCOMPARE(widgetUngrabEventSpy.count(), 4);
     QCOMPARE(scene.mouseGrabberItem(), nullptr);
 }
@@ -2561,16 +2567,16 @@ void tst_QGraphicsWidget::windowFlags()
 
 void tst_QGraphicsWidget::shortcutsDeletion()
 {
-    QGraphicsWidget *widget = new QGraphicsWidget;
-    QGraphicsWidget *widget2 = new QGraphicsWidget;
+    auto widget = std::make_unique<QGraphicsWidget>();
+    const auto widget2 = std::make_unique<QGraphicsWidget>();
     widget->setMinimumSize(40, 40);
-    QWidgetAction *del = new QWidgetAction(widget);
+    QWidgetAction *del = new QWidgetAction(widget.get());
     del->setIcon(QIcon("edit-delete"));
     del->setShortcut(Qt::Key_Delete);
     del->setShortcutContext(Qt::WidgetShortcut);
     widget2->addAction(del);
     widget2->addAction(del);
-    delete widget;
+    widget.reset();
 }
 
 class MessUpPainterWidget : public QGraphicsWidget
@@ -2955,8 +2961,8 @@ void tst_QGraphicsWidget::respectHFW()
     }
     const QSizeF winSize = window->size();
     qreal minHFW = window->effectiveSizeHint(Qt::MinimumSize, QSizeF(winSize.width(), -1)).height();
-#ifdef Q_OS_DARWIN
-    QEXPECT_FAIL("", "This test is known to fail on Apple platforms.", Continue);
+#if defined(Q_OS_MACOS)
+    QEXPECT_FAIL("", "This test is known to fail on macOS.", Continue);
 #endif
     QTRY_VERIFY(qAbs(minHFW - winSize.height()) < 1);
 }

@@ -13,17 +13,18 @@ int main(int argc, char *argv[])
 
     QAbstractItemModel *stringListModel = new QStringListModel(numbers, parent);
 
-//! [0]
+    //! [0]
     QSortFilterProxyModel *filterModel = new QSortFilterProxyModel(parent);
     filterModel->setSourceModel(stringListModel);
-//! [0]
+    //! [0]
 
     QWidget *window = new QWidget;
 
-//! [1]
+    //! [1]
     QListView *filteredView = new QListView;
     filteredView->setModel(filterModel);
-//! [1]
+    //! [1]
+
     filteredView->setWindowTitle("Filtered view onto a string list model");
 
     QLineEdit *patternEditor = new QLineEdit;

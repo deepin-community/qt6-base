@@ -11,8 +11,8 @@
 
     \reentrant
 
-    QCache\<Key, T\> defines a cache that stores objects of type T
-    associated with keys of type Key. For example, here's the
+    QCache\<Key, T\> defines a cache that stores objects of type \a T
+    associated with keys of type \a Key. For example, here's the
     definition of a cache that stores objects of type Employee
     associated with an integer key:
 

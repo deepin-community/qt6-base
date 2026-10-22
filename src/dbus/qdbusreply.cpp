@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusreply.h"
 #include "qdbusmetatype.h"
@@ -19,6 +20,7 @@ using namespace Qt::StringLiterals;
 
     \brief The QDBusReply class stores the reply for a method call to a remote object.
 
+    QDBusReply\<T\> is a template class where \a T specifies the expected return type.
     A QDBusReply object is a subset of the QDBusMessage object that represents a method call's
     reply. It contains only the first output argument or the error code and is used by
     QDBusInterface-derived classes to allow returning the error code as the function's return
@@ -38,13 +40,6 @@ using namespace Qt::StringLiterals;
     type). Use the isValid() function to test if the reply succeeded.
 
     \sa QDBusMessage, QDBusInterface
-*/
-
-/*!
-    \fn template<typename T> QDBusReply<T>::QDBusReply(const QDBusReply &other)
-    \since 5.15
-
-    Constructs a copy of \a other.
 */
 
 /*!
@@ -72,11 +67,6 @@ using namespace Qt::StringLiterals;
 /*!
     \fn template <typename T> QDBusReply<T>::QDBusReply(const QDBusError &error)
     Constructs an error reply from the D-Bus error code given by \a error.
-*/
-
-/*!
-    \fn template <typename T> QDBusReply<T>::operator=(const QDBusReply &other)
-    Makes this object be a copy of the object \a other.
 */
 
 /*!
@@ -133,11 +123,6 @@ using namespace Qt::StringLiterals;
     not be a valid error code (QDBusError::isValid() will return false).
 
     \sa isValid()
-*/
-
-/*!
-    \fn template <typename T> const QDBusError& QDBusReply<T>::error()
-    \overload
 */
 
 /*!

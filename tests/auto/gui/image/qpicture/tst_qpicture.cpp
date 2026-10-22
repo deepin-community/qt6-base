@@ -12,6 +12,7 @@
 #include <qguiapplication.h>
 #include <qscreen.h>
 #include <limits.h>
+#include <qfontdatabase.h>
 
 #ifndef QT_NO_PICTURE
 
@@ -31,6 +32,7 @@ private slots:
     void save_restore();
     void boundaryValues_data();
     void boundaryValues();
+    void textBaseline();
 };
 
 tst_QPicture::tst_QPicture()
@@ -266,6 +268,60 @@ void tst_QPicture::boundaryValues()
     painter.drawPoint(QPoint(x, y));
 
     painter.end();
+}
+
+void tst_QPicture::textBaseline()
+{
+    // String which for many default fonts will contain a missing character. Should still be
+    // aligned the same as when drawn with
+    const QString str = QStringLiteral("乾");
+
+    const QStringList &families = QFontDatabase::families();
+    for (const QString &family : families) {
+        QFont font(family, 64);
+
+        auto findTopLine = [](const QImage &img) {
+            for (int y = 0; y < img.height(); ++y) {
+                for (int x = 0; x < img.width(); ++x) {
+                    if (qAlpha(img.pixel(x, y)) > 0)
+                        return y;
+                }
+            }
+
+            return img.height();
+        };
+
+        int expectedY;
+        {
+            QImage image(500, 500, QImage::Format_ARGB32);
+            image.fill(Qt::transparent);
+            QPainter painter(&image);
+            painter.setFont(font);
+            painter.drawText(QPointF(0, 250), str);
+            expectedY = findTopLine(image);
+        }
+
+        int actualY;
+        {
+            QPicture picture;
+            {
+                QPainter painter(&picture);
+                painter.setFont(font);
+                painter.drawText(QPointF(0, 250), str);
+            }
+
+            QImage image(500, 500, QImage::Format_ARGB32);
+            image.fill(Qt::transparent);
+            {
+                QPainter painter(&image);
+                painter.drawPicture(QPointF(0, 0), picture);
+            }
+
+            actualY = findTopLine(image);
+        }
+
+        QCOMPARE(actualY, expectedY);
+    }
 }
 
 QTEST_MAIN(tst_QPicture)

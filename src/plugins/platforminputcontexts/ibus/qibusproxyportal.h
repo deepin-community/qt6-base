@@ -7,6 +7,7 @@
  * This is an auto-generated file.
  * Do not edit! All changes made to it will be lost.
  */
+// Qt-Security score:significant reason:default
 
 #ifndef QIBUSPROXYPORTAL_H
 #define QIBUSPROXYPORTAL_H
@@ -19,6 +20,8 @@
 #include <QtCore/QStringList>
 #include <QtCore/QVariant>
 #include <QtDBus/QtDBus>
+
+QT_BEGIN_NAMESPACE
 
 /*
  * Proxy class for interface org.freedesktop.IBus.Portal
@@ -45,5 +48,7 @@ public Q_SLOTS: // METHODS
 
 Q_SIGNALS: // SIGNALS
 };
+
+QT_END_NAMESPACE
 
 #endif

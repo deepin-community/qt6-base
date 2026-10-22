@@ -1,5 +1,6 @@
 // Copyright (C) 2013 Laszlo Papp <lpapp@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCOMMANDLINEPARSER_H
 #define QCOMMANDLINEPARSER_H
@@ -66,6 +67,12 @@ public:
     Q_NORETURN void showVersion();
     Q_NORETURN void showHelp(int exitCode = 0);
     QString helpText() const;
+
+    enum class MessageType {
+        Information,
+        Error,
+    };
+    [[noreturn]] static void showMessageAndExit(MessageType type, const QString &message, int exitCode = 0);
 
 private:
     Q_DISABLE_COPY(QCommandLineParser)

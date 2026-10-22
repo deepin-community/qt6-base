@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qcompare.h>
@@ -32,6 +33,7 @@ public:
         WatchOS,
         Android,
         VisionOS,
+        HarmonyOS,
     };
 
     constexpr QOperatingSystemVersionBase(OSType osType,
@@ -62,6 +64,8 @@ public:
         return VisionOS;
 #elif defined(Q_OS_ANDROID)
         return Android;
+#elif defined(Q_OS_HARMONY)
+        return HarmonyOS;
 #else
         return Unknown;
 #endif
@@ -138,13 +142,18 @@ public:
 class QOperatingSystemVersion : public QOperatingSystemVersionBase
 {
     using QOperatingSystemVersionUnexported = QOperatingSystemVersionBase;
+public:
 #endif
 
     // ### Qt7: Regroup with the rest below
-    static constexpr QOperatingSystemVersionBase MacOSSonoma { QOperatingSystemVersionBase::MacOS, 14, 0 };
-    static constexpr QOperatingSystemVersionBase MacOSSequoia { QOperatingSystemVersionBase::MacOS, 15, 0 };
+    static constexpr QOperatingSystemVersionBase MacOSSonoma { QOperatingSystemVersionBase::MacOS, 14 };
+    static constexpr QOperatingSystemVersionBase MacOSSequoia { QOperatingSystemVersionBase::MacOS, 15 };
+    static constexpr QOperatingSystemVersionBase MacOSTahoe { QOperatingSystemVersionBase::MacOS, 26 };
+    static constexpr QOperatingSystemVersionBase MacOSGoldenGate { QOperatingSystemVersionBase::MacOS, 27 };
     static constexpr QOperatingSystemVersionBase Android14 { QOperatingSystemVersionBase::Android, 14, 0 };
     static constexpr QOperatingSystemVersionBase Windows11_23H2 { QOperatingSystemVersionBase::Windows, 10, 0, 22631 };
+    static constexpr QOperatingSystemVersionBase Windows11_24H2 { QOperatingSystemVersionBase::Windows, 10, 0, 26100 };
+    static constexpr QOperatingSystemVersionBase Windows11_25H2 { QOperatingSystemVersionBase::Windows, 10, 0, 26200 };
 
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED) && !defined(Q_QDOC)
 };
@@ -164,6 +173,7 @@ public:
         WatchOS,
         Android,
         VisionOS,
+        HarmonyOS,
     };
 #endif
 
@@ -213,8 +223,8 @@ public:
     static constexpr QOperatingSystemVersionBase MacOSHighSierra { QOperatingSystemVersionBase::MacOS, 10, 13 };
     static constexpr QOperatingSystemVersionBase MacOSMojave { QOperatingSystemVersionBase::MacOS, 10, 14 };
     static constexpr QOperatingSystemVersionBase MacOSCatalina { QOperatingSystemVersionBase::MacOS, 10, 15 };
-    static constexpr QOperatingSystemVersionBase MacOSBigSur = { QOperatingSystemVersionBase::MacOS, 11, 0 };
-    static constexpr QOperatingSystemVersionBase MacOSMonterey = { QOperatingSystemVersionBase::MacOS, 12, 0 };
+    static constexpr QOperatingSystemVersionBase MacOSBigSur = { QOperatingSystemVersionBase::MacOS, 11 };
+    static constexpr QOperatingSystemVersionBase MacOSMonterey = { QOperatingSystemVersionBase::MacOS, 12 };
 
     static constexpr QOperatingSystemVersionBase AndroidJellyBean { QOperatingSystemVersionBase::Android, 4, 1 };
     static constexpr QOperatingSystemVersionBase AndroidJellyBean_MR1 { QOperatingSystemVersionBase::Android, 4, 2 };
@@ -248,7 +258,7 @@ public:
     static constexpr QOperatingSystemVersionBase Android12L { QOperatingSystemVersionBase::Android, 12, 0 };
     static constexpr QOperatingSystemVersionBase Android13 { QOperatingSystemVersionBase::Android, 13, 0 };
 
-    static constexpr QOperatingSystemVersionBase MacOSVentura { QOperatingSystemVersionBase::MacOS, 13, 0 };
+    static constexpr QOperatingSystemVersionBase MacOSVentura { QOperatingSystemVersionBase::MacOS, 13 };
 
     constexpr QOperatingSystemVersion(const QOperatingSystemVersionBase &osversion)
         : QOperatingSystemVersionUnexported(osversion) {}
@@ -259,9 +269,8 @@ public:
     {
     }
 
-#if QT_CORE_REMOVED_SINCE(6, 3) || defined(Q_QDOC)
+    QT_CORE_INLINE_SINCE(6, 3)
     static QOperatingSystemVersion current();
-#endif
 
     static constexpr OSType currentType()
     {
@@ -300,6 +309,13 @@ Q_DECLARE_TYPEINFO(QOperatingSystemVersion, Q_PRIMITIVE_TYPE);
 class QDebug;
 Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QOperatingSystemVersion &ov);
 #endif
+
+#if QT_CORE_INLINE_IMPL_SINCE(6, 3)
+QOperatingSystemVersion QOperatingSystemVersion::current()
+{
+    return QOperatingSystemVersionBase::current();
+}
+#endif // QT_CORE_INLINE_IMPL_SINCE(6, 3)
 
 QT_END_NAMESPACE
 

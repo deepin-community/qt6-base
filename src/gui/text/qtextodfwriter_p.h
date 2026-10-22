@@ -23,19 +23,14 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qset.h>
 #include <QtCore/qstack.h>
-#include <QtCore/QXmlStreamWriter>
 
 #include "qtextdocument_p.h"
 #include "qtextdocumentwriter.h"
 
 QT_BEGIN_NAMESPACE
 
-class QTextDocumentPrivate;
-class QTextCursor;
 class QTextBlock;
 class QIODevice;
-class QXmlStreamWriter;
-class QTextOdfWriterPrivate;
 class QTextBlockFormat;
 class QTextCharFormat;
 class QTextListFormat;
@@ -44,6 +39,7 @@ class QTextTableCellFormat;
 class QTextFrame;
 class QTextFragment;
 class QOutputStrategy;
+class QXmlStreamWriter;
 
 class Q_AUTOTEST_EXPORT QTextOdfWriter {
 public:
@@ -55,13 +51,13 @@ public:
 
     void writeBlock(QXmlStreamWriter &writer, const QTextBlock &block);
     void writeFormats(QXmlStreamWriter &writer, const QSet<int> &formatIds) const;
-    void writeBlockFormat(QXmlStreamWriter &writer, QTextBlockFormat format, int formatIndex) const;
-    void writeCharacterFormat(QXmlStreamWriter &writer, QTextCharFormat format, int formatIndex) const;
-    void writeListFormat(QXmlStreamWriter &writer, QTextListFormat format, int formatIndex) const;
-    void writeFrameFormat(QXmlStreamWriter &writer, QTextFrameFormat format, int formatIndex) const;
-    void writeTableFormat(QXmlStreamWriter &writer, QTextTableFormat format, int formatIndex) const;
-    void writeTableCellFormat(QXmlStreamWriter &writer, QTextTableCellFormat format,
-                              int formatIndex, QList<QTextFormat> &styles) const;
+    void writeBlockFormat(QXmlStreamWriter &writer, const QTextBlockFormat &format, int formatIndex) const;
+    void writeCharacterFormat(QXmlStreamWriter &writer, const QTextCharFormat &format, int formatIndex) const;
+    void writeListFormat(QXmlStreamWriter &writer, const QTextListFormat &format, int formatIndex) const;
+    void writeFrameFormat(QXmlStreamWriter &writer, const QTextFrameFormat &format, int formatIndex) const;
+    void writeTableFormat(QXmlStreamWriter &writer, const QTextTableFormat &format, int formatIndex) const;
+    void writeTableCellFormat(QXmlStreamWriter &writer, const QTextTableCellFormat &format,
+                              int formatIndex, const QList<QTextFormat> &styles) const;
     void writeFrame(QXmlStreamWriter &writer, const QTextFrame *frame);
     void writeInlineCharacter(QXmlStreamWriter &writer, const QTextFragment &fragment) const;
 
@@ -69,10 +65,9 @@ public:
     const int defaultImageResolution = 11811; // 11811 dots per meter = (about) 300 dpi
 
 protected:
-    void tableCellStyleElement(QXmlStreamWriter &writer, const int &formatIndex,
-                               const QTextTableCellFormat &format,
-                               bool hasBorder, int tableId = 0,
-                               const QTextTableFormat tableFormatTmp = QTextTableFormat()) const;
+    static QTextTableCellFormat mergeFormats(const QTextTableCellFormat &cell, const QTextTableFormat &table);
+    void tableCellStyleElement(QXmlStreamWriter &writer, int formatIndex,
+                               const QTextTableCellFormat &format, bool hasBorder) const;
 
 private:
     const QTextDocument *m_document;

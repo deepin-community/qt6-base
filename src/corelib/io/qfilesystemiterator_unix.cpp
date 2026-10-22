@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformdefs.h"
 #include "qfilesystemiterator_p.h"
@@ -7,6 +8,8 @@
 #ifndef QT_NO_FILESYSTEMITERATOR
 
 #include <qvarlengtharray.h>
+
+#include <private/qstringconverter_p.h>
 
 #include <memory>
 
@@ -20,8 +23,7 @@ QT_BEGIN_NAMESPACE
     libraries to iterate over the directory represented by \a entry.
 */
 QFileSystemIterator::QFileSystemIterator(const QFileSystemEntry &entry)
-    : dirPath(entry.filePath()),
-      toUtf16(QStringDecoder::Utf8)
+    : dirPath(entry.filePath())
 {
     dir.reset(QT_OPENDIR(entry.nativeFilePath().constData()));
     if (!dir) {
@@ -43,7 +45,7 @@ QFileSystemIterator::QFileSystemIterator(const QFileSystemEntry &entry, QDir::Fi
 
 QFileSystemIterator::~QFileSystemIterator() = default;
 
-bool QFileSystemIterator::advance(QFileSystemEntry &fileEntry, QFileSystemMetaData &metaData)
+std::optional<QDirEntryInfo> QFileSystemIterator::advance()
 {
     auto asFileEntry = [this](QStringView name) {
 #ifdef Q_OS_DARWIN
@@ -54,7 +56,7 @@ bool QFileSystemIterator::advance(QFileSystemEntry &fileEntry, QFileSystemMetaDa
         return QFileSystemEntry(dirPath + name, QFileSystemEntry::FromInternalPath());
     };
     if (!dir)
-        return false;
+        return std::nullopt;
 
     for (;;) {
         // From readdir man page:
@@ -74,12 +76,13 @@ bool QFileSystemIterator::advance(QFileSystemEntry &fileEntry, QFileSystemMetaDa
             QByteArrayView name(dirEntry->d_name, strlen(dirEntry->d_name));
             // name.size() is sufficient here, see QUtf8::convertToUnicode() for details
             QVarLengthArray<char16_t> buffer(name.size());
+            QStringDecoder toUtf16(QStringDecoder::Utf8);
             auto *end = toUtf16.appendToBuffer(buffer.data(), name);
             buffer.resize(end - buffer.constData());
             if (!toUtf16.hasError()) {
-                fileEntry = asFileEntry(buffer);
+                QFileSystemMetaData metaData;
                 metaData.fillFromDirEnt(*dirEntry);
-                return true;
+                return QDirEntryInfo{asFileEntry(buffer), std::move(metaData)};
             } else {
                 errno = EILSEQ; // Invalid or incomplete multibyte or wide character
             }
@@ -89,7 +92,7 @@ bool QFileSystemIterator::advance(QFileSystemEntry &fileEntry, QFileSystemMetaDa
     }
 
     lastError = errno;
-    return false;
+    return std::nullopt;
 }
 
 QT_END_NAMESPACE

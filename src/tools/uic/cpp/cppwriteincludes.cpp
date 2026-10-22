@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #include "cppwriteincludes.h"
 #include "driver.h"
@@ -136,6 +137,7 @@ void WriteIncludes::addCppCustomWidget(const QString &className, const DomCustom
         if (!m_classToHeader.contains(className)) {
             global = domHeader->attributeLocation().toLower() == "global"_L1;
             header = domHeader->text();
+            extractHeader("C++:"_L1, &header);
         }
         insertIncludeForClass(className, header, global);
         return;

@@ -1,10 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
 #include "qlocalsocket.h"
 #include "qlocalsocket_p.h"
+
+#include <QtCore/qdebug.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -331,11 +334,7 @@ QT_BEGIN_NAMESPACE
     This signal is emitted after an error occurred. The \a socketError
     parameter describes the type of error that occurred.
 
-    QLocalSocket::LocalSocketError is not a registered metatype, so for queued
-    connections, you will have to register it with Q_DECLARE_METATYPE() and
-    qRegisterMetaType().
-
-    \sa error(), errorString(), {Creating Custom Qt Types}
+    \sa error(), errorString()
 */
 
 /*!
@@ -344,11 +343,7 @@ QT_BEGIN_NAMESPACE
     This signal is emitted whenever QLocalSocket's state changes.
     The \a socketState parameter is the new state.
 
-    QLocalSocket::SocketState is not a registered metatype, so for queued
-    connections, you will have to register it with Q_DECLARE_METATYPE() and
-    qRegisterMetaType().
-
-    \sa state(), {Creating Custom Qt Types}
+    \sa state()
 */
 
 /*!
@@ -533,77 +528,6 @@ bool QLocalSocket::isSequential() const
     \value ClosingState The socket is about to close
         (data may still be waiting to be written).
  */
-
-#ifndef QT_NO_DEBUG_STREAM
-QDebug operator<<(QDebug debug, QLocalSocket::LocalSocketError error)
-{
-    QDebugStateSaver saver(debug);
-    debug.resetFormat().nospace();
-    switch (error) {
-    case QLocalSocket::ConnectionRefusedError:
-        debug << "QLocalSocket::ConnectionRefusedError";
-        break;
-    case QLocalSocket::PeerClosedError:
-        debug << "QLocalSocket::PeerClosedError";
-        break;
-    case QLocalSocket::ServerNotFoundError:
-        debug << "QLocalSocket::ServerNotFoundError";
-        break;
-    case QLocalSocket::SocketAccessError:
-        debug << "QLocalSocket::SocketAccessError";
-        break;
-    case QLocalSocket::SocketResourceError:
-        debug << "QLocalSocket::SocketResourceError";
-        break;
-    case QLocalSocket::SocketTimeoutError:
-        debug << "QLocalSocket::SocketTimeoutError";
-        break;
-    case QLocalSocket::DatagramTooLargeError:
-        debug << "QLocalSocket::DatagramTooLargeError";
-        break;
-    case QLocalSocket::ConnectionError:
-        debug << "QLocalSocket::ConnectionError";
-        break;
-    case QLocalSocket::UnsupportedSocketOperationError:
-        debug << "QLocalSocket::UnsupportedSocketOperationError";
-        break;
-    case QLocalSocket::UnknownSocketError:
-        debug << "QLocalSocket::UnknownSocketError";
-        break;
-    case QLocalSocket::OperationError:
-        debug << "QLocalSocket::OperationError";
-        break;
-    default:
-        debug << "QLocalSocket::SocketError(" << int(error) << ')';
-        break;
-    }
-    return debug;
-}
-
-QDebug operator<<(QDebug debug, QLocalSocket::LocalSocketState state)
-{
-    QDebugStateSaver saver(debug);
-    debug.resetFormat().nospace();
-    switch (state) {
-    case QLocalSocket::UnconnectedState:
-        debug << "QLocalSocket::UnconnectedState";
-        break;
-    case QLocalSocket::ConnectingState:
-        debug << "QLocalSocket::ConnectingState";
-        break;
-    case QLocalSocket::ConnectedState:
-        debug << "QLocalSocket::ConnectedState";
-        break;
-    case QLocalSocket::ClosingState:
-        debug << "QLocalSocket::ClosingState";
-        break;
-    default:
-        debug << "QLocalSocket::SocketState(" << int(state) << ')';
-        break;
-    }
-    return debug;
-}
-#endif
 
 QT_END_NAMESPACE
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QVULKANDEFAULTINSTANCE_P_H
 #define QVULKANDEFAULTINSTANCE_P_H
@@ -20,8 +21,11 @@
 #if QT_CONFIG(vulkan)
 
 #include <QtGui/qvulkaninstance.h>
+#include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcGuiVk)
 
 struct Q_GUI_EXPORT QVulkanDefaultInstance
 {

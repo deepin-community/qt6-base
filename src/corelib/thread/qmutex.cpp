@@ -2,6 +2,7 @@
 // Copyright (C) 2016 Intel Corporation.
 // Copyright (C) 2012 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "global/qglobal.h"
 #include "qplatformdefs.h"
@@ -101,8 +102,9 @@ static inline QMutexPrivate *dummyFutexValue()
 
     \warning Destroying a locked mutex may result in undefined behavior.
 */
-void QBasicMutex::destroyInternal(QMutexPrivate *d)
+void QBasicMutex::destroyInternal(void *ptr)
 {
+    auto d = static_cast<QMutexPrivate *>(ptr);
     if (!d)
         return;
     if (!futexAvailable()) {
@@ -119,8 +121,8 @@ void QBasicMutex::destroyInternal(QMutexPrivate *d)
     Locks the mutex. If another thread has locked the mutex then this
     call will block until that thread has unlocked it.
 
-    Calling this function multiple times on the same mutex from the
-    same thread will cause a \e dead-lock.
+    If the mutex was already locked by the current thread, this call will
+    never return, causing a \e dead-lock.
 
     \sa unlock()
 */
@@ -139,9 +141,6 @@ void QBasicMutex::destroyInternal(QMutexPrivate *d)
     If the lock was obtained, the mutex must be unlocked with unlock()
     before another thread can successfully lock it.
 
-    Calling this function multiple times on the same mutex from the
-    same thread will cause a \e dead-lock.
-
     \sa lock(), unlock()
 */
 
@@ -156,9 +155,6 @@ void QBasicMutex::destroyInternal(QMutexPrivate *d)
     If the lock was obtained, the mutex must be unlocked with unlock()
     before another thread can successfully lock it.
 
-    Calling this function multiple times on the same mutex from the
-    same thread will cause a \e dead-lock.
-
     \sa lock(), unlock()
 */
 
@@ -170,9 +166,6 @@ void QBasicMutex::destroyInternal(QMutexPrivate *d)
 
     If the lock was obtained, the mutex must be unlocked with unlock()
     before another thread can successfully lock it.
-
-    Calling this function multiple times on the same mutex from the
-    same thread will cause a \e dead-lock.
 
     \sa lock(), unlock()
 */
@@ -201,9 +194,6 @@ void QBasicMutex::destroyInternal(QMutexPrivate *d)
     If the lock was obtained, the mutex must be unlocked with unlock()
     before another thread can successfully lock it.
 
-    Calling this function multiple times on the same mutex from the
-    same thread will cause a \e dead-lock.
-
     \sa lock(), unlock()
 */
 
@@ -220,9 +210,6 @@ void QBasicMutex::destroyInternal(QMutexPrivate *d)
 
     If the lock was obtained, the mutex must be unlocked with unlock()
     before another thread can successfully lock it.
-
-    Calling this function multiple times on the same mutex from the
-    same thread will cause a \e dead-lock.
 
     \sa lock(), unlock()
 */
@@ -331,7 +318,7 @@ QRecursiveMutex::~QRecursiveMutex()
 
     \sa lock(), unlock()
 */
-bool QRecursiveMutex::tryLock(QDeadlineTimer timeout) QT_MUTEX_LOCK_NOEXCEPT
+bool QRecursiveMutex::tryLock(QDeadlineTimer timeout) noexcept(LockIsNoexcept)
 {
     unsigned tsanFlags = QtTsan::MutexWriteReentrant | QtTsan::TryLock;
     QtTsan::mutexPreLock(this, tsanFlags);
@@ -442,6 +429,10 @@ void QRecursiveMutex::unlock() noexcept
     \threadsafe
 
     \ingroup thread
+
+    QMutexLocker is a template class where the template parameter \a Mutex
+    specifies the mutex type (such as QMutex or QRecursiveMutex) to be locked
+    and unlocked.
 
     Locking and unlocking a QMutex or QRecursiveMutex in complex functions and
     statements or in exception handling code is error-prone and
@@ -592,7 +583,7 @@ void QRecursiveMutex::unlock() noexcept
 */
 
 /*
- * QBasicMutex implementation with futexes (Linux, Windows 10)
+ * QBasicMutex implementation with futexes (Linux, Windows 10, FreeBSD)
  *
  * QBasicMutex contains one pointer value, which can contain one of four
  * different values:
@@ -625,19 +616,22 @@ void QRecursiveMutex::unlock() noexcept
  *
  * UNLOCKING:
  *
- * To unlock, we need to set a value of 0x0 to indicate it's unlocked. The
- * first attempt is a testAndSetRelease operation from 0x1 to 0x0. If that
- * succeeds, we're done.
+ * To unlock, we need to set a value of 0x0 to indicate it's unlocked.
  *
- * If it fails, unlockInternal() is called. The only possibility is that the
- * mutex value was 0x3, which indicates some other thread is waiting or was
- * waiting in the past. We then set the mutex to 0x0 and perform a FUTEX_WAKE.
+ * For systems that always use futexes, we immediately unlock the mutex in
+ * inline code. If the mutex was contended before the unlock (had value 0x3),
+ * we call unlockInternalFutex() to FUTEX_WAKE a waiting thread.
+ *
+ * For systems that may or may not use futexes, we can only unlock the mutex in
+ * inline code if it is not contended. If it was, then we call unlockInternal()
+ * to complete the unlocking, in case that futexes were not available.
  */
 
 /*!
     \internal helper for lock()
  */
-void QBasicMutex::lockInternal() QT_MUTEX_LOCK_NOEXCEPT
+Q_NEVER_INLINE
+void QBasicMutex::lockInternal() noexcept(FutexAlwaysAvailable)
 {
     if (futexAvailable()) {
         // note we must set to dummyFutexValue because there could be other threads
@@ -650,7 +644,7 @@ void QBasicMutex::lockInternal() QT_MUTEX_LOCK_NOEXCEPT
         }
         Q_ASSERT(d_ptr.loadRelaxed());
     } else {
-        lockInternal(-1);
+        lockInternal(QDeadlineTimer::Forever);
     }
 }
 
@@ -658,7 +652,7 @@ void QBasicMutex::lockInternal() QT_MUTEX_LOCK_NOEXCEPT
     \internal helper for lock(int)
  */
 #if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
-bool QBasicMutex::lockInternal(int timeout) QT_MUTEX_LOCK_NOEXCEPT
+bool QBasicMutex::lockInternal(int timeout) noexcept(FutexAlwaysAvailable)
 {
     if (timeout == 0)
         return false;
@@ -670,7 +664,8 @@ bool QBasicMutex::lockInternal(int timeout) QT_MUTEX_LOCK_NOEXCEPT
 /*!
     \internal helper for tryLock(QDeadlineTimer)
  */
-bool QBasicMutex::lockInternal(QDeadlineTimer deadlineTimer) QT_MUTEX_LOCK_NOEXCEPT
+Q_NEVER_INLINE
+bool QBasicMutex::lockInternal(QDeadlineTimer deadlineTimer) noexcept(FutexAlwaysAvailable)
 {
     if (deadlineTimer.hasExpired())
         return false;
@@ -806,21 +801,65 @@ bool QBasicMutex::lockInternal(QDeadlineTimer deadlineTimer) QT_MUTEX_LOCK_NOEXC
 #endif
 }
 
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+// not in removed_api.cpp because we need futexAvailable()
 /*!
     \internal
-*/
+ */
 void QBasicMutex::unlockInternal() noexcept
 {
     QMutexPrivate *copy = d_ptr.loadAcquire();
+    if (futexAvailable()) {
+        d_ptr.storeRelease(nullptr);
+        unlockInternalFutex(copy);
+    } else {
+        unlockInternal(copy);
+    }
+}
+#endif
+
+/*!
+    \internal
+    \since 6.10
+    Complete unlocking when user code knows we use a futex and has thus already
+    unlocked the mutex. The difference from unlockInternal() in futex mode is
+    we only have one atomic operation (the fetchAndStore in inline code) instead
+    of two (a testAndSet followed by the storeRelease).
+*/
+Q_NEVER_INLINE
+void QBasicMutex::unlockInternalFutex(void *copy) noexcept
+{
+    Q_ASSERT(copy == dummyFutexValue());    // was contended
+    if (!futexAvailable())
+        Q_UNREACHABLE();
+    futexWakeOne(d_ptr);
+    Q_UNUSED(copy);
+}
+
+
+/*!
+    \internal
+    Common unlock code for when user code isn't sure that futexes are available.
+*/
+Q_NEVER_INLINE
+void QBasicMutex::unlockInternal(void *copy) noexcept
+{
     Q_ASSERT(copy); //we must be locked
     Q_ASSERT(copy != dummyLocked()); // testAndSetRelease(dummyLocked(), 0) failed
 
+#  if defined(Q_OS_FREEBSD) || defined(Q_OS_LINUX) || defined(Q_OS_WIN)
+    // these platforms always have futex and have never called this function
+    // from inline code
+    Q_UNREACHABLE();
+#  endif
+
     if (futexAvailable()) {
         d_ptr.storeRelease(nullptr);
-        return futexWakeOne(d_ptr);
+        return unlockInternalFutex(copy);
     }
 
 #if !defined(QT_ALWAYS_USE_FUTEX)
+    static_assert(!FutexAlwaysAvailable, "mismatch with QT_ALWAYS_USE_FUTEX");
     QMutexPrivate *d = reinterpret_cast<QMutexPrivate *>(copy);
 
     // If no one is waiting for the lock anymore, we should reset d to 0x0.
@@ -843,6 +882,7 @@ void QBasicMutex::unlockInternal() noexcept
     }
     d->deref();
 #else
+    static_assert(FutexAlwaysAvailable, "mismatch with QT_ALWAYS_USE_FUTEX");
     Q_UNUSED(copy);
 #endif
 }
@@ -910,8 +950,6 @@ QT_END_NAMESPACE
 
 #if defined(QT_ALWAYS_USE_FUTEX)
 // nothing
-#elif defined(Q_OS_DARWIN)
-#  include "qmutex_mac.cpp"
 #else
 #  include "qmutex_unix.cpp"
 #endif

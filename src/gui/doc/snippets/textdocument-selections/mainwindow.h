@@ -7,6 +7,8 @@
 #include <QMainWindow>
 #include <QTextDocumentFragment>
 
+QT_BEGIN_NAMESPACE
+
 class QAction;
 class QTextDocument;
 class QTextEdit;
@@ -38,5 +40,7 @@ private:
     QTextDocument *document = nullptr;
     QTextDocumentFragment selection;
 };
+
+QT_END_NAMESPACE
 
 #endif

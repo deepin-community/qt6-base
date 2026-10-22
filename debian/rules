@@ -1,13 +1,14 @@
 #!/usr/bin/make -f
+
+# 净室打包:强制 nodoc(等价 DEB_BUILD_PROFILES=nodoc),保证 dpkg-buildpackage -b -us -uc 裸命令可用
+DEB_BUILD_PROFILES := $(filter-out nodoc,$(DEB_BUILD_PROFILES)) nodoc
+export DEB_BUILD_PROFILES
 #export DH_VERBOSE = 1
 
 # Use already defined DEB_HOST_* variables.
 include /usr/share/dpkg/architecture.mk
 
-# Use already defined upstream version as DEB_VERSION_UPSTREAM.
-include /usr/share/dpkg/pkg-info.mk
-
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=+lto
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 sslpkgname := $(shell dpkg-query --show '--showformat=$${Depends}' libssl-dev | cut -d ' ' -f1)
 
 ifneq (,$(filter libqt6sql6-ibase,$(shell dh_listpackages)))
@@ -30,8 +31,13 @@ ifneq ($(DEB_BUILD_ARCH),$(DEB_HOST_ARCH))
 		-DQT_FORCE_BUILD_TOOLS=ON
 endif
 
+# enable ccache with corresponding build-profile
+ifneq ($(filter ccache,$(DEB_BUILD_PROFILES)),)
+	extra_cmake_args += -DQT_USE_CCACHE=ON
+endif
+
 %:
-	dh $@ --with pkgkde_symbolshelper --buildsystem=cmake+ninja
+	dh $@ --buildsystem=cmake+ninja
 
 
 override_dh_auto_configure:
@@ -45,83 +51,106 @@ override_dh_auto_configure:
 		-DINSTALL_ARCHDATADIR=lib/$(DEB_HOST_MULTIARCH)/qt6 \
 		-DINSTALL_EXAMPLESDIR=lib/$(DEB_HOST_MULTIARCH)/qt6/examples \
 		-DINSTALL_DATADIR=share/qt6 \
-		-DINSTALL_HOSTDATADIR=lib/$(DEB_HOST_MULTIARCH)/qt6 \
 		-DINSTALL_DOCDIR=share/qt6/doc \
 		-DINSTALL_SYSCONFDIR=/etc/xdg \
 		-DINSTALL_INCLUDEDIR=include/$(DEB_HOST_MULTIARCH)/qt6 \
-		-DINSTALL_PLUGINDIR=lib/$(DEB_HOST_MULTIARCH)/qt6/plugins \
-		-DINSTALL_TRANSLATIONDIR=share/qt6/translations \
+		-DINSTALL_TRANSLATIONSDIR=share/qt6/translations \
 		-DINSTALL_MKSPECSDIR=lib/$(DEB_HOST_MULTIARCH)/qt6/mkspecs \
 		-DINSTALL_PUBLICBINDIR=bin \
 		-DQT_BUILD_EXAMPLES=ON \
 		-DQT_INSTALL_EXAMPLES_SOURCES=ON \
-		-DFEATURE_mimetype_database=OFF \
-		-DFEATURE_dbus_linked=ON \
 		-DFEATURE_accessibility=ON \
-		-DFEATURE_doubleconversion=ON \
-		-DFEATURE_glib=ON \
-		-DFEATURE_icu=ON \
-		-DFEATURE_pcre2=ON \
-		-DFEATURE_system_pcre2=ON \
-		-DFEATURE_zlib=ON \
-		-DFEATURE_ssl=ON \
-		-DFEATURE_libproxy=ON \
-		-DFEATURE_system_proxies=ON \
 		-DFEATURE_cups=ON \
+		-DFEATURE_dbus_linked=ON \
+		-DFEATURE_directfb=OFF \
+		-DFEATURE_doubleconversion=ON \
 		-DFEATURE_fontconfig=ON \
 		-DFEATURE_freetype=ON \
+		-DFEATURE_glib=ON \
+		-DFEATURE_gtk3=ON \
 		-DFEATURE_harfbuzz=ON \
-		-DFEATURE_gtk=ON \
-		-DFEATURE_directfb=OFF \
-		-DFEATURE_sql_odbc=ON \
+		-DFEATURE_icu=ON \
+		-DFEATURE_jpeg=ON \
+		-DFEATURE_libproxy=ON \
+		-DFEATURE_mimetype_database=OFF \
+		-DFEATURE_pcre2=ON \
+		-DFEATURE_png=ON \
+		-DFEATURE_reduce_relocations=OFF \
+		-DFEATURE_relocatable=OFF \
+		-DFEATURE_rpath=OFF \
 		-DFEATURE_sql_mysql=ON \
+		-DFEATURE_sql_odbc=ON \
 		-DFEATURE_sql_psql=ON \
 		-DFEATURE_sql_sqlite=ON \
-		-DFEATURE_system_sqlite=ON \
-		-DFEATURE_jpeg=ON \
+		-DFEATURE_ssl=ON \
 		-DFEATURE_system_jpeg=ON \
-		-DFEATURE_png=ON \
-		-DFEATURE_system_png=ON \
 		-DFEATURE_system_libb2=ON \
-		-DFEATURE_rpath=OFF \
-		-DFEATURE_relocatable=OFF \
+		-DFEATURE_system_pcre2=ON \
+		-DFEATURE_system_png=ON \
+		-DFEATURE_system_proxies=ON \
+		-DFEATURE_system_sqlite=ON \
+		-DFEATURE_system_xcb_xinput=ON \
+		-DFEATURE_system_zlib=ON \
 		$(extra_cmake_args)
 
 
 execute_after_dh_auto_install-arch:
 	# Reproducible builds: remove build paths from .prl files
 	sed -i -e '/^QMAKE_PRL_BUILD_DIR/d' debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libQt6*.prl
+	# Reproducible builds: remove kernel version from build artifacts
+	sed -i '/^[[:space:]]*"version":.*deb/d' debian/tmp/usr/lib/${DEB_HOST_MULTIARCH}/qt6/modules/*.json
+
+	# Fix shebang
+	sed -i -e 's#/bin/env python#/usr/bin/python#' debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/qt6/examples/corelib/serialization/cbordump/cbortag.py
+	sed -i '1i #!/usr/bin/python3' debian/tmp/usr/lib/qt6/libexec/qt_cyclonedx_generator.py
 
 	# Specifies parameters to pass to the platform plugin.
 	mkdir -p debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/qt6
 	sed 's/@DEB_HOST_MULTIARCH@/$(DEB_HOST_MULTIARCH)/' debian/qt.conf.in \
 		> debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/qt6/qt6.conf
 
-	# Inject cross-wrapper for qmake6
+	# Inject cross-wrapper for qmake6 and qtpaths
 	mkdir -p debian/tmp/usr/bin
 	sed -e 's/@DEB_HOST_MULTIARCH@/$(DEB_HOST_MULTIARCH)/g' \
 		-e 's/@DEB_HOST_GNU_TYPE@/$(DEB_HOST_GNU_TYPE)/g' \
 		< debian/qmake-cross-wrapper.in > debian/tmp/usr/bin/$(DEB_HOST_GNU_TYPE)-qmake6
-	chmod +x debian/tmp/usr/bin/$(DEB_HOST_GNU_TYPE)-qmake6
+	sed -e 's/@DEB_HOST_MULTIARCH@/$(DEB_HOST_MULTIARCH)/g' \
+		< debian/qtpaths-cross-wrapper.in > debian/tmp/usr/bin/$(DEB_HOST_GNU_TYPE)-qtpaths6
+	chmod +x debian/tmp/usr/bin/$(DEB_HOST_GNU_TYPE)-qmake6 debian/tmp/usr/bin/$(DEB_HOST_GNU_TYPE)-qtpaths6
 
 	# Fix Qt6::qmake IMPORTED_LOCATION, see https://bugs.debian.org/1030980
 	sed -i 's,lib/qt6/bin/qmake,bin/$(DEB_HOST_GNU_TYPE)-qmake6,' \
 		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/cmake/Qt6CoreTools/Qt6CoreToolsTargets-none.cmake
 
-	install -Dv -t debian/tmp/usr/include/$(DEB_HOST_MULTIARCH)/qt6/QtXcb/$(DEB_VERSION_UPSTREAM:+dfsg=)/QtXcb/private \
-		src/plugins/platforms/xcb/*.h
+	# Fix Qt6::qtpaths IMPORTED_LOCATION
+	sed -i 's,lib/qt6/bin/qtpaths,bin/$(DEB_HOST_GNU_TYPE)-qtpaths6,' \
+		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/cmake/Qt6CoreTools/Qt6CoreToolsTargets-none.cmake
 
 override_dh_auto_build-indep:
+ifeq (,$(filter nodoc,$(DEB_BUILD_OPTIONS) $(DEB_BUILD_PROFILES)))
 	dh_auto_build -- docs
+endif
 
 override_dh_auto_install-indep:
+ifeq (,$(filter nodoc,$(DEB_BUILD_OPTIONS) $(DEB_BUILD_PROFILES)))
 	DESTDIR=$(CURDIR)/debian/tmp dh_auto_build -- install_docs
 	# Remove build path from index files.
 	find $(CURDIR)/debian/tmp/usr/share/qt6/doc -type f -name *.index -exec \
 		sed -i 's@$(CURDIR)/@@g' {} \;
+endif
+
+override_dh_python3-arch:
+	dh_python3 -pqmake6 /usr/lib/$(DEB_HOST_MULTIARCH)/qt6/mkspecs/features/uikit/
+	mv $(CURDIR)/debian/qmake6/usr/share/python3/runtime.d/qmake6.rtupdate $(CURDIR)/debian/qmake6//usr/share/python3/runtime.d/qmake6-${DEB_HOST_GNU_TYPE}.rtupdate
+	dh_python3 -pqt6-base-dev-tools /usr/lib/qt6/libexec/
+	dh_python3 -pqt6-base-examples /usr/lib/$(DEB_HOST_MULTIARCH)/qt6/examples/corelib/serialization/cbordump/
+	mv $(CURDIR)/debian/qt6-base-examples/usr/share/python3/runtime.d/qt6-base-examples.rtupdate $(CURDIR)/debian/qt6-base-examples/usr/share/python3/runtime.d/qt6-base-examples-${DEB_HOST_GNU_TYPE}.rtupdate
 
 override_dh_makeshlibs:
 	dh_makeshlibs -XlibQt6EglFSDeviceIntegration -XlibQt6EglFsKmsGbmSupport -XlibQt6EglFsKmsSupport -XlibQt6XcbQpa
 
 execute_after_dh_shlibdeps-arch:
 	echo libssl:Depends=$(sslpkgname) >> debian/libqt6network6.substvars
+
+# Do not run tests when building the documentation
+override_dh_auto_test-indep:

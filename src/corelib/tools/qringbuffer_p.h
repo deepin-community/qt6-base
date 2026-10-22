@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QRINGBUFFER_P_H
 #define QRINGBUFFER_P_H
@@ -214,6 +215,7 @@ public:
         return bytesToSkip;
     }
 
+    Q_CORE_EXPORT qint64 readLineWithoutTerminatingNull(char *data, qint64 maxLength);
     Q_CORE_EXPORT qint64 readLine(char *data, qint64 maxLength);
 
     inline bool canReadLine() const {

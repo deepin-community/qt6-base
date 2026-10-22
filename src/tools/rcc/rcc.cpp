@@ -1,10 +1,13 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2018 Intel Corporation.
+// Copyright (C) 2024 Christoph Cullmann <christoph@cullmann.io>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant reason:default
 
 #include "rcc.h"
 
 #include <qbytearray.h>
+#include <qcryptographichash.h>
 #include <qdatetime.h>
 #include <qdebug.h>
 #include <qdir.h>
@@ -90,8 +93,28 @@ public:
 
     QString resourceName() const;
 
+    struct DeduplicationKey {
+        RCCResourceLibrary::CompressionAlgorithm compressAlgo;
+        int compressLevel;
+        int compressThreshold;
+        QByteArray hash;
+
+        bool operator==(const DeduplicationKey &other) const
+        {
+            return compressAlgo == other.compressAlgo &&
+                   compressLevel == other.compressLevel &&
+                   compressThreshold == other.compressThreshold &&
+                   hash == other.hash;
+        }
+    };
+
+    typedef QMultiHash<DeduplicationKey, RCCFileInfo*> DeduplicationMultiHash;
+
 public:
-    qint64 writeDataBlob(RCCResourceLibrary &lib, qint64 offset, QString *errorMessage);
+    qint64 writeDataBlob(RCCResourceLibrary &lib,
+                         qint64 offset,
+                         DeduplicationMultiHash &dedupByContent,
+                         QString *errorMessage);
     qint64 writeDataName(RCCResourceLibrary &, qint64 offset);
     void writeDataInfo(RCCResourceLibrary &lib);
 
@@ -113,6 +136,11 @@ public:
     qint64 m_dataOffset = 0;
     qint64 m_childOffset = 0;
 };
+
+static size_t qHash(const RCCFileInfo::DeduplicationKey &key, size_t seed) noexcept
+{
+    return qHashMulti(seed, key.compressAlgo, key.compressLevel, key.compressThreshold, key.hash);
+}
 
 RCCFileInfo::RCCFileInfo(const QString &name, const QFileInfo &fileInfo, QLocale::Language language,
                          QLocale::Territory territory, uint flags,
@@ -217,8 +245,10 @@ void RCCFileInfo::writeDataInfo(RCCResourceLibrary &lib)
     }
 }
 
-qint64 RCCFileInfo::writeDataBlob(RCCResourceLibrary &lib, qint64 offset,
-    QString *errorMessage)
+qint64 RCCFileInfo::writeDataBlob(RCCResourceLibrary &lib,
+                                  qint64 offset,
+                                  DeduplicationMultiHash &dedupByContent,
+                                  QString *errorMessage)
 {
     const bool text = lib.m_format == RCCResourceLibrary::C_Code;
     const bool pass1 = lib.m_format == RCCResourceLibrary::Pass1;
@@ -230,27 +260,59 @@ qint64 RCCFileInfo::writeDataBlob(RCCResourceLibrary &lib, qint64 offset,
     m_dataOffset = offset;
     QByteArray data;
 
+    // determine compession algorithm & level early as used in de-duplication keys
+    // this avoid corruption for the two pass variants (QTBUG-137546)
+#if QT_CONFIG(zstd)
+    if (m_compressAlgo == RCCResourceLibrary::CompressionAlgorithm::Best && !m_noZstd) {
+        m_compressAlgo = RCCResourceLibrary::CompressionAlgorithm::Zstd;
+        m_compressLevel = 19;   // not ZSTD_maxCLevel(), as 20+ are experimental
+    }
+#endif
+#ifndef QT_NO_COMPRESS
+    if (m_compressAlgo == RCCResourceLibrary::CompressionAlgorithm::Best) {
+        m_compressAlgo = RCCResourceLibrary::CompressionAlgorithm::Zlib;
+        m_compressLevel = 9;
+    }
+#endif
+
     if (!m_isEmpty) {
-        //find the data to be written
-        QFile file(m_fileInfo.absoluteFilePath());
+        // find the data to be written
+        const QString absoluteFilePath = m_fileInfo.absoluteFilePath();
+        QFile file(absoluteFilePath);
         if (!file.open(QFile::ReadOnly)) {
-            *errorMessage = msgOpenReadFailed(m_fileInfo.absoluteFilePath(), file.errorString());
+            *errorMessage = msgOpenReadFailed(absoluteFilePath, file.errorString());
             return 0;
         }
-
         data = file.readAll();
+
+        // de-duplicate the same file content, we can re-use already written data
+        // we only do that if we have the same compression settings
+        const DeduplicationKey key{m_compressAlgo, m_compressLevel, m_compressThreshold,
+                                   QCryptographicHash::hash(data, QCryptographicHash::Sha256)};
+        const QList<RCCFileInfo *> potentialCandidates = dedupByContent.values(key);
+        for (const RCCFileInfo *candidate : potentialCandidates) {
+            // check real content, we can have collisions
+            QFile candidateFile(candidate->m_fileInfo.absoluteFilePath());
+            if (!candidateFile.open(QFile::ReadOnly)) {
+                *errorMessage = msgOpenReadFailed(candidate->m_fileInfo.absoluteFilePath(),
+                                                  candidateFile.errorString());
+                return 0;
+            }
+            if (data != candidateFile.readAll())
+                continue;
+            // just remember the offset & flags with final compression state
+            // of the already written data and be done
+            m_dataOffset = candidate->m_dataOffset;
+            m_flags = candidate->m_flags;
+            return offset;
+        }
+        dedupByContent.insert(key, this);
     }
 
     // Check if compression is useful for this file
     if (data.size() != 0) {
 #if QT_CONFIG(zstd)
-        if (m_compressAlgo == RCCResourceLibrary::CompressionAlgorithm::Best && !m_noZstd) {
-            m_compressAlgo = RCCResourceLibrary::CompressionAlgorithm::Zstd;
-            m_compressLevel = 19;   // not ZSTD_maxCLevel(), as 20+ are experimental
-        }
         if (m_compressAlgo == RCCResourceLibrary::CompressionAlgorithm::Zstd && !m_noZstd) {
-            if (lib.m_zstdCCtx == nullptr)
-                lib.m_zstdCCtx = ZSTD_createCCtx();
             qsizetype size = data.size();
             size = ZSTD_COMPRESSBOUND(size);
 
@@ -260,20 +322,20 @@ qint64 RCCFileInfo::writeDataBlob(RCCResourceLibrary &lib, qint64 offset,
 
             QByteArray compressed(size, Qt::Uninitialized);
             char *dst = const_cast<char *>(compressed.constData());
-            size_t n = ZSTD_compressCCtx(lib.m_zstdCCtx, dst, size,
-                                         data.constData(), data.size(),
-                                         compressLevel);
+            size_t n = ZSTD_compress(dst, size,
+                                     data.constData(), data.size(),
+                                     compressLevel);
             if (n * 100.0 < data.size() * 1.0 * (100 - m_compressThreshold) ) {
                 // compressing is worth it
                 if (m_compressLevel < 0) {
                     // heuristic compression, so recompress
-                    n = ZSTD_compressCCtx(lib.m_zstdCCtx, dst, size,
-                                          data.constData(), data.size(),
-                                          CONSTANT_ZSTDCOMPRESSLEVEL_STORE);
+                    n = ZSTD_compress(dst, size,
+                                      data.constData(), data.size(),
+                                      CONSTANT_ZSTDCOMPRESSLEVEL_STORE);
                 }
                 if (ZSTD_isError(n)) {
-                    QString msg = QString::fromLatin1("%1: error: compression with zstd failed: %2\n")
-                            .arg(m_name, QString::fromUtf8(ZSTD_getErrorName(n)));
+                    QString msg = "%1: error: compression with zstd failed: %2\n"_L1
+                            .arg(m_name, ZSTD_getErrorName(n));
                     lib.m_errorDevice->write(msg.toUtf8());
                 } else if (lib.verbose()) {
                     QString msg = QString::fromLatin1("%1: note: compressed using zstd (%2 -> %3)\n")
@@ -292,10 +354,6 @@ qint64 RCCFileInfo::writeDataBlob(RCCResourceLibrary &lib, qint64 offset,
         }
 #endif
 #ifndef QT_NO_COMPRESS
-        if (m_compressAlgo == RCCResourceLibrary::CompressionAlgorithm::Best) {
-            m_compressAlgo = RCCResourceLibrary::CompressionAlgorithm::Zlib;
-            m_compressLevel = 9;
-        }
         if (m_compressAlgo == RCCResourceLibrary::CompressionAlgorithm::Zlib) {
             QByteArray compressed =
                     qCompress(reinterpret_cast<uchar *>(data.data()), data.size(), m_compressLevel);
@@ -307,7 +365,7 @@ qint64 RCCFileInfo::writeDataBlob(RCCResourceLibrary &lib, qint64 offset,
                             .arg(m_name).arg(data.size()).arg(compressed.size());
                     lib.m_errorDevice->write(msg.toUtf8());
                 }
-                data = compressed;
+                data = std::move(compressed);
                 lib.m_overallFlags |= Compressed;
                 m_flags |= Compressed;
             } else if (lib.verbose()) {
@@ -452,17 +510,11 @@ RCCResourceLibrary::RCCResourceLibrary(quint8 formatVersion)
     m_noZstd(false)
 {
     m_out.reserve(30 * 1000 * 1000);
-#if QT_CONFIG(zstd)
-    m_zstdCCtx = nullptr;
-#endif
 }
 
 RCCResourceLibrary::~RCCResourceLibrary()
 {
     delete m_root;
-#if QT_CONFIG(zstd)
-    ZSTD_freeCCtx(m_zstdCCtx);
-#endif
 }
 
 enum RCCXmlTag {
@@ -817,7 +869,7 @@ bool RCCResourceLibrary::readFiles(bool listMode, QIODevice &errorDevice)
             m_errorDevice->write(msg.toUtf8());
         }
 
-        if (!interpretResourceFile(&fileIn, fname, pwd, listMode))
+        if (!interpretResourceFile(&fileIn, fname, std::move(pwd), listMode))
             return false;
     }
     return true;
@@ -1168,6 +1220,7 @@ bool RCCResourceLibrary::writeDataBlobs()
     QStack<RCCFileInfo*> pending;
     pending.push(m_root);
     qint64 offset = 0;
+    RCCFileInfo::DeduplicationMultiHash dedupByContent;
     QString errorMessage;
     while (!pending.isEmpty()) {
         RCCFileInfo *file = pending.pop();
@@ -1176,7 +1229,8 @@ bool RCCResourceLibrary::writeDataBlobs()
             if (child->m_flags & RCCFileInfo::Directory)
                 pending.push(child);
             else {
-                offset = child->writeDataBlob(*this, offset, &errorMessage);
+                offset = child->writeDataBlob(*this, offset,
+                                              dedupByContent, &errorMessage);
                 if (offset == 0) {
                     m_errorDevice->write(errorMessage.toUtf8());
                     return false;

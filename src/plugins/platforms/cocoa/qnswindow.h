@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNSWINDOW_H
 #define QNSWINDOW_H
@@ -36,7 +37,9 @@ QT_FORWARD_DECLARE_CLASS(QCocoaWindow)
 
 typedef NSWindow<QNSWindowProtocol> QCocoaNSWindow;
 
+QT_BEGIN_NAMESPACE
 QCocoaNSWindow *qnswindow_cast(NSWindow *window);
+QT_END_NAMESPACE
 
 #else
 class QCocoaNSWindow;

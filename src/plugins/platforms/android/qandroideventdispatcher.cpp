@@ -1,9 +1,11 @@
 // Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qandroideventdispatcher.h"
 #include "androidjnimain.h"
-#include "androiddeadlockprotector.h"
+
+using namespace Qt::StringLiterals;
 
 QAndroidEventDispatcher::QAndroidEventDispatcher(QObject *parent) :
     QUnixEventDispatcherQPA(parent)
@@ -53,8 +55,9 @@ bool QAndroidEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags
         flags |= QEventLoop::ExcludeSocketNotifiers | QEventLoop::X11ExcludeTimers;
 
     {
-        AndroidDeadlockProtector protector;
-        if (protector.acquire() && m_stopRequest.testAndSetAcquire(StopRequest, Stopping)) {
+        QtAndroidPrivate::AndroidDeadlockProtector protector(
+            u"QAndroidEventDispatcher::processEvents()"_s);
+        if (m_stopRequest.testAndSetAcquire(StopRequest, Stopping) && protector.acquire()) {
             m_semaphore.acquire();
             wakeUp();
         }
@@ -98,7 +101,9 @@ void QAndroidEventDispatcherStopper::addEventDispatcher(QAndroidEventDispatcher 
 void QAndroidEventDispatcherStopper::removeEventDispatcher(QAndroidEventDispatcher *dispatcher)
 {
     QMutexLocker lock(&m_mutex);
-    m_dispatchers.erase(std::find(m_dispatchers.begin(), m_dispatchers.end(), dispatcher));
+    const auto it = std::find(m_dispatchers.begin(), m_dispatchers.end(), dispatcher);
+    if (it != m_dispatchers.end())
+        m_dispatchers.erase(it);
 }
 
 void QAndroidEventDispatcherStopper::goingToStop(bool stop)

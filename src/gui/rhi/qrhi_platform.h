@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QRHIPLATFORM_H
 #define QRHIPLATFORM_H
@@ -102,6 +103,16 @@ struct Q_GUI_EXPORT QRhiVulkanCommandBufferNativeHandles : public QRhiNativeHand
 struct Q_GUI_EXPORT QRhiVulkanRenderPassNativeHandles : public QRhiNativeHandles
 {
     VkRenderPass renderPass = VK_NULL_HANDLE;
+};
+
+struct Q_GUI_EXPORT QRhiVulkanQueueSubmitParams : public QRhiNativeHandles
+{
+    uint32_t waitSemaphoreCount;
+    VkSemaphore *waitSemaphores;
+    uint32_t signalSemaphoreCount;
+    VkSemaphore *signalSemaphores;
+    uint32_t presentWaitSemaphoreCount;
+    VkSemaphore *presentWaitSemaphores;
 };
 
 #endif // vulkan/qdoc

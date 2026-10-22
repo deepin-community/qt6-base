@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMIMEMAGICRULE_P_H
 #define QMIMEMAGICRULE_P_H
@@ -63,8 +64,8 @@ public:
     static Type type(const QByteArray &type);
     static QByteArray typeName(Type type);
 
-    static bool matchSubstring(const char *dataPtr, qsizetype dataSize, int rangeStart,
-                               int rangeLength, qsizetype valueLength, const char *valueData,
+    static bool matchSubstring(const char *dataPtr, qsizetype dataSize, quint64 rangeStart,
+                               quint64 rangeLength, quint64 valueLength, const char *valueData,
                                const char *mask);
 
 private:

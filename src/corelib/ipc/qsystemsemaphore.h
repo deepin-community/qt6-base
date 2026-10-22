@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSYSTEMSEMAPHORE_H
 #define QSYSTEMSEMAPHORE_H
@@ -8,6 +9,8 @@
 #include <QtCore/qtipccommon.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qscopedpointer.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -57,7 +60,7 @@ public:
     SystemSemaphoreError error() const;
     QString errorString() const;
 
-    static bool isKeyTypeSupported(QNativeIpcKey::Type type) Q_DECL_CONST_FUNCTION;
+    Q_DECL_CONST_FUNCTION static bool isKeyTypeSupported(QNativeIpcKey::Type type);
     static QNativeIpcKey platformSafeKey(const QString &key,
             QNativeIpcKey::Type type = QNativeIpcKey::DefaultTypeForOs);
     static QNativeIpcKey legacyNativeKey(const QString &key,
@@ -65,7 +68,7 @@ public:
 
 private:
     Q_DISABLE_COPY(QSystemSemaphore)
-    QScopedPointer<QSystemSemaphorePrivate> d;
+    std::unique_ptr<QSystemSemaphorePrivate> d;
 };
 
 #endif // QT_CONFIG(systemsemaphore)

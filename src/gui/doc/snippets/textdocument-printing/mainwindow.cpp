@@ -13,7 +13,7 @@ MainWindow::MainWindow()
 {
     QMenu *fileMenu = new QMenu(tr("&File"));
 
-    fileMenu->addAction(tr("&Open..."), QKeySequence(tr("Ctrl+O", "File|Open"))
+    fileMenu->addAction(tr("&Open..."), QKeySequence(tr("Ctrl+O", "File|Open")),
                         this, SLOT(openFile()));
 
     printAction = fileMenu->addAction(tr("&Print..."), this, SLOT(printFile()));

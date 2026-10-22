@@ -28,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcFontDb)
+using namespace Qt::StringLiterals;
 
 static inline int mapToQtWeightForRange(int fcweight, int fcLower, int fcUpper, int qtLower, int qtUpper)
 {
@@ -249,6 +249,17 @@ static const char specialLanguages[][6] = {
     "", // Vithkuqi
     "", // Kawi
     "", // NagMundari
+    "", // Garay
+    "", // GurungKhema
+    "", // KiratRai
+    "", // OlOnal
+    "", // Sunuwar
+    "", // Todhri
+    "", // TuluTigalari
+    "", // Sidetic
+    "", // TaiYo
+    "", // TolongSiki
+    "", // BeriaErfe
 };
 static_assert(sizeof specialLanguages / sizeof *specialLanguages == QChar::ScriptCount);
 
@@ -460,9 +471,14 @@ static void populateFromPattern(FcPattern *pattern,
         writingSystems.setSupported(QFontDatabase::Other);
     }
 
-    FontFile *fontFile = new FontFile;
-    fontFile->fileName = QString::fromLocal8Bit((const char *)file_value);
-    fontFile->indexValue = indexValue;
+    QString fileName = QString::fromLocal8Bit((const char *)file_value);
+
+    // FcStrCanonFilename() was changed after fontconfig 2.17.1 (commit e421882) to
+    // prepend a '/' to paths it cannot canonicalize, turning Qt resource paths
+    // like ":/foo.ttf" into "/:/foo.ttf". Strip the spurious leading '/' to
+    // restore a valid Qt resource path.
+    if (fileName.startsWith("/:/"_L1))
+        fileName = fileName.mid(1);
 
     QFont::Style style = (slant_value == FC_SLANT_ITALIC)
                      ? QFont::StyleItalic
@@ -477,6 +493,12 @@ static void populateFromPattern(FcPattern *pattern,
         FcPatternGetDouble (pattern, FC_PIXEL_SIZE, 0, &pixel_size);
 
     bool fixedPitch = spacing_value >= FC_MONO;
+
+    FcBool colorFont = false;
+#ifdef FC_COLOR
+    FcPatternGetBool(pattern, FC_COLOR, 0, &colorFont);
+#endif
+
     // Note: stretch should really be an int but registerFont incorrectly uses an enum
     QFont::Stretch stretch = QFont::Stretch(stretchFromFcWidth(width_value));
     QString styleName = style_value ? QString::fromUtf8((const char *) style_value) : QString();
@@ -492,7 +514,24 @@ static void populateFromPattern(FcPattern *pattern,
         applicationFont->properties.append(properties);
     }
 
-    QPlatformFontDatabase::registerFont(familyName,styleName,QLatin1StringView((const char *)foundry_value),weight,style,stretch,antialias,scalable,pixel_size,fixedPitch,writingSystems,fontFile);
+    {
+        FontFile *fontFile = new FontFile;
+        fontFile->fileName = fileName;
+        fontFile->indexValue = indexValue;
+        QPlatformFontDatabase::registerFont(familyName,
+                                            styleName,
+                                            QLatin1StringView((const char *)foundry_value),
+                                            weight,
+                                            style,
+                                            stretch,
+                                            antialias,
+                                            scalable,
+                                            pixel_size,
+                                            fixedPitch,
+                                            colorFont,
+                                            writingSystems,
+                                            fontFile);
+    }
     if (applicationFont != nullptr && face != nullptr && db != nullptr) {
         db->addNamedInstancesForFace(face,
                                      indexValue,
@@ -502,6 +541,7 @@ static void populateFromPattern(FcPattern *pattern,
                                      stretch,
                                      style,
                                      fixedPitch,
+                                     colorFont,
                                      writingSystems,
                                      QByteArray((const char*)file_value),
                                      applicationFont->data);
@@ -537,8 +577,25 @@ static void populateFromPattern(FcPattern *pattern,
 
                 applicationFont->properties.append(properties);
             }
-            FontFile *altFontFile = new FontFile(*fontFile);
-            QPlatformFontDatabase::registerFont(altFamilyName, altStyleName, QLatin1StringView((const char *)foundry_value),weight,style,stretch,antialias,scalable,pixel_size,fixedPitch,writingSystems,altFontFile);
+
+            {
+                FontFile *altFontFile = new FontFile;
+                altFontFile->fileName = fileName;
+                altFontFile->indexValue = indexValue;
+                QPlatformFontDatabase::registerFont(altFamilyName,
+                                                    altStyleName,
+                                                    QLatin1StringView((const char *)foundry_value),
+                                                    weight,
+                                                    style,
+                                                    stretch,
+                                                    antialias,
+                                                    scalable,
+                                                    pixel_size,
+                                                    fixedPitch,
+                                                    colorFont,
+                                                    writingSystems,
+                                                    altFontFile);
+            }
         } else {
             QPlatformFontDatabase::registerAliasToFontFamily(familyName, altFamilyName);
         }
@@ -571,6 +628,9 @@ void QFontconfigDatabase::populateFontDatabase()
             FC_WIDTH, FC_FAMILYLANG,
 #if FC_VERSION >= 20297
             FC_CAPABILITY,
+#endif
+#if defined(FC_COLOR)
+            FC_COLOR,
 #endif
             (const char *)nullptr
         };
@@ -615,9 +675,9 @@ void QFontconfigDatabase::populateFontDatabase()
 
     while (f->qtname) {
         QString familyQtName = QString::fromLatin1(f->qtname);
-        registerFont(familyQtName,QString(),QString(),QFont::Normal,QFont::StyleNormal,QFont::Unstretched,true,true,0,f->fixed,ws,nullptr);
-        registerFont(familyQtName,QString(),QString(),QFont::Normal,QFont::StyleItalic,QFont::Unstretched,true,true,0,f->fixed,ws,nullptr);
-        registerFont(familyQtName,QString(),QString(),QFont::Normal,QFont::StyleOblique,QFont::Unstretched,true,true,0,f->fixed,ws,nullptr);
+        registerFont(familyQtName,QString(),QString(),QFont::Normal,QFont::StyleNormal,QFont::Unstretched,true,true,0,f->fixed,false,ws,nullptr);
+        registerFont(familyQtName,QString(),QString(),QFont::Normal,QFont::StyleItalic,QFont::Unstretched,true,true,0,f->fixed,false,ws,nullptr);
+        registerFont(familyQtName,QString(),QString(),QFont::Normal,QFont::StyleOblique,QFont::Unstretched,true,true,0,f->fixed,false,ws,nullptr);
         ++f;
     }
 
@@ -636,7 +696,7 @@ void QFontconfigDatabase::invalidate()
     FcConfigAppFontClear(nullptr);
 }
 
-QFontEngineMulti *QFontconfigDatabase::fontEngineMulti(QFontEngine *fontEngine, QChar::Script script)
+QFontEngineMulti *QFontconfigDatabase::fontEngineMulti(QFontEngine *fontEngine, QFontDatabasePrivate::ExtendedScript script)
 {
     return new QFontEngineMultiFontConfig(fontEngine, script);
 }
@@ -760,7 +820,10 @@ QFontEngine *QFontconfigDatabase::fontEngine(const QByteArray &fontData, qreal p
     return engine;
 }
 
-QStringList QFontconfigDatabase::fallbacksForFamily(const QString &family, QFont::Style style, QFont::StyleHint styleHint, QChar::Script script) const
+QStringList QFontconfigDatabase::fallbacksForFamily(const QString &family,
+                                                    QFont::Style style,
+                                                    QFont::StyleHint styleHint,
+                                                    QFontDatabasePrivate::ExtendedScript script) const
 {
     QStringList fallbackFamilies;
     FcPattern *pattern = FcPatternCreate();
@@ -773,6 +836,14 @@ QStringList QFontconfigDatabase::fallbacksForFamily(const QString &family, QFont
     value.u.s = (const FcChar8 *)cs.data();
     FcPatternAdd(pattern,FC_FAMILY,value,true);
 
+#ifdef FC_COLOR
+    if (script == QFontDatabasePrivate::Script_Emoji) {
+        FcPatternAddBool(pattern, FC_COLOR, true);
+        value.u.s = (const FcChar8 *)"emoji";
+        FcPatternAddWeak(pattern, FC_FAMILY, value, FcTrue);
+    }
+#endif
+
     int slant_value = FC_SLANT_ROMAN;
     if (style == QFont::StyleItalic)
         slant_value = FC_SLANT_ITALIC;
@@ -780,8 +851,8 @@ QStringList QFontconfigDatabase::fallbacksForFamily(const QString &family, QFont
         slant_value = FC_SLANT_OBLIQUE;
     FcPatternAddInteger(pattern, FC_SLANT, slant_value);
 
-    Q_ASSERT(uint(script) < QChar::ScriptCount);
-    if (*specialLanguages[script] != '\0') {
+    Q_ASSERT(uint(script) < QFontDatabasePrivate::ScriptCount);
+    if (uint(script) < QChar::ScriptCount && *specialLanguages[script] != '\0') {
         FcLangSet *ls = FcLangSetCreate();
         FcLangSetAdd(ls, (const FcChar8*)specialLanguages[script]);
         FcPatternAddLangSet(pattern, FC_LANG, ls);
@@ -980,7 +1051,7 @@ void QFontconfigDatabase::setupFontEngine(QFontEngineFT *engine, const QFontDef 
 
     FcValue value;
     value.type = FcTypeString;
-    QByteArray cs = fontDef.families.first().toUtf8();
+    QByteArray cs = fontDef.family().toUtf8();
     value.u.s = (const FcChar8 *)cs.data();
     FcPatternAdd(pattern,FC_FAMILY,value,true);
 

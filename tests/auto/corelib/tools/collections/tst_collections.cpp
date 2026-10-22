@@ -153,9 +153,19 @@ struct Dummy
 {
     bool operator==(const Dummy &) const { return false; }
     bool operator<(const Dummy &) const { return false; }
+
+    friend size_t qHash(const Dummy &, size_t seed = 0) noexcept { return seed; }
 };
 
-struct RecursiveList : public QList<RecursiveList> {};
+struct RecursiveList : public QList<RecursiveList>
+{
+    friend bool operator<(const RecursiveList &lhs, const RecursiveList &rhs)
+    {
+        using Base = QList<RecursiveList>;
+        // compare some non-QList members here
+        return static_cast<const Base &>(lhs) < static_cast<const Base &>(rhs);
+    }
+};
 struct RecursiveSet : public QSet<RecursiveSet> {};
 struct RecursiveMapV : public QMap<Dummy, RecursiveMapV> {};
 struct RecursiveMapK : public QMap<RecursiveMapK, Dummy> {};
@@ -178,8 +188,8 @@ struct NoCmpParamRecursiveMultiHashK : public QMultiHash<NoCmpParamRecursiveMult
 
 struct NoCmpRecursiveList : public QList<NoCmpRecursiveList>
 {
-    bool operator==(const RecursiveList &) const = delete;
-    bool operator<(const RecursiveList &) const = delete;
+    bool operator==(const NoCmpRecursiveList &) const = delete;
+    bool operator<(const NoCmpRecursiveList &) const = delete;
 };
 struct NoCmpRecursiveSet : public QSet<NoCmpRecursiveSet>
 {
@@ -188,18 +198,22 @@ struct NoCmpRecursiveSet : public QSet<NoCmpRecursiveSet>
 struct NoCmpRecursiveMapV : public QMap<Dummy, NoCmpRecursiveMapV>
 {
     bool operator==(const NoCmpRecursiveMapV &) const = delete;
+    bool operator<(const NoCmpRecursiveMapV &) const = delete;
 };
 struct NoCmpRecursiveMapK : public QMap<NoCmpRecursiveMapK, Dummy>
 {
     bool operator==(const NoCmpRecursiveMapK &) const = delete;
+    bool operator<(const NoCmpRecursiveMapK &) const = delete;
 };
 struct NoCmpRecursiveMultiMapV : public QMultiMap<Dummy, NoCmpRecursiveMultiMapV>
 {
     bool operator==(const NoCmpRecursiveMultiMapV &) const = delete;
+    bool operator<(const NoCmpRecursiveMultiMapV &) const = delete;
 };
 struct NoCmpRecursiveMultiMapK : public QMultiMap<NoCmpRecursiveMultiMapK, Dummy>
 {
     bool operator==(const NoCmpRecursiveMultiMapK &) const = delete;
+    bool operator<(const NoCmpRecursiveMultiMapK &) const = delete;
 };
 struct NoCmpRecursiveHashV : public QHash<Dummy, NoCmpRecursiveHashV>
 {
@@ -218,12 +232,11 @@ struct NoCmpRecursiveMultiHashK : public QMultiHash<NoCmpRecursiveMultiHashK, Du
     bool operator==(const NoCmpRecursiveMultiHashK &) const = delete;
 };
 
-uint qHash(const Dummy &) { return 0; }
-uint qHash(const RecursiveSet &) { return 0; }
-uint qHash(const RecursiveHashK &) { return 0; }
-uint qHash(const RecursiveHashV &) { return 0; }
-uint qHash(const RecursiveMultiHashK &) { return 0; }
-uint qHash(const RecursiveMultiHashV &) { return 0; }
+size_t qHash(const RecursiveSet &, size_t seed = 0) noexcept { return seed; }
+size_t qHash(const RecursiveHashK &, size_t seed = 0) noexcept { return seed; }
+size_t qHash(const RecursiveHashV &, size_t seed = 0) noexcept { return seed; }
+size_t qHash(const RecursiveMultiHashK &, size_t seed = 0) noexcept { return seed; }
+size_t qHash(const RecursiveMultiHashV &, size_t seed = 0) noexcept { return seed; }
 
 Q_DECLARE_METATYPE(RecursiveList);
 Q_DECLARE_METATYPE(RecursiveSet);
@@ -259,17 +272,25 @@ static_assert(QTypeTraits::has_operator_equal_v<RecursiveList>);
 static_assert(QTypeTraits::has_operator_less_than_v<RecursiveList>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveSet>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveMapV>);
+static_assert(QTypeTraits::has_operator_less_than_v<RecursiveMapV>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveMapK>);
+static_assert(QTypeTraits::has_operator_less_than_v<RecursiveMapK>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveMultiMapV>);
+static_assert(QTypeTraits::has_operator_less_than_v<RecursiveMultiMapV>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveMultiMapK>);
+static_assert(QTypeTraits::has_operator_less_than_v<RecursiveMultiMapK>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveHashV>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveHashK>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveMultiHashV>);
 static_assert(QTypeTraits::has_operator_equal_v<RecursiveMultiHashK>);
 
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpParamRecursiveMapV>);
+static_assert(!QTypeTraits::has_operator_less_than_v<NoCmpParamRecursiveMapV>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpParamRecursiveMapK>);
+static_assert(!QTypeTraits::has_operator_less_than_v<NoCmpParamRecursiveMapK>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpParamRecursiveMultiMapV>);
+static_assert(!QTypeTraits::has_operator_equal_v<NoCmpParamRecursiveMultiMapV>);
+static_assert(!QTypeTraits::has_operator_equal_v<NoCmpParamRecursiveMultiMapK>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpParamRecursiveMultiMapK>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpParamRecursiveHashV>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpParamRecursiveHashK>);
@@ -280,9 +301,13 @@ static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveList>);
 static_assert(!QTypeTraits::has_operator_less_than_v<NoCmpRecursiveList>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveSet>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveMapV>);
+static_assert(!QTypeTraits::has_operator_less_than_v<NoCmpRecursiveMapV>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveMapK>);
+static_assert(!QTypeTraits::has_operator_less_than_v<NoCmpRecursiveMapK>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveMultiMapV>);
+static_assert(!QTypeTraits::has_operator_less_than_v<NoCmpRecursiveMultiMapV>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveMultiMapK>);
+static_assert(!QTypeTraits::has_operator_less_than_v<NoCmpRecursiveMultiMapK>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveHashV>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveHashK>);
 static_assert(!QTypeTraits::has_operator_equal_v<NoCmpRecursiveMultiHashV>);
@@ -642,14 +667,14 @@ QT_WARNING_POP
     {
         QList<int *> list;
         QVERIFY(list.value(0) == 0);
-        int i;
+        int i = 42;
         list.append(&i);
         QVERIFY(list.value(0) == &i);
     }
     {
         QList<const int *> list;
         QVERIFY(list.value(0) == 0);
-        int i;
+        int i = 42;
         list.append(&i);
         QVERIFY(list.value(0) == &i);
     }
@@ -1105,11 +1130,24 @@ void tst_Collections::byteArray()
     QVERIFY (true == hello.contains('e'));
     QVERIFY (hello.contains('e') != false);
 
-    QVERIFY(hello.indexOf('e') == 1);
-    QVERIFY(hello.indexOf('e', -10) == 1);
-    QVERIFY(hello.indexOf('l') == 2);
-    QVERIFY(hello.indexOf('l',2) == 2);
-    QVERIFY(hello.indexOf('l',3) == 3);
+    QCOMPARE(hello.indexOf('e'), 1);
+    QCOMPARE(hello.indexOf('e', -3), -1);   // searches "llo"
+    QCOMPARE(hello.indexOf('e', -4), 1);    // searches "ello"
+    QCOMPARE(hello.indexOf('e', -6), -1);   // overflows size search
+    QCOMPARE(hello.indexOf('l'), 2);
+    QCOMPARE(hello.indexOf('l', 2), 2);
+    QCOMPARE(hello.indexOf('l', 3), 3);
+    QCOMPARE(hello.indexOf('l', 4), -1);
+    QCOMPARE(hello.indexOf('l', 6), -1);
+
+    QCOMPARE(hello.lastIndexOf('e'), 1);
+    QCOMPARE(hello.lastIndexOf('e', -4), 1);    // searches "he"
+    QCOMPARE(hello.lastIndexOf('e', -5), -1);   // searches "h"
+    QCOMPARE(hello.lastIndexOf('e', -6), -1);   // overflows size search
+    QCOMPARE(hello.lastIndexOf('l'), 3);
+    QCOMPARE(hello.lastIndexOf('l', 1), -1);     // searches "he"
+    QCOMPARE(hello.lastIndexOf('l', 2), 2);      // searches "hel"
+    QCOMPARE(hello.lastIndexOf('l', 3), 3);      // searches "hell"
 
     QByteArray empty;
     QCOMPARE(empty.indexOf("x"), -1);
@@ -1852,11 +1890,24 @@ void tst_Collections::qstring()
     QVERIFY (true == hello.contains('e'));
     QVERIFY (hello.contains('e') != false);
 
-    QVERIFY(hello.indexOf('e') == 1);
-    QVERIFY(hello.indexOf('e', -10) == -1);
-    QVERIFY(hello.indexOf('l') == 2);
-    QVERIFY(hello.indexOf('l',2) == 2);
-    QVERIFY(hello.indexOf('l',3) == 3);
+    QCOMPARE(hello.indexOf('e'), 1);
+    QCOMPARE(hello.indexOf('e', -3), -1);   // searches "llo"
+    QCOMPARE(hello.indexOf('e', -4), 1);    // searches "ello"
+    QCOMPARE(hello.indexOf('e', -6), -1);   // overflows size search
+    QCOMPARE(hello.indexOf('l'), 2);
+    QCOMPARE(hello.indexOf('l', 2), 2);
+    QCOMPARE(hello.indexOf('l', 3), 3);
+    QCOMPARE(hello.indexOf('l', 4), -1);
+    QCOMPARE(hello.indexOf('l', 6), -1);
+
+    QCOMPARE(hello.lastIndexOf('e'), 1);
+    QCOMPARE(hello.lastIndexOf('e', -4), 1);    // searches "he"
+    QCOMPARE(hello.lastIndexOf('e', -5), -1);   // searches "h"
+    QCOMPARE(hello.lastIndexOf('e', -6), -1);   // overflows size search
+    QCOMPARE(hello.lastIndexOf('l'), 3);
+    QCOMPARE(hello.lastIndexOf('l', 1), -1);     // searches "he"
+    QCOMPARE(hello.lastIndexOf('l', 2), 2);      // searches "hel"
+    QCOMPARE(hello.lastIndexOf('l', 3), 3);      // searches "hell"
 
     QString empty;
     QCOMPARE(empty.indexOf("x"), -1);
@@ -2784,12 +2835,8 @@ class EqualsComparable
 {
 public:
     bool operator==(const EqualsComparable &) const { return true; }
+    friend size_t qHash(const EqualsComparable &, size_t seed = 0) noexcept { return seed; }
 };
-
-size_t qHash(const EqualsComparable &)
-{
-    return 0;
-}
 
 /*
     The following functions instatiates every member functions in the
@@ -2813,19 +2860,18 @@ void instantiateContainer()
     typename ContainerType::const_iterator constIt;
     constIt = constContainer.begin();
     constIt = container.cbegin();
-    container.constBegin();
+    constIt = container.constBegin();
 
     constIt = constContainer.end();
     constIt = constContainer.cend();
-    container.constEnd();
+    constIt = container.constEnd();
     Q_UNUSED(constIt);
 
     container.clear();
     container.contains(value);
-    container.size();
-    container.empty();
-    container.isEmpty();
-    container.size();
+    (void)container.size();
+    Q_UNUSED(container.empty());
+    Q_UNUSED(container.isEmpty());
 
     Q_UNUSED((container != constContainer));
     Q_UNUSED((container == constContainer));
@@ -3129,7 +3175,8 @@ public:
 
     inline bool operator==(const AlignedClass &other) const { return i == other.i; }
     inline bool operator<(const AlignedClass &other) const { return i < other.i; }
-    friend inline size_t qHash(const AlignedClass &a) { return qHash(a.i); }
+    friend size_t qHash(const AlignedClass &a, size_t seed = 0) noexcept
+    { return qHash(a.i, seed); }
 };
 
 using Aligned4 = AlignedClass<4>;
@@ -3275,9 +3322,9 @@ template<template<class, class> class C> void QTBUG13079_collectionInsideCollect
 }
 
 
-size_t qHash(const QTBUG13079_Node<QSet> &)
+size_t qHash(const QTBUG13079_Node<QSet> &, size_t seed = 0) noexcept
 {
-    return 0;
+    return seed;
 }
 
 bool operator==(const QTBUG13079_Node<QSet> &a, const QTBUG13079_Node<QSet> &b)
@@ -3596,6 +3643,19 @@ void tst_Collections::detachAssociativeContainerImpl()
         thread->wait();
     }
 }
+
+// Compile-time check for q_points_into_range
+#if (!defined(Q_CC_GNU_ONLY) || Q_CC_GNU_ONLY >= 1200)
+static_assert([]() {
+    int a[4] = {1, 2, 3, 4};
+    int *p1 = a + 1;
+    bool b1 = QtPrivate::q_points_into_range(p1, a, a + 4);
+    int c = 42;
+    int *p2 = &c;
+    bool b2 = QtPrivate::q_points_into_range(p2, a, a + 4);
+    return b1 && !b2;
+}());
+#endif
 
 QTEST_APPLESS_MAIN(tst_Collections)
 #include "tst_collections.moc"

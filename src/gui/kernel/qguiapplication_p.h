@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGUIAPPLICATION_P_H
 #define QGUIAPPLICATION_P_H
@@ -22,6 +23,7 @@
 #include <QtCore/QHash>
 #include <QtCore/QPointF>
 #include <QtCore/private/qcoreapplication_p.h>
+#include <QtCore/qbasicatomic.h>
 
 #include <QtCore/qnativeinterface.h>
 #include <QtCore/private/qnativeinterface_p.h>
@@ -57,6 +59,7 @@ class QActionPrivate;
 #if QT_CONFIG(shortcut)
 class QShortcutPrivate;
 #endif
+class QThreadPool;
 
 class Q_GUI_EXPORT QGuiApplicationPrivate : public QCoreApplicationPrivate
 {
@@ -187,7 +190,7 @@ public:
 
     void _q_updateFocusObject(QObject *object);
 
-    static QGuiApplicationPrivate *instance() { return self; }
+    static QGuiApplicationPrivate *instance() { QT_IGNORE_DEPRECATIONS(return self;) }
 
     static QIcon *app_icon;
     static QString *platform_name;
@@ -210,7 +213,9 @@ public:
 
     static Qt::MouseButton mousePressButton;
     static struct QLastCursorPosition {
-        constexpr inline QLastCursorPosition() noexcept : thePoint(qt_inf(), qt_inf()) {}
+        // Initialize to a far-offscreen position.  2^23 is small enough for accurate arithmetic
+        // (even manhattanLength()) even when stored in the mantissa of a 32-bit float.
+        constexpr inline QLastCursorPosition() noexcept : thePoint(1 << 23, 1 << 23) {}
         constexpr inline Q_IMPLICIT QLastCursorPosition(QPointF p) noexcept : thePoint(p) {}
         constexpr inline Q_IMPLICIT operator QPointF() const noexcept { return thePoint; }
         constexpr inline qreal x() const noexcept{ return thePoint.x(); }
@@ -225,8 +230,8 @@ public:
         // to use single-point precision.
         friend constexpr bool operator==(const QLastCursorPosition &p1, const QPointF &p2) noexcept
         {
-            return qFuzzyCompare(float(p1.x()), float(p2.x()))
-                && qFuzzyCompare(float(p1.y()), float(p2.y()));
+            return QtPrivate::fuzzyCompare(float(p1.x()), float(p2.x()))
+                && QtPrivate::fuzzyCompare(float(p1.y()), float(p2.y()));
         }
         friend constexpr bool operator!=(const QLastCursorPosition &p1, const QPointF &p2) noexcept
         {
@@ -337,6 +342,15 @@ public:
 
     static QEvent::Type contextMenuEventType();
 
+    static QThreadPool *qtGuiThreadPool();
+
+#ifndef QT_NO_OPENGL
+    bool ownGlobalShareContext = false;
+#endif
+
+    void _q_updatePrimaryScreenDpis();
+    static QBasicAtomicInt m_primaryScreenDpis;
+
 protected:
     virtual void handleThemeChanged();
 
@@ -360,8 +374,6 @@ private:
     std::shared_ptr<QColorTrcLut> m_a8ColorProfile;
 #endif
     std::shared_ptr<QColorTrcLut> m_a32ColorProfile;
-
-    bool ownGlobalShareContext;
 
     static QInputDeviceManager *m_inputDeviceManager;
 

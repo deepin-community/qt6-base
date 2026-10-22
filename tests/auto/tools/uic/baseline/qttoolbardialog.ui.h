@@ -54,7 +54,7 @@ public:
             QtToolBarDialog->setObjectName("QtToolBarDialog");
         QtToolBarDialog->resize(583, 508);
         gridLayout = new QGridLayout(QtToolBarDialog);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         gridLayout->setSpacing(6);
 #endif
         gridLayout->setContentsMargins(8, 8, 8, 8);
@@ -70,7 +70,7 @@ public:
         gridLayout->addWidget(label, 0, 0, 1, 1);
 
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);
@@ -99,7 +99,7 @@ public:
         gridLayout->addLayout(hboxLayout, 0, 1, 1, 2);
 
         vboxLayout = new QVBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
         vboxLayout->setContentsMargins(0, 0, 0, 0);
@@ -159,7 +159,7 @@ public:
 
         buttonBox = new QDialogButtonBox(QtToolBarDialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setStandardButtons(QDialogButtonBox::Apply|QDialogButtonBox::Cancel|QDialogButtonBox::Ok|QDialogButtonBox::RestoreDefaults);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Apply|QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok|QDialogButtonBox::StandardButton::RestoreDefaults);
 
         gridLayout->addWidget(buttonBox, 5, 0, 1, 3);
 

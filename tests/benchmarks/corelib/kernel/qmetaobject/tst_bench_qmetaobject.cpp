@@ -4,6 +4,8 @@
 #include <QtWidgets/QTreeView>
 #include <qtest.h>
 
+using namespace Qt::StringLiterals;
+
 class LotsOfSignals : public QObject // for the unconnected() test
 {
     Q_OBJECT
@@ -97,6 +99,9 @@ private slots:
 
     void unconnected_data();
     void unconnected();
+
+    void normalizedSignature_data();
+    void normalizedSignature();
 };
 
 void tst_QMetaObject::indexOfProperty_data()
@@ -209,6 +214,26 @@ void tst_QMetaObject::unconnected()
         QMetaObject::metacall(obj, QMetaObject::InvokeMetaMethod, signal_index + 2, &v);
     }
     delete obj;
+}
+
+void tst_QMetaObject::normalizedSignature_data()
+{
+    QTest::addColumn<QByteArray>("signature");
+
+    QTest::newRow("const5") << "void foo(const int, int const, const int &, int const &)"_ba;
+    QTest::newRow("const12") << "void foo(Foo<Bar>const*const *const)"_ba;
+    QTest::newRow("QVector1") << "void foo(const Template<QVector, MyQList const>)"_ba;
+    QTest::newRow("refref") << "const char* foo(const X &&,X const &&, const X* &&) && "_ba;
+}
+
+
+void tst_QMetaObject::normalizedSignature()
+{
+    QFETCH(QByteArray, signature);
+
+    QBENCHMARK {
+        QMetaObject::normalizedSignature(signature.constData());
+    }
 }
 
 QTEST_MAIN(tst_QMetaObject)

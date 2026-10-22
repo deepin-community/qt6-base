@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHIGHDPISCALING_P_H
 #define QHIGHDPISCALING_P_H
@@ -32,7 +33,7 @@ Q_DECLARE_LOGGING_CATEGORY(lcHighDpi);
 
 class QScreen;
 class QPlatformScreen;
-typedef QPair<qreal, qreal> QDpi;
+typedef std::pair<qreal, qreal> QDpi;
 
 #ifndef QT_NO_HIGHDPISCALING
 class Q_GUI_EXPORT QHighDpiScaling {
@@ -102,7 +103,7 @@ private:
     static QDpi effectiveLogicalDpi(const QPlatformScreen *screen, qreal rawFactor, qreal roundedFactor);
     static qreal screenSubfactor(const QPlatformScreen *screen);
     static QScreen *screenForPosition(Point position, QScreen *guess);
-    static QVector<QHighDpiScaling::ScreenFactor> parseScreenScaleFactorsSpec(const QStringView &screenScaleFactors);
+    static QList<QHighDpiScaling::ScreenFactor> parseScreenScaleFactorsSpec(QStringView screenScaleFactors);
 
     static qreal m_factor;
     static bool m_active;
@@ -251,16 +252,16 @@ T toNativeGlobalPosition(const T &value, const C *context)
     return scale(value, so.factor, so.origin);
 }
 
-template <typename T, typename C>
-T fromNativeWindowGeometry(const T &value, const C *context)
+template <typename T>
+T fromNativeWindowGeometry(const T &value, const QWindow *context)
 {
     QHighDpiScaling::ScaleAndOrigin so = QHighDpiScaling::scaleAndOrigin(context);
     QPoint effectiveOrigin = (context && context->isTopLevel()) ? so.origin : QPoint(0,0);
     return scale(value, qreal(1) / so.factor, effectiveOrigin);
 }
 
-template <typename T, typename C>
-T toNativeWindowGeometry(const T &value, const C *context)
+template <typename T>
+T toNativeWindowGeometry(const T &value, const QWindow *context)
 {
     QHighDpiScaling::ScaleAndOrigin so = QHighDpiScaling::scaleAndOrigin(context);
     QPoint effectiveOrigin = (context && context->isTopLevel()) ? so.origin : QPoint(0,0);
@@ -344,6 +345,7 @@ public:
     static inline QPointF mapPositionToGlobal(const QPointF &pos, const QPoint &, const QWindow *) { return pos; }
     static inline QPointF mapPositionFromGlobal(const QPointF &pos, const QPoint &, const QWindow *) { return pos; }
     static inline QDpi logicalDpi(const QScreen *) { return QDpi(-1,-1); }
+    static inline qreal roundScaleFactor(qreal) { return 1.0; }
 };
 
 namespace QHighDpi {

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCORE_MAC_P_H
 #define QCORE_MAC_P_H
@@ -77,6 +78,16 @@ kern_return_t IOObjectRelease(io_object_t object);
 
 Q_FORWARD_DECLARE_OBJC_CLASS(NSObject);
 Q_FORWARD_DECLARE_OBJC_CLASS(NSString);
+Q_FORWARD_DECLARE_OBJC_CLASS(UTType);
+
+struct CGPoint;
+struct CGSize;
+struct CGRect;
+#if defined(Q_OS_MACOS)
+struct NSEdgeInsets;
+#else
+struct UIEdgeInsets;
+#endif
 
 // @compatibility_alias doesn't work with categories or their methods
 #define QtExtras QT_MANGLE_NAMESPACE(QtExtras)
@@ -184,10 +195,39 @@ private:
     QString string;
 };
 
+class Q_CORE_EXPORT QObjCWeakPointerBase
+{
+public:
+    QObjCWeakPointerBase(NSObject *object = nil);
+    QObjCWeakPointerBase(const QObjCWeakPointerBase &other);
+    QObjCWeakPointerBase &operator=(const QObjCWeakPointerBase &other);
+
+protected:
+    ~QObjCWeakPointerBase();
+    NSObject *get() const;
+    union {
+        NSObject *m_object = nil;
+#if __has_feature(objc_arc_weak) && __has_feature(objc_arc_fields)
+        // Used by qcore_mac.mm, built with -fobjc-weak, to track lifetime
+        __weak id m_weakReference;
+#endif
+    };
+};
+
+template <typename T>
+class QObjCWeakPointer : public QObjCWeakPointerBase
+{
+public:
+    using QObjCWeakPointerBase::QObjCWeakPointerBase;
+    operator T*() const { return static_cast<T*>(get()); }
+};
+
+// -------------------------------------------------------------------------
+
 #ifdef Q_OS_MACOS
-Q_CORE_EXPORT bool qt_mac_applicationIsInDarkMode();
 Q_CORE_EXPORT bool qt_mac_runningUnderRosetta();
 Q_CORE_EXPORT std::optional<uint32_t> qt_mac_sipConfiguration();
+Q_CORE_EXPORT bool qt_mac_processHasEntitlement(const QString &entitlement);
 #ifdef QT_BUILD_INTERNAL
 Q_AUTOTEST_EXPORT void qt_mac_ensureResponsible();
 #endif
@@ -196,9 +236,19 @@ Q_AUTOTEST_EXPORT void qt_mac_ensureResponsible();
 #ifndef QT_NO_DEBUG_STREAM
 Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QMacAutoReleasePool *pool);
 Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QCFString &string);
+Q_CORE_EXPORT QDebug operator<<(QDebug, CGPoint);
+Q_CORE_EXPORT QDebug operator<<(QDebug, CGSize);
+Q_CORE_EXPORT QDebug operator<<(QDebug, CGRect);
+#if defined(Q_OS_MACOS)
+Q_CORE_EXPORT QDebug operator<<(QDebug, NSEdgeInsets);
+#else
+Q_CORE_EXPORT QDebug operator<<(QDebug, UIEdgeInsets);
+#endif
 #endif
 
 Q_CORE_EXPORT bool qt_apple_isApplicationExtension();
+Q_CORE_EXPORT bool qt_apple_runningWithLiquidGlass();
+Q_CORE_EXPORT std::optional<UTType *> qt_apple_bundleType(const QString &path);
 
 #if !defined(QT_BOOTSTRAPPED)
 Q_CORE_EXPORT bool qt_apple_isSandboxed();
@@ -252,7 +302,7 @@ private:
 
 // --------------------------------------------------------------------------
 
-#if !defined(QT_BOOTSTRAPPED)
+#if !defined(QT_BOOTSTRAPPED) && !__has_feature(objc_arc)
 
 QT_END_NAMESPACE
 #include <os/activity.h>
@@ -323,7 +373,7 @@ QT_MAC_WEAK_IMPORT(_os_activity_current);
 
 #define QT_APPLE_SCOPED_LOG_ACTIVITY(...) QAppleLogActivity scopedLogActivity = QT_APPLE_LOG_ACTIVITY(__VA_ARGS__).enter();
 
-#endif // !defined(QT_BOOTSTRAPPED)
+#endif // !defined(QT_BOOTSTRAPPED) && !__has_feature(objc_arc)
 
 // -------------------------------------------------------------------------
 
@@ -357,7 +407,7 @@ public:
 
     void swap(QMacNotificationObserver &other) noexcept
     {
-        qt_ptr_swap(observer, other.observer);
+        std::swap(observer, other.observer);
     }
 
     void remove();
@@ -379,7 +429,6 @@ public:
     QMacKeyValueObserver() = default;
 
 #if defined( __OBJC__)
-    // Note: QMacKeyValueObserver must not outlive the object observed!
     QMacKeyValueObserver(NSObject *object, NSString *keyPath, Callback callback,
         NSKeyValueObservingOptions options = NSKeyValueObservingOptionNew)
         : object(object), keyPath(keyPath), callback(new Callback(callback))
@@ -407,8 +456,8 @@ public:
 
     void swap(QMacKeyValueObserver &other) noexcept
     {
-        qt_ptr_swap(object, other.object);
-        qt_ptr_swap(keyPath, other.keyPath);
+        std::swap(object, other.object);
+        std::swap(keyPath, other.keyPath);
         callback.swap(other.callback);
     }
 
@@ -417,7 +466,7 @@ private:
     void addObserver(NSKeyValueObservingOptions options);
 #endif
 
-    NSObject *object = nullptr;
+    QObjCWeakPointer<NSObject> object;
     NSString *keyPath = nullptr;
     std::unique_ptr<Callback> callback;
 

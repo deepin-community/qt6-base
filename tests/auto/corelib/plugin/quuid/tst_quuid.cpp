@@ -11,6 +11,14 @@
 
 #include <qcoreapplication.h>
 #include <quuid.h>
+#include <QtCore/private/quuid_p.h>
+
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+#include <QStandardPaths>
+#endif
+
+using namespace std::chrono_literals;
+using namespace Qt::StringLiterals;
 
 class tst_QUuid : public QObject
 {
@@ -31,6 +39,9 @@ private slots:
     void id128();
     void uint128();
     void createUuidV3OrV5();
+    void createUuidV7_unique();
+    void createUuidV7_data();
+    void createUuidV7();
     void check_QDataStream();
     void isNull();
     void equal();
@@ -81,8 +92,8 @@ void tst_QUuid::initTestCase()
 
 #if QT_CONFIG(process)
     // chdir to the directory containing our testdata, then refer to it with relative paths
-#ifdef Q_OS_ANDROID
-    QString testdata_dir = QCoreApplication::applicationDirPath();
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
+    QString testdata_dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
 #else // !Q_OS_ANDROID
     QString testdata_dir = QFileInfo(QFINDTESTDATA("testProcessUniqueness")).absolutePath();
 #endif
@@ -284,6 +295,10 @@ void tst_QUuid::id128()
 void tst_QUuid::uint128()
 {
 #ifdef QT_SUPPORTS_INT128
+    if (QSysInfo::ByteOrder == QSysInfo::BigEndian)
+        QSKIP("Not implemented for big endian. Feel free to submit fixes.");
+
+    // {fc69b59e-cc34-4436-a43c-ee95d128b8c5}
     constexpr quint128 u = Q_UINT128_C(0xfc69b59e'cc344436'a43cee95'd128b8c5); // This is LE
     constexpr quint128 be = qToBigEndian(u);
     constexpr QUuid uuid = QUuid::fromUInt128(be);
@@ -319,6 +334,51 @@ void tst_QUuid::createUuidV3OrV5()
     QT_TEST_EQUALITY_OPS(uuidD, QUuid::createUuidV5(uuidNS, QString("www.widgets.com")), true);
 }
 
+void tst_QUuid::createUuidV7_unique()
+{
+    const int count = 1000;
+    std::vector<QUuid> vec;
+    vec.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        auto id = QUuid::createUuidV7();
+        QCOMPARE(id.version(), QUuid::UnixEpoch);
+        QCOMPARE(id.variant(), QUuid::DCE);
+        vec.push_back(id);
+    }
+
+    QVERIFY(std::unique(vec.begin(), vec.end()) == vec.end());
+}
+
+void tst_QUuid::createUuidV7_data()
+{
+    QTest::addColumn<QDateTime>("dt");
+    QTest::addColumn<QUuid>("expected");
+
+    // February 22, 2022 2:22:22.00 PM GMT-05:00, example from:
+    // https://datatracker.ietf.org/doc/html/rfc9562#name-example-of-a-uuidv7-value
+    QTest::newRow("feb2022")
+        << QDateTime::fromString("2022-02-22T14:22:22.00-05:00"_L1, Qt::ISODateWithMs)
+        << QUuid::fromString("017F22E2-79B0-7CC3-98C4-DC0C0C07398F"_L1);
+
+    QTest::newRow("jan2000")
+        << QDateTime::fromString("2000-01-02T14:22:22.00-05:00"_L1, Qt::ISODateWithMs)
+        << QUuid("00dc741e-35b0-7643-947d-0380e108ce80"_L1);
+}
+
+void tst_QUuid::createUuidV7()
+{
+    QFETCH(QDateTime, dt);
+    QFETCH(QUuid, expected);
+
+    QVERIFY(dt.isValid());
+
+    using namespace std::chrono;
+    auto extractTimestamp = [](const QUuid &id) { return (quint64(id.data1) << 16) | id.data2; };
+    const auto result =
+        createUuidV7_internal(time_point<system_clock, milliseconds>(dt.toMSecsSinceEpoch() * 1ms));
+    QCOMPARE_EQ(extractTimestamp(result), extractTimestamp(expected));
+}
+
 void tst_QUuid::check_QDataStream()
 {
     QUuid tmp;
@@ -349,6 +409,12 @@ void tst_QUuid::check_QDataStream()
 
 void tst_QUuid::isNull()
 {
+    constexpr QUuid null;
+    static_assert(null.isNull());
+
+    constexpr QUuid nonNull{1, 2, 3, 4, 0, 1, 2, 3, 4, 5, 6};
+    static_assert(!nonNull.isNull());
+
     QVERIFY( !uuidA.isNull() );
 
     QUuid should_be_null_uuid;
@@ -400,6 +466,12 @@ constexpr QUuid make_minimal(QUuid::Variant variant)
     case V::Reserved:
         return {0, 0, 0, uchar(variant << 5), 0, 0, 0, 0, 0, 0, 0};
     }
+    // GCC 8.x does not treat __builtin_unreachable() as constexpr
+#if !defined(Q_CC_GNU_ONLY) || (Q_CC_GNU >= 900)
+    // NOLINTNEXTLINE(qt-use-unreachable-return): Triggers on Clang, breaking GCC 8
+    Q_UNREACHABLE();
+#endif
+    return {};
 }
 
 void tst_QUuid::ordering_data()
@@ -465,6 +537,7 @@ void tst_QUuid::ordering_data()
 #define AFTER_NCS(x) ROW(minNCS, x, less)
     AFTER_NCS(ncs000_0000_0010);
     AFTER_NCS(ncs000_0000_0100);
+    ROW(ncs000_0000_0010, ncs000_0000_0100, less);
     AFTER_NCS(ncs000_0000_1000);
     AFTER_NCS(ncs000_0001_0000);
     AFTER_NCS(ncs000_0010_0000);
@@ -492,6 +565,13 @@ void tst_QUuid::ordering_data()
     AFTER_R(ones);
 #undef AFTER_R
 #undef ROW
+
+    // due to the way we store data1,2,3 in memory, the ordering will flip
+    QTest::newRow("qt7-integer-portions")
+            << QUuid{0x01000002, 0x0000, 0x0000, 0, 0, 0, 0, 0, 0, 0, 0}
+            << QUuid{0x02000001, 0x0000, 0x0000, 0, 0, 0, 0, 0, 0, 0, 0}
+            << (QSysInfo::ByteOrder == QSysInfo::BigEndian || QT_VERSION_MAJOR < 7 ?
+                    Qt::strong_ordering::less : Qt::strong_ordering::greater);
 }
 
 void tst_QUuid::ordering()
@@ -500,6 +580,7 @@ void tst_QUuid::ordering()
     QFETCH(const QUuid, rhs);
     QFETCH(const Qt::strong_ordering, expected);
 
+    QCOMPARE(qCompareThreeWay(lhs, rhs), expected);
     QT_TEST_ALL_COMPARISON_OPS(lhs, rhs, expected);
 }
 
@@ -561,6 +642,12 @@ void tst_QUuid::variants_data()
     QTest::newRow("uuidA") << uuidA << QUuid::DCE;
     QTest::newRow("uuidB") << uuidB << QUuid::DCE;
     QTest::newRow("NCS") << QUuid("{3a2f883c-4000-000d-0000-00fb40000000}") << QUuid::NCS;
+
+    // compile-time checks
+    constexpr QUuid defaultConstructed;
+    static_assert(defaultConstructed.variant() == QUuid::Variant::VarUnknown);
+    constexpr QUuid minDCE = make_minimal(QUuid::Variant::DCE);
+    static_assert(minDCE.variant() == QUuid::Variant::DCE);
 }
 
 void tst_QUuid::variants()
@@ -593,8 +680,8 @@ void tst_QUuid::versions_data()
     QTest::newRow("DCE-inv-less-than-Time->unknown")
             << QUuid(0, 0, 0b0000'1101'0101'1011, 0b1000'0000, 0, 0, 0, 0, 0, 0, 0)
             << QUuid::VerUnknown;
-    QTest::newRow("DCE-inv-greater-than-Sha1->unknown")
-            << QUuid(0, 0, 0b0111'1101'0101'1011, 0b1000'0000, 0, 0, 0, 0, 0, 0, 0)
+    QTest::newRow("DCE-inv-greater-than-UnixEpoch->unknown")
+            << QUuid(0, 0, 0b1000'1101'0101'1011, 0b1000'0000, 0, 0, 0, 0, 0, 0, 0)
             << QUuid::VerUnknown;
     QTest::newRow("NCS-Time->unknown")
             << QUuid(0, 0, 0b0001'0000'0000'0000, 0b0100'0000, 0, 0, 0, 0, 0, 0, 0)
@@ -607,6 +694,12 @@ void tst_QUuid::versions_data()
             << QUuid::VerUnknown;
     QTest::newRow("uuidA") << uuidA << QUuid::Random;
     QTest::newRow("uuidB") << uuidB << QUuid::Random;
+
+    // compile-time checks
+    constexpr QUuid defaultConstructed;
+    static_assert(defaultConstructed.version() == QUuid::Version::VerUnknown);
+    constexpr QUuid timeVer = {0, 0, 0x1000, 0b1000'0000, 0, 0, 0, 0, 0, 0, 0};
+    static_assert(timeVer.version() == QUuid::Version::Time);
 }
 
 void tst_QUuid::versions()
@@ -645,10 +738,12 @@ void tst_QUuid::threadUniqueness()
 void tst_QUuid::processUniqueness()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID)
     QSKIP("This test crashes on Android");
+#elif defined(Q_OS_HARMONY)
+    QSKIP("OHOS does not support external process");
 #endif
     QProcess process;
     QString processOneOutput;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QIOSWINDOW_H
 #define QIOSWINDOW_H
@@ -8,9 +9,6 @@
 #include <qpa/qwindowsysteminterface.h>
 
 #import <UIKit/UIKit.h>
-
-class QIOSContext;
-class QIOSWindow;
 
 @class QUIView;
 
@@ -83,7 +81,7 @@ private:
 QDebug operator<<(QDebug debug, const QIOSWindow *window);
 #endif
 
-QT_MANGLE_NAMESPACE(QUIView) *quiview_cast(UIView *view);
+QUIView *quiview_cast(UIView *view);
 
 QT_END_NAMESPACE
 

@@ -97,7 +97,6 @@ static void dumpConfiguration(QTextStream &str)
     DUMP_CAPABILITY(str, platformIntegration, SharedGraphicsCache)
     DUMP_CAPABILITY(str, platformIntegration, BufferQueueingOpenGL)
     DUMP_CAPABILITY(str, platformIntegration, WindowMasks)
-    DUMP_CAPABILITY(str, platformIntegration, RasterGLSurface)
     DUMP_CAPABILITY(str, platformIntegration, AllGLFunctionsQueryable)
     str << '\n';
 

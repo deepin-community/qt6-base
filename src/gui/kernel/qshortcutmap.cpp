@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qshortcutmap_p.h"
 #include "private/qobject_p.h"
@@ -17,7 +18,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcShortcutMap, "qt.gui.shortcutmap")
+Q_STATIC_LOGGING_CATEGORY(lcShortcutMap, "qt.gui.shortcutmap")
 
 /* \internal
     Entry data for QShortcutMap
@@ -202,7 +203,7 @@ int QShortcutMap::setShortcutEnabled(bool enable, int id, QObject *owner, const 
     int i = d->shortcuts.size()-1;
     while (i>=0)
     {
-        QShortcutEntry entry = d->shortcuts.at(i);
+        const QShortcutEntry &entry = d->shortcuts.at(i);
         if ((allOwners || entry.owner == owner)
             && (allIds || entry.id == id)
             && (allKeys || entry.keySequence == keySequence)) {

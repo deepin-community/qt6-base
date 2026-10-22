@@ -20,11 +20,14 @@
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QStyleFactory>
+#include <QtWidgets/QTabBar>
+#include <QtWidgets/QTabWidget>
 #include <QtWidgets/QTableWidget>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QToolTip>
 #include <QtWidgets/QTreeView>
 #include <QtWidgets/QVBoxLayout>
+#include <QtWidgets/QProxyStyle>
 
 #include <QtGui/QPainter>
 #include <QtGui/QScreen>
@@ -66,7 +69,7 @@ private slots:
     void dynamicProperty();
     // NB! Invoking this slot after layoutSpacing crashes on Mac.
     void namespaces();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     void layoutSpacing();
 #endif
     void qproperty();
@@ -83,6 +86,8 @@ private slots:
 #ifndef QT_NO_CURSOR
     void hoverColors();
 #endif
+    void QTBUG_139957_menuButton_data();
+    void QTBUG_139957_menuButton();
     void background();
     void tabAlignment();
     void tabFont_data();
@@ -92,6 +97,7 @@ private slots:
     void task206238_twice();
     void transparent();
     void proxyStyle();
+    void useProxyandStyleSheetStyleInTabBar();
     void dialogButtonBox();
     void emptyStyleSheet();
     void toolTip_data();
@@ -102,6 +108,8 @@ private slots:
     void complexWidgetFocus();
     void task188195_baseBackground();
     void task232085_spinBoxLineEditBg();
+    void QTBUG140497_spinBoxSizeHintWithEmptyStyleSheet_data();
+    void QTBUG140497_spinBoxSizeHintWithEmptyStyleSheet();
     void changeStyleInChangeEvent();
     void QTBUG15910_crashNullWidget();
     void QTBUG36933_brokenPseudoClassLookup();
@@ -115,6 +123,7 @@ private slots:
     void appStyle();
     void QTBUG11658_cachecrash();
     void styleSheetTargetAttribute();
+    void tabWidgetDocumentModeCrash();
     void unpolish();
 
     void highdpiImages_data();
@@ -124,6 +133,8 @@ private slots:
     void iconSizes();
     void inheritWidgetPalette_data();
     void inheritWidgetPalette();
+
+    void resetFont();
 
 private:
     static QColor COLOR(const QWidget &w)
@@ -650,7 +661,7 @@ void tst_QStyleSheetStyle::dynamicProperty()
     QVERIFY(COLOR(pb2) == Qt::blue);
 }
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 void tst_QStyleSheetStyle::layoutSpacing()
 {
     qApp->setStyleSheet("* { color: red }");
@@ -971,9 +982,6 @@ void tst_QStyleSheetStyle::focusColors()
           "That doesn't mean that the feature doesn't work in practice.");
 #endif
 
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     TestDialog frame(QStringLiteral("*:focus { border:none; background: #e8ff66; color: #ff0084 }"));
     frame.setWindowTitle(QTest::currentTestFunction());
 
@@ -1010,8 +1018,6 @@ void tst_QStyleSheetStyle::hoverColors()
 #ifdef Q_OS_MACOS
     QSKIP("This test is fragile on Mac, most likely due to QTBUG-33959.");
 #endif
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
 
     TestDialog frame(QStringLiteral("*:hover { border:none; background: #e8ff66; color: #ff0084 }"));
     frame.setWindowTitle(QTest::currentTestFunction());
@@ -1077,6 +1083,151 @@ void tst_QStyleSheetStyle::hoverColors()
     }
 }
 #endif
+
+/* We test that the position and size of the menu indicator does not
+change by adding border to the stylesheet */
+class ButtonDialog : public QDialog
+{
+public:
+    ButtonDialog(const QString &style);
+
+    QImage image1() const {
+        QImage image(m_button1->width(), m_button1->height(), QImage::Format_ARGB32);
+        m_button1->render(&image);
+        image.setColorSpace(QColorSpace::SRgb);
+        return image.copy(CLIP_BORDER, CLIP_BORDER, image.width() - 2*CLIP_BORDER, image.height() - 2*CLIP_BORDER);
+    }
+    QImage image2() const {
+        QImage image(m_button2->width(), m_button2->height(), QImage::Format_ARGB32);
+        m_button2->render(&image);
+        image.setColorSpace(QColorSpace::SRgb);
+        return image.copy(CLIP_BORDER, CLIP_BORDER, image.width() - 2*CLIP_BORDER, image.height() - 2*CLIP_BORDER);
+    }
+
+    bool diff(bool first) const {
+        QImage image_1 = image1();
+        QImage image_2 = image2();
+
+        // For some reason the images may have different sizes,
+        // Assuming the size difference is even, this will center
+        // the largest image.
+        if (image_1.size().width() > image_2.size().width())
+            image_1 = image_1.copy((image_1.size().width() - image_2.size().width()) / 2, 0,
+                                   image_2.size().width(), image_1.size().height());
+
+        if (image_2.size().width() > image_1.size().width())
+            image_2 = image_2.copy((image_2.size().width() - image_1.size().width()) / 2, 0,
+                                   image_1.size().width(), image_2.size().height());
+
+        if (image_1.size().height() > image_2.size().height())
+            image_1 = image_1.copy(0, (image_1.size().height() - image_2.size().height()) / 2, image_1.size().width(),
+                                   image_2.size().height());
+
+        if (image_2.size().height() > image_1.size().height())
+            image_2 = image_2.copy(0, (image_2.size().height() - image_1.size().height()) / 2, image_2.size().width(),
+                                   image_1.size().height());
+
+        if (image_1.size() != image_2.size()) {
+            if (first)
+                qWarning() << " Sizes" << image_1.size() << image_2.size();
+            return true;
+        }
+
+        for (int i = 0; i < image_1.width(); ++i) {
+            const int from_right = image_1.width() - i;
+            for (int j = 0; j < image_1.height(); ++j) {
+                const auto p1 = image_1.pixelColor(from_right <= ADD_COL ? i-1 : i , j);
+                const auto p2 = image_2.pixelColor(i, j);
+                const auto d = QColor(
+                    std::abs(p1.red() - p2.red()),
+                    std::abs(p1.green() - p2.green()),
+                    std::abs(p1.blue() - p2.blue()));
+                if (d.red() > 20 || d.green() > 20 || d.blue() > 20) {
+                    if (first)
+                        qWarning() << " Pixel " << i << j << p1 << p2 << d;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+private:
+    const int CLIP_BORDER = 3;  /* Different styles for the edges, ignore */
+    int ADD_COL = 0; /* The arrow is relative to the border, so we need to add a column for the border case (image1) */
+
+    QString m_style;
+    QVBoxLayout* m_layout = nullptr;
+    QPushButton *m_dummyButton = nullptr;
+    QPushButton *m_button1 = nullptr;
+    QPushButton *m_button2 = nullptr;
+};
+
+ButtonDialog::ButtonDialog(const QString &style) : m_layout(new QVBoxLayout(this))
+{
+    m_style = style;
+
+    // For some reason the icon is closer to the border for 'macos'
+    // This is fine, as long as the distance is the same for both images
+    ADD_COL = (style.toLower() == "macos" ? 10 : 15);
+
+    // A dummy button to receive focus
+    m_dummyButton = new QPushButton();
+
+    // Create first push button with border
+    m_button1 = new QPushButton("Button");
+    QMenu *menu1 = new QMenu(m_button1);
+    menu1->addAction("Action 1");
+    m_button1->setMenu(menu1);
+    m_button1->setStyleSheet("QPushButton { background: white; border: 1px solid black; color: black; padding: 6; }");
+
+    // Create second push button without border
+    m_button2 = new QPushButton("Button");
+    QMenu *menu2 = new QMenu(m_button2);
+    menu2->addAction("Action 2");
+    m_button2->setMenu(menu2);
+    m_button2->setStyleSheet("QPushButton { background: white; color: black; padding: 6;}");
+    // Add buttons to layout
+    m_layout->addWidget(m_dummyButton);
+    m_layout->addWidget(m_button1);
+    m_layout->addWidget(m_button2);
+}
+
+void tst_QStyleSheetStyle::QTBUG_139957_menuButton_data()
+{
+    QTest::addColumn<QString>("style");
+    for (const auto &style : QStyleFactory::keys()) {
+        QString qstyle = style;
+        QTest::newRow(style.toStdString().c_str()) << style;
+    }
+}
+
+void tst_QStyleSheetStyle::QTBUG_139957_menuButton()
+{
+    QStringList blacklistedStyles;
+    blacklistedStyles
+        << QLatin1String("windows11"); // windows11 does not draw the arrow at all
+
+
+    QFETCH(QString, style);
+
+    auto currentStyle = QApplication::style()->objectName();
+
+    auto cleanup = qScopeGuard([currentStyle] { QApplication::setStyle(currentStyle); });
+
+    QApplication::setStyle(style);
+    ButtonDialog frame(style);
+    frame.setWindowTitle(QTest::currentTestFunction());
+    centerOnScreen(&frame);
+    frame.show();
+
+    bool first = true;
+    const bool ok = QTest::qWaitFor([&frame,&first]() { bool ok = !frame.diff(first); first=false; return ok; });
+
+    if (blacklistedStyles.contains(style.toLower()))
+        QEXPECT_FAIL("", "QTBUG-141499", Continue);
+
+    QVERIFY(ok);
+}
 
 class SingleInheritanceDialog : public QDialog
 {
@@ -1313,9 +1464,6 @@ void tst_QStyleSheetStyle::attributesList()
 
 void tst_QStyleSheetStyle::minmaxSizes()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QTabWidget tabWidget;
     tabWidget.resize(m_testSize);
     tabWidget.setWindowTitle(QTest::currentTestFunction());
@@ -1344,11 +1492,11 @@ void tst_QStyleSheetStyle::minmaxSizes()
     QVERIFY(qAbs(page3->minimumSize().height() - 250 - 2) <= 2);
     QTabBar *bar = tabWidget.findChild<QTabBar*>();
     QVERIFY(bar);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QEXPECT_FAIL("", "QTBUG-23686", Continue);
 #endif
     QVERIFY(qAbs(bar->tabRect(index1).width() - 100 - 2) <= 2);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QEXPECT_FAIL("", "QTBUG-23686", Continue);
 #endif
     QVERIFY(qAbs(bar->tabRect(index3).width() - 130 - 2) <= 2);
@@ -1356,9 +1504,6 @@ void tst_QStyleSheetStyle::minmaxSizes()
 
 void tst_QStyleSheetStyle::task206238_twice()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     const QColor red(Qt::red);
     QMainWindow w;
     w.resize(m_testSize);
@@ -1533,9 +1678,6 @@ void ProxyStyle::drawControl(ControlElement ce, const QStyleOption *opt,
 
 void tst_QStyleSheetStyle::proxyStyle()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     //Should not crash;   task 158984
 
     ProxyStyle *proxy = new ProxyStyle(QApplication::style());
@@ -1586,6 +1728,51 @@ void tst_QStyleSheetStyle::proxyStyle()
     delete w;
     delete proxy;
     delete newProxy;
+}
+
+void tst_QStyleSheetStyle::useProxyandStyleSheetStyleInTabBar()
+{
+#ifdef Q_OS_MACOS
+    // Since macOS style doesn't support tabbar scroll buttons, skip this case
+    QSKIP("TabBar doesn't support scroll button in macOS");
+#endif
+
+    class CustomProxy : public QProxyStyle
+    {
+        public:
+            QRect subElementRect(SubElement subElement,
+                                 const QStyleOption *option,
+                                 const QWidget *widget) const override  {
+                auto r = QProxyStyle::subElementRect(subElement, option, widget);
+                if (subElement == SE_TabBarScrollLeftButton)
+                    r.moveLeft(0);
+                return r;
+            }
+    };
+
+    qApp->setStyleSheet("QTabBar::scroller { width: 50px; }");
+
+    QTabBar tabBar;
+    tabBar.setMaximumWidth(150);
+    tabBar.setStyle(new CustomProxy);
+    int totalWidth = 0;
+    for (int tabIndex = 0; tabIndex < 10; ++tabIndex) {
+        tabBar.addTab("Tab " + QString::number(tabIndex));
+        totalWidth += tabBar.tabRect(tabIndex).width();
+    }
+    if (totalWidth < 200)
+        tabBar.resize(totalWidth / 2, 30);
+    tabBar.show();
+    QVERIFY(QTest::qWaitForWindowActive(&tabBar));
+
+    QToolButton *scrollLeftButton = qobject_cast<QToolButton *>(tabBar.children().at(0));
+    QVERIFY(scrollLeftButton);
+    QCOMPARE(scrollLeftButton->pos(), QPoint(0, 0));
+    QCOMPARE(scrollLeftButton->width(), 25);
+
+    QToolButton *scrollRightButton = qobject_cast<QToolButton *>(tabBar.children().at(1));
+    QVERIFY(scrollRightButton);
+    QCOMPARE(scrollRightButton->width(), 25);
 }
 
 void tst_QStyleSheetStyle::dialogButtonBox()
@@ -1641,7 +1828,6 @@ void tst_QStyleSheetStyle::emptyStyleSheet()
         img2.save("emptyStyleSheet_img2.png");
     }
 
-    QEXPECT_FAIL("", "QTBUG-21468", Abort);
     QCOMPARE(img1,img2);
 }
 
@@ -1670,9 +1856,6 @@ void tst_QStyleSheetStyle::toolTip_data()
 void tst_QStyleSheetStyle::toolTip()
 {
     QFETCH(QString, style);
-
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
 
     QWidget w;
     w.resize(m_testSize);
@@ -1782,9 +1965,6 @@ void tst_QStyleSheetStyle::toolTip()
 
 void tst_QStyleSheetStyle::embeddedFonts()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     //task 235622 and 210551
     QSpinBox spin;
     spin.setWindowTitle(QTest::currentTestFunction());
@@ -1858,9 +2038,6 @@ void tst_QStyleSheetStyle::opaquePaintEvent()
 
 void tst_QStyleSheetStyle::complexWidgetFocus()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     // This test is a simplified version of the focusColors() test above.
 
     // Tests if colors can be changed by altering the focus of the widget.
@@ -1906,9 +2083,6 @@ void tst_QStyleSheetStyle::complexWidgetFocus()
 
 void tst_QStyleSheetStyle::task188195_baseBackground()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QTreeView tree;
     tree.setWindowTitle(QTest::currentTestFunction());
     tree.setStyleSheet( "QTreeView:disabled { background-color:#ab1251; }" );
@@ -1944,9 +2118,6 @@ void tst_QStyleSheetStyle::task188195_baseBackground()
 
 void tst_QStyleSheetStyle::task232085_spinBoxLineEditBg()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     // This test is a simplified version of the focusColors() test above.
 
     // Tests if colors can be changed by altering the focus of the widget.
@@ -1992,6 +2163,36 @@ void tst_QStyleSheetStyle::task232085_spinBoxLineEditBg()
             + " did not contain text color #ff0084, using style "
             + QString::fromLatin1(QApplication::style()->metaObject()->className()))
             .toLocal8Bit().constData());
+}
+
+void tst_QStyleSheetStyle::QTBUG140497_spinBoxSizeHintWithEmptyStyleSheet_data()
+{
+    QTest::addColumn<QString>("style");
+    QTest::newRow("fusion") << QString("Fusion");
+#ifdef Q_OS_WINDOWS
+    QTest::newRow("windowsvista") << QString("WindowsVista");
+#endif
+}
+
+void tst_QStyleSheetStyle::QTBUG140497_spinBoxSizeHintWithEmptyStyleSheet()
+{
+    // Setting an empty stylesheet on a QSpinBox should not change its size
+    // hint compared to the unstyled spin box. Regression test for an issue
+    // where the styled spin box ended up shorter than the unstyled one.
+    QFETCH(QString, style);
+    QStyle *appStyle = QStyleFactory::create(style);
+    QVERIFY(appStyle);
+    ApplicationStyleSetter as(appStyle);
+
+    QSpinBox unstyled;
+    QSpinBox styled;
+    styled.setStyleSheet(QStringLiteral(" "));
+
+    unstyled.ensurePolished();
+    styled.ensurePolished();
+
+    QCOMPARE(styled.sizeHint(), unstyled.sizeHint());
+    QCOMPARE(styled.minimumSizeHint(), unstyled.minimumSizeHint());
 }
 
 class ChangeEventWidget : public QWidget
@@ -2079,9 +2280,6 @@ void tst_QStyleSheetStyle::QTBUG15910_crashNullWidget()
 
 void tst_QStyleSheetStyle::QTBUG36933_brokenPseudoClassLookup()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     const int rowCount = 10;
     const int columnCount = 10;
 
@@ -2329,6 +2527,16 @@ void tst_QStyleSheetStyle::styleSheetTargetAttribute()
     QCOMPARE(pb.testAttribute(Qt::WA_StyleSheetTarget), false);
 }
 
+void tst_QStyleSheetStyle::tabWidgetDocumentModeCrash()
+{
+    // Don't crash when matching accessing documentMode of QTabWidget while styling QTabBar.
+    qApp->setStyleSheet("QTabWidget[documentMode=true] QTabBar { font-size: 40pt; }");
+
+    QTabWidget tabWidget;
+    tabWidget.setDocumentMode(true);
+    QCOMPARE(FONTSIZE(*tabWidget.tabBar()), 40);
+}
+
 void tst_QStyleSheetStyle::unpolish()
 {
     QWidget w;
@@ -2526,6 +2734,28 @@ void tst_QStyleSheetStyle::inheritWidgetPalette()
     const QColor phColor = edit.palette().placeholderText().color();
 
     QCOMPARE(phColor, phColorPalette);
+}
+
+void tst_QStyleSheetStyle::resetFont()
+{
+    QDoubleSpinBox sb;
+    sb.setStyleSheet(R"(QDoubleSpinBox[changed="true"] {font: italic;})");
+
+    auto checkFont = [&sb](bool isItalic) {
+        sb.setProperty("changed", isItalic);
+        sb.style()->polish(&sb);
+        const auto children = sb.findChildren<QWidget *>();
+        for (const auto *w : children) {
+            auto diagnostics = qScopeGuard([&] {
+                qWarning() << "Failure with" << w << "should be italic:" << isItalic;
+            });
+            QCOMPARE(w->font().italic(), isItalic);
+            diagnostics.dismiss();
+        }
+    };
+    checkFont(false);
+    checkFont(true);
+    checkFont(false);
 }
 
 QTEST_MAIN(tst_QStyleSheetStyle)

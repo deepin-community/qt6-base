@@ -19,12 +19,15 @@ class tst_QScopeGuard : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void commit();
     void construction();
     void constructionFromLvalue();
     void constructionFromRvalue();
     void optionalGuard();
     void leavingScope();
     void exceptions();
+
+    void init();
 };
 
 void func()
@@ -69,6 +72,20 @@ int Callable::copied = 0;
 int Callable::moved = 0;
 
 static int s_globalState = 0;
+
+void tst_QScopeGuard::commit()
+{
+    int i = 0;
+    auto lambda = [&] { ++i; };
+    {
+        auto sg = qScopeGuard(lambda);
+        QVERIFY(sg.m_invoke);
+        sg.commit();
+        QVERIFY(!sg.m_invoke);
+        QCOMPARE(i, 1);
+    }
+    QCOMPARE(i, 1); // dtor skipped execution
+}
 
 void tst_QScopeGuard::construction()
 {
@@ -154,7 +171,6 @@ void tst_QScopeGuard::leavingScope()
 
 void tst_QScopeGuard::exceptions()
 {
-    s_globalState = 0;
     bool caught = false;
     QT_TRY
     {
@@ -170,6 +186,11 @@ void tst_QScopeGuard::exceptions()
 
     QVERIFY((caught && s_globalState == 1) || (!caught && s_globalState == 101));
 
+}
+
+void tst_QScopeGuard::init()
+{
+    s_globalState = 0;
 }
 
 QTEST_MAIN(tst_QScopeGuard)

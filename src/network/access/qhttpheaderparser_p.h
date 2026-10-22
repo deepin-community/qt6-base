@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPHEADERPARSER_H
 #define QHTTPHEADERPARSER_H
@@ -20,7 +21,6 @@
 
 #include <QByteArray>
 #include <QList>
-#include <QPair>
 #include <QString>
 
 QT_BEGIN_NAMESPACE
@@ -34,14 +34,16 @@ namespace HeaderConstants {
 // total size of all the headers (as well as extra limits on some of the
 // individual fields). We'll use 100K as our default limit, which would be a ridiculously large
 // header, with the possibility to override it where we need to.
-static constexpr int MAX_HEADER_FIELD_SIZE = 100 * 1024;
+static constexpr qsizetype DEFAULT_MAX_HEADER_FIELD_SIZE = 100 * 1024;
 // Taken from http://httpd.apache.org/docs/2.2/mod/core.html#limitrequestfields
-static constexpr int MAX_HEADER_FIELDS = 100;
+static constexpr qsizetype DEFAULT_MAX_HEADER_FIELDS = 100;
 // Chromium has a limit on the total size of the header set to 256KB,
 // which is a reasonable default for QNetworkAccessManager.
 // https://stackoverflow.com/a/3436155
-static constexpr int MAX_TOTAL_HEADER_SIZE = 256 * 1024;
-
+static constexpr qsizetype DEFAULT_MAX_TOTAL_HEADER_SIZE = 256 * 1024;
+// There is no strict upper limit on the phrase, but in practice it is
+// rarely longer than 28. 1024 is quite generous, allows custom messages
+static constexpr qsizetype MAX_REASON_PHRASE_SIZE = 1024;
 }
 
 class Q_NETWORK_EXPORT QHttpHeaderParser
@@ -75,13 +77,22 @@ public:
     void removeHeaderField(QByteArrayView name);
     void clearHeaders();
 
-    void setMaxHeaderFieldSize(qsizetype size) { maxFieldSize = size; }
+    void setMaxHeaderFieldSize(qsizetype size) {
+        Q_ASSERT(size > 0);
+        maxFieldSize = size;
+    }
     qsizetype maxHeaderFieldSize() const { return maxFieldSize; }
 
-    void setMaxTotalHeaderSize(qsizetype size) { maxTotalSize = size; }
+    void setMaxTotalHeaderSize(qsizetype size) {
+        Q_ASSERT(size > 0);
+        maxTotalSize = size;
+    }
     qsizetype maxTotalHeaderSize() const { return maxTotalSize; }
 
-    void setMaxHeaderFields(qsizetype count) { maxFieldCount = count; }
+    void setMaxHeaderFields(qsizetype size) {
+        Q_ASSERT(size > 0);
+        maxFieldCount = size;
+    }
     qsizetype maxHeaderFields() const { return maxFieldCount; }
 
 private:
@@ -91,9 +102,9 @@ private:
     int majorVersion;
     int minorVersion;
 
-    qsizetype maxFieldSize = HeaderConstants::MAX_HEADER_FIELD_SIZE;
-    qsizetype maxTotalSize = HeaderConstants::MAX_TOTAL_HEADER_SIZE;
-    qsizetype maxFieldCount = HeaderConstants::MAX_HEADER_FIELDS;
+    qsizetype maxFieldSize = HeaderConstants::DEFAULT_MAX_HEADER_FIELD_SIZE;
+    qsizetype maxTotalSize = HeaderConstants::DEFAULT_MAX_TOTAL_HEADER_SIZE;
+    qsizetype maxFieldCount = HeaderConstants::DEFAULT_MAX_HEADER_FIELDS;
 };
 
 

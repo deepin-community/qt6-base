@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTYPES_H
 #define QTYPES_H
@@ -12,6 +13,9 @@
 
 #ifdef __cplusplus
 #  include <cstddef>
+#  if defined(_HAS_STD_BYTE) && _HAS_STD_BYTE == 0
+#    error "Qt requires std::byte, but _HAS_STD_BYTE has been set to 0"
+#  endif
 #  include <cstdint>
 #  if defined(__STDCPP_FLOAT16_T__) && __has_include(<stdfloat>)
 // P1467 implementation - https://wg21.link/p1467
@@ -204,7 +208,7 @@ typedef double qreal;
 
 #if defined(__cplusplus)
 /*
-  quintptr are qptrdiff is guaranteed to be the same size as a pointer, i.e.
+  quintptr and qptrdiff are guaranteed to be the same size as a pointer, i.e.
 
       sizeof(void *) == sizeof(quintptr)
       && sizeof(void *) == sizeof(qptrdiff)

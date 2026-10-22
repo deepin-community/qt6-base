@@ -6,7 +6,14 @@
 # Expects various global variables to be set.
 function(qt_internal_create_toolchain_file)
     if(CMAKE_TOOLCHAIN_FILE)
-        file(TO_CMAKE_PATH "${CMAKE_TOOLCHAIN_FILE}" __qt_chainload_toolchain_file)
+        # For OHOS, CMAKE_TOOLCHAIN_FILE is replaced with a build-dir wrapper during configure.
+        # Store the real SDK toolchain path so builds on other machines (e.g. CI prefix builds)
+        # can resolve it from the installed qt.toolchain.cmake.
+        if(OHOS AND QT_OHOS_REAL_TOOLCHAIN_FILE)
+            file(TO_CMAKE_PATH "${QT_OHOS_REAL_TOOLCHAIN_FILE}" __qt_chainload_toolchain_file)
+        else()
+            file(TO_CMAKE_PATH "${CMAKE_TOOLCHAIN_FILE}" __qt_chainload_toolchain_file)
+        endif()
         set(init_original_toolchain_file
             "
 set(__qt_initially_configured_toolchain_file \"${__qt_chainload_toolchain_file}\")
@@ -14,21 +21,24 @@ set(__qt_chainload_toolchain_file \"\${__qt_initially_configured_toolchain_file}
 ")
     endif()
 
-    if(VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
-        file(TO_CMAKE_PATH "${VCPKG_CHAINLOAD_TOOLCHAIN_FILE}" VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
-        list(APPEND init_vcpkg
-             "set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE \"${VCPKG_CHAINLOAD_TOOLCHAIN_FILE}\")")
-    endif()
+    if(QT_USE_VCPKG)
+        set(init_vcpkg "set(__qt_initially_configured_use_vcpkg TRUE)")
+        if(VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
+            file(TO_CMAKE_PATH "${VCPKG_CHAINLOAD_TOOLCHAIN_FILE}"
+                initial_vcpkg_chainload_toolchain_file)
+            get_filename_component(initial_vcpkg_chainload_toolchain_file
+                "${initial_vcpkg_chainload_toolchain_file}" REALPATH)
+            list(APPEND init_vcpkg
+                "set(__qt_initially_configured_vcpkg_chainload_toolchain_file \
+    \"${initial_vcpkg_chainload_toolchain_file}\")")
+        endif()
 
-    if(VCPKG_TARGET_TRIPLET)
-        list(APPEND init_vcpkg
-             "set(VCPKG_TARGET_TRIPLET \"${VCPKG_TARGET_TRIPLET}\" CACHE STRING \"\")")
-    endif()
-
-    if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND CMAKE_SYSTEM_VERSION STREQUAL "10")
-        list(APPEND init_platform "set(CMAKE_SYSTEM_NAME Windows CACHE STRING \"\")")
-        list(APPEND init_platform "set(CMAKE_SYSTEM_VERSION 10 CACHE STRING \"\")")
-        list(APPEND init_platform "set(CMAKE_SYSTEM_PROCESSOR arm64 CACHE STRING \"\")")
+        if(VCPKG_TARGET_TRIPLET)
+            list(APPEND init_vcpkg
+                "set(__qt_initially_configured_vcpkg_target_triplet \"${VCPKG_TARGET_TRIPLET}\")")
+        endif()
+    else()
+        set(init_vcpkg "")
     endif()
 
     if(QT_QMAKE_TARGET_MKSPEC)
@@ -36,6 +46,37 @@ set(__qt_chainload_toolchain_file \"\${__qt_initially_configured_toolchain_file}
             "if(NOT QT_QMAKE_TARGET_MKSPEC)"
             "    set(QT_QMAKE_TARGET_MKSPEC ${QT_QMAKE_TARGET_MKSPEC} CACHE STRING \"\")"
             "endif()"
+        )
+    endif()
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_CROSSCOMPILING)
+        list(APPEND init_platform
+            "string(TOUPPER \"${CMAKE_SYSTEM_PROCESSOR}\" _qt_orig_target_system_processor_upper)"
+            "string(TOUPPER \"\${CMAKE_HOST_SYSTEM_PROCESSOR}\" _qt_host_system_processor_upper)"
+            "if(NOT _qt_orig_target_system_processor_upper STREQUAL _qt_host_system_processor_upper"
+            "    OR NOT CMAKE_HOST_SYSTEM_VERSION MATCHES \"^${CMAKE_SYSTEM_VERSION}(\\\\..+|$)\""
+            "    OR QT_FORCE_CROSSCOMPILING)"
+            ""
+            "    set(CMAKE_SYSTEM_NAME \"${CMAKE_SYSTEM_NAME}\" CACHE STRING \"\")"
+            "    set(CMAKE_SYSTEM_VERSION \"${CMAKE_SYSTEM_VERSION}\" CACHE STRING \"\")"
+            "    set(CMAKE_SYSTEM_PROCESSOR \"${CMAKE_SYSTEM_PROCESSOR}\" CACHE STRING \"\")"
+            "else()"
+            "   set(QT_REQUIRE_HOST_PATH_CHECK FALSE)"
+            "endif()"
+        )
+
+        file(READ "${PROJECT_SOURCE_DIR}/cmake/QtPublicWinArm64ECHelpers.cmake"
+            win_arm_helpers_content)
+        list(APPEND init_platform
+            "${win_arm_helpers_content}"
+            "if(QT_REPO_MODULE_VERSION AND \"\${QT_QMAKE_TARGET_MKSPEC}\""
+            "    STREQUAL \"win32-arm64ec-msvc\")"
+            "   _qt_internal_set_win_arm64ec_env_flags()"
+            "endif()"
+        )
+        list(APPEND init_platform
+            "unset(_qt_host_system_processor_upper)"
+            "unset(_qt_orig_host_system_processor_upper)"
         )
     endif()
 
@@ -159,8 +200,9 @@ endif()")
         set(cmake_sysroot_name "$CACHE{CMAKE_OSX_SYSROOT}")
 
         list(LENGTH CMAKE_OSX_ARCHITECTURES _qt_osx_architectures_count)
-        if(cmake_sysroot_name AND NOT _qt_osx_architectures_count GREATER 1 AND UIKIT)
+        if(cmake_sysroot_name AND (MACOS OR (UIKIT AND NOT _qt_osx_architectures_count GREATER 1)))
             list(APPEND init_platform "
+set(__qt_initial_apple_sdk \"${QT_APPLE_SDK}\")
 if(NOT DEFINED CMAKE_OSX_SYSROOT)
     set(CMAKE_OSX_SYSROOT \"${cmake_sysroot_name}\" CACHE STRING \"\")
 endif()")
@@ -232,7 +274,8 @@ endif()")
             qt_internal_get_first_osx_arch(osx_first_arch)
             list(APPEND init_platform
 "if((NOT CMAKE_GENERATOR STREQUAL \"Xcode\" AND NOT __qt_toolchain_building_qt_repo)
-    OR (CMAKE_GENERATOR STREQUAL \"Xcode\" AND __qt_apple_sdk AND NOT QT_NO_SET_OSX_ARCHITECTURES))")
+    OR (CMAKE_GENERATOR STREQUAL \"Xcode\" AND __qt_initial_apple_sdk
+        AND NOT QT_NO_SET_OSX_ARCHITECTURES))")
             list(APPEND init_platform
                 "    set(CMAKE_OSX_ARCHITECTURES \"${osx_first_arch}\" CACHE STRING \"\")")
             list(APPEND init_platform "endif()")
@@ -254,11 +297,10 @@ endif()")
 "endif()"
         )
 
-        foreach(var ANDROID_PLATFORM ANDROID_NATIVE_API_LEVEL ANDROID_STL
-                ANDROID_ABI ANDROID_SDK_ROOT ANDROID_NDK_ROOT)
-            list(APPEND init_additional_used_variables
-                "list(APPEND __qt_toolchain_used_variables ${var})")
-        endforeach()
+        set(additional_used_variables
+            ANDROID_PLATFORM ANDROID_NATIVE_API_LEVEL ANDROID_STL
+            ANDROID_ABI ANDROID_SDK_ROOT ANDROID_NDK_ROOT
+        )
 
         list(APPEND init_platform
             "if(NOT DEFINED ANDROID_PLATFORM AND NOT DEFINED ANDROID_NATIVE_API_LEVEL)")
@@ -287,6 +329,73 @@ endif()")
             "            \"Please specify the toolchain file with -DQT_CHAINLOAD_TOOLCHAIN_FILE=<file>.\")")
         list(APPEND init_platform "    endif()")
         list(APPEND init_platform "endif()")
+
+        qt_internal_get_cmake_policy_version_minimum_assignment(ANDROID
+            android_cmake_policy_version_minimum TYPE TOOLCHAIN_FILE_ASSIGNMENT)
+        if(android_cmake_policy_version_minimum)
+            list(APPEND init_platform "${android_cmake_policy_version_minimum}")
+        endif()
+
+    elseif(OHOS)
+        set(additional_used_variables
+            OHOS_ARCH OHOS_PLATFORM OHOS_STL OHOS_SDK_ROOT
+        )
+
+        list(APPEND init_platform
+            "include(\${CMAKE_CURRENT_LIST_DIR}/QtPublicHarmonyOSToolchainHelpers.cmake)"
+            "set(OHOS_ARCH \"${OHOS_ARCH}\" CACHE STRING \"\")"
+            "if(\"$\{OHOS_SDK_ROOT}\" STREQUAL \"\" AND NOT \"\$ENV{OHOS_SDK_ROOT}\" STREQUAL \"\")"
+            "    set(OHOS_SDK_ROOT \"\$ENV{OHOS_SDK_ROOT}\" CACHE STRING \"Path to the HarmonyOS SDK\")"
+            "endif()"
+            "if(\"$\{QT_CHAINLOAD_TOOLCHAIN_FILE}\" STREQUAL \"\")"
+            "    __qt_internal_detect_ohos_toolchain_file(__qt_chainload_toolchain_file \"$\{__qt_chainload_toolchain_file}\")"
+            "endif()"
+        )
+
+        list(APPEND init_post_chainload_toolchain
+            "if(NOT __qt_chainload_toolchain_file_included)"
+            "    __qt_internal_show_error_no_ohos_toolchain_file_found_when_using_qt()"
+            "endif()"
+        )
+
+        qt_internal_get_cmake_policy_version_minimum_assignment(OHOS
+            ohos_cmake_policy_version_minimum TYPE TOOLCHAIN_FILE_ASSIGNMENT)
+        if(ohos_cmake_policy_version_minimum)
+            list(APPEND init_platform "${ohos_cmake_policy_version_minimum}")
+        endif()
+
+        # Read the post-load fixes from the canonical source (QtOHOSToolchainFixes.cmake)
+        # and inline them into the generated qt.toolchain.cmake.
+        file(READ "${CMAKE_CURRENT_LIST_DIR}/QtOHOSToolchainFixes.cmake" _qt_ohos_fixes)
+        list(APPEND init_post_chainload_toolchain "${_qt_ohos_fixes}")
+        unset(_qt_ohos_fixes)
+
+        # Propagate any CMAKE_FIND_ROOT_PATH entries set at Qt configure time (e.g. paths to
+        # third-party dependency prefixes such as ohos-additional-packages) into the generated
+        # toolchain file as QT_ADDITIONAL_PACKAGES_PREFIX_PATH. This ensures that downstream
+        # builds (standalone tests, user apps using qt-cmake) have the same search paths, which
+        # in turn causes Qt6HarmonyOSMacros.cmake to populate extra-libs-dirs in deployment
+        # settings so harmonydeployqt bundles the required third-party libs into the HAP.
+        if(CMAKE_FIND_ROOT_PATH)
+            string(REPLACE ";" "LITERAL_SEMICOLON" _qt_ohos_extra_root_paths
+                "${CMAKE_FIND_ROOT_PATH}")
+            list(APPEND init_platform
+                "set(__qt_initially_configured_ohos_extra_root_paths \"${_qt_ohos_extra_root_paths}\")"
+                "if(NOT QT_ADDITIONAL_PACKAGES_PREFIX_PATH)"
+                "    set(__qt_existing_paths \"\")"
+                "    foreach(__qt_existing_path IN LISTS __qt_initially_configured_ohos_extra_root_paths)"
+                "        if(EXISTS \"\${__qt_existing_path}\")"
+                "            list(APPEND __qt_existing_paths \"\${__qt_existing_path}\")"
+                "        endif()"
+                "    endforeach()"
+                "    if(NOT __qt_existing_paths STREQUAL \"\")"
+                "        set(QT_ADDITIONAL_PACKAGES_PREFIX_PATH \"\${__qt_existing_paths}\" CACHE STRING \"Additional packages prefix paths inherited from Qt build\")"
+                "    endif()"
+                "endif()"
+            )
+            unset(_qt_ohos_extra_root_paths)
+        endif()
+
     elseif(EMSCRIPTEN)
         list(APPEND init_platform
 "include(\${CMAKE_CURRENT_LIST_DIR}/QtPublicWasmToolchainHelpers.cmake)
@@ -304,8 +413,12 @@ endif()
 ")
     endif()
 
-    string(REPLACE ";" "\n" init_additional_used_variables
-        "${init_additional_used_variables}")
+    if(NOT "${additional_used_variables}" STREQUAL "")
+        string(REPLACE ";" "\n    " additional_used_variables "${additional_used_variables}")
+        string(PREPEND additional_used_variables "    ")
+        string(APPEND additional_used_variables "\n")
+    endif()
+
     string(REPLACE ";" "\n" init_vcpkg "${init_vcpkg}")
 
     string(REPLACE ";" "\n" init_platform "${init_platform}")
@@ -316,6 +429,7 @@ endif()
            "${init_post_chainload_toolchain}")
 
     qt_compute_relative_path_from_cmake_config_dir_to_prefix()
+    qt_re_escape(re_INSTALL_CMAKEDIR "${INSTALL_CMAKEDIR}")
     configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/qt.toolchain.cmake.in"
         "${__GlobalConfig_build_dir}/qt.toolchain.cmake" @ONLY)

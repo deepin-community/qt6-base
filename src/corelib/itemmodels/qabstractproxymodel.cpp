@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qabstractproxymodel.h"
 #include "qitemselectionmodel.h"
@@ -47,6 +48,17 @@ QT_BEGIN_NAMESPACE
 
     \brief the source model of this proxy model.
 */
+
+QAbstractProxyModelPrivate::QAbstractProxyModelPrivate()
+    : QAbstractItemModelPrivate(),
+      sourceHadZeroRows(false),
+      sourceHadZeroColumns(false),
+      updateVerticalHeader(false),
+      updateHorizontalHeader(false)
+{}
+
+QAbstractProxyModelPrivate::~QAbstractProxyModelPrivate()
+    = default;
 
 //detects the deletion of the source model
 void QAbstractProxyModelPrivate::_q_sourceModelDestroyed()

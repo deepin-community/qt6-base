@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILESYSTEMMETADATA_P_H
 #define QFILESYSTEMMETADATA_P_H
@@ -111,26 +112,28 @@ public:
         UserId              = 0x10000000,
         GroupId             = 0x20000000,
 
+        CaseSensitive       = 0x80000000,
+
         OwnerIds            = UserId | GroupId,
 
-        PosixStatFlags      = QFileSystemMetaData::OtherPermissions
-                            | QFileSystemMetaData::GroupPermissions
-                            | QFileSystemMetaData::OwnerPermissions
-                            | QFileSystemMetaData::FileType
-                            | QFileSystemMetaData::DirectoryType
-                            | QFileSystemMetaData::SequentialType
-                            | QFileSystemMetaData::SizeAttribute
-                            | QFileSystemMetaData::WasDeletedAttribute
-                            | QFileSystemMetaData::Times
-                            | QFileSystemMetaData::OwnerIds,
+        PosixStatFlags      = OtherPermissions
+                            | GroupPermissions
+                            | OwnerPermissions
+                            | FileType
+                            | DirectoryType
+                            | SequentialType
+                            | SizeAttribute
+                            | WasDeletedAttribute
+                            | Times
+                            | OwnerIds,
 
 #if defined(Q_OS_WIN)
-        WinStatFlags        = QFileSystemMetaData::FileType
-                            | QFileSystemMetaData::DirectoryType
-                            | QFileSystemMetaData::HiddenAttribute
-                            | QFileSystemMetaData::ExistsAttribute
-                            | QFileSystemMetaData::SizeAttribute
-                            | QFileSystemMetaData::Times,
+        WinStatFlags        = FileType
+                            | DirectoryType
+                            | HiddenAttribute
+                            | ExistsAttribute
+                            | SizeAttribute
+                            | Times,
 #endif
 
         AllMetaDataFlags    = 0xFFFFFFFF
@@ -180,6 +183,9 @@ public:
     qint64 size() const                     { return size_; }
 
     inline QFile::Permissions permissions() const;
+    // Has to be defined after the
+    // Q_DECLARE_OPERATORS_FOR_FLAGS(QFileSystemMetaData::MetaDataFlags) call below.
+    inline void setPermissions(QFile::Permissions permissions);
 
     QDateTime accessTime() const;
     QDateTime birthTime() const;
@@ -237,6 +243,13 @@ private:
 Q_DECLARE_OPERATORS_FOR_FLAGS(QFileSystemMetaData::MetaDataFlags)
 
 inline QFile::Permissions QFileSystemMetaData::permissions() const { return QFile::Permissions::fromInt((Permissions & entryFlags).toInt()); }
+
+void QFileSystemMetaData::setPermissions(QFile::Permissions permissions)
+{
+    entryFlags &= ~Permissions;
+    entryFlags |= MetaDataFlag(uint(permissions.toInt()));
+    knownFlagsMask |= Permissions;
+}
 
 #if defined(Q_OS_DARWIN)
 inline bool QFileSystemMetaData::isBundle() const                   { return entryFlags.testAnyFlag(BundleType); }
@@ -325,6 +338,9 @@ inline void QFileSystemMetaData::fillFromFileAttribute(DWORD fileAttribute,bool 
     entryFlags |= ((fileAttribute & FILE_ATTRIBUTE_DIRECTORY) ? DirectoryType: FileType);
     entryFlags |= ExistsAttribute;
     knownFlagsMask |= FileType | DirectoryType | HiddenAttribute | ExistsAttribute;
+
+    // this function is never called for a .lnk file
+    knownFlagsMask |= WinLnkType;
 }
 
 inline void QFileSystemMetaData::fillFromFindData(WIN32_FIND_DATA &findData, bool setLinkType, bool isDriveRoot)

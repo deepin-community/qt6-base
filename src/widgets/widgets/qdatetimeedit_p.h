@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDATETIMEEDIT_P_H
 #define QDATETIMEEDIT_P_H
@@ -27,7 +28,6 @@
 #include "private/qabstractspinbox_p.h"
 #include "private/qdatetimeparser_p.h"
 
-#include "qdebug.h"
 #include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
@@ -102,11 +102,6 @@ public:
     bool hasHadFocus = false, formatExplicitlySet = false, calendarPopup = false;
     QStyle::StateFlag arrowState = QStyle::State_None;
     QCalendarPopup *monthCalendar = nullptr;
-
-#ifdef QT_KEYPAD_NAVIGATION
-    bool focusOnButton = false;
-#endif
-
     QTimeZone timeZone;
 };
 

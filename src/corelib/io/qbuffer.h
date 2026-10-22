@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QBUFFER_H
 #define QBUFFER_H
@@ -59,8 +60,6 @@ protected:
 private:
     Q_DECLARE_PRIVATE(QBuffer)
     Q_DISABLE_COPY(QBuffer)
-
-    Q_PRIVATE_SLOT(d_func(), void _q_emitSignals())
 };
 
 QT_END_NAMESPACE

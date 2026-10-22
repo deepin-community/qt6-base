@@ -61,6 +61,6 @@ elseif(APPLE)
 
     if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
         add_custom_command(TARGET tst_qpermissions_app_with_usage_descriptions
-            POST_BUILD COMMAND codesign -s - tst_qpermissions_app_with_usage_descriptions.app)
+            POST_BUILD COMMAND codesign -f -s - tst_qpermissions_app_with_usage_descriptions.app)
     endif()
 endif()

@@ -44,6 +44,7 @@
     \li QGenericMatrix
     \li QHash<Key, T>
     \li QHostAddress
+    \li QHttpHeaders
     \li QIcon
     \li QImage
     \li QJsonArray

@@ -4,7 +4,7 @@
 #ifndef WARN_ON_MULTIPLE_QOBJECT_SUBCLASSES_H
 #define WARN_ON_MULTIPLE_QOBJECT_SUBCLASSES_H
 
-#include <QtGui>
+#include <QtCore/qobject.h>
 
 class Foo : public QObject
 {
@@ -12,7 +12,13 @@ class Foo : public QObject
 public:
 };
 
-class Bar : public QWindow, public Foo
+class Bar : public QObject
+{
+    Q_OBJECT
+public:
+};
+
+class Baz : public Foo, public Bar
 {
     Q_OBJECT
 };

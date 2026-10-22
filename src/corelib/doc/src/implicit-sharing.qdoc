@@ -92,8 +92,21 @@
     data in all member functions that change the internal data.
 
     Code fragment:
-    \snippet code/doc_src_groups.cpp 0
+    \quotefromfile ../gui/painting/qpen.cpp
 
+    \skipuntil void QPen::setCapStyle
+
+    \skipto void QPen::setCapStyle
+    \printuntil }
+
+    \codeline
+
+    \quotefromfile ../gui/painting/qpen.cpp
+
+    \skipuntil void QPen::detach
+
+    \skipto void QPen::detach
+    \printuntil }
 
     \section1 List of Classes
 

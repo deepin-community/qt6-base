@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDATETIMEPARSER_P_H
 #define QDATETIMEPARSER_P_H
@@ -24,7 +25,6 @@
 #include "QtCore/qlist.h"
 #include "QtCore/qlocale.h"
 #include "QtCore/qstringlist.h"
-#include "QtCore/qtimezone.h"
 #ifndef QT_BOOTSTRAPPED
 # include "QtCore/qvariant.h"
 #endif
@@ -39,6 +39,7 @@ QT_REQUIRE_CONFIG(datetimeparser);
 #define QDATETIMEEDIT_DATE_INITIAL QDate(2000, 1, 1)
 
 QT_BEGIN_NAMESPACE
+class QTimeZone;
 
 class Q_CORE_EXPORT QDateTimeParser
 {
@@ -48,21 +49,8 @@ public:
         DateTimeEdit
     };
     QDateTimeParser(QMetaType::Type t, Context ctx, QCalendar cal = QCalendar())
-        : parserType(t), context(ctx), calendar(cal)
+        : defaultLocale(QLocale::system()), parserType(t), context(ctx), calendar(cal)
     {
-        defaultLocale = QLocale::system();
-        first.type = FirstSection;
-        first.pos = -1;
-        first.count = -1;
-        first.zeroesAdded = 0;
-        last.type = LastSection;
-        last.pos = -1;
-        last.count = -1;
-        last.zeroesAdded = 0;
-        none.type = NoSection;
-        none.pos = -1;
-        none.count = -1;
-        none.zeroesAdded = 0;
     }
     virtual ~QDateTimeParser();
 
@@ -101,7 +89,10 @@ public:
     static constexpr int FirstSectionIndex = -2;
     static constexpr int LastSectionIndex = -3;
 
-    struct Q_CORE_EXPORT SectionNode {
+    struct Q_CORE_EXPORT SectionNode
+    {
+        constexpr SectionNode(Section tp, int ps, int ct, int zs = 0)
+            : type(tp), pos(ps), count(ct), zeroesAdded(zs) {}
         Section type;
         mutable int pos;
         int count; // (used as Case(count) indicator for AmPmSection)
@@ -254,7 +245,6 @@ protected: // for the benefit of QDateTimeEditPrivate
     mutable int cachedDay = -1;
     mutable QString m_text;
     QList<SectionNode> sectionNodes;
-    SectionNode first, last, none, popup;
     QStringList separators;
     QString displayFormat;
     QLocale defaultLocale;
@@ -272,4 +262,4 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QDateTimeParser::FieldInfo)
 
 QT_END_NAMESPACE
 
-#endif // QDATETIME_P_H
+#endif // QDATETIMEPARSER_P_H

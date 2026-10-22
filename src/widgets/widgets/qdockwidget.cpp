@@ -1,10 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdockwidget.h"
 
 #include <qaction.h>
 #include <qapplication.h>
+#if QT_CONFIG(accessibility)
+#include <qaccessible.h>
+#endif
 #include <qdrawutil.h>
 #include <qevent.h>
 #include <qfontmetrics.h>
@@ -17,7 +21,6 @@
 #include <qdebug.h>
 
 #include <private/qwidgetresizehandler_p.h>
-#include <private/qstylesheetstyle_p.h>
 #include <qpa/qplatformtheme.h>
 
 #include <private/qhighdpiscaling_p.h>
@@ -779,7 +782,7 @@ void QDockWidgetPrivate::startDrag(DragScope scope)
     }
 
     if (state->ctrlDrag)
-        layout->restore();
+        layout->restore(QInternal::ClearSavedState);
 
     state->dragging = true;
 
@@ -826,7 +829,7 @@ void QDockWidgetPrivate::endDrag(EndDragMode mode)
                     delete state->widgetItem;
                     state->widgetItem = nullptr;
                 }
-                mwLayout->restore();
+                mwLayout->restore(QInternal::ClearSavedState);
                 QDockWidgetLayout *dwLayout = qobject_cast<QDockWidgetLayout*>(layout);
                 if (!dwLayout->nativeWindowDeco()) {
                     // get rid of the X11BypassWindowManager window flag and activate the resizer
@@ -854,7 +857,7 @@ void QDockWidgetPrivate::endDrag(EndDragMode mode)
                     // Reparent, if the drag was out of a dock widget group window
                     if (mode == EndDragMode::LocationChange) {
                         if (auto *groupWindow = qobject_cast<QDockWidgetGroupWindow *>(q->parentWidget()))
-                            groupWindow->reparent(q);
+                            groupWindow->reparentToMainWindow(q);
                     }
                 }
                 q->activateWindow();
@@ -1114,13 +1117,13 @@ void QDockWidgetPrivate::nonClientAreaMouseEvent(QMouseEvent *event)
             if (state == nullptr || !state->dragging)
                 break;
 
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WASM)
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WASM) && !defined(Q_OS_HARMONY)
             if (state->nca)
                 endDrag(EndDragMode::LocationChange);
 #endif
             break;
         case QEvent::NonClientAreaMouseButtonRelease:
-#if defined(Q_OS_MAC) || defined(Q_OS_WASM)
+#if defined(Q_OS_MACOS) || defined(Q_OS_WASM) || defined(Q_OS_HARMONY)
                         if (state)
                             endDrag(EndDragMode::LocationChange);
 #endif
@@ -1173,17 +1176,19 @@ void QDockWidgetPrivate::unplug(const QRect &rect)
     QDockWidgetLayout *dwLayout = qobject_cast<QDockWidgetLayout*>(layout);
     if (dwLayout->nativeWindowDeco(true))
         r.adjust(0, dwLayout->titleHeight(), 0, 0);
-    setWindowState(true, true, r);
+    setWindowState({WindowState::Floating, WindowState::Unplug}, r);
 }
 
 void QDockWidgetPrivate::plug(const QRect &rect)
 {
-    setWindowState(false, false, rect);
+    setWindowState(WindowStates(), rect);
 }
 
-void QDockWidgetPrivate::setWindowState(bool floating, bool unplug, const QRect &rect)
+void QDockWidgetPrivate::setWindowState(WindowStates states, const QRect &rect)
 {
     Q_Q(QDockWidget);
+    const bool floating = states.testFlag(WindowState::Floating);
+    bool unplug = states.testFlag(WindowState::Unplug);
 
     if (!floating && parent) {
         QMainWindowLayout *mwlayout = qt_mainwindow_layout_from_dock(q);
@@ -1233,6 +1238,15 @@ void QDockWidgetPrivate::setWindowState(bool floating, bool unplug, const QRect 
 
     if (floating != wasFloating) {
         emit q->topLevelChanged(floating);
+#if QT_CONFIG(accessibility)
+        if (QAccessible::isActive()) {
+            // Accessible role depends on whether QDockWidget is a top level or not,
+            // see QAccessibleDockWidget::role
+            QAccessibleEvent roleChangedEvent(q, QAccessible::RoleChanged);
+            QAccessible::updateAccessibility(&roleChangedEvent);
+        }
+#endif
+
         if (!floating && parent) {
             QMainWindowLayout *mwlayout = qt_mainwindow_layout_from_dock(q);
             if (mwlayout)
@@ -1261,7 +1275,8 @@ void QDockWidgetPrivate::setWindowState(bool floating, bool unplug, const QRect 
     \l{QMainWindow::centralWidget()}{central widget} in a
     QMainWindow.
 
-    \image mainwindow-docks.png
+    \image mainwindow-docks.svg
+           {Diagram of dock widget within toolbars and a container for widgets}
 
     Dock windows can be moved inside their current area, moved into
     new areas and floated (e.g., undocked) by the end-user.  The
@@ -1357,7 +1372,13 @@ QDockWidget::QDockWidget(const QString &title, QWidget *parent, Qt::WindowFlags 
     Destroys the dock widget.
 */
 QDockWidget::~QDockWidget()
-{ }
+{
+    // Remove the QDockWidget from its layout while it's still a widget.
+    // Otherwise QEvent::ChildRemoved will cause QDock*Layout::takeAt() and
+    // subsequently a UB.
+    if (parentWidget() && parentWidget()->layout())
+        parentWidget()->layout()->removeWidget(this);
+}
 
 /*!
     Returns the widget for the dock widget. This function returns zero
@@ -1415,10 +1436,12 @@ void QDockWidget::setFeatures(QDockWidget::DockWidgetFeatures features)
     update();
     if (closableChanged && layout->nativeWindowDeco()) {
         QDockWidgetGroupWindow *floatingTab = qobject_cast<QDockWidgetGroupWindow *>(parent());
-        if (floatingTab && !isFloating())
+        if (floatingTab && !isFloating()) {
             floatingTab->adjustFlags();
-        else
-            d->setWindowState(true /*floating*/, true /*unplug*/);  //this ensures the native decoration is drawn
+        } else {
+            d->setWindowState({QDockWidgetPrivate::WindowState::Floating,
+                               QDockWidgetPrivate::WindowState::Unplug});
+        }
     }
 }
 
@@ -1485,7 +1508,9 @@ void QDockWidgetPrivate::setFloating(bool floating)
         }
     }
 
-    setWindowState(floating, false, floating ? r : QRect());
+    WindowStates states;
+    states.setFlag(WindowState::Floating, floating);
+    setWindowState(states, floating ? r : QRect());
 
     if (floating && r.isNull()) {
         if (q->x() < 0 || q->y() < 0) //may happen if we have been hidden
@@ -1584,6 +1609,8 @@ void QDockWidget::closeEvent(QCloseEvent *event)
     const QMainWindow *win = qobject_cast<QMainWindow*>(parentWidget());
     const bool canClose = (d->features & DockWidgetClosable)
                        || (!win || !win->isVisible());
+    if (canClose)
+        d->closed = true;
     event->setAccepted(canClose);
 }
 
@@ -1639,6 +1666,7 @@ bool QDockWidget::event(QEvent *event)
         break;
     case QEvent::Show: {
         d->toggleViewAction->setChecked(true);
+        d->closed = false;
         QPoint parentTopLeft(0, 0);
         if (isWindow()) {
             const QScreen *screen = d->associatedScreen();
@@ -1730,6 +1758,9 @@ bool QDockWidget::event(QEvent *event)
 
   The action's text is set to the dock widget's window title.
 
+  The QAction object is owned by the QDockWidget. It will be automatically
+  deleted when the QDockWidget is destroyed.
+
   \note The action can not be used to programmatically show or hide the dock
   widget. Use the \l visible property for that.
 
@@ -1788,6 +1819,7 @@ QAction * QDockWidget::toggleViewAction() const
     dock \a area, or is moved to a different location in its current
     dock area. This happens when the dock widget is moved
     programmatically or is dragged to a new location by the user.
+    \sa dockLocation(), setDockLocation()
 */
 
 /*!
@@ -1840,8 +1872,54 @@ void QDockWidget::setTitleBarWidget(QWidget *widget)
     d->updateButtons();
     if (isWindow()) {
         //this ensures the native decoration is drawn
-        d->setWindowState(true /*floating*/, true /*unplug*/);
+        d->setWindowState({QDockWidgetPrivate::WindowState::Floating,
+                           QDockWidgetPrivate::WindowState::Unplug});
     }
+}
+
+/*!
+    \since 6.9
+
+    Assigns this dock widget to \a area. If docked at another dock location, it
+    will move to \a area. If floating or part of floating tabs, the next call
+    of setFloating(false) will dock it at \a area.
+
+    \note setDockLocation(Qt::NoDockLocation) is equivalent to setFloating(true).
+
+    \sa dockLocation(), dockLocationChanged()
+ */
+void QDockWidget::setDockLocation(Qt::DockWidgetArea area)
+{
+    if (area == Qt::NoDockWidgetArea && !isFloating()) {
+        setFloating(true);
+        return;
+    }
+
+    auto *mainWindow = const_cast<QMainWindow *>(mainwindow_from_dock(this));
+    Q_ASSERT(mainWindow);
+    mainWindow->addDockWidget(area, this);
+}
+
+/*!
+    \property QDockWidget::dockLocation
+    \since 6.9
+
+    \brief the current dock location, or Qt::NoDockLocation if this dock widget
+    is floating or has no mainwindow parent.
+ */
+Qt::DockWidgetArea QDockWidget::dockLocation() const
+{
+    // QDockWidgetPrivate::setWindowState() emits NoDockWidgetArea if
+    // the dock widget becomes floating.
+    // QMainWindowLayout::dockWidgetArea() always returns the area where
+    // the dock widget's item_list is kept.
+    if (isFloating())
+        return Qt::NoDockWidgetArea;
+
+    auto *mainWindow = mainwindow_from_dock(this);
+    Q_ASSERT(mainWindow);
+    // FIXME in Qt 7: Make dockWidgetArea take a const QDockWidget* argument
+    return mainWindow->dockWidgetArea(const_cast<QDockWidget *>(this));
 }
 
 /*!

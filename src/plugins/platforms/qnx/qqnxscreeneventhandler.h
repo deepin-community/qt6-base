@@ -1,10 +1,12 @@
 // Copyright (C) 2013 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQNXSCREENEVENTHANDLER_H
 #define QQNXSCREENEVENTHANDLER_H
 
 #include <qpa/qwindowsysteminterface.h>
+#include <QtCore/QBasicTimer>
 #include <QtCore/QLoggingCategory>
 
 #include <screen/screen.h>
@@ -42,6 +44,7 @@ protected:
 
 private Q_SLOTS:
     void processEvents();
+    void processPostEvent(screen_window_t window);
 
 private:
     void handleKeyboardEvent(screen_event_t event);
@@ -53,6 +56,9 @@ private:
     void handlePropertyEvent(screen_event_t event);
     void handleKeyboardFocusPropertyEvent(screen_window_t window);
     void handleGeometryPropertyEvent(screen_window_t window);
+    void handleManagerEvent(screen_event_t event);
+
+    void initializeTouchDevices();
 
 private:
     enum {
@@ -64,12 +70,13 @@ private:
     QPoint m_lastLocalMousePoint;
     Qt::MouseButtons m_lastButtonState;
     screen_window_t m_lastMouseWindow;
-    QPointingDevice *m_touchDevice;
     QPointingDevice *m_mouseDevice;
-    QWindowSystemInterface::TouchPoint m_touchPoints[MaximumTouchPoints];
+    QList<QPointingDevice *> m_touchDevices;
+    QList<QWindowSystemInterface::TouchPoint> m_touchPoints;
+    QList<screen_window_t> m_touchPointWindows;
     QList<QQnxScreenEventFilter*> m_eventFilters;
     QQnxScreenEventThread *m_eventThread;
-    int m_focusLostTimer;
+    QBasicTimer m_focusLostTimer;
 };
 
 QT_END_NAMESPACE

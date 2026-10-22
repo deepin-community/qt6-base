@@ -38,24 +38,24 @@ public:
             ChatDialog->setObjectName("ChatDialog");
         ChatDialog->resize(513, 349);
         vboxLayout = new QVBoxLayout(ChatDialog);
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         vboxLayout->setContentsMargins(9, 9, 9, 9);
 #endif
         vboxLayout->setObjectName("vboxLayout");
         hboxLayout = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setSpacing(6);
 #endif
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout->setContentsMargins(0, 0, 0, 0);
 #endif
         hboxLayout->setObjectName("hboxLayout");
         textEdit = new QTextEdit(ChatDialog);
         textEdit->setObjectName("textEdit");
-        textEdit->setFocusPolicy(Qt::NoFocus);
+        textEdit->setFocusPolicy(Qt::FocusPolicy::NoFocus);
         textEdit->setReadOnly(true);
 
         hboxLayout->addWidget(textEdit);
@@ -63,7 +63,7 @@ public:
         listWidget = new QListWidget(ChatDialog);
         listWidget->setObjectName("listWidget");
         listWidget->setMaximumSize(QSize(180, 16777215));
-        listWidget->setFocusPolicy(Qt::NoFocus);
+        listWidget->setFocusPolicy(Qt::FocusPolicy::NoFocus);
 
         hboxLayout->addWidget(listWidget);
 
@@ -71,7 +71,7 @@ public:
         vboxLayout->addLayout(hboxLayout);
 
         hboxLayout1 = new QHBoxLayout();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         hboxLayout1->setSpacing(6);
 #endif
         hboxLayout1->setContentsMargins(0, 0, 0, 0);

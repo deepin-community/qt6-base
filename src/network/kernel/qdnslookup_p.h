@@ -1,6 +1,7 @@
 // Copyright (C) 2012 Jeremy Lainé <jeremy.laine@m4x.org>
 // Copyright (C) 2023 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDNSLOOKUP_P_H
 #define QDNSLOOKUP_P_H
@@ -221,6 +222,10 @@ private:
         return qt_ACE_do(encodedLabel.toString(), NormalizeAce, ForbidLeadingDot);
     }
     void query(QDnsLookupReply *reply);
+#if QT_CONFIG(libresolv) || QT_CONFIG(harmony_dnsresolver)
+    // implemented in qdnslookup_unix.cpp, shared by all backends there
+    void parseResponse(QDnsLookupReply *reply, ReplyBuffer &buffer, int responseLength);
+#endif
 
     EncodedLabel requestName;
     QHostAddress nameserver;

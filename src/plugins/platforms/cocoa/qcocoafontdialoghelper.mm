@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -14,6 +15,7 @@
 #include "qcocoafontdialoghelper.h"
 #include "qcocoahelpers.h"
 #include "qcocoaeventdispatcher.h"
+#include "qnsview.h"
 
 #if !CGFLOAT_DEFINED
 typedef float CGFloat;  // Should only not be defined on 32-bit platforms
@@ -253,6 +255,18 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSFontPanelDelegate);
     }
 }
 
+@end
+
+@interface QNSView (FontPanel)
+- (void)changeFont:(id)sender;
+@end
+
+@implementation QNSView (FontPanel)
+- (void)changeFont:(id)sender
+{
+    if (auto *delegate = qt_objc_cast<QNSFontPanelDelegate*>(NSFontPanel.sharedFontPanel.delegate))
+        [delegate changeFont:sender];
+}
 @end
 
 QT_BEGIN_NAMESPACE

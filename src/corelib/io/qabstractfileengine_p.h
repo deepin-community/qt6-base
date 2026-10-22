@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTFILEENGINE_P_H
 #define QABSTRACTFILEENGINE_P_H
@@ -83,6 +84,11 @@ public:
         OwnerGroup
     };
 
+    enum class TriStateResult : qint8 {
+        NotSupported = -1,
+        Failed = 0,
+        Success = 1,
+    };
 
     virtual ~QAbstractFileEngine();
 
@@ -106,9 +112,6 @@ public:
     virtual bool setSize(qint64 size);
     virtual bool caseSensitive() const;
     virtual bool isRelativePath() const;
-    virtual QStringList entryList(QDir::Filters filters, const QStringList &filterNames) const;
-    virtual QStringList entryList(QDirListing::IteratorFlags filters,
-                                  const QStringList &filterNames) const;
     virtual FileFlags fileFlags(FileFlags type=FileInfoAll) const;
     virtual bool setPermissions(uint perms);
     virtual QByteArray id() const;
@@ -119,7 +122,7 @@ public:
     virtual QDateTime fileTime(QFile::FileTime time) const;
     virtual void setFileName(const QString &file);
     virtual int handle() const;
-    virtual bool cloneTo(QAbstractFileEngine *target);
+    virtual TriStateResult cloneTo(QAbstractFileEngine *target);
     bool atEnd() const;
     uchar *map(qint64 offset, qint64 size, QFile::MemoryMapFlags flags);
     bool unmap(uchar *ptr);
@@ -127,10 +130,7 @@ public:
     typedef QAbstractFileEngineIterator Iterator;
     using IteratorUniquePtr = std::unique_ptr<Iterator>;
 
-    virtual IteratorUniquePtr
-    beginEntryList(const QString &path, QDir::Filters filters, const QStringList &filterNames);
     virtual IteratorUniquePtr endEntryList() { return {}; }
-
     virtual IteratorUniquePtr
     beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
                    const QStringList &filterNames);
@@ -242,16 +242,16 @@ private:
 class QAbstractFileEnginePrivate
 {
 public:
-    inline QAbstractFileEnginePrivate()
-        : fileError(QFile::UnspecifiedError)
+    inline QAbstractFileEnginePrivate(QAbstractFileEngine *q)
+        : fileError(QFile::UnspecifiedError), q_ptr(q)
     {
     }
-    inline virtual ~QAbstractFileEnginePrivate() { }
+    virtual ~QAbstractFileEnginePrivate();
 
     QFile::FileError fileError;
     QString errorString;
 
-    QAbstractFileEngine *q_ptr;
+    QAbstractFileEngine *const q_ptr;
     Q_DECLARE_PUBLIC(QAbstractFileEngine)
 };
 

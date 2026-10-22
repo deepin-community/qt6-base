@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Governikus GmbH & Co. KG.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsslpresharedkeyauthenticator.h"
 #include "qsslpresharedkeyauthenticator_p.h"
@@ -113,10 +114,8 @@ QSslPreSharedKeyAuthenticator &QSslPreSharedKeyAuthenticator::operator=(const QS
 */
 
 /*!
-    \fn void QSslPreSharedKeyAuthenticator::swap(QSslPreSharedKeyAuthenticator &authenticator)
-
-    Swaps the QSslPreSharedKeyAuthenticator object \a authenticator with this object.
-    This operation is very fast and never fails.
+    \fn void QSslPreSharedKeyAuthenticator::swap(QSslPreSharedKeyAuthenticator &other)
+    \memberswap{authenticator}
 */
 
 /*!

@@ -1,5 +1,6 @@
 // Copyright (C) 2013 Klaralvdalens Datakonsult AB (KDAB).
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOPENGLABSTRACTTEXTURE_H
 #define QOPENGLABSTRACTTEXTURE_H
@@ -486,7 +487,7 @@ public:
     void setMipMaxLevel(int maxLevel);
     int mipMaxLevel() const;
     void setMipLevelRange(int baseLevel, int maxLevel);
-    QPair<int, int> mipLevelRange() const;
+    std::pair<int, int> mipLevelRange() const;
 
     void setAutoMipMapGenerationEnabled(bool enabled);
     bool isAutoMipMapGenerationEnabled() const;
@@ -553,7 +554,7 @@ public:
     Filter magnificationFilter() const;
     void setMinMagFilters(Filter minificationFilter,
                           Filter magnificationFilter);
-    QPair<Filter, Filter> minMagFilters() const;
+    std::pair<Filter, Filter> minMagFilters() const;
     void setMaximumAnisotropy(float anisotropy);
     float maximumAnisotropy() const;
 
@@ -576,7 +577,7 @@ public:
     void setMaximumLevelOfDetail(float value);
     float maximumLevelOfDetail() const;
     void setLevelOfDetailRange(float min, float max);
-    QPair<float, float> levelOfDetailRange() const;
+    std::pair<float, float> levelOfDetailRange() const;
     void setLevelofDetailBias(float bias);
     float levelofDetailBias() const;
 

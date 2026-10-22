@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSINGLESHOTTIMER_P_H
 #define QSINGLESHOTTIMER_P_H
@@ -18,6 +19,9 @@
 
 #include <QtCore/qobject.h>
 #include <QtCore/qabstracteventdispatcher.h>
+#include <QtCore/qbasictimer.h>
+#include <QtCore/qcoreevent.h>
+#include <QtCore/qdeadlinetimer.h>
 #include <QtCore/qnamespace.h>
 
 QT_BEGIN_NAMESPACE
@@ -26,11 +30,11 @@ namespace QtPrivate {
 class QSlotObjectBase;
 }
 
-class QSingleShotTimer : public QObject
+class Q_AUTOTEST_EXPORT QSingleShotTimer : public QObject
 {
     Q_OBJECT
 
-    Qt::TimerId timerId = Qt::TimerId::Invalid;
+    QBasicTimer timer;
 
 public:
     // use the same duration type
@@ -48,6 +52,18 @@ Q_SIGNALS:
     void timeout();
 
 private:
+    class StartTimerEvent : public QTimerEvent
+    {
+    public:
+        StartTimerEvent(QSingleShotTimer *timer, const QDeadlineTimer &deadline)
+            : QTimerEvent(Qt::TimerId::Invalid), timer(timer), deadline(deadline)
+        {}
+
+        std::unique_ptr<QSingleShotTimer> timer;
+        QDeadlineTimer deadline;
+    };
+
+    void timerFinished();
     void timerEvent(QTimerEvent *) override;
 };
 

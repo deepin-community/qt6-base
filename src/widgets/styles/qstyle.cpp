@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstyle.h"
 #include "qapplication.h"
@@ -7,13 +8,16 @@
 #include "qwidget.h"
 #include "qbitmap.h"
 #include "qpixmapcache.h"
+#include "qset.h"
 #include "qstyleoption.h"
 #include "private/qstyle_p.h"
+#include "private/qstylehelper_p.h"
 #include "private/qguiapplication_p.h"
 #include <qpa/qplatformtheme.h>
 #ifndef QT_NO_DEBUG
 #include "qdebug.h"
 #endif
+#include <QtCore/q20utility.h>
 
 #include <limits.h>
 #include <algorithm>
@@ -51,11 +55,13 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     the widgets look exactly like the equivalent native widgets or to
     give the widgets a custom look.
 
-    Qt provides a set of QStyle subclasses that emulate the native
-    look of the different platforms supported by Qt (QWindowsStyle,
-    QMacStyle, etc.). These styles are built into the
-    Qt GUI module, other styles can be made available using Qt's
-    plugin mechanism.
+    Qt provides a set of QStyle implementations that match the native
+    look of the platforms it supports. The \c windows and \c fusion
+    styles are built into the Qt Widgets module; the platform styles,
+    such as \c windows11 and \c macos, are loaded as plugins.
+    QStyleFactory lists the styles that are available at runtime.
+    Applications can also provide their own styles, either linked in or
+    as plugins.
 
     Most functions for drawing style elements take four arguments:
 
@@ -75,6 +81,7 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     is a zero pointer.
 
     \image paintsystem-stylepainter.png
+           {Diagram showing QStylePainter inherits from QPainter}
 
     The paint system also provides the QStylePainter class inheriting
     from QPainter.  QStylePainter is a convenience class for drawing
@@ -85,7 +92,7 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
 
     \table 100%
     \row
-    \li \inlineimage paintsystem-icon.png
+    \li \inlineimage paintsystem-icon.png {Icon used in Qt}
     \li \b QIcon
 
     The QIcon class provides scalable icons in different modes and states.
@@ -102,10 +109,10 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
 
     \endtable
 
-    For more information about widget styling and appearance, see the
-    \l{Styles and Style Aware Widgets}.
+    For more information about widget styling and appearance, see
+    \l{Styles and Style Aware Widgets} and
+    \l{Styling Approaches for Qt Widgets}.
 */
-
 
 /*!
     \class QStyle
@@ -114,20 +121,49 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     \ingroup appearance
     \inmodule QtWidgets
 
-    Qt contains a set of QStyle subclasses that emulate the styles of
-    the different platforms supported by Qt (QWindowsStyle,
-    QMacStyle etc.). By default, these styles are built
-    into the Qt GUI module. Styles can also be made available as
-    plugins.
+    Qt contains a set of QStyle implementations that match the look of
+    the platforms it supports. The \c windows and \c fusion styles are
+    built into the Qt Widgets module. The platform styles are style
+    plugins: \c windows11, which follows the Windows 11 Fluent design, and
+    \c windowsvista on Windows, \c macos on \macos, and \c android on
+    Android. QStyleFactory lists the styles that are available at runtime
+    and creates them by name.
 
     Qt's built-in widgets use QStyle to perform nearly all of their
     drawing, ensuring that they look exactly like the equivalent
-    native widgets. The diagram below shows a QComboBox in nine
-    different styles.
+    native widgets. The following images show the same form in the
+    \c windows11, \c windowsvista, and \c windows styles on Windows, and in
+    the \c fusion and \c macos styles.
 
-    \image qstyle-comboboxes.png Nine combo boxes
-
-    Topics:
+    \table
+    \row
+    \li \image styles/gallery-windows11.webp
+               {Form with text field, combo box, spin box, slider,
+                checkbox, progress bar, and buttons in the Windows 11 style}
+        \caption Windows 11
+    \li \image styles/gallery-windowsvista.webp
+               {Form with text field, combo box, spin box, slider,
+                checkbox, progress bar, and buttons in the Windows Vista style}
+        \caption Windows Vista
+    \li \image styles/gallery-windows.webp
+               {Form with text field, combo box, spin box, slider,
+                checkbox, progress bar, and buttons in the Windows style}
+        \caption Windows
+    \row
+    \li \image styles/gallery-fusion-light.webp
+               {Form with text field, combo box, spin box, slider,
+                checkbox, progress bar, and buttons in the Fusion style}
+        \caption Fusion
+    \li \image styles/gallery-fusion-dark.webp
+               {Form with text field, combo box, spin box, slider,
+                checkbox, progress bar, and buttons in the Fusion style with a
+                dark palette}
+        \caption Fusion with a dark palette
+    \li \image styles/gallery-macos.webp
+               {Form with text field, combo box, spin box, slider,
+                checkbox, progress bar, and buttons in the macOS style}
+        \caption macOS
+    \endtable
 
     \section1 Setting a Style
 
@@ -142,6 +178,21 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
 
     A style can also be set on an individual widget using the
     QWidget::setStyle() function.
+
+    \section1 Choosing a Styling Approach
+
+    Choose the mechanism that matches how much you want to change:
+
+    \list
+    \li To adjust the platform style, subclass QProxyStyle.
+    \li To implement a complete custom look, subclass QCommonStyle.
+    \li To describe the design declaratively and share it with Qt Quick
+        Controls, use \l{Qt Labs StyleKit}{StyleKit} and its
+        \l QStyleKitStyle.
+    \endlist
+
+    \l{Styling Approaches for Qt Widgets} compares these options with
+    \l{Qt Style Sheets} and explains when each is appropriate.
 
     \section1 Developing Style-Aware Custom Widgets
 
@@ -195,25 +246,20 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     \section1 Creating a Custom Style
 
     You can create a custom look and feel for your application by
-    creating a custom style. There are two approaches to creating a
-    custom style. In the static approach, you either choose an
-    existing QStyle class, subclass it, and reimplement virtual
-    functions to provide the custom behavior, or you create an entire
-    QStyle class from scratch. In the dynamic approach, you modify the
-    behavior of your system style at runtime. The static approach is
-    described below. The dynamic approach is described in QProxyStyle.
-
-    The first step in the static approach is to pick one of the styles
-    provided by Qt from which you will build your custom style. Your
-    choice of QStyle class will depend on which style resembles your
-    desired style the most. The most general class that you can use as
-    a base is QCommonStyle (not QStyle). This is because Qt requires
-    its styles to be \l{QCommonStyle}s.
+    creating a custom style. There are two approaches. To change
+    selected aspects of an existing style, subclass QProxyStyle and
+    reimplement the virtual functions that draw or measure the elements
+    you want to change; the proxy forwards everything else to the style
+    it wraps, by default the platform style. To implement a complete
+    look, subclass QCommonStyle, which implements the behavior that all
+    of Qt's styles share and leaves the drawing to you. Qt's built-in
+    styles are not part of the public API and cannot serve as base
+    classes; wrap them with QProxyStyle instead.
 
     Depending on which parts of the base style you want to change,
     you must reimplement the functions that are used to draw those
     parts of the interface. To illustrate this, we will modify the
-    look of the spin box arrows drawn by QWindowsStyle. The arrows
+    look of the spin box arrows drawn by the platform style. The arrows
     are \e{primitive elements} that are drawn by the drawPrimitive()
     function, so we need to reimplement that function. We need the
     following class declaration:
@@ -226,11 +272,9 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     them differently:
 
     \snippet customstyle/customstyle.cpp 2
-    \snippet customstyle/customstyle.cpp 3
-    \snippet customstyle/customstyle.cpp 4
 
     Notice that we don't use the \c widget argument, except to pass it
-    on to the QWindowStyle::drawPrimitive() function. As mentioned
+    on to the QProxyStyle::drawPrimitive() function. As mentioned
     earlier, the information about what is to be drawn and how it
     should be drawn is specified by a QStyleOption object, so there is
     no need to ask the widget.
@@ -240,16 +284,10 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     of the correct type before using it. For example:
 
     \snippet customstyle/customstyle.cpp 0
-    \dots
-    \snippet customstyle/customstyle.cpp 1
 
     When implementing a custom style, you cannot assume that the
     widget is a QSpinBox just because the enum value is called
     PE_IndicatorSpinUp or PE_IndicatorSpinDown.
-
-    \warning Qt style sheets are currently not supported for custom QStyle
-    subclasses. We plan to address this in some future release.
-
 
     \section1 Using a Custom Style
 
@@ -347,8 +385,8 @@ static int unpackControlTypes(QSizePolicy::ControlTypes controls, QSizePolicy::C
     The drawing of item view headers is also done by the style, giving
     control over size of header items and row and column sizes.
 
-    \sa QStyleOption, QStylePainter,
-        {Styles and Style Aware Widgets}, QStyledItemDelegate, {Styling}
+    \sa QStyleOption, QStylePainter, {Styles and Style Aware Widgets},
+        {Styling Approaches for Qt Widgets}, QStyledItemDelegate, {Styling}
 */
 
 /*!
@@ -614,7 +652,15 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
     QRect aligned = alignedRect(QGuiApplication::layoutDirection(), QFlag(alignment), pixmap.size() / scale, rect);
     QRect inter = aligned.intersected(rect);
 
-    painter->drawPixmap(inter.x(), inter.y(), pixmap, inter.x() - aligned.x(), inter.y() - aligned.y(), qRound(inter.width() * scale), qRound(inter.height() *scale));
+    // The source rectangle indexes the pixmap's device pixels, so both the
+    // offset and the size of the visible (intersected) area have to be scaled
+    // by the pixmap's device pixel ratio.
+    const QRect source(qRound((inter.x() - aligned.x()) * scale),
+                       qRound((inter.y() - aligned.y()) * scale),
+                       qRound(inter.width() * scale),
+                       qRound(inter.height() * scale));
+
+    painter->drawPixmap(inter.topLeft(), pixmap, source);
 }
 
 /*!
@@ -721,9 +767,8 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
     \value State_AutoRaise Used to indicate if auto-raise appearance should be used on a tool button.
     \value State_Children Used to indicate if an item view branch has children.
     \value State_DownArrow Used to indicate if a down arrow should be visible on the widget.
-    \value State_Editing Used to indicate if an editor is opened on the widget.
+    \value State_Editing Deprecated. No longer used as the editor is drawn over the itemview cell.
     \value State_Enabled Used to indicate if the widget is enabled.
-    \value State_HasEditFocus Used to indicate if the widget currently has edit focus.
     \value State_HasFocus Used to indicate if the widget has focus.
     \value State_Horizontal Used to indicate if the widget is laid out horizontally, for example. a tool bar.
     \value State_KeyboardFocusChange Used to indicate if the focus was changed with the keyboard, e.g., tab, backtab or shortcut.
@@ -996,7 +1041,7 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
     \value SE_PushButtonFocusRect  Area for the focus rect (usually
         larger than the contents rect).
     \value SE_PushButtonLayoutItem  Area that counts for the parent layout.
-    \value SE_PushButtonBevel [since 5.15] Area used for the bevel of the button.
+    \value [since 5.15] SE_PushButtonBevel Area used for the bevel of the button.
 
     \value SE_CheckBoxIndicator  Area for the state indicator (e.g., check mark).
     \value SE_CheckBoxContents  Area for the label (text or pixmap).
@@ -1195,7 +1240,7 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
 
     \value SC_GroupBoxFrame The frame of a group box.
     \value SC_GroupBoxLabel The title of a group box.
-    \value SC_GroupBoxCheckBox The optional check box of a group box.
+    \value SC_GroupBoxCheckBox The optional checkbox of a group box.
     \value SC_GroupBoxContents The group box contents.
 
     \value SC_MdiNormalButton The normal button for a MDI
@@ -1417,7 +1462,7 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
 
     \value PM_TitleBarHeight  Height of the title bar.
 
-    \value PM_IndicatorWidth  Width of a check box indicator.
+    \value PM_IndicatorWidth  Width of a checkbox indicator.
     \value PM_IndicatorHeight  Height of a checkbox indicator.
     \value PM_ExclusiveIndicatorWidth  Width of a radio button indicator.
     \value PM_ExclusiveIndicatorHeight  Height of a radio button indicator.
@@ -1448,7 +1493,7 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
     \value PM_ListViewIconSize The default size for icons in a list view.
 
     \value PM_ToolTipLabelFrameWidth The frame width for a tool tip label.
-    \value PM_CheckBoxLabelSpacing The spacing between a check box indicator and its label.
+    \value PM_CheckBoxLabelSpacing The spacing between a checkbox indicator and its label.
     \value PM_RadioButtonLabelSpacing The spacing between a radio button indicator and its label.
     \value PM_TabBarIconSize The default icon size for a tab bar.
     \value PM_SizeGripSize The size of a size grip.
@@ -1523,7 +1568,7 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
     This enum describes the available contents types. These are used to
     calculate sizes for the contents of various widgets.
 
-    \value CT_CheckBox A check box, like QCheckBox.
+    \value CT_CheckBox A checkbox, like QCheckBox.
     \value CT_ComboBox A combo box, like QComboBox.
     \omitvalue CT_DialogButtons
     \value CT_HeaderSection A header section, like QHeader.
@@ -1733,8 +1778,16 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
         by pressing Alt, followed by using the arrow keys to select
         the desired item.
 
-    \value SH_ComboBox_ListMouseTracking  Mouse tracking in combobox
-        drop-down lists.
+    \value SH_ComboBox_ListMouseTracking_Current  Mouse tracking in
+        combobox drop-down lists, the item under the cursor is made
+        the current item (QStyle::State_Selected).
+
+    \value SH_ComboBox_ListMouseTracking  Deprecated. Use
+        \l{SH_ComboBox_ListMouseTracking_Current} instead.
+
+    \value SH_ComboBox_ListMouseTracking_Active  Mouse tracking in
+        combobox drop-down lists, the item under the cursor is not
+        made the current item, only active (QStyle::State_MouseOver).
 
     \value SH_Menu_MouseTracking  Mouse tracking in popup menus.
 
@@ -1832,7 +1885,7 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
     message box should be centered or not (see QDialogButtonBox::setCentered()).
 
     \value SH_MessageBox_TextInteractionFlags A boolean indicating if
-    the text in a message box should allow user interfactions (e.g.
+    the text in a message box should allow user interactions (e.g.
     selection) or not.
 
     \value SH_TitleBar_AutoRaise A boolean indicating whether
@@ -2081,6 +2134,10 @@ void QStyle::drawItemPixmap(QPainter *painter, const QRect &rect, int alignment,
     \value [since 5.14] SP_DialogIgnoreButton Icon for a standard Ignore button in a QDialogButtonBox.
     \value [since 5.14] SP_RestoreDefaultsButton Icon for a standard RestoreDefaults button in a QDialogButtonBox.
     \value [since 6.3] SP_TabCloseButton Icon for the close button in the tab of a QTabBar.
+    \value [since 6.12] SP_TabScrollLeftButton Icon for the scroll left button of a QTabBar.
+    \value [since 6.12] SP_TabScrollRightButton Icon for the scroll right button of a QTabBar.
+    \value [since 6.12] SP_TabScrollUpButton Icon for the scroll up button of a QTabBar.
+    \value [since 6.12] SP_TabScrollDownButton Icon for the scroll down button of a QTabBar.
     \omitvalue NStandardPixmap
     \value SP_CustomBase  Base value for custom standard pixmaps;
     custom values must be greater than this value.
@@ -2232,7 +2289,7 @@ int QStyle::sliderPositionFromValue(int min, int max, int logicalValue, int span
     if (range > (uint)INT_MAX/4096) {
         double dpos = (double(p))/(double(range)/span);
         return int(dpos);
-    } else if (range > (uint)span) {
+    } else if (q20::cmp_greater(range, span)) {
         return (2 * p * span + range) / (2*range);
     } else {
         uint div = span / range;
@@ -2271,7 +2328,7 @@ int QStyle::sliderValueFromPosition(int min, int max, int pos, int span, bool up
 
     const qint64 range = qint64(max) - min;
 
-    if ((uint)span > range) {
+    if (q20::cmp_greater(span, range)) {
         const int tmp = (2 * range * pos + span) / (qint64(2) * span);
         return upsideDown ? max - tmp : tmp + min;
     } else {
@@ -2419,6 +2476,53 @@ bool QStylePrivate::useFullScreenForPopup()
 {
     auto theme = QGuiApplicationPrivate::platformTheme();
     return theme && theme->themeHint(QPlatformTheme::UseFullScreenForPopupMenu).toBool();
+}
+
+//
+// QCachedPainter
+QSet<QString> QCachedPainter::s_pixmapCacheKeys;
+QCachedPainter::QCachedPainter(QPainter *painter, const QString &cachePrefix,
+                               const QStyleOption *option, QSize size, QRect paintRect)
+    : m_painter(painter)
+    , m_option(option)
+    , m_paintRect(paintRect)
+{
+    const auto sz = size.isEmpty() ? option->rect.size() : size;
+    const qreal dpr = QStyleHelper::getDpr(painter);
+    m_pixmapName = QStyleHelper::uniqueName(cachePrefix, option, sz, dpr);
+    m_alreadyCached = QPixmapCache::find(m_pixmapName, &m_pixmap);
+    if (!m_alreadyCached) {
+        m_pixmap = styleCachePixmap(sz, dpr);
+        m_pixmapPainter = std::make_unique<QPainter>(&m_pixmap);
+        m_pixmapPainter->setRenderHints(painter->renderHints());
+        s_pixmapCacheKeys += m_pixmapName;
+    }
+}
+
+QCachedPainter::~QCachedPainter()
+{
+    finish();
+    if (!m_alreadyCached)
+        QPixmapCache::insert(m_pixmapName, m_pixmap);
+}
+
+void QCachedPainter::finish()
+{
+    m_pixmapPainter.reset();
+    if (!m_pixmapDrawn) {
+        m_pixmapDrawn = true;
+        if (m_paintRect.isNull())
+            m_painter->drawPixmap(m_option->rect.topLeft(), m_pixmap);
+        else
+            m_painter->drawPixmap(m_paintRect, m_pixmap);
+    }
+}
+
+void QCachedPainter::cleanupPixmapCache()
+{
+    for (const auto &key : s_pixmapCacheKeys)
+        QPixmapCache::remove(key);
+    s_pixmapCacheKeys.clear();
 }
 
 QT_END_NAMESPACE

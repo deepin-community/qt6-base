@@ -15,7 +15,6 @@ import android.content.ClipboardManager;
 import android.text.Html;
 import android.text.Spanned;
 import android.util.Log;
-import android.util.TypedValue;
 import android.view.View;
 import android.view.Window;
 import android.widget.Button;
@@ -37,11 +36,11 @@ class ButtonStruct implements View.OnClickListener
     {
         m_dialog = dialog;
         m_id = id;
-        m_text = Html.fromHtml(text);
+        m_text = Html.fromHtml(text, Html.FROM_HTML_MODE_LEGACY);
     }
-    QtMessageDialogHelper m_dialog;
+    final QtMessageDialogHelper m_dialog;
     private final int m_id;
-    Spanned m_text;
+    final Spanned m_text;
 
     @Override
     public void onClick(View view) {
@@ -51,7 +50,6 @@ class ButtonStruct implements View.OnClickListener
 
 class QtMessageDialogHelper
 {
-
     QtMessageDialogHelper(Activity activity)
     {
         m_activity = activity;
@@ -91,25 +89,25 @@ class QtMessageDialogHelper
     @UsedFromNativeCode
     void setTile(String title)
     {
-        m_title = Html.fromHtml(title);
+        m_title = Html.fromHtml(title, Html.FROM_HTML_MODE_LEGACY);
     }
 
     @UsedFromNativeCode
     void setText(String text)
     {
-        m_text = Html.fromHtml(text);
+        m_text = Html.fromHtml(text, Html.FROM_HTML_MODE_LEGACY);
     }
 
     @UsedFromNativeCode
     void setInformativeText(String informativeText)
     {
-        m_informativeText = Html.fromHtml(informativeText);
+        m_informativeText = Html.fromHtml(informativeText, Html.FROM_HTML_MODE_LEGACY);
     }
 
     @UsedFromNativeCode
     void setDetailedText(String text)
     {
-        m_detailedText = Html.fromHtml(text);
+        m_detailedText = Html.fromHtml(text, Html.FROM_HTML_MODE_LEGACY);
     }
 
     @UsedFromNativeCode
@@ -123,9 +121,14 @@ class QtMessageDialogHelper
     private Drawable getStyledDrawable(int id)
     {
         int[] attrs = { id };
-        final TypedArray a = m_theme.obtainStyledAttributes(attrs);
-        Drawable d = a.getDrawable(0);
-        a.recycle();
+        Drawable d;
+        TypedArray a = m_theme.obtainStyledAttributes(attrs);
+        try {
+            d = a.getDrawable(0);
+        } finally {
+            a.recycle();
+        }
+
         return  d;
     }
 

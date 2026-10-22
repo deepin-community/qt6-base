@@ -3,9 +3,6 @@
 
 #include <QtGui>
 
-QWidget *win;
-QWidget *panel;
-
 void snippet_ctor1()
 {
 //! [0]
@@ -37,6 +34,16 @@ void snippet_ctor2()
     int margin = settings.value("editor/wrapMargin", 80).toInt();
 //! [7]
     }
+}
+
+#if __has_include(<QWidget>)
+#include <QWidget>
+
+void snippet_ctor_widgets()
+{
+    QWidget *win;
+    QWidget *panel;
+    QSettings settings;
 
 //! [8]
     settings.setValue("mainwindow/size", win->size());
@@ -59,6 +66,7 @@ void snippet_ctor2()
     settings.endGroup();
 //! [12]
 }
+#endif
 
 void snippet_locations()
 {
@@ -86,6 +94,9 @@ void snippet_locations()
                        QSettings::NativeFormat);
     }
 }
+
+#if __has_include(<QWidget>)
+#include <QMainWindow>
 
 class MainWindow : public QMainWindow
 {
@@ -120,7 +131,7 @@ void MainWindow::readSettings()
     if (geometry.isEmpty())
         setGeometry(200, 200, 400, 400);
     else
-        restoreGeometry(geometry)
+        restoreGeometry(geometry);
     settings.endGroup();
 }
 //! [17]
@@ -147,3 +158,4 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
 }
 //! [21]
+#endif

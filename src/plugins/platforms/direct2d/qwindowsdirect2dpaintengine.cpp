@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsdirect2dpaintengine.h"
 #include "qwindowsdirect2dplatformpixmap.h"
@@ -15,6 +16,7 @@
 #include <QtCore/qmath.h>
 #include <QtCore/qstack.h>
 #include <QtCore/qsettings.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <QtGui/private/qpaintengine_p.h>
 #include <QtGui/private/qtextengine_p.h>
 #include <QtGui/private/qfontengine_p.h>
@@ -22,9 +24,6 @@
 
 #include <d2d1_1.h>
 #include <dwrite_1.h>
-#include <wrl.h>
-
-using Microsoft::WRL::ComPtr;
 
 QT_BEGIN_NAMESPACE
 

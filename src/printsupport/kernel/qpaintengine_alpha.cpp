@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qtprintsupportglobal.h>
 
@@ -120,7 +121,7 @@ void QAlphaPaintEngine::updateState(const QPaintEngineState &state)
         const QPainter *p = painter();
         d->m_picpainter->setPen(p->pen());
         d->m_picpainter->setBrush(p->brush());
-        d->m_picpainter->setBrushOrigin(p->brushOrigin());
+        d->m_picpainter->setBrushOrigin(p->brushOriginF());
         d->m_picpainter->setFont(p->font());
         d->m_picpainter->setOpacity(p->opacity());
         d->m_picpainter->setTransform(p->combinedTransform());
@@ -322,7 +323,7 @@ void QAlphaPaintEngine::flushAndInit(bool init)
         // painter back to the m_picpainter
         d->m_picpainter->setPen(painter()->pen());
         d->m_picpainter->setBrush(painter()->brush());
-        d->m_picpainter->setBrushOrigin(painter()->brushOrigin());
+        d->m_picpainter->setBrushOrigin(painter()->brushOriginF());
         d->m_picpainter->setFont(painter()->font());
         d->m_picpainter->setOpacity(painter()->opacity());
         d->m_picpainter->setTransform(painter()->combinedTransform());

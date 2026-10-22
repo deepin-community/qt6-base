@@ -16,16 +16,18 @@ QT_REQUIRE_CONFIG(process);
 #include <QtCore/QFileInfo>
 #include <QtCore/QDir>
 #include <QtCore/QTemporaryDir>
+#include <QtCore/QProcess>
 
 #include <QTest>
 
-#include <QProcess>
-
-#include <private/cycle_p.h>
+#include <regex>
+#include <private/cycle_include_p.h>
 
 #include <QtTest/private/qemulationdetector_p.h>
 
 using namespace Qt::StringLiterals;
+
+enum class Throw { OnFail = 1 };
 
 struct BenchmarkResult
 {
@@ -86,7 +88,8 @@ static bool compareBenchmarkResult(BenchmarkResult const &r1, BenchmarkResult co
 
 // Split the passed block of text into an array of lines, replacing any
 // filenames and line numbers with generic markers to avoid failing the test
-// due to compiler-specific behaviour.
+// due to compiler-specific behavior. For some known differences in output,
+// it normalizes the stored text.
 static QList<QByteArray> splitLines(QByteArray ba)
 {
     ba.replace('\r', "");
@@ -111,6 +114,32 @@ static QList<QByteArray> splitLines(QByteArray ba)
                 continue;
             }
             line.replace(index, end-index + 1, markers[j][1]);
+        }
+
+        // There's some difference on how floating point numbers are printed by
+        // the various snprintf(), both in decimal and in hexadecimal form. The
+        // following regex catches them so we can normalize the output to the
+        // current running libc.
+        //
+        // Examples (most but not all attested):
+        //  1    0x1p+0     0x8p-3
+        //  1.00000000000000000   0x1.0000000000000p+0
+        //  1.5  0x1.8p+0   0xcp-3
+        //  1e6  1e+06      1e+6
+        //  1e-7 1e-07      1e-007
+        //  -1.797693134862316e+308 -0xf.ffffffffffff8p+1020 -0x1.fffffffffffffp+1023
+        static std::regex fpValueRx(R"(-?\d+(?:\.\d*)?(?:e[-+]\d\d+)? \((-?0x[\da-f.]+p[-+]?\d+)\))");
+        if (std::cmatch match; std::regex_search(line.cbegin(), line.cend(), match, fpValueRx)) {
+            if (double value; sscanf(match[1].first, "%la", &value) == 1) {
+                // remove the decimal and hexadecimal string representations
+                line.truncate(match[0].first - line.cbegin());
+
+                // append normalized hexfloat
+                // this won't fail and the buffer is definitely big enough
+                char buf[128];
+                int n = snprintf(buf, sizeof(buf), "%a", value);
+                line += std::string_view(buf, n);
+            }
         }
     }
 
@@ -510,6 +539,13 @@ BenchmarkResult BenchmarkResult::parse(QString const& line, QString* error)
     // 4,000 -> 4000
     sTotal.remove(',');
 
+    // The total value may now be followed by the unit text
+    // e.g. "(total: 4000 msecs, iterations: 1)" instead of "(total: 4000, iterations: 1)"
+    // Strip the unit part before converting to number.
+    const int spaceIdx = sTotal.indexOf(QLatin1Char(' '));
+    if (spaceIdx != -1)
+        sTotal.truncate(spaceIdx);
+
     double total = sTotal.toDouble(&ok);
     if (!ok) {
         if (error) *error = sTotal + " (total) is not a valid number";
@@ -638,11 +674,6 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
         return true;
 #endif
 
-    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
-        qDebug() << "TestLogger::shouldIgnoreTest() ignore" << test << "on wayland/xwayland!";
-        return true;
-    }
-
     // These tests are affected by timing and whether the CPU tick counter
     // is monotonically increasing. They won't work on some machines so
     // leave them off by default. Feel free to enable them for your own
@@ -673,8 +704,18 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
         return true;
 #endif
 
+#if defined(QT_NO_EXCEPTIONS) || !QT_CONFIG(future) || defined(QT_NO_CONCURRENT)
+    // This test requires exceptions, QException, and QtConcurrent::run():
+    if (test == "throwonfailandskip")
+        return true;
+#endif
+
     if (test == "benchlibcallgrind") {
 #if defined(__GNUC__) && (defined(__i386) || defined(__x86_64)) && defined(Q_OS_LINUX)
+#  ifdef __AVX512F__
+        WARN("Valgrind does not support AVX512/AVX10 as of the time of this writing");
+        return true;
+#  endif
         // Check that it's actually available
         QProcess checkProcess;
         QStringList args{u"--version"_s};
@@ -689,6 +730,18 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
 #endif
     }
 
+#ifndef __cpp_lib_three_way_comparison
+    if (test == "threewaycompare") {
+        WARN("The threewaycompare test requires C++20 support. Skipping.");
+        return true;
+    }
+#endif
+
+    if (!QT_CONFIG(signaling_nan) && test == "float") {
+        WARN("Test output was designed for machines with signaling NaN");
+        return true;
+    }
+
     if (logger != QTestLog::Plain || outputMode == FileOutput) {
         // The following tests only work with plain text output to stdout,
         // either because they execute multiple test objects or because
@@ -699,6 +752,7 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
             || test == "benchliboptions"
             || test == "printdatatags"
             || test == "printdatatagswithglobaltags"
+            || test == "selected"
             || test == "silent"
             || test == "silent_fatal")
             return true;
@@ -762,6 +816,7 @@ void checkErrorOutput(const QString &test, const QByteArray &errorOutput)
         || test == "fetchbogus"
         || test == "watchdog"
         || test == "junit"
+        || test == "selected" // Reports unknown test functions to stderr
         || test == "benchlibcallgrind")
         return;
 
@@ -933,15 +988,19 @@ static QProcessEnvironment testEnvironment()
             const bool useVariable = key == "PATH" || key == "QT_QPA_PLATFORM"
                 || key == "QTEST_THROW_ON_FAIL"_L1 || key == "QTEST_THROW_ON_SKIP"_L1
                 || key == "ASAN_OPTIONS"
-#if defined(Q_OS_QNX)
+#if defined(Q_OS_UNIX)
+                || key == "HOME" || key == "USER" // Required for X11 on openSUSE; fontconfig on QNX
+#  if defined(Q_OS_QNX)
                 || key == "GRAPHICS_ROOT" || key == "TZ"
-#elif defined(Q_OS_UNIX)
-                || key == "HOME" || key == "USER" // Required for X11 on openSUSE
+                || key == "FONTCONFIG_FILE" || key == "FONTCONFIG_PATH"
+                || key.startsWith("XDG_")
+#  else
                 || key == "QEMU_SET_ENV" || key == "QEMU_LD_PREFIX" // Required for QEMU
-#  if !defined(Q_OS_MACOS)
+#    if !defined(Q_OS_MACOS)
                 || key == "DISPLAY" || key == "XAUTHLOCALHOSTNAME"
                 || key.startsWith("XDG_") || key == "XAUTHORITY"
-#  endif // !Q_OS_MACOS
+#    endif
+#  endif
 #endif // Q_OS_UNIX
 #ifdef __COVERAGESCANNER__
                 || key == "QT_TESTCOCOON_ACTIVE"
@@ -955,9 +1014,17 @@ static QProcessEnvironment testEnvironment()
         // Avoid interference from any qtlogging.ini files, e.g. in /etc/xdg/QtProject/:
         environment.insert("QT_LOGGING_RULES", "*.debug=true;qt.*=false");
 
-#if defined(Q_OS_UNIX)
+#if defined(Q_OS_UNIX) && (!defined(__QNX__) || __QNX__ < 800)
         // Avoid the warning from QCoreApplication
+        // (QNX 8.0+ throws during initialisation; see QTBUG-145975).
         environment.insert("LC_ALL", "en_US.UTF-8");
+#endif
+
+#if defined(Q_OS_MACOS)
+        // Work around system framework spamming logs with
+        // "+[IMKClient subclass]: chose IMKClient_Legacy"
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSSequoia)
+            environment.insert("CFLOG_FORCE_DISABLE_STDERR", "1");
 #endif
     }
     return environment;
@@ -1014,12 +1081,10 @@ TestProcessResult runTestProcess(const QString &test, const QStringList &argumen
     return { process.exitCode(), standardOutput, standardError };
 }
 
-enum class Throw { OnFail = 1 };
-
 /*
     Runs a single test and verifies the output against the expected results.
 */
-void runTest(const QString &test, const TestLoggers &requestedLoggers, Throw throwing = {})
+void runTest(const QString &test, const TestLoggers &requestedLoggers)
 {
     TestLoggers loggers;
     for (auto logger : requestedLoggers) {
@@ -1033,10 +1098,6 @@ void runTest(const QString &test, const TestLoggers &requestedLoggers, Throw thr
     QStringList arguments;
     for (auto logger : loggers)
         arguments += logger.arguments(test);
-    if (throwing == Throw::OnFail) // don't distinguish between throwonfail/throwonskip
-        arguments += {"-throwonfail", "-throwonskip"};
-    else
-        arguments += {"-nothrowonfail", "-nothrowonskip"};
 
     CAPTURE(test);
     CAPTURE(arguments);
@@ -1063,9 +1124,9 @@ void runTest(const QString &test, const TestLoggers &requestedLoggers, Throw thr
 /*
     Runs a single test and verifies the output against the expected result.
 */
-void runTest(const QString &test, const TestLogger &logger, Throw t = {})
+void runTest(const QString &test, const TestLogger &logger)
 {
-    runTest(test, TestLoggers{logger}, t);
+    runTest(test, TestLoggers{logger});
 }
 
 // ----------------------- Catch helpers -----------------------
@@ -1208,12 +1269,7 @@ SCENARIO("Test output of the loggers is as expected")
     GIVEN("The " << logger << " logger") {
         for (QString test : tests) {
             AND_GIVEN("The " << test << " subtest") {
-                WHEN("Throwing on failure or skip") {
-                    runTest(test, TestLogger(logger, StdoutOutput), Throw::OnFail);
-                }
-                WHEN("Returning on failure or skip") {
-                    runTest(test, TestLogger(logger, StdoutOutput));
-                }
+                runTest(test, TestLogger(logger, StdoutOutput));
             }
         }
     }

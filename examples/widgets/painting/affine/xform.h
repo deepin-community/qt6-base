@@ -27,10 +27,10 @@ public:
     Q_PROPERTY(qreal scale READ scale WRITE setScale)
     Q_PROPERTY(QString text READ text WRITE setText)
     Q_PROPERTY(QPixmap pixmap READ pixmap WRITE setPixmap)
-    Q_ENUMS(XFormType)
 
 public:
     enum XFormType { VectorType, PixmapType, TextType };
+    Q_ENUM(XFormType)
 
     XFormView(QWidget *parent);
     void paint(QPainter *) override;
@@ -39,7 +39,6 @@ public:
     void drawTextType(QPainter *painter);
     QSize sizeHint() const override { return QSize(500, 500); }
 
-    void mousePressEvent(QMouseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
     HoverPoints *hoverPoints() { return m_hoverPoints; }
 

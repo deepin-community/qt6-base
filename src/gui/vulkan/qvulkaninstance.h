@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QVULKANINSTANCE_H
 #define QVULKANINSTANCE_H
@@ -48,13 +49,14 @@ typedef int VkDebugReportObjectTypeEXT;
 #if __has_include(<vulkan/vulkan.h>) || defined(Q_QDOC)
 
 #include <QtCore/qbytearraylist.h>
-#include <QtCore/qdebug.h>
 #include <QtCore/qhashfunctions.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qversionnumber.h>
 
 QT_BEGIN_NAMESPACE
+
+class QDebug;
 
 class QVulkanInstancePrivate;
 class QPlatformVulkanInstance;
@@ -80,7 +82,7 @@ inline bool operator!=(const QVulkanLayer &lhs, const QVulkanLayer &rhs) noexcep
 
 inline size_t qHash(const QVulkanLayer &key, size_t seed = 0) noexcept
 {
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombine hash(seed);
     seed = hash(seed, key.name);
     seed = hash(seed, key.version);
     seed = hash(seed, key.specVersion);
@@ -103,7 +105,7 @@ inline bool operator!=(const QVulkanExtension &lhs, const QVulkanExtension &rhs)
 
 inline size_t qHash(const QVulkanExtension &key, size_t seed = 0) noexcept
 {
-    QtPrivate::QHashCombine hash;
+    QtPrivate::QHashCombine hash(seed);
     seed = hash(seed, key.name);
     seed = hash(seed, key.version);
     return seed;

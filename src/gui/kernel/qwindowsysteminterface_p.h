@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef QWINDOWSYSTEMINTERFACE_P_H
 #define QWINDOWSYSTEMINTERFACE_P_H
 
@@ -28,7 +29,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcQpaInputDevices);
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaInputDevices, Q_GUI_EXPORT)
 
 class QWindowSystemEventHandler;
 
@@ -101,7 +102,7 @@ public:
 
     class GeometryChangeEvent : public WindowSystemEvent {
     public:
-        GeometryChangeEvent(QWindow *window, const QRect &newGeometry);
+        GeometryChangeEvent(QWindow *window, QRect requestedGeometry, QRect newGeometry);
         QPointer<QWindow> window;
         QRect requestedGeometry;
         QRect newGeometry;
@@ -329,9 +330,8 @@ public:
 
     class ThemeChangeEvent : public WindowSystemEvent {
     public:
-        explicit ThemeChangeEvent(QWindow * w)
-            : WindowSystemEvent(ThemeChange), window(w) { }
-        QPointer<QWindow> window;
+        explicit ThemeChangeEvent()
+            : WindowSystemEvent(ThemeChange) { }
     };
 
     class ExposeEvent : public WindowSystemEvent {
@@ -365,14 +365,14 @@ public:
     public:
         // TODO take QPointingDevice* instead of types and IDs
         static void handleTabletEvent(QWindow *w, const QPointF &local, const QPointF &global,
-                                      int device, int pointerType, Qt::MouseButtons buttons, qreal pressure, int xTilt, int yTilt,
-                                      qreal tangentialPressure, qreal rotation, int z, qint64 uid,
+                                      int device, int pointerType, Qt::MouseButtons buttons, qreal pressure, qreal xTilt, qreal yTilt,
+                                      qreal tangentialPressure, qreal rotation, qreal z, qint64 uid,
                                       Qt::KeyboardModifiers modifiers = Qt::NoModifier);
         static void setPlatformSynthesizesMouse(bool v);
 
         TabletEvent(QWindow *w, ulong time, const QPointF &local, const QPointF &global,
-                    const QPointingDevice *device, Qt::MouseButtons b, qreal pressure, int xTilt, int yTilt, qreal tpressure,
-                    qreal rotation, int z, Qt::KeyboardModifiers mods)
+                    const QPointingDevice *device, Qt::MouseButtons b, qreal pressure, qreal xTilt, qreal yTilt, qreal tpressure,
+                    qreal rotation, qreal z, Qt::KeyboardModifiers mods)
             : PointerEvent(w, time, Tablet, mods, device),
               buttons(b), local(local), global(global),
               pressure(pressure), xTilt(xTilt), yTilt(yTilt), tangentialPressure(tpressure),
@@ -380,27 +380,35 @@ public:
         Qt::MouseButtons buttons;
         QPointF local;
         QPointF global;
-        qreal pressure;
-        int xTilt;
-        int yTilt;
-        qreal tangentialPressure;
-        qreal rotation;
-        int z;
+        qreal pressure = 0;
+        qreal xTilt = 0;
+        qreal yTilt = 0;
+        qreal tangentialPressure = 0;
+        qreal rotation = 0;
+        qreal z = 0;
         static bool platformSynthesizesMouse;
     };
 
-    class TabletEnterProximityEvent : public PointerEvent {
+    class TabletEnterProximityEvent : public TabletEvent {
     public:
-        // TODO store more info: position and whatever else we can get on most platforms
-        TabletEnterProximityEvent(ulong time, const QPointingDevice *device)
-            : PointerEvent(nullptr, time, TabletEnterProximity, Qt::NoModifier, device) { }
+        TabletEnterProximityEvent(QWindow *w, ulong time, const QPointF &local, const QPointF &global,
+                const QPointingDevice *device, Qt::MouseButtons b, qreal xTilt, qreal yTilt,
+                qreal tpressure, qreal rotation, qreal z, Qt::KeyboardModifiers mods)
+            : TabletEvent(w, time, local, global, device, b, 0, xTilt, yTilt, tpressure, rotation, z, mods)
+        {
+            type = TabletEnterProximity;
+        }
     };
 
-    class TabletLeaveProximityEvent : public PointerEvent {
+    class TabletLeaveProximityEvent : public TabletEvent {
     public:
-        // TODO store more info: position and whatever else we can get on most platforms
-        TabletLeaveProximityEvent(ulong time, const QPointingDevice *device)
-            : PointerEvent(nullptr, time, TabletLeaveProximity, Qt::NoModifier, device) { }
+        TabletLeaveProximityEvent(QWindow *w, ulong time, const QPointF &local, const QPointF &global,
+                const QPointingDevice *device, Qt::MouseButtons b, qreal xTilt, qreal yTilt,
+                qreal tpressure, qreal rotation, qreal z, Qt::KeyboardModifiers mods)
+            : TabletEvent(w, time, local, global, device, b, 0, xTilt, yTilt, tpressure, rotation, z, mods)
+        {
+            type = TabletLeaveProximity;
+        }
     };
 
     class PlatformPanelEvent : public WindowSystemEvent {

@@ -26,6 +26,8 @@
 #include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
+#include <QSemaphore>
+#include <QScopeGuard>
 #include <QScopedPointer>
 #if QT_CONFIG(process)
 # include <QProcess>
@@ -36,9 +38,11 @@
 #endif
 
 #include <functional>
+#include <thread>
 
 #include <math.h>
 
+using namespace std::chrono_literals;
 using namespace Qt::StringLiterals;
 
 class tst_QObject : public QObject
@@ -46,6 +50,7 @@ class tst_QObject : public QObject
     Q_OBJECT
 private slots:
     void disconnect();
+    void connect_signalToSignal();
     void connectSlotsByName();
     void connectSignalsToSignalsWithDefaultArguments();
     void receivers();
@@ -91,6 +96,7 @@ private slots:
     void dumpObjectTree();
     void connectToSender();
     void qobjectConstCast();
+    void qobjectCastFinal();
     void uniqConnection();
     void uniqConnectionPtr();
     void interfaceIid();
@@ -122,6 +128,11 @@ private slots:
     void connectManyArguments();
     void connectForwardDeclare();
     void connectNoDefaultConstructorArg();
+    void connectRegistersGadgetType();
+    void connectRegistersQEnumType();
+    void connectRegistersQObjectPointerType();
+    void connectRegistersQObjectConstPointerType();
+    void connectRegistersOtherType();
     void returnValue_data();
     void returnValue();
     void returnValue2_data();
@@ -155,6 +166,14 @@ private slots:
     void emitToDestroyedClass();
     void declarativeData();
     void asyncCallbackHelper();
+    void disconnectQueuedConnection_pendingEventsAreDelivered();
+    void timerWithNegativeInterval();
+    void emptyQueuedMetaCallEvent();
+
+    // Must stay last: on failure it detaches a deadlocked thread that keeps a
+    // signal/slot pool mutex held for the rest of the process, which could hang
+    // any later test whose QObject hashes to the same mutex slot.
+    void disconnectWarningDoesNotDeadlock();
 };
 
 struct QObjectCreatedOnShutdown
@@ -186,6 +205,9 @@ public:
     void emitSignal2() { emit signal2(); }
     void emitSignal3() { emit signal3(); }
     void emitSignal4() { emit signal4(); }
+    void emitSignal7() { emit signal7(7, u"foo"_s); }
+    void emitSignalInvoke1() { emit signalInvoke1(); }
+    void emitSignalSinvoke1() { emit signalSinvoke1(); }
 
 signals:
     void signal1();
@@ -195,6 +217,8 @@ signals:
     QT_MOC_COMPAT void signal5();
     void signal6(void);
     void signal7(int, const QString &);
+    void signalInvoke1();
+    void signalSinvoke1();
 
 public slots:
     void aPublicSlot() { aPublicSlotCalled++; }
@@ -223,12 +247,7 @@ class ReceiverObject : public QObject
     Q_OBJECT
 
 public:
-    ReceiverObject()
-        : sequence_slot1( 0 )
-        , sequence_slot2( 0 )
-        , sequence_slot3( 0 )
-        , sequence_slot4( 0 )
-    {}
+    ReceiverObject() { reset(); }
 
     void reset()
     {
@@ -236,20 +255,34 @@ public:
         sequence_slot3 = 0;
         sequence_slot2 = 0;
         sequence_slot1 = 0;
+        sequence_invoke1 = 0;
+        sequence_sinvoke1 = 0;
+        sequence_receiverSignal7_invokable = 0;
+
         count_slot1 = 0;
         count_slot2 = 0;
         count_slot3 = 0;
         count_slot4 = 0;
+        count_invoke1 = 0;
+        count_sinvoke1 = 0;
+        count_receiverSignal7_invokable = 0;
     }
 
     int sequence_slot1;
     int sequence_slot2;
     int sequence_slot3;
     int sequence_slot4;
+    int sequence_invoke1;
+    int sequence_sinvoke1;
+    int sequence_receiverSignal7_invokable;
+
     int count_slot1;
     int count_slot2;
     int count_slot3;
     int count_slot4;
+    int count_invoke1;
+    int count_sinvoke1;
+    int count_receiverSignal7_invokable;
 
     bool called(int slot)
     {
@@ -258,21 +291,39 @@ public:
         case 2: return sequence_slot2;
         case 3: return sequence_slot3;
         case 4: return sequence_slot4;
+        case 5: return sequence_invoke1;
+        case 6: return sequence_sinvoke1;
+        case 7: return sequence_receiverSignal7_invokable;
         default: return false;
         }
     }
 
     static int sequence;
 
+    Q_INVOKABLE void slotInvoke1() { sequence_invoke1 = ++sequence; ++count_invoke1; }
+    Q_SCRIPTABLE void slotSinvoke1() { sequence_sinvoke1 = ++sequence; ++count_sinvoke1; }
+
 public slots:
     void slot1() { sequence_slot1 = ++sequence; count_slot1++; }
     void slot2() { sequence_slot2 = ++sequence; count_slot2++; }
     void slot3() { sequence_slot3 = ++sequence; count_slot3++; }
     void slot4() { sequence_slot4 = ++sequence; count_slot4++; }
+    void slot7(int, const QString &)
+    {
+        sequence_receiverSignal7_invokable = ++sequence;
+        ++count_receiverSignal7_invokable;
+    }
 
+Q_SIGNALS:
+    // Q_INVOKABLE is no-op here, moc will register this as a signal
+    Q_INVOKABLE void receiverSignal7_invokable(int, const QString &);
 };
 
 int ReceiverObject::sequence = 0;
+
+QT_WARNING_PUSH
+// checked stack use and deemed it acceptable
+QT_WARNING_DISABLE_LARGE_STACK_FRAME
 
 static void playWithObjects()
 {
@@ -289,6 +340,8 @@ static void playWithObjects()
     }
 }
 
+QT_WARNING_POP
+
 void tst_QObject::disconnect()
 {
     SenderObject s;
@@ -301,15 +354,26 @@ void tst_QObject::disconnect()
     connect(&s, SIGNAL(signal3()), &r1, SLOT(slot3()));
     connect(&s, SIGNAL(signal4()), &r1, SLOT(slot4()));
 
+    static auto re = QRegularExpression(u"QObject::connect: the SLOT\\(\\) macro is "
+                                        "used with a non-slot function:.*"_s);
+    QTest::ignoreMessage(QtWarningMsg, re);
+    connect(&s, SIGNAL(signalInvoke1()), &r1, SLOT(slotInvoke1()));
+    QTest::ignoreMessage(QtWarningMsg, re);
+    connect(&s, SIGNAL(signalSinvoke1()), &r1, SLOT(slotSinvoke1()));
+
     s.emitSignal1();
     s.emitSignal2();
     s.emitSignal3();
     s.emitSignal4();
+    s.emitSignalInvoke1();
+    s.emitSignalSinvoke1();
 
     QVERIFY(r1.called(1));
     QVERIFY(r1.called(2));
     QVERIFY(r1.called(3));
     QVERIFY(r1.called(4));
+    QVERIFY(r1.called(5));
+    QVERIFY(r1.called(6));
     r1.reset();
 
     // usual disconnect with all parameters given
@@ -323,6 +387,19 @@ void tst_QObject::disconnect()
     QVERIFY(ret);
     ret = QObject::disconnect(&s, SIGNAL(signal1()), &r1, SLOT(slot1()));
     QVERIFY(!ret);
+
+    static auto re2 = QRegularExpression(u"QObject::disconnect: the SLOT\\(\\) macro is "
+                                         "used with a non-slot function:.*"_s);
+    QTest::ignoreMessage(QtWarningMsg, re2);
+    QObject::disconnect(&s, SIGNAL(signalInvoke1()), &r1, SLOT(slotInvoke1()));
+    QTest::ignoreMessage(QtWarningMsg, re2);
+    QObject::disconnect(&s, SIGNAL(signalSinvoke1()), &r1, SLOT(slotSinvoke1()));
+
+    s.emitSignalInvoke1();
+    s.emitSignalSinvoke1();
+
+    QVERIFY(!r1.called(5));
+    QVERIFY(!r1.called(6));
 
     // disconnect all signals from s from all slots from r1
     QObject::disconnect(&s, 0, &r1, 0);
@@ -385,6 +462,67 @@ void tst_QObject::disconnect()
     QVERIFY(!r2.called(2));
     QVERIFY(!r1.called(2));
     QVERIFY(!r2.called(2));
+
+    // breaking a connection to QObject::destroyed can be dangerous if Qt
+    // or other parts of the application depend on that signal to clean up
+    // data structures. We want to warn if this happens as a side effect of
+    // a wildcard disconnect call.
+    QObject::connect(&s, &QObject::destroyed, &r1, &ReceiverObject::slot1);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("wildcard call disconnects from destroyed"
+                                        " signal of SenderObject::"));
+    QVERIFY(s.disconnect());
+}
+
+void tst_QObject::connect_signalToSignal()
+{
+    SenderObject sender;
+    ReceiverObject receiver;
+
+    connect(&sender, SIGNAL(signal1()), &receiver, SLOT(slot1()));
+    connect(&sender, SIGNAL(signal2()), &receiver, SLOT(slot2()));
+
+    connect(&sender, SIGNAL(signal1()), &sender, SIGNAL(signal2()));
+    sender.emitSignal1();
+
+    QVERIFY(receiver.called(1));
+    QVERIFY(receiver.called(2));
+
+
+    bool res = QObject::disconnect(&sender, SIGNAL(signal1()), &sender, SIGNAL(signal2()));
+    QVERIFY(res);
+
+    receiver.reset();
+    sender.emitSignal1();
+    QVERIFY(receiver.called(1));
+    QVERIFY(!receiver.called(2));
+
+    receiver.reset();
+    // This is to update the count/sequence of receiverSignal7_invokable
+    connect(&receiver, SIGNAL(receiverSignal7_invokable(int,const QString&)),
+            &receiver, SLOT(slot7(int,const QString&)));
+
+    connect(&sender, SIGNAL(signal7(int,const QString&)),
+            &receiver, SIGNAL(receiverSignal7_invokable(int,const QString&)));
+    sender.emitSignal7();
+    QVERIFY(receiver.called(7));
+
+    res = QObject::disconnect(&sender, SIGNAL(signal7(int,const QString&)),
+                              &receiver, SIGNAL(receiverSignal7_invokable(int,const QString&)));
+    QVERIFY(res);
+    receiver.reset();
+    sender.emitSignal7();
+    QVERIFY(!receiver.called(7));
+
+    receiver.reset();
+    static const auto re = QRegularExpression("QObject::connect: No such slot "
+                           "ReceiverObject::receiverSignal7_invokable\\(int,const QString&\\).*");
+    QTest::ignoreMessage(QtWarningMsg, re);
+    // Q_INVOKABLE in receiverSignal7_invokable() declaration is no-op, moc
+    // registers this as a signal, consequently it only works with the SIGNAL()
+    // macro in connect() calls
+    auto connection = connect(&sender, SIGNAL(signal7(int,const QString&)),
+                              &receiver, SLOT(receiverSignal7_invokable(int,const QString&)));
+    QVERIFY(!connection);
 }
 
 class AutoConnectSender : public QObject
@@ -1759,7 +1897,15 @@ void tst_QObject::thread()
         // thread in which the object was created
         QCOMPARE(object->thread(), (QThread *)&thr);
         // children inherit their parent's thread
+        QCOMPARE(child->parent(), object);
         QCOMPARE(child->thread(), object->thread());
+
+        // thread affinity for a parent in a different thread should
+        // cause orphaning the object and printing a warning
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("QObject: Cannot create children for a parent that is in a different thread.*"));
+        QObject localObject(object);
+        QCOMPARE(localObject.parent(), nullptr);
+        QCOMPARE(localObject.thread(), QThread::currentThread());
 
         thr.cond.wakeOne();
         thr.mutex.unlock();
@@ -1775,6 +1921,14 @@ void tst_QObject::thread()
     // automatically reset to no thread
     QCOMPARE(object->thread(), (QThread *)0);
     QCOMPARE(child->thread(), object->thread());
+
+    {
+        // and we *can* create a child for a threadless parent, which will
+        // also be threadless
+        QObject localObject(object);
+        QCOMPARE(localObject.parent(), object);
+        QCOMPARE(localObject.thread(), nullptr);
+    }
 
     delete object;
 }
@@ -2424,6 +2578,13 @@ class BlehObject : public QObject, public Foo::Bleh
     Q_INTERFACES(Foo::Bleh)
 public:
     int rtti() const override { return 43; }
+};
+
+class FinalObject final: public FooObject
+{
+    Q_OBJECT
+public:
+    int rtti() const override { return 44; }
 };
 
 void tst_QObject::declareInterface()
@@ -3079,7 +3240,10 @@ void tst_QObject::dynamicProperties()
 void tst_QObject::recursiveSignalEmission()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
+#elif defined(Q_OS_HARMONY)
+    // TODO: OHOS: Skip tests depending on external executables
+    QSKIP("Currently, OHOS platform cannot run test depending on external executables");
 #else
     QProcess proc;
     // signalbug helper app should always be next to this test binary
@@ -3150,7 +3314,7 @@ class EventSpy : public QObject
     Q_OBJECT
 
 public:
-    typedef QList<QPair<QObject *, QEvent::Type> > EventList;
+    using EventList = QList<std::pair<QObject *, QEvent::Type>>;
 
     EventSpy(QObject *parent = nullptr)
         : QObject(parent)
@@ -3169,7 +3333,7 @@ public:
 
     bool eventFilter(QObject *object, QEvent *event) override
     {
-        events.append(qMakePair(object, event->type()));
+        events.append({object, event->type()});
         thisCounter = ++s_eventSpyCounter;
         return false;
     }
@@ -3193,9 +3357,7 @@ void tst_QObject::childEvents()
 
         QCoreApplication::processEvents();
 
-        expected =
-            EventSpy::EventList()
-            << qMakePair(&object, QEvent::Type(QEvent::User + 1));
+        expected = {{&object, QEvent::Type(QEvent::User + 1)}};
         QCOMPARE(spy.eventList(), expected);
     }
 
@@ -3213,19 +3375,15 @@ void tst_QObject::childEvents()
 
         QCoreApplication::postEvent(&object, new QEvent(QEvent::Type(QEvent::User + 2)));
 
-        expected =
-            EventSpy::EventList()
-            << qMakePair(&object, QEvent::ChildAdded)
-            << qMakePair(&object, QEvent::ChildAdded);
+        expected = { {&object, QEvent::ChildAdded},
+                     {&object, QEvent::ChildAdded} };
         QCOMPARE(spy.eventList(), expected);
         spy.clear();
 
         QCoreApplication::processEvents();
 
-        expected =
-            EventSpy::EventList()
-            << qMakePair(&object, QEvent::Type(QEvent::User + 1))
-            << qMakePair(&object, QEvent::Type(QEvent::User + 2));
+        expected = { {&object, QEvent::Type(QEvent::User + 1)},
+                     {&object, QEvent::Type(QEvent::User + 2)} };
         QCOMPARE(spy.eventList(), expected);
     }
 
@@ -3245,20 +3403,16 @@ void tst_QObject::childEvents()
 
         QCoreApplication::postEvent(&object, new QEvent(QEvent::Type(QEvent::User + 2)));
 
-        expected =
-            EventSpy::EventList()
-            << qMakePair(&object, QEvent::ChildAdded)
-            << qMakePair(&object, QEvent::ChildAdded)
-            << qMakePair(&object, QEvent::ChildRemoved);
+        expected = { {&object, QEvent::ChildAdded},
+                     {&object, QEvent::ChildAdded},
+                     {&object, QEvent::ChildRemoved} };
         QCOMPARE(spy.eventList(), expected);
         spy.clear();
 
         QCoreApplication::processEvents();
 
-        expected =
-            EventSpy::EventList()
-            << qMakePair(&object, QEvent::Type(QEvent::User + 1))
-            << qMakePair(&object, QEvent::Type(QEvent::User + 2));
+        expected ={ {&object, QEvent::Type(QEvent::User + 1)},
+                    {&object, QEvent::Type(QEvent::User + 2)} };
         QCOMPARE(spy.eventList(), expected);
     }
 }
@@ -3289,10 +3443,8 @@ void tst_QObject::parentEvents()
 
         QCoreApplication::processEvents();
 
-        expected =
-            EventSpy::EventList()
-            << qMakePair(&child, QEvent::Type(QEvent::User + 1))
-            << qMakePair(&child, QEvent::Type(QEvent::User + 2));
+        expected = { {&child, QEvent::Type(QEvent::User + 1)},
+                     {&child, QEvent::Type(QEvent::User + 2)} };
         QCOMPARE(spy.eventList(), expected);
     }
 
@@ -3313,21 +3465,17 @@ void tst_QObject::parentEvents()
 
         QCoreApplication::postEvent(&child, new QEvent(QEvent::Type(QEvent::User + 2)));
 
-        expected =
-            EventSpy::EventList()
-            << qMakePair(&child, QEvent::ParentAboutToChange)
-            << qMakePair(&child, QEvent::ParentChange)
-            << qMakePair(&child, QEvent::ParentAboutToChange)
-            << qMakePair(&child, QEvent::ParentChange);
+        expected = { {&child, QEvent::ParentAboutToChange},
+                     {&child, QEvent::ParentChange},
+                     {&child, QEvent::ParentAboutToChange},
+                     {&child, QEvent::ParentChange} };
         QCOMPARE(spy.eventList(), expected);
         spy.clear();
 
         QCoreApplication::processEvents();
 
-        expected =
-            EventSpy::EventList()
-            << qMakePair(&child, QEvent::Type(QEvent::User + 1))
-            << qMakePair(&child, QEvent::Type(QEvent::User + 2));
+        expected = { {&child, QEvent::Type(QEvent::User + 1)},
+                     {&child, QEvent::Type(QEvent::User + 2)} };
         QCOMPARE(spy.eventList(), expected);
     }
 #else
@@ -3346,9 +3494,7 @@ void tst_QObject::installEventFilter()
 
     // nothing special, should just work
     QCoreApplication::sendEvent(&object, &event);
-    expected =
-        EventSpy::EventList()
-        << qMakePair(&object, QEvent::User);
+    expected = { {&object, QEvent::User} };
     QCOMPARE(spy.eventList(), expected);
     spy.clear();
 
@@ -3361,9 +3507,7 @@ void tst_QObject::installEventFilter()
     // move it back, and the filter works again
     spy.moveToThread(object.thread());
     QCoreApplication::sendEvent(&object, &event);
-    expected =
-        EventSpy::EventList()
-        << qMakePair(&object, QEvent::User);
+    expected = { {&object, QEvent::User} };
     QCOMPARE(spy.eventList(), expected);
     spy.clear();
 
@@ -3688,7 +3832,27 @@ void tst_QObject::qobjectConstCast()
     const QObject *cptr = &obj;
 
     QVERIFY(qobject_cast<FooObject *>(ptr));
+    QVERIFY(qobject_cast<const FooObject *>(ptr));
     QVERIFY(qobject_cast<const FooObject *>(cptr));
+}
+
+void tst_QObject::qobjectCastFinal()
+{
+    FooObject foo;
+    QObject *ptr = &foo;
+    const QObject *cptr = &foo;
+
+    QCOMPARE(qobject_cast<FinalObject *>(ptr), nullptr);
+    QCOMPARE(qobject_cast<const FinalObject *>(ptr), nullptr);
+    QCOMPARE(qobject_cast<const FinalObject *>(cptr), nullptr);
+
+    FinalObject final;
+    ptr = &final;
+    cptr = &final;
+
+    QCOMPARE(qobject_cast<FinalObject *>(ptr), &final);
+    QCOMPARE(qobject_cast<const FinalObject *>(ptr), &final);
+    QCOMPARE(qobject_cast<const FinalObject *>(cptr), &final);
 }
 
 void tst_QObject::uniqConnection()
@@ -4738,18 +4902,18 @@ void tst_QObject::pointerConnect()
     QVERIFY(!QObject::disconnect(con));
 
     //connect a slot to a signal (== error)
-    QTest::ignoreMessage(QtWarningMsg, "QObject::connect: signal not found in ReceiverObject");
+    QTest::ignoreMessage(QtWarningMsg, "QObject::connect(ReceiverObject, SenderObject): signal not found");
     con = connect(&r1, &ReceiverObject::slot4 , &s, &SenderObject::signal4);
     QVERIFY(!con);
     QVERIFY(!QObject::disconnect(con));
 
     //connect an arbitrary PMF to a slot
-    QTest::ignoreMessage(QtWarningMsg, "QObject::connect: signal not found in ReceiverObject");
+    QTest::ignoreMessage(QtWarningMsg, "QObject::connect(ReceiverObject, ReceiverObject): signal not found");
     con = connect(&r1, &ReceiverObject::reset, &r1, &ReceiverObject::slot1);
     QVERIFY(!con);
     QVERIFY(!QObject::disconnect(con));
 
-    QTest::ignoreMessage(QtWarningMsg, "QObject::connect: signal not found in ReceiverObject");
+    QTest::ignoreMessage(QtWarningMsg, "QObject::connect(ReceiverObject, ReceiverObject): signal not found");
     con = connect(&r1, &ReceiverObject::reset, &r1, [](){});
     QVERIFY(!con);
     QVERIFY(!QObject::disconnect(con));
@@ -5694,6 +5858,96 @@ void tst_QObject::connectNoDefaultConstructorArg()
     NoDefaultContructorArguments ob;
     // it should compile
     QVERIFY(connect(&ob, &NoDefaultContructorArguments::mySignal, &ob, &NoDefaultContructorArguments::mySlot, Qt::QueuedConnection));
+}
+
+struct GadgetForMetaTypeRegistration
+{
+    Q_GADGET
+};
+class OtherClassForMetaTypeRegistration : public QObject
+{
+    Q_OBJECT
+};
+class ClassForMetaTypeRegistration : public QObject
+{
+    Q_OBJECT
+public:
+    struct OtherType {};    // plain type
+    enum MyEnum {};
+    Q_ENUM(MyEnum)
+signals:
+    void signalOtherType(OtherType);
+    void signalGadgetType(GadgetForMetaTypeRegistration);
+    void signalQEnumType(MyEnum);
+    void signalQObjectPointerType(ClassForMetaTypeRegistration *);
+    void signalQObjectConstPointerType(const OtherClassForMetaTypeRegistration *);
+public slots:
+    void slot() { receivedSignalIdx = senderSignalIndex(); QTestEventLoop::instance().exitLoop(); }
+
+public:
+    int receivedSignalIdx = -1;
+
+    template <typename T> static q20::type_identity<T>
+    extractParameterFromSignal(void (ClassForMetaTypeRegistration::*)(T));
+    template <auto Signal> using ParameterFromSignal =
+        typename decltype(extractParameterFromSignal(Signal))::type;
+};
+
+template <auto Signal> static void connectRegistersType()
+{
+    static bool alreadyRunOnce = false;
+    if (alreadyRunOnce)
+        QSKIP("Test can only be run once (type gets registered)");
+
+    // extract the signal parameter type
+    using ParameterType = ClassForMetaTypeRegistration::ParameterFromSignal<Signal>;
+
+    // verify it's not registered
+    constexpr QMetaType mt = QMetaType::fromType<ParameterType>();
+    QVERIFY(!mt.isRegistered());
+    QVERIFY(!QMetaType::fromName(mt.name()).isValid());
+
+    // connect; this should register
+    ClassForMetaTypeRegistration obj;
+    QMetaObject::Connection conn =
+            QObject::connect(&obj, Signal, &obj, &ClassForMetaTypeRegistration::slot,
+                             Qt::QueuedConnection);
+    alreadyRunOnce = true;
+    QVERIFY(conn);
+    QVERIFY(QMetaType::fromName(mt.name()).isValid());
+
+    emit (obj.*Signal)(ParameterType{});
+    QTestEventLoop::instance().enterLoop(1);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+
+    // sanity check that the signal was emitted properly and the slot was run
+    QMetaMethod mm = QMetaMethod::fromSignal(Signal);
+    QCOMPARE(obj.receivedSignalIdx, mm.methodIndex());
+}
+
+void tst_QObject::connectRegistersGadgetType()
+{
+    connectRegistersType<&ClassForMetaTypeRegistration::signalGadgetType>();
+}
+
+void tst_QObject::connectRegistersQEnumType()
+{
+    connectRegistersType<&ClassForMetaTypeRegistration::signalQEnumType>();
+}
+
+void tst_QObject::connectRegistersQObjectPointerType()
+{
+    connectRegistersType<&ClassForMetaTypeRegistration::signalQObjectPointerType>();
+}
+
+void tst_QObject::connectRegistersQObjectConstPointerType()
+{
+    connectRegistersType<&ClassForMetaTypeRegistration::signalQObjectConstPointerType>();
+}
+
+void tst_QObject::connectRegistersOtherType()
+{
+    connectRegistersType<&ClassForMetaTypeRegistration::signalOtherType>();
 }
 
 struct MoveOnly
@@ -7790,9 +8044,17 @@ void tst_QObject::nullReceiver()
 {
     QObject o;
     QObject *nullObj = nullptr; // Passing nullptr directly doesn't compile with gcc 4.8
+    auto ignoreMsg = [] {
+        QTest::ignoreMessage(QtWarningMsg, "QObject::connect(QObject, Unknown): invalid nullptr parameter");
+    };
+    ignoreMsg();
     QVERIFY(!connect(&o, &QObject::destroyed, nullObj, &QObject::deleteLater));
+    ignoreMsg();
     QVERIFY(!connect(&o, &QObject::destroyed, nullObj, [] {}));
+    ignoreMsg();
     QVERIFY(!connect(&o, &QObject::destroyed, nullObj, Functor_noexcept()));
+    QTest::ignoreMessage(QtWarningMsg,
+        "QObject::connect: Cannot connect QObject::destroyed() to (nullptr)::deleteLater()");
     QVERIFY(!connect(&o, SIGNAL(destroyed()), nullObj, SLOT(deleteLater())));
 }
 
@@ -8602,6 +8864,9 @@ QT_END_NAMESPACE
 void tst_QObject::emitToDestroyedClass()
 {
     using namespace EmitToDestroyedClass;
+    assertionCallCount = 0;
+    wouldHaveAssertedCount = 0;
+
     std::unique_ptr ptr = std::make_unique<Derived>();
     QObject::connect(ptr.get(), &Base::theSignal, ptr.get(), &Derived::doNothing);
     QCOMPARE(assertionCallCount, 0);
@@ -8645,25 +8910,25 @@ signals:
     correctly guarded. QTBUG-105286
 */
 namespace QtDeclarative {
-static QAbstractDeclarativeData *theData;
+static std::unique_ptr<QAbstractDeclarativeData> theData;
 
 static void destroyed(QAbstractDeclarativeData *data, QObject *)
 {
-    QCOMPARE(data, theData);
+    QCOMPARE(data, theData.get());
 }
 static void signalEmitted(QAbstractDeclarativeData *data, QObject *, int, void **)
 {
-    QCOMPARE(data, theData);
+    QCOMPARE(data, theData.get());
 }
 // we can't use QCOMPARE in the next two functions, as they don't return void
 static int receivers(QAbstractDeclarativeData *data, const QObject *, int)
 {
-    QTest::qCompare(data, theData, "data", "theData", __FILE__, __LINE__);
+    QTest::qCompare(data, theData.get(), "data", "theData", __FILE__, __LINE__);
     return 0;
 }
 static bool isSignalConnected(QAbstractDeclarativeData *data, const QObject *, int)
 {
-    QTest::qCompare(data, theData, "data", "theData", __FILE__, __LINE__);
+    QTest::qCompare(data, theData.get(), "data", "theData", __FILE__, __LINE__);
     return true;
 }
 
@@ -8704,7 +8969,8 @@ void tst_QObject::declarativeData()
 
     QtDeclarative::Object p;
     QObjectPrivate *priv = QObjectPrivate::get(&p);
-    priv->declarativeData = QtDeclarative::theData = new QAbstractDeclarativeData;
+    priv->declarativeData = new QAbstractDeclarativeData;
+    QtDeclarative::theData.reset(priv->declarativeData);
 
     connect(&p, &QtDeclarative::Object::theSignal, &p, []{
     });
@@ -8947,6 +9213,92 @@ void tst_QObject::asyncCallbackHelper()
         });
         QCOMPARE(called, 3);
     }
+}
+
+void tst_QObject::disconnectQueuedConnection_pendingEventsAreDelivered()
+{
+    SenderObject sender;
+    ReceiverObject receiver;
+
+    receiver.count_slot1 = 0;
+    QObject::connect(&sender, &SenderObject::signal1, &receiver, &ReceiverObject::slot1,
+                     Qt::QueuedConnection);
+    sender.emitSignal1();
+    QCOMPARE(receiver.count_slot1, 0);
+
+    QObject::disconnect(&sender, &SenderObject::signal1, &receiver, &ReceiverObject::slot1);
+    QCOMPARE(receiver.count_slot1, 0);
+    QTRY_COMPARE(receiver.count_slot1, 1);
+}
+
+void tst_QObject::timerWithNegativeInterval()
+{
+    QObject obj;
+    QTest::ignoreMessage(QtWarningMsg,
+                         "QObject::startTimer: negative intervals aren't allowed; the "
+                         "interval will be set to 1ms.");
+    int id = obj.startTimer(-100ms);
+    QCOMPARE_NE(Qt::TimerId{id}, Qt::TimerId::Invalid);
+}
+
+void tst_QObject::emptyQueuedMetaCallEvent()
+{
+#ifdef QT_BUILD_INTERNAL
+    // don't crash
+    QQueuedMetaCallEvent event(0, nullptr, 0, 0, nullptr, nullptr);
+#else
+    QSKIP("Needs QT_BUILD_INTERNAL");
+#endif
+}
+
+void tst_QObject::disconnectWarningDoesNotDeadlock()
+{
+    // QTBUG-145216: a wildcard disconnect of an object connected to destroyed()
+    // warns; if qWarning() emits that while holding the signal/slot lock, a
+    // message handler that re-enters connect() can deadlock on the same lock.
+    // Run it on a worker thread and fail (rather than hang) if it does not
+    // finish in time.
+
+    // s_target is a function-local static, so the message handler below stays
+    // captureless and converts to a plain QtMessageHandler function pointer.
+    static QObject *s_target = nullptr;
+    const auto reentrantHandler = +[](QtMsgType, const QMessageLogContext &,
+                                      const QString &msg) {
+        if (s_target && msg.contains("wildcard call disconnects"_L1)) {
+            // Re-enter the connect machinery on the object currently being
+            // disconnected: this needs the same signal/slot mutex disconnect()
+            // is holding in the buggy code, deadlocking the thread.
+            QObject::connect(s_target, &QObject::destroyed, []{});
+        }
+    };
+
+    using namespace std::chrono_literals;
+
+    QtMessageHandler oldHandler = qInstallMessageHandler(reentrantHandler);
+    const auto handlerGuard = qScopeGuard([oldHandler] { qInstallMessageHandler(oldHandler); });
+
+    QSemaphore finished;
+    std::thread worker([&finished] {
+        QObject sender;
+        s_target = &sender;
+        // Connect destroyed() so the wildcard disconnect takes the warning path.
+        QObject::connect(&sender, &QObject::destroyed, []{});
+        sender.disconnect();
+        s_target = nullptr;
+        finished.release();
+    });
+
+    const bool completed = finished.tryAcquire(1, 30s);
+    if (completed) {
+        worker.join();
+    } else {
+        // The worker is wedged inside the deadlock; abandon it so this test can
+        // report a failure instead of hanging the process.
+        worker.detach();
+    }
+
+    QVERIFY2(completed, "QObject::disconnect() deadlocked while emitting the "
+                        "destroyed() wildcard-disconnect warning (QTBUG-145216)");
 }
 
 QTEST_MAIN(tst_QObject)

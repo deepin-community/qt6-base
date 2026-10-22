@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDATABUFFER_P_H
 #define QDATABUFFER_P_H
@@ -16,7 +17,10 @@
 //
 
 #include <QtGui/private/qtguiglobal_p.h>
+
+#include "QtCore/qalloc.h"
 #include "QtCore/qbytearray.h"
+#include "QtCore/qtypeinfo.h"
 
 #include <stdlib.h>
 
@@ -32,7 +36,7 @@ public:
         if (res) {
             QT_WARNING_PUSH
             QT_WARNING_DISABLE_GCC("-Walloc-size-larger-than=")
-            buffer = (Type*) malloc(capacity * sizeof(Type));
+            buffer = (Type*) QtPrivate::fittedMalloc(0, &capacity, sizeof(Type));
             QT_WARNING_POP
             Q_CHECK_PTR(buffer);
         } else {
@@ -43,8 +47,9 @@ public:
 
     ~QDataBuffer()
     {
+        static_assert(!QTypeInfo<Type>::isComplex);
         if (buffer)
-            free(buffer);
+            QtPrivate::sizedFree(buffer, capacity, sizeof(Type));
     }
 
     inline void reset() { siz = 0; }
@@ -83,20 +88,23 @@ public:
                 capacity = 1;
             while (capacity < size)
                 capacity *= 2;
-            buffer = (Type*) realloc(static_cast<void*>(buffer), capacity * sizeof(Type));
-            Q_CHECK_PTR(buffer);
+            auto ptr = QtPrivate::fittedRealloc(static_cast<void*>(buffer), 0, &capacity, sizeof(Type));
+            Q_CHECK_PTR(ptr);
+            buffer = static_cast<Type*>(ptr);
         }
     }
 
     void shrink(qsizetype size) {
         Q_ASSERT(capacity >= size);
-        capacity = size;
         if (size) {
-            buffer = (Type*) realloc(static_cast<void*>(buffer), capacity * sizeof(Type));
-            Q_CHECK_PTR(buffer);
+            capacity = size;
+            const auto ptr = QtPrivate::fittedRealloc(static_cast<void*>(buffer), 0, &capacity, sizeof(Type));
+            Q_CHECK_PTR(ptr);
+            buffer = static_cast<Type*>(ptr);
             siz = std::min(siz, size);
         } else {
-            free(buffer);
+            QtPrivate::sizedFree(buffer, capacity, sizeof(Type));
+            capacity = size;
             buffer = nullptr;
             siz = 0;
         }

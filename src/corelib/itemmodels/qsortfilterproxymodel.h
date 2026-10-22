@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSORTFILTERPROXYMODEL_H
 #define QSORTFILTERPROXYMODEL_H
@@ -101,6 +102,21 @@ public:
     void setAutoAcceptChildRows(bool accept);
     QBindable<bool> bindableAutoAcceptChildRows();
 
+    enum class Direction {
+        Rows        = 0x01,
+        Columns     = 0x02,
+        Both        = Rows | Columns,
+    };
+    Q_DECLARE_FLAGS(Directions, Direction)
+
+    enum class DataChangeRelevanceFlag {
+        NotRelevant = 0x00,
+        RelevantForFiltering = 0x01,
+        RelevantForSorting = 0x02,
+        RelevantForFilteringAndSorting = RelevantForFiltering | RelevantForSorting,
+    };
+    Q_DECLARE_FLAGS(DataChangeRelevanceFlags, DataChangeRelevanceFlag)
+
 public Q_SLOTS:
     void setFilterRegularExpression(const QString &pattern);
     void setFilterRegularExpression(const QRegularExpression &regularExpression);
@@ -113,9 +129,26 @@ protected:
     virtual bool filterAcceptsColumn(int source_column, const QModelIndex &source_parent) const;
     virtual bool lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const;
 
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    Q_INVOKABLE DataChangeRelevanceFlags dataChangeRelevanceFlags(const QModelIndex &sourceTopLeft,
+                                                          const QModelIndex &sourceBottomRight,
+                                                          const QList<int> &roles) const;
+#else
+    virtual DataChangeRelevanceFlags dataChangeRelevanceFlags(const QModelIndex &sourceTopLeft,
+                                                      const QModelIndex &sourceBottomRight,
+                                                      const QList<int> &roles) const;
+#endif
+
+    void beginFilterChange();
+    void endFilterChange(Directions directions = Direction::Both);
+#if QT_DEPRECATED_SINCE(6, 13)
+    QT_DEPRECATED_VERSION_X_6_13("Use begin/endFilterChange() instead")
     void invalidateFilter();
+    QT_DEPRECATED_VERSION_X_6_13("Use begin/endFilterChange(QSortFilterProxyModel::Direction::Rows) instead")
     void invalidateRowsFilter();
+    QT_DEPRECATED_VERSION_X_6_13("Use begin/endFilterChange(QSortFilterProxyModel::Direction::Columns) instead")
     void invalidateColumnsFilter();
+#endif
 
 public:
     using QObject::parent;
@@ -173,6 +206,9 @@ private:
     Q_DECLARE_PRIVATE(QSortFilterProxyModel)
     Q_DISABLE_COPY(QSortFilterProxyModel)
 };
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(QSortFilterProxyModel::Directions)
+Q_DECLARE_OPERATORS_FOR_FLAGS(QSortFilterProxyModel::DataChangeRelevanceFlags)
 
 QT_END_NAMESPACE
 

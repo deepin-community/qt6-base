@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSIMPLEDRAG_P_H
 #define QSIMPLEDRAG_P_H
@@ -20,6 +21,7 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
+#include <QtGui/qdrag.h>
 #include <QtGui/QWindow>
 
 QT_REQUIRE_CONFIG(draganddrop);
@@ -86,7 +88,8 @@ private:
     QEventLoop *m_eventLoop = nullptr;
     Qt::DropAction m_executed_drop_action = Qt::IgnoreAction;
     bool m_can_drop = false;
-    QDrag *m_drag = nullptr;
+    bool m_dragEndRequested = false;
+    QPointer<QDrag> m_drag;
     QShapedPixmapWindow *m_drag_icon_window = nullptr;
     bool m_useCompositing = true;
     QScreen *m_screen = nullptr;

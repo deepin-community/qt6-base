@@ -6,6 +6,7 @@
 #####################################################################
 
 qt_internal_add_module(Concurrent
+    NO_PRIVATE_MODULE
     EXCEPTIONS
     SOURCES
         qtaskbuilder.h
@@ -26,15 +27,13 @@ qt_internal_add_module(Concurrent
         qtconcurrentthreadengine.cpp qtconcurrentthreadengine.h
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
-        QT_NO_FOREACH
+        QT_NO_URL_CAST_FROM_STRING
         QT_NO_USING_NAMESPACE
         QT_USE_NODISCARD_FILE_OPEN
     LIBRARIES
         Qt::CorePrivate
     PUBLIC_LIBRARIES
         Qt::Core
-    PRIVATE_MODULE_INTERFACE
-        Qt::CorePrivate
     PRECOMPILED_HEADER
         "../corelib/global/qt_pch.h"
 )

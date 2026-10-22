@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trivial-impl-only
 
 #ifndef QLOCALE_H
 #define QLOCALE_H
@@ -386,6 +387,10 @@ public:
         Kangri = 342,
         Venetian = 343,
         Kuvi = 344,
+        KaraKalpak = 345,
+        SwampyCree = 346,
+        Ladin = 347,
+        Shan = 348,
 
         Afan = Oromo,
         Bengali = Bangla,
@@ -407,7 +412,7 @@ public:
         Uigur = Uyghur,
         Walamo = Wolaytta,
 
-        LastLanguage = Kuvi
+        LastLanguage = Shan
     };
 
     enum Script : ushort {
@@ -989,6 +994,20 @@ public:
     QString toString(ushort i) const { return toString(qulonglong(i)); }
     QString toString(int i) const { return toString(qlonglong(i)); }
     QString toString(uint i) const { return toString(qulonglong(i)); }
+    QString toString(qlonglong number, int fieldWidth, char32_t fillChar) const;
+    QString toString(qulonglong number, int fieldWidth, char32_t fillChar) const;
+    QString toString(int number, int fieldWidth, char32_t fillChar) const
+    { return toString(qlonglong(number), fieldWidth, fillChar); }
+    QString toString(uint number, int fieldWidth, char32_t fillChar) const
+    { return toString(qulonglong(number), fieldWidth, fillChar); }
+    QString toString(long number, int fieldWidth, char32_t fillChar) const
+    { return toString(qlonglong(number), fieldWidth, fillChar); }
+    QString toString(ulong(number), int fieldWidth, char32_t fillChar) const
+    { return toString(qulonglong(number), fieldWidth, fillChar); }
+    QString toString(short number, int fieldWidth, char32_t fillChar) const
+    { return toString(qlonglong(number), fieldWidth, fillChar); }
+    QString toString(ushort number, int fieldWidth, char32_t fillChar) const
+    { return toString(qulonglong(number), fieldWidth, fillChar); }
     QString toString(double f, char format = 'g', int precision = 6) const;
     QString toString(float f, char format = 'g', int precision = 6) const
     { return toString(double(f), format, precision); }
@@ -1004,6 +1023,7 @@ public:
     QString toString(QDate date, FormatType format = LongFormat) const;
     QString toString(QTime time, FormatType format = LongFormat) const;
     QString toString(const QDateTime &dateTime, FormatType format = LongFormat) const;
+
     /* We can't pass a default for QCalendar (its declaration mentions
      * QLocale::FormatType, so it has to #include this header, which thus can't
      * #include its, so we can't instantiate QCalendar() as default). This
@@ -1144,7 +1164,7 @@ public:
     static QString scriptToString(Script script);
     static void setDefault(const QLocale &locale);
 
-    static QLocale c() { return QLocale(C); }
+    static QLocale c() noexcept;
     static QLocale system();
 
     static QList<QLocale> matchingLocales(QLocale::Language language, QLocale::Script script,
@@ -1170,6 +1190,7 @@ private:
     bool equals(const QLocale &other) const noexcept;
     friend class QLocalePrivate;
     friend class QSystemLocale;
+    friend class QTimeZonePrivate;
     friend class QCalendarBackend;
     friend class QRomanCalendar;
     friend Q_CORE_EXPORT size_t qHash(const QLocale &key, size_t seed) noexcept;

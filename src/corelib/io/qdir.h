@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDIR_H
 #define QDIR_H
@@ -31,8 +32,9 @@ public:
                   Writable    = 0x020,
                   Executable  = 0x040,
                   PermissionMask    = 0x070,
-
-                  Modified    = 0x080,
+#if QT_DEPRECATED_SINCE(6, 11)
+                  Modified QT_DEPRECATED_VERSION_X_6_11("This flag is not handled in QDir; you can simply remove it from your code.") = 0x080,
+#endif
                   Hidden      = 0x100,
                   System      = 0x200,
 
@@ -169,10 +171,16 @@ public:
     QFileInfoList entryInfoList(const QStringList &nameFilters, Filters filters = NoFilter,
                                 SortFlags sort = NoSort) const;
 
+#if QT_CORE_REMOVED_SINCE(6, 10)
     bool mkdir(const QString &dirName) const;
     bool mkdir(const QString &dirName, QFile::Permissions permissions) const;
+#endif
+    bool mkdir(const QString &dirName, std::optional<QFile::Permissions> p = std::nullopt) const;
     bool rmdir(const QString &dirName) const;
+#if QT_CORE_REMOVED_SINCE(6, 10)
     bool mkpath(const QString &dirPath) const;
+#endif
+    bool mkpath(const QString &dirPath, std::optional<QFile::Permissions> p = std::nullopt) const;
     bool rmpath(const QString &dirPath) const;
 
     bool removeRecursively();

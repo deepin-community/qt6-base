@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOCOAGLCONTEXT_H
 #define QCOCOAGLCONTEXT_H
@@ -29,6 +30,7 @@ public:
     void initialize() override;
 
     bool makeCurrent(QPlatformSurface *surface) override;
+    void beginFrame() override;
     void swapBuffers(QPlatformSurface *surface) override;
     void doneCurrent() override;
 
@@ -42,6 +44,8 @@ public:
 
     QFunctionPointer getProcAddress(const char *procName) override;
 
+    bool isSoftwareContext() const;
+
 private:
     static NSOpenGLPixelFormat *pixelFormatForSurfaceFormat(const QSurfaceFormat &format);
 
@@ -53,6 +57,7 @@ private:
     QSurfaceFormat m_format;
     QVarLengthArray<QMacNotificationObserver, 3> m_updateObservers;
     QAtomicInt m_needsUpdate = false;
+    bool m_isSoftwareContext = false;
 
 #ifndef QT_NO_DEBUG_STREAM
     friend QDebug operator<<(QDebug debug, const QCocoaGLContext *screen);

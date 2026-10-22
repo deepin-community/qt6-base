@@ -1,8 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#ifndef QXCBWINDOW_H
-#define QXCBWINDOW_H
+#pragma once
 
 #include <qpa/qplatformwindow.h>
 #include <qpa/qplatformwindow_p.h>
@@ -67,6 +67,7 @@ public:
     QPoint mapFromGlobal(const QPoint &pos) const override;
 
     void setWindowTitle(const QString &title) override;
+    QString windowTitle() const override;
     void setWindowIconText(const QString &title) override;
     void setWindowIcon(const QIcon &icon) override;
     void raise() override;
@@ -280,5 +281,3 @@ QList<xcb_rectangle_t> qRegionToXcbRectangleList(const QRegion &region);
 QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(QXcbWindow*)
-
-#endif

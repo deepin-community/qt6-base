@@ -1,20 +1,18 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtTest/qtest.h>
 
-#include <QTest>
-#include <qlayout.h>
-#include <qapplication.h>
-#include <qwidget.h>
-#include <qproxystyle.h>
-#include <qsizepolicy.h>
-//#include <QtGui>
+#include <QtWidgets/qapplication.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qlayout.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qproxystyle.h>
+#include <QtWidgets/qradiobutton.h>
+#include <QtWidgets/qsizepolicy.h>
+#include <QtWidgets/qstylefactory.h>
 
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QLineEdit>
-#include <QtWidgets/QRadioButton>
-#include <QStyleFactory>
-#include <QSharedPointer>
+#include <QtCore/qsharedpointer.h>
 
 #include <QtTest/private/qtesthelpers_p.h>
 
@@ -725,53 +723,53 @@ void tst_QGridLayout::minMaxSize_data()
     QTest::addColumn<QString>("stylename");
     QTest::addColumn<int>("columns");
     QTest::addColumn<int>("rows");
-    QTest::addColumn<int>("sizePolicy");
+    QTest::addColumn<QSizePolicy::Policy>("sizePolicy");
     QTest::addColumn<QSize>("fixedSize");
     //input and expected output
     QTest::addColumn<SizeInfoList>("sizeinfos");
 
     QTest::newRow("3x1 grid, extend to minimumSize") << QString() << 3 << 1
-                << int(QSizePolicy::Minimum) << QSize(152, 50) << (SizeInfoList()
+                << QSizePolicy::Minimum << QSize(152, 50) << (SizeInfoList()
                 << SizeInfo(QRect(10, 10, 43, 30), QSize( 75, 75), QSize(0,0))
                 << SizeInfo(QRect(10 + 45, 10, 43, 30), QSize(75, 75), QSize( 0, 0))
                 << SizeInfo(QRect(10 + 45 + 44, 10, 42, 30), QSize(75, 75), QSize( 0, 0))
                 );
 
     QTest::newRow("1x1 grid, extend to minimumSize") << QString() << 1 << 1
-                << int(QSizePolicy::Preferred) << QSize() << (SizeInfoList()
+                << QSizePolicy::Preferred << QSize() << (SizeInfoList()
                 << SizeInfo(QPoint(10, 10), QSize( 90, 90), QSize(100,100))
                 );
     QTest::newRow("2x1 grid, extend to minimumSize") << QString() << 2 << 1
-                << int(QSizePolicy::Preferred) << QSize() << (SizeInfoList()
+                << QSizePolicy::Preferred << QSize() << (SizeInfoList()
                 << SizeInfo(QPoint(10, 10), QSize( 90, 90), QSize(100,100))
                 << SizeInfo(QPoint(10 + 100 + 1, 10), QSize( 90, 90))
                 );
     QTest::newRow("2x1 grid, extend to minimumSize, windows") << QString::fromLatin1("windows") << 2 << 1
-                << int(QSizePolicy::Preferred) << QSize() << (SizeInfoList()
+                << QSizePolicy::Preferred << QSize() << (SizeInfoList()
                 << SizeInfo(QPoint(11, 11), QSize( 90, 90), QSize(100,100))
                 << SizeInfo(QPoint(11 + 100 + 6, 11), QSize( 90, 90))
                 );
     QTest::newRow("1x2 grid, extend to minimumSize") << QString() << 1 << 2
-                << int(QSizePolicy::Preferred) << QSize() << (SizeInfoList()
+                << QSizePolicy::Preferred << QSize() << (SizeInfoList()
                 << SizeInfo(QPoint(10, 10), QSize( 90, 90), QSize(100,100))
                 << SizeInfo(QPoint(10, 10 + 100 + 1), QSize( 90, 90))
                 );
     QTest::newRow("2x1 grid, crop to maximumSize") << QString() << 2 << 1
-                << int(QSizePolicy::Preferred) << QSize() << (SizeInfoList()
-            << SizeInfo(QPoint(10, 10), QSize(110,110), QSize(), QSize(100, 100))
-            << SizeInfo(QPoint(10 + 100 + 1, 10), QSize( 90, 90))
-            );
+                << QSizePolicy::Preferred << QSize() << (SizeInfoList()
+                << SizeInfo(QPoint(10, 10), QSize(110,110), QSize(), QSize(100, 100))
+                << SizeInfo(QPoint(10 + 100 + 1, 10), QSize( 90, 90))
+                );
     QTest::newRow("1x2 grid, crop to maximumSize") << QString() << 1 << 2
-                << int(QSizePolicy::Preferred) << QSize() << (SizeInfoList()
-            << SizeInfo(QPoint(10, 10), QSize(110,110), QSize(), QSize(100, 100))
-            << SizeInfo(QPoint(10, 10 + 100 + 1), QSize( 90, 90))
-            );
+                << QSizePolicy::Preferred << QSize() << (SizeInfoList()
+                << SizeInfo(QPoint(10, 10), QSize(110,110), QSize(), QSize(100, 100))
+                << SizeInfo(QPoint(10, 10 + 100 + 1), QSize( 90, 90))
+                );
     QTest::newRow("1x3 grid, heightForWidth") << QString() << 1 << 3
-                << int(QSizePolicy::Preferred) << QSize() << (SizeInfoList()
-            << SizeInfo(QPoint(10, 10), QSize(), QSize(200,100), QSize())
-            << SizeInfo(QPoint(10, 10 + 100 + 1), QSize(100,100), QSize(), QSize(), 100*100)
-            << SizeInfo(QPoint(10, 10 + 100 + 1 + 50 + 1), QSize(100,100), QSize(), QSize(100, 100))
-            );
+                << QSizePolicy::Preferred << QSize() << (SizeInfoList()
+                << SizeInfo(QPoint(10, 10), QSize(), QSize(200,100), QSize())
+                << SizeInfo(QPoint(10, 10 + 100 + 1), QSize(100,100), QSize(), QSize(), 100*100)
+                << SizeInfo(QPoint(10, 10 + 100 + 1 + 50 + 1), QSize(100,100), QSize(), QSize(100, 100))
+                );
 }
 
 void tst_QGridLayout::minMaxSize()
@@ -783,7 +781,7 @@ void tst_QGridLayout::minMaxSize()
     QFETCH(QString, stylename);
     QFETCH(int, columns);
     QFETCH(int, rows);
-    QFETCH(int, sizePolicy);
+    QFETCH(QSizePolicy::Policy, sizePolicy);
     QFETCH(QSize, fixedSize);
     //input and expected output
     QFETCH(SizeInfoList, sizeinfos);
@@ -838,7 +836,7 @@ void tst_QGridLayout::minMaxSize()
                     numpixels = -2; //### yuk, (and don't fake it if it already tests sizehint)
                 SizeHinterFrame *sh = new SizeHinterFrame(si.sizeHint, numpixels);
                 QSizePolicy sp = sh->sizePolicy();
-                sp.setHorizontalPolicy((QSizePolicy::Policy)sizePolicy);
+                sp.setHorizontalPolicy(sizePolicy);
                 sh->setSizePolicy(sp);
                 sh->setParent(&toplevel);
                 if (si.minSize.isValid())

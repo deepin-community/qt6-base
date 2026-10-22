@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMTHEME_COCOA_H
 #define QPLATFORMTHEME_COCOA_H
@@ -39,6 +40,8 @@ public:
 
     QVariant themeHint(ThemeHint hint) const override;
     Qt::ColorScheme colorScheme() const override;
+    Qt::ContrastPreference contrastPreference() const override;
+    Qt::MotionPreference motionPreference() const override;
     QString standardButtonText(int button) const override;
     QKeySequence standardButtonShortcut(int button) const override;
 

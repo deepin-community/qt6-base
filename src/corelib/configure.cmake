@@ -20,34 +20,56 @@ set_property(CACHE INPUT_libb2 PROPERTY STRINGS undefined no qt system)
 if((UNIX AND NOT QNX) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     # QNX's libbacktrace has an API wholly different from all the other Unix
     # offerings
-    qt_find_package(WrapBacktrace PROVIDED_TARGETS WrapBacktrace::WrapBacktrace MODULE_NAME core QMAKE_LIB backtrace)
+    qt_find_package(WrapBacktrace MODULE
+        PROVIDED_TARGETS WrapBacktrace::WrapBacktrace MODULE_NAME core QMAKE_LIB backtrace)
 endif()
-qt_find_package(WrapSystemDoubleConversion
+qt_find_package(WrapSystemDoubleConversion MODULE
                 PROVIDED_TARGETS WrapSystemDoubleConversion::WrapSystemDoubleConversion
                 MODULE_NAME core QMAKE_LIB doubleconversion)
-qt_find_package(GLIB2 PROVIDED_TARGETS GLIB2::GLIB2 MODULE_NAME core QMAKE_LIB glib)
+qt_find_package(GLIB2 MODULE PROVIDED_TARGETS GLIB2::GLIB2 MODULE_NAME core QMAKE_LIB glib)
 qt_find_package_extend_sbom(TARGETS GLIB2::GLIB2
     LICENSE_EXPRESSION "LGPL-2.1-or-later"
 )
 qt_find_package(ICU 50.1 COMPONENTS i18n uc data PROVIDED_TARGETS ICU::i18n ICU::uc ICU::data
-    MODULE_NAME core QMAKE_LIB icu)
+    MODULE_NAME core QMAKE_LIB icu
+    VCPKG_PORT icu
+    VCPKG_PLATFORM !windows
+)
 
 if(QT_FEATURE_dlopen)
     qt_add_qmake_lib_dependency(icu libdl)
 endif()
-qt_find_package(Libsystemd PROVIDED_TARGETS PkgConfig::Libsystemd MODULE_NAME core QMAKE_LIB journald)
-qt_find_package(WrapAtomic PROVIDED_TARGETS WrapAtomic::WrapAtomic MODULE_NAME core QMAKE_LIB libatomic)
-qt_find_package(Libb2 PROVIDED_TARGETS Libb2::Libb2 MODULE_NAME core QMAKE_LIB libb2)
+qt_find_package(JeMalloc MODULE
+    PROVIDED_TARGETS PkgConfig::JeMalloc MODULE_NAME core QMAKE_LIB jemalloc)
+qt_find_package(Libsystemd MODULE
+    PROVIDED_TARGETS PkgConfig::Libsystemd MODULE_NAME core QMAKE_LIB journald)
+qt_find_package(Liburing MODULE
+    PROVIDED_TARGETS PkgConfig::Liburing MODULE_NAME global QMAKE_LIB liburing)
+qt_find_package(WrapAtomic MODULE
+    PROVIDED_TARGETS WrapAtomic::WrapAtomic MODULE_NAME core QMAKE_LIB libatomic)
+qt_find_package(Libb2 MODULE PROVIDED_TARGETS Libb2::Libb2 MODULE_NAME core QMAKE_LIB libb2)
 qt_find_package_extend_sbom(TARGETS Libb2::Libb2
     LICENSE_EXPRESSION "CC0-1.0"
 )
-qt_find_package(WrapRt PROVIDED_TARGETS WrapRt::WrapRt MODULE_NAME core QMAKE_LIB librt)
-qt_find_package(WrapSystemPCRE2 10.20 PROVIDED_TARGETS WrapSystemPCRE2::WrapSystemPCRE2 MODULE_NAME core QMAKE_LIB pcre2)
+qt_find_package(WrapRt MODULE
+    PROVIDED_TARGETS WrapRt::WrapRt MODULE_NAME core QMAKE_LIB librt)
+qt_find_package(WrapSystemPCRE2 10.20 MODULE
+    PROVIDED_TARGETS WrapSystemPCRE2::WrapSystemPCRE2 MODULE_NAME core QMAKE_LIB pcre2
+    VCPKG_PORT pcre2
+)
 set_package_properties(WrapPCRE2 PROPERTIES TYPE REQUIRED)
 if((QNX) OR QT_FIND_ALL_PACKAGES_ALWAYS)
-    qt_find_package(PPS PROVIDED_TARGETS PPS::PPS MODULE_NAME core QMAKE_LIB pps)
+    qt_find_package(PPS MODULE PROVIDED_TARGETS PPS::PPS MODULE_NAME core QMAKE_LIB pps)
 endif()
-qt_find_package(Slog2 PROVIDED_TARGETS Slog2::Slog2 MODULE_NAME core QMAKE_LIB slog2)
+if((QNX) OR QT_FIND_ALL_PACKAGES_ALWAYS)
+    qt_find_package(Eventfd MODULE PROVIDED_TARGETS Eventfd::Eventfd MODULE_NAME core
+    QMAKE_LIB eventfd)
+endif()
+qt_find_package(Slog2 MODULE PROVIDED_TARGETS Slog2::Slog2 MODULE_NAME core QMAKE_LIB slog2)
+if(OHOS)
+    qt_find_package(NodeAddonApi MODULE
+        PROVIDED_TARGETS NodeAddonApi::NodeAddonApi MODULE_NAME core)
+endif()
 
 
 #### Tests
@@ -104,18 +126,6 @@ clock_gettime(CLOCK_MONOTONIC, &ts);
 }
 ")
 
-# close_range
-qt_config_compile_test(close_range
-    LABEL "close_range()"
-    CODE
-"#include <unistd.h>
-
-int main()
-{
-    return close_range(3, 1024, 0) != 0;
-}
-")
-
 # cloexec
 qt_config_compile_test(cloexec
     LABEL "O_CLOEXEC"
@@ -142,6 +152,75 @@ int pipes[2];
     return 0;
 }
 ")
+
+# dup3
+qt_config_compile_test(dup3
+    LABEL "dup3"
+    CODE
+"#define _GNU_SOURCE 1
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+(void) dup3(0, 3, O_CLOEXEC);
+    /* END TEST: */
+    return 0;
+}
+")
+
+# acccept4
+qt_config_compile_test(accept4
+    LABEL "accept4"
+    CODE
+"#define _GNU_SOURCE 1
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+#if defined(__NetBSD__)
+(void) paccept(0, 0, 0, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
+#else
+(void) accept4(0, 0, 0, SOCK_CLOEXEC | SOCK_NONBLOCK);
+#endif
+    /* END TEST: */
+    return 0;
+}
+")
+
+# copy_file_range
+qt_config_compile_test(copy_file_range
+    LABEL "copy_file_range()"
+    CODE
+"#include <unistd.h>
+
+int main()
+{
+    off_t off_in = 0, off_out = 1024;
+    return copy_file_range(0, &off_in, 1, &off_out, 2147483647, 0) != 0;
+}
+")
+
+# Check if __cxa_thread_atexit{,_impl} are present in the C library (hence why
+# PROJECT_PATH instead of CODE for C++). Either one suffices to disable
+# FEATURE_broken_threadlocal_dtors. See details in qthread_unix.cpp.
+qt_config_compile_test(cxa_thread_atexit
+    # Seen on Darwin and FreeBSD
+    LABEL "__cxa_thread_atexit in C library"
+    PROJECT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../config.tests/cxa_thread_atexit"
+    CMAKE_FLAGS -DTEST_FUNC=__cxa_thread_atexit
+)
+qt_config_compile_test(cxa_thread_atexit_impl
+    # Seen on Bionic, FreeBSD, glibc
+    LABEL "__cxa_thread_atexit_impl in C library"
+    PROJECT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../config.tests/cxa_thread_atexit"
+    CMAKE_FLAGS -DTEST_FUNC=__cxa_thread_atexit_impl
+)
 
 # cxx17_filesystem
 qt_config_compile_test(cxx17_filesystem
@@ -244,6 +323,26 @@ inotify_rm_watch(0, 1);
 }
 ")
 
+# fsnotify
+qt_config_compile_test(fsnotify
+    LABEL "libfsnotify"
+    LIBRARIES fsnotify
+    CODE
+"#include <sys/inotify.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+    int fd = inotify_init();
+    if (fd >= 0) {
+        inotify_add_watch(fd, \"foobar\", IN_ACCESS);
+        inotify_rm_watch(fd, 1);
+    }
+    /* END TEST: */
+    return 0;
+}
+")
+
 qt_config_compile_test(sysv_shm
     LABEL "System V/XSI shared memory"
     CODE
@@ -309,6 +408,25 @@ qt_config_compile_test(posix_sem
 int main(void)
 {
     sem_close(sem_open(\"test\", O_CREAT | O_EXCL, 0666, 0));
+    return 0;
+}
+")
+
+# liburing
+qt_config_compile_test(liburing
+    LABEL "liburing"
+    LIBRARIES uring
+    CODE
+"#include <liburing.h>
+
+int main(void)
+{
+    io_uring_op op = IORING_OP_NOP;
+    (void)op;
+    struct io_uring_params params{};
+    io_uring_setup(0, &params);
+    io_uring_register(0, IORING_REGISTER_EVENTFD, nullptr, 0);
+    io_uring_enter(0, 0, 0, 0, nullptr);
     return 0;
 }
 ")
@@ -416,6 +534,58 @@ poll(&pfd, 1, 0);
 }
 ")
 
+# pthread_clockjoin
+# As of GCC 15, TSAN does not support pthread_clockjoin_np,
+# so disable it in a TSAN build. Unfortunately there doesn't
+# seem to be a version check possible, just check the
+# TSAN_INTERCEPT macros into tsan_interceptors_posix.cpp.
+qt_config_compile_test(pthread_clockjoin
+    LABEL "pthread_clockjoin()"
+    LIBRARIES Threads::Threads
+    CODE
+"#include <pthread.h>
+#if __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
+#error
+#endif
+int main()
+{
+    void *ret;
+    const struct timespec ts = {};
+    return pthread_clockjoin_np(pthread_self(), &ret, CLOCK_MONOTONIC, &ts);
+}
+")
+
+# pthread_condattr_setclock
+qt_config_compile_test(pthread_condattr_setclock
+    LABEL "pthread_condattr_setclock()"
+    LIBRARIES Threads::Threads
+    CODE
+"#include <pthread.h>
+#include <time.h>
+int main()
+{
+    pthread_condattr_t condattr;
+    return pthread_condattr_setclock(&condattr, CLOCK_REALTIME);
+}
+")
+
+# pthread_timedjoin
+qt_config_compile_test(pthread_timedjoin
+    LABEL "pthread_timedjoin()"
+    LIBRARIES Threads::Threads
+    CODE
+"#include <pthread.h>
+#if __has_include(<pthread_np.h>)
+#  include <pthread_np.h>
+#endif
+int main()
+{
+    void *ret;
+    const struct timespec ts = {};
+    return pthread_timedjoin_np(pthread_self(), &ret, &ts);
+}
+")
+
 # renameat2
 qt_config_compile_test(renameat2
     LABEL "renameat2()"
@@ -427,19 +597,84 @@ qt_config_compile_test(renameat2
 int main(int, char **argv)
 {
     /* BEGIN TEST: */
-renameat2(AT_FDCWD, argv[1], AT_FDCWD, argv[2], RENAME_NOREPLACE | RENAME_WHITEOUT);
+renameat2(AT_FDCWD, argv[1], AT_FDCWD, argv[2], RENAME_NOREPLACE);
     /* END TEST: */
     return 0;
 }
 ")
 
+qt_config_compile_test(winsdkicu
+    LABEL "Windows SDK: ICU"
+    LIBRARIES icu
+    CODE
+"#include <icu.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+    /* END TEST: */
+    return 0;
+}
+"
+)
+
+qt_config_compile_test(windows_ioring
+    LABEL "Windows SDK: IORing"
+    CODE
+"#include <windows.h>
+#include <ioringapi.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+    IORING_CREATE_FLAGS flags;
+    memset(&flags, 0, sizeof(flags));
+    HIORING ioRingHandle = nullptr;
+    HRESULT hr = CreateIoRing(IORING_VERSION_3, flags, 1, 1, &ioRingHandle);
+    if (hr == IORING_E_SUBMISSION_QUEUE_FULL) // not valid, but test that this #define exists
+        return 0;
+    IORING_HANDLE_REF ref(HANDLE(nullptr));
+    IORING_BUFFER_REF bufRef(nullptr);
+    // The newest API addition that we require:
+    BuildIoRingWriteFile(ioRingHandle, ref, bufRef, -1, 0, FILE_WRITE_FLAGS_NONE, 0, IOSQE_FLAGS_NONE);
+    /* END TEST: */
+    return 0;
+}
+"
+)
+
+qt_config_compile_test(windows_ioring_skip_builder_param_checks
+    LABEL "Windows SDK: IORing IORING_CREATE_SKIP_BUILDER_PARAM_CHECKS"
+    CODE
+"#include <windows.h>
+#include <ioringapi.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+    IORING_CREATE_FLAGS flags;
+    memset(&flags, 0, sizeof(flags));
+    flags.Advisory |= IORING_CREATE_SKIP_BUILDER_PARAM_CHECKS;
+    /* END TEST: */
+    return 0;
+}
+"
+)
+
 # cpp_winrt
+set(_cpp_winrt_compile_options "")
+if(MSVC AND MSVC_VERSION GREATER_EQUAL 1950)
+    list(APPEND _cpp_winrt_compile_options /await:strict)
+endif()
 qt_config_compile_test(cpp_winrt
     LABEL "cpp/winrt"
+    COMPILE_OPTIONS
+        ${_cpp_winrt_compile_options}
     LIBRARIES
         runtimeobject
     CODE
 "// Including winrt/base.h causes an error in some configurations (Windows 10 SDK + c++20)
+#   include <guiddef.h> // required by clang-cl: https://github.com/microsoft/cppwinrt/issues/1179
 #   include <winrt/base.h>
 
 int main(void)
@@ -447,6 +682,28 @@ int main(void)
     return 0;
 }
 ")
+
+# std::format support
+qt_config_compile_test(cxx20_format
+    LABEL "C++20 std::format support"
+    CODE
+"#include <format>
+#include <string>
+
+#if !defined(__cpp_lib_format) || (__cpp_lib_format < 202106L)
+#error
+#endif
+
+int main(void)
+{
+    /* BEGIN TEST: */
+const auto s = std::format(\"{}\", 1);
+    /* END TEST: */
+    return 0;
+}
+"
+    CXX_STANDARD 20
+)
 
 # <stacktrace>
 qt_config_compile_test(cxx23_stacktrace
@@ -470,6 +727,7 @@ const auto backtrace = std::stacktrace::current();
 # <future>
 qt_config_compile_test(cxx_std_async_noncopyable
     LABEL "std::async() NonCopyable"
+    LIBRARIES Threads::Threads
     CODE
 "// Calling std::async with lambda which takes non-copyable argument causes compilation error on
 // some platforms (VxWorks 24.03 and older with C++17-compatibility for example)
@@ -495,6 +753,33 @@ int main(int argc, char** argv) {
 }
 ")
 
+# <chrono>
+qt_config_compile_test(chrono_tzdb
+    LABEL "Support for timezones in C++20 <chrono>"
+    CODE
+"#include <chrono>
+#if __cpp_lib_chrono < 201907L
+#error
+#endif
+
+int main(void)
+{
+    /* BEGIN TEST: */
+    const std::chrono::tzdb &tzdb = std::chrono::get_tzdb();
+    auto when = std::chrono::system_clock::now();
+    const std::chrono::time_zone *currentZone = tzdb.current_zone();
+    auto zoneInfo = currentZone->get_info(when);
+    /* END TEST: */
+    return 0;
+}
+"
+)
+qt_feature("windows-ioring-runtime" PRIVATE
+    LABEL "Resolve Windows I/O Ring functions at runtime"
+    AUTODETECT TRUE
+    CONDITION QT_FEATURE_windows_ioring
+)
+
 #### Features
 
 qt_feature("clock-gettime" PRIVATE
@@ -506,16 +791,16 @@ qt_feature("clock-monotonic" PUBLIC
     CONDITION QT_FEATURE_clock_gettime AND TEST_clock_monotonic
 )
 qt_feature_definition("clock-monotonic" "QT_NO_CLOCK_MONOTONIC" NEGATE VALUE "1")
-qt_feature("close_range" PRIVATE
-    LABEL "close_range()"
-    CONDITION QT_FEATURE_process AND TEST_close_range
-    AUTODETECT UNIX
+qt_feature("copy_file_range" PRIVATE
+    LABEL "copy_file_range()"
+    CONDITION QT_FEATURE_process AND TEST_copy_file_range
+    AUTODETECT UNIX AND NOT DARWIN
 )
 qt_feature("doubleconversion" PRIVATE
     LABEL "DoubleConversion"
 )
 qt_feature_definition("doubleconversion" "QT_NO_DOUBLECONVERSION" NEGATE VALUE "1")
-qt_feature("system-doubleconversion" PRIVATE
+qt_feature("system-doubleconversion" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system DoubleConversion"
     CONDITION QT_FEATURE_doubleconversion AND WrapSystemDoubleConversion_FOUND
     ENABLE INPUT_doubleconversion STREQUAL 'system'
@@ -528,6 +813,11 @@ qt_feature("cxx11_future" PUBLIC
 qt_feature("cxx17_filesystem" PUBLIC
     LABEL "C++17 <filesystem>"
     CONDITION TEST_cxx17_filesystem
+)
+qt_feature("broken-threadlocal-dtors" PRIVATE
+    LABEL "Broken execution of thread_local destructors at exit() time"
+    # Windows is broken in different ways from Unix
+    CONDITION WIN32 OR NOT (TEST_cxa_thread_atexit OR TEST_cxa_thread_atexit_impl)
 )
 qt_feature("dladdr" PRIVATE
     LABEL "dladdr"
@@ -556,9 +846,29 @@ qt_feature("icu" PRIVATE
     AUTODETECT NOT WIN32
     CONDITION ICU_FOUND
 )
+qt_feature("winsdkicu" PRIVATE
+    LABEL "ICU (Windows SDK)"
+    AUTODETECT WIN32
+    CONDITION TEST_winsdkicu
+    DISABLE QT_FEATURE_icu
+)
+qt_feature("windows-ioring" PRIVATE
+    LABEL "Windows I/O Ring"
+    AUTODETECT WIN32
+    CONDITION TEST_windows_ioring
+)
+qt_feature("windows-ioring-skip-builder-param-checks" PRIVATE
+    LABEL "Windows I/O Ring IORING_CREATE_SKIP_BUILDER_PARAM_CHECKS"
+    AUTODETECT WIN32
+    CONDITION TEST_windows_ioring_skip_builder_param_checks
+)
 qt_feature("inotify" PUBLIC PRIVATE
     LABEL "inotify"
-    CONDITION TEST_inotify
+    CONDITION TEST_inotify OR TEST_fsnotify
+)
+qt_feature("fsnotify"
+    LABEL "fsnotify"
+    CONDITION TEST_fsnotify
 )
 qt_feature_definition("inotify" "QT_NO_INOTIFY" NEGATE VALUE "1")
 qt_feature("ipc_posix"
@@ -569,13 +879,18 @@ qt_feature("ipc_posix"
     )
 )
 qt_feature_definition("ipc_posix" "QT_POSIX_IPC")
+qt_feature("jemalloc" PUBLIC PRIVATE
+    LABEL "JeMalloc"
+    AUTODETECT OFF
+    CONDITION JeMalloc_FOUND
+)
 qt_feature("journald" PRIVATE
     LABEL "journald"
     AUTODETECT OFF
     CONDITION Libsystemd_FOUND
 )
 # Used by QCryptographicHash for the BLAKE2 hashing algorithms
-qt_feature("system-libb2" PRIVATE
+qt_feature("system-libb2" PRIVATE SYSTEM_LIBRARY
     LABEL "Using system libb2"
     CONDITION Libb2_FOUND
     ENABLE INPUT_libb2 STREQUAL 'system'
@@ -586,6 +901,11 @@ qt_feature("linkat" PRIVATE
     LABEL "linkat()"
     AUTODETECT ( LINUX AND NOT ANDROID ) OR HURD
     CONDITION TEST_linkat
+)
+qt_feature("liburing" PRIVATE
+    LABEL "liburing"
+    AUTODETECT LINUX
+    CONDITION TEST_liburing AND Liburing_FOUND
 )
 qt_feature("std-atomic64" PUBLIC
     LABEL "64 bit atomic operations"
@@ -615,7 +935,7 @@ qt_feature("pcre2"
     DISABLE INPUT_pcre STREQUAL 'no'
 )
 qt_feature_config("pcre2" QMAKE_PRIVATE_CONFIG)
-qt_feature("system-pcre2" PRIVATE
+qt_feature("system-pcre2" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system PCRE2"
     CONDITION WrapSystemPCRE2_FOUND
     ENABLE INPUT_pcre STREQUAL 'system'
@@ -650,6 +970,26 @@ qt_feature("posix_shm" PRIVATE
     LABEL "POSIX shared memory"
     CONDITION TEST_posix_shm AND UNIX
 )
+qt_feature("pthread_clockjoin" PRIVATE
+    LABEL "pthread_clockjoin() function"
+    AUTODETECT UNIX
+    CONDITION UNIX AND QT_FEATURE_thread AND TEST_pthread_clockjoin
+)
+qt_feature("pthread_condattr_setclock" PRIVATE
+    LABEL "pthread_condattr_setclock() function"
+    AUTODETECT UNIX
+    CONDITION UNIX AND QT_FEATURE_thread AND TEST_pthread_condattr_setclock
+)
+qt_feature("pthread_timedjoin" PRIVATE
+    LABEL "pthread_timedjoin() function"
+    AUTODETECT UNIX
+    CONDITION UNIX AND QT_FEATURE_thread AND TEST_pthread_timedjoin
+)
+qt_feature("qqnx_eventfd" PRIVATE
+    LABEL "eventfd"
+    CONDITION QNX AND Eventfd_FOUND
+    EMIT_IF QNX
+)
 qt_feature("qqnx_pps" PRIVATE
     LABEL "PPS"
     CONDITION PPS_FOUND
@@ -657,7 +997,7 @@ qt_feature("qqnx_pps" PRIVATE
 )
 qt_feature("renameat2" PRIVATE
     LABEL "renameat2()"
-    CONDITION ( LINUX OR HURD ) AND TEST_renameat2
+    CONDITION UNIX AND TEST_renameat2
 )
 qt_feature("slog2" PRIVATE
     LABEL "slog2"
@@ -681,16 +1021,35 @@ qt_feature("threadsafe-cloexec"
 )
 qt_feature_definition("threadsafe-cloexec" "QT_THREADSAFE_CLOEXEC" VALUE "1")
 qt_feature_config("threadsafe-cloexec" QMAKE_PUBLIC_QT_CONFIG)
-qt_feature("regularexpression" PUBLIC
+qt_feature("dup3" PRIVATE
+    LABEL "dup3 support"
+    CONDITION TEST_dup3
+)
+qt_feature("accept4" PRIVATE
+    LABEL "accept4 support"
+    CONDITION TEST_accept4
+)
+qt_feature("vxpipedrv" PRIVATE
+    LABEL "Use pipedrv pipes on VxWorks"
+    AUTODETECT OFF
+    CONDITION VXWORKS
+)
+qt_feature_deprecated("regularexpression" PUBLIC
+    REMOVE_BY "7.0"
     SECTION "Kernel"
     LABEL "QRegularExpression"
     PURPOSE "Provides an API to Perl-compatible regular expressions."
-    CONDITION QT_FEATURE_system_pcre2 OR QT_FEATURE_pcre2
+    VALUE ON
 )
 qt_feature_definition("regularexpression" "QT_NO_REGULAREXPRESSION" NEGATE VALUE "1")
 qt_feature("backtrace" PRIVATE
     LABEL "backtrace"
     CONDITION UNIX AND QT_FEATURE_regularexpression AND WrapBacktrace_FOUND
+)
+qt_feature("cxx20_format" PRIVATE
+    LABEL "C++20 std::format support"
+    CONDITION TEST_cxx20_format # intentionally not checking QT_FEATURE_cxx20!
+    AUTODETECT TRUE
 )
 qt_feature("cxx23_stacktrace" PRIVATE
     LABEL "C++23 <stacktrace>"
@@ -808,6 +1167,13 @@ qt_feature("itemmodel" PUBLIC
     PURPOSE "Provides the item model for item views"
 )
 qt_feature_definition("itemmodel" "QT_NO_ITEMMODEL" NEGATE VALUE "1")
+qt_feature("rangemodel" PUBLIC
+    SECTION "ItemViews"
+    LABEL "QRangeModel"
+    PURPOSE "Provides the range model for item views"
+    CONDITION QT_FEATURE_itemmodel
+)
+qt_feature_definition("rangemodel" "QT_NO_RANGEMODEL" NEGATE VALUE "1")
 qt_feature("proxymodel" PUBLIC
     SECTION "ItemViews"
     LABEL "QAbstractProxyModel"
@@ -899,14 +1265,22 @@ qt_feature("timezone" PUBLIC
     SECTION "Utilities"
     LABEL "QTimeZone"
     PURPOSE "Provides support for time-zone handling."
-    CONDITION NOT WASM AND NOT VXWORKS
 )
 qt_feature("timezone_locale" PRIVATE
     SECTION "Utilities"
-    LABEL "QTimeZone"
+    LABEL "QTimeZoneLocale"
     PURPOSE "Provides support for localized time-zone display names."
     CONDITION
-        QT_FEATURE_timezone AND ( ( UNIX AND NOT APPLE AND NOT ANDROID ) OR QT_FEATURE_icu )
+        QT_FEATURE_timezone AND NOT APPLE AND NOT ANDROID
+)
+qt_feature("timezone_tzdb" PUBLIC
+    SECTION "Utilities"
+    LABEL "std::chrono::tzdb QTZ backend"
+    PURPOSE "Provides support for a timezone backend using std::chrono."
+    CONDITION TEST_chrono_tzdb
+    # See QTBUG-127598 for gcc's libstdc++'s deficiencies.
+    # Update src/corelib/doc/src/cpp20-overview.qdoc before enabling this:
+    AUTODETECT OFF
 )
 qt_feature("datetimeparser" PRIVATE
     SECTION "Utilities"
@@ -955,7 +1329,7 @@ qt_feature("cborstreamwriter" PUBLIC
 )
 qt_feature("poll-exit-on-error" PRIVATE
     LABEL "Poll exit on error"
-    AUTODETECT OFF
+    AUTODETECT VXWORKS
     CONDITION UNIX
     PURPOSE "Exit on error instead of just printing the error code and continue."
 )
@@ -966,9 +1340,19 @@ qt_feature("permissions" PUBLIC
 )
 qt_feature("openssl-hash" PRIVATE
     LABEL "OpenSSL based cryptographic hash"
-    AUTODETECT OFF
     CONDITION QT_FEATURE_openssl_linked AND QT_FEATURE_opensslv30
     PURPOSE "Uses OpenSSL based implementation of cryptographic hash algorithms."
+)
+qt_feature("async-io" PRIVATE
+    LABEL "Async File I/O"
+    PURPOSE "Provides support for asynchronous file I/O."
+    CONDITION QT_FEATURE_thread AND QT_FEATURE_future
+)
+qt_feature("randomgenerator_disable_fallback" PUBLIC
+    LABEL "Disable insecure PRNG fallback for QRandomGenerator (Unix-only)."
+    PURPOSE "Disable insecure PRNG fallback for QRandomGenerator (Unix-only)."
+    AUTODETECT OFF
+    EMIT_IF UNIX
 )
 
 qt_configure_add_summary_section(NAME "Qt Core")
@@ -979,6 +1363,12 @@ qt_configure_add_summary_entry(ARGS "system-doubleconversion")
 qt_configure_add_summary_entry(ARGS "forkfd_pidfd" CONDITION LINUX)
 qt_configure_add_summary_entry(ARGS "glib")
 qt_configure_add_summary_entry(ARGS "icu")
+qt_configure_add_summary_entry(ARGS "jemalloc")
+qt_configure_add_summary_entry(ARGS "liburing")
+qt_configure_add_summary_entry(ARGS "windows-ioring")
+qt_configure_add_summary_entry(ARGS "windows-ioring-skip-builder-param-checks")
+qt_configure_add_summary_entry(ARGS "windows-ioring-runtime")
+qt_configure_add_summary_entry(ARGS "timezone_tzdb")
 qt_configure_add_summary_entry(ARGS "system-libb2")
 qt_configure_add_summary_entry(ARGS "mimetype-database")
 qt_configure_add_summary_entry(ARGS "permissions")
@@ -1008,7 +1398,7 @@ qt_configure_add_report_entry(
 )
 qt_configure_add_report_entry(
     TYPE ERROR
-    MESSAGE "detected a std::atomic implementation that fails for function pointers.  Please apply the patch corresponding to your Standard Library vendor, found in qtbase/config.tests/atomicfptr"
+    MESSAGE "detected a std::atomic implementation that fails for function pointers."
     CONDITION NOT TEST_atomicfptr
 )
 qt_configure_add_report_entry(
@@ -1020,4 +1410,14 @@ qt_configure_add_report_entry(
     TYPE WARNING
     MESSAGE "Basic cpp/winrt support missing. Some features might not be available."
     CONDITION WIN32 AND NOT QT_FEATURE_cpp_winrt
+)
+qt_configure_add_report_entry(
+    TYPE ERROR
+    MESSAGE "Qt requires pcre2 or system-pcre2 feature"
+    CONDITION NOT QT_FEATURE_pcre2 AND NOT QT_FEATURE_system_pcre2
+)
+qt_configure_add_report_entry(
+    TYPE ERROR
+    MESSAGE "Qt for OHOS requires node-api-addon. Set NODE_ADDON_API_ROOT to point to its location."
+    CONDITION OHOS AND NOT TARGET NodeAddonApi::NodeAddonApi
 )

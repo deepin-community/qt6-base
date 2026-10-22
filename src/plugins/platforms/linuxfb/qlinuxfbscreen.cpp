@@ -1,11 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlinuxfbscreen.h"
 #include <QtFbSupport/private/qfbcursor_p.h>
 #include <QtFbSupport/private/qfbwindow_p.h>
 #include <QtCore/QFile>
 #include <QtCore/QRegularExpression>
+#include <QtCore/q20utility.h>
 #include <QtGui/QPainter>
 
 #include <private/qcore_unix_p.h> // overrides QT_OPEN
@@ -69,16 +71,16 @@ static QRect determineGeometry(const fb_var_screeninfo &vinfo, const QRect &user
     if (userGeometry.isValid()) {
         w = userGeometry.width();
         h = userGeometry.height();
-        if ((uint)w > vinfo.xres)
+        if (q20::cmp_greater(w, vinfo.xres))
             w = vinfo.xres;
-        if ((uint)h > vinfo.yres)
+        if (q20::cmp_greater(h, vinfo.yres))
             h = vinfo.yres;
 
         int xxoff = userGeometry.x(), yyoff = userGeometry.y();
         if (xxoff != 0 || yyoff != 0) {
-            if (xxoff < 0 || xxoff + w > (int)(vinfo.xres))
+            if (xxoff < 0 || q20::cmp_greater(xxoff + w, vinfo.xres))
                 xxoff = vinfo.xres - w;
-            if (yyoff < 0 || yyoff + h > (int)(vinfo.yres))
+            if (yyoff < 0 || q20::cmp_greater(yyoff + h, vinfo.yres))
                 yyoff = vinfo.yres - h;
             xoff += xxoff;
             yoff += yyoff;
@@ -340,6 +342,12 @@ bool QLinuxFbScreen::initialize()
     QRect geometry = determineGeometry(vinfo, userGeometry);
     mGeometry = QRect(QPoint(0, 0), geometry.size());
     mFormat = determineFormat(vinfo, mDepth);
+    if (mFormat == QImage::Format_Invalid) {
+        qWarning("Unsupported framebuffer format: depth %d, RGB offset/length %u/%u %u/%u %u/%u",
+                 mDepth, vinfo.red.offset, vinfo.red.length, vinfo.green.offset, vinfo.green.length,
+                 vinfo.blue.offset, vinfo.blue.length);
+        return false;
+    }
     mPhysicalSize = determinePhysicalSize(vinfo, userMmSize, geometry.size());
 
     // mmap the framebuffer

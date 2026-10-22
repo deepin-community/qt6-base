@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qioswindow.h"
 
@@ -163,11 +164,18 @@ bool QIOSWindow::shouldAutoActivateWindow() const
     if (![m_view canBecomeFirstResponder])
         return false;
 
+    const Qt::WindowType type = window()->type();
+
+    // Tooltips are documented to not activate, and activating one would cause
+    // it to immediately hide itself again, as QTipLabel treats the resulting
+    // focus/activation change as a signal to dismiss the tooltip.
+    if (type == Qt::ToolTip)
+        return false;
+
     // We don't want to do automatic window activation for popup windows
     // that are unlikely to contain editable controls (to avoid hiding
     // the keyboard while the popup is showing)
-    const Qt::WindowType type = window()->type();
-    return (type != Qt::Popup && type != Qt::ToolTip) || !window()->isActive();
+    return type != Qt::Popup || !window()->isActive();
 }
 
 void QIOSWindow::setOpacity(qreal level)
@@ -243,7 +251,7 @@ void QIOSWindow::setWindowState(Qt::WindowStates state)
     qt_window_private(window())->windowState = state;
 
     if (window()->isTopLevel() && window()->isVisible() && window()->isActive())
-        [m_view.qtViewController updateProperties];
+        [m_view.qtViewController updateStatusBarProperties];
 
     if (state & Qt::WindowMinimized) {
         applyGeometry(QRect());
@@ -268,7 +276,7 @@ void QIOSWindow::setWindowState(Qt::WindowStates state)
             QRect maximizedGeometry = fullscreenGeometry;
 
 #if !defined(Q_OS_VISIONOS)
-            if (!(window()->flags() & Qt::MaximizeUsingFullscreenGeometryHint)) {
+            if (!(window()->flags() & Qt::ExpandedClientAreaHint)) {
                 // If the safe area margins reflect the screen's outer edges,
                 // then reduce the maximized geometry accordingly. Otherwise
                 // leave it as is, and assume the client will take the safe
@@ -282,10 +290,20 @@ void QIOSWindow::setWindowState(Qt::WindowStates state)
             }
 #endif
 
+            if (m_view.window) {
+                // On application startup, during main(), we don't have a UIWindow yet (because
+                // the UIWindowScene has not been connected yet), but once the scene has been
+                // connected and we have a UIWindow we can adjust the maximized/fullscreen size
+                // to account for split-view or floating window mode, where the UIWindow is
+                // smaller than the screen.
+                fullscreenGeometry = fullscreenGeometry.intersected(uiWindowBounds);
+                maximizedGeometry = maximizedGeometry.intersected(uiWindowBounds);
+            }
+
             if (state & Qt::WindowFullScreen)
-                applyGeometry(fullscreenGeometry.intersected(uiWindowBounds));
+                applyGeometry(fullscreenGeometry);
             else
-                applyGeometry(maximizedGeometry.intersected(uiWindowBounds));
+                applyGeometry(maximizedGeometry);
         }
     } else {
         applyGeometry(m_normalGeometry);

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORSTREAMWRITER_H
 #define QCBORSTREAMWRITER_H
@@ -12,6 +13,8 @@
 #ifndef QT_BOOTSTRAPPED
 #include <QtCore/qfloat16.h>
 #endif
+
+#include <memory>
 
 QT_REQUIRE_CONFIG(cborstreamwriter);
 
@@ -40,9 +43,14 @@ public:
     void append(quint64 u);
     void append(qint64 i);
     void append(QCborNegativeInteger n);
+#if !QT_CORE_REMOVED_SINCE(6, 10)   // wasn't a template until 6.10
+    Q_WEAK_OVERLOAD
+#endif
     void append(const QByteArray &ba)       { appendByteString(ba.constData(), ba.size()); }
+    void append(QByteArrayView ba)          { appendByteString(ba.data(), ba.size()); }
     void append(QLatin1StringView str);
     void append(QStringView str);
+    void append(QUtf8StringView str)        { appendTextString(str.data(), str.size()); }
     void append(QCborTag tag);
     void append(QCborKnownTags tag)         { append(QCborTag(tag)); }
     void append(QCborSimpleType st);
@@ -81,14 +89,9 @@ public:
     // no API for encoding chunked strings
 
 private:
-    QScopedPointer<QCborStreamWriterPrivate> d;
+    std::unique_ptr<QCborStreamWriterPrivate> d;
 };
 
 QT_END_NAMESPACE
-
-#if defined(QT_X11_DEFINES_FOUND)
-#  define True  1
-#  define False 0
-#endif
 
 #endif // QCBORSTREAMWRITER_H

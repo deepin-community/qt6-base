@@ -303,39 +303,39 @@ public:
 
 void tst_QGraphicsEffectSource::pixmapPadding_data()
 {
-    QTest::addColumn<int>("coordinateMode");
-    QTest::addColumn<int>("padMode");
+    QTest::addColumn<Qt::CoordinateSystem>("coordinateMode");
+    QTest::addColumn<QGraphicsEffect::PixmapPadMode>("padMode");
     QTest::addColumn<QSize>("size");
     QTest::addColumn<QPoint>("offset");
     QTest::addColumn<uint>("ulPixel");
 
-    QTest::newRow("log,nopad") << int(Qt::LogicalCoordinates)
-                               << int(QGraphicsEffect::NoPad)
+    QTest::newRow("log,nopad") << Qt::LogicalCoordinates
+                               << QGraphicsEffect::NoPad
                                << QSize(10, 10) << QPoint(0, 0)
                                << 0xffff0000u;
 
-    QTest::newRow("log,transparent") << int(Qt::LogicalCoordinates)
-                                     << int(QGraphicsEffect::PadToTransparentBorder)
+    QTest::newRow("log,transparent") << Qt::LogicalCoordinates
+                                     << QGraphicsEffect::PadToTransparentBorder
                                      << QSize(14, 14) << QPoint(-2, -2)
                                      << 0x00000000u;
 
-    QTest::newRow("log,effectrect") << int(Qt::LogicalCoordinates)
-                                    << int(QGraphicsEffect::PadToEffectiveBoundingRect)
+    QTest::newRow("log,effectrect") << Qt::LogicalCoordinates
+                                    << QGraphicsEffect::PadToEffectiveBoundingRect
                                     << QSize(20, 20) << QPoint(-5, -5)
                                     << 0x00000000u;
 
-    QTest::newRow("dev,nopad") << int(Qt::DeviceCoordinates)
-                               << int(QGraphicsEffect::NoPad)
+    QTest::newRow("dev,nopad") << Qt::DeviceCoordinates
+                               << QGraphicsEffect::NoPad
                                << QSize(20, 20) << QPoint(40, 40)
                                << 0xffff0000u;
 
-    QTest::newRow("dev,transparent") << int(Qt::DeviceCoordinates)
-                                     << int(QGraphicsEffect::PadToTransparentBorder)
+    QTest::newRow("dev,transparent") << Qt::DeviceCoordinates
+                                     << QGraphicsEffect::PadToTransparentBorder
                                      << QSize(24, 24) << QPoint(38, 38)
                                      << 0x00000000u;
 
-    QTest::newRow("dev,effectrect") << int(Qt::DeviceCoordinates)
-                                    << int(QGraphicsEffect::PadToEffectiveBoundingRect)
+    QTest::newRow("dev,effectrect") << Qt::DeviceCoordinates
+                                    << QGraphicsEffect::PadToEffectiveBoundingRect
                                     << QSize(40, 40) << QPoint(30, 30)
                                     << 0x00000000u;
 
@@ -351,29 +351,26 @@ void tst_QGraphicsEffectSource::pixmapPadding()
     QPixmap pm(10, 10);
     pm.fill(Qt::red);
 
-    QGraphicsScene *scene = new QGraphicsScene();
-    PaddingEffect *effect = new PaddingEffect(scene);
+    QGraphicsScene scene;
+    PaddingEffect *effect = new PaddingEffect(&scene);
     QGraphicsPixmapItem *pmItem = new QGraphicsPixmapItem(pm);
-    scene->addItem(pmItem);
+    scene.addItem(pmItem);
     pmItem->setGraphicsEffect(effect);
 
-    QFETCH(int, coordinateMode);
-    QFETCH(int, padMode);
+    QFETCH(Qt::CoordinateSystem, coordinateMode);
+    QFETCH(QGraphicsEffect::PixmapPadMode, padMode);
     QFETCH(QPoint, offset);
     QFETCH(QSize, size);
     QFETCH(uint, ulPixel);
 
-    effect->padMode = (QGraphicsEffect::PixmapPadMode) padMode;
-    effect->coordinateMode = (Qt::CoordinateSystem) coordinateMode;
+    effect->padMode = padMode;
+    effect->coordinateMode = coordinateMode;
 
-    scene->render(&dummyPainter, scene->itemsBoundingRect(), scene->itemsBoundingRect());
+    scene.render(&dummyPainter, scene.itemsBoundingRect(), scene.itemsBoundingRect());
 
     QCOMPARE(effect->pix.size(), size);
     QCOMPARE(effect->offset, offset);
     QCOMPARE(effect->pix.toImage().pixel(0, 0), ulPixel);
-
-    // ### Fix corruption in scene destruction, then enable...
-    // delete scene;
 }
 
 QTEST_MAIN(tst_QGraphicsEffectSource)

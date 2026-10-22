@@ -1,16 +1,18 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QVULKANINSTANCE_P_H
 #define QVULKANINSTANCE_P_H
 
 #include <QtGui/private/qtguiglobal_p.h>
 
-#if QT_CONFIG(vulkan) || defined(Q_QDOC)
+#if (QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)) || defined(Q_QDOC)
 
 #include "qvulkaninstance.h"
 #include <private/qvulkanfunctions_p.h>
 #include <QtCore/QHash>
+#include <QtCore/QMutex>
 
 //
 //  W A R N I N G
@@ -48,6 +50,7 @@ public:
     QVersionNumber apiVersion;
     VkResult errorCode;
     QScopedPointer<QVulkanFunctions> funcs;
+    QMutex deviceFuncsMutex;
     QHash<VkDevice, QVulkanDeviceFunctions *> deviceFuncs;
     QList<QVulkanInstance::DebugFilter> debugFilters; // legacy filters based on VK_EXT_debug_report
     QList<QVulkanInstance::DebugUtilsFilter> debugUtilsFilters; // the modern version based on VK_EXT_debug_utils
@@ -55,6 +58,6 @@ public:
 
 QT_END_NAMESPACE
 
-#endif // QT_CONFIG(vulkan)
+#endif // QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>)
 
 #endif // QVULKANINSTANCE_P_H

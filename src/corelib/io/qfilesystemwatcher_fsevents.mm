@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qplatformdefs.h>
 
@@ -24,6 +25,14 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+static bool isSameTimestampAndMode(const QT_STATBUF &statbuff,
+                                  const QFseventsFileSystemWatcherEngine::Info &info)
+{
+    const timespec ts = statbuff.st_ctimespec;
+    return (ts.tv_sec == info.ctime.tv_sec && ts.tv_nsec == info.ctime.tv_nsec)
+        && statbuff.st_mode == info.mode;
+}
 
 static void callBackFunction(ConstFSEventStreamRef streamRef,
                              void *clientCallBackInfo,
@@ -51,7 +60,7 @@ bool QFseventsFileSystemWatcherEngine::checkDir(DirsByName::iterator &it)
         needsRestart |= derefPath(info.watchedPath);
         emit emitDirectoryChanged(info.origPath, true);
         it = watchingState.watchedDirectories.erase(it);
-    } else if (st.st_ctimespec != info.ctime || st.st_mode != info.mode) {
+    } else if (!isSameTimestampAndMode(st, info)) {
         info.ctime = st.st_ctimespec;
         info.mode = st.st_mode;
         emit emitDirectoryChanged(info.origPath, false);
@@ -66,7 +75,7 @@ bool QFseventsFileSystemWatcherEngine::checkDir(DirsByName::iterator &it)
                 dirChanged = true;
                 i = entries.erase(i);
             } else {
-                if (i->ctime != st.st_ctimespec || i->mode != st.st_mode) {
+                if (!isSameTimestampAndMode(st, i.value())) {
                     // entry changed
                     dirChanged = true;
                     i->ctime = st.st_ctimespec;
@@ -75,10 +84,15 @@ bool QFseventsFileSystemWatcherEngine::checkDir(DirsByName::iterator &it)
                 ++i;
             }
         }
+
+        // Ask QDirListing to include hidden entries so it doesn't spend time
+        // trying to figure out if entries are hidden (slow on Darwin due to
+        // kCFURLIsHiddenKey check).
+        QDirListing::IteratorFlags flags = QDirListing::IteratorFlag::IncludeHidden;
+
         // check for new entries:
-        QDirIterator dirIt(name);
-        while (dirIt.hasNext()) {
-            dirIt.next();
+        QDirListing listing(name, flags);
+        for (auto dirIt : listing) {
             QString entryName = dirIt.filePath();
             if (!entries.contains(entryName)) {
                 dirChanged = true;
@@ -125,7 +139,7 @@ bool QFseventsFileSystemWatcherEngine::rescanFiles(InfoByName &filesInPath)
             emit emitFileChanged(it.value().origPath, true);
             it = filesInPath.erase(it);
             continue;
-        } else if (st.st_ctimespec != it->ctime || st.st_mode != it->mode) {
+        } else if (!isSameTimestampAndMode(st, it.value())) {
             it->ctime = st.st_ctimespec;
             it->mode = st.st_mode;
             emit emitFileChanged(it.value().origPath, false);

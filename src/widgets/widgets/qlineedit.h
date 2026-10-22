@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLINEEDIT_H
 #define QLINEEDIT_H
@@ -209,9 +210,6 @@ private:
     friend class QAbstractSpinBox;
     friend class QAccessibleLineEdit;
     friend class QComboBox;
-#ifdef QT_KEYPAD_NAVIGATION
-    friend class QDateTimeEdit;
-#endif
     Q_DISABLE_COPY(QLineEdit)
     Q_DECLARE_PRIVATE(QLineEdit)
 };

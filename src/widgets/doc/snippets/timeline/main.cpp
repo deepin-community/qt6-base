@@ -8,7 +8,7 @@ int main(int argv, char *args[])
 {
     QApplication app(argv, args);
 
-//! [0]
+    //! [0]
     QGraphicsItem *ball = new QGraphicsEllipseItem(0, 0, 20, 20);
 
     QTimeLine *timer = new QTimeLine(5000);
@@ -29,7 +29,7 @@ int main(int argv, char *args[])
     view->show();
 
     timer->start();
-//! [0]
+    //! [0]
 
     return app.exec();
 }

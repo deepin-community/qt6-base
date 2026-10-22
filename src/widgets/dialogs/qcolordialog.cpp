@@ -1,8 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcolordialog.h"
 
+#if QT_CONFIG(accessibility)
+#include "qaccessible.h"
+#endif
 #include "qapplication.h"
 #include "qdrawutil.h"
 #include "qevent.h"
@@ -38,6 +42,7 @@
 #include "qwindow.h"
 
 #include "private/qdialog_p.h"
+#include "private/qcolorwell_p.h"
 
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformservices.h>
@@ -55,16 +60,12 @@ namespace QtPrivate {
 class QColorLuminancePicker;
 class QColorPicker;
 class QColorShower;
-class QWellArray;
-class QColorWell;
 class QColorPickingEventFilter;
 } // namespace QtPrivate
 
 using QColorLuminancePicker = QtPrivate::QColorLuminancePicker;
 using QColorPicker = QtPrivate::QColorPicker;
 using QColorShower = QtPrivate::QColorShower;
-using QWellArray = QtPrivate::QWellArray;
-using QColorWell = QtPrivate::QColorWell;
 using QColorPickingEventFilter = QtPrivate::QColorPickingEventFilter;
 
 class QColorDialogPrivate : public QDialogPrivate
@@ -149,6 +150,7 @@ public:
 
     QPointer<QObject> receiverToDisconnectOnClose;
     QByteArray memberToDisconnectOnClose;
+    bool optionsExplicitlySet = false;
 #ifdef Q_OS_WIN32
     QTimer *updateTimer;
     QWindow dummyTransparentWindow;
@@ -160,96 +162,6 @@ private:
 };
 
 //////////// QWellArray BEGIN
-
-namespace QtPrivate {
-
-class QWellArray : public QWidget
-{
-    Q_OBJECT
-    Q_PROPERTY(int selectedColumn READ selectedColumn)
-    Q_PROPERTY(int selectedRow READ selectedRow)
-
-public:
-    QWellArray(int rows, int cols, QWidget* parent=nullptr);
-    ~QWellArray() {}
-    QString cellContent(int row, int col) const;
-
-    int selectedColumn() const { return selCol; }
-    int selectedRow() const { return selRow; }
-
-    virtual void setCurrent(int row, int col);
-    virtual void setSelected(int row, int col);
-
-    QSize sizeHint() const override;
-
-    inline int cellWidth() const
-        { return cellw; }
-
-    inline int cellHeight() const
-        { return cellh; }
-
-    inline int rowAt(int y) const
-        { return y / cellh; }
-
-    inline int columnAt(int x) const
-        { if (isRightToLeft()) return ncols - (x / cellw) - 1; return x / cellw; }
-
-    inline int rowY(int row) const
-        { return cellh * row; }
-
-    inline int columnX(int column) const
-        { if (isRightToLeft()) return cellw * (ncols - column - 1); return cellw * column; }
-
-    inline int numRows() const
-        { return nrows; }
-
-    inline int numCols() const
-        {return ncols; }
-
-    inline QRect cellRect() const
-        { return QRect(0, 0, cellw, cellh); }
-
-    inline QSize gridSize() const
-        { return QSize(ncols * cellw, nrows * cellh); }
-
-    QRect cellGeometry(int row, int column)
-        {
-            QRect r;
-            if (row >= 0 && row < nrows && column >= 0 && column < ncols)
-                r.setRect(columnX(column), rowY(row), cellw, cellh);
-            return r;
-        }
-
-    inline void updateCell(int row, int column) { update(cellGeometry(row, column)); }
-
-signals:
-    void selected(int row, int col);
-    void currentChanged(int row, int col);
-    void colorChanged(int index, QRgb color);
-
-protected:
-    virtual void paintCell(QPainter *, int row, int col, const QRect&);
-    virtual void paintCellContents(QPainter *, int row, int col, const QRect&);
-
-    void mousePressEvent(QMouseEvent*) override;
-    void mouseReleaseEvent(QMouseEvent*) override;
-    void keyPressEvent(QKeyEvent*) override;
-    void focusInEvent(QFocusEvent*) override;
-    void focusOutEvent(QFocusEvent*) override;
-    void paintEvent(QPaintEvent *) override;
-
-private:
-    Q_DISABLE_COPY(QWellArray)
-
-    int nrows;
-    int ncols;
-    int cellw;
-    int cellh;
-    int curRow;
-    int curCol;
-    int selRow;
-    int selCol;
-};
 
 void QWellArray::paintEvent(QPaintEvent *e)
 {
@@ -383,7 +295,7 @@ void QWellArray::setCurrent(int row, int col)
     if ((curRow == row) && (curCol == col))
         return;
 
-    if (row < 0 || col < 0)
+    if (row < 0 || col < 0 || row >= nrows || col >= ncols)
         row = col = -1;
 
     int oldRow = curRow;
@@ -396,6 +308,7 @@ void QWellArray::setCurrent(int row, int col)
     updateCell(curRow, curCol);
 
     emit currentChanged(curRow, curCol);
+    sendAccessibleChildFocusEvent();
 }
 
 /*
@@ -430,6 +343,7 @@ void QWellArray::focusInEvent(QFocusEvent*)
 {
     updateCell(curRow, curCol);
     emit currentChanged(curRow, curCol);
+    sendAccessibleChildFocusEvent();
 }
 
 
@@ -457,17 +371,6 @@ void QWellArray::keyPressEvent(QKeyEvent* e)
         if (curRow < numRows()-1)
             setCurrent(curRow + 1, curCol);
         break;
-#if 0
-    // bad idea that shouldn't have been implemented; very counterintuitive
-    case Qt::Key_Return:
-    case Qt::Key_Enter:
-        /*
-          ignore the key, so that the dialog get it, but still select
-          the current row/col
-        */
-        e->ignore();
-        // fallthrough intended
-#endif
     case Qt::Key_Space:
         setSelected(curRow, curCol);
         break;
@@ -475,10 +378,26 @@ void QWellArray::keyPressEvent(QKeyEvent* e)
         e->ignore();                        // we don't accept the event
         return;
     }
+}
 
-} // namespace QtPrivate
+void QWellArray::sendAccessibleChildFocusEvent()
+{
+#if QT_CONFIG(accessibility)
+    if (!QAccessible::isActive())
+        return;
+
+    if (hasFocus() && curRow >= 0 && curCol >= 0) {
+        const int itemIndex = index(curRow, curCol);
+        QAccessibleEvent event(this, QAccessible::Focus);
+        event.setChild(itemIndex);
+        QAccessible::updateAccessibility(&event);
+    }
+#endif
+}
 
 //////////// QWellArray END
+
+namespace QtPrivate {
 
 // Event filter to be installed on the dialog while in color-picking mode.
 class QColorPickingEventFilter : public QObject {
@@ -500,11 +419,47 @@ public:
         return false;
     }
 
+    void applicationStateChanged(Qt::ApplicationState state)
+    {
+        if (state != Qt::ApplicationActive)
+            m_dp->releaseColorPicking();
+    }
+
 private:
     QColorDialogPrivate *m_dp;
 };
 
-} // unnamed namespace
+} // namespace QtPrivate
+
+/*
+    Internal event filter used to adjust dialog options during widget polish.
+
+    Enables DontUseNativeDialog automatically when QColorDialog is subclassed
+    and no explicit options were set by the user.
+*/
+class QColorPolishFilter : public QObject
+{
+public:
+    explicit QColorPolishFilter(QColorDialog *cd) : QObject(cd)
+    {
+        cd->installEventFilter(this);
+    }
+
+    bool eventFilter(QObject *obj, QEvent *event) override
+    {
+        if (event->type() == QEvent::Polish ) {
+            Q_ASSERT(qobject_cast<QColorDialog *>(obj));
+            auto *cd = static_cast<QColorDialog *>(obj);
+            auto *d = static_cast<QColorDialogPrivate *>(QObjectPrivate::get(cd));
+
+            if (cd->metaObject() != &QColorDialog::staticMetaObject && !d->optionsExplicitlySet)
+                cd->setOption(QColorDialog::DontUseNativeDialog);
+
+            deleteLater(); // no longer needed after first polish
+        }
+        return false;
+    }
+};
 
 /*!
     Returns the number of custom colors supported by QColorDialog. All
@@ -563,35 +518,6 @@ static inline void rgb2hsv(QRgb rgb, int &h, int &s, int &v)
     c.setRgb(rgb);
     c.getHsv(&h, &s, &v);
 }
-
-namespace QtPrivate {
-
-class QColorWell : public QWellArray
-{
-public:
-    QColorWell(QWidget *parent, int r, int c, const QRgb *vals)
-        :QWellArray(r, c, parent), values(vals), mousePressed(false), oldCurrent(-1, -1)
-    { setSizePolicy(QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum)); }
-
-protected:
-    void paintCellContents(QPainter *, int row, int col, const QRect&) override;
-    void mousePressEvent(QMouseEvent *e) override;
-    void mouseMoveEvent(QMouseEvent *e) override;
-    void mouseReleaseEvent(QMouseEvent *e) override;
-#if QT_CONFIG(draganddrop)
-    void dragEnterEvent(QDragEnterEvent *e) override;
-    void dragLeaveEvent(QDragLeaveEvent *e) override;
-    void dragMoveEvent(QDragMoveEvent *e) override;
-    void dropEvent(QDropEvent *e) override;
-#endif
-
-private:
-    const QRgb *values;
-    bool mousePressed;
-    QPoint pressPos;
-    QPoint oldCurrent;
-
-};
 
 void QColorWell::paintCellContents(QPainter *p, int row, int col, const QRect &r)
 {
@@ -680,6 +606,8 @@ void QColorWell::mouseReleaseEvent(QMouseEvent *e)
     mousePressed = false;
 }
 
+namespace QtPrivate {
+
 class QColorPicker : public QFrame
 {
     Q_OBJECT
@@ -697,18 +625,21 @@ signals:
 protected:
     QSize sizeHint() const override;
     void paintEvent(QPaintEvent*) override;
+    void keyPressEvent(QKeyEvent *event) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
 
 private:
-    int hue;
-    int sat;
+    QPoint m_pos;
 
-    QPoint colPt();
-    int huePt(const QPoint &pt);
-    int satPt(const QPoint &pt);
-    void setCol(const QPoint &pt);
+    QPixmap createColorsPixmap();
+    QPoint colPt(int hue, int sat);
+    int huePt(const QPoint &pt, const QSize &widgetSize);
+    int huePt(const QPoint &pt) { return huePt(pt, size()); }
+    int satPt(const QPoint &pt, const QSize &widgetSize);
+    int satPt(const QPoint &pt) { return satPt(pt, size()); }
+    void setCol(const QPoint &pt, bool notify = true);
 
     QPixmap pix;
     bool crossVisible;
@@ -737,6 +668,7 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent*) override;
+    void keyPressEvent(QKeyEvent *event) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
 
@@ -750,7 +682,7 @@ private:
     int val2y(int val);
     void setVal(int v);
 
-    QPixmap *pix;
+    QPixmap pix;
 };
 
 
@@ -770,13 +702,27 @@ QColorLuminancePicker::QColorLuminancePicker(QWidget* parent)
     :QWidget(parent)
 {
     hue = 100; val = 100; sat = 100;
-    pix = nullptr;
     //    setAttribute(WA_NoErase, true);
+    setFocusPolicy(Qt::StrongFocus);
 }
 
 QColorLuminancePicker::~QColorLuminancePicker()
 {
-    delete pix;
+}
+
+void QColorLuminancePicker::keyPressEvent(QKeyEvent *event)
+{
+    switch (event->key()) {
+    case Qt::Key_Down:
+        setVal(std::clamp(val - 1, 0, 255));
+        break;
+    case Qt::Key_Up:
+        setVal(std::clamp(val + 1, 0, 255));
+        break;
+    default:
+        QWidget::keyPressEvent(event);
+        break;
+    }
 }
 
 void QColorLuminancePicker::mouseMoveEvent(QMouseEvent *m)
@@ -797,7 +743,7 @@ void QColorLuminancePicker::setVal(int v)
     if (val == v)
         return;
     val = qMax(0, qMin(v,255));
-    delete pix; pix=nullptr;
+    pix = QPixmap();
     repaint();
     emit newHsv(hue, sat, val);
 }
@@ -816,8 +762,7 @@ void QColorLuminancePicker::paintEvent(QPaintEvent *)
     QRect r(0, foff, w, height() - 2*foff);
     int wi = r.width() - 2;
     int hi = r.height() - 2;
-    if (!pix || pix->height() != hi || pix->width() != wi) {
-        delete pix;
+    if (pix.isNull() || pix.height() != hi || pix.width() != wi) {
         QImage img(wi, hi, QImage::Format_RGB32);
         int y;
         uint *pixel = (uint *) img.scanLine(0);
@@ -826,10 +771,10 @@ void QColorLuminancePicker::paintEvent(QPaintEvent *)
             std::fill(pixel, end, QColor::fromHsv(hue, sat, y2val(y + coff)).rgb());
             pixel = end;
         }
-        pix = new QPixmap(QPixmap::fromImage(img));
+        pix = QPixmap::fromImage(img);
     }
     QPainter p(this);
-    p.drawPixmap(1, coff, *pix);
+    p.drawPixmap(1, coff, pix);
     const QPalette &g = palette();
     qDrawShadePanel(&p, r, g, true);
     p.setPen(g.windowText().color());
@@ -845,42 +790,60 @@ void QColorLuminancePicker::setCol(int h, int s , int v)
     val = v;
     hue = h;
     sat = s;
-    delete pix; pix=nullptr;
+    pix = QPixmap();
     repaint();
 }
 
-QPoint QColorPicker::colPt()
+QPoint QColorPicker::colPt(int hue, int sat)
 {
     QRect r = contentsRect();
     return QPoint((360 - hue) * (r.width() - 1) / 360, (255 - sat) * (r.height() - 1) / 255);
 }
 
-int QColorPicker::huePt(const QPoint &pt)
+int QColorPicker::huePt(const QPoint &pt, const QSize &widgetSize)
 {
-    QRect r = contentsRect();
-    return 360 - pt.x() * 360 / (r.width() - 1);
+    QRect r = QRect(QPoint(0, 0), widgetSize) - contentsMargins();
+    return std::clamp(360 - pt.x() * 360 / (r.width() - 1), 0, 359);
 }
 
-int QColorPicker::satPt(const QPoint &pt)
+int QColorPicker::satPt(const QPoint &pt, const QSize &widgetSize)
 {
-    QRect r = contentsRect();
-    return 255 - pt.y() * 255 / (r.height() - 1);
+    QRect r = QRect(QPoint(0, 0), widgetSize) - contentsMargins();
+    return std::clamp(255 - pt.y() * 255 / (r.height() - 1), 0, 255);
 }
 
-void QColorPicker::setCol(const QPoint &pt)
+void QColorPicker::setCol(const QPoint &pt, bool notify)
 {
-    setCol(huePt(pt), satPt(pt));
+    if (pt == m_pos || pix.isNull())
+        return;
+
+    Q_ASSERT(pix.height());
+    Q_ASSERT(pix.width());
+
+    QRect r(m_pos, QSize(20, 20));
+    m_pos.setX(std::clamp(pt.x(), 0, pix.width() - 1));
+    m_pos.setY(std::clamp(pt.y(), 0, pix.height() - 1));
+    r = r.united(QRect(m_pos, QSize(20, 20)));
+    r.translate(contentsRect().x() - 9, contentsRect().y() - 9);
+    //    update(r);
+    repaint(r);
+
+    if (notify)
+        emit newCol(huePt(m_pos), satPt(m_pos));
 }
 
 QColorPicker::QColorPicker(QWidget* parent)
     : QFrame(parent)
     , crossVisible(true)
 {
-    hue = 0; sat = 0;
-    setCol(150, 255);
-
     setAttribute(Qt::WA_NoSystemBackground);
+    setFocusPolicy(Qt::StrongFocus);
     setSizePolicy(QSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed) );
+    adjustSize();
+
+    pix = createColorsPixmap();
+
+    setCol(150, 255);
 }
 
 QColorPicker::~QColorPicker()
@@ -904,15 +867,31 @@ void QColorPicker::setCol(int h, int s)
 {
     int nhue = qMin(qMax(0,h), 359);
     int nsat = qMin(qMax(0,s), 255);
-    if (nhue == hue && nsat == sat)
+    if (nhue == huePt(m_pos) && nsat == satPt(m_pos))
         return;
 
-    QRect r(colPt(), QSize(20,20));
-    hue = nhue; sat = nsat;
-    r = r.united(QRect(colPt(), QSize(20,20)));
-    r.translate(contentsRect().x()-9, contentsRect().y()-9);
-    //    update(r);
-    repaint(r);
+    setCol(colPt(nhue, nsat), false);
+}
+
+void QColorPicker::keyPressEvent(QKeyEvent *event)
+{
+    switch (event->key()) {
+    case Qt::Key_Down:
+        setCol(m_pos + QPoint(0, 1));
+        break;
+    case Qt::Key_Left:
+        setCol(m_pos + QPoint(-1, 0));
+        break;
+    case Qt::Key_Right:
+        setCol(m_pos + QPoint(1, 0));
+        break;
+    case Qt::Key_Up:
+        setCol(m_pos + QPoint(0, -1));
+        break;
+    default:
+        QFrame::keyPressEvent(event);
+        break;
+    }
 }
 
 void QColorPicker::mouseMoveEvent(QMouseEvent *m)
@@ -923,14 +902,12 @@ void QColorPicker::mouseMoveEvent(QMouseEvent *m)
         return;
     }
     setCol(p);
-    emit newCol(hue, sat);
 }
 
 void QColorPicker::mousePressEvent(QMouseEvent *m)
 {
     QPoint p = m->position().toPoint() - contentsRect().topLeft();
     setCol(p);
-    emit newCol(hue, sat);
 }
 
 void QColorPicker::paintEvent(QPaintEvent* )
@@ -942,7 +919,7 @@ void QColorPicker::paintEvent(QPaintEvent* )
     p.drawPixmap(r.topLeft(), pix);
 
     if (crossVisible) {
-        QPoint pt = colPt() + r.topLeft();
+        QPoint pt = m_pos + r.topLeft();
         p.setPen(Qt::black);
         p.fillRect(pt.x()-9, pt.y(), 20, 2, Qt::black);
         p.fillRect(pt.x(), pt.y()-9, 2, 20, Qt::black);
@@ -953,6 +930,21 @@ void QColorPicker::resizeEvent(QResizeEvent *ev)
 {
     QFrame::resizeEvent(ev);
 
+    pix = createColorsPixmap();
+
+    const QSize &oldSize = ev->oldSize();
+    if (!oldSize.isValid())
+        return;
+
+    // calculate hue/saturation based on previous widget size
+    // and update position accordingly
+    const int hue = huePt(m_pos, oldSize);
+    const int sat = satPt(m_pos, oldSize);
+    setCol(hue, sat);
+}
+
+QPixmap QColorPicker::createColorsPixmap()
+{
     int w = width() - frameWidth() * 2;
     int h = height() - frameWidth() * 2;
     QImage img(w, h, QImage::Format_RGB32);
@@ -970,9 +962,8 @@ void QColorPicker::resizeEvent(QResizeEvent *ev)
             ++x;
         }
     }
-    pix = QPixmap::fromImage(img);
+    return QPixmap::fromImage(img);
 }
-
 
 class QColSpinBox : public QSpinBox
 {
@@ -1610,7 +1601,7 @@ void QColorDialogPrivate::pickScreenColor()
     Q_Q(QColorDialog);
 
     auto *platformServices = QGuiApplicationPrivate::platformIntegration()->services();
-    if (platformServices->hasCapability(QPlatformServices::Capability::ColorPicking)) {
+    if (platformServices && platformServices->hasCapability(QPlatformServices::Capability::ColorPicking)) {
         if (auto *colorPicker = platformServices->colorPicker(q->windowHandle())) {
             q->connect(colorPicker, &QPlatformServiceColorPicker::colorPicked, q,
                        [q, colorPicker](const QColor &color) {
@@ -1625,6 +1616,8 @@ void QColorDialogPrivate::pickScreenColor()
     if (!colorPickingEventFilter)
         colorPickingEventFilter = new QColorPickingEventFilter(this, q);
     q->installEventFilter(colorPickingEventFilter);
+    QObject::connect(qApp, &QGuiApplication::applicationStateChanged,
+                     colorPickingEventFilter, &QColorPickingEventFilter::applicationStateChanged);
     // If user pushes Escape, the last color before picking will be restored.
     beforeScreenColorPicking = cs->currentColor();
 #ifndef QT_NO_CURSOR
@@ -1660,10 +1653,18 @@ void QColorDialogPrivate::pickScreenColor()
 
 void QColorDialogPrivate::updateColorLabelText(const QPoint &globalPos)
 {
-    if (lblScreenColorInfo)
-        lblScreenColorInfo->setText(QColorDialog::tr("Cursor at %1, %2\nPress ESC to cancel")
+    if (!lblScreenColorInfo)
+        return;
+#ifdef Q_OS_HARMONY
+    Q_UNUSED(globalPos)
+    lblScreenColorInfo->setText(QColorDialog::tr("Cursor at %1, %2\nPress ESC to cancel")
+                                .arg(QStringLiteral("-"))
+                                .arg(QStringLiteral("-")));
+#else
+    lblScreenColorInfo->setText(QColorDialog::tr("Cursor at %1, %2\nPress ESC to cancel")
                                 .arg(globalPos.x())
                                 .arg(globalPos.y()));
+#endif
 }
 
 void QColorDialogPrivate::releaseColorPicking()
@@ -1671,6 +1672,8 @@ void QColorDialogPrivate::releaseColorPicking()
     Q_Q(QColorDialog);
     cp->setCrossVisible(true);
     q->removeEventFilter(colorPickingEventFilter);
+    QObject::disconnect(qApp, &QGuiApplication::applicationStateChanged,
+                        colorPickingEventFilter, &QColorPickingEventFilter::applicationStateChanged);
     q->releaseMouse();
 #ifdef Q_OS_WIN32
     updateTimer->stop();
@@ -1977,6 +1980,7 @@ static const Qt::WindowFlags qcd_DefaultWindowFlags =
 QColorDialog::QColorDialog(QWidget *parent)
     : QColorDialog(QColor(Qt::white), parent)
 {
+    new QColorPolishFilter(this);
 }
 
 /*!
@@ -1987,6 +1991,7 @@ QColorDialog::QColorDialog(const QColor &initial, QWidget *parent)
     : QDialog(*new QColorDialogPrivate, parent, qcd_DefaultWindowFlags)
 {
     Q_D(QColorDialog);
+    new QColorPolishFilter(this);
     d->init(initial);
 }
 
@@ -2044,6 +2049,9 @@ QColor QColorDialog::selectedColor() const
 */
 void QColorDialog::setOption(ColorDialogOption option, bool on)
 {
+    Q_D(QColorDialog);
+    d->optionsExplicitlySet = true;
+
     const QColorDialog::ColorDialogOptions previousOptions = options();
     if (!(previousOptions & option) != !on)
         setOptions(previousOptions ^ option);
@@ -2076,6 +2084,7 @@ bool QColorDialog::testOption(ColorDialogOption option) const
 void QColorDialog::setOptions(ColorDialogOptions options)
 {
     Q_D(QColorDialog);
+    d->optionsExplicitlySet = true;
 
     if (QColorDialog::options() == options)
         return;
@@ -2151,7 +2160,9 @@ void QColorDialog::setVisible(bool visible)
 */
 void QColorDialogPrivate::setVisible(bool visible)
 {
-    Q_Q(QColorDialog);
+    // Don't use Q_Q here! This function is called from ~QDialog,
+    // so Q_Q calling q_func() invokes undefined behavior (invalid cast in q_func()).
+    const auto q = static_cast<QDialog *>(q_ptr);
 
     if (visible)
         selectedQColor = QColor();
@@ -2161,7 +2172,7 @@ void QColorDialogPrivate::setVisible(bool visible)
             // Set WA_DontShowOnScreen so that QDialog::setVisible(visible) below
             // updates the state correctly, but skips showing the non-native version:
             q->setAttribute(Qt::WA_DontShowOnScreen);
-        } else {
+        } else if (visible) {
             initWidgets();
         }
     } else {
@@ -2197,13 +2208,19 @@ void QColorDialog::open(QObject *receiver, const char *member)
 QColor QColorDialog::getColor(const QColor &initial, QWidget *parent, const QString &title,
                               ColorDialogOptions options)
 {
-    QColorDialog dlg(parent);
+    QAutoPointer<QColorDialog> dlg(new QColorDialog(parent));
     if (!title.isEmpty())
-        dlg.setWindowTitle(title);
-    dlg.setOptions(options);
-    dlg.setCurrentColor(initial);
-    dlg.exec();
-    return dlg.selectedColor();
+        dlg->setWindowTitle(title);
+    dlg->setOptions(options);
+    dlg->setCurrentColor(initial);
+
+    // If the dlg was deleted with a parent window,
+    // dlg == nullptr after leaving the exec().
+    dlg->exec();
+    if (bool(dlg))
+        return dlg->selectedColor();
+    else
+        return QColor();
 }
 
 /*!

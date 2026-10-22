@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdatawidgetmapper.h"
 
@@ -77,12 +78,12 @@ public:
 
     void disconnectModel()
     {
-        for (const QMetaObject::Connection &connection : modelConnections)
+        for (QMetaObject::Connection &connection : modelConnections)
             QObject::disconnect(connection);
     }
     void disconnectDelegate()
     {
-        for (const QMetaObject::Connection &connection : delegateConnections)
+        for (QMetaObject::Connection &connection : delegateConnections)
             QObject::disconnect(connection);
     }
 
@@ -216,7 +217,6 @@ void QDataWidgetMapperPrivate::modelDestroyed()
     \class QDataWidgetMapper
     \brief The QDataWidgetMapper class provides mapping between a section
     of a data model to widgets.
-    \since 4.2
     \ingroup model-view
     \ingroup advanced
     \inmodule QtWidgets
@@ -463,8 +463,6 @@ void QDataWidgetMapper::addMapping(QWidget *widget, int section)
 }
 
 /*!
-  \since 4.3
-
   Essentially the same as addMapping(), but adds the possibility to specify
   the property to use specifying \a propertyName.
 
@@ -515,7 +513,6 @@ int QDataWidgetMapper::mappedSection(QWidget *widget) const
 }
 
 /*!
-  \since 4.3
   Returns the name of the property that is used when mapping
   data to the given \a widget.
 

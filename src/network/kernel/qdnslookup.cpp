@@ -1,6 +1,7 @@
 // Copyright (C) 2012 Jeremy Lainé <jeremy.laine@m4x.org>
 // Copyright (C) 2023 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdnslookup.h"
 #include "qdnslookup_p.h"
@@ -24,7 +25,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-static Q_LOGGING_CATEGORY(lcDnsLookup, "qt.network.dnslookup", QtCriticalMsg)
+Q_STATIC_LOGGING_CATEGORY(lcDnsLookup, "qt.network.dnslookup", QtCriticalMsg)
 
 namespace {
 struct QDnsLookupThreadPool : QThreadPool
@@ -287,7 +288,7 @@ static void qt_qdnsservicerecord_sort(QList<QDnsServiceRecord> &records)
 */
 bool QDnsLookup::isProtocolSupported(Protocol protocol)
 {
-#if QT_CONFIG(libresolv) || defined(Q_OS_WIN)
+#if QT_CONFIG(libresolv) || QT_CONFIG(harmony_dnsresolver) || defined(Q_OS_WIN)
     switch (protocol) {
     case QDnsLookup::Standard:
         return true;
@@ -776,7 +777,7 @@ void QDnsLookup::lookup()
     Q_D(QDnsLookup);
     d->isFinished = false;
     d->reply = QDnsLookupReply();
-    if (!QCoreApplication::instance()) {
+    if (!QCoreApplication::instanceExists()) {
         // NOT qCWarning because this isn't a result of the lookup
         qWarning("QDnsLookup requires a QCoreApplication");
         return;
@@ -882,11 +883,10 @@ QDnsDomainNameRecord &QDnsDomainNameRecord::operator=(const QDnsDomainNameRecord
     d = other.d;
     return *this;
 }
+
 /*!
     \fn void QDnsDomainNameRecord::swap(QDnsDomainNameRecord &other)
-
-    Swaps this domain-name record instance with \a other. This
-    function is very fast and never fails.
+    \memberswap{domain-name record instance}
 */
 
 /*!
@@ -967,11 +967,10 @@ QDnsHostAddressRecord &QDnsHostAddressRecord::operator=(const QDnsHostAddressRec
     d = other.d;
     return *this;
 }
+
 /*!
     \fn void QDnsHostAddressRecord::swap(QDnsHostAddressRecord &other)
-
-    Swaps this host address record instance with \a other. This
-    function is very fast and never fails.
+    \memberswap{host address record instance}
 */
 
 /*!
@@ -1065,9 +1064,7 @@ QDnsMailExchangeRecord &QDnsMailExchangeRecord::operator=(const QDnsMailExchange
 }
 /*!
     \fn void QDnsMailExchangeRecord::swap(QDnsMailExchangeRecord &other)
-
-    Swaps this mail exchange record with \a other. This function is
-    very fast and never fails.
+    \memberswap{mail exchange record}
 */
 
 /*!
@@ -1186,9 +1183,7 @@ QDnsServiceRecord &QDnsServiceRecord::operator=(const QDnsServiceRecord &other)
 }
 /*!
     \fn void QDnsServiceRecord::swap(QDnsServiceRecord &other)
-
-    Swaps this service record instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{service record instance}
 */
 
 /*!
@@ -1273,9 +1268,7 @@ QDnsTextRecord &QDnsTextRecord::operator=(const QDnsTextRecord &other)
 }
 /*!
     \fn void QDnsTextRecord::swap(QDnsTextRecord &other)
-
-    Swaps this text record instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{text record instance}
 */
 
 /*!

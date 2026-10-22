@@ -53,9 +53,9 @@ void tst_QSidebar::selectUrls()
     QSidebar qsidebar;
     qsidebar.setModelAndUrls(&fsmodel, urls);
 
-    QSignalSpy spy(&qsidebar, SIGNAL(goToUrl(QUrl)));
+    QSignalSpy spy(&qsidebar, &QSidebar::goToUrl);
     qsidebar.selectUrl(urls.at(0));
-    QCOMPARE(spy.size(), 0);
+    QCOMPARE(spy.size(), 1);
 }
 
 void tst_QSidebar::addUrls()
@@ -160,15 +160,19 @@ void tst_QSidebar::addUrls()
 void tst_QSidebar::goToUrl()
 {
     QList<QUrl> urls;
+    const QUrl tempUrl = QUrl::fromLocalFile(QDir::temp().absolutePath());
     urls << QUrl::fromLocalFile(QDir::rootPath())
-         << QUrl::fromLocalFile(QDir::temp().absolutePath());
+         << tempUrl;
     QFileSystemModel fsmodel;
     fsmodel.setIconProvider(&defaultIconProvider);
     QSidebar qsidebar;
     qsidebar.setModelAndUrls(&fsmodel, urls);
     qsidebar.show();
 
-    QSignalSpy spy(&qsidebar, SIGNAL(goToUrl(QUrl)));
+    // switch to a different entry first
+    qsidebar.selectUrl(tempUrl);
+
+    QSignalSpy spy(&qsidebar, &QSidebar::goToUrl);
     QTest::mousePress(qsidebar.viewport(), Qt::LeftButton, {},
                       qsidebar.visualRect(qsidebar.model()->index(0, 0)).center());
     QCOMPARE(spy.size(), 1);

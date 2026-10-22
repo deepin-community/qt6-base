@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qglobal.h"
 #include "qromancalendar_p.h"
@@ -9,6 +10,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \since 5.14
+    \internal
 
     \class QRomanCalendar
     \inmodule QtCore
@@ -29,7 +31,7 @@ int QRomanCalendar::daysInMonth(int month, int year) const
         return 0;
 
     if (month == 2)
-        return isLeapYear(year) ? 29 : 28;
+        return year == QCalendar::Unspecified || isLeapYear(year) ? 29 : 28;
 
     // Long if odd up to July = 7, or if even from 8 = August onwards:
     return 30 | ((month & 1) ^ (month >> 3));

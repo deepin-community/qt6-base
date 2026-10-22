@@ -1,8 +1,9 @@
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#ifndef QNATIVEIPCKEY_H
-#define QNATIVEIPCKEY_H
+#ifndef QTIPCCOMMON_H
+#define QTIPCCOMMON_H
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qtcore-config.h>
@@ -58,7 +59,7 @@ public:
 
     QNativeIpcKey(QNativeIpcKey &&other) noexcept
         : d(std::exchange(other.d, nullptr)), key(std::move(other.key)),
-          typeAndFlags(std::move(other.typeAndFlags))
+          typeAndFlags(other.typeAndFlags)
     {
         if (isSlowPath())
             move_internal(std::move(other));
@@ -153,9 +154,13 @@ private:
     constexpr bool isSlowPath() const noexcept
     { return Q_UNLIKELY(d); }
 
+#ifdef Q_QDOC
+    friend size_t qHash(const QNativeIpcKey &ipcKey, size_t seed = 0) noexcept { return 0; }
+#else
     friend Q_CORE_EXPORT size_t qHash(const QNativeIpcKey &ipcKey, size_t seed) noexcept;
     friend size_t qHash(const QNativeIpcKey &ipcKey) noexcept
     { return qHash(ipcKey, 0); }
+#endif
 
     Q_CORE_EXPORT void copy_internal(const QNativeIpcKey &other);
     Q_CORE_EXPORT void move_internal(QNativeIpcKey &&other) noexcept;
@@ -189,7 +194,7 @@ inline auto QNativeIpcKey::legacyDefaultTypeForOs() noexcept -> Type
 {
 #if defined(Q_OS_WIN)
     return Type::Windows;
-#elif defined(QT_POSIX_IPC)
+#elif defined(QT_POSIX_IPC) || defined(Q_OS_HARMONY)
     return Type::PosixRealtime;
 #elif defined(Q_OS_DARWIN)
     return defaultTypeForOs_internal();
@@ -203,4 +208,4 @@ QT_END_NAMESPACE
 #endif // QT_CONFIG(sharedmemory) || QT_CONFIG(systemsemaphore)
 
 
-#endif // QNATIVEIPCKEY_H
+#endif // QTIPCCOMMON_H

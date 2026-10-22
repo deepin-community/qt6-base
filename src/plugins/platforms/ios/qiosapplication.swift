@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 import SwiftUI
 import CompositorServices
@@ -8,6 +9,8 @@ import RealityKit
 
 struct QIOSSwiftApplication: App {
     @UIApplicationDelegateAdaptor private var appDelegate: QIOSApplicationDelegate
+
+    @State private var immersionStyle:ImmersionStyle = .automatic
 
     var body: some SwiftUI.Scene {
         WindowGroup() {
@@ -24,30 +27,30 @@ struct QIOSSwiftApplication: App {
                 }
             }
         }
-        // CompositorLayer immersive spaces are always full, and should not need
-        // to set the immersion style, but lacking this we get a warning in the
-        // console about not being able to "configure an immersive space with
-        // selected style 'AutomaticImmersionStyle' since it is not in the list
-        // of supported styles for this type of content: 'FullImmersionStyle'."
-        .immersionStyle(selection: .constant(.full), in: .full)
+        .immersionStyle(selection: .constant(immersionStyle), in: immersionStyle)
     }
 }
 
 public struct QIOSLayerConfiguration: CompositorLayerConfiguration {
     public func makeConfiguration(capabilities: LayerRenderer.Capabilities,
                                   configuration: inout LayerRenderer.Configuration) {
-        // Use reflection to pull out underlying C handles
-        // FIXME: Use proper bridging APIs when available
-        let capabilitiesMirror = Mirror(reflecting: capabilities)
-        let configurationMirror = Mirror(reflecting: configuration)
-        QIOSIntegration.instance().configureCompositorLayer(
-            capabilitiesMirror.descendant("c_capabilities") as? cp_layer_renderer_capabilities_t,
-            configurationMirror.descendant("box", "value") as? cp_layer_renderer_configuration_t
-        )
+        if #available(visionOS 2, *) {
+            QIOSIntegration.instance().configureCompositorLayer(
+                capabilities as cp_layer_renderer_capabilities_t,
+                configuration as cp_layer_renderer_configuration_t)
+        } else {
+            // Use reflection to pull out underlying C handles
+            let capabilitiesMirror = Mirror(reflecting: capabilities)
+            let configurationMirror = Mirror(reflecting: configuration)
+            QIOSIntegration.instance().configureCompositorLayer(
+                capabilitiesMirror.descendant("c_capabilities") as? cp_layer_renderer_capabilities_t,
+                configurationMirror.descendant("box", "value") as? cp_layer_renderer_configuration_t
+            )
+        }
     }
 }
 
-public func runSwiftAppMain() {
+@_cdecl("runSwiftAppMain") public func runSwiftAppMain() {
     QIOSSwiftApplication.main()
 }
 

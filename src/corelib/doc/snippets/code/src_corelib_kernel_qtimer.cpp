@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     QTimer::singleShot(600000, &app, QCoreApplication::quit);
-    ...
+    //...
     return app.exec();
 }
 //! [0]

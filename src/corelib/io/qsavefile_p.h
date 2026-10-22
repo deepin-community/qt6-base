@@ -1,5 +1,6 @@
 // Copyright (C) 2013 David Faure <faure@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:header-decls-only
 
 #ifndef QSAVEFILE_P_H
 #define QSAVEFILE_P_H
@@ -15,11 +16,12 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
+#include <QtCore/qsavefile.h>
 
 #if QT_CONFIG(temporaryfile)
 
 #include "private/qfiledevice_p.h"
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -33,11 +35,19 @@ protected:
 
     QString fileName;
     QString finalFileName; // fileName with symbolic links resolved
+    // Optional permissions to set on eventual commit():
+    std::optional<QFileDevice::Permissions> finalPermissions;
 
     QFileDevice::FileError writeError;
 
     bool useTemporaryFile;
     bool directWriteFallback;
+
+public:
+    bool open(QIODevice::OpenMode mode);
+
+    QFileDevice::Permissions permissions() const override;
+    bool setPermissions(QFileDevice::Permissions perms) override;
 };
 
 QT_END_NAMESPACE

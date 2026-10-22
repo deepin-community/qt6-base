@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 #include <UniformTypeIdentifiers/UTCoreTypes.h>
@@ -7,8 +8,15 @@
 #include "qcocoadrag.h"
 #include "qmacclipboard.h"
 #include "qcocoahelpers.h"
-#include <QtGui/private/qcoregraphics_p.h>
+
+#include <QtGui/qfont.h>
+#include <QtGui/qfontmetrics.h>
+#include <QtGui/qpainter.h>
 #include <QtGui/qutimimeconverter.h>
+#include <QtGui/private/qcoregraphics_p.h>
+#include <QtGui/private/qdnd_p.h>
+
+#include <QtCore/qeventloop.h>
 #include <QtCore/private/qcore_mac_p.h>
 
 #include <vector>
@@ -31,11 +39,12 @@ QCocoaDrag::~QCocoaDrag()
     [m_lastEvent release];
 }
 
-void QCocoaDrag::setLastMouseEvent(NSEvent *event, NSView *view)
+void QCocoaDrag::setLastInputEvent(NSEvent *event, NSView *view)
 {
     [m_lastEvent release];
     m_lastEvent = [event copy];
-    m_lastView = view;
+    if (view != m_lastView)
+        m_lastView = view;
 }
 
 QMimeData *QCocoaDrag::dragMimeData()
@@ -95,9 +104,14 @@ Qt::DropAction QCocoaDrag::defaultAction(Qt::DropActions possibleActions,
 
 Qt::DropAction QCocoaDrag::drag(QDrag *o)
 {
-    m_drag = o;
     m_executed_drop_action = Qt::IgnoreAction;
+    if (!m_lastView) {
+        [m_lastEvent release];
+        m_lastEvent = nil;
+        return m_executed_drop_action;
+    }
 
+    m_drag = o;
     QMacPasteboard dragBoard(CFStringRef(NSPasteboardNameDrag), QUtiMimeConverter::HandlerScopeFlag::DnD);
     m_drag->mimeData()->setData("application/x-qt-mime-type-name"_L1, QByteArray("dummy"));
     dragBoard.setMimeData(m_drag->mimeData(), QMacPasteboard::LazyRequest);
@@ -138,7 +152,7 @@ bool QCocoaDrag::maybeDragMultipleItems()
 
     const QMacAutoReleasePool pool;
 
-    NSView *view = m_lastView ? m_lastView : m_lastEvent.window.contentView;
+    NSView *view = m_lastView ? static_cast<NSView*>(m_lastView) : m_lastEvent.window.contentView;
     if (![view respondsToSelector:@selector(draggingSession:sourceOperationMaskForDraggingContext:)])
         return false;
 

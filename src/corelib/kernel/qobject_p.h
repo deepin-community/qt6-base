@@ -1,6 +1,7 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QOBJECT_P_H
 #define QOBJECT_P_H
@@ -39,6 +40,19 @@ QT_BEGIN_NAMESPACE
 #define QT_ANONYMOUS_PRIVATE_PROPERTY(d, text) QT_ANNOTATE_CLASS2(qt_anonymous_private_property, d, text)
 #endif
 
+#define QT_CONCAT(B, M, m, u)   QT_CONCAT2(B, M, m, u)
+#define QT_CONCAT2(B, M, m, u)  B ## M ## _ ## m ## _ ## u
+#if defined(QT_BUILD_INTERNAL) && !QT_CONFIG(elf_private_full_version)
+// Don't check the version parameter in internal builds.
+// This allows incompatible versions to be loaded, possibly for testing.
+enum QObjectPrivateVersionEnum
+#else
+enum QT_CONCAT(QtPrivate_, QT_VERSION_MAJOR, QT_VERSION_MINOR, QT_VERSION_PATCH)
+#endif
+{ QObjectPrivateVersion = QT_VERSION };
+#undef QT_CONCAT
+#undef QT_CONCAT2
+
 class QVariant;
 class QThreadData;
 class QObjectConnectionListVector;
@@ -57,8 +71,6 @@ struct QSignalSpyCallbackSet
 void Q_CORE_EXPORT qt_register_signal_spy_callbacks(QSignalSpyCallbackSet *callback_set);
 
 extern Q_CORE_EXPORT QBasicAtomicPointer<QSignalSpyCallbackSet> qt_signal_spy_callback_set;
-
-enum { QObjectPrivateVersion = QT_VERSION };
 
 class Q_CORE_EXPORT QAbstractDeclarativeData
 {
@@ -104,6 +116,7 @@ public:
         if (!extraData)
             extraData = new ExtraData(this);
     }
+    void setObjectNameWithoutBindings(const QString &name);
 
     typedef void (*StaticMetaCallFunction)(QObject *, QMetaObject::Call, int, void **);
     struct Connection;
@@ -129,13 +142,11 @@ public:
         linked list.
     */
 
-    QObjectPrivate(int version = QObjectPrivateVersion);
+    QObjectPrivate(decltype(QObjectPrivateVersion) version = QObjectPrivateVersion);
     virtual ~QObjectPrivate();
     void deleteChildren();
     // used to clear binding storage early in ~QObject
     void clearBindingStorage();
-
-    inline void checkForIncompatibleLibraryVersion(int version) const;
 
     void setParent_helper(QObject *);
     void moveToThread_helper();
@@ -149,6 +160,8 @@ public:
 
     static QObjectPrivate *get(QObject *o) { return o->d_func(); }
     static const QObjectPrivate *get(const QObject *o) { return o->d_func(); }
+
+    static void deleteInOwnThread(QObject *object);
 
     int signalIndex(const char *signalName, const QMetaObject **meta = nullptr) const;
     bool isSignalConnected(uint signalIdx, bool checkDeclarative = true) const;
@@ -214,28 +227,6 @@ public:
     // plus QPointer, which keeps a separate list
     QAtomicPointer<QtSharedPointer::ExternalRefCountData> sharedRefcount;
 };
-
-/*
-    Catch mixing of incompatible library versions.
-
-    Should be called from the constructor of every non-final subclass
-    of QObjectPrivate, to ensure we catch incompatibilities between
-    the intermediate base and subclasses thereof.
-*/
-inline void QObjectPrivate::checkForIncompatibleLibraryVersion(int version) const
-{
-#if defined(QT_BUILD_INTERNAL)
-    // Don't check the version parameter in internal builds.
-    // This allows incompatible versions to be loaded, possibly for testing.
-    Q_UNUSED(version);
-#else
-    if (Q_UNLIKELY(version != QObjectPrivateVersion)) {
-        qFatal("Cannot mix incompatible Qt library (%d.%d.%d) with this library (%d.%d.%d)",
-                (version >> 16) & 0xff, (version >> 8) & 0xff, version & 0xff,
-                (QObjectPrivateVersion >> 16) & 0xff, (QObjectPrivateVersion >> 8) & 0xff, QObjectPrivateVersion & 0xff);
-    }
-#endif
-}
 
 inline bool QObjectPrivate::isDeclarativeSignalConnected(uint signal_index) const
 {
@@ -340,16 +331,13 @@ bool QObjectPrivate::disconnect(const typename QtPrivate::FunctionPointer< Func1
                           &SignalType::Object::staticMetaObject);
 }
 
-class QSemaphore;
+class QLatch;
 class Q_CORE_EXPORT QAbstractMetaCallEvent : public QEvent
 {
 public:
-    QAbstractMetaCallEvent(const QObject *sender, int signalId, QSemaphore *semaphore = nullptr)
-        : QEvent(MetaCall), signalId_(signalId), sender_(sender)
-#if QT_CONFIG(thread)
-        , semaphore_(semaphore)
-#endif
-    { Q_UNUSED(semaphore); }
+    QAbstractMetaCallEvent(const QObject *sender, int signalId, QLatch *latch = nullptr)
+        : QEvent(MetaCall), signalId_(signalId), sender_(sender), latch(latch)
+    {}
     ~QAbstractMetaCallEvent();
 
     virtual void placeMetaCall(QObject *object) = 0;
@@ -360,82 +348,29 @@ public:
 private:
     int signalId_;
     const QObject *sender_;
-#if QT_CONFIG(thread)
-    QSemaphore *semaphore_;
-#endif
+    QLatch *latch;
 };
 
 class Q_CORE_EXPORT QMetaCallEvent : public QAbstractMetaCallEvent
 {
 public:
-    // blocking queued with semaphore - args always owned by caller
+    // blocking queued with latch - arguments always remain owned by the caller
     QMetaCallEvent(ushort method_offset, ushort method_relative,
                    QObjectPrivate::StaticMetaCallFunction callFunction,
                    const QObject *sender, int signalId,
-                   void **args, QSemaphore *semaphore);
+                   void **args, QLatch *latch);
     QMetaCallEvent(QtPrivate::QSlotObjectBase *slotObj,
                    const QObject *sender, int signalId,
-                   void **args, QSemaphore *semaphore);
+                   void **args, QLatch *latch);
     QMetaCallEvent(QtPrivate::SlotObjUniquePtr slotObj,
                    const QObject *sender, int signalId,
-                   void **args, QSemaphore *semaphore);
-
-    // queued - args allocated by event, copied by caller
-    QMetaCallEvent(ushort method_offset, ushort method_relative,
-                   QObjectPrivate::StaticMetaCallFunction callFunction,
-                   const QObject *sender, int signalId,
-                   int nargs);
-    QMetaCallEvent(QtPrivate::QSlotObjectBase *slotObj,
-                   const QObject *sender, int signalId,
-                   int nargs);
-    QMetaCallEvent(QtPrivate::SlotObjUniquePtr slotObj,
-                   const QObject *sender, int signalId,
-                   int nargs);
-
-    ~QMetaCallEvent() override;
-
-    template<typename ...Args>
-    static QMetaCallEvent *create(QtPrivate::QSlotObjectBase *slotObj, const QObject *sender,
-                                  int signal_index, const Args &...argv)
-    {
-        const void* const argp[] = { nullptr, std::addressof(argv)... };
-        const QMetaType metaTypes[] = { QMetaType::fromType<void>(), QMetaType::fromType<Args>()... };
-        constexpr auto argc = sizeof...(Args) + 1;
-        return create_impl(slotObj, sender, signal_index, argc, argp, metaTypes);
-    }
-    template<typename ...Args>
-    static QMetaCallEvent *create(QtPrivate::SlotObjUniquePtr slotObj, const QObject *sender,
-                                  int signal_index, const Args &...argv)
-    {
-        const void* const argp[] = { nullptr, std::addressof(argv)... };
-        const QMetaType metaTypes[] = { QMetaType::fromType<void>(), QMetaType::fromType<Args>()... };
-        constexpr auto argc = sizeof...(Args) + 1;
-        return create_impl(std::move(slotObj), sender, signal_index, argc, argp, metaTypes);
-    }
-
-    inline int id() const { return d.method_offset_ + d.method_relative_; }
-    inline const void * const* args() const { return d.args_; }
-    inline void ** args() { return d.args_; }
-    inline const QMetaType *types() const { return reinterpret_cast<QMetaType *>(d.args_ + d.nargs_); }
-    inline QMetaType *types() { return reinterpret_cast<QMetaType *>(d.args_ + d.nargs_); }
+                   void **args, QLatch *latch);
 
     virtual void placeMetaCall(QObject *object) override;
 
-private:
-    static QMetaCallEvent *create_impl(QtPrivate::QSlotObjectBase *slotObj, const QObject *sender,
-                                       int signal_index, size_t argc, const void * const argp[],
-                                       const QMetaType metaTypes[])
-    {
-        if (slotObj)
-            slotObj->ref();
-        return create_impl(QtPrivate::SlotObjUniquePtr{slotObj}, sender,
-                           signal_index, argc, argp, metaTypes);
-    }
-    static QMetaCallEvent *create_impl(QtPrivate::SlotObjUniquePtr slotObj, const QObject *sender,
-                                       int signal_index, size_t argc, const void * const argp[],
-                                       const QMetaType metaTypes[]);
-    inline void allocArgs();
+    int id() const { return d.method_offset_ + d.method_relative_; }
 
+protected:
     struct Data {
         QtPrivate::SlotObjUniquePtr slotObj_;
         void **args_;
@@ -444,23 +379,48 @@ private:
         ushort method_offset_;
         ushort method_relative_;
     } d;
-    // preallocate enough space for three arguments
-    alignas(void *) char prealloc_[3 * sizeof(void *) + 3 * sizeof(QMetaType)];
+
+    inline QMetaCallEvent(const QObject *sender, int signalId, Data &&data);
 };
 
-class QBoolBlocker
+class Q_CORE_EXPORT QQueuedMetaCallEvent : public QMetaCallEvent
 {
-    Q_DISABLE_COPY_MOVE(QBoolBlocker)
 public:
-    Q_NODISCARD_CTOR explicit QBoolBlocker(bool &b, bool value = true)
-        : block(b), reset(b)
-    { block = value; }
-    inline ~QBoolBlocker() { block = reset; }
+    // queued - arguments are allocated and copied from argValues by these constructors
+    QQueuedMetaCallEvent(ushort method_offset, ushort method_relative,
+                         QObjectPrivate::StaticMetaCallFunction callFunction,
+                         const QObject *sender, int signalId,
+                         int argCount, const QtPrivate::QMetaTypeInterface * const *argTypes,
+                         const void * const *argValues);
+    QQueuedMetaCallEvent(QtPrivate::QSlotObjectBase *slotObj,
+                         const QObject *sender, int signalId,
+                         int argCount, const QtPrivate::QMetaTypeInterface * const *argTypes,
+                         const void * const *argValues);
+    QQueuedMetaCallEvent(QtPrivate::SlotObjUniquePtr slotObj,
+                         const QObject *sender, int signalId,
+                         int argCount, const QtPrivate::QMetaTypeInterface * const *argTypes,
+                         const void * const *argValues);
+
+    ~QQueuedMetaCallEvent() override;
 
 private:
-    bool &block;
-    bool reset;
+    inline void allocArgs();
+    inline void copyArgValues(int argCount, const QtPrivate::QMetaTypeInterface * const *argTypes,
+                              const void * const *argValues);
+    static inline bool typeFitsInPlace(const QMetaType type);
+
+    // Space for 5 argument pointers and types (including 1 return arg).
+    // Contiguous so that we can make one calloc() for both the pointers and the types when necessary.
+    static constexpr size_t PtrAndTypeSize = sizeof(void *) + sizeof(QMetaType);
+    alignas(void *) char prealloc_[5 * PtrAndTypeSize];
+    struct ArgValueStorage { // size and alignment matching QString, QList, etc
+        static constexpr size_t MaxSize = 3 * sizeof(void *);
+        alignas(void *) char storage[MaxSize];
+    };
+    static constexpr int InplaceValuesCapacity = 3;
+    ArgValueStorage valuesPrealloc_[InplaceValuesCapacity];
 };
+// The total QQueuedMetaCallEvent size is 224 bytes which is a 32-byte multiple, efficient for memory allocators.
 
 struct QAbstractDynamicMetaObject;
 struct Q_CORE_EXPORT QDynamicMetaObjectData
@@ -468,7 +428,11 @@ struct Q_CORE_EXPORT QDynamicMetaObjectData
     virtual ~QDynamicMetaObjectData();
     virtual void objectDestroyed(QObject *) { delete this; }
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    virtual const QMetaObject *toDynamicMetaObject(QObject *) const = 0;
+#else
     virtual QMetaObject *toDynamicMetaObject(QObject *) = 0;
+#endif
     virtual int metaCall(QObject *, QMetaObject::Call, int _id, void **) = 0;
 };
 
@@ -476,7 +440,11 @@ struct Q_CORE_EXPORT QAbstractDynamicMetaObject : public QDynamicMetaObjectData,
 {
     ~QAbstractDynamicMetaObject();
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    const QMetaObject *toDynamicMetaObject(QObject *) const override { return this; }
+#else
     QMetaObject *toDynamicMetaObject(QObject *) override { return this; }
+#endif
     virtual int createProperty(const char *, const char *) { return -1; }
     int metaCall(QObject *, QMetaObject::Call c, int _id, void **a) override
     { return metaCall(c, _id, a); }

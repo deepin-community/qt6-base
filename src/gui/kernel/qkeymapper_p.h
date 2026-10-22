@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 #ifndef QKEYMAPPER_P_H
 #define QKEYMAPPER_P_H
 
@@ -49,6 +50,15 @@ namespace QNativeInterface::Private {
 struct Q_GUI_EXPORT QEvdevKeyMapper
 {
     QT_DECLARE_NATIVE_INTERFACE(QEvdevKeyMapper, 1, QKeyMapper)
+    virtual void loadKeymap(const QString &filename) = 0;
+    virtual void switchLang() = 0;
+};
+#endif
+
+#if QT_CONFIG(vxworksevdev) || defined(Q_QDOC)
+struct Q_GUI_EXPORT QVxKeyMapper
+{
+    QT_DECLARE_NATIVE_INTERFACE(QVxKeyMapper, 1, QKeyMapper)
     virtual void loadKeymap(const QString &filename) = 0;
     virtual void switchLang() = 0;
 };

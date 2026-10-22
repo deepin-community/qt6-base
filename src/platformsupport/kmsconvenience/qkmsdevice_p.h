@@ -88,11 +88,12 @@ public:
 
     QMap<QString, QVariantMap> outputSettings() const { return m_outputSettings; }
     virtual void loadConfig();
+    void refreshConfig();
 
 protected:
     QString m_devicePath;
     bool m_headless;
-    QSize m_headlessSize;
+    QSize m_headlessSize{ 1024, 768 };
     bool m_hwCursor;
     bool m_separateScreens;
     bool m_pbuffers;
@@ -196,6 +197,14 @@ public:
         QKmsOutput output;
     };
 
+    struct OrderedScreen
+    {
+        OrderedScreen();
+        OrderedScreen(QPlatformScreen *screen, const ScreenInfo &vinfo);
+        QPlatformScreen *screen = nullptr;
+        ScreenInfo vinfo;
+    };
+
     QKmsDevice(QKmsScreenConfig *screenConfig, const QString &path = QString());
     virtual ~QKmsDevice();
 
@@ -210,6 +219,8 @@ public:
     bool threadLocalAtomicCommit(void *user_data);
     void threadLocalAtomicReset();
 #endif
+    void checkConnectedScreens();
+    void updateScreens();
     void createScreens();
 
     int fd() const;
@@ -218,6 +229,7 @@ public:
     QKmsScreenConfig *screenConfig() const;
 
 protected:
+    void registerScreens(QList<uint32_t> newConnects = QList<uint32_t>());
     virtual QPlatformScreen *createScreen(const QKmsOutput &output) = 0;
     virtual QPlatformScreen *createHeadlessScreen();
     virtual void registerScreenCloning(QPlatformScreen *screen,
@@ -227,12 +239,15 @@ protected:
                                 bool isPrimary,
                                 const QPoint &virtualPos,
                                 const QList<QPlatformScreen *> &virtualSiblings) = 0;
+    virtual void unregisterScreen(QPlatformScreen *screen);
+    virtual void updateScreen(QPlatformScreen *screen, const QPoint &virtualPos,
+                              const QList<QPlatformScreen *> &virtualSiblings);
+    virtual void updateScreenOutput(QPlatformScreen *screen, const QKmsOutput &output);
 
     void setFd(int fd);
     int crtcForConnector(drmModeResPtr resources, drmModeConnectorPtr connector);
-    QPlatformScreen *createScreenForConnector(drmModeResPtr resources,
-                                              drmModeConnectorPtr connector,
-                                              ScreenInfo *vinfo);
+    bool createScreenInfoForConnector(drmModeResPtr resources, drmModeConnectorPtr connector,
+                                      ScreenInfo &vinfo);
     drmModePropertyPtr connectorProperty(drmModeConnectorPtr connector, const QByteArray &name);
     drmModePropertyBlobPtr connectorPropertyBlob(drmModeConnectorPtr connector, const QByteArray &name);
     typedef std::function<void(drmModePropertyPtr, quint64)> PropCallback;
@@ -257,6 +272,8 @@ protected:
     quint32 m_crtc_allocator;
 
     QList<QKmsPlane> m_planes;
+    QMap<uint32_t, OrderedScreen> m_registeredScreens;
+    QPlatformScreen *m_headlessScreen = nullptr;
 
 private:
     Q_DISABLE_COPY(QKmsDevice)

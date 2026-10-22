@@ -7,7 +7,7 @@
 
 if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
     cmake_minimum_required(VERSION 3.16)
-    project(tst_qresourceengine LANGUAGES C CXX ASM)
+    project(tst_qresourceengine LANGUAGES C CXX)
     find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
 endif()
 
@@ -54,5 +54,13 @@ qt_add_binary_resources(tst_qresourceengine_runtime_resource "testqrc/test.qrc"
     DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/runtime_resource.rcc"
     OPTIONS -root "/runtime_resource/" -binary)
 add_dependencies(tst_qresourceengine tst_qresourceengine_runtime_resource)
+
+set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/runtime_resource.rcc" PROPERTY
+    QT_RESOURCE_ALIAS "runtime_resource.rcc"
+)
+qt_add_resources(tst_qresourceengine "nestedrcc"
+    PREFIX "/nestedrcc"
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/runtime_resource.rcc"
+)
 
 add_subdirectory(staticplugin)

@@ -5,43 +5,34 @@
 
 package org.qtproject.qt.android;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.UiModeManager;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
-import android.graphics.Rect;
 import android.os.Build;
-import android.util.DisplayMetrics;
-import android.util.Log;
-import android.util.TypedValue;
-import android.view.Display;
-import android.view.ViewTreeObserver;
-import android.view.animation.AccelerateInterpolator;
-import android.view.animation.AlphaAnimation;
-import android.view.animation.Animation;
-import android.view.Menu;
-import android.view.View;
-import android.view.ViewConfiguration;
-import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsetsController;
-import android.widget.ImageView;
-import android.widget.PopupMenu;
 
 import java.util.HashMap;
 
 abstract class QtActivityDelegateBase
 {
-    protected Activity m_activity;
-    protected HashMap<Integer, QtWindow> m_topLevelWindows;
-    protected QtDisplayManager m_displayManager = null;
-    protected QtInputDelegate m_inputDelegate = null;
+    protected final Activity m_activity;
+    protected final HashMap<Integer, QtWindow> m_topLevelWindows = new HashMap<>();
+    protected final QtDisplayManager m_displayManager;
+    protected final QtInputDelegate m_inputDelegate;
+    protected final QtAccessibilityDelegate m_accessibilityDelegate;
 
     private boolean m_membersInitialized = false;
     private boolean m_contextMenuVisible = false;
+
+    static native boolean canOverrideColorSchemeHint();
+    static native void updateUiContrast(float newUiContrast);
+    static native void updateUiMotionScale(float newUiMotionScale);
 
     // Subclass must implement these
     abstract void startNativeApplicationImpl(String appParams, String mainLib);
@@ -55,8 +46,12 @@ abstract class QtActivityDelegateBase
     QtActivityDelegateBase(Activity activity)
     {
         m_activity = activity;
-        // Set native context
         QtNative.setActivity(m_activity);
+        m_displayManager = new QtDisplayManager(m_activity);
+        m_inputDelegate = new QtInputDelegate(() -> {
+            QtWindowInsetsController.restoreFullScreenVisibility(m_activity);
+        });
+        m_accessibilityDelegate = new QtAccessibilityDelegate();
     }
 
     QtDisplayManager displayManager() {
@@ -88,14 +83,14 @@ abstract class QtActivityDelegateBase
     void initMembers()
     {
         m_membersInitialized = true;
-        m_topLevelWindows = new HashMap<Integer, QtWindow>();
-
-        m_displayManager = new QtDisplayManager(m_activity);
+        m_topLevelWindows.clear();
         m_displayManager.registerDisplayListener();
-
-        QtInputDelegate.KeyboardVisibilityListener keyboardVisibilityListener =
-                () -> m_displayManager.updateFullScreen();
-        m_inputDelegate = new QtInputDelegate(m_activity, keyboardVisibilityListener);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ValueAnimator.registerDurationScaleChangeListener(
+                            QtActivityDelegateBase::updateUiMotionScale);
+            updateUiMotionScale(ValueAnimator.getDurationScale());
+        }
+        m_inputDelegate.initInputMethodManager(m_activity);
 
         try {
             PackageManager pm = m_activity.getPackageManager();
@@ -113,21 +108,28 @@ abstract class QtActivityDelegateBase
         hideSplashScreen(0);
     }
 
-    void handleUiModeChange(int uiMode)
+    void handleUiModeChange()
     {
-        // QTBUG-108365
-        if (Build.VERSION.SDK_INT >= 30) {
-            // Since 29 version we are using Theme_DeviceDefault_DayNight
+        Resources resources = m_activity.getResources();
+        Configuration config = resources.getConfiguration();
+        int uiMode = config.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+
+        if (QtWindowInsetsController.decorFitsSystemWindows(m_activity)) {
             Window window = m_activity.getWindow();
-            WindowInsetsController controller = window.getInsetsController();
-            if (controller != null) {
-                // set APPEARANCE_LIGHT_STATUS_BARS if needed
-                int appearanceLight = Color.luminance(window.getStatusBarColor()) > 0.5 ?
-                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS : 0;
-                controller.setSystemBarsAppearance(appearanceLight,
-                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
-            }
+            QtWindowInsetsController.enableSystemBarsBackgroundDrawing(window);
+            int status = QtWindowInsetsController.getThemeDefaultStatusBarColor(m_activity);
+            QtWindowInsetsController.setStatusBarColor(window, status);
+            int nav = QtWindowInsetsController.getThemeDefaultNavigationBarColor(m_activity);
+            QtWindowInsetsController.setNavigationBarColor(window, nav);
         }
+
+        // Don't override color scheme if the app has it set explicitly.
+        if (canOverrideColorSchemeHint()) {
+            boolean isLight = uiMode == Configuration.UI_MODE_NIGHT_NO;
+            QtWindowInsetsController.setStatusBarColorHint(m_activity, isLight);
+            QtWindowInsetsController.setNavigationBarColorHint(m_activity, isLight);
+        }
+
         switch (uiMode) {
             case Configuration.UI_MODE_NIGHT_NO:
                 ExtractStyle.runIfNeeded(m_activity, false);
@@ -137,6 +139,13 @@ abstract class QtActivityDelegateBase
                 ExtractStyle.runIfNeeded(m_activity, true);
                 QtDisplayManager.handleUiDarkModeChanged(1);
                 break;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // FIXME: Handle contrast changes the same way as uiMode changes (QTBUG-140749).
+            UiModeManager uiModeManager =
+                (UiModeManager) m_activity.getSystemService(m_activity.UI_MODE_SERVICE);
+            updateUiContrast(uiModeManager.getContrast());
         }
     }
 }

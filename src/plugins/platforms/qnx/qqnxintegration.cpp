@@ -1,5 +1,6 @@
 // Copyright (C) 2013 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -23,6 +24,11 @@
 #include "qqnxeglwindow.h"
 #endif
 
+#if QT_CONFIG(vulkan)
+#include "qqnxvulkanwindow.h"
+#include "qqnxvulkaninstance.h"
+#endif
+
 #if QT_CONFIG(qqnx_pps)
 #include "qqnxnavigatorpps.h"
 #include "qqnxnavigatoreventnotifier.h"
@@ -31,16 +37,21 @@
 
 #if QT_CONFIG(qqnx_pps)
 #  include "qqnxbuttoneventnotifier.h"
+#endif
+
+#if QT_CONFIG(qqnx_imf)
+#  include "qqnxinputcontext_imf.h"
+#else
+#  include "qqnxinputcontext_noimf.h"
+#endif
+
+#if !defined(QT_NO_CLIPBOARD)
 #  include "qqnxclipboard.h"
-#  if QT_CONFIG(qqnx_imf)
-#    include "qqnxinputcontext_imf.h"
-#  else
-#    include "qqnxinputcontext_noimf.h"
-#  endif
 #endif
 
 #include <qpa/qplatforminputcontextfactory_p.h>
 #include <qpa/qplatforminputcontext.h>
+#include <qpa/qplatformtheme.h>
 
 #include "private/qgenericunixfontdatabase_p.h"
 #include "private/qgenericunixeventdispatcher_p.h"
@@ -67,8 +78,6 @@
 
 QT_BEGIN_NAMESPACE
 
-// Q_LOGGING_CATEGORY(lcQpaQnx, "qt.qpa.qnx");
-
 using namespace Qt::StringLiterals;
 
 QQnxIntegration *QQnxIntegration::ms_instance;
@@ -90,6 +99,10 @@ static inline QQnxIntegration::Options parseOptions(const QStringList &paramList
 
     if (!paramList.contains("disable-EGL_KHR_surfaceless_context"_L1)) {
         options |= QQnxIntegration::SurfacelessEGLContext;
+    }
+
+    if (paramList.contains("desktop"_L1)) {
+        options |= QQnxIntegration::Desktop;
     }
 
     return options;
@@ -117,13 +130,12 @@ QQnxIntegration::QQnxIntegration(const QStringList &paramList)
     , m_screenEventThread(0)
     , m_navigatorEventHandler(new QQnxNavigatorEventHandler())
     , m_virtualKeyboard(0)
+    , m_inputContext(0)
 #if QT_CONFIG(qqnx_pps)
     , m_navigatorEventNotifier(0)
-    , m_inputContext(0)
     , m_buttonsNotifier(new QQnxButtonEventNotifier())
 #endif
     , m_qpaInputContext(0)
-    , m_services(0)
     , m_fontDatabase(new QGenericUnixFontDatabase())
     , m_eventDispatcher(createUnixEventDispatcher())
     , m_nativeInterface(new QQnxNativeInterface(this))
@@ -188,10 +200,6 @@ QQnxIntegration::QQnxIntegration(const QStringList &paramList)
 #if QT_CONFIG(qqnx_pps)
     m_navigator = new QQnxNavigatorPps();
 #endif
-
-    // Create services handling class
-    if (m_navigator)
-        m_services = new QQnxServices(m_navigator);
 
     createDisplays();
 
@@ -321,11 +329,22 @@ QPlatformWindow *QQnxIntegration::createPlatformWindow(QWindow *window) const
     case QSurface::OpenGLSurface:
         return new QQnxEglWindow(window, m_screenContext, needRootWindow);
 #endif
+#if QT_CONFIG(vulkan)
+    case QSurface::VulkanSurface:
+        return new QQnxVulkanWindow(window, m_screenContext, needRootWindow);
+#endif
     default:
         qFatal("QQnxWindow: unsupported window API");
     }
     return 0;
 }
+
+#if QT_CONFIG(vulkan)
+QPlatformVulkanInstance *QQnxIntegration::createPlatformVulkanInstance(QVulkanInstance *instance) const
+{
+    return new QQnxVulkanInstance(instance);
+}
+#endif
 
 QPlatformBackingStore *QQnxIntegration::createPlatformBackingStore(QWindow *window) const
 {
@@ -337,6 +356,10 @@ QPlatformBackingStore *QQnxIntegration::createPlatformBackingStore(QWindow *wind
 #if !defined(QT_NO_OPENGL)
     // Return a QRhiBackingStore for non-raster surface windows
     case QSurface::OpenGLSurface:
+        return new QRhiBackingStore(window);
+#endif
+#if QT_CONFIG(vulkan)
+    case QSurface::VulkanSurface:
         return new QRhiBackingStore(window);
 #endif
     default:
@@ -403,7 +426,6 @@ QPlatformOpenGLContext *QQnxIntegration::createPlatformOpenGLContext(QOpenGLCont
 }
 #endif
 
-#if QT_CONFIG(qqnx_pps)
 QPlatformInputContext *QQnxIntegration::inputContext() const
 {
     qCDebug(lcQpaQnx) << Q_FUNC_INFO;
@@ -411,7 +433,6 @@ QPlatformInputContext *QQnxIntegration::inputContext() const
         return m_qpaInputContext;
     return m_inputContext;
 }
-#endif
 
 void QQnxIntegration::moveToScreen(QWindow *window, int screen)
 {
@@ -447,11 +468,9 @@ QPlatformNativeInterface *QQnxIntegration::nativeInterface() const
 QPlatformClipboard *QQnxIntegration::clipboard() const
 {
     qCDebug(lcQpaQnx) << Q_FUNC_INFO;
-
-#if QT_CONFIG(qqnx_pps)
     if (!m_clipboard)
         m_clipboard = new QQnxClipboard;
-#endif
+
     return m_clipboard;
 }
 #endif
@@ -472,8 +491,46 @@ QVariant QQnxIntegration::styleHint(QPlatformIntegration::StyleHint hint) const
     return QPlatformIntegration::styleHint(hint);
 }
 
+// QNX provides no native widget style, so without a platform theme the base
+// QPlatformTheme reports an empty StyleNames hint. QApplication then falls back
+// to the first available QStyleFactory key, which lets any deployed style
+// plugin (e.g. the labs StyleKit style) silently become the default widget
+// style. Declare a sensible default (Fusion, always built into QtWidgets),
+// matching what the generic Unix theme used by eglfs does.
+namespace {
+class QQnxTheme : public QPlatformTheme
+{
+public:
+    QVariant themeHint(ThemeHint hint) const override
+    {
+        if (hint == QPlatformTheme::StyleNames)
+            return QStringList{ QStringLiteral("Fusion") };
+        return QPlatformTheme::themeHint(hint);
+    }
+};
+} // unnamed namespace
+
+QStringList QQnxIntegration::themeNames() const
+{
+    // Returning a non-empty name ensures createPlatformTheme() below is invoked
+    // (QGuiApplication only calls it for names reported here / via environment).
+    return QStringList{ QStringLiteral("qnx") };
+}
+
+QPlatformTheme *QQnxIntegration::createPlatformTheme(const QString &name) const
+{
+    // Return nullptr for non-matching names so that other theme names tried by
+    // QGuiApplication (e.g. from QT_QPA_PLATFORMTHEME) are not shadowed by a
+    // non-null base theme.
+    return name == "qnx"_L1 ? new QQnxTheme : nullptr;
+}
+
 QPlatformServices * QQnxIntegration::services() const
 {
+    // Create services handling class
+    if (m_navigator && !m_services)
+        m_services = new QQnxServices(m_navigator);
+
     return m_services;
 }
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -87,6 +88,13 @@ void QCALayerBackingStore::beginPaint(const QRegion &region)
     QMacAutoReleasePool pool;
 
     qCInfo(lcQpaBackingStore) << "Beginning paint of" << region << "into backingstore of" << m_requestedSize;
+
+    if (m_requestedSize.isEmpty()) {
+        // We can't create IOSurfaces with and empty size, so instead reset our back buffer
+        qCDebug(lcQpaBackingStore) << "Size is empty, throwing away back buffer";
+        m_buffers.back().reset(nullptr);
+        return;
+    }
 
     ensureBackBuffer(); // Find an unused back buffer, or reserve space for a new one
 
@@ -195,6 +203,7 @@ bool QCALayerBackingStore::recreateBackBufferIfNeeded()
 
         static auto pixelFormat = QImage::toPixelFormat(QImage::Format_ARGB32_Premultiplied);
         auto *newBackBuffer = new GraphicsBuffer(requestedBufferSize, devicePixelRatio, pixelFormat, colorSpace());
+        newBackBuffer->setObjectName("Qt Raster Backingstore");
 
         if (!m_staticContents.isEmpty() && m_buffers.back()) {
             // We implicitly support static backingstore content as a result of
@@ -241,12 +250,19 @@ bool QCALayerBackingStore::recreateBackBufferIfNeeded()
 
 QPaintDevice *QCALayerBackingStore::paintDevice()
 {
-    Q_ASSERT(m_buffers.back());
-    return m_buffers.back()->asImage();
+    if (m_buffers.back()) {
+        return m_buffers.back()->asImage();
+    } else {
+        static QImage fallbackDevice;
+        return &fallbackDevice;
+    }
 }
 
 void QCALayerBackingStore::endPaint()
 {
+    if (!m_buffers.back())
+        return;
+
     qCInfo(lcQpaBackingStore) << "Paint ended. Back buffer valid region is now" << m_buffers.back()->validRegion();
     m_buffers.back()->unlock();
 
@@ -317,7 +333,7 @@ void QCALayerBackingStore::flush(QWindow *flushedWindow, const QRegion &region, 
     Q_UNUSED(offset);
 
     if (!m_buffers.back()) {
-        qCWarning(lcQpaBackingStore) << "Tried to flush backingstore without painting to it first";
+        qCWarning(lcQpaBackingStore) << "Flush requested with no back buffer. Ignoring.";
         return;
     }
 
@@ -336,6 +352,7 @@ void QCALayerBackingStore::flush(QWindow *flushedWindow, const QRegion &region, 
     QMacAutoReleasePool pool;
 
     NSView *flushedView = static_cast<QCocoaWindow *>(flushedWindow->handle())->view();
+    CALayer *layer = static_cast<QCocoaWindow *>(flushedWindow->handle())->contentLayer();
 
     // If the backingstore is just flushed, without being painted to first, then we may
     // end in a situation where the backingstore is flushed to a layer with a different
@@ -346,11 +363,11 @@ void QCALayerBackingStore::flush(QWindow *flushedWindow, const QRegion &region, 
     // we at least cover the whole layer. This is necessary since we set the view's
     // contents placement policy to NSViewLayerContentsPlacementTopLeft, which means
     // AppKit will not do any scaling on our behalf.
-    if (m_buffers.back()->devicePixelRatio() != flushedView.layer.contentsScale) {
+    if (m_buffers.back()->devicePixelRatio() != layer.contentsScale) {
         qCWarning(lcQpaBackingStore) << "Back buffer dpr of" << m_buffers.back()->devicePixelRatio()
-            << "doesn't match" << flushedView.layer << "contents scale of" << flushedView.layer.contentsScale
+            << "doesn't match" << layer << "contents scale of" << layer.contentsScale
             << "- updating layer to match.";
-        flushedView.layer.contentsScale = m_buffers.back()->devicePixelRatio();
+        layer.contentsScale = m_buffers.back()->devicePixelRatio();
     }
 
     const bool isSingleBuffered = window()->format().swapBehavior() == QSurfaceFormat::SingleBuffer;
@@ -366,13 +383,13 @@ void QCALayerBackingStore::flush(QWindow *flushedWindow, const QRegion &region, 
     if (isSingleBuffered) {
         // The private API [CALayer reloadValueForKeyPath:@"contents"] would be preferable,
         // but barring any side effects or performance issues we opt for the hammer for now.
-        flushedView.layer.contents = nil;
+        layer.contents = nil;
     }
 
     qCInfo(lcQpaBackingStore) << "Flushing" << backBufferSurface
-        << "to" << flushedView.layer << "of" << flushedView;
+        << "to" << layer << "of" << flushedView;
 
-    flushedView.layer.contents = backBufferSurface;
+    layer.contents = backBufferSurface;
 
     if (!isSingleBuffered) {
         // Mark the surface as in use, so that we don't end up rendering
@@ -414,7 +431,8 @@ void QCALayerBackingStore::flushSubWindow(QWindow *subWindow)
     NSView *backingStoreView = static_cast<QCocoaWindow *>(window()->handle())->view();
     NSView *flushedView = static_cast<QCocoaWindow *>(subWindow->handle())->view();
     auto subviewRect = [flushedView convertRect:flushedView.bounds toView:backingStoreView];
-    auto scale = flushedView.layer.contentsScale;
+    CALayer *layer = static_cast<QCocoaWindow *>(subWindow->handle())->contentLayer();
+    auto scale = layer.contentsScale;
     subviewRect = CGRectApplyAffineTransform(subviewRect, CGAffineTransformMakeScale(scale, scale));
 
     m_buffers.back()->lock(QPlatformGraphicsBuffer::SWReadAccess);
@@ -441,16 +459,18 @@ QPlatformBackingStore::FlushResult QCALayerBackingStore::rhiFlush(QWindow *windo
                                                                   const QRegion &region,
                                                                   const QPoint &offset,
                                                                   QPlatformTextureList *textures,
-                                                                  bool translucentBackground)
+                                                                  bool translucentBackground,
+                                                                  qreal sourceTransformFactor)
 {
     if (!m_buffers.back()) {
-        qCWarning(lcQpaBackingStore) << "Tried to flush backingstore without painting to it first";
+        qCWarning(lcQpaBackingStore) << "Flush requested with no back buffer. Ignoring.";
         return FlushFailed;
     }
 
     finalizeBackBuffer();
 
-    return QPlatformBackingStore::rhiFlush(window, sourceDevicePixelRatio, region, offset, textures, translucentBackground);
+    return QPlatformBackingStore::rhiFlush(window, sourceDevicePixelRatio,
+        region, offset, textures, translucentBackground, sourceTransformFactor);
 }
 
 QImage QCALayerBackingStore::toImage() const

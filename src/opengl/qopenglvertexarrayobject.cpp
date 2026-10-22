@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Sean Harmer <sean.harmer@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qopenglvertexarrayobject.h"
 
@@ -157,7 +158,7 @@ bool QOpenGLVertexArrayObjectPrivate::create()
         vaoFuncsType = NotSupported;
         QSurfaceFormat format = ctx->format();
 #if !QT_CONFIG(opengles2)
-        if (format.version() >= qMakePair(3,2)) {
+        if (format.version() >= std::pair(3,2)) {
             vaoFuncs.core_3_2 = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_3_2_Core>(ctx);
             vaoFuncsType = Core_3_2;
             vaoFuncs.core_3_2->glGenVertexArrays(1, &vao);

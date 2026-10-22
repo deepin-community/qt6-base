@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPNETWORKCONNECTION_H
 #define QHTTPNETWORKCONNECTION_H
@@ -32,10 +33,12 @@
 #include <private/qhttpnetworkheader_p.h>
 #include <private/qhttpnetworkrequest_p.h>
 #include <private/qhttpnetworkreply_p.h>
-#include <private/qnetconmonitor_p.h>
 #include <private/http2protocol_p.h>
 
 #include <private/qhttpnetworkconnectionchannel_p.h>
+#include <private/qtcpkeepaliveconfiguration_p.h>
+
+#include <utility>
 
 QT_REQUIRE_CONFIG(http);
 
@@ -96,6 +99,9 @@ public:
     QHttp2Configuration http2Parameters() const;
     void setHttp2Parameters(const QHttp2Configuration &params);
 
+    QTcpKeepAliveConfiguration tcpKeepAliveParameters() const;
+    void setTcpKeepAliveParameters(QTcpKeepAliveConfiguration config);
+
 #ifndef QT_NO_SSL
     void setSslConfiguration(const QSslConfiguration &config);
     void ignoreSslErrors(int channel = -1);
@@ -129,7 +135,7 @@ private:
 
 
 // private classes
-typedef QPair<QHttpNetworkRequest, QHttpNetworkReply*> HttpMessagePair;
+typedef std::pair<QHttpNetworkRequest, QHttpNetworkReply*> HttpMessagePair;
 
 
 class QHttpNetworkConnectionPrivate : public QObjectPrivate
@@ -252,14 +258,8 @@ public:
     QHttp2Configuration http2Parameters;
 
     QString peerVerifyName;
-    // If network status monitoring is enabled, we activate connectionMonitor
-    // as soons as one of channels managed to connect to host (and we
-    // have a pair of addresses (us,peer).
-    // NETMONTODO: consider activating a monitor on a change from
-    // HostLookUp state to ConnectingState (means we have both
-    // local/remote addresses known and can start monitoring this
-    // early).
-    QNetworkConnectionMonitor connectionMonitor;
+
+    QTcpKeepAliveConfiguration tcpKeepAliveConfiguration = {};
 
     friend class QHttpNetworkConnectionChannel;
 };

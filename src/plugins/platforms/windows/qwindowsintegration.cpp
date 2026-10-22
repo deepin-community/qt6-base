@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwindowsintegration.h"
 #include "qwindowswindow.h"
@@ -50,8 +51,7 @@
 
 #include <QtCore/qoperatingsystemversion.h>
 #include <QtCore/private/qfunctions_win_p.h>
-
-#include <wrl.h>
+#include <QtCore/private/qcomptr_p.h>
 
 #include <limits.h>
 
@@ -105,7 +105,7 @@ struct QWindowsIntegrationPrivate
 #if QT_CONFIG(accessibility)
    QWindowsUiaAccessibility m_accessibility;
 #endif
-    QWindowsServices m_services;
+    mutable QScopedPointer<QWindowsServices> m_services;
 };
 
 template <typename IntType>
@@ -263,6 +263,11 @@ bool QWindowsIntegration::hasCapability(QPlatformIntegration::Capability cap) co
         return true;
 #ifndef QT_NO_OPENGL
     case OpenGL:
+#if !QT_CONFIG(run_opengl_tests)
+        // Workaround for build configs on WoA that don't have OpenGL installed
+        // FIXME: Detect at runtime
+        return false;
+#endif
         return true;
     case ThreadedOpenGL:
         if (const QWindowsStaticOpenGLContext *glContext = QWindowsIntegration::staticOpenGLContext())
@@ -275,13 +280,13 @@ bool QWindowsIntegration::hasCapability(QPlatformIntegration::Capability cap) co
         return true;
     case ForeignWindows:
         return true;
-    case RasterGLSurface:
-        return true;
     case AllGLFunctionsQueryable:
         return true;
     case SwitchableWidgetComposition:
         return false; // QTBUG-68329 QTBUG-53515 QTBUG-54734
     case BackingStoreStaticContents:
+        return true;
+    case MouseCursorPositioning:
         return true;
     default:
         return QPlatformIntegration::hasCapability(cap);
@@ -291,13 +296,6 @@ bool QWindowsIntegration::hasCapability(QPlatformIntegration::Capability cap) co
 
 QPlatformWindow *QWindowsIntegration::createPlatformWindow(QWindow *window) const
 {
-    if (window->type() == Qt::Desktop) {
-        auto *result = new QWindowsDesktopWindow(window);
-        qCDebug(lcQpaWindow) << "Desktop window:" << window
-            << Qt::showbase << Qt::hex << result->winId() << Qt::noshowbase << Qt::dec << result->geometry();
-        return result;
-    }
-
     QWindowsWindowData requested;
     requested.flags = window->flags();
     requested.geometry = window->isTopLevel()
@@ -598,7 +596,10 @@ QPlatformTheme *QWindowsIntegration::createPlatformTheme(const QString &name) co
 
 QPlatformServices *QWindowsIntegration::services() const
 {
-    return &d->m_services;
+    if (d->m_services.isNull())
+        d->m_services.reset(new QWindowsServices);
+
+    return d->m_services.data();
 }
 
 void QWindowsIntegration::beep() const
@@ -717,8 +718,6 @@ void QWindowsIntegration::setApplicationBadge(qint64 number)
 void QWindowsIntegration::setApplicationBadge(const QImage &image)
 {
     QComHelper comHelper;
-
-    using Microsoft::WRL::ComPtr;
 
     ComPtr<ITaskbarList3> taskbarList;
     CoCreateInstance(CLSID_TaskbarList, nullptr,

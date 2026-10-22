@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qoffscreencommon.h"
 #include "qoffscreenintegration.h"
@@ -21,7 +22,8 @@ QPlatformWindow *QOffscreenScreen::windowContainingCursor = nullptr;
 QList<QPlatformScreen *> QOffscreenScreen::virtualSiblings() const
 {
     QList<QPlatformScreen *> platformScreens;
-    for (auto screen : m_integration->screens()) {
+    const auto screens = m_integration->screens();
+    for (auto screen : screens) {
         platformScreens.append(screen);
     }
     return platformScreens;
@@ -39,7 +41,7 @@ public:
         const QWindowList wl = QGuiApplication::topLevelWindows();
         QWindow *containing = nullptr;
         for (QWindow *w : wl) {
-            if (w->type() != Qt::Desktop && w->isExposed() && w->geometry().contains(pos)) {
+            if (w->isExposed() && w->geometry().contains(pos)) {
                 containing = w;
                 break;
             }
@@ -148,7 +150,9 @@ void QOffscreenBackingStore::flush(QWindow *window, const QRegion &region, const
 
 void QOffscreenBackingStore::resize(const QSize &size, const QRegion &)
 {
-    QImage::Format format = QGuiApplication::primaryScreen()->handle()->format();
+    QImage::Format format = window()->format().hasAlpha()
+        ? QImage::Format_ARGB32_Premultiplied
+        : QGuiApplication::primaryScreen()->handle()->format();
     if (m_image.size() != size)
         m_image = QImage(size, format);
     clearHash();
@@ -165,6 +169,17 @@ bool QOffscreenBackingStore::scroll(const QRegion &area, int dx, int dy)
     qt_scrollRectInImage(m_image, rect, QPoint(dx, dy));
 
     return true;
+}
+
+void QOffscreenBackingStore::beginPaint(const QRegion &region)
+{
+    if (QImage::toPixelFormat(m_image.format()).alphaUsage() == QPixelFormat::UsesAlpha) {
+        QPainter p(&m_image);
+        p.setCompositionMode(QPainter::CompositionMode_Source);
+        const QColor blank = Qt::transparent;
+        for (const QRect &r : region)
+            p.fillRect(r, blank);
+    }
 }
 
 QPixmap QOffscreenBackingStore::grabWindow(WId window, const QRect &rect) const

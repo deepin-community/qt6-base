@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qoffscreenintegration.h"
 #include "qoffscreenwindow.h"
@@ -7,7 +8,7 @@
 
 #if defined(Q_OS_UNIX)
 #include <QtGui/private/qgenericunixeventdispatcher_p.h>
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_APPLE)
 #include <qpa/qplatformfontdatabase.h>
 #include <QtGui/private/qcoretextfontdatabase_p.h>
 #else
@@ -62,7 +63,7 @@ public:
 QOffscreenIntegration::QOffscreenIntegration(const QStringList& paramList)
 {
 #if defined(Q_OS_UNIX)
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_APPLE)
     m_fontDatabase.reset(new QCoreTextFontDatabaseEngineFactory<QCoreTextFontEngine>);
 #else
     m_fontDatabase.reset(new QGenericUnixFontDatabase());
@@ -74,7 +75,6 @@ QOffscreenIntegration::QOffscreenIntegration(const QStringList& paramList)
 #if QT_CONFIG(draganddrop)
     m_drag.reset(new QOffscreenDrag);
 #endif
-    m_services.reset(new QPlatformServices);
 
     QJsonObject config = resolveConfigFileConfiguration(paramList).value_or(defaultConfiguration());
     setConfiguration(config);
@@ -187,7 +187,7 @@ void QOffscreenIntegration::setConfiguration(const QJsonObject &configuration)
 
     auto getScreenNames = [](const QJsonArray &screens) -> QList<QString> {
         QList<QString> names;
-        for (QJsonValue screen : screens) {
+        for (const QJsonValue &screen : screens) {
             names.append(screen["name"].toString());
         };
         std::sort(names.begin(), names.end());
@@ -207,7 +207,7 @@ void QOffscreenIntegration::setConfiguration(const QJsonObject &configuration)
     std::set_difference(currentNames.begin(), currentNames.end(), newNames.begin(), newNames.end(),
                               std::inserter(removed, removed.begin()));
 
-    auto platformScreenByName = [](const QString &name, QList<QOffscreenScreen *> screens) -> QOffscreenScreen * {
+    auto platformScreenByName = [](const QString &name, const QList<QOffscreenScreen *> &screens) -> QOffscreenScreen * {
         for (QOffscreenScreen *screen : screens) {
             if (screen->m_name == name)
                 return screen;
@@ -215,8 +215,8 @@ void QOffscreenIntegration::setConfiguration(const QJsonObject &configuration)
         Q_UNREACHABLE();
     };
 
-    auto screenConfigByName = [](const QString &name, QJsonArray screenConfigs) -> QJsonValue {
-        for (QJsonValue screenConfig : screenConfigs) {
+    auto screenConfigByName = [](const QString &name, const QJsonArray &screenConfigs) -> QJsonValue {
+        for (const QJsonValue &screenConfig : screenConfigs) {
             if (screenConfig["name"].toString() == name)
                 return screenConfig;
         }
@@ -227,15 +227,24 @@ void QOffscreenIntegration::setConfiguration(const QJsonObject &configuration)
         return QRect(config["x"].toInt(0), config["y"].toInt(0), config["width"].toInt(640), config["height"].toInt(480));
     };
 
+    auto availableGeometryFromConfig = [](const QJsonObject &config, QRect geometry) -> QRect {
+        const QJsonValue value = config["availableGeometry"];
+        if (!value.isObject())
+            return geometry;
+        const QJsonObject a = value.toObject();
+        return QRect(a["x"].toInt(geometry.x()), a["y"].toInt(geometry.y()),
+                     a["width"].toInt(geometry.width()), a["height"].toInt(geometry.height()));
+    };
+
     // Remove removed screens
-    for (const QString &remove : removed) {
+    for (const QString &remove : std::as_const(removed)) {
         QOffscreenScreen *screen = platformScreenByName(remove, m_screens);
         m_screens.removeAll(screen);
         QWindowSystemInterface::handleScreenRemoved(screen);
     }
 
     // Add new screens
-    for (const QString &add : added) {
+    for (const QString &add : std::as_const(added)) {
         QJsonValue configValue = screenConfigByName(add, newScreens);
         QJsonObject config  = configValue.toObject();
         if (config.isEmpty()) {
@@ -245,6 +254,7 @@ void QOffscreenIntegration::setConfiguration(const QJsonObject &configuration)
         QOffscreenScreen *offscreenScreen = new QOffscreenScreen(this);
         offscreenScreen->m_name = config["name"].toString();
         offscreenScreen->m_geometry = geometryFromConfig(config);
+        offscreenScreen->m_availableGeometry = availableGeometryFromConfig(config, offscreenScreen->m_geometry);
         offscreenScreen->m_logicalDpi = config["logicalDpi"].toInt(96);
         offscreenScreen->m_logicalBaseDpi = config["logicalBaseDpi"].toInt(96);
         offscreenScreen->m_dpr = config["dpr"].toDouble(1.0);
@@ -253,7 +263,7 @@ void QOffscreenIntegration::setConfiguration(const QJsonObject &configuration)
     }
 
     // Update present screens
-    for (const QString &pres : present) {
+    for (const QString &pres : std::as_const(present)) {
         QOffscreenScreen *screen = platformScreenByName(pres, m_screens);
         Q_ASSERT(screen);
         QJsonObject currentConfig = screenConfigByName(pres, currentScreens).toObject();
@@ -417,6 +427,9 @@ QPlatformDrag *QOffscreenIntegration::drag() const
 
 QPlatformServices *QOffscreenIntegration::services() const
 {
+    if (m_services.isNull())
+        m_services.reset(new QPlatformServices);
+
     return m_services.data();
 }
 

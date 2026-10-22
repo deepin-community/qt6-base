@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhighdpiscaling_p.h"
 #include "qguiapplication.h"
@@ -28,37 +29,27 @@ static const char scaleFactorRoundingPolicyEnvVar[] = "QT_SCALE_FACTOR_ROUNDING_
 static const char dpiAdjustmentPolicyEnvVar[] = "QT_DPI_ADJUSTMENT_POLICY";
 static const char usePhysicalDpiEnvVar[] = "QT_USE_PHYSICAL_DPI";
 
+[[maybe_unused]]
 static std::optional<QString> qEnvironmentVariableOptionalString(const char *name)
 {
-    if (!qEnvironmentVariableIsSet(name))
-        return std::nullopt;
-
-    return std::optional(qEnvironmentVariable(name));
+    QString value = qEnvironmentVariable(name);
+    return value.isNull() ? std::nullopt : std::optional(std::move(value));
 }
 
 static std::optional<QByteArray> qEnvironmentVariableOptionalByteArray(const char *name)
 {
-    if (!qEnvironmentVariableIsSet(name))
-        return std::nullopt;
-
-    return std::optional(qgetenv(name));
-}
-
-static std::optional<int> qEnvironmentVariableOptionalInt(const char *name)
-{
-    bool ok = false;
-    const int value = qEnvironmentVariableIntValue(name, &ok);
-    auto opt = ok ? std::optional(value) : std::nullopt;
-    return opt;
+    QByteArray value = qgetenv(name);
+    return value.isNull() ? std::nullopt : std::optional(std::move(value));
 }
 
 static std::optional<qreal> qEnvironmentVariableOptionalReal(const char *name)
 {
-    if (!qEnvironmentVariableIsSet(name))
+    const QByteArray val = qgetenv(name);
+    if (val.isNull())
         return std::nullopt;
 
     bool ok = false;
-    const qreal value = qEnvironmentVariable(name).toDouble(&ok);
+    const qreal value = val.toDouble(&ok);
     return ok ? std::optional(value) : std::nullopt;
 }
 
@@ -405,7 +396,7 @@ void QHighDpiScaling::initHighDpiScaling()
 
     // Read environment variables
     static const char* envDebugStr = "environment variable set:";
-    std::optional<int> envEnableHighDpiScaling = qEnvironmentVariableOptionalInt(enableHighDpiScalingEnvVar);
+    std::optional envEnableHighDpiScaling = qEnvironmentVariableIntegerValue(enableHighDpiScalingEnvVar);
     if (envEnableHighDpiScaling.has_value())
         qCDebug(lcHighDpi) << envDebugStr << enableHighDpiScalingEnvVar << envEnableHighDpiScaling.value();
 
@@ -413,11 +404,11 @@ void QHighDpiScaling::initHighDpiScaling()
     if (envScaleFactor.has_value())
         qCDebug(lcHighDpi) << envDebugStr <<  scaleFactorEnvVar << envScaleFactor.value();
 
-    std::optional<QString> envScreenFactors = qEnvironmentVariableOptionalString(screenFactorsEnvVar);
-    if (envScreenFactors.has_value())
-        qCDebug(lcHighDpi) << envDebugStr << screenFactorsEnvVar << envScreenFactors.value();
+    const QString envScreenFactors = qEnvironmentVariable(screenFactorsEnvVar);
+    if (envScreenFactors.isNull())
+        qCDebug(lcHighDpi) << envDebugStr << screenFactorsEnvVar << envScreenFactors;
 
-    std::optional<int> envUsePhysicalDpi = qEnvironmentVariableOptionalInt(usePhysicalDpiEnvVar);
+    std::optional envUsePhysicalDpi = qEnvironmentVariableIntegerValue(usePhysicalDpiEnvVar);
     if (envUsePhysicalDpi.has_value())
         qCDebug(lcHighDpi) << envDebugStr << usePhysicalDpiEnvVar << envUsePhysicalDpi.value();
 
@@ -440,8 +431,7 @@ void QHighDpiScaling::initHighDpiScaling()
     // Store the envScreenFactors string for later use. The string format
     // supports using screen names, which means that screen DPI cannot
     // be resolved at this point.
-    QString screenFactorsSpec = envScreenFactors.value_or(QString());
-    m_screenFactors = parseScreenScaleFactorsSpec(QStringView{screenFactorsSpec});
+    m_screenFactors = parseScreenScaleFactorsSpec(envScreenFactors);
     m_namedScreenScaleFactors.clear();
 
     m_usePhysicalDpi = envUsePhysicalDpi.value_or(0) > 0;
@@ -451,7 +441,8 @@ void QHighDpiScaling::initHighDpiScaling()
         QByteArray policyText = envScaleFactorRoundingPolicy.value();
         auto policyEnumValue = lookupScaleFactorRoundingPolicy(policyText);
         if (policyEnumValue != Qt::HighDpiScaleFactorRoundingPolicy::Unset) {
-            QGuiApplication::setHighDpiScaleFactorRoundingPolicy(policyEnumValue);
+            // set directly to avoid setHighDpiScaleFactorRoundingPolicy() warning
+            QGuiApplicationPrivate::highDpiScaleFactorRoundingPolicy = policyEnumValue;
         } else {
             auto values = joinEnumValues(std::begin(scaleFactorRoundingPolicyLookup),
                                          std::end(scaleFactorRoundingPolicyLookup));
@@ -690,7 +681,7 @@ QScreen *QHighDpiScaling::screenForPosition(QHighDpiScaling::Point position, QSc
     return nullptr;
 }
 
-QVector<QHighDpiScaling::ScreenFactor> QHighDpiScaling::parseScreenScaleFactorsSpec(const QStringView &screenScaleFactors)
+QList<QHighDpiScaling::ScreenFactor> QHighDpiScaling::parseScreenScaleFactorsSpec(QStringView screenScaleFactors)
 {
     QVector<QHighDpiScaling::ScreenFactor> screenFactors;
 

@@ -1,12 +1,12 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2015-2016 Oleksandr Tymoshenko <gonzo@bluezbox.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qbsdfbintegration.h"
 #include "qbsdfbscreen.h"
 
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixservices_p.h>
 #include <QtGui/private/qgenericunixeventdispatcher_p.h>
 
 #include <QtFbSupport/private/qfbvthandler_p.h>
@@ -18,6 +18,7 @@
 #include <qpa/qplatforminputcontext.h>
 #include <qpa/qplatforminputcontextfactory_p.h>
 #include <qpa/qwindowsysteminterface.h>
+#include <qpa/qplatformservices.h>
 
 #if QT_CONFIG(tslib)
 #include <QtInputSupport/private/qtslib_p.h>
@@ -30,7 +31,6 @@ using namespace Qt::StringLiterals;
 QBsdFbIntegration::QBsdFbIntegration(const QStringList &paramList)
 {
     m_fontDb.reset(new QGenericUnixFontDatabase);
-    m_services.reset(new QGenericUnixServices);
     m_primaryScreen.reset(new QBsdFbScreen(paramList));
 }
 
@@ -97,6 +97,9 @@ QPlatformFontDatabase *QBsdFbIntegration::fontDatabase() const
 
 QPlatformServices *QBsdFbIntegration::services() const
 {
+    if (m_services.isNull())
+        m_services.reset(new QPlatformServices);
+
     return m_services.data();
 }
 

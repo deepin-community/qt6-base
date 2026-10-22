@@ -175,7 +175,6 @@ enum Property {
     QtStrokeDashArray,
     QtStrokeDashOffset,
     QtForeground,
-    NumProperties
 };
 
 enum KnownValue {
@@ -258,15 +257,18 @@ enum KnownValue {
     Value_Link,
     Value_LinkVisited,
     Value_AlternateBase,
-    Value_LastColorRole = Value_AlternateBase,
+    Value_NoRole,
+    Value_ToolTipBase,
+    Value_ToolTipText,
+    Value_PlaceholderText,
+    Value_Accent,
+    Value_LastColorRole = Value_Accent,
 
     Value_Disabled,
     Value_Active,
     Value_Selected,
     Value_On,
     Value_Off,
-
-    NumKnownValues
 };
 
 enum BorderStyle {
@@ -283,7 +285,6 @@ enum BorderStyle {
     BorderStyle_Inset,
     BorderStyle_Outset,
     BorderStyle_Native,
-    NumKnownBorderStyles
 };
 
 enum Edge {
@@ -294,19 +295,11 @@ enum Edge {
     NumEdges
 };
 
-enum Corner {
-    TopLeftCorner,
-    TopRightCorner,
-    BottomLeftCorner,
-    BottomRightCorner
-};
-
 enum TileMode {
     TileMode_Unknown,
     TileMode_Round,
     TileMode_Stretch,
     TileMode_Repeat,
-    NumKnownTileModes
 };
 
 enum Repeat {
@@ -315,7 +308,6 @@ enum Repeat {
     Repeat_X,
     Repeat_Y,
     Repeat_XY,
-    NumKnownRepeats
 };
 
 enum Origin {
@@ -324,7 +316,6 @@ enum Origin {
     Origin_Border,
     Origin_Content,
     Origin_Margin,
-    NumKnownOrigins
 };
 
 enum PositionMode {
@@ -333,21 +324,18 @@ enum PositionMode {
     PositionMode_Relative,
     PositionMode_Absolute,
     PositionMode_Fixed,
-    NumKnownPositionModes
 };
 
 enum Attachment {
     Attachment_Unknown,
     Attachment_Fixed,
     Attachment_Scroll,
-    NumKnownAttachments
 };
 
 enum StyleFeature {
     StyleFeature_None = 0,
     StyleFeature_BackgroundColor = 1,
     StyleFeature_BackgroundGradient = 2,
-    NumKnownStyleFeatures = 4
 };
 
 struct Value
@@ -600,6 +588,20 @@ struct PageRule
 };
 QT_CSS_DECLARE_TYPEINFO(PageRule, Q_RELOCATABLE_TYPE)
 
+struct AnimationRule
+{
+    struct AnimationRuleSet
+    {
+        float keyFrame;
+        QList<Declaration> declarations;
+        Declaration timingFunction;
+    };
+
+    QString animName;
+    QList<AnimationRuleSet> ruleSets;
+};
+QT_CSS_DECLARE_TYPEINFO(AnimationRule, Q_RELOCATABLE_TYPE)
+
 struct ImportRule
 {
     QString href;
@@ -621,6 +623,7 @@ struct StyleSheet
     QList<StyleRule> styleRules; // only contains rules that are not indexed
     QList<MediaRule> mediaRules;
     QList<PageRule> pageRules;
+    QList<AnimationRule> animationRules;
     QList<ImportRule> importRules;
     StyleSheetOrigin origin;
     int depth; // applicable only for inline style sheets
@@ -662,9 +665,9 @@ public:
     Qt::CaseSensitivity nameCaseSensitivity;
 private:
     void matchRule(NodePtr node, const StyleRule &rules, StyleSheetOrigin origin,
-                    int depth, QMultiMap<uint, StyleRule> *weightedRules);
-    bool selectorMatches(const Selector &rule, NodePtr node);
-    bool basicSelectorMatches(const BasicSelector &rule, NodePtr node);
+                    int depth, std::multimap<uint64_t, StyleRule> *weightedRules) const;
+    bool selectorMatches(const Selector &rule, NodePtr node) const;
+    bool basicSelectorMatches(const BasicSelector &rule, NodePtr node) const;
 };
 
 enum TokenType {
@@ -752,6 +755,7 @@ public:
     bool parsePage(PageRule *pageRule);
     bool parsePseudoPage(QString *selector);
     bool parseNextOperator(Value *value);
+    bool parseAnimation(AnimationRule *animationRule);
     bool parseCombinator(BasicSelector::Relation *relation);
     bool parseProperty(Declaration *decl);
     bool parseRuleset(StyleRule *styleRule);
@@ -784,6 +788,7 @@ public:
     inline bool testImport() { return testTokenAndEndsWith(ATKEYWORD_SYM, QLatin1StringView("import")); }
     inline bool testMedia() { return testTokenAndEndsWith(ATKEYWORD_SYM, QLatin1StringView("media")); }
     inline bool testPage() { return testTokenAndEndsWith(ATKEYWORD_SYM, QLatin1StringView("page")); }
+    inline bool testAnimation() { return testTokenAndEndsWith(ATKEYWORD_SYM, QLatin1StringView("keyframes")); }
     inline bool testCombinator() { return test(PLUS) || test(GREATER) || test(TILDE) || test(S); }
     inline bool testProperty() { return test(IDENT); }
     bool testTerm();
@@ -834,7 +839,7 @@ struct Q_GUI_EXPORT ValueExtractor
 
     bool extractFont(QFont *font, int *fontSizeAdjustment);
     bool extractBackground(QBrush *, QString *, Repeat *, Qt::Alignment *, QCss::Origin *, QCss::Attachment *,
-                           QCss::Origin *);
+                           QCss::Origin *) const;
     bool extractGeometry(int *w, int *h, int *minw, int *minh, int *maxw, int *maxh);
     bool extractPosition(int *l, int *t, int *r, int *b, QCss::Origin *, Qt::Alignment *,
                          QCss::PositionMode *, Qt::Alignment *);
@@ -843,10 +848,10 @@ struct Q_GUI_EXPORT ValueExtractor
     bool extractOutline(int *borders, QBrush *colors, BorderStyle *Styles, QSize *radii, int *offsets);
     bool extractPalette(QBrush *foreground, QBrush *selectedForeground, QBrush *selectedBackground,
                         QBrush *alternateBackground, QBrush *placeHolderTextForeground,
-                        QBrush *accent);
-    int  extractStyleFeatures();
-    bool extractImage(QIcon *icon, Qt::Alignment *a, QSize *size);
-    bool extractIcon(QIcon *icon, QSize *size);
+                        QBrush *accent) const;
+    int  extractStyleFeatures() const;
+    bool extractImage(QIcon *icon, Qt::Alignment *a, QSize *size) const;
+    bool extractIcon(QIcon *icon, QSize *size) const;
 
     void lengthValues(const Declaration &decl, int *m);
     QTextLength textLength(const Declaration &decl);

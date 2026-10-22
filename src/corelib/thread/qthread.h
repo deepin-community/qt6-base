@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTHREAD_H
 #define QTHREAD_H
@@ -28,7 +29,7 @@ class Q_CORE_EXPORT QThread : public QObject
 {
     Q_OBJECT
 public:
-    static Qt::HANDLE currentThreadId() noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION static Qt::HANDLE currentThreadId() noexcept;
     static QThread *currentThread();
     static bool isMainThread() noexcept;
     static int idealThreadCount() noexcept;
@@ -51,6 +52,13 @@ public:
         InheritPriority
     };
 
+    enum class QualityOfService {
+        Auto,
+        High,
+        Eco,
+    };
+    Q_ENUM(QualityOfService)
+
     void setPriority(Priority priority);
     Priority priority() const;
 
@@ -70,6 +78,9 @@ public:
     int loopLevel() const;
 
     bool isCurrentThread() const noexcept;
+
+    void setServiceLevel(QualityOfService serviceLevel);
+    QualityOfService serviceLevel() const;
 
     template <typename Function, typename... Args>
     [[nodiscard]] static QThread *create(Function &&f, Args &&... args);
@@ -112,7 +123,7 @@ private:
     friend class QEventLoopLocker;
 
     [[nodiscard]] static QThread *createThreadImpl(std::future<void> &&future);
-    static Qt::HANDLE currentThreadIdImpl() noexcept Q_DECL_PURE_FUNCTION;
+    Q_DECL_PURE_FUNCTION static Qt::HANDLE currentThreadIdImpl() noexcept;
 
     friend class QCoreApplication;
     friend class QThreadData;
@@ -161,27 +172,15 @@ inline Qt::HANDLE QThread::currentThreadId() noexcept
 #elif defined(Q_PROCESSOR_X86_64) && ((defined(Q_OS_LINUX) && defined(__GLIBC__)) || defined(Q_OS_FREEBSD))
     // x86_64 Linux, BSD uses FS
     __asm__("mov %%fs:%c1, %0" : "=r" (tid) : "i" (2 * sizeof(void*)) : );
-#elif defined(Q_PROCESSOR_X86_64) && defined(Q_OS_WIN)
+#elif defined(Q_PROCESSOR_X86_64) && defined(Q_OS_WIN) && defined(Q_CC_MSVC)
     // See https://en.wikipedia.org/wiki/Win32_Thread_Information_Block
-    // First get the pointer to the TIB
-    quint8 *tib;
-# if defined(Q_CC_MINGW) // internal compiler error when using the intrinsics
-    __asm__("movq %%gs:0x30, %0" : "=r" (tib) : :);
-# else
-    tib = reinterpret_cast<quint8 *>(__readgsqword(0x30));
-# endif
-    // Then read the thread ID
-    tid = *reinterpret_cast<Qt::HANDLE *>(tib + 0x48);
-#elif defined(Q_PROCESSOR_X86_32) && defined(Q_OS_WIN)
-    // First get the pointer to the TIB
-    quint8 *tib;
-# if defined(Q_CC_MINGW) // internal compiler error when using the intrinsics
-    __asm__("movl %%fs:0x18, %0" : "=r" (tib) : :);
-# else
-    tib = reinterpret_cast<quint8 *>(__readfsdword(0x18));
-# endif
-    // Then read the thread ID
-    tid = *reinterpret_cast<Qt::HANDLE *>(tib + 0x24);
+    tid = reinterpret_cast<Qt::HANDLE>(__readgsqword(0x48));
+#elif defined(Q_PROCESSOR_X86_64) && defined(Q_OS_WIN) // !Q_CC_MSVC
+    __asm__("mov %%gs:0x48, %0" : "=r" (tid));
+#elif defined(Q_PROCESSOR_X86_32) && defined(Q_OS_WIN) && defined(Q_CC_MSVC)
+    tid = reinterpret_cast<Qt::HANDLE>(__readfsdword(0x24));
+#elif defined(Q_PROCESSOR_X86_32) && defined(Q_OS_WIN) // !Q_CC_MSVC
+    __asm__("mov %%fs:0x24, %0" : "=r" (tid));
 #else
 #undef QT_HAS_FAST_CURRENT_THREAD_ID
     tid = currentThreadIdImpl();

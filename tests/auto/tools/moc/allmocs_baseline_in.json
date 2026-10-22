@@ -10,6 +10,7 @@
                     {
                         "access": "public",
                         "index": 0,
+                        "lineNumber": 21,
                         "name": "works",
                         "returnType": "void"
                     }
@@ -23,7 +24,7 @@
             }
         ],
         "inputFile": "backslash-newlines.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -41,7 +42,7 @@
             }
         ],
         "inputFile": "c-comments.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -51,6 +52,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 12,
                         "name": "Baz",
                         "values": [
                             "Foo",
@@ -60,6 +62,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 13,
                         "name": "Baz2",
                         "values": [
                             "Foo2",
@@ -73,7 +76,7 @@
             }
         ],
         "inputFile": "cstyle-enums.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -83,6 +86,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 12,
                         "name": "EnumClass",
                         "values": [
                             "A0",
@@ -94,6 +98,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 13,
                         "name": "TypedEnum",
                         "type": "char",
                         "values": [
@@ -106,6 +111,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 14,
                         "name": "TypedEnumClass",
                         "type": "char",
                         "values": [
@@ -118,6 +124,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 15,
                         "name": "NormalEnum",
                         "values": [
                             "D2",
@@ -130,6 +137,7 @@
                         "alias": "ClassFlag",
                         "isClass": true,
                         "isFlag": true,
+                        "lineNumber": 16,
                         "name": "ClassFlags",
                         "values": [
                             "F0",
@@ -141,6 +149,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 18,
                         "name": "EnumStruct",
                         "values": [
                             "G0",
@@ -152,6 +161,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 19,
                         "name": "TypedEnumStruct",
                         "type": "char",
                         "values": [
@@ -165,6 +175,7 @@
                         "alias": "StructFlag",
                         "isClass": true,
                         "isFlag": true,
+                        "lineNumber": 20,
                         "name": "StructFlags",
                         "values": [
                             "I0",
@@ -184,6 +195,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 41,
                         "name": "EnumClass",
                         "values": [
                             "A0",
@@ -195,6 +207,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 42,
                         "name": "TypedEnum",
                         "type": "char",
                         "values": [
@@ -207,6 +220,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 43,
                         "name": "TypedEnumClass",
                         "type": "char",
                         "values": [
@@ -219,6 +233,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 44,
                         "name": "NormalEnum",
                         "values": [
                             "D2",
@@ -231,6 +246,7 @@
                         "alias": "ClassFlag",
                         "isClass": true,
                         "isFlag": true,
+                        "lineNumber": 45,
                         "name": "ClassFlags",
                         "values": [
                             "F0",
@@ -241,7 +257,7 @@
                     }
                 ],
                 "gadget": true,
-                "lineNumber": 36,
+                "lineNumber": 37,
                 "qualifiedClassName": "CXX11Enums2"
             },
             {
@@ -250,6 +266,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 59,
                         "name": "EnumClass",
                         "values": [
                             "A0",
@@ -261,6 +278,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 60,
                         "name": "TypedEnum",
                         "type": "char",
                         "values": [
@@ -273,6 +291,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 61,
                         "name": "TypedEnumClass",
                         "type": "char",
                         "values": [
@@ -285,6 +304,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 62,
                         "name": "NormalEnum",
                         "values": [
                             "D2",
@@ -294,7 +314,7 @@
                         ]
                     }
                 ],
-                "lineNumber": 50,
+                "lineNumber": 55,
                 "object": true,
                 "qualifiedClassName": "CXX11Enums3",
                 "superClasses": [
@@ -306,7 +326,7 @@
             }
         ],
         "inputFile": "cxx11-enums.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -319,24 +339,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 25,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 26,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 27,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 28,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -357,24 +383,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 47,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 48,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 49,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 50,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -395,24 +427,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 69,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 70,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 71,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 72,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -433,24 +471,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 91,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 92,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 93,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 94,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -471,24 +515,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 113,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 114,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 115,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 116,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -509,24 +559,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 135,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 136,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 137,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 138,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -547,24 +603,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 157,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 158,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 159,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 160,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -585,24 +647,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 179,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 180,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 181,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 182,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -623,24 +691,30 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 201,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 202,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 2,
+                        "isConst": true,
+                        "lineNumber": 203,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
                         "index": 3,
+                        "isConst": true,
+                        "lineNumber": 204,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -654,12 +728,13 @@
             }
         ],
         "inputFile": "cxx11-explicit-override-control.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
             {
                 "className": "FinalTestClassQt",
+                "final": true,
                 "lineNumber": 15,
                 "object": true,
                 "qualifiedClassName": "FinalTestClassQt",
@@ -672,6 +747,7 @@
             },
             {
                 "className": "ExportedFinalTestClassQt",
+                "final": true,
                 "lineNumber": 24,
                 "object": true,
                 "qualifiedClassName": "ExportedFinalTestClassQt",
@@ -684,6 +760,7 @@
             },
             {
                 "className": "ExportedFinalTestClassQtX",
+                "final": true,
                 "lineNumber": 32,
                 "object": true,
                 "qualifiedClassName": "ExportedFinalTestClassQtX",
@@ -696,6 +773,7 @@
             },
             {
                 "className": "FinalTestClassCpp11",
+                "final": true,
                 "lineNumber": 40,
                 "object": true,
                 "qualifiedClassName": "FinalTestClassCpp11",
@@ -708,6 +786,7 @@
             },
             {
                 "className": "ExportedFinalTestClassCpp11",
+                "final": true,
                 "lineNumber": 48,
                 "object": true,
                 "qualifiedClassName": "ExportedFinalTestClassCpp11",
@@ -720,6 +799,7 @@
             },
             {
                 "className": "ExportedFinalTestClassCpp11X",
+                "final": true,
                 "lineNumber": 56,
                 "object": true,
                 "qualifiedClassName": "ExportedFinalTestClassCpp11X",
@@ -732,6 +812,7 @@
             },
             {
                 "className": "SealedTestClass",
+                "final": true,
                 "lineNumber": 64,
                 "object": true,
                 "qualifiedClassName": "SealedTestClass",
@@ -744,6 +825,7 @@
             },
             {
                 "className": "ExportedSealedTestClass",
+                "final": true,
                 "lineNumber": 72,
                 "object": true,
                 "qualifiedClassName": "ExportedSealedTestClass",
@@ -756,6 +838,7 @@
             },
             {
                 "className": "ExportedSealedTestClassX",
+                "final": true,
                 "lineNumber": 80,
                 "object": true,
                 "qualifiedClassName": "ExportedSealedTestClassX",
@@ -768,7 +851,7 @@
             }
         ],
         "inputFile": "cxx11-final-classes.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -777,6 +860,26 @@
                 "lineNumber": 8,
                 "object": true,
                 "qualifiedClassName": "CXX11TrailingReturn",
+                "methods": [
+                    {
+                        "access": "public",
+                        "arguments": [
+                            {
+                                "name": "i",
+                                "type": "int"
+                            },
+                            {
+                                "name": "d",
+                                "type": "double"
+                            }
+                        ],
+                        "index": 16,
+                        "isConst": true,
+                        "lineNumber": 37,
+                        "name": "invokable",
+                        "returnType": "double"
+                    }
+                ],
                 "signals": [
                     {
                         "access": "public",
@@ -787,15 +890,31 @@
                             }
                         ],
                         "index": 0,
-                        "name": "trailingSignalReturn",
+                        "lineNumber": 32,
+                        "name": "signal",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                            {
+                                "name": "i",
+                                "type": "int"
+                            }
+                        ],
+                        "index": 1,
+                        "isConst": true,
+                        "lineNumber": 35,
+                        "name": "signalMacro",
                         "returnType": "void"
                     }
                 ],
                 "slots": [
                     {
                         "access": "public",
-                        "index": 1,
-                        "name": "fun",
+                        "index": 2,
+                        "lineNumber": 12,
+                        "name": "f",
                         "returnType": "void"
                     },
                     {
@@ -810,8 +929,9 @@
                                 "type": "char"
                             }
                         ],
-                        "index": 2,
-                        "name": "arguments",
+                        "index": 3,
+                        "lineNumber": 13,
+                        "name": "args",
                         "returnType": "int"
                     },
                     {
@@ -822,20 +942,106 @@
                                 "type": "int"
                             }
                         ],
-                        "index": 3,
+                        "index": 4,
+                        "lineNumber": 15,
                         "name": "inlineFunc",
                         "returnType": "int"
                     },
                     {
                         "access": "public",
-                        "index": 4,
+                        "index": 5,
+                        "lineNumber": 16,
+                        "name": "inlineFuncVoid",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "index": 6,
+                        "isConst": true,
+                        "lineNumber": 17,
+                        "name": "constFunc",
+                        "returnType": "double"
+                    },
+                    {
+                        "access": "public",
+                        "index": 7,
+                        "lineNumber": 18,
                         "name": "constRefReturn",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
-                        "index": 5,
+                        "index": 8,
+                        "isConst": true,
+                        "lineNumber": 19,
                         "name": "constConstRefReturn",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "index": 9,
+                        "lineNumber": 22,
+                        "name": "fMacro",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                            {
+                                "name": "i",
+                                "type": "int"
+                            },
+                            {
+                                "name": "b",
+                                "type": "char"
+                            }
+                        ],
+                        "index": 10,
+                        "lineNumber": 23,
+                        "name": "argsMacro",
+                        "returnType": "int"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                            {
+                                "name": "i",
+                                "type": "int"
+                            }
+                        ],
+                        "index": 11,
+                        "lineNumber": 25,
+                        "name": "inlineFuncMacro",
+                        "returnType": "int"
+                    },
+                    {
+                        "access": "public",
+                        "index": 12,
+                        "lineNumber": 26,
+                        "name": "inlineFuncVoidMacro",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "index": 13,
+                        "isConst": true,
+                        "lineNumber": 27,
+                        "name": "constFuncMacro",
+                        "returnType": "double"
+                    },
+                    {
+                        "access": "public",
+                        "index": 14,
+                        "lineNumber": 28,
+                        "name": "constRefReturnMacro",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "index": 15,
+                        "isConst": true,
+                        "lineNumber": 29,
+                        "name": "constConstRefReturnMacro",
                         "returnType": "void"
                     }
                 ],
@@ -848,7 +1054,7 @@
             }
         ],
         "inputFile": "cxx11-trailing-return.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -858,6 +1064,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 23,
                         "name": "GadEn",
                         "values": [
                             "Value"
@@ -874,6 +1081,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 27,
                         "name": "NamEn",
                         "values": [
                             "Value"
@@ -886,7 +1094,7 @@
             }
         ],
         "inputFile": "cxx17-namespaces.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -916,7 +1124,7 @@
             }
         ],
         "inputFile": "dir-in-include-path.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -934,7 +1142,7 @@
             }
         ],
         "inputFile": "enum_with_include.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -966,7 +1174,7 @@
             }
         ],
         "inputFile": "escapes-in-string-literals.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -984,6 +1192,7 @@
                             }
                         ],
                         "index": 0,
+                        "lineNumber": 35,
                         "name": "signalNaked",
                         "returnType": "void"
                     },
@@ -995,6 +1204,7 @@
                             }
                         ],
                         "index": 1,
+                        "lineNumber": 36,
                         "name": "signalFDC",
                         "returnType": "void"
                     },
@@ -1006,6 +1216,7 @@
                             }
                         ],
                         "index": 2,
+                        "lineNumber": 37,
                         "name": "signalFDC",
                         "returnType": "void"
                     },
@@ -1017,6 +1228,7 @@
                             }
                         ],
                         "index": 3,
+                        "lineNumber": 38,
                         "name": "signalFDC",
                         "returnType": "void"
                     },
@@ -1028,6 +1240,7 @@
                             }
                         ],
                         "index": 4,
+                        "lineNumber": 39,
                         "name": "signalFDC",
                         "returnType": "void"
                     },
@@ -1039,6 +1252,7 @@
                             }
                         ],
                         "index": 5,
+                        "lineNumber": 40,
                         "name": "signalQSet",
                         "returnType": "void"
                     },
@@ -1050,6 +1264,7 @@
                             }
                         ],
                         "index": 6,
+                        "lineNumber": 41,
                         "name": "signalQSet",
                         "returnType": "void"
                     },
@@ -1061,6 +1276,7 @@
                             }
                         ],
                         "index": 7,
+                        "lineNumber": 42,
                         "name": "signalQSet",
                         "returnType": "void"
                     },
@@ -1072,6 +1288,7 @@
                             }
                         ],
                         "index": 8,
+                        "lineNumber": 43,
                         "name": "signalQSet",
                         "returnType": "void"
                     }
@@ -1085,6 +1302,7 @@
                             }
                         ],
                         "index": 9,
+                        "lineNumber": 24,
                         "name": "slotNaked",
                         "returnType": "void"
                     },
@@ -1096,6 +1314,7 @@
                             }
                         ],
                         "index": 10,
+                        "lineNumber": 25,
                         "name": "slotFDC",
                         "returnType": "void"
                     },
@@ -1107,6 +1326,7 @@
                             }
                         ],
                         "index": 11,
+                        "lineNumber": 26,
                         "name": "slotFDC",
                         "returnType": "void"
                     },
@@ -1118,6 +1338,7 @@
                             }
                         ],
                         "index": 12,
+                        "lineNumber": 27,
                         "name": "slotFDC",
                         "returnType": "void"
                     },
@@ -1129,6 +1350,7 @@
                             }
                         ],
                         "index": 13,
+                        "lineNumber": 28,
                         "name": "slotFDC",
                         "returnType": "void"
                     },
@@ -1140,6 +1362,7 @@
                             }
                         ],
                         "index": 14,
+                        "lineNumber": 29,
                         "name": "slotQSet",
                         "returnType": "void"
                     },
@@ -1151,6 +1374,7 @@
                             }
                         ],
                         "index": 15,
+                        "lineNumber": 30,
                         "name": "slotQSet",
                         "returnType": "void"
                     },
@@ -1162,6 +1386,7 @@
                             }
                         ],
                         "index": 16,
+                        "lineNumber": 31,
                         "name": "slotQSet",
                         "returnType": "void"
                     },
@@ -1173,6 +1398,7 @@
                             }
                         ],
                         "index": 17,
+                        "lineNumber": 32,
                         "name": "slotQSet",
                         "returnType": "void"
                     }
@@ -1186,7 +1412,7 @@
             }
         ],
         "inputFile": "forward-declared-param.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1199,12 +1425,14 @@
                     {
                         "access": "public",
                         "index": 0,
+                        "lineNumber": 26,
                         "name": "test1",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 1,
+                        "lineNumber": 27,
                         "name": "test2",
                         "returnType": "void"
                     }
@@ -1218,7 +1446,7 @@
             }
         ],
         "inputFile": "function-with-attributes.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1234,6 +1462,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 22,
                         "name": "FooEnum",
                         "values": [
                             "FooValue"
@@ -1252,7 +1481,7 @@
             }
         ],
         "inputFile": "gadgetwithnoenums.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1288,7 +1517,7 @@
             }
         ],
         "inputFile": "grand-parent-gadget-class.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1302,13 +1531,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 23,
                         "name": "prop1",
+                        "override": false,
                         "read": "getProp1",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "FwdClass1",
                         "user": false,
+                        "virtual": false,
                         "write": "setProp1"
                     },
                     {
@@ -1316,13 +1548,16 @@
                         "designable": true,
                         "final": false,
                         "index": 1,
+                        "lineNumber": 24,
                         "name": "prop2",
+                        "override": false,
                         "read": "getProp2",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "FwdClass2",
                         "user": false,
+                        "virtual": false,
                         "write": "setProp2"
                     },
                     {
@@ -1330,13 +1565,16 @@
                         "designable": true,
                         "final": false,
                         "index": 2,
+                        "lineNumber": 25,
                         "name": "prop3",
+                        "override": false,
                         "read": "getProp3",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "FwdClass3",
                         "user": false,
+                        "virtual": false,
                         "write": "setProp3"
                     }
                 ],
@@ -1356,7 +1594,7 @@
             }
         ],
         "inputFile": "moc_include.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1366,6 +1604,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 14,
                         "name": "Enum1",
                         "values": [
                             "Key1",
@@ -1383,6 +1622,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 22,
                         "name": "Enum2",
                         "values": [
                             "Key3",
@@ -1392,6 +1632,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 35,
                         "name": "Enum3",
                         "values": [
                             "Key5",
@@ -1409,6 +1650,7 @@
                     {
                         "isClass": true,
                         "isFlag": false,
+                        "lineNumber": 43,
                         "name": "Enum4",
                         "values": [
                             "Key7",
@@ -1422,7 +1664,7 @@
             }
         ],
         "inputFile": "namespace.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1453,7 +1695,7 @@
             }
         ],
         "inputFile": "namespaced-base-class.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1464,6 +1706,7 @@
                         "alias": "Flag",
                         "isClass": false,
                         "isFlag": true,
+                        "lineNumber": 15,
                         "name": "Flags",
                         "values": [
                             "Read",
@@ -1479,13 +1722,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 11,
                         "name": "flags",
+                        "override": false,
                         "read": "flags",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Flags",
                         "user": false,
+                        "virtual": false,
                         "write": "setFlags"
                     }
                 ],
@@ -1507,13 +1753,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 30,
                         "name": "flags",
+                        "override": false,
                         "read": "flags",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Foo::Bar::Flags",
                         "user": false,
+                        "virtual": false,
                         "write": "setFlags"
                     },
                     {
@@ -1521,13 +1770,16 @@
                         "designable": true,
                         "final": false,
                         "index": 1,
+                        "lineNumber": 31,
                         "name": "flagsList",
+                        "override": false,
                         "read": "flagsList",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "QList<Foo::Bar::Flags>",
                         "user": false,
+                        "virtual": false,
                         "write": "setFlagsList"
                     }
                 ],
@@ -1541,7 +1793,7 @@
             }
         ],
         "inputFile": "namespaced-flags.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1554,6 +1806,7 @@
                     {
                         "access": "public",
                         "index": 0,
+                        "lineNumber": 41,
                         "name": "mySignal",
                         "returnType": "void"
                     }
@@ -1562,6 +1815,7 @@
                     {
                         "access": "public",
                         "index": 1,
+                        "lineNumber": 44,
                         "name": "mySlot",
                         "returnType": "void"
                     }
@@ -1575,7 +1829,7 @@
             }
         ],
         "inputFile": "no-keywords.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1593,7 +1847,7 @@
             }
         ],
         "inputFile": "non-gadget-parent-class.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1606,6 +1860,7 @@
                     {
                         "access": "public",
                         "index": 0,
+                        "lineNumber": 17,
                         "name": "foo",
                         "returnType": "void"
                     },
@@ -1629,6 +1884,7 @@
                             }
                         ],
                         "index": 1,
+                        "lineNumber": 18,
                         "name": "bar",
                         "returnType": "int"
                     },
@@ -1643,6 +1899,7 @@
                             }
                         ],
                         "index": 2,
+                        "lineNumber": 19,
                         "name": "slot",
                         "returnType": "void"
                     }
@@ -1656,7 +1913,7 @@
             }
         ],
         "inputFile": "oldstyle-casts.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1689,12 +1946,14 @@
                             }
                         ],
                         "index": 0,
+                        "lineNumber": 105,
                         "name": "cmdlineSignal",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 1,
+                        "lineNumber": 109,
                         "name": "signalQTBUG55853",
                         "returnType": "void"
                     }
@@ -1703,30 +1962,35 @@
                     {
                         "access": "public",
                         "index": 2,
+                        "lineNumber": 64,
                         "name": "voidFunction",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 3,
+                        "lineNumber": 66,
                         "name": "stringMethod",
                         "returnType": "QString"
                     },
                     {
                         "access": "public",
                         "index": 4,
+                        "lineNumber": 68,
                         "name": "combined1",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 5,
+                        "lineNumber": 69,
                         "name": "combined2",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 6,
+                        "lineNumber": 70,
                         "name": "combined3",
                         "returnType": "void"
                     },
@@ -1741,24 +2005,28 @@
                             }
                         ],
                         "index": 7,
+                        "lineNumber": 71,
                         "name": "combined4",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 8,
+                        "lineNumber": 73,
                         "name": "combined5",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 9,
+                        "lineNumber": 75,
                         "name": "combined6",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 10,
+                        "lineNumber": 77,
                         "name": "vararg1",
                         "returnType": "void"
                     },
@@ -1770,6 +2038,7 @@
                             }
                         ],
                         "index": 11,
+                        "lineNumber": 78,
                         "name": "vararg2",
                         "returnType": "void"
                     },
@@ -1784,12 +2053,14 @@
                             }
                         ],
                         "index": 12,
+                        "lineNumber": 79,
                         "name": "vararg3",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 13,
+                        "lineNumber": 81,
                         "name": "vararg4",
                         "returnType": "void"
                     },
@@ -1801,6 +2072,7 @@
                             }
                         ],
                         "index": 14,
+                        "lineNumber": 82,
                         "name": "vararg5",
                         "returnType": "void"
                     },
@@ -1815,6 +2087,7 @@
                             }
                         ],
                         "index": 15,
+                        "lineNumber": 83,
                         "name": "vararg6",
                         "returnType": "void"
                     },
@@ -1826,6 +2099,7 @@
                             }
                         ],
                         "index": 16,
+                        "lineNumber": 89,
                         "name": "INNERFUNCTION",
                         "returnType": "void"
                     },
@@ -1837,6 +2111,7 @@
                             }
                         ],
                         "index": 17,
+                        "lineNumber": 90,
                         "name": "inner_expanded",
                         "returnType": "void"
                     },
@@ -1848,12 +2123,14 @@
                             }
                         ],
                         "index": 18,
+                        "lineNumber": 91,
                         "name": "expanded_method",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 19,
+                        "lineNumber": 99,
                         "name": "conditionSlot",
                         "returnType": "void"
                     },
@@ -1865,6 +2142,7 @@
                             }
                         ],
                         "index": 20,
+                        "lineNumber": 102,
                         "name": "PD_DEFINE_ITSELF_SUFFIX",
                         "returnType": "void"
                     }
@@ -1878,7 +2156,7 @@
             }
         ],
         "inputFile": "parse-defines.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1896,7 +2174,7 @@
             }
         ],
         "inputFile": "plugin_metadata.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -1914,6 +2192,7 @@
                             }
                         ],
                         "index": 0,
+                        "lineNumber": 18,
                         "name": "setProp1",
                         "returnType": "void"
                     },
@@ -1925,6 +2204,7 @@
                             }
                         ],
                         "index": 1,
+                        "lineNumber": 19,
                         "name": "setProp2",
                         "returnType": "void"
                     },
@@ -1936,6 +2216,7 @@
                             }
                         ],
                         "index": 2,
+                        "lineNumber": 20,
                         "name": "setProp3",
                         "returnType": "void"
                     },
@@ -1947,6 +2228,7 @@
                             }
                         ],
                         "index": 3,
+                        "lineNumber": 21,
                         "name": "setProp4",
                         "returnType": "void"
                     },
@@ -1958,6 +2240,7 @@
                             }
                         ],
                         "index": 4,
+                        "lineNumber": 22,
                         "name": "setProp5",
                         "returnType": "void"
                     },
@@ -1969,6 +2252,7 @@
                             }
                         ],
                         "index": 5,
+                        "lineNumber": 23,
                         "name": "setProp6",
                         "returnType": "void"
                     },
@@ -1980,6 +2264,7 @@
                             }
                         ],
                         "index": 6,
+                        "lineNumber": 24,
                         "name": "setProp7",
                         "returnType": "void"
                     }
@@ -1993,7 +2278,7 @@
             }
         ],
         "inputFile": "pointery_to_incomplete.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2006,12 +2291,14 @@
                     {
                         "access": "public",
                         "index": 0,
+                        "lineNumber": 13,
                         "name": "mySignal",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 1,
+                        "lineNumber": 14,
                         "name": "myOtherSignal",
                         "returnType": "void"
                     },
@@ -2024,6 +2311,7 @@
                             }
                         ],
                         "index": 2,
+                        "lineNumber": 15,
                         "name": "mySignal2",
                         "returnType": "void"
                     }
@@ -2044,6 +2332,7 @@
                     {
                         "access": "public",
                         "index": 0,
+                        "lineNumber": 23,
                         "name": "mySignal",
                         "returnType": "void"
                     },
@@ -2056,6 +2345,7 @@
                             }
                         ],
                         "index": 1,
+                        "lineNumber": 24,
                         "name": "mySignal2",
                         "returnType": "void"
                     }
@@ -2069,7 +2359,79 @@
             }
         ],
         "inputFile": "pure-virtual-signals.h",
-        "outputRevision": 68
+        "outputRevision": 69
+    },
+    {
+        "classes": [
+            {
+                "className": "QEnum64Object",
+                "enums": [
+                    {
+                        "isClass": false,
+                        "isFlag": false,
+                        "lineNumber": 12,
+                        "name": "LargeEnum",
+                        "type": "qint64",
+                        "values": [
+                            "Value0",
+                            "ValueMixed",
+                            "ValueMinus1"
+                        ]
+                    }
+                ],
+                "lineNumber": 8,
+                "object": true,
+                "qualifiedClassName": "QEnum64Object",
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "QObject"
+                    }
+                ]
+            },
+            {
+                "className": "QFlags64Object",
+                "enums": [
+                    {
+                        "alias": "LargeFlag",
+                        "isClass": false,
+                        "isFlag": true,
+                        "lineNumber": 24,
+                        "name": "LargeFlags",
+                        "type": "qint64",
+                        "values": [
+                            "Value0",
+                            "ValueMixed",
+                            "ValueMinus1"
+                        ]
+                    },
+                    {
+                        "alias": "ScopedLargeFlag",
+                        "isClass": true,
+                        "isFlag": true,
+                        "lineNumber": 32,
+                        "name": "ScopedLargeFlags",
+                        "type": "quint64",
+                        "values": [
+                            "Value0",
+                            "ValueMixed",
+                            "ValueMinus1"
+                        ]
+                    }
+                ],
+                "lineNumber": 20,
+                "object": true,
+                "qualifiedClassName": "QFlags64Object",
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "QObject"
+                    }
+                ]
+            }
+        ],
+        "inputFile": "qflags64object.h",
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2080,6 +2442,8 @@
                     {
                         "access": "public",
                         "index": 0,
+                        "isConst": true,
+                        "lineNumber": 13,
                         "name": "foo",
                         "returnType": "const char*"
                     }
@@ -2100,12 +2464,14 @@
                     {
                         "access": "public",
                         "index": 0,
+                        "lineNumber": 20,
                         "name": "foo",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 1,
+                        "lineNumber": 21,
                         "name": "bar",
                         "returnType": "void"
                     }
@@ -2121,7 +2487,46 @@
             }
         ],
         "inputFile": "qinvokable.h",
-        "outputRevision": 68
+        "outputRevision": 69
+    },
+    {
+        "classes": [
+            {
+                "classInfos": [
+                    {
+                        "name": "QML.Element",
+                        "value": "auto"
+                    }
+                ],
+                "className": "QmlMacro",
+                "lineNumber": 11,
+                "object": true,
+                "qualifiedClassName": "QmlMacro",
+                "signals": [
+                    {
+                        "access": "public",
+                        "arguments": [
+                            {
+                                "name": "b",
+                                "type": "QByteArray"
+                            }
+                        ],
+                        "index": 0,
+                        "lineNumber": 17,
+                        "name": "f",
+                        "returnType": "void"
+                    }
+                ],
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "QObject"
+                    }
+                ]
+            }
+        ],
+        "inputFile": "qmlmacro.h",
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2132,6 +2537,7 @@
                     {
                         "access": "private",
                         "index": 1,
+                        "lineNumber": 22,
                         "name": "method1",
                         "returnType": "void"
                     }
@@ -2142,6 +2548,7 @@
                     {
                         "access": "private",
                         "index": 0,
+                        "lineNumber": 21,
                         "name": "_q_privateslot",
                         "returnType": "void"
                     }
@@ -2155,7 +2562,7 @@
             }
         ],
         "inputFile": "qprivateslots.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2165,6 +2572,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 13,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2177,7 +2585,7 @@
             }
         ],
         "inputFile": "qtbug-35657-gadget.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2191,13 +2599,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 14,
                         "name": "blah",
+                        "override": false,
                         "read": "blah",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "A::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     }
                 ],
                 "qualifiedClassName": "QTBUG_35657::B",
@@ -2210,7 +2621,7 @@
             }
         ],
         "inputFile": "related-metaobjects-in-gadget.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2220,6 +2631,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 13,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2246,13 +2658,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 20,
                         "name": "blah",
+                        "override": false,
                         "read": "blah",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "A::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     }
                 ],
                 "qualifiedClassName": "QTBUG_2151::B",
@@ -2265,7 +2680,7 @@
             }
         ],
         "inputFile": "related-metaobjects-in-namespaces.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2275,6 +2690,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 48,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2291,6 +2707,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 48,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2313,6 +2730,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 53,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2329,6 +2747,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 53,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2351,6 +2770,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 57,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2367,6 +2787,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 57,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2389,6 +2810,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 60,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2405,6 +2827,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 60,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2431,26 +2854,32 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 61,
                         "name": "gadgetPoperty",
+                        "override": false,
                         "read": "gadgetPoperty",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Gadget::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     },
                     {
                         "constant": false,
                         "designable": true,
                         "final": false,
                         "index": 1,
+                        "lineNumber": 61,
                         "name": "objectPoperty",
+                        "override": false,
                         "read": "objectPoperty",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Object::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     }
                 ],
                 "qualifiedClassName": "NS1::DependingObject",
@@ -2471,13 +2900,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 61,
                         "name": "nestedGadgetPoperty",
+                        "override": false,
                         "read": "nestedGadgetPoperty",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Nested::Gadget::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     }
                 ],
                 "qualifiedClassName": "NS1::DependingNestedGadget",
@@ -2498,13 +2930,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 61,
                         "name": "nestedObjectPoperty",
+                        "override": false,
                         "read": "nestedObjectPoperty",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Nested::Object::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     }
                 ],
                 "qualifiedClassName": "NS1::DependingNestedObject",
@@ -2521,6 +2956,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 67,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2537,6 +2973,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 67,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2559,6 +2996,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 71,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2575,6 +3013,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 71,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2597,6 +3036,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 74,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2613,6 +3053,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 74,
                         "name": "SomeEnum",
                         "values": [
                             "SomeEnumValue"
@@ -2639,26 +3080,32 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 75,
                         "name": "gadgetPoperty",
+                        "override": false,
                         "read": "gadgetPoperty",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Gadget::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     },
                     {
                         "constant": false,
                         "designable": true,
                         "final": false,
                         "index": 1,
+                        "lineNumber": 75,
                         "name": "objectPoperty",
+                        "override": false,
                         "read": "objectPoperty",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Object::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     }
                 ],
                 "qualifiedClassName": "NS2::DependingObject",
@@ -2679,13 +3126,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 75,
                         "name": "nestedGadgetPoperty",
+                        "override": false,
                         "read": "nestedGadgetPoperty",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Nested::Gadget::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     }
                 ],
                 "qualifiedClassName": "NS2::DependingNestedGadget",
@@ -2706,13 +3156,16 @@
                         "designable": true,
                         "final": false,
                         "index": 0,
+                        "lineNumber": 75,
                         "name": "nestedObjectPoperty",
+                        "override": false,
                         "read": "nestedObjectPoperty",
                         "required": false,
                         "scriptable": true,
                         "stored": true,
                         "type": "Nested::Object::SomeEnum",
-                        "user": false
+                        "user": false,
+                        "virtual": false
                     }
                 ],
                 "qualifiedClassName": "NS2::DependingNestedObject",
@@ -2725,7 +3178,7 @@
             }
         ],
         "inputFile": "related-metaobjects-name-conflict.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2744,6 +3197,7 @@
                             }
                         ],
                         "index": 0,
+                        "lineNumber": 13,
                         "name": "signalWithDefaultArg",
                         "returnType": "void"
                     },
@@ -2751,6 +3205,7 @@
                         "access": "public",
                         "index": 1,
                         "isCloned": true,
+                        "lineNumber": 13,
                         "name": "signalWithDefaultArg",
                         "returnType": "void"
                     }
@@ -2764,7 +3219,7 @@
             }
         ],
         "inputFile": "signal-with-default-arg.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2774,6 +3229,7 @@
                     {
                         "isClass": false,
                         "isFlag": false,
+                        "lineNumber": 16,
                         "name": "Salaries",
                         "values": [
                             "Steve"
@@ -2792,7 +3248,7 @@
             }
         ],
         "inputFile": "single-quote-digit-separator-n3781.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2810,18 +3266,21 @@
                             }
                         ],
                         "index": 0,
+                        "lineNumber": 23,
                         "name": "mySignal",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 1,
+                        "lineNumber": 24,
                         "name": "myVoidSignal",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 2,
+                        "lineNumber": 25,
                         "name": "myVoidSignal2",
                         "returnType": "void"
                     }
@@ -2830,12 +3289,14 @@
                     {
                         "access": "public",
                         "index": 3,
+                        "lineNumber": 18,
                         "name": "dummySlot",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 4,
+                        "lineNumber": 19,
                         "name": "dummySlot2",
                         "returnType": "void"
                     },
@@ -2847,12 +3308,14 @@
                             }
                         ],
                         "index": 5,
+                        "lineNumber": 20,
                         "name": "anotherSlot",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
                         "index": 6,
+                        "lineNumber": 21,
                         "name": "mySlot",
                         "returnType": "TestTemplate<void>"
                     }
@@ -2866,7 +3329,7 @@
             }
         ],
         "inputFile": "slots-with-void-template.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2884,7 +3347,7 @@
             }
         ],
         "inputFile": "task192552.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2914,7 +3377,7 @@
             }
         ],
         "inputFile": "task234909.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -2932,6 +3395,7 @@
                             }
                         ],
                         "index": 0,
+                        "lineNumber": 19,
                         "name": "a",
                         "returnType": "void"
                     },
@@ -2944,6 +3408,7 @@
                             }
                         ],
                         "index": 1,
+                        "lineNumber": 20,
                         "name": "b",
                         "returnType": "void"
                     },
@@ -2955,6 +3420,7 @@
                             }
                         ],
                         "index": 2,
+                        "lineNumber": 21,
                         "name": "c",
                         "returnType": "void"
                     },
@@ -2967,6 +3433,7 @@
                             }
                         ],
                         "index": 3,
+                        "lineNumber": 22,
                         "name": "d",
                         "returnType": "void"
                     },
@@ -2978,6 +3445,7 @@
                             }
                         ],
                         "index": 4,
+                        "lineNumber": 23,
                         "name": "e",
                         "returnType": "void"
                     },
@@ -2990,6 +3458,7 @@
                             }
                         ],
                         "index": 5,
+                        "lineNumber": 24,
                         "name": "f",
                         "returnType": "void"
                     },
@@ -3001,6 +3470,7 @@
                             }
                         ],
                         "index": 6,
+                        "lineNumber": 25,
                         "name": "g",
                         "returnType": "void"
                     },
@@ -3013,6 +3483,7 @@
                             }
                         ],
                         "index": 7,
+                        "lineNumber": 26,
                         "name": "h",
                         "returnType": "void"
                     },
@@ -3027,6 +3498,7 @@
                             }
                         ],
                         "index": 8,
+                        "lineNumber": 27,
                         "name": "i",
                         "returnType": "void"
                     },
@@ -3041,6 +3513,7 @@
                             }
                         ],
                         "index": 9,
+                        "lineNumber": 28,
                         "name": "j",
                         "returnType": "void"
                     },
@@ -3052,6 +3525,7 @@
                             }
                         ],
                         "index": 10,
+                        "lineNumber": 29,
                         "name": "k",
                         "returnType": "void"
                     },
@@ -3064,6 +3538,7 @@
                             }
                         ],
                         "index": 11,
+                        "lineNumber": 30,
                         "name": "l",
                         "returnType": "void"
                     }
@@ -3077,7 +3552,7 @@
             }
         ],
         "inputFile": "task240368.h",
-        "outputRevision": 68
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -3095,7 +3570,95 @@
             }
         ],
         "inputFile": "task87883.h",
-        "outputRevision": 68
+        "outputRevision": 69
+    },
+    {
+        "classes": [
+            {
+                "className": "MyTechPreviewObject",
+                "lineNumber": 13,
+                "methods": [
+                    {
+                        "access": "public",
+                        "index": 4,
+                        "lineNumber": 27,
+                        "name": "myTPInvokable1",
+                        "returnType": "void",
+                        "tag": "QT_TECH_PREVIEW_API"
+                    },
+                    {
+                        "access": "public",
+                        "index": 5,
+                        "lineNumber": 28,
+                        "name": "myTPInvokable2",
+                        "returnType": "void",
+                        "tag": "QT_TECH_PREVIEW_API"
+                    }
+                ],
+                "object": true,
+                "properties": [
+                    {
+                        "constant": false,
+                        "designable": true,
+                        "final": false,
+                        "index": 0,
+                        "lineNumber": 19,
+                        "member": "m_status",
+                        "name": "status",
+                        "override": false,
+                        "required": false,
+                        "scriptable": true,
+                        "stored": true,
+                        "type": "int",
+                        "user": false,
+                        "virtual": false
+                    }
+                ],
+                "qualifiedClassName": "MyTechPreviewObject",
+                "signals": [
+                    {
+                        "access": "public",
+                        "index": 0,
+                        "lineNumber": 38,
+                        "name": "mySignal",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "index": 1,
+                        "lineNumber": 39,
+                        "name": "myTPSignal",
+                        "returnType": "void",
+                        "tag": "QT_TECH_PREVIEW_API"
+                    }
+                ],
+                "slots": [
+                    {
+                        "access": "public",
+                        "index": 2,
+                        "lineNumber": 42,
+                        "name": "mySlot",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "index": 3,
+                        "lineNumber": 43,
+                        "name": "myTPSlot",
+                        "returnType": "void",
+                        "tag": "QT_TECH_PREVIEW_API"
+                    }
+                ],
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "QObject"
+                    }
+                ]
+            }
+        ],
+        "inputFile": "tech-preview.h",
+        "outputRevision": 69
     },
     {
         "classes": [
@@ -3113,6 +3676,7 @@
                             }
                         ],
                         "index": 0,
+                        "lineNumber": 19,
                         "name": "foo",
                         "returnType": "void"
                     },
@@ -3124,6 +3688,7 @@
                             }
                         ],
                         "index": 1,
+                        "lineNumber": 20,
                         "name": "foo2",
                         "returnType": "void"
                     },
@@ -3135,6 +3700,7 @@
                             }
                         ],
                         "index": 2,
+                        "lineNumber": 23,
                         "name": "bar",
                         "returnType": "void"
                     },
@@ -3146,6 +3712,7 @@
                             }
                         ],
                         "index": 3,
+                        "lineNumber": 24,
                         "name": "bar2",
                         "returnType": "void"
                     },
@@ -3157,6 +3724,7 @@
                             }
                         ],
                         "index": 4,
+                        "lineNumber": 25,
                         "name": "bar3",
                         "returnType": "void"
                     }
@@ -3174,6 +3742,76 @@
             }
         ],
         "inputFile": "trigraphs.h",
-        "outputRevision": 68
+        "outputRevision": 69
+    },
+    {
+        "inputFile": "using-namespaces.h",
+        "outputRevision": 69
+    },
+    {
+        "classes": [
+            {
+                "className": "WithVirtual",
+                "lineNumber": 9,
+                "object": true,
+                "properties": [
+                    {
+                        "constant": false,
+                        "designable": true,
+                        "final": false,
+                        "index": 0,
+                        "lineNumber": 12,
+                        "member": "p",
+                        "name": "p",
+                        "override": false,
+                        "required": false,
+                        "scriptable": true,
+                        "stored": true,
+                        "type": "int",
+                        "user": false,
+                        "virtual": true
+                    }
+                ],
+                "qualifiedClassName": "WithVirtual",
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "QObject"
+                    }
+                ]
+            },
+            {
+                "className": "WithOverride",
+                "lineNumber": 17,
+                "object": true,
+                "properties": [
+                    {
+                        "constant": false,
+                        "designable": true,
+                        "final": false,
+                        "index": 0,
+                        "lineNumber": 20,
+                        "member": "p",
+                        "name": "p",
+                        "override": true,
+                        "required": false,
+                        "scriptable": true,
+                        "stored": true,
+                        "type": "QString",
+                        "user": false,
+                        "virtual": false
+                    }
+                ],
+                "qualifiedClassName": "WithOverride",
+                "superClasses": [
+                    {
+                        "access": "public",
+                        "name": "WithVirtual"
+                    }
+                ]
+            }
+        ],
+        "inputFile": "virtualAndOverride.h",
+        "outputRevision": 69
     }
 ]

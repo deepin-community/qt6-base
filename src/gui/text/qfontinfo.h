@@ -6,6 +6,7 @@
 
 #include <QtGui/qtguiglobal.h>
 #include <QtGui/qfont.h>
+#include <QtGui/qfontvariableaxis.h>
 
 #include <QtCore/qshareddata.h>
 
@@ -17,9 +18,11 @@ class Q_GUI_EXPORT QFontInfo
 public:
     QFontInfo(const QFont &);
     QFontInfo(const QFontInfo &);
+    QFontInfo(QFontInfo &&) = default;
     ~QFontInfo();
 
     QFontInfo &operator=(const QFontInfo &);
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QFontInfo)
 
     void swap(QFontInfo &other) noexcept { d.swap(other.d); }
 
@@ -37,6 +40,8 @@ public:
     bool strikeOut() const;
     bool fixedPitch() const;
     QFont::StyleHint styleHint() const;
+
+    QList<QFontVariableAxis> variableAxes() const;
 
 #if QT_DEPRECATED_SINCE(6, 0)
     QT_DEPRECATED_VERSION_X_6_0("Use weight() instead") int legacyWeight() const;

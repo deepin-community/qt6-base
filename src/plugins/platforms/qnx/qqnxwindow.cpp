@@ -1,5 +1,6 @@
 // Copyright (C) 2011 - 2013 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -9,6 +10,7 @@
 #include "qqnxintegration.h"
 #include "qqnxscreen.h"
 #include "qqnxlgmon.h"
+#include "qqnxscreeneventthread.h"
 
 #include <QUuid>
 
@@ -16,6 +18,7 @@
 #include <qpa/qwindowsysteminterface.h>
 
 #include "private/qguiapplication_p.h"
+#include "private/qhighdpiscaling_p.h"
 
 #include <QtCore/QDebug>
 
@@ -58,7 +61,7 @@ DECLARE_DEBUG_VAR(statistics)
     is in the treatment of parentless windows. In no-rootwindow mode, these windows are
     created as application windows while in rootwindow mode, the first window on a screen
     is created as an application window while subsequent windows are created as child
-    windows. The only exception to this is any window of type Qt::Desktop or Qt::CoverWindow;
+    windows. The only exception to this is any window of type Qt::CoverWindow;
     these are created as application windows, but will never become the root window,
     even if they are the first window created.
 
@@ -119,7 +122,8 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, bool needRootW
       m_exposed(true),
       m_foreign(false),
       m_windowState(Qt::WindowNoState),
-      m_firstActivateHandled(false)
+      m_firstActivateHandled(false),
+      m_desktopNotify(0)
 {
     qCDebug(lcQpaWindow) << "window =" << window << ", size =" << window->size();
 
@@ -145,9 +149,6 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, bool needRootW
         // otherwise only the first window is.
         m_isTopLevel = !needRootWindow || !platformScreen->rootWindow();
     }
-
-    if (window->type() == Qt::Desktop)  // A desktop widget does not need a libscreen window
-        return;
 
     QVariant type = window->property("_q_platform_qnxWindowType");
     if (type.isValid() && type.canConvert<int>()) {
@@ -199,6 +200,26 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, bool needRootW
         } else {
             qCDebug(lcQpaWindow) << "Invalid pipeline value:" << pipelineValue;
         }
+    }
+
+    // QNX desktop integration.
+    if (QQnxIntegration::instance()->options() & QQnxIntegration::Desktop) {
+        // Determine if the window needs a frame.
+        switch (window->type()) {
+        case Qt::Popup:
+        case Qt::ToolTip:
+            m_desktopNotify = DesktopNotifyPosition | DesktopNotifyVisible;
+            break;
+
+        default:
+            m_desktopNotify = DesktopNotifyTitle | DesktopNotifyVisible;
+            break;
+        }
+
+        // Wait for the window manager to acknowledge the window's creation.
+        // The call returns immediately if there is no window manager.
+        screen_manage_window(m_window,
+                             (m_desktopNotify & DesktopNotifyTitle) ? "Frame=Y" : "Frame=N");
     }
 
     int debug = 0;
@@ -266,12 +287,15 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, screen_window_
 QQnxWindow::~QQnxWindow()
 {
     qCDebug(lcQpaWindow) << "window =" << window();
+    *m_alive = false;
 
     // Qt should have already deleted the children before deleting the parent.
     Q_ASSERT(m_childWindows.size() == 0);
 
     // Remove from plugin's window mapper
     QQnxIntegration::instance()->removeWindow(m_window);
+    if (m_postEventRegistered)
+        QQnxIntegration::instance()->m_screenEventThread->unregisterUpdateNotification(m_window);
 
     // Remove from parent's Hierarchy.
     removeFromParent();
@@ -292,8 +316,7 @@ void QQnxWindow::setGeometry(const QRect &rect)
     if (shouldMakeFullScreen())
         newGeometry = screen()->geometry();
 
-    if (window()->type() != Qt::Desktop)
-        setGeometryHelper(newGeometry);
+    setGeometryHelper(newGeometry);
 
     if (isExposed())
         QWindowSystemInterface::handleExposeEvent(window(), QRect(QPoint(0, 0), newGeometry.size()));
@@ -308,12 +331,17 @@ void QQnxWindow::setGeometryHelper(const QRect &rect)
     // Call base class method
     QPlatformWindow::setGeometry(rect);
 
-    // Set window geometry equal to widget geometry
     int val[2];
-    val[0] = rect.x();
-    val[1] = rect.y();
-    Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_POSITION, val),
-                        "Failed to set window position");
+
+    // Set window geometry equal to widget geometry
+    if (m_desktopNotify & DesktopNotifyPosition) {
+        notifyManager(QString::asprintf("Pos=%d,%d", rect.x(), rect.y()));
+    } else {
+        val[0] = rect.x();
+        val[1] = rect.y();
+        Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_POSITION, val),
+                            "Failed to set window position");
+    }
 
     val[0] = rect.width();
     val[1] = rect.height();
@@ -333,7 +361,7 @@ void QQnxWindow::setVisible(bool visible)
 {
     qCDebug(lcQpaWindow) << "window =" << window() << "visible =" << visible;
 
-    if (m_visible == visible || window()->type() == Qt::Desktop)
+    if (m_visible == visible)
         return;
 
     // The first time through we join a window group if appropriate.
@@ -350,10 +378,17 @@ void QQnxWindow::setVisible(bool visible)
 
     root->updateVisibility(root->m_visible);
 
-    QWindowSystemInterface::handleExposeEvent(window(), QRect(QPoint(0, 0), window()->geometry().size()));
+    const QSize windowSize = QHighDpi::toNativePixels(window()->geometry().size(), window());
+    QWindowSystemInterface::handleExposeEvent(window(), QRect(QPoint(0, 0), windowSize));
 
     if (visible) {
         applyWindowState();
+
+        // Activate the window when shown, similar to how eglfs handles
+        // window activation through its compositor. Without a window manager,
+        // the platform must proactively activate windows on show.
+        if (m_isTopLevel && !showWithoutActivating())
+            requestActivateWindow();
     } else {
         if (showWithoutActivating() && focusable() && m_firstActivateHandled) {
             m_firstActivateHandled = false;
@@ -365,6 +400,26 @@ void QQnxWindow::setVisible(bool visible)
 
         // Flush the context, otherwise it won't disappear immediately
         screen_flush_context(m_screenContext, 0);
+
+        // When hiding the focused window, activate the next appropriate window.
+        // Similar to eglfs compositor behavior on window removal.
+        if (m_isTopLevel && window() == QGuiApplication::focusWindow()) {
+            QWindow *nextFocus = QGuiApplication::modalWindow();
+            if (!nextFocus) {
+                // Find the topmost visible window to activate
+                const auto windows = QGuiApplication::topLevelWindows();
+                for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
+                    if (*it != window() && (*it)->isVisible() && (*it)->handle()) {
+                        nextFocus = *it;
+                        break;
+                    }
+                }
+            }
+            if (nextFocus)
+                nextFocus->requestActivate();
+            else
+                QWindowSystemInterface::handleFocusWindowChanged(nullptr);
+        }
     }
 }
 
@@ -373,8 +428,12 @@ void QQnxWindow::updateVisibility(bool parentVisible)
     qCDebug(lcQpaWindow) << "parentVisible =" << parentVisible << "window =" << window();
     // Set window visibility
     int val = (m_visible && parentVisible) ? 1 : 0;
-    Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_VISIBLE, &val),
-                        "Failed to set window visibility");
+    if (m_desktopNotify & DesktopNotifyVisible) {
+        notifyManager(QString("Visible=") + (val ? "Y" : "N"));
+    } else {
+        Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_VISIBLE, &val),
+                            "Failed to set window visibility");
+    }
 
     Q_FOREACH (QQnxWindow *childWindow, m_childWindows)
         childWindow->updateVisibility(m_visible && parentVisible);
@@ -397,7 +456,8 @@ void QQnxWindow::setExposed(bool exposed)
 
     if (m_exposed != exposed) {
         m_exposed = exposed;
-        QWindowSystemInterface::handleExposeEvent(window(), QRect(QPoint(0, 0), window()->geometry().size()));
+        const QSize windowSize = QHighDpi::toNativePixels(window()->geometry().size(), window());
+        QWindowSystemInterface::handleExposeEvent(window(), QRect(QPoint(0, 0), windowSize));
     }
 }
 
@@ -421,15 +481,15 @@ void QQnxWindow::setBufferSize(const QSize &size)
             screen_set_window_property_iv(m_window, SCREEN_PROPERTY_FORMAT, &format),
             "Failed to set window format");
 
-    if (m_bufferSize.isValid()) {
-        // destroy buffers first, if resized
-        Q_SCREEN_CRITICALERROR(screen_destroy_window_buffers(m_window),
-                               "Failed to destroy window buffers");
-    }
-
     int val[2] = { nonEmptySize.width(), nonEmptySize.height() };
     Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_BUFFER_SIZE, val),
                         "Failed to set window buffer size");
+
+    if (m_bufferSize.isValid()) {
+        m_bufferSize = nonEmptySize;
+        resetBuffers();
+        return;
+    }
 
     Q_SCREEN_CRITICALERROR(screen_create_window_buffers(m_window, MAX_BUFFER_COUNT),
                            "Failed to create window buffers");
@@ -636,6 +696,18 @@ void QQnxWindow::requestActivateWindow()
     }
 
     screen_flush_context(m_screenContext, 0);
+
+    // Proactively notify Qt about the focus change. The QNX screen service
+    // may not reliably send back a FOCUS property event after we set it.
+    // If a modal window is blocking the requested window, redirect focus
+    // to the blocking modal window instead.
+    QWindow *activateTarget = window();
+    QWindow *blockingWindow = nullptr;
+    if (QGuiApplicationPrivate::instance()->isWindowBlocked(activateTarget, &blockingWindow)
+        && blockingWindow) {
+        activateTarget = blockingWindow;
+    }
+    QWindowSystemInterface::handleFocusWindowChanged(activateTarget, Qt::ActiveWindowFocusReason);
 }
 
 void QQnxWindow::setFocus(screen_window_t newFocusWindow)
@@ -746,9 +818,6 @@ void QQnxWindow::setRotation(int rotation)
 
 void QQnxWindow::initWindow()
 {
-    if (window()->type() == Qt::Desktop)
-        return;
-
     // Alpha channel is always pre-multiplied if present
     int val = SCREEN_PRE_MULTIPLIED_ALPHA;
     Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_ALPHA_MODE, &val),
@@ -779,6 +848,8 @@ void QQnxWindow::initWindow()
 
     // Add window to plugin's window mapper
     QQnxIntegration::instance()->addWindow(m_window, window());
+    m_postEventRegistered =
+        QQnxIntegration::instance()->m_screenEventThread->registerUpdateNotification(m_window);
 
     // Qt never calls these setters after creating the window, so we need to do that ourselves here
     setWindowState(window()->windowState());
@@ -787,7 +858,9 @@ void QQnxWindow::initWindow()
     if (window()->parent() && window()->parent()->handle())
         setParent(window()->parent()->handle());
 
-    setGeometryHelper(shouldMakeFullScreen() ? screen()->geometry() : window()->geometry());
+    setGeometryHelper(shouldMakeFullScreen()
+                              ? screen()->geometry()
+                              : QHighDpi::toNativePixels(window()->geometry(), window()));
 }
 
 void QQnxWindow::collectWindowGroup()
@@ -887,6 +960,10 @@ void QQnxWindow::applyWindowState()
 
 void QQnxWindow::windowPosted()
 {
+    if (m_postEventRegistered) {
+        m_waitingForPost.storeRelease(1);
+    }
+
     if (m_cover) {
         m_cover->updateCover();
         qqnxLgmonFramePosted(true);  // for performance measurements
@@ -928,6 +1005,77 @@ void QQnxWindow::addContextPermission()
             SCREEN_PROPERTY_PERMISSIONS,
             grantString.length(),
             grantString.data());
+}
+
+void QQnxWindow::setWindowTitle(const QString &title)
+{
+    if (m_desktopNotify & DesktopNotifyTitle) {
+        QString titleStr = "Title=" + title;
+        notifyManager(titleStr);
+    }
+}
+
+void QQnxWindow::requestUpdate()
+{
+    Q_ASSERT(hasPendingUpdateRequest());
+
+    if (!m_postEventRegistered) {
+        qCDebug(lcQpaWindow) << "requestUpdate: post event not registered, using fallback timer" << window();
+        QPlatformWindow::requestUpdate();
+        return;
+    }
+
+    if (m_waitingForPost.loadAcquire()) {
+        qCDebug(lcQpaWindow) << "requestUpdate: frame in-flight, deferring" << window();
+        return;
+    }
+
+    if (m_fallbackQueued.testAndSetRelaxed(0, 1)) {
+        QSharedPointer<bool> alive = m_alive;
+        QMetaObject::invokeMethod(window(), [this, alive]() {
+            if (!*alive)
+                return;
+            m_fallbackQueued.storeRelaxed(0);
+            if (m_waitingForPost.loadAcquire())
+                return;
+            if (hasPendingUpdateRequest())
+                deliverUpdateRequest();
+        }, Qt::QueuedConnection);
+    }
+}
+
+void QQnxWindow::handlePostEvent()
+{
+    if (!m_waitingForPost.testAndSetAcquire(1, 0)) {
+        qCDebug(lcQpaWindow) << "handlePostEvent: duplicate/early pulse, ignoring" << window();
+        return;
+    }
+
+    qCDebug(lcQpaWindow) << "handlePostEvent: post pulse received" << window();
+
+    if (isExposed() && hasPendingUpdateRequest()) {
+        qCDebug(lcQpaWindow) << "handlePostEvent: delivering update" << window();
+        deliverUpdateRequest();
+    }
+}
+
+void QQnxWindow::notifyManager(const QString &msg)
+{
+    screen_event_t ev;
+    screen_create_event(&ev);
+
+    std::string str = msg.toStdString();
+    screen_set_event_property_iv(ev, SCREEN_PROPERTY_TYPE,
+                                 (const int[]){ SCREEN_EVENT_MANAGER });
+    screen_set_event_property_cv(ev, SCREEN_PROPERTY_USER_DATA, str.length(),
+                                 str.c_str());
+    screen_set_event_property_pv(ev, SCREEN_PROPERTY_WINDOW,
+                                 reinterpret_cast<void **>(&m_window));
+    screen_set_event_property_pv(ev, SCREEN_PROPERTY_CONTEXT,
+                                 reinterpret_cast<void **>(&m_screenContext));
+
+    Q_SCREEN_CHECKERROR(screen_inject_event(NULL, ev),
+                        "Failed to send a message to the window manager");
 }
 
 void QQnxWindow::removeContextPermission()

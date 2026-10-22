@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTYLEHINTS_P_H
 #define QSTYLEHINTS_P_H
@@ -19,6 +20,7 @@
 #include <QPalette>
 #include <private/qguiapplication_p.h>
 #include "qstylehints.h"
+#include "qaccessibilityhints.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -40,14 +42,19 @@ public:
     int m_mouseQuickSelectionThreshold = -1;
     int m_mouseDoubleClickDistance = -1;
     int m_touchDoubleTapDistance = -1;
+    std::chrono::milliseconds m_toolTipWakeUpDelay{700};
 
     Qt::ColorScheme colorScheme() const { return m_colorScheme; }
     void updateColorScheme(Qt::ColorScheme colorScheme);
+    void update(const QPlatformTheme *theme);
+
+    QAccessibilityHints *accessibilityHints() const;
 
     static QStyleHintsPrivate *get(QStyleHints *q);
 
 private:
     Qt::ColorScheme m_colorScheme = Qt::ColorScheme::Unknown;
+    QAccessibilityHints* m_accessibilityHints = nullptr;
 };
 
 QT_END_NAMESPACE

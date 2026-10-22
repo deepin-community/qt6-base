@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWasmClipboard_H
 #define QWasmClipboard_H
@@ -36,9 +37,13 @@ public:
     bool ownsMode(QClipboard::Mode mode) const override;
 
     ProcessKeyboardResult processKeyboard(const KeyEvent &event);
-    static void installEventHandlers(const emscripten::val &target);
     bool hasClipboardApi();
+    static bool shouldInstallWindowEventHandlers();
     void sendClipboardData(emscripten::val event);
+
+    static void cut(emscripten::val event);
+    static void copy(emscripten::val event);
+    static void paste(emscripten::val event);
 
 private:
     void initClipboardPermissions();
@@ -46,6 +51,9 @@ private:
     void writeToClipboard();
 
     bool m_hasClipboardApi = false;
+    QWasmEventHandler m_documentCut;
+    QWasmEventHandler m_documentCopy;
+    QWasmEventHandler m_documentPaste;
 };
 
 QT_END_NAMESPACE

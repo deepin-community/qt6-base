@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMIMEGLOBPATTERN_P_H
 #define QMIMEGLOBPATTERN_P_H
@@ -45,7 +46,9 @@ public:
     static const unsigned DefaultWeight = 50;
     static const unsigned MinWeight = 1;
 
-    explicit QMimeGlobPattern(const QString &thePattern, const QString &theMimeType, unsigned theWeight = DefaultWeight, Qt::CaseSensitivity s = Qt::CaseInsensitive) :
+    explicit QMimeGlobPattern(const QString &thePattern, const QString &theMimeType,
+                              unsigned theWeight = DefaultWeight,
+                              Qt::CaseSensitivity s = Qt::CaseInsensitive) :
         m_pattern(s == Qt::CaseInsensitive ? thePattern.toLower() : thePattern),
         m_mimeType(theMimeType),
         m_weight(theWeight),
@@ -63,7 +66,7 @@ public:
         qSwap(m_patternType,     other.m_patternType);
     }
 
-    bool matchFileName(const QString &inputFileName) const;
+    bool matchFileName(const QString &fileName) const;
 
     inline const QString &pattern() const { return m_pattern; }
     inline unsigned weight() const { return m_weight; }

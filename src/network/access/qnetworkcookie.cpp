@@ -1,10 +1,10 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qnetworkcookie.h"
 #include "qnetworkcookie_p.h"
 
-#include "qnetworkrequest.h"
 #include "qnetworkreply.h"
 #include "QtCore/qbytearray.h"
 #include "QtCore/qdatetime.h"
@@ -18,6 +18,8 @@
 #include "QtCore/qurl.h"
 #include "QtNetwork/qhostaddress.h"
 #include "private/qobject_p.h"
+
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -117,9 +119,7 @@ QNetworkCookie &QNetworkCookie::operator=(const QNetworkCookie &other)
 /*!
     \fn void QNetworkCookie::swap(QNetworkCookie &other)
     \since 5.0
-
-    Swaps this cookie with \a other. This function is very fast and
-    never fails.
+    \memberswap{cookie}
 */
 
 /*!
@@ -376,34 +376,34 @@ void QNetworkCookie::setValue(const QByteArray &value)
 }
 
 // ### move this to qnetworkcookie_p.h and share with qnetworkaccesshttpbackend
-static QPair<QByteArray, QByteArray> nextField(QByteArrayView text, int &position, bool isNameValue)
+static std::pair<QByteArray, QByteArray> nextField(QByteArrayView text, qsizetype &position, bool isNameValue)
 {
     // format is one of:
     //    (1)  token
     //    (2)  token = token
     //    (3)  token = quoted-string
-    const int length = text.size();
+    const qsizetype length = text.size();
     position = nextNonWhitespace(text, position);
 
-    int semiColonPosition = text.indexOf(';', position);
+    qsizetype semiColonPosition = text.indexOf(';', position);
     if (semiColonPosition < 0)
         semiColonPosition = length; //no ';' means take everything to end of string
 
-    int equalsPosition = text.indexOf('=', position);
+    qsizetype equalsPosition = text.indexOf('=', position);
     if (equalsPosition < 0 || equalsPosition > semiColonPosition) {
         if (isNameValue)
-            return qMakePair(QByteArray(), QByteArray()); //'=' is required for name-value-pair (RFC6265 section 5.2, rule 2)
+            return std::pair(QByteArray(), QByteArray()); //'=' is required for name-value-pair (RFC6265 section 5.2, rule 2)
         equalsPosition = semiColonPosition; //no '=' means there is an attribute-name but no attribute-value
     }
 
     QByteArray first = text.mid(position, equalsPosition - position).trimmed().toByteArray();
     QByteArray second;
-    int secondLength = semiColonPosition - equalsPosition - 1;
+    qsizetype secondLength = semiColonPosition - equalsPosition - 1;
     if (secondLength > 0)
         second = text.mid(equalsPosition + 1, secondLength).trimmed().toByteArray();
 
     position = semiColonPosition;
-    return qMakePair(first, second);
+    return std::pair(first, second);
 }
 
 /*!
@@ -958,13 +958,13 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArray
     QList<QNetworkCookie> result;
     const QDateTime now = QDateTime::currentDateTimeUtc();
 
-    int position = 0;
-    const int length = cookieString.size();
+    qsizetype position = 0;
+    const qsizetype length = cookieString.size();
     while (position < length) {
         QNetworkCookie cookie;
 
         // The first part is always the "NAME=VALUE" part
-        QPair<QByteArray,QByteArray> field = nextField(cookieString, position, true);
+        std::pair<QByteArray,QByteArray> field = nextField(cookieString, position, true);
         if (field.first.isEmpty())
             // parsing error
             break;
@@ -980,7 +980,7 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArray
 
                 if (field.first.compare("expires", Qt::CaseInsensitive) == 0) {
                     position -= field.second.size();
-                    int end;
+                    qsizetype end;
                     for (end = position; end < length; ++end)
                         if (isValueSeparator(cookieString.at(end)))
                             break;

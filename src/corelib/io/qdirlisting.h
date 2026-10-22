@@ -1,18 +1,21 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2024 Ahmad Samir <a.samirh78@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDIRLISTING_H
 #define QDIRLISTING_H
 
+#include <QtCore/qtdeprecationmarkers.h>
 #include <QtCore/qfiledevice.h>
 #include <QtCore/qflags.h>
+#include <QtCore/qobjectdefs.h>
 #include <QtCore/qtclasshelpermacros.h>
 #include <QtCore/qtcoreexports.h>
 #include <QtCore/qdatetime.h>
 
 #include <iterator>
-#include <memory>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -23,22 +26,29 @@ class QTimeZone;
 
 class QDirListing
 {
+    Q_GADGET_EXPORT(Q_CORE_EXPORT)
 public:
     enum class IteratorFlag {
         Default =               0x000000,
         ExcludeFiles =          0x000004,
         ExcludeDirs =           0x000008,
-        ExcludeSpecial =        0x000010,
+#if QT_DEPRECATED_SINCE(6, 14)
+        ExcludeSpecial QT_DEPRECATED_VERSION_X_6_14("Use ExcludeOther instead.") = 0x000010,
+#endif
+        ExcludeOther =          0x000010,
         ResolveSymlinks =       0x000020,
-        FilesOnly =             ExcludeDirs  | ExcludeSpecial,
-        DirsOnly =              ExcludeFiles | ExcludeSpecial,
+        FilesOnly =             ExcludeDirs  | ExcludeOther,
+        DirsOnly =              ExcludeFiles | ExcludeOther,
         IncludeHidden =         0x000040,
         IncludeDotAndDotDot =   0x000080,
         CaseSensitive =         0x000100,
         Recursive =             0x000400,
         FollowDirSymlinks =     0x000800,
+        IncludeBrokenSymlinks = 0x001000,
+        NoNameFiltersForDirs  = 0x040000, // used internally
     };
     Q_DECLARE_FLAGS(IteratorFlags, IteratorFlag)
+    Q_FLAG(IteratorFlags)
 
     Q_CORE_EXPORT explicit QDirListing(const QString &path,
                                        IteratorFlags flags = IteratorFlag::Default);
@@ -120,7 +130,7 @@ public:
         reference operator*() const { return dirEntry; }
         pointer operator->() const { return &dirEntry; }
         const_iterator &operator++() { dirEntry = next(dirEntry); return *this; }
-        void operator++(int) { ++*this; }; // [iterator.concept.winc]/14 not required to return sth
+        void operator++(int) { ++*this; } // [iterator.concept.winc]/14 not required to return sth
     private:
         bool atEnd() const noexcept { return dirEntry.dirListPtr == nullptr; }
         friend bool operator==(const const_iterator &lhs, sentinel) noexcept { return lhs.atEnd(); }
@@ -148,19 +158,7 @@ private:
 
     Q_CORE_EXPORT static DirEntry next(DirEntry);
 
-    // Private constructor that is used in deprecated code paths.
-    // `uint` instead of QDir::Filters and QDirIterator::IteratorFlags
-    // because qdir.h can't be included here; qdiriterator.h can't included
-    // either, because it includes qdir.h
-    Q_CORE_EXPORT QDirListing(const QString &path, const QStringList &nameFilters, uint dirFilters,
-                              uint qdirIteratorFlags = 0); // QDirIterator::NoIteratorFlags == 0x0
-
     QDirListingPrivate *d;
-    friend class QDir;
-    friend class QDirPrivate;
-    friend class QDirIteratorPrivate;
-    friend class QAbstractFileEngine;
-    friend class QFileInfoGatherer;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QDirListing::IteratorFlags)

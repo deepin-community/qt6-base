@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGRAPHICSITEM_H
 #define QGRAPHICSITEM_H
@@ -969,15 +970,33 @@ private:
 template <class T> inline T qgraphicsitem_cast(QGraphicsItem *item)
 {
     typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type Item;
-    return int(Item::Type) == int(QGraphicsItem::Type)
-        || (item && int(Item::Type) == item->type()) ? static_cast<T>(item) : nullptr;
+    constexpr int ItemType = int(Item::Type);
+    if constexpr (int(Item::Type) == int(QGraphicsItem::Type))
+        return static_cast<T>(item);
+    else
+        return (item && ItemType == item->type()) ? static_cast<T>(item) : nullptr;
 }
 
 template <class T> inline T qgraphicsitem_cast(const QGraphicsItem *item)
 {
     typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type Item;
-    return int(Item::Type) == int(QGraphicsItem::Type)
-        || (item && int(Item::Type) == item->type()) ? static_cast<T>(item) : nullptr;
+    constexpr int ItemType = int(Item::Type);
+    if constexpr (ItemType == int(QGraphicsItem::Type))
+        return static_cast<T>(item);
+    else
+        return (item && ItemType == item->type()) ? static_cast<T>(item) : nullptr;
+}
+
+template <>
+inline QGraphicsItem *qgraphicsitem_cast<QGraphicsItem *>(QGraphicsItem *item)
+{
+    return item;
+}
+
+template <>
+inline const QGraphicsItem *qgraphicsitem_cast<const QGraphicsItem *>(const QGraphicsItem *item)
+{
+    return item;
 }
 
 #ifndef QT_NO_DEBUG_STREAM

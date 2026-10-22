@@ -10,6 +10,8 @@ class QTextFrame;
 class QTextBlock;
 class QTextTable;
 
+QT_BEGIN_NAMESPACE
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -29,5 +31,7 @@ private:
 
     QTextEdit *editor = nullptr;
 };
+
+QT_END_NAMESPACE
 
 #endif

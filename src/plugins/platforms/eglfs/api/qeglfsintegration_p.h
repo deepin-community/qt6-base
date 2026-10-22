@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QEGLFSINTEGRATION_H
 #define QEGLFSINTEGRATION_H
@@ -30,11 +31,17 @@ QT_BEGIN_NAMESPACE
 class QEglFSWindow;
 class QEglFSContext;
 class QFbVtHandler;
+#if QT_CONFIG(evdev)
 class QEvdevKeyboardManager;
+#elif QT_CONFIG(vxworksevdev)
+class QVxKeyboardManager;
+#endif
 
 class Q_EGLFS_EXPORT QEglFSIntegration : public QPlatformIntegration, public QPlatformNativeInterface
 #if QT_CONFIG(evdev)
     , public QNativeInterface::Private::QEvdevKeyMapper
+#elif QT_CONFIG(vxworksevdev)
+    , public QNativeInterface::Private::QVxKeyMapper
 #endif
 #ifndef QT_NO_OPENGL
     , public QNativeInterface::Private::QEGLIntegration
@@ -83,14 +90,18 @@ public:
     QPointer<QWindow> pointerWindow() { return m_pointerWindow; }
     void setPointerWindow(QWindow *pointerWindow) { m_pointerWindow = pointerWindow; }
 
-#if QT_CONFIG(evdev)
+#if QT_CONFIG(evdev) || QT_CONFIG(vxworksevdev)
     void loadKeymap(const QString &filename) override;
     void switchLang() override;
 #endif
 
 protected:
     virtual void createInputHandlers();
-    QEvdevKeyboardManager *m_kbdMgr;
+#if QT_CONFIG(evdev)
+    QEvdevKeyboardManager *m_kbdMgr = nullptr;
+#elif QT_CONFIG(vxworksevdev)
+    QVxKeyboardManager *m_kbdMgr = nullptr;
+#endif
 
 private:
     EGLNativeDisplayType nativeDisplay() const;
@@ -98,10 +109,11 @@ private:
     EGLDisplay m_display;
     QPlatformInputContext *m_inputContext;
     QScopedPointer<QPlatformFontDatabase> m_fontDb;
-    QScopedPointer<QPlatformServices> m_services;
+    mutable QScopedPointer<QPlatformServices> m_services;
     QScopedPointer<QFbVtHandler> m_vtHandler;
     QPointer<QWindow> m_pointerWindow;
     bool m_disableInputHandlers;
+    mutable QPlatformBackingStore *m_bs = nullptr;
 };
 
 QT_END_NAMESPACE

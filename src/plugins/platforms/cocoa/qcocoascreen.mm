@@ -1,7 +1,9 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
+#include <ScreenCaptureKit/ScreenCaptureKit.h>
 
 #include "qcocoascreen.h"
 
@@ -64,6 +66,10 @@ void QCocoaScreen::initializeScreens()
         NSApplicationDidChangeScreenParametersNotification, [&]() {
             qCDebug(lcQpaScreen) << "Received screen parameter change notification";
             updateScreens();
+
+            // The notification is posted when the EDR headroom of a display changes,
+            // which might affect the rendering of windows that opt in to EDR.
+            updateHdrWindows();
         });
 }
 
@@ -84,7 +90,7 @@ void QCocoaScreen::updateScreens()
         qCInfo(lcQpaScreen) << "Skipping screen update, already updating";
         return;
     }
-    QBoolBlocker recursionGuard(updatingScreens);
+    QScopedValueRollback recursionGuard(updatingScreens, true);
 
     uint32_t displayCount = 0;
     if (CGGetOnlineDisplayList(0, nullptr, &displayCount) != kCGErrorSuccess)
@@ -268,6 +274,11 @@ bool QCocoaScreen::requestUpdate()
         return false;
     }
 
+    // Track how many update requests we have queued, so that we
+    // know whether the display-link thread should try to deliver
+    // update requests, or if it can bail out early.
+    ++m_pendingUpdateRequests;
+
     if (!m_displayLink) {
         qCDebug(lcQpaScreenUpdates) << "Creating display link for" << this;
         if (CVDisplayLinkCreateWithCGDisplay(m_displayId, &m_displayLink) != kCVReturnSuccess) {
@@ -367,8 +378,10 @@ struct DeferredDebugHelper
 
 void QCocoaScreen::deliverUpdateRequests()
 {
-    if (!isOnline())
+    if (!isOnline()) {
+        qCDebug(lcQpaScreenUpdates) << this << "is not online. Ignoring update request delivery";
         return;
+    }
 
     QMacAutoReleasePool pool;
 
@@ -381,10 +394,13 @@ void QCocoaScreen::deliverUpdateRequests()
         // We're explicitly not using the data of the GCD source to track the pending updates,
         // as the data isn't reset to 0 until after the event handler, and also doesn't update
         // during the event handler, both of which we need to track late frames.
-        const int pendingUpdates = ++m_pendingUpdates;
+        const int pendingUpdates = ++m_pendingDisplayLinkUpdates;
+
+        const int pendingUpdateRequests = m_pendingUpdateRequests;
 
         DeferredDebugHelper screenUpdates(lcQpaScreenUpdates());
-        qDeferredDebug(screenUpdates) << "display link callback for screen " << m_displayId;
+        qDeferredDebug(screenUpdates) << "display link callback for screen " << m_displayId
+            << " with " << pendingUpdateRequests << " pending update requests";
 
         if (const int framesAheadOfDelivery = pendingUpdates - 1) {
             // If we have more than one update pending it means that a previous display link callback
@@ -392,6 +408,16 @@ void QCocoaScreen::deliverUpdateRequests()
             // it on the main thread yet, because the processing of the update request is taking
             // too long, or because the update request was deferred due to window live resizing.
             qDeferredDebug(screenUpdates) << ", " << framesAheadOfDelivery << " frame(s) ahead";
+        }
+
+        if (!pendingUpdateRequests) {
+            // There's a cost to stopping and starting the display link thread,
+            // so once started we always keep it running, to avoid missing frames.
+            // In the case where we don't have any pending update requests we don't
+            // need to signal the main thread.
+            qDeferredDebug(screenUpdates) << "; skipping signaling dispatch source";
+            m_pendingDisplayLinkUpdates = 0;
+            return;
         }
 
         qDeferredDebug(screenUpdates) << "; signaling dispatch source";
@@ -410,13 +436,13 @@ void QCocoaScreen::deliverUpdateRequests()
         DeferredDebugHelper screenUpdates(lcQpaScreenUpdates());
         qDeferredDebug(screenUpdates) << "gcd event handler on main thread";
 
-        const int pendingUpdates = m_pendingUpdates;
+        const int pendingUpdates = m_pendingDisplayLinkUpdates;
         if (pendingUpdates > 1)
             qDeferredDebug(screenUpdates) << ", " << (pendingUpdates - 1) << " frame(s) behind display link";
 
         screenUpdates.flushOutput();
 
-        bool pauseUpdates = true;
+        int pendingUpdateRequests = 0;
 
         auto windows = QGuiApplication::allWindows();
         for (int i = 0; i < windows.size(); ++i) {
@@ -441,27 +467,66 @@ void QCocoaScreen::deliverUpdateRequests()
             if (!platformWindow)
                 continue;
 
-            // Another update request was triggered, keep the display link running
+            // The update request delivery could result in another request
+            // from the window, or the platform window could decide to not
+            // deliver the request at this time.
             if (platformWindow->hasPendingUpdateRequest())
-                pauseUpdates = false;
+                ++pendingUpdateRequests;
         }
 
-        if (pauseUpdates) {
-            // Pause the display link if there are no pending update requests
-            qCDebug(lcQpaScreenUpdates) << "Stopping display link for" << this;
-            CVDisplayLinkStop(m_displayLink);
-        }
+        m_pendingUpdateRequests = pendingUpdateRequests;
 
-        if (const int missedUpdates = m_pendingUpdates.fetchAndStoreRelaxed(0) - pendingUpdates) {
+        if (const int missedUpdates = m_pendingDisplayLinkUpdates.fetchAndStoreRelaxed(0) - pendingUpdates) {
             qCWarning(lcQpaScreenUpdates) << "main thread missed" << missedUpdates
                 << "update(s) from display link during update request delivery";
         }
     }
 }
 
-bool QCocoaScreen::isRunningDisplayLink() const
+void QCocoaScreen::maybeStopDisplayLink()
 {
-    return m_displayLink && CVDisplayLinkIsRunning(m_displayLink);
+    if (!CVDisplayLinkIsRunning(m_displayLink))
+        return;
+
+    const auto windows = QGuiApplication::allWindows();
+    for (auto *window : windows) {
+        if (window->screen() != screen())
+            continue;
+
+        QPointer<QCocoaWindow> platformWindow = static_cast<QCocoaWindow*>(window->handle());
+        if (!platformWindow)
+            continue;
+
+        if (window->isExposed())
+            return;
+
+        if (platformWindow->hasPendingUpdateRequest())
+            return;
+    }
+
+    qCDebug(lcQpaScreenUpdates) << "Stopping display link for" << this;
+    CVDisplayLinkStop(m_displayLink);
+}
+
+
+// -----------------------------------------------------------
+
+void QCocoaScreen::updateHdrWindows()
+{
+    if (@available(macOS 14, *)) {
+        for (auto *window : QGuiApplication::allWindows()) {
+            auto *platformWindow = static_cast<QCocoaWindow*>(window->handle());
+            if (!platformWindow)
+                continue;
+
+            NSView *view = platformWindow->view();
+
+            if (!view.layer.wantsExtendedDynamicRangeContent)
+                continue;
+
+            [view setNeedsDisplay:YES];
+        }
+    }
 }
 
 // -----------------------------------------------------------
@@ -538,49 +603,126 @@ QWindow *QCocoaScreen::topLevelAt(const QPoint &point) const
 */
 QPixmap QCocoaScreen::grabWindow(WId view, int x, int y, int width, int height) const
 {
-    /*
-       Grab the grabRect section of the specified display into a pixmap that has
-       sRGB color spec. Once Qt supports a fully color-managed flow and conversions
-       that don't lose the colorspec information, we would want the image to maintain
-       the color spec of the display from which it was grabbed. Ultimately, rendering
-       the returned pixmap on the same display from which it was grabbed should produce
-       identical visual results.
-    */
+    // ScreenCaptureKit brings down WindowServer on macOS 14 x86_64 VMs in CI
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(
+        QPlatformIntegration::ScreenWindowGrabbing)) {
+        qCWarning(lcQpaScreen) << "Ignoring grabWindow to not bring down WindowServer";
+        return {};
+    }
+
     auto grabFromDisplay = [](CGDirectDisplayID displayId, const QRect &grabRect) -> QPixmap {
-        QCFType<CGImageRef> image = CGDisplayCreateImageForRect(displayId, grabRect.toCGRect());
-        const QCFType<CGColorSpaceRef> sRGBcolorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-        if (CGImageGetColorSpace(image) != sRGBcolorSpace) {
-            qCDebug(lcQpaScreen) << "applying color correction for display" << displayId;
-            image = CGImageCreateCopyWithColorSpace(image, sRGBcolorSpace);
+        QMacAutoReleasePool pool;
+
+        const qreal scale = QCocoaScreen::nativeScreenForDisplayId(displayId).backingScaleFactor;
+
+        dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+        auto cleanup = qScopeGuard([sem]() { dispatch_release(sem); });
+
+        auto captureShareableContent = [sem](void (^capture)(SCShareableContent *)) {
+            // Try capturing all applications first, as that's the expectation of
+            // grabWindow. This will also trigger the permission system prompt on
+            // first use, matching the behavior of CGDisplayCreateImageForRect.
+            [SCShareableContent getShareableContentWithCompletionHandler:
+                ^(SCShareableContent *content, NSError *error) {
+                    if (error)
+                        qCDebug(lcQpaScreen) << "Failed to capture all windows" << error;
+                    if (content) {
+                        capture(content);
+                        return;
+                    }
+                    // Fall back to capturing only our app, again matching the behavior
+                    // of CGDisplayCreateImageForRect when we don't have permission to
+                    // capture all applications. This also includes the Dock and wallpaper.
+                    [SCShareableContent getCurrentProcessShareableContentWithCompletionHandler:
+                        ^(SCShareableContent *content, NSError *error) {
+                            if (error)
+                                qCWarning(lcQpaScreen) << "Failed to capture own windows" << error;
+                            if (content)
+                                capture(content);
+                            else
+                                dispatch_semaphore_signal(sem);
+                        }
+                    ];
+                }
+            ];
+        };
+
+        __block QImage image;
+        captureShareableContent(^(SCShareableContent *content) {
+            Q_ASSERT(content);
+
+            QMacAutoReleasePool pool;
+
+            SCDisplay *scDisplay = nil;
+            for (SCDisplay *d in content.displays) {
+                if (d.displayID == displayId) {
+                    scDisplay = d;
+                    break;
+                }
+            }
+            if (!scDisplay) {
+                qCWarning(lcQpaScreen) << "No SCDisplay for display" << displayId;
+                dispatch_semaphore_signal(sem);
+                return;
+            }
+
+            SCContentFilter *filter = [[[SCContentFilter alloc]
+                initWithDisplay:scDisplay
+                includingApplications:content.applications
+                exceptingWindows:@[]] autorelease];
+            filter.includeMenuBar = YES;
+
+            SCStreamConfiguration *config = [[SCStreamConfiguration new] autorelease];
+            config.sourceRect = grabRect.toCGRect();
+            config.width = qRound(grabRect.width()  * scale);
+            config.height = qRound(grabRect.height() * scale);
+            config.showsCursor = NO;
+            config.capturesAudio = NO;
+            config.ignoreShadowsDisplay = NO;
+            config.ignoreShadowsSingleWindow = NO;
+
+            [SCScreenshotManager captureImageWithFilter:filter configuration:config
+                completionHandler:^(CGImageRef cgImage, NSError *error) {
+                    if (error)
+                        qCWarning(lcQpaScreen) << "Failed screen capture" << error;
+                    else if (cgImage)
+                        image = qt_mac_toQImage(cgImage);
+                    dispatch_semaphore_signal(sem);
+                }
+            ];
+        });
+
+        // Wait for screen capture to complete
+        if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) != 0) {
+            qCWarning(lcQpaScreen) << "Screen capture timed out for display" << displayId;
+            return QPixmap();
         }
-        QPixmap pixmap = QPixmap::fromImage(qt_mac_toQImage(image));
-        pixmap.setDevicePixelRatio(nativeScreenForDisplayId(displayId).backingScaleFactor);
+
+        QPixmap pixmap = QPixmap::fromImage(image);
+        pixmap.setDevicePixelRatio(scale);
         return pixmap;
     };
 
     QRect grabRect = QRect(x, y, width, height);
     qCDebug(lcQpaScreen) << "input grab rect" << grabRect;
 
-    if (!view) {
-        // coordinates are relative to the screen
-        if (!grabRect.isValid()) // entire screen
-            grabRect = QRect(QPoint(0, 0), geometry().size());
+    if (view) {
+        // Window local coordinates, so turn into global
+        NSView *nsView = reinterpret_cast<NSView*>(view);
+        NSPoint windowPoint = [nsView convertPoint:NSMakePoint(0, 0) toView:nil];
+        NSRect screenRect = [nsView.window convertRectToScreen:NSMakeRect(windowPoint.x, windowPoint.y, 1, 1)];
+        QPoint position = mapFromNative(screenRect.origin).toPoint();
+        QSize size = QRectF::fromCGRect(NSRectToCGRect(nsView.bounds)).toRect().size();
+        QRect windowRect = QRect(position, size);
+        if (!grabRect.isValid())
+            grabRect = windowRect;
         else
-            grabRect.translate(-geometry().topLeft());
-        return grabFromDisplay(displayId(), grabRect);
+            grabRect.translate(windowRect.topLeft());
+    } else {
+        // Screen global coordinates
+        if (!grabRect.isValid())
+            grabRect = geometry();
     }
-
-    // grab the window; grab rect in window coordinates might span multiple screens
-    NSView *nsView = reinterpret_cast<NSView*>(view);
-    NSPoint windowPoint = [nsView convertPoint:NSMakePoint(0, 0) toView:nil];
-    NSRect screenRect = [nsView.window convertRectToScreen:NSMakeRect(windowPoint.x, windowPoint.y, 1, 1)];
-    QPoint position = mapFromNative(screenRect.origin).toPoint();
-    QSize size = QRectF::fromCGRect(NSRectToCGRect(nsView.bounds)).toRect().size();
-    QRect windowRect = QRect(position, size);
-    if (!grabRect.isValid())
-        grabRect = windowRect;
-    else
-        grabRect.translate(windowRect.topLeft());
 
     // Find which displays to grab from
     const int maxDisplays = 128;
@@ -593,15 +735,18 @@ QPixmap QCocoaScreen::grabWindow(WId view, int x, int y, int width, int height) 
 
     qCDebug(lcQpaScreen) << "final grab rect" << grabRect << "from" << displayCount << "displays";
 
-    // Grab images from each display
+    // Grab images from each display, accumulating the global bounding box of the
+    // captured content. The output pixmap covers exactly that bounding box, so
+    // empty virtual-desktop space inside grabRect is not padded into the result.
     QVector<QPixmap> pixmaps;
-    QVector<QRect> destinations;
+    QVector<QRect> globalGrabBounds;
+    QRect outputRect;
     for (uint i = 0; i < displayCount; ++i) {
         auto display = displays[i];
         const QRect displayBounds = QRectF::fromCGRect(CGDisplayBounds(display)).toRect();
         const QRect grabBounds = displayBounds.intersected(grabRect);
         if (grabBounds.isNull()) {
-            destinations.append(QRect());
+            globalGrabBounds.append(QRect());
             pixmaps.append(QPixmap());
             continue;
         }
@@ -615,8 +760,8 @@ QPixmap QCocoaScreen::grabWindow(WId view, int x, int y, int width, int height) 
 
         qCDebug(lcQpaScreen) << "grab sub-image size" << displayPixmap.size() << "devicePixelRatio" << displayPixmap.devicePixelRatio();
         pixmaps.append(displayPixmap);
-        const QRect destBounds = QRect(QPoint(grabBounds.topLeft() - grabRect.topLeft()), grabBounds.size());
-        destinations.append(destBounds);
+        globalGrabBounds.append(grabBounds);
+        outputRect = outputRect.united(grabBounds);
     }
 
     // Determine the highest dpr, which becomes the dpr for the returned pixmap.
@@ -625,13 +770,18 @@ QPixmap QCocoaScreen::grabWindow(WId view, int x, int y, int width, int height) 
         dpr = qMax(dpr, pixmaps.at(i).devicePixelRatio());
 
     // Allocate target pixmap and draw each screen's content
-    qCDebug(lcQpaScreen) << "Create grap pixmap" << grabRect.size() << "at devicePixelRatio" << dpr;
-    QPixmap windowPixmap(grabRect.size() * dpr);
+    qCDebug(lcQpaScreen) << "Create grap pixmap" << outputRect.size() << "at devicePixelRatio" << dpr;
+    QPixmap windowPixmap(outputRect.size() * dpr);
     windowPixmap.setDevicePixelRatio(dpr);
     windowPixmap.fill(Qt::transparent);
     QPainter painter(&windowPixmap);
-    for (uint i = 0; i < displayCount; ++i)
-        painter.drawPixmap(destinations.at(i), pixmaps.at(i));
+    for (uint i = 0; i < displayCount; ++i) {
+        const QRect grabBounds = globalGrabBounds.at(i);
+        if (grabBounds.isNull())
+            continue;
+        const QRect dest(grabBounds.topLeft() - outputRect.topLeft(), grabBounds.size());
+        painter.drawPixmap(dest, pixmaps.at(i));
+    }
 
     return windowPixmap;
 }

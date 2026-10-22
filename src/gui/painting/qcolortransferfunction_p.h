@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOLORTRANSFERFUNCTION_P_H
 #define QCOLORTRANSFERFUNCTION_P_H
@@ -56,7 +57,8 @@ public:
         if (x < m_d)
             return m_c * x + m_f;
         float t = std::pow(m_a * x + m_b, m_g);
-        if (std::isfinite(t))
+        // Avoid NaN math, and leave room to multiply with 65280 and store in an int.
+        if (std::isfinite(t) && t > std::numeric_limits<short>::min() && t < std::numeric_limits<short>::max())
             return t + m_e;
         if (t > 0.f)
             return 1.f;

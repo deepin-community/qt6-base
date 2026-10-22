@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLUGIN_P_H
 #define QPLUGIN_P_H
@@ -16,6 +17,10 @@
 //
 
 #include <private/qglobal_p.h>
+
+#include "QtCore/qplugin.h"
+#include "QtCore/qcborvalue.h"
+#include "QtCore/qcbormap.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -92,6 +97,33 @@ static_assert(decodeVersion1ArchRequirements(0x82) == DecodedArchRequirements{ 2
 static_assert(decodeVersion1ArchRequirements(0x84) == DecodedArchRequirements{ 4, true });
 #endif
 } // unnamed namespace
+
+class QPluginParsedMetaData
+{
+    QCborValue data;
+    bool setError(const QString &errorString) Q_DECL_COLD_FUNCTION
+    {
+        data = errorString;
+        return false;
+    }
+public:
+    QPluginParsedMetaData() = default;
+    QPluginParsedMetaData(QByteArrayView input)     { parse(input); }
+
+    bool isError() const                            { return !data.isMap(); }
+    QString errorString() const                     { return data.toString(); }
+
+    bool parse(QByteArrayView input);
+    bool parse(QPluginMetaData metaData)
+    { return parse(QByteArrayView(reinterpret_cast<const char *>(metaData.data), metaData.size)); }
+
+    QJsonObject toJson() const;     // only for QLibrary & QPluginLoader
+
+    // if data is not a map, toMap() returns empty, so shall these functions
+    QCborMap toCbor() const                         { return data.toMap(); }
+    QCborValue value(QtPluginMetaDataKeys k) const  { return data[int(k)]; }
+};
+
 
 QT_END_NAMESPACE
 

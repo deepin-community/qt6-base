@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtCore/QDebug>
@@ -44,7 +45,6 @@ QT_BEGIN_NAMESPACE
 using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcQpaXInput, "qt.qpa.input")
-Q_LOGGING_CATEGORY(lcQpaXInputDevices, "qt.qpa.input.devices")
 Q_LOGGING_CATEGORY(lcQpaXInputEvents, "qt.qpa.input.events")
 Q_LOGGING_CATEGORY(lcQpaScreen, "qt.qpa.screen")
 Q_LOGGING_CATEGORY(lcQpaEvents, "qt.qpa.events")
@@ -1068,7 +1068,8 @@ void QXcbConnection::processXcbEvents(QEventLoop::ProcessEventsFlags flags)
     int connection_error = xcb_connection_has_error(xcb_connection());
     if (connection_error) {
         qWarning("The X11 connection broke (error %d). Did the X11 server die?", connection_error);
-        exit(1);
+        qGuiApp->exit(connection_error);
+        return;
     }
 
     m_eventQueue->flushBufferedEvents();

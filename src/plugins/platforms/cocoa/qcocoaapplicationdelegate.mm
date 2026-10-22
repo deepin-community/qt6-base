@@ -1,39 +1,7 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-/****************************************************************************
- **
- ** Copyright (c) 2007-2008, Apple, Inc.
- **
- ** All rights reserved.
- **
- ** Redistribution and use in source and binary forms, with or without
- ** modification, are permitted provided that the following conditions are met:
- **
- **   * Redistributions of source code must retain the above copyright notice,
- **     this list of conditions and the following disclaimer.
- **
- **   * Redistributions in binary form must reproduce the above copyright notice,
- **     this list of conditions and the following disclaimer in the documentation
- **     and/or other materials provided with the distribution.
- **
- **   * Neither the name of Apple, Inc. nor the names of its contributors
- **     may be used to endorse or promote products derived from this software
- **     without specific prior written permission.
- **
- ** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- ** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- ** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- ** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- ** CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- ** EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- ** PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- ** PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- ** LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- ** NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- ** SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- **
- ****************************************************************************/
+// Copyright (c) 2007-2008, Apple, Inc.
+// SPDX-License-Identifier: BSD-3-Clause
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -56,6 +24,8 @@
 #include <qguiapplication.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <qwindowdefs.h>
+
+#include <QtCore/private/qdarwinsecurityscopedfileengine_p.h>
 
 QT_USE_NAMESPACE
 
@@ -226,6 +196,23 @@ QT_USE_NAMESPACE
     QCocoaMenuBar::insertWindowMenu();
 }
 
+/*!
+    Tells the delegate to open the specified files
+
+    Sent by the system when the user drags a file to the app's icon
+    in places like Finder or the Dock, or opens a file via the "Open
+    With" menu in Finder.
+
+    These actions can happen when the application is not running,
+    in which case the call comes in between willFinishLaunching
+    and didFinishLaunching. In this case we don't pass on the
+    incoming file paths as file open events, as the paths are
+    also part of the command line arguments, and Qt applications
+    normally expect to handle file opening via those.
+
+    \note The app must register itself as a handler for each file
+    type via the CFBundleDocumentTypes key in the Info.plist.
+ */
 - (void)application:(NSApplication *)sender openFiles:(NSArray *)filenames
 {
     Q_UNUSED(filenames);
@@ -241,7 +228,10 @@ QT_USE_NAMESPACE
             if (qApp->arguments().contains(qtFileName))
                 continue;
         }
-        QWindowSystemInterface::handleFileOpenEvent(qtFileName);
+        QUrl url = qt_apple_urlFromPossiblySecurityScopedURL([NSURL fileURLWithPath:fileName]);
+        QWindowSystemInterface::handleFileOpenEvent(url);
+        // FIXME: We're supposed to call [NSApp replyToOpenOrPrint:] here, but we
+        //  don't know if the open operation succeeded, failed, or was cancelled.
     }
 
     if ([reflectionDelegate respondsToSelector:_cmd])
@@ -294,6 +284,17 @@ QT_USE_NAMESPACE
     }
 }
 
+/*!
+    Returns a Boolean value that indicates if the app responds
+    to reopen AppleEvents.
+
+    These events are sent whenever the Finder reactivates an already
+    running application because someone double-clicked it again or used
+    the dock to activate it.
+
+    We pass the activation on to Qt, and return YES, to let AppKit
+    follow its normal flow.
+ */
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)theApplication hasVisibleWindows:(BOOL)flag
 {
     if ([reflectionDelegate respondsToSelector:_cmd])
@@ -341,6 +342,25 @@ QT_USE_NAMESPACE
         [self doesNotRecognizeSelector:invocationSelector];
 }
 
+/*!
+    Callback for when the application is asked to pick up a user activity
+    from another app (also known as Handoff, which is part of the bigger
+    Continuity story for Apple operating systems).
+
+    This is normally managed by two apps by the same vendor explicitly
+    initiating a custom NSUserActivity and picking it up in another app
+    on the same or another device, which we don't have APIs for.
+
+    This is also how the system supports Universal Links, where a web page
+    can deep-link into an app. In this case the app needs to claim and
+    validate an associated domain. The resulting link will be delivered
+    as a special NSUserActivityTypeBrowsingWeb activity type, which we
+    treat as QDesktopServices::handleUrl().
+
+    Finally, for NS/UIDocument based apps (which Qt is not), the system
+    automatically handles document hand-off if the application includes
+    the NSUbiquitousDocumentUserActivityType key in its Info.plist.
+ */
 - (BOOL)application:(NSApplication *)application continueUserActivity:(NSUserActivity *)userActivity
           restorationHandler:(void(^)(NSArray<id<NSUserActivityRestoring>> *restorableObjects))restorationHandler
 {
@@ -363,6 +383,18 @@ QT_USE_NAMESPACE
     return NO;
 }
 
+/*!
+    Callback for when the app is asked to open custom URL schemes.
+
+    We register a handler for events of type kInternetEventClass with the
+    NSAppleEventManager during application start.
+
+    The application must include the schemes in the CFBundleURLTypes
+    key of the Info.plist.
+
+    \note This callback is not used for http/https URLs, see
+    continueUserActivity above for how we handle that.
+ */
 - (void)getUrl:(NSAppleEventDescriptor *)event withReplyEvent:(NSAppleEventDescriptor *)replyEvent
 {
     Q_UNUSED(replyEvent);
@@ -376,8 +408,8 @@ QT_USE_NAMESPACE
             return;
         QCocoaIntegration *cocoaIntegration = QCocoaIntegration::instance();
         Q_ASSERT(cocoaIntegration);
-        cocoaIntegration->services()->handleUrl(QUrl(qurlString));
-        return;
+        if (cocoaIntegration->services()->handleUrl(QUrl(qurlString)))
+            return;
     }
 
     // The string we get from the requesting application might not necessarily meet
@@ -393,10 +425,8 @@ QT_USE_NAMESPACE
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)application
 {
-    if (@available(macOS 12, *)) {
-        if ([reflectionDelegate respondsToSelector:_cmd])
-            return [reflectionDelegate applicationSupportsSecureRestorableState:application];
-    }
+    if ([reflectionDelegate respondsToSelector:_cmd])
+        return [reflectionDelegate applicationSupportsSecureRestorableState:application];
 
     // We don't support or implement state restorations via the AppKit
     // state restoration APIs, but if we did, we would/should support

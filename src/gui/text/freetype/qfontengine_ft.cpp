@@ -1,11 +1,13 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdir.h"
 #include "qmetatype.h"
 #include "qtextstream.h"
 #include "qvariant.h"
 #include "qfontengine_ft_p.h"
+#include "private/qfontdatabase_p.h"
 #include "private/qimage_p.h"
 #include <private/qstringiterator_p.h>
 #include <qguiapplication.h>
@@ -23,6 +25,7 @@
 #include "qthreadstorage.h"
 #include <qmath.h>
 #include <qendian.h>
+#include <private/qcolrpaintgraphrenderer_p.h>
 
 #include <memory>
 
@@ -49,13 +52,7 @@
 #include FT_ERRORS_H
 #endif
 
-#if !defined(QT_MAX_CACHED_GLYPH_SIZE)
-#  define QT_MAX_CACHED_GLYPH_SIZE 64
-#endif
-
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcFontMatch)
 
 using namespace Qt::StringLiterals;
 
@@ -110,6 +107,7 @@ public:
 
     FT_Library library;
     QHash<QFontEngine::FaceId, QFreetypeFace *> faces;
+    QList<QFreetypeFace *> staleFaces;
     QHash<FaceStyle, int> faceIndices;
 };
 
@@ -121,6 +119,14 @@ QtFreetypeData::~QtFreetypeData()
             delete iter.value();
     }
     faces.clear();
+
+    for (auto iter = staleFaces.cbegin(); iter != staleFaces.cend(); ++iter) {
+        (*iter)->cleanup();
+        if (!(*iter)->ref.deref())
+            delete *iter;
+    }
+    staleFaces.clear();
+
     FT_Done_FreeType(library);
     library = nullptr;
 }
@@ -190,15 +196,10 @@ int QFreetypeFace::getPointInOutline(glyph_t glyph, int flags, quint32 point, QF
     return Err_Ok;
 }
 
-bool QFreetypeFace::isScalable() const
-{
-    return FT_IS_SCALABLE(face);
-}
-
 bool QFreetypeFace::isScalableBitmap() const
 {
 #ifdef FT_HAS_COLOR
-    return !isScalable() && FT_HAS_COLOR(face);
+    return !FT_IS_SCALABLE(face) && FT_HAS_COLOR(face);
 #else
     return false;
 #endif
@@ -220,6 +221,16 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
         return nullptr;
 
     QtFreetypeData *freetypeData = qt_getFreetypeData();
+
+    // Purge any stale face that is now ready to be deleted
+    freetypeData->staleFaces.removeIf([](QFreetypeFace *face) {
+        if (face->ref.loadRelaxed() == 1) {
+            face->cleanup();
+            delete face;
+            return true;
+        }
+        return false;
+    });
 
     QFreetypeFace *freetype = nullptr;
     auto it = freetypeData->faces.find(face_id);
@@ -246,6 +257,7 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
         const auto deleter = [](QFreetypeFace *f) { delete f; };
         std::unique_ptr<QFreetypeFace, decltype(deleter)> newFreetype(new QFreetypeFace, deleter);
         FT_Face face;
+        FT_Face tmpFace;
         if (!face_id.filename.isEmpty()) {
             QString fileName = QFile::decodeName(face_id.filename);
             if (const char *prefix = ":qmemoryfonts/"; face_id.filename.startsWith(prefix)) {
@@ -266,22 +278,105 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
         } else {
             newFreetype->fontData = fontData;
         }
+
+        FT_Int major, minor, patch;
+        FT_Library_Version(qt_getFreetype(), &major, &minor, &patch);
+        const bool goodVersion = major > 2 || (major == 2 && minor > 13) || (major == 2 && minor == 13 && patch > 2);
+
         if (!newFreetype->fontData.isEmpty()) {
-            if (FT_New_Memory_Face(freetypeData->library, (const FT_Byte *)newFreetype->fontData.constData(), newFreetype->fontData.size(), face_id.index, &face)) {
+            if (FT_New_Memory_Face(freetypeData->library,
+                                   (const FT_Byte *)newFreetype->fontData.constData(),
+                                   newFreetype->fontData.size(),
+                                   face_id.index,
+                                   &face)) {
                 return nullptr;
             }
-        } else if (FT_New_Face(freetypeData->library, face_id.filename, face_id.index, &face)) {
-            return nullptr;
+
+            // On older Freetype versions, we create a temporary duplicate of the FT_Face to work
+            // around a bug, see further down.
+            if (goodVersion) {
+                tmpFace = face;
+                if (FT_Reference_Face(face))
+                    tmpFace = nullptr;
+            } else if (!FT_HAS_MULTIPLE_MASTERS(face)
+                    || FT_New_Memory_Face(freetypeData->library,
+                                           (const FT_Byte *)newFreetype->fontData.constData(),
+                                           newFreetype->fontData.size(),
+                                           face_id.index,
+                                           &tmpFace) != FT_Err_Ok) {
+                tmpFace = nullptr;
+            }
+        } else {
+            if (FT_New_Face(freetypeData->library, face_id.filename, face_id.index, &face))
+                return nullptr;
+
+            // On older Freetype versions, we create a temporary duplicate of the FT_Face to work
+            // around a bug, see further down.
+            if (goodVersion) {
+                tmpFace = face;
+                if (FT_Reference_Face(face))
+                    tmpFace = nullptr;
+            } else if (!FT_HAS_MULTIPLE_MASTERS(face)
+                    || FT_New_Face(freetypeData->library, face_id.filename, face_id.index, &tmpFace) != FT_Err_Ok) {
+                tmpFace = nullptr;
+            }
         }
 
 #if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 20900
         if (face_id.instanceIndex >= 0) {
             qCDebug(lcFontMatch)
-                    << "Selecting named instance" << (face_id.instanceIndex)
-                    << "in" << face_id.filename;
+            << "Selecting named instance" << (face_id.instanceIndex)
+            << "in" << face_id.filename;
             FT_Set_Named_Instance(face, face_id.instanceIndex + 1);
         }
 #endif
+
+        // Due to a bug in Freetype 2.13.2 and earlier causing just a call to FT_Get_MM_Var() on
+        // specific fonts to corrupt the FT_Face so that loading glyphs will later fail, we use a
+        // temporary FT_Face here which can be thrown away after. The bug has been fixed in
+        // Freetype 2.13.3.
+        if (tmpFace != nullptr) {
+            FT_MM_Var *var;
+            if (FT_Get_MM_Var(tmpFace, &var) == FT_Err_Ok) {
+                for (FT_UInt i = 0; i < var->num_axis; ++i) {
+                    FT_Var_Axis *axis = var->axis + i;
+
+                    QFontVariableAxis fontVariableAxis;
+                    if (const auto tag = QFont::Tag::fromValue(axis->tag)) {
+                        fontVariableAxis.setTag(*tag);
+                    } else {
+                        qWarning() << "QFreetypeFace::getFace: Invalid variable axis tag encountered"
+                                   << axis->tag;
+                    }
+
+                    fontVariableAxis.setMinimumValue(axis->minimum / 65536.0);
+                    fontVariableAxis.setMaximumValue(axis->maximum / 65536.0);
+                    fontVariableAxis.setDefaultValue(axis->def / 65536.0);
+                    fontVariableAxis.setName(QString::fromUtf8(axis->name));
+
+                    newFreetype->variableAxisList.append(fontVariableAxis);
+                }
+
+                if (!face_id.variableAxes.isEmpty()) {
+                    QVarLengthArray<FT_Fixed, 16> coords(var->num_axis);
+                    FT_Get_Var_Design_Coordinates(face, var->num_axis, coords.data());
+                    for (qsizetype i = 0; i < newFreetype->variableAxisList.size(); ++i) {
+                        const QFontVariableAxis &axis = newFreetype->variableAxisList.at(i);
+                        if (axis.tag().isValid()) {
+                            const auto it = face_id.variableAxes.constFind(axis.tag());
+                            if (it != face_id.variableAxes.constEnd())
+                                coords[i] = FT_Fixed(*it * 65536);
+                        }
+                    }
+                    FT_Set_Var_Design_Coordinates(face, var->num_axis, coords.data());
+                }
+
+                FT_Done_MM_Var(qt_getFreetype(), var);
+            }
+
+            FT_Done_Face(tmpFace);
+        }
+
         newFreetype->face = face;
         newFreetype->mm_var = nullptr;
         if (FT_IS_NAMED_INSTANCE(newFreetype->face)) {
@@ -329,24 +424,6 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
 
         FT_Set_Charmap(newFreetype->face, newFreetype->unicode_map);
 
-        if (!face_id.variableAxes.isEmpty()) {
-            FT_MM_Var *var = nullptr;
-            FT_Get_MM_Var(newFreetype->face, &var);
-            if (var != nullptr) {
-                QVarLengthArray<FT_Fixed, 16> coords(var->num_axis);
-                FT_Get_Var_Design_Coordinates(face, var->num_axis, coords.data());
-                for (FT_UInt i = 0; i < var->num_axis; ++i) {
-                    if (const auto tag = QFont::Tag::fromValue(var->axis[i].tag)) {
-                        const auto it = face_id.variableAxes.constFind(*tag);
-                        if (it != face_id.variableAxes.constEnd())
-                            coords[i] = FT_Fixed(*it * 65536);
-                    }
-                }
-                FT_Set_Var_Design_Coordinates(face, var->num_axis, coords.data());
-                FT_Done_MM_Var(qt_getFreetype(), var);
-            }
-        }
-
         QT_TRY {
             freetypeData->faces.insert(face_id, newFreetype.get());
         } QT_CATCH(...) {
@@ -363,8 +440,8 @@ QFreetypeFace *QFreetypeFace::getFace(const QFontEngine::FaceId &face_id,
 void QFreetypeFace::cleanup()
 {
     hbFace.reset();
-    if (mm_var && face && face->glyph)
-        FT_Done_MM_Var(face->glyph->library, mm_var);
+    if (mm_var)
+        FT_Done_MM_Var(qt_getFreetype(), mm_var);
     mm_var = nullptr;
     FT_Done_Face(face);
     face = nullptr;
@@ -381,20 +458,34 @@ void QFreetypeFace::release(const QFontEngine::FaceId &face_id)
     // from the cache.
     if (face && ref.loadRelaxed() == 1) {
         QtFreetypeData *freetypeData = qt_getFreetypeData();
-        for (auto it = freetypeData->faces.constBegin(); it != freetypeData->faces.constEnd(); ) {
+
+        freetypeData->staleFaces.removeIf([&deleteThis, this](QFreetypeFace *face){
+            if (face->ref.loadRelaxed() == 1) {
+                face->cleanup();
+                if (face == this)
+                    deleteThis = true;
+                else
+                    delete face;
+                return true;
+            }
+            return false;
+        });
+
+        for (auto it = freetypeData->faces.constBegin();
+             it != freetypeData->faces.constEnd();
+             it = freetypeData->faces.erase(it)) {
             if (it.value()->ref.loadRelaxed() == 1) {
                 it.value()->cleanup();
                 if (it.value() == this)
                     deleteThis = true; // This face, delete at end of function for safety
                 else
                     delete it.value();
-                it = freetypeData->faces.erase(it);
             } else {
-                ++it;
+                freetypeData->staleFaces.append(it.value());
             }
         }
 
-        if (freetypeData->faces.isEmpty()) {
+        if (freetypeData->faces.isEmpty() && freetypeData->staleFaces.isEmpty()) {
             FT_Done_FreeType(freetypeData->library);
             freetypeData->library = nullptr;
         }
@@ -500,7 +591,15 @@ void QFreetypeFace::computeSize(const QFontDef &fontDef, int *xsize, int *ysize,
             *xsize = *ysize = 0;
         }
     } else {
-        *outline_drawing = (*xsize > (QT_MAX_CACHED_GLYPH_SIZE<<6) || *ysize > (QT_MAX_CACHED_GLYPH_SIZE<<6));
+#if defined FT_HAS_COLOR
+        if (FT_HAS_COLOR(face)) {
+            *outline_drawing = false;
+        } else
+#endif
+        {
+            int maxCachedGlyphSize = QFontEngine::maxCachedGlyphSize();
+            *outline_drawing = (*xsize > (maxCachedGlyphSize << 6) || *ysize > (maxCachedGlyphSize << 6));
+        }
     }
 }
 
@@ -511,7 +610,11 @@ QFontEngine::Properties QFreetypeFace::properties() const
     PS_FontInfoRec font_info;
     if (FT_Get_PS_Font_Info(face, &font_info) == 0)
         p.copyright = font_info.notice;
-    if (FT_IS_SCALABLE(face)) {
+    if (FT_IS_SCALABLE(face)
+#if defined(FT_HAS_COLOR)
+        && !FT_HAS_COLOR(face)
+#endif
+        ) {
         p.ascent = face->ascender;
         p.descent = -face->descender;
         p.leading = face->height - face->ascender + face->descender;
@@ -736,6 +839,23 @@ QFontEngineFT *QFontEngineFT::create(const QFontDef &fontDef, FaceId faceId, con
     return engine.release();
 }
 
+static FT_UShort calculateActualWeight(QFreetypeFace *freetypeFace, FT_Face face, QFontEngine::FaceId faceId)
+{
+    FT_MM_Var *var = freetypeFace->mm_var;
+    if (var != nullptr && faceId.instanceIndex >= 0 && FT_UInt(faceId.instanceIndex) < var->num_namedstyles) {
+        for (FT_UInt axis = 0; axis < var->num_axis; ++axis) {
+            if (var->axis[axis].tag == QFont::Tag("wght").value()) {
+                return var->namedstyle[faceId.instanceIndex].coords[axis] >> 16;
+            }
+        }
+    }
+    if (const TT_OS2 *os2 = reinterpret_cast<const TT_OS2 *>(FT_Get_Sfnt_Table(face, ft_sfnt_os2))) {
+        return os2->usWeightClass;
+    }
+
+    return 700;
+}
+
 namespace {
     class QFontEngineFTRawData: public QFontEngineFT
     {
@@ -753,15 +873,20 @@ namespace {
 
             if (freetype->face->style_flags & FT_STYLE_FLAG_BOLD)
                 fontDef.weight = QFont::Bold;
+            else
+                fontDef.weight = calculateActualWeight(freetype, freetype->face, faceId());
         }
 
-        bool initFromData(const QByteArray &fontData, const QMap<QFont::Tag, float> &variableAxisValues)
+        bool initFromData(const QByteArray &fontData,
+                          const QMap<QFont::Tag, float> &variableAxisValues,
+                          int instanceIndex)
         {
             FaceId faceId;
             faceId.filename = "";
             faceId.index = 0;
             faceId.uuid = QUuid::createUuid().toByteArray();
             faceId.variableAxes = variableAxisValues;
+            faceId.instanceIndex = instanceIndex;
 
             return init(faceId, true, Format_None, fontData);
         }
@@ -771,7 +896,8 @@ namespace {
 QFontEngineFT *QFontEngineFT::create(const QByteArray &fontData,
                                      qreal pixelSize,
                                      QFont::HintingPreference hintingPreference,
-                                     const QMap<QFont::Tag, float> &variableAxisValues)
+                                     const QMap<QFont::Tag, float> &variableAxisValues,
+                                     int instanceIndex)
 {
     QFontDef fontDef;
     fontDef.pixelSize = pixelSize;
@@ -780,7 +906,7 @@ QFontEngineFT *QFontEngineFT::create(const QByteArray &fontData,
     fontDef.variableAxisValues = variableAxisValues;
 
     QFontEngineFTRawData *fe = new QFontEngineFTRawData(fontDef);
-    if (!fe->initFromData(fontData, variableAxisValues)) {
+    if (!fe->initFromData(fontData, variableAxisValues, instanceIndex)) {
         delete fe;
         return nullptr;
     }
@@ -833,23 +959,6 @@ bool QFontEngineFT::init(FaceId faceId, bool antialias, GlyphFormat format,
 
 static void dont_delete(void*) {}
 
-static FT_UShort calculateActualWeight(QFreetypeFace *freetypeFace, FT_Face face, QFontEngine::FaceId faceId)
-{
-    FT_MM_Var *var = freetypeFace->mm_var;
-    if (var != nullptr && faceId.instanceIndex >= 0 && FT_UInt(faceId.instanceIndex) < var->num_namedstyles) {
-        for (FT_UInt axis = 0; axis < var->num_axis; ++axis) {
-            if (var->axis[axis].tag == QFont::Tag("wght").value()) {
-                return var->namedstyle[faceId.instanceIndex].coords[axis] >> 16;
-            }
-        }
-    }
-    if (const TT_OS2 *os2 = reinterpret_cast<const TT_OS2 *>(FT_Get_Sfnt_Table(face, ft_sfnt_os2))) {
-        return os2->usWeightClass;
-    }
-
-    return 700;
-}
-
 static bool calculateActualItalic(QFreetypeFace *freetypeFace, FT_Face face, QFontEngine::FaceId faceId)
 {
     FT_MM_Var *var = freetypeFace->mm_var;
@@ -894,7 +1003,11 @@ bool QFontEngineFT::init(FaceId faceId, bool antialias, GlyphFormat format,
 
     FT_Face face = lockFace();
 
-    if (FT_IS_SCALABLE(face)) {
+    if (FT_IS_SCALABLE(face)
+#if defined(FT_HAS_COLOR)
+        && !FT_HAS_COLOR(face)
+#endif
+        ) {
         bool isItalic = calculateActualItalic(freetype, face, faceId);
         bool fake_oblique = (fontDef.style != QFont::StyleNormal) && !isItalic && !qEnvironmentVariableIsSet("QT_NO_SYNTHESIZED_ITALIC");
         if (fake_oblique)
@@ -923,8 +1036,10 @@ bool QFontEngineFT::init(FaceId faceId, bool antialias, GlyphFormat format,
         underline_position =  ((line_thickness * 2) + 3) / 6;
 
         cacheEnabled = false;
-        if (isScalableBitmap())
+#if defined(FT_HAS_COLOR)
+        if (FT_HAS_COLOR(face))
             glyphFormat = defaultFormat = GlyphFormat::Format_ARGB;
+#endif
     }
     if (line_thickness < 1)
         line_thickness = 1;
@@ -1015,8 +1130,9 @@ void QFontEngineFT::setDefaultHintStyle(HintStyle style)
     default_hint_style = style;
 }
 
-bool QFontEngineFT::expectsGammaCorrectedBlending() const
+bool QFontEngineFT::expectsGammaCorrectedBlending(QFontEngine::GlyphFormat format) const
 {
+    Q_UNUSED(format);
     return stemDarkeningDriver;
 }
 
@@ -1097,8 +1213,576 @@ static inline void transformBoundingBox(int *left, int *top, int *right, int *bo
     *bottom = b;
 }
 
+#if defined(QFONTENGINE_FT_SUPPORT_COLRV1)
+#define FROM_FIXED_16_16(value) (value / 65536.0)
+
+static inline QTransform FTAffineToQTransform(const FT_Affine23 &matrix)
+{
+    qreal m11 = FROM_FIXED_16_16(matrix.xx);
+    qreal m21 = -FROM_FIXED_16_16(matrix.xy);
+    qreal m12 = -FROM_FIXED_16_16(matrix.yx);
+    qreal m22 = FROM_FIXED_16_16(matrix.yy);
+    qreal dx = FROM_FIXED_16_16(matrix.dx);
+    qreal dy = -FROM_FIXED_16_16(matrix.dy);
+
+    return QTransform(m11, m12, m21, m22, dx, dy);
+}
+
+bool QFontEngineFT::traverseColr1(FT_OpaquePaint opaquePaint,
+                                  QSet<std::pair<FT_Byte *, FT_Bool> > *loops,
+                                  QColor foregroundColor,
+                                  FT_Color *palette,
+                                  ushort paletteCount,
+                                  QColrPaintGraphRenderer *paintGraphRenderer) const
+{
+    FT_Face face = freetype->face;
+
+    auto key = std::pair{opaquePaint.p, opaquePaint.insert_root_transform};
+    if (loops->contains(key)) {
+        qCWarning(lcColrv1) << "Cycle detected in COLRv1 graph";
+        return false;
+    }
+
+    paintGraphRenderer->save();
+    loops->insert(key);
+    auto cleanup = qScopeGuard([&paintGraphRenderer, &key, &loops]() {
+        loops->remove(key);
+        paintGraphRenderer->restore();
+    });
+
+    FT_COLR_Paint paint;
+    if (!FT_Get_Paint(face, opaquePaint, &paint))
+        return false;
+
+    if (paint.format == FT_COLR_PAINTFORMAT_COLR_LAYERS) {
+        FT_OpaquePaint layerPaint;
+        layerPaint.p = nullptr;
+        while (FT_Get_Paint_Layers(face, &paint.u.colr_layers.layer_iterator, &layerPaint)) {
+            if (!traverseColr1(layerPaint, loops, foregroundColor, palette, paletteCount, paintGraphRenderer))
+                return false;
+        }
+    } else if (paint.format == FT_COLR_PAINTFORMAT_TRANSFORM
+               || paint.format == FT_COLR_PAINTFORMAT_SCALE
+               || paint.format == FT_COLR_PAINTFORMAT_TRANSLATE
+               || paint.format == FT_COLR_PAINTFORMAT_ROTATE
+               || paint.format == FT_COLR_PAINTFORMAT_SKEW) {
+        QTransform xform;
+
+        FT_OpaquePaint nextPaint;
+        switch (paint.format) {
+        case FT_COLR_PAINTFORMAT_TRANSFORM:
+            xform = FTAffineToQTransform(paint.u.transform.affine);
+            nextPaint = paint.u.transform.paint;
+            break;
+        case FT_COLR_PAINTFORMAT_SCALE:
+            {
+                qreal centerX = FROM_FIXED_16_16(paint.u.scale.center_x);
+                qreal centerY = -FROM_FIXED_16_16(paint.u.scale.center_y);
+                qreal scaleX = FROM_FIXED_16_16(paint.u.scale.scale_x);
+                qreal scaleY = FROM_FIXED_16_16(paint.u.scale.scale_y);
+
+                xform.translate(centerX, centerY);
+                xform.scale(scaleX, scaleY);
+                xform.translate(-centerX, -centerY);
+
+                nextPaint = paint.u.scale.paint;
+                break;
+            }
+        case FT_COLR_PAINTFORMAT_ROTATE:
+            {
+                qreal centerX = FROM_FIXED_16_16(paint.u.rotate.center_x);
+                qreal centerY = -FROM_FIXED_16_16(paint.u.rotate.center_y);
+                qreal angle = -FROM_FIXED_16_16(paint.u.rotate.angle) * 180.0;
+
+                xform.translate(centerX, centerY);
+                xform.rotate(angle);
+                xform.translate(-centerX, -centerY);
+
+                nextPaint = paint.u.rotate.paint;
+                break;
+            }
+
+        case FT_COLR_PAINTFORMAT_SKEW:
+            {
+                qreal centerX = FROM_FIXED_16_16(paint.u.skew.center_x);
+                qreal centerY = -FROM_FIXED_16_16(paint.u.skew.center_y);
+                qreal angleX = FROM_FIXED_16_16(paint.u.skew.x_skew_angle) * M_PI;
+                qreal angleY = -FROM_FIXED_16_16(paint.u.skew.y_skew_angle) * M_PI;
+
+                xform.translate(centerX, centerY);
+                xform.shear(qTan(angleX), qTan(angleY));
+                xform.translate(-centerX, -centerY);
+
+                nextPaint = paint.u.rotate.paint;
+                break;
+            }
+        case FT_COLR_PAINTFORMAT_TRANSLATE:
+            {
+                qreal dx = FROM_FIXED_16_16(paint.u.translate.dx);
+                qreal dy = -FROM_FIXED_16_16(paint.u.translate.dy);
+
+                xform.translate(dx, dy);
+                nextPaint = paint.u.rotate.paint;
+                break;
+            }
+        default:
+                Q_UNREACHABLE();
+        };
+
+        paintGraphRenderer->prependTransform(xform);
+        if (!traverseColr1(nextPaint, loops, foregroundColor, palette, paletteCount, paintGraphRenderer))
+            return false;
+    } else if (paint.format == FT_COLR_PAINTFORMAT_LINEAR_GRADIENT
+               || paint.format == FT_COLR_PAINTFORMAT_RADIAL_GRADIENT
+               || paint.format == FT_COLR_PAINTFORMAT_SWEEP_GRADIENT
+               || paint.format == FT_COLR_PAINTFORMAT_SOLID) {
+        auto getPaletteColor = [&palette, &paletteCount, &foregroundColor](FT_UInt16 index,
+                                                                           FT_F2Dot14 alpha) {
+            QColor color;
+            if (index < paletteCount) {
+                const FT_Color &paletteColor = palette[index];
+                color = qRgba(paletteColor.red,
+                              paletteColor.green,
+                              paletteColor.blue,
+                              paletteColor.alpha);
+            } else if (index == 0xffff) {
+                color = foregroundColor;
+            }
+
+            if (color.isValid())
+                color.setAlphaF(color.alphaF() * (alpha / 16384.0));
+
+            return color;
+        };
+
+        auto gatherGradientStops = [&](FT_ColorStopIterator it) {
+            QGradientStops ret;
+            ret.resize(it.num_color_stops);
+
+            FT_ColorStop colorStop;
+            while (FT_Get_Colorline_Stops(face, &colorStop, &it)) {
+                uint index = it.current_color_stop - 1;
+                if (qsizetype(index) < ret.size()) {
+                    QGradientStop &gradientStop = ret[index];
+                    gradientStop.first = FROM_FIXED_16_16(colorStop.stop_offset);
+                    gradientStop.second = getPaletteColor(colorStop.color.palette_index,
+                                                          colorStop.color.alpha);
+                }
+            }
+
+            return ret;
+        };
+
+        auto extendToSpread = [](FT_PaintExtend extend) {
+            switch (extend) {
+            case FT_COLR_PAINT_EXTEND_REPEAT:
+                return QGradient::RepeatSpread;
+            case FT_COLR_PAINT_EXTEND_REFLECT:
+                return QGradient::ReflectSpread;
+            default:
+                return QGradient::PadSpread;
+            }
+        };
+
+        if (paintGraphRenderer->isRendering()) {
+            if (paint.format == FT_COLR_PAINTFORMAT_LINEAR_GRADIENT) {
+                const qreal p0x = FROM_FIXED_16_16(paint.u.linear_gradient.p0.x);
+                const qreal p0y = -FROM_FIXED_16_16(paint.u.linear_gradient.p0.y);
+
+                const qreal p1x = FROM_FIXED_16_16(paint.u.linear_gradient.p1.x);
+                const qreal p1y = -FROM_FIXED_16_16(paint.u.linear_gradient.p1.y);
+
+                const qreal p2x = FROM_FIXED_16_16(paint.u.linear_gradient.p2.x);
+                const qreal p2y = -FROM_FIXED_16_16(paint.u.linear_gradient.p2.y);
+
+                QPointF p0(p0x, p0y);
+                QPointF p1(p1x, p1y);
+                QPointF p2(p2x, p2y);
+
+                const QGradient::Spread spread =
+                    extendToSpread(paint.u.linear_gradient.colorline.extend);
+                const QGradientStops stops =
+                    gatherGradientStops(paint.u.linear_gradient.colorline.color_stop_iterator);
+                paintGraphRenderer->setLinearGradient(p0, p1, p2, spread, stops);
+
+            } else if (paint.format == FT_COLR_PAINTFORMAT_RADIAL_GRADIENT) {
+                const qreal c0x = FROM_FIXED_16_16(paint.u.radial_gradient.c0.x);
+                const qreal c0y = -FROM_FIXED_16_16(paint.u.radial_gradient.c0.y);
+                const qreal r0 = FROM_FIXED_16_16(paint.u.radial_gradient.r0);
+                const qreal c1x = FROM_FIXED_16_16(paint.u.radial_gradient.c1.x);
+                const qreal c1y = -FROM_FIXED_16_16(paint.u.radial_gradient.c1.y);
+                const qreal r1 = FROM_FIXED_16_16(paint.u.radial_gradient.r1);
+
+                const QPointF c0(c0x, c0y);
+                const QPointF c1(c1x, c1y);
+                const QGradient::Spread spread =
+                    extendToSpread(paint.u.radial_gradient.colorline.extend);
+                const QGradientStops stops =
+                    gatherGradientStops(paint.u.radial_gradient.colorline.color_stop_iterator);
+
+                paintGraphRenderer->setRadialGradient(c0, r0, c1, r1, spread, stops);
+            } else if (paint.format == FT_COLR_PAINTFORMAT_SWEEP_GRADIENT) {
+                const qreal centerX = FROM_FIXED_16_16(paint.u.sweep_gradient.center.x);
+                const qreal centerY = -FROM_FIXED_16_16(paint.u.sweep_gradient.center.y);
+                const qreal startAngle = 180.0 * FROM_FIXED_16_16(paint.u.sweep_gradient.start_angle);
+                const qreal endAngle = 180.0 * FROM_FIXED_16_16(paint.u.sweep_gradient.end_angle);
+
+                const QPointF center(centerX, centerY);
+
+                const QGradient::Spread spread = extendToSpread(paint.u.radial_gradient.colorline.extend);
+                const QGradientStops stops = gatherGradientStops(paint.u.sweep_gradient.colorline.color_stop_iterator);
+
+                paintGraphRenderer->setConicalGradient(center, startAngle, endAngle, spread, stops);
+
+            } else if (paint.format == FT_COLR_PAINTFORMAT_SOLID) {
+                QColor color = getPaletteColor(paint.u.solid.color.palette_index,
+                                               paint.u.solid.color.alpha);
+                if (!color.isValid()) {
+                    qCWarning(lcColrv1) << "Invalid palette index in COLRv1 graph:"
+                                        << paint.u.solid.color.palette_index;
+                    return false;
+                }
+
+                paintGraphRenderer->setSolidColor(color);
+            }
+        }
+
+        paintGraphRenderer->drawCurrentPath();
+    } else if (paint.format == FT_COLR_PAINTFORMAT_COMPOSITE) {
+        if (!paintGraphRenderer->isRendering()) {
+            if (!traverseColr1(paint.u.composite.backdrop_paint,
+                               loops,
+                               foregroundColor,
+                               palette,
+                               paletteCount,
+                               paintGraphRenderer)) {
+                return false;
+            }
+            if (!traverseColr1(paint.u.composite.source_paint,
+                               loops,
+                               foregroundColor,
+                               palette,
+                               paletteCount,
+                               paintGraphRenderer)) {
+                return false;
+            }
+        } else {
+            QPainter::CompositionMode compositionMode = QPainter::CompositionMode_SourceOver;
+            switch (paint.u.composite.composite_mode) {
+            case FT_COLR_COMPOSITE_CLEAR:
+                compositionMode = QPainter::CompositionMode_Clear;
+                break;
+            case FT_COLR_COMPOSITE_SRC:
+                compositionMode = QPainter::CompositionMode_Source;
+                break;
+            case FT_COLR_COMPOSITE_DEST:
+                compositionMode = QPainter::CompositionMode_Destination;
+                break;
+            case FT_COLR_COMPOSITE_SRC_OVER:
+                compositionMode = QPainter::CompositionMode_SourceOver;
+                break;
+            case FT_COLR_COMPOSITE_DEST_OVER:
+                compositionMode = QPainter::CompositionMode_DestinationOver;
+                break;
+            case FT_COLR_COMPOSITE_SRC_IN:
+                compositionMode = QPainter::CompositionMode_SourceIn;
+                break;
+            case FT_COLR_COMPOSITE_DEST_IN:
+                compositionMode = QPainter::CompositionMode_DestinationIn;
+                break;
+            case FT_COLR_COMPOSITE_SRC_OUT:
+                compositionMode = QPainter::CompositionMode_SourceOut;
+                break;
+            case FT_COLR_COMPOSITE_DEST_OUT:
+                compositionMode = QPainter::CompositionMode_DestinationOut;
+                break;
+            case FT_COLR_COMPOSITE_SRC_ATOP:
+                compositionMode = QPainter::CompositionMode_SourceAtop;
+                break;
+            case FT_COLR_COMPOSITE_DEST_ATOP:
+                compositionMode = QPainter::CompositionMode_DestinationAtop;
+                break;
+            case FT_COLR_COMPOSITE_XOR:
+                compositionMode = QPainter::CompositionMode_Xor;
+                break;
+            case FT_COLR_COMPOSITE_PLUS:
+                compositionMode = QPainter::CompositionMode_Plus;
+                break;
+            case FT_COLR_COMPOSITE_SCREEN:
+                compositionMode = QPainter::CompositionMode_Screen;
+                break;
+            case FT_COLR_COMPOSITE_OVERLAY:
+                compositionMode = QPainter::CompositionMode_Overlay;
+                break;
+            case FT_COLR_COMPOSITE_DARKEN:
+                compositionMode = QPainter::CompositionMode_Darken;
+                break;
+            case FT_COLR_COMPOSITE_LIGHTEN:
+                compositionMode = QPainter::CompositionMode_Lighten;
+                break;
+            case FT_COLR_COMPOSITE_COLOR_DODGE:
+                compositionMode = QPainter::CompositionMode_ColorDodge;
+                break;
+            case FT_COLR_COMPOSITE_COLOR_BURN:
+                compositionMode = QPainter::CompositionMode_ColorBurn;
+                break;
+            case FT_COLR_COMPOSITE_HARD_LIGHT:
+                compositionMode = QPainter::CompositionMode_HardLight;
+                break;
+            case FT_COLR_COMPOSITE_SOFT_LIGHT:
+                compositionMode = QPainter::CompositionMode_SoftLight;
+                break;
+            case FT_COLR_COMPOSITE_DIFFERENCE:
+                compositionMode = QPainter::CompositionMode_Difference;
+                break;
+            case FT_COLR_COMPOSITE_EXCLUSION:
+                compositionMode = QPainter::CompositionMode_Exclusion;
+                break;
+            case FT_COLR_COMPOSITE_MULTIPLY:
+                compositionMode = QPainter::CompositionMode_Multiply;
+                break;
+            default:
+                qCWarning(lcColrv1) << "Unsupported COLRv1 composition mode" << paint.u.composite.composite_mode;
+                break;
+            };
+
+            QColrPaintGraphRenderer compositeRenderer;
+            compositeRenderer.setBoundingRect(paintGraphRenderer->boundingRect());
+            compositeRenderer.beginRender(fontDef.pixelSize / face->units_per_EM,
+                                          paintGraphRenderer->currentTransform());
+            if (!traverseColr1(paint.u.composite.backdrop_paint,
+                               loops,
+                               foregroundColor,
+                               palette,
+                               paletteCount,
+                               &compositeRenderer)) {
+                return false;
+            }
+
+            compositeRenderer.setCompositionMode(compositionMode);
+            if (!traverseColr1(paint.u.composite.source_paint,
+                               loops,
+                               foregroundColor,
+                               palette,
+                               paletteCount,
+                               &compositeRenderer)) {
+                return false;
+            }
+            paintGraphRenderer->drawImage(compositeRenderer.endRender());
+        }
+    } else if (paint.format == FT_COLR_PAINTFORMAT_GLYPH) {
+        FT_Error error = FT_Load_Glyph(face,
+                                       paint.u.glyph.glyphID,
+                                       FT_LOAD_DEFAULT | FT_LOAD_NO_BITMAP | FT_LOAD_NO_SVG | FT_LOAD_IGNORE_TRANSFORM | FT_LOAD_NO_HINTING | FT_LOAD_NO_AUTOHINT | FT_LOAD_BITMAP_METRICS_ONLY);
+        if (error) {
+            qCWarning(lcColrv1) << "Failed to load glyph"
+                                << paint.u.glyph.glyphID
+                                << "in COLRv1 graph. Error: " << error;
+            return false;
+        }
+
+        QPainterPath path;
+        QFreetypeFace::addGlyphToPath(face,
+                                      face->glyph,
+                                      QFixedPoint(0, 0),
+                                      &path,
+                                      face->units_per_EM << 6,
+                                      face->units_per_EM << 6);
+
+        paintGraphRenderer->appendPath(path);
+
+        if (!traverseColr1(paint.u.glyph.paint, loops, foregroundColor, palette, paletteCount, paintGraphRenderer))
+            return false;
+    } else if (paint.format == FT_COLR_PAINTFORMAT_COLR_GLYPH) {
+        FT_OpaquePaint otherOpaquePaint;
+        otherOpaquePaint.p = nullptr;
+        if (!FT_Get_Color_Glyph_Paint(face,
+                                      paint.u.colr_glyph.glyphID,
+                                      FT_COLOR_NO_ROOT_TRANSFORM,
+                                      &otherOpaquePaint)) {
+            qCWarning(lcColrv1) << "Failed to load color glyph"
+                                << paint.u.colr_glyph.glyphID
+                                << "in COLRv1 graph.";
+            return false;
+        }
+
+        if (!traverseColr1(otherOpaquePaint, loops, foregroundColor, palette, paletteCount, paintGraphRenderer))
+            return false;
+    }
+
+    return true;
+}
+
+QFontEngineFT::Glyph *QFontEngineFT::loadColrv1Glyph(QGlyphSet *set,
+                                                     Glyph *g,
+                                                     uint glyph,
+                                                     const QColor &foregroundColor,
+                                                     bool fetchMetricsOnly) const
+{
+    FT_Face face = freetype->face;
+
+    GlyphInfo info;
+    memset(&info, 0, sizeof(info));
+
+    // Load advance metrics for glyph. As documented, these should come from the base
+    // glyph record.
+    FT_Load_Glyph(face, glyph, FT_LOAD_DEFAULT
+                                   | FT_LOAD_NO_BITMAP
+                                   | FT_LOAD_NO_SVG
+                                   | FT_LOAD_BITMAP_METRICS_ONLY);
+    info.linearAdvance = int(face->glyph->linearHoriAdvance >> 10);
+    info.xOff = short(TRUNC(ROUND(face->glyph->advance.x)));
+
+    FT_OpaquePaint opaquePaint;
+    opaquePaint.p = nullptr;
+    if (!FT_Get_Color_Glyph_Paint(face, glyph, FT_COLOR_INCLUDE_ROOT_TRANSFORM, &opaquePaint))
+        return nullptr;
+
+    // The scene graph is in design coordinate system, so we need to also get glyphs in this
+    // coordinate system. We then scale all painting to the requested pixel size
+    FT_Set_Char_Size(face, face->units_per_EM << 6, face->units_per_EM << 6, 0, 0);
+
+    FT_Matrix matrix;
+    FT_Vector delta;
+    FT_Get_Transform(face, &matrix, &delta);
+    QTransform originalXform(FROM_FIXED_16_16(matrix.xx), -FROM_FIXED_16_16(matrix.yx),
+                             -FROM_FIXED_16_16(matrix.xy), FROM_FIXED_16_16(matrix.yy),
+                             FROM_FIXED_16_16(delta.x), FROM_FIXED_16_16(delta.y));
+
+
+    // Also clear transform to ensure we operate in design metrics
+    FT_Set_Transform(face, nullptr, nullptr);
+
+    auto cleanup = qScopeGuard([&]() {
+        // Reset stuff we changed
+        FT_Set_Char_Size(face, xsize, ysize, 0, 0);
+        FT_Set_Transform(face, &matrix, &delta);
+    });
+
+    qCDebug(lcColrv1).noquote() << "================== Start collecting COLRv1 metrics for" << glyph;
+    QRect designCoordinateBounds;
+
+    // Getting metrics is done multiple times per glyph while entering it into the cache.
+    // Since this may need to be calculated, we cache the last one for sequential calls.
+    if (colrv1_bounds_cache_id == glyph) {
+        designCoordinateBounds = colrv1_bounds_cache;
+    } else {
+        // COLRv1 fonts can optionally have a clip box for quicker retrieval of metrics. We try
+        // to get this, and if there is none, we calculate the bounds by traversing the graph.
+        FT_ClipBox clipBox;
+        if (FT_Get_Color_Glyph_ClipBox(face, glyph, &clipBox)) {
+            FT_Pos left = qMin(clipBox.bottom_left.x, qMin(clipBox.bottom_right.x, qMin(clipBox.top_left.x, clipBox.top_right.x)));
+            FT_Pos right = qMax(clipBox.bottom_left.x, qMax(clipBox.bottom_right.x, qMax(clipBox.top_left.x, clipBox.top_right.x)));
+
+            FT_Pos top = qMin(-clipBox.bottom_left.y, qMin(-clipBox.bottom_right.y, qMin(-clipBox.top_left.y, -clipBox.top_right.y)));
+            FT_Pos bottom = qMax(-clipBox.bottom_left.y, qMax(-clipBox.bottom_right.y, qMax(-clipBox.top_left.y, -clipBox.top_right.y)));
+
+            qreal scale = 1.0 / 64.0;
+            designCoordinateBounds = QRect(QPoint(qFloor(left * scale), qFloor(top * scale)),
+                                           QPoint(qCeil(right * scale), qCeil(bottom * scale)));
+        } else {
+            // Do a pass over the graph to find the bounds
+            QColrPaintGraphRenderer boundingRectCalculator;
+            boundingRectCalculator.beginCalculateBoundingBox();
+            QSet<std::pair<FT_Byte *, FT_Bool> > loops;
+            if (traverseColr1(opaquePaint,
+                              &loops,
+                              QColor{},
+                              nullptr,
+                              0,
+                              &boundingRectCalculator)) {
+                designCoordinateBounds = boundingRectCalculator.boundingRect().toAlignedRect();
+            }
+        }
+
+        colrv1_bounds_cache_id = glyph;
+        colrv1_bounds_cache = designCoordinateBounds;
+    }
+
+    QTransform initialTransform;
+    initialTransform.scale(fontDef.pixelSize / face->units_per_EM,
+                           fontDef.pixelSize / face->units_per_EM);
+    QRect bounds = initialTransform.mapRect(designCoordinateBounds);
+    bounds = originalXform.mapRect(bounds);
+
+    info.x = bounds.left();
+    info.y = -bounds.top();
+    info.width = bounds.width();
+    info.height = bounds.height();
+
+    qCDebug(lcColrv1) << "Bounds of" << glyph << "==" << bounds;
+
+    // If requested, we now render the scene graph into an image using QPainter
+    QImage destinationImage;
+    if (!fetchMetricsOnly && !bounds.size().isEmpty()) {
+        FT_Palette_Data paletteData;
+        if (FT_Palette_Data_Get(face, &paletteData))
+            return nullptr;
+
+        FT_Color *palette = nullptr;
+        FT_Error error = FT_Palette_Select(face, 0, &palette);
+        if (error) {
+            qWarning("selecting palette for COLRv1 failed, err=%x face=%p, glyph=%d",
+                     error,
+                     face,
+                     glyph);
+        }
+
+        if (palette == nullptr)
+            return nullptr;
+
+        ushort paletteCount = paletteData.num_palette_entries;
+
+        QColrPaintGraphRenderer paintGraphRenderer;
+        paintGraphRenderer.setBoundingRect(bounds);
+        paintGraphRenderer.beginRender(fontDef.pixelSize / face->units_per_EM,
+                                       originalXform);
+
+        // Render
+        QSet<std::pair<FT_Byte *, FT_Bool> > loops;
+        if (!traverseColr1(opaquePaint,
+                           &loops,
+                           foregroundColor,
+                           palette,
+                           paletteCount,
+                           &paintGraphRenderer)) {
+            return nullptr;
+        }
+
+        destinationImage = paintGraphRenderer.endRender();
+    }
+
+    if (fetchMetricsOnly || !destinationImage.isNull()) {
+        if (g == nullptr) {
+            g = new Glyph;
+            g->data = nullptr;
+            if (set != nullptr)
+                set->setGlyph(glyph, QFixedPoint{}, g);
+        }
+
+        g->linearAdvance = info.linearAdvance;
+        g->width = info.width;
+        g->height = info.height;
+        g->x = info.x;
+        g->y = info.y;
+        g->advance = info.xOff;
+        g->format = Format_ARGB;
+
+        if (!fetchMetricsOnly && !destinationImage.isNull()) {
+            g->data = new uchar[info.height * info.width * 4];
+            memcpy(g->data, destinationImage.constBits(), info.height * info.width * 4);
+        }
+
+        return g;
+    }
+
+    return nullptr;
+}
+#endif // QFONTENGINE_FT_SUPPORT_COLRV1
+
 QFontEngineFT::Glyph *QFontEngineFT::loadGlyph(QGlyphSet *set, uint glyph,
                                                const QFixedPoint &subPixelPosition,
+                                               QColor color,
                                                GlyphFormat format,
                                                bool fetchMetricsOnly,
                                                bool disableOutlineDrawing) const
@@ -1120,6 +1804,23 @@ QFontEngineFT::Glyph *QFontEngineFT::loadGlyph(QGlyphSet *set, uint glyph,
     FT_Face face = freetype->face;
 
     FT_Matrix matrix = freetype->matrix;
+    bool transform = matrix.xx != 0x10000
+                    || matrix.yy != 0x10000
+                    || matrix.xy != 0
+                    || matrix.yx != 0;
+    if (obliquen && transform) {
+        // We have to apply the obliquen transformation before any
+        // other transforms. This means we need to duplicate Freetype's
+        // obliquen matrix here and this has to be kept in sync.
+        FT_Matrix slant;
+        slant.xx = 0x10000L;
+        slant.yx = 0;
+        slant.xy = 0x0366A;
+        slant.yy = 0x10000L;
+
+        FT_Matrix_Multiply(&matrix, &slant);
+        matrix = slant;
+    }
 
     FT_Vector v;
     v.x = format == Format_Mono ? 0 : FT_Pos(subPixelPosition.x.value());
@@ -1130,13 +1831,27 @@ QFontEngineFT::Glyph *QFontEngineFT::loadGlyph(QGlyphSet *set, uint glyph,
     int vfactor = 1;
     int load_flags = loadFlags(set, format, 0, hsubpixel, vfactor);
 
-    bool transform = matrix.xx != 0x10000
-                     || matrix.yy != 0x10000
-                     || matrix.xy != 0
-                     || matrix.yx != 0;
-
     if (transform || obliquen || (format != Format_Mono && !isScalableBitmap()))
         load_flags |= FT_LOAD_NO_BITMAP;
+
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 20701
+    // Only the advance/metrics are needed here, not the rendered bitmap
+    if (fetchMetricsOnly)
+        load_flags |= FT_LOAD_BITMAP_METRICS_ONLY;
+#endif
+
+#if defined(QFONTENGINE_FT_SUPPORT_COLRV1)
+    if (FT_IS_SCALABLE(freetype->face)
+        && FT_HAS_COLOR(freetype->face)
+        && (load_flags & FT_LOAD_COLOR)) {
+        // Try loading COLRv1 glyph if possible.
+        Glyph *ret = loadColrv1Glyph(set, g, glyph, color, fetchMetricsOnly);
+        if (ret != nullptr)
+            return ret;
+    }
+#else
+    Q_UNUSED(color);
+#endif
 
     FT_Error err = FT_Load_Glyph(face, glyph, load_flags);
     if (err && (load_flags & FT_LOAD_NO_BITMAP)) {
@@ -1166,7 +1881,7 @@ QFontEngineFT::Glyph *QFontEngineFT::loadGlyph(QGlyphSet *set, uint glyph,
 
     if (embolden)
         FT_GlyphSlot_Embolden(slot);
-    if (obliquen) {
+    if (obliquen && !transform) {
         FT_GlyphSlot_Oblique(slot);
 
         // While Embolden alters the metrics of the slot, oblique does not, so we need
@@ -1226,6 +1941,20 @@ QFontEngineFT::Glyph *QFontEngineFT::loadGlyph(QGlyphSet *set, uint glyph,
         return g;
     }
 
+    if (slot->format == FT_GLYPH_FORMAT_OUTLINE) {
+        const QTransform xform(matrix.xx / 65536.0, matrix.xy / 65536.0,
+                               matrix.yx / 65536.0, matrix.yy / 65536.0, 0, 0);
+        FT_BBox cbox;
+        FT_Outline_Get_CBox(&slot->outline, &cbox);
+        const qreal glyphWidth = qreal((cbox.xMax - cbox.xMin) >> 6);
+        const qreal glyphHeight = qreal((cbox.yMax - cbox.yMin) >> 6);
+        if (glyphBoundingBoxExceedsLimit(glyphWidth, glyphHeight, effectivePixelSizeSquared(xform))) {
+            if (set)
+                set->setGlyphMissing(glyph);
+            return &emptyGlyph;
+        }
+    }
+
     int glyph_buffer_size = 0;
     std::unique_ptr<uchar[]> glyph_buffer;
     FT_Render_Mode renderMode = (default_hint_style == HintLight) ? FT_RENDER_MODE_LIGHT : FT_RENDER_MODE_NORMAL;
@@ -1250,10 +1979,12 @@ QFontEngineFT::Glyph *QFontEngineFT::loadGlyph(QGlyphSet *set, uint glyph,
     FT_Library_SetLcdFilter(slot->library, (FT_LcdFilter)lcdFilterType);
 
     err = FT_Render_Glyph(slot, renderMode);
-    if (err != FT_Err_Ok)
-        qWarning("render glyph failed err=%x face=%p, glyph=%d", err, face, glyph);
-
     FT_Library_SetLcdFilter(slot->library, FT_LCD_FILTER_NONE);
+
+    if (err != FT_Err_Ok) {
+        qWarning("render glyph failed err=%x face=%p, glyph=%d", err, face, glyph);
+        return nullptr;
+    }
 
     info.height = slot->bitmap.rows;
     info.width = slot->bitmap.width;
@@ -1319,15 +2050,32 @@ QFontEngineFT::Glyph *QFontEngineFT::loadGlyph(QGlyphSet *set, uint glyph,
         }
         info.linearAdvance = info.xOff = slot->bitmap.width;
     } else if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY) {
-        Q_ASSERT(format == Format_A8);
-        uchar *src = slot->bitmap.buffer;
-        uchar *dst = glyph_buffer.get();
-        int h = slot->bitmap.rows;
-        int bytes = info.width;
-        while (h--) {
-            memcpy (dst, src, bytes);
-            dst += pitch;
-            src += slot->bitmap.pitch;
+        if (format == Format_A8) {
+            uchar *src = slot->bitmap.buffer;
+            uchar *dst = glyph_buffer.get();
+            int h = slot->bitmap.rows;
+            int bytes = info.width;
+            while (h--) {
+                memcpy (dst, src, bytes);
+                dst += pitch;
+                src += slot->bitmap.pitch;
+            }
+        } else if (format == Format_ARGB) {
+            uchar *src = slot->bitmap.buffer;
+            quint32 *dstPixel = reinterpret_cast<quint32 *>(glyph_buffer.get());
+            int h = slot->bitmap.rows;
+            while (h--) {
+                for (int x = 0; x < static_cast<int>(slot->bitmap.width); ++x) {
+                    uchar alpha = src[x];
+                    float alphaF = alpha / 255.0;
+                    dstPixel[x] = qRgba(qRound(alphaF * color.red()),
+                                        qRound(alphaF * color.green()),
+                                        qRound(alphaF * color.blue()),
+                                        alpha);
+                }
+                src += slot->bitmap.pitch;
+                dstPixel += info.width;
+            }
         }
     } else if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_LCD) {
         Q_ASSERT(format == Format_A32);
@@ -1370,7 +2118,7 @@ QFontEngine::Properties QFontEngineFT::properties() const
 {
     Properties p = freetype->properties();
     if (p.postscriptName.isEmpty()) {
-        p.postscriptName = QFontEngine::convertToPostscriptFontFamilyName(fontDef.families.constFirst().toUtf8());
+        p.postscriptName = QFontEngine::convertToPostscriptFontFamilyName(fontDef.family().toUtf8());
     }
 
     return freetype->properties();
@@ -1534,10 +2282,12 @@ QFontEngineFT::QGlyphSet *QFontEngineFT::TransformedGlyphSets::findSet(const QTr
     if (!sets[0])
         sets[0] = new QGlyphSet;
     QGlyphSet *gs = sets[0];
+    Q_ASSERT(gs != nullptr);
+
     gs->clear();
     gs->transformationMatrix = m;
-    gs->outline_drawing = fontDef.pixelSize * fontDef.pixelSize * qAbs(matrix.determinant()) > QT_MAX_CACHED_GLYPH_SIZE * QT_MAX_CACHED_GLYPH_SIZE;
-    Q_ASSERT(gs != nullptr);
+    const int maxCachedSize = maxCachedGlyphSize();
+    gs->outline_drawing = fontDef.pixelSize * fontDef.pixelSize * qAbs(matrix.determinant()) > maxCachedSize * maxCachedSize;
 
     return gs;
 }
@@ -1597,7 +2347,7 @@ void QFontEngineFT::getUnscaledGlyph(glyph_t glyph, QPainterPath *path, glyph_me
 
 bool QFontEngineFT::supportsTransformation(const QTransform &transform) const
 {
-    return transform.type() <= QTransform::TxRotate && (freetype->isScalable() || freetype->isScalableBitmap());
+    return transform.type() <= QTransform::TxRotate;
 }
 
 void QFontEngineFT::addOutlineToPath(qreal x, qreal y, const QGlyphLayout &glyphs, QPainterPath *path, QTextItem::RenderFlags flags)
@@ -1676,6 +2426,22 @@ glyph_t QFontEngineFT::glyphIndex(uint ucs4) const
     }
 
     return glyph;
+}
+
+QString QFontEngineFT::glyphName(glyph_t index) const
+{
+    QString result;
+    if (index >= glyph_t(glyphCount()))
+        return result;
+
+    FT_Face face = freetype->face;
+    if (face->face_flags & FT_FACE_FLAG_GLYPH_NAMES) {
+        char glyphName[128] = {};
+        if (FT_Get_Glyph_Name(face, index, glyphName, sizeof(glyphName)) == 0)
+            result = QString::fromUtf8(glyphName);
+    }
+
+    return result.isEmpty() ? QFontEngine::glyphName(index) : result;
 }
 
 int QFontEngineFT::stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs,
@@ -1812,6 +2578,7 @@ void QFontEngineFT::recalcAdvances(QGlyphLayout *glyphs, QFontEngine::ShaperFlag
             g = loadGlyph(cacheEnabled ? &defaultGlyphSet : nullptr,
                           glyphs->glyphs[i],
                           QFixedPoint(),
+                          QColor(),
                           Format_None,
                           true);
             if (g)
@@ -1857,6 +2624,7 @@ glyph_metrics_t QFontEngineFT::boundingBox(const QGlyphLayout &glyphs)
             g = loadGlyph(cacheEnabled ? &defaultGlyphSet : nullptr,
                           glyphs.glyphs[i],
                           QFixedPoint(),
+                          QColor(),
                           Format_None,
                           true);
         }
@@ -1905,6 +2673,7 @@ glyph_metrics_t QFontEngineFT::boundingBox(glyph_t glyph)
         g = loadGlyph(cacheEnabled ? &defaultGlyphSet : nullptr,
                       glyph,
                       QFixedPoint(),
+                      QColor(),
                       Format_None,
                       true);
     }
@@ -1954,7 +2723,7 @@ glyph_metrics_t QFontEngineFT::alphaMapBoundingBox(glyph_t glyph,
             && matrix.type() > QTransform::TxTranslate;
     if (needsImageTransform && format == QFontEngine::Format_Mono)
         format = QFontEngine::Format_A8;
-    Glyph *g = loadGlyphFor(glyph, subPixelPosition, format, matrix, true, true);
+    Glyph *g = loadGlyphFor(glyph, subPixelPosition, format, matrix, QColor(), true, true);
 
     glyph_metrics_t overall;
     if (g) {
@@ -2029,7 +2798,7 @@ QFontEngine::Glyph *QFontEngineFT::glyphData(glyph_t glyphIndex,
     else if (neededFormat == Format_None)
         neededFormat = Format_A8;
 
-    Glyph *glyph = loadGlyphFor(glyphIndex, subPixelPosition, neededFormat, t);
+    Glyph *glyph = loadGlyphFor(glyphIndex, subPixelPosition, neededFormat, t, QColor());
     if (!glyph || !glyph->width || !glyph->height)
         return nullptr;
 
@@ -2046,6 +2815,7 @@ QFontEngineFT::Glyph *QFontEngineFT::loadGlyphFor(glyph_t g,
                                                   const QFixedPoint &subPixelPosition,
                                                   GlyphFormat format,
                                                   const QTransform &t,
+                                                  QColor color,
                                                   bool fetchBoundingBox,
                                                   bool disableOutlineDrawing)
 {
@@ -2064,7 +2834,7 @@ QFontEngineFT::Glyph *QFontEngineFT::loadGlyphFor(glyph_t g,
         FT_Matrix ftMatrix = glyphSet != nullptr ? glyphSet->transformationMatrix : QTransformToFTMatrix(t);
         FT_Matrix_Multiply(&ftMatrix, &m);
         freetype->matrix = m;
-        glyph = loadGlyph(glyphSet, g, subPixelPosition, format, false, disableOutlineDrawing);
+        glyph = loadGlyph(glyphSet, g, subPixelPosition, color, format, false, disableOutlineDrawing);
         unlockFace();
     }
 
@@ -2084,11 +2854,11 @@ QImage QFontEngineFT::alphaMapForGlyph(glyph_t g,
             && t.type() > QTransform::TxTranslate;
     const GlyphFormat neededFormat = antialias || needsImageTransform ? Format_A8 : Format_Mono;
 
-    Glyph *glyph = loadGlyphFor(g, subPixelPosition, neededFormat, t, false, true);
+    Glyph *glyph = loadGlyphFor(g, subPixelPosition, neededFormat, t, QColor(), false, true);
 
     QImage img = alphaMapFromGlyphData(glyph, neededFormat);
     if (needsImageTransform)
-        img = img.transformed(t, Qt::SmoothTransformation);
+        img = img.transformed(t, Qt::FastTransformation);
     else
         img = img.copy();
 
@@ -2105,12 +2875,19 @@ QImage QFontEngineFT::alphaRGBMapForGlyph(glyph_t g,
     if (t.type() > QTransform::TxRotate)
         return QFontEngine::alphaRGBMapForGlyph(g, subPixelPosition, t);
 
+    const bool needsImageTransform = !FT_IS_SCALABLE(freetype->face)
+                                     && t.type() > QTransform::TxTranslate;
+
+
     const GlyphFormat neededFormat = Format_A32;
 
-    Glyph *glyph = loadGlyphFor(g, subPixelPosition, neededFormat, t, false, true);
+    Glyph *glyph = loadGlyphFor(g, subPixelPosition, neededFormat, t, QColor(), false, true);
 
     QImage img = alphaMapFromGlyphData(glyph, neededFormat);
-    img = img.copy();
+    if (needsImageTransform)
+        img = img.transformed(t, Qt::FastTransformation);
+    else
+        img = img.copy();
 
     if (!cacheEnabled && glyph != &emptyGlyph)
         delete glyph;
@@ -2126,9 +2903,7 @@ QImage QFontEngineFT::bitmapForGlyph(glyph_t g,
                                      const QTransform &t,
                                      const QColor &color)
 {
-    Q_UNUSED(color);
-
-    Glyph *glyph = loadGlyphFor(g, subPixelPosition, defaultFormat, t);
+    Glyph *glyph = loadGlyphFor(g, subPixelPosition, defaultFormat, t, color);
     if (glyph == nullptr)
         return QImage();
 
@@ -2138,7 +2913,7 @@ QImage QFontEngineFT::bitmapForGlyph(glyph_t g,
     else if (defaultFormat == GlyphFormat::Format_Mono)
         img = QImage(glyph->data, glyph->width, glyph->height, QImage::Format_Mono).copy();
 
-    if (!img.isNull() && (!t.isIdentity() || scalableBitmapScaleFactor != 1)) {
+    if (!img.isNull() && (scalableBitmapScaleFactor != 1 || (!t.isIdentity() && !isSmoothlyScalable))) {
         QTransform trans(t);
         const qreal scaleFactor = scalableBitmapScaleFactor.toReal();
         trans.scale(scaleFactor, scaleFactor);
@@ -2311,6 +3086,11 @@ QFontEngine *QFontEngineFT::cloneWithSize(qreal pixelSize) const
 Qt::HANDLE QFontEngineFT::handle() const
 {
     return non_locked_face();
+}
+
+QList<QFontVariableAxis> QFontEngineFT::variableAxes() const
+{
+    return freetype->variableAxes();
 }
 
 QT_END_NAMESPACE

@@ -1,5 +1,6 @@
 // Copyright (C) 2011 - 2013 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQNXINTEGRATION_H
 #define QQNXINTEGRATION_H
@@ -10,16 +11,12 @@
 #include <QtCore/qmutex.h>
 
 #include <screen/screen.h>
-#include <QtCore/QLoggingCategory>
 
 #if QT_CONFIG(opengl)
 #include <EGL/egl.h>
 #endif
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcQpaQnx);
-Q_DECLARE_LOGGING_CATEGORY(lcQpaGLContext);
 
 class QQnxScreenEventThread;
 class QQnxFileDialogHelper;
@@ -33,9 +30,9 @@ class QQnxAbstractVirtualKeyboard;
 class QQnxServices;
 
 class QSimpleDrag;
+class QQnxInputContext;
 
 #if QT_CONFIG(qqnx_pps)
-class QQnxInputContext;
 class QQnxNavigatorEventNotifier;
 class QQnxButtonEventNotifier;
 #endif
@@ -54,7 +51,8 @@ public:
         FullScreenApplication = 0x1,
         RootWindow = 0x2,
         AlwaysFlushScreenContext = 0x4,
-        SurfacelessEGLContext = 0x8
+        SurfacelessEGLContext = 0x8,
+        Desktop = 0x10
     };
     Q_DECLARE_FLAGS(Options, Option)
     explicit QQnxIntegration(const QStringList &paramList);
@@ -73,9 +71,11 @@ public:
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
 #endif
 
-#if QT_CONFIG(qqnx_pps)
-    QPlatformInputContext *inputContext() const override;
+#if QT_CONFIG(vulkan)
+    QPlatformVulkanInstance *createPlatformVulkanInstance(QVulkanInstance *instance) const override;
 #endif
+
+    QPlatformInputContext *inputContext() const override;
 
     void moveToScreen(QWindow *window, int screen);
 
@@ -95,6 +95,9 @@ public:
 #endif
     QVariant styleHint(StyleHint hint) const override;
 
+    QStringList themeNames() const override;
+    QPlatformTheme *createPlatformTheme(const QString &name) const override;
+
     QPlatformServices *services() const override;
 
     QWindow *window(screen_window_t qnxWindow) const;
@@ -110,6 +113,8 @@ public:
 
     QQnxNavigatorEventHandler *navigatorEventHandler();
 
+    const QList<QQnxScreen *> &screens() const { return m_screens; }
+
 private:
     void createDisplays();
     void destroyDisplays();
@@ -124,13 +129,13 @@ private:
     QQnxScreenEventThread *m_screenEventThread;
     QQnxNavigatorEventHandler *m_navigatorEventHandler;
     QQnxAbstractVirtualKeyboard *m_virtualKeyboard;
+    QQnxInputContext *m_inputContext;
 #if QT_CONFIG(qqnx_pps)
     QQnxNavigatorEventNotifier *m_navigatorEventNotifier;
-    QQnxInputContext *m_inputContext;
     QQnxButtonEventNotifier *m_buttonsNotifier;
 #endif
     QPlatformInputContext *m_qpaInputContext;
-    QQnxServices *m_services;
+    mutable QQnxServices *m_services = nullptr;
     QPlatformFontDatabase *m_fontDatabase;
     mutable QAbstractEventDispatcher *m_eventDispatcher;
     QQnxNativeInterface *m_nativeInterface;

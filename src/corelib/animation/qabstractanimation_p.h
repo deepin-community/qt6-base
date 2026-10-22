@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTANIMATION_P_H
 #define QABSTRACTANIMATION_P_H
@@ -17,11 +18,14 @@
 
 #include <QtCore/qbasictimer.h>
 #include <QtCore/qdatetime.h>
-#include <QtCore/qtimer.h>
 #include <QtCore/qelapsedtimer.h>
 #include <private/qobject_p.h>
 #include <private/qproperty_p.h>
 #include <qabstractanimation.h>
+
+#if defined(Q_OS_WASM)
+#include <QtCore/private/qwasmanimationdriver_p.h>
+#endif
 
 QT_REQUIRE_CONFIG(animation);
 
@@ -116,7 +120,8 @@ public:
 
     virtual void updateAnimationsTime(qint64 delta) = 0;
     virtual void restartAnimationTimer() = 0;
-    virtual int runningAnimationCount() = 0;
+#define QT_QAbstractAnimationTimer_runningAnimationCount_IS_CONST
+    virtual qsizetype runningAnimationCount() const = 0;
 
     bool isRegistered = false;
     bool isPaused = false;
@@ -150,9 +155,10 @@ public:
     */
     void setConsistentTiming(bool consistent) { consistentTiming = consistent; }
 
-    //these facilitate fine-tuning of complex animations
-    void setSlowModeEnabled(bool enabled) { slowMode = enabled; }
-    void setSlowdownFactor(qreal factor) { slowdownFactor = factor; }
+    // This facilitates both fine-tuning of complex animations by slowing them
+    // them down, and reducing execution time of auto tests by speeding them up.
+    qreal getSpeedModifier() const { return speedModifier; }
+    void setSpeedModifier(qreal speed) { speedModifier = speed; }
 
     void installAnimationDriver(QAnimationDriver *driver);
     void uninstallAnimationDriver(QAnimationDriver *driver);
@@ -163,7 +169,7 @@ public:
     void updateAnimationTimers();
 
     //useful for profiling/debugging
-    int runningAnimationCount();
+    qsizetype runningAnimationCount() const;
     void registerProfilerCallback(void (*cb)(qint64));
 
     void startAnimationDriver();
@@ -182,7 +188,11 @@ private:
     friend class QAnimationDriver;
 
     QAnimationDriver *driver;
+#if defined(Q_OS_WASM)
+    QWasmAnimationDriver defaultDriver;
+#else
     QDefaultAnimationDriver defaultDriver;
+#endif
 
     QBasicTimer pauseTimer;
 
@@ -194,15 +204,13 @@ private:
     bool insideTick;
     bool insideRestart;
     bool consistentTiming;
-    bool slowMode;
     bool startTimersPending;
     bool stopTimerPending;
     bool allowNegativeDelta;
 
-    // This factor will be used to divide the DEFAULT_TIMER_INTERVAL at each tick
-    // when slowMode is enabled. Setting it to 0 or higher than DEFAULT_TIMER_INTERVAL (16)
-    // stops all animations.
-    qreal slowdownFactor;
+    // This factor will be used to multiply the DEFAULT_TIMER_INTERVAL (16) at each tick
+    // if it's not equal to 1. Setting it to less than 1 / 16 (0.0625) stops all animations.
+    qreal speedModifier;
 
     QList<QAbstractAnimationTimer*> animationTimers, animationTimersToStart;
     QList<QAbstractAnimationTimer*> pausedAnimationTimers;
@@ -247,7 +255,7 @@ public:
     void updateAnimationsTime(qint64 delta) override;
 
     //useful for profiling/debugging
-    int runningAnimationCount() override { return animations.size(); }
+    qsizetype runningAnimationCount() const override { return animations.size(); }
 
 private Q_SLOTS:
     void startAnimations();

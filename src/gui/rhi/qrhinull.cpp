@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qrhinull_p.h"
 #include <qmath.h>
@@ -60,6 +61,12 @@ void QRhiNull::destroy()
 QList<int> QRhiNull::supportedSampleCounts() const
 {
     return { 1 };
+}
+
+QList<QSize> QRhiNull::supportedShadingRates(int sampleCount) const
+{
+    Q_UNUSED(sampleCount);
+    return { QSize(1, 1) };
 }
 
 QRhiSwapChain *QRhiNull::createSwapChain()
@@ -141,6 +148,8 @@ int QRhiNull::resourceLimit(QRhi::ResourceLimit limit) const
         return 32;
     case QRhi::MaxVertexOutputs:
         return 32;
+    case QRhi::ShadingRateImageTileSize:
+        return 0;
     }
 
     Q_UNREACHABLE_RETURN(0);
@@ -167,6 +176,11 @@ bool QRhiNull::makeThreadLocalNativeContextCurrent()
 {
     // not applicable
     return false;
+}
+
+void QRhiNull::setQueueSubmitParams(QRhiNativeHandles *)
+{
+    // not applicable
 }
 
 void QRhiNull::releaseCachedResources()
@@ -214,6 +228,11 @@ QRhiTextureRenderTarget *QRhiNull::createTextureRenderTarget(const QRhiTextureRe
                                                              QRhiTextureRenderTarget::Flags flags)
 {
     return new QNullTextureRenderTarget(this, desc, flags);
+}
+
+QRhiShadingRateMap *QRhiNull::createShadingRateMap()
+{
+    return nullptr;
 }
 
 QRhiGraphicsPipeline *QRhiNull::createGraphicsPipeline()
@@ -284,6 +303,12 @@ void QRhiNull::setStencilRef(QRhiCommandBuffer *cb, quint32 refValue)
     Q_UNUSED(refValue);
 }
 
+void QRhiNull::setShadingRate(QRhiCommandBuffer *cb, const QSize &coarsePixelSize)
+{
+    Q_UNUSED(cb);
+    Q_UNUSED(coarsePixelSize);
+}
+
 void QRhiNull::draw(QRhiCommandBuffer *cb, quint32 vertexCount,
                     quint32 instanceCount, quint32 firstVertex, quint32 firstInstance)
 {
@@ -303,6 +328,26 @@ void QRhiNull::drawIndexed(QRhiCommandBuffer *cb, quint32 indexCount,
     Q_UNUSED(firstIndex);
     Q_UNUSED(vertexOffset);
     Q_UNUSED(firstInstance);
+}
+
+void QRhiNull::drawIndirect(QRhiCommandBuffer *cb, QRhiBuffer *indirectBuffer,
+                            quint32 indirectBufferOffset, quint32 drawCount, quint32 stride)
+{
+    Q_UNUSED(cb);
+    Q_UNUSED(indirectBuffer);
+    Q_UNUSED(indirectBufferOffset);
+    Q_UNUSED(drawCount);
+    Q_UNUSED(stride);
+}
+
+void QRhiNull::drawIndexedIndirect(QRhiCommandBuffer *cb, QRhiBuffer *indirectBuffer,
+                                   quint32 indirectBufferOffset, quint32 drawCount, quint32 stride)
+{
+    Q_UNUSED(cb);
+    Q_UNUSED(indirectBuffer);
+    Q_UNUSED(indirectBufferOffset);
+    Q_UNUSED(drawCount);
+    Q_UNUSED(stride);
 }
 
 void QRhiNull::debugMarkBegin(QRhiCommandBuffer *cb, const QByteArray &name)
@@ -415,12 +460,21 @@ void QRhiNull::simulateTextureUpload(const QRhiResourceUpdateBatchPrivate::Textu
                         h = subresDesc.sourceSize().height();
                     }
                     // sourceTopLeft is not supported on this path as per QRhi docs
-                    const char *src = subresDesc.data().constData();
+                    const QByteArray srcData = subresDesc.data();
+                    const QPoint dstOffset = subresDesc.destinationTopLeft();
+                    QSize size = clampedSubResourceUploadSize(QSize(w, h), dstOffset, level,
+                                                              texD->pixelSize());
+                    size = clampedSubResourceUploadSizeForSourceData(size, subresDesc.dataStride(),
+                                                                     4, srcData.size());
+                    if (size.isEmpty())
+                        continue;
+                    w = size.width();
+                    h = size.height();
+                    const char *src = srcData.constData();
                     const int srcBpl = w * 4;
                     int srcStride = srcBpl;
                     if (subresDesc.dataStride())
                         srcStride = subresDesc.dataStride();
-                    const QPoint dstOffset = subresDesc.destinationTopLeft();
                     uchar *dst = texD->image[layer][level].bits();
                     const int dstBpl = texD->image[layer][level].bytesPerLine();
                     for (int y = 0; y < h; ++y) {
@@ -491,11 +545,17 @@ void QRhiNull::resourceUpdate(QRhiCommandBuffer *cb, QRhiResourceUpdateBatch *re
             QNullTexture *texD = QRHI_RES(QNullTexture, u.rb.texture());
             if (texD) {
                 result->format = texD->format();
-                result->pixelSize = q->sizeForMipLevel(u.rb.level(), texD->pixelSize());
+                if (u.rb.rect().isValid())
+                    result->pixelSize = u.rb.rect().size();
+                else
+                    result->pixelSize = q->sizeForMipLevel(u.rb.level(), texD->pixelSize());
             } else {
                 Q_ASSERT(currentSwapChain);
                 result->format = QRhiTexture::RGBA8;
-                result->pixelSize = currentSwapChain->currentPixelSize();
+                if (u.rb.rect().isValid())
+                    result->pixelSize = u.rb.rect().size();
+                else
+                    result->pixelSize = currentSwapChain->currentPixelSize();
             }
             quint32 bytesPerLine = 0;
             quint32 byteSize = 0;
@@ -683,6 +743,11 @@ bool QNullTexture::create()
                                 : (isCube ? 6
                                           : (isArray ? qMax(0, m_arraySize)
                                                      : 1));
+
+    if (!rhiD->textureFormatInfo(m_format, size, nullptr, nullptr, nullptr)) {
+        valid = false;
+        return false;
+    }
 
     if (m_format == RGBA8) {
         image.resize(layerCount);

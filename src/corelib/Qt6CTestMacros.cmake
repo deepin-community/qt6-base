@@ -11,6 +11,19 @@
 #
 # We mean it.
 
+set(_qt_internal_skip_build_test_env_var
+    "QT_CMAKE_SKIP_BUILD_TESTS")
+set(_qt_internal_skip_build_test_message
+    "Skipping build test as requested by ${_qt_internal_skip_build_test_env_var}")
+set(_qt_internal_skip_build_test_regex
+    "^${_qt_internal_skip_build_test_message}\n$")
+set(_qt_internal_skip_build_test_pre_run
+    "if(DEFINED ENV{${_qt_internal_skip_build_test_env_var}})"
+      "message(\"${_qt_internal_skip_build_test_message}\")"
+      "return()"
+    "endif()"
+)
+
 message(STATUS "CMAKE_VERSION: ${CMAKE_VERSION}")
 message(STATUS "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
 message(STATUS "CMAKE_MODULES_UNDER_TEST: ${CMAKE_MODULES_UNDER_TEST}")
@@ -125,6 +138,30 @@ function(_qt_internal_get_cmake_test_configure_options out_var)
 
     list(APPEND option_list "-DCMAKE_MESSAGE_LOG_LEVEL=DEBUG")
     list(APPEND option_list "-DCMAKE_AUTOGEN_VERBOSE=TRUE")
+    if(QT_BUILD_DIR)
+        list(APPEND option_list "-DQT_BUILD_DIR=${QT_BUILD_DIR}")
+    endif()
+
+    # Forward whatever hints were used in find_package(Qt6) to the ctest configure
+    foreach(hint IN ITEMS Qt6_ROOT QT6_ROOT)
+        if(DEFINED ${hint})
+            # Avoid backslashes in paths on Windows, because they are interpreted as escape
+            # sequences in CMake.
+            file(TO_CMAKE_PATH "${${hint}}" hint_path)
+            list(APPEND option_list "-D${hint}=${hint_path}")
+        endif()
+    endforeach()
+
+    # Forward cross-compile find hints from QtBuildInternalsExtra.cmake.
+    foreach(hint IN ITEMS OPENSSL_ROOT_DIR FFMPEG_DIR)
+        if(NOT "${${hint}}" STREQUAL "")
+            file(TO_CMAKE_PATH "${${hint}}" hint_path)
+            list(APPEND option_list "-D${hint}=${hint_path}")
+        endif()
+    endforeach()
+
+    # Pass a variable that can serve as a marker for cmake build tests in other build system code.
+    list(APPEND option_list "-DQT_INTERNAL_IS_CMAKE_BUILD_TEST=ON")
 
     if(APPLE AND CMAKE_OSX_ARCHITECTURES)
         list(LENGTH CMAKE_OSX_ARCHITECTURES osx_arch_count)
@@ -281,6 +318,7 @@ macro(_qt_internal_test_expect_pass _dir)
       GENERATOR
       MAKE_PROGRAM
       BUILD_TYPE
+      BUILD_TARGET
     )
     set(_test_multi_args
       BUILD_OPTIONS
@@ -336,6 +374,12 @@ macro(_qt_internal_test_expect_pass _dir)
     endif()
     if(build_type)
         set(build_type "--build-config" "${build_type}")
+    endif()
+
+    if(_ARGS_BUILD_TARGET)
+        set(build_target "--build-target" "${_ARGS_BUILD_TARGET}")
+    else()
+        set(build_target "")
     endif()
 
     # Allow skipping clean step.
@@ -442,15 +486,29 @@ macro(_qt_internal_test_expect_pass _dir)
         ${build_project}
         --build-options "${option_list}"
                         "${_ARGS_BUILD_OPTIONS}" ${additional_configure_args}
+        ${build_target}
         ${test_command}
     )
-    add_test(${testname} ${CMAKE_CTEST_COMMAND} ${ctest_command_args})
+
+    set(wrapper_file "${CMAKE_CURRENT_BINARY_DIR}/build_and_test_${testname}.cmake")
+    _qt_internal_create_command_script(
+      COMMAND ${CMAKE_CTEST_COMMAND} ${ctest_command_args}
+      COMMAND_ECHO STDOUT
+      OUTPUT_FILE "${wrapper_file}"
+      PRE_RUN ${_qt_internal_skip_build_test_pre_run}
+    )
+
+    add_test(${testname} "${CMAKE_COMMAND}" "-P" "${wrapper_file}")
+    set_tests_properties(${testname} PROPERTIES
+        SKIP_REGULAR_EXPRESSION "${_qt_internal_skip_build_test_regex}")
+
     if(_ARGS_SIMULATE_IN_SOURCE)
       set_tests_properties(${testname} PROPERTIES
           FIXTURES_REQUIRED "${testname}SIMULATE_IN_SOURCE_FIXTURE"
       )
     endif()
     set_tests_properties(${testname} PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+    _qt_internal_make_check_target(${testname})
 
     if(_ARGS_BINARY)
         set(run_env_args "")
@@ -567,9 +625,12 @@ function(_qt_internal_add_qmake_test dir_name)
         COMMAND_ECHO STDOUT
         OUTPUT_FILE "${qmake_wrapper_file}"
         WORKING_DIRECTORY "${build_dir}"
+        PRE_RUN ${_qt_internal_skip_build_test_pre_run}
     )
 
     add_test(${testname}_qmake "${CMAKE_COMMAND}" "-P" "${qmake_wrapper_file}")
+    set_tests_properties(${testname}_qmake PROPERTIES
+        SKIP_REGULAR_EXPRESSION "${_qt_internal_skip_build_test_regex}")
 
     set_tests_properties(${testname}_qmake PROPERTIES
         DEPENDS ${testname}_create_build_dir
@@ -585,9 +646,12 @@ function(_qt_internal_add_qmake_test dir_name)
         OUTPUT_FILE "${build_tool_wrapper_file}"
         WORKING_DIRECTORY "${build_dir}"
         ENVIRONMENT ${arg_BUILD_ENVIRONMENT}
+        PRE_RUN ${_qt_internal_skip_build_test_pre_run}
     )
 
     add_test(${testname} "${CMAKE_COMMAND}" "-P" "${build_tool_wrapper_file}")
+    set_tests_properties(${testname} PROPERTIES
+        SKIP_REGULAR_EXPRESSION "${_qt_internal_skip_build_test_regex}")
 
     set_tests_properties(${testname} PROPERTIES
         DEPENDS ${testname}_qmake
@@ -647,16 +711,27 @@ list(APPEND CMAKE_PREFIX_PATH \"${__expect_fail_prefixes}\")
       set(make_program "${CMAKE_MAKE_PROGRAM}")
   endif()
 
-  add_test(${testname} ${CMAKE_CTEST_COMMAND}
-    --build-and-test
-    "${CMAKE_CURRENT_BINARY_DIR}/failbuild/${_dir}"
-    "${CMAKE_CURRENT_BINARY_DIR}/failbuild/${_dir}/build"
-    --build-config "${CMAKE_BUILD_TYPE}"
-    --build-generator "${CMAKE_GENERATOR}"
-    --build-makeprogram "${make_program}"
-    --build-project "${_dir}"
-    --build-options ${option_list}
+  set(wrapper_file "${CMAKE_CURRENT_BINARY_DIR}/build_and_test_${testname}.cmake")
+  _qt_internal_create_command_script(
+      COMMAND ${CMAKE_CTEST_COMMAND}
+          --build-and-test
+          "${CMAKE_CURRENT_BINARY_DIR}/failbuild/${_dir}"
+          "${CMAKE_CURRENT_BINARY_DIR}/failbuild/${_dir}/build"
+          --build-config "${CMAKE_BUILD_TYPE}"
+          --build-generator "${CMAKE_GENERATOR}"
+          --build-makeprogram "${make_program}"
+          --build-project "${_dir}"
+          --build-options ${option_list}
+      COMMAND_ECHO STDOUT
+      OUTPUT_FILE "${wrapper_file}"
+      PRE_RUN ${_qt_internal_skip_build_test_pre_run}
   )
+
+  add_test(${testname} "${CMAKE_COMMAND}" "-P" "${wrapper_file}")
+  set_tests_properties(${testname} PROPERTIES
+        SKIP_REGULAR_EXPRESSION "${_qt_internal_skip_build_test_regex}")
+  _qt_internal_make_check_target(${testname})
+
   unset(__expect_fail_prefixes)
 endmacro()
 
@@ -760,14 +835,30 @@ function(_qt_internal_test_module_includes)
       set(make_program "${CMAKE_MAKE_PROGRAM}")
   endif()
 
-  add_test(module_includes ${CMAKE_CTEST_COMMAND}
-    --build-and-test
-    "${CMAKE_CURRENT_BINARY_DIR}/module_includes/"
-    "${CMAKE_CURRENT_BINARY_DIR}/module_includes/build"
-    --build-config "${CMAKE_BUILD_TYPE}"
-    --build-generator "${CMAKE_GENERATOR}"
-    --build-makeprogram "${make_program}"
-    --build-project module_includes
-    --build-options ${option_list}
+  set(wrapper_file "${CMAKE_CURRENT_BINARY_DIR}/build_and_test_module_includes.cmake")
+  _qt_internal_create_command_script(
+    COMMAND ${CMAKE_CTEST_COMMAND}
+      --build-and-test
+      "${CMAKE_CURRENT_BINARY_DIR}/module_includes/"
+      "${CMAKE_CURRENT_BINARY_DIR}/module_includes/build"
+      --build-config "${CMAKE_BUILD_TYPE}"
+      --build-generator "${CMAKE_GENERATOR}"
+      --build-makeprogram "${make_program}"
+      --build-project module_includes
+      --build-options ${option_list}
+    COMMAND_ECHO STDOUT
+    OUTPUT_FILE "${wrapper_file}"
+    PRE_RUN ${_qt_internal_skip_build_test_pre_run}
+  )
+
+  add_test(module_includes "${CMAKE_COMMAND}" "-P" "${wrapper_file}")
+  set_tests_properties(module_includes PROPERTIES
+      SKIP_REGULAR_EXPRESSION "${_qt_internal_skip_build_test_regex}")
+  # We need a unique name for the targets
+  # TODO: CTest name clash would make multiple tests be run as long as they are
+  #  defined in nested folders
+  string(TOLOWER "${PROJECT_NAME}" project_name_lower)
+  _qt_internal_make_check_target(${project_name_lower}_module_includes
+      CTEST_TEST_NAME module_includes
   )
 endfunction()

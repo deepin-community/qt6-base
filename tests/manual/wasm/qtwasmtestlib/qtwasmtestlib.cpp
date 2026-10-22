@@ -9,6 +9,12 @@
 #include <emscripten.h>
 #include <emscripten/threading.h>
 
+#if QT_CONFIG(wasm_jspi)
+# define QT_WASM_EMSCRIPTEN_ASYNC ,emscripten::async()
+#else
+# define QT_WASM_EMSCRIPTEN_ASYNC
+#endif
+
 namespace QtWasmTest {
 namespace {
 QObject *g_testObject = nullptr;
@@ -127,7 +133,7 @@ void passTest()
 EMSCRIPTEN_BINDINGS(qtwebtestrunner) {
     emscripten::function("cleanupTestCase", &cleanupTestCase);
     emscripten::function("getTestFunctions", &getTestFunctions);
-    emscripten::function("runTestFunction", &runTestFunction);
+    emscripten::function("runTestFunction", &runTestFunction QT_WASM_EMSCRIPTEN_ASYNC);
     emscripten::function("qtWasmFail", &failTest);
     emscripten::function("qtWasmPass", &passTest);
 }

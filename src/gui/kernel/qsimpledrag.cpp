@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsimpledrag_p.h"
 
@@ -30,7 +31,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcDnd, "qt.gui.dnd")
+Q_STATIC_LOGGING_CATEGORY(lcDnd, "qt.gui.dnd")
 
 static QWindow* topLevelAt(const QPoint &pos)
 {
@@ -171,9 +172,19 @@ Qt::DropAction QBasicDrag::drag(QDrag *o)
     m_executed_drop_action = Qt::IgnoreAction;
     m_can_drop = false;
 
-    startDrag();
+    // Create the loop before starting the drag. startDrag() installs the event filter
+    // and delivers the first drag events, so the drag can already be cancelled,
+    // dropped or destroyed before we get here, and exitDndEventLoop() and cancelDrag()
+    // both no-op while m_eventLoop is null. QEventLoop::exec() clears any pending exit
+    // when it starts, so we need a flag to avoid losing track of an early exit.
+    m_dragEndRequested = false;
     m_eventLoop = new QEventLoop;
-    m_eventLoop->exec();
+    startDrag();
+    qCDebug(lcDnd) << "entering drag event loop; drag" << m_drag
+                   << "already ended?" << m_dragEndRequested;
+    if (m_drag && !m_dragEndRequested)
+        m_eventLoop->exec();
+    qCDebug(lcDnd) << "left drag event loop; action" << m_executed_drop_action;
     delete m_eventLoop;
     m_eventLoop = nullptr;
     m_drag = nullptr;
@@ -184,8 +195,10 @@ Qt::DropAction QBasicDrag::drag(QDrag *o)
 
 void QBasicDrag::cancelDrag()
 {
+    qCDebug(lcDnd) << "cancelling drag";
     if (m_eventLoop) {
         cancel();
+        m_dragEndRequested = true;
         m_eventLoop->quit();
     }
 }
@@ -195,7 +208,8 @@ void QBasicDrag::startDrag()
     QPoint pos;
 #ifndef QT_NO_CURSOR
     pos = QCursor::pos();
-    if (pos.x() == int(qInf())) {
+    static constexpr QGuiApplicationPrivate::QLastCursorPosition uninitializedCursorPosition;
+    if (pos == uninitializedCursorPosition) {
         // ### fixme: no mouse pos registered. Get pos from touch...
         pos = QPoint();
     }
@@ -227,7 +241,10 @@ void QBasicDrag::cancel()
 {
     disableEventFilter();
     restoreCursor();
-    m_drag_icon_window->setVisible(false);
+    // Can be reached before startDrag() has created the icon window, now that the event
+    // loop exists for the duration of startDrag() too.
+    if (m_drag_icon_window)
+        m_drag_icon_window->setVisible(false);
 }
 
 /*!
@@ -250,12 +267,20 @@ void QBasicDrag::drop(const QPoint &, Qt::MouseButtons, Qt::KeyboardModifiers)
 
 void  QBasicDrag::exitDndEventLoop()
 {
+    m_dragEndRequested = true;
+    qCDebug(lcDnd) << "ending drag event loop; running?"
+                   << (m_eventLoop && m_eventLoop->isRunning());
     if (m_eventLoop && m_eventLoop->isRunning())
         m_eventLoop->exit();
 }
 
 void QBasicDrag::updateCursor(Qt::DropAction action)
 {
+    // In case QDrag is destroyed from a drag event handler, cancel() has
+    // already restored the cursor: nothing left to do.
+    if (!m_drag)
+        return;
+
 #ifndef QT_NO_CURSOR
     Qt::CursorShape cursorShape = Qt::ForbiddenCursor;
     if (canDrop()) {
@@ -370,8 +395,14 @@ static void sendDragLeave(QWindow *window)
 void QSimpleDrag::cancel()
 {
     QBasicDrag::cancel();
-    if (drag() && m_sourceWindow) {
-        sendDragLeave(m_sourceWindow);
+    if (drag()) {
+        // Leave the window the drag is currently over, which is only the window it
+        // started from until the first move() onto another window. Leaving
+        // m_sourceWindow instead would send it a second QDragLeaveEvent and leave the
+        // window actually under the cursor believing a drag is still in progress.
+        if (m_windowUnderCursor)
+            sendDragLeave(m_windowUnderCursor);
+        m_windowUnderCursor = nullptr;
         m_sourceWindow = nullptr;
     }
 }
@@ -379,6 +410,9 @@ void QSimpleDrag::cancel()
 void QSimpleDrag::move(const QPoint &nativeGlobalPos, Qt::MouseButtons buttons,
                        Qt::KeyboardModifiers modifiers)
 {
+    if (!drag())
+        return;
+
     QPoint globalPos = fromNativeGlobalPixels(nativeGlobalPos);
     moveShapedPixmapWindow(globalPos);
     QWindow *window = topLevelAt(globalPos);
@@ -407,6 +441,9 @@ void QSimpleDrag::move(const QPoint &nativeGlobalPos, Qt::MouseButtons buttons,
 void QSimpleDrag::drop(const QPoint &nativeGlobalPos, Qt::MouseButtons buttons,
                        Qt::KeyboardModifiers modifiers)
 {
+    if (!drag())
+        return;
+
     QPoint globalPos = fromNativeGlobalPixels(nativeGlobalPos);
 
     QBasicDrag::drop(nativeGlobalPos, buttons, modifiers);

@@ -1,5 +1,8 @@
 type: Group
 instructions:
+  # Fetch a custom built cmake if the feature is set.
+  - !include "{{qt/qtbase}}/coin_fetch_custom_cmake_checked.yaml"
+
   - type: Group
     instructions:
     - !include "{{qt/qtbase}}/run_license_check.yaml"
@@ -9,10 +12,12 @@ instructions:
       contains_value: LicenseCheckV2
   - type: Group
     instructions:
+      - !include "{{qt/qtbase}}/cmake_build_tests_in_test_stage.yaml"
       - !include "{{qt/qtbase}}/coin_module_test_template_common.yaml"
       - type: Group
         instructions:
           - !include "{{qt/qtbase}}/cmake_regular_test_instructions.yaml"
+          - !include "{{qt/qtbase}}/coin_module_test_release_imx8_hw.yaml"
         enable_if:
           condition: or
           conditions:
@@ -21,7 +26,7 @@ instructions:
               equals_property: target.os
             - condition: property
               property: target.osVersion
-              in_values: [QEMU, QNX_710, IOS_ANY]
+              in_values: [QEMU, IMX8, QNX_710, QNX_800, IOS_ANY]
             - condition: property
               property: features
               contains_value: AndroidTestRun
@@ -34,3 +39,26 @@ instructions:
         - condition: property
           property: features
           contains_value: LicenseCheckV2
+        - condition: property
+          property: features
+          contains_value: DoNotRunTestsButCreateTestWorkItem
+        - condition: property
+          property: target.osVersion
+          equals_value: "HarmonyOS_ANY"
+        - condition: runtime
+          env_var: AXIVION_ANALYSIS
+          equals_value: "1"
+  - type: Group
+    instructions:
+    - !include "{{qt/qtbase}}/run_harmonyos_test.yaml"
+    enable_if:
+      condition: property
+      property: target.osVersion
+      equals_value: "HarmonyOS_ANY"
+  - type: Group
+    instructions:
+      - !include "{{qt/qtbase}}/coin_module_axivion_template_v2.yaml"
+    enable_if:
+      condition: runtime
+      env_var: AXIVION_ANALYSIS
+      equals_value: "1"

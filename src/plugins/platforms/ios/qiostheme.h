@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QIOSTHEME_H
 #define QIOSTHEME_H
@@ -25,6 +26,8 @@ public:
 
     Qt::ColorScheme colorScheme() const override;
     void requestColorScheme(Qt::ColorScheme scheme) override;
+    Qt::ContrastPreference contrastPreference() const override;
+    Qt::MotionPreference motionPreference() const override;
 
 #if !defined(Q_OS_TVOS) && !defined(Q_OS_VISIONOS)
     QPlatformMenuItem* createPlatformMenuItem() const override;
@@ -36,6 +39,7 @@ public:
 
     const QFont *font(Font type = SystemFont) const override;
     QIconEngine *createIconEngine(const QString &iconName) const override;
+    QIcon fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions options = {}) const override;
 
     static const char *name;
 
@@ -46,6 +50,7 @@ private:
     static QPalette s_systemPalette;
     static inline Qt::ColorScheme s_colorSchemeOverride = Qt::ColorScheme::Unknown;
     QMacNotificationObserver m_contentSizeCategoryObserver;
+    QMacNotificationObserver m_motionPreferenceObserver;
 };
 
 QT_END_NAMESPACE

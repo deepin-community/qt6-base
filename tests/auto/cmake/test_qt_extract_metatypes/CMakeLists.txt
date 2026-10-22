@@ -13,11 +13,7 @@ get_filename_component(test_project_source_dir "${test_project_source_dir}" REAL
 get_filename_component(test_project_build_dir "${test_project_build_dir}" REALPATH)
 
 get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
-if (CMAKE_BUILD_TYPE AND NOT is_multi_config)
-    string(TOLOWER "qt6metatypetest_${CMAKE_BUILD_TYPE}" metatypes_file_basename)
-else()
-    string(TOLOWER "qt6metatypetest" metatypes_file_basename)
-endif()
+string(TOLOWER "qt6metatypetest" metatypes_file_basename)
 set(meta_types_file
     "${test_project_build_dir}/meta_types/${metatypes_file_basename}_metatypes.json")
 
@@ -97,7 +93,9 @@ file(TIMESTAMP "${meta_types_file}" new_metatypes_timestamp)
 # change the resulting .json file content.
 set(extract_metatypes_uses_dep_files FALSE)
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.17") # Requires automoc changes present only in 3.17
-    if(CMAKE_GENERATOR STREQUAL "Ninja" OR CMAKE_GENERATOR STREQUAL "Ninja Multi-Config")
+    if(CMAKE_GENERATOR STREQUAL "Ninja" OR CMAKE_GENERATOR STREQUAL "Ninja Multi-Config"
+        OR (CMAKE_VERSION VERSION_GREATER_EQUAL "4.4"
+            AND (CMAKE_GENERATOR STREQUAL "Xcode" OR CMAKE_GENERATOR MATCHES "^Visual Studio ")))
         set(extract_metatypes_uses_dep_files TRUE)
     endif()
 endif()

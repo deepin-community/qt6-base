@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2015 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMIMEPROVIDER_P_H
 #define QMIMEPROVIDER_P_H
@@ -46,7 +47,7 @@ class QMimeProviderBase
 
 public:
     QMimeProviderBase(QMimeDatabasePrivate *db, const QString &directory);
-    virtual ~QMimeProviderBase() {}
+    virtual ~QMimeProviderBase() = default;
 
     virtual bool isValid() = 0;
     virtual bool isInternalDatabase() const = 0;
@@ -102,15 +103,17 @@ public:
 
 private:
     struct CacheFile;
+    class RecordList;
 
-    int matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile, int offset,
-                      const QString &fileName);
-    bool matchSuffixTree(QMimeGlobMatchResult &result, CacheFile *cacheFile, int numEntries,
-                         int firstOffset, const QString &fileName, qsizetype charPos,
+    quint32 matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile,
+                          const RecordList &globs, const QString &fileName);
+    bool matchSuffixTree(QMimeGlobMatchResult &result, CacheFile *cacheFile, quint32 numEntries,
+                         quint64 firstOffset, const QString &fileName, qsizetype charPos,
                          bool caseSensitiveCheck);
-    bool matchMagicRule(CacheFile *cacheFile, int numMatchlets, int firstOffset,
+    bool matchMagicRule(CacheFile *cacheFile, quint32 numMatchlets, quint64 firstOffset,
                         const QByteArray &data);
-    QLatin1StringView iconForMime(CacheFile *cacheFile, int posListOffset, const QByteArray &inputMime);
+    QLatin1StringView iconForMime(CacheFile *cacheFile, const RecordList &icons,
+                                  QStringView inputMime);
     void loadMimeTypeList();
     bool checkCacheChanged();
 

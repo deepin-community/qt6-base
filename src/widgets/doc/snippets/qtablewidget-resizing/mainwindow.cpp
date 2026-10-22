@@ -3,7 +3,7 @@
 
 #include <QtWidgets>
 
-#include "mainwindow.h"
+#include "../include/mainwindow.h"
 
 MainWindow::MainWindow()
 {
@@ -20,9 +20,10 @@ MainWindow::MainWindow()
     menuBar()->addMenu(fileMenu);
     menuBar()->addMenu(tableMenu);
 
-//! [0]
+    //! [0]
     tableWidget = new QTableWidget(this);
-//! [0]
+    //! [0]
+
     tableWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
     connect(quitAction, &QAction::triggered, this, &QWidget::close);
@@ -37,18 +38,18 @@ MainWindow::MainWindow()
 
 void MainWindow::setupTableItems()
 {
-//! [1]
+    //! [1]
     tableWidget->setRowCount(10);
     tableWidget->setColumnCount(5);
-//! [1]
+    //! [1]
 
     for (int row = 0; row < tableWidget->rowCount(); ++row) {
         for (int column = 0; column < tableWidget->columnCount(); ++column) {
-//! [2]
-    QTableWidgetItem *newItem = new QTableWidgetItem(tr("%1").arg(
-        (row+1)*(column+1)));
-    tableWidget->setItem(row, column, newItem);
-//! [2]
+            //! [2]
+            QTableWidgetItem *newItem = new QTableWidgetItem(tr("%1").arg(
+                (row+1)*(column+1)));
+            tableWidget->setItem(row, column, newItem);
+            //! [2]
         }
     }
 }
@@ -57,7 +58,7 @@ void MainWindow::changeWidth()
 {
     bool ok;
 
-    int newWidth = QInputDialog::getInteger(this, tr("Change table width"),
+    int newWidth = QInputDialog::getInt(this, tr("Change table width"),
         tr("Input the number of columns required (1-20):"),
         tableWidget->columnCount(), 1, 20, 1, &ok);
 
@@ -69,7 +70,7 @@ void MainWindow::changeHeight()
 {
     bool ok;
 
-    int newHeight = QInputDialog::getInteger(this, tr("Change table height"),
+    int newHeight = QInputDialog::getInt(this, tr("Change table height"),
         tr("Input the number of rows required (1-20):"),
         tableWidget->rowCount(), 1, 20, 1, &ok);
 

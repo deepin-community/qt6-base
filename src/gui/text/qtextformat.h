@@ -14,6 +14,7 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qshareddata.h>
 #include <QtCore/qvariant.h>
+#include <QtCore/qmap.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -159,7 +160,9 @@ public:
         FontStrikeOut = 0x2007,
         FontFixedPitch = 0x2008,
         FontPixelSize = 0x2009,
-        LastFontProperty = FontPixelSize,
+        FontFeatures = 0x2010, // Note: Same as OldTextUnderlineColor
+        FontVariableAxes = 0x2011,
+        LastFontProperty = FontVariableAxes,
 
         TextUnderlineColor = 0x2020,
         TextVerticalAlignment = 0x2021,
@@ -517,6 +520,11 @@ public:
     {
         return static_cast<QFont::HintingPreference>(intProperty(FontHintingPreference));
     }
+
+    void setFontFeatures(const QMap<QFont::Tag, quint32> &fontFeatures);
+    QMap<QFont::Tag, quint32> fontFeatures() const;
+    void setFontVariableAxes(const QMap<QFont::Tag, float> &fontVariableAxes);
+    QMap<QFont::Tag, float> fontVariableAxes() const;
 
     inline void setFontKerning(bool enable)
     { setProperty(FontKerning, enable); }

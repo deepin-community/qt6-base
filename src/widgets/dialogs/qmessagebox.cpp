@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtWidgets/qmessagebox.h>
 
@@ -150,10 +151,16 @@ private:
 class DetailButton : public QPushButton
 {
 public:
+QT_WARNING_PUSH
+// see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=123985
+#if defined(Q_CC_GNU_ONLY) && Q_CC_GNU_ONLY >= 1600 && Q_CC_GNU_ONLY < 1700 && !defined(__OPTIMIZE__)
+QT_WARNING_DISABLE_GCC("-Wmaybe-uninitialized")
+#endif
     DetailButton(QWidget *parent) : QPushButton(label(ShowLabel), parent)
     {
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
+QT_WARNING_POP
 
     QString label(DetailButtonLabel label) const
     { return label == ShowLabel ? QMessageBox::tr("Show Details...") : QMessageBox::tr("Hide Details..."); }
@@ -249,6 +256,7 @@ public:
     QByteArray memberToDisconnectOnClose;
     QByteArray signalToDisconnectOnClose;
     QSharedPointer<QMessageDialogOptions> options;
+    bool optionsExplicitlySet = false;
 private:
     void initHelper(QPlatformDialogHelper *) override;
     void helperPrepareShow(QPlatformDialogHelper *) override;
@@ -279,7 +287,7 @@ void QMessageBoxPrivate::init(const QString &title, const QString &text)
         q->setText(text);
     }
     q->setModal(true);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QFont f = q->font();
     f.setBold(true);
     label->setFont(f);
@@ -297,7 +305,7 @@ void QMessageBoxPrivate::setupLayout()
     if (hasIcon)
         grid->addWidget(iconLabel, 0, 0, 2, 1, Qt::AlignTop);
     iconLabel->setVisible(hasIcon);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QSpacerItem *indentSpacer = new QSpacerItem(14, 1, QSizePolicy::Fixed, QSizePolicy::Fixed);
 #else
     QSpacerItem *indentSpacer = new QSpacerItem(hasIcon ? 7 : 15, 1, QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -305,20 +313,20 @@ void QMessageBoxPrivate::setupLayout()
     grid->addItem(indentSpacer, 0, hasIcon ? 1 : 0, 2, 1);
     grid->addWidget(label, 0, hasIcon ? 2 : 1, 1, 1);
     if (informativeLabel) {
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
         informativeLabel->setContentsMargins(0, 7, 0, 7);
 #endif
         grid->addWidget(informativeLabel, 1, hasIcon ? 2 : 1, 1, 1);
     }
     if (checkbox) {
         grid->addWidget(checkbox, informativeLabel ? 2 : 1, hasIcon ? 2 : 1, 1, 1, Qt::AlignLeft);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         grid->addItem(new QSpacerItem(1, 15, QSizePolicy::Fixed, QSizePolicy::Fixed), grid->rowCount(), 0);
 #else
         grid->addItem(new QSpacerItem(1, 7, QSizePolicy::Fixed, QSizePolicy::Fixed), grid->rowCount(), 0);
 #endif
     }
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     grid->addWidget(buttonBox, grid->rowCount(), hasIcon ? 2 : 1, 1, 1);
     grid->setContentsMargins(0, 0, 0, 0);
     grid->setVerticalSpacing(8);
@@ -358,7 +366,7 @@ void QMessageBoxPrivate::updateSize()
     // on small screens allows the messagebox be the same size as the screen
     if (screenSize.width() <= 1024)
         hardLimit = screenSize.width();
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     int softLimit = qMin(screenSize.width()/2, 420);
 #else
     // note: ideally on windows, hard and soft limits but it breaks compat
@@ -562,6 +570,10 @@ void QMessageBoxPrivate::helperClicked(QPlatformDialogHelper::StandardButton hel
     and \l{QMessageBox::standardButtons} {standard buttons} for
     accepting a user response.
 
+    While the parent parameter is optional, specifying it gives a hint
+    to the window manager, which can then take care of positioning, and
+    maintain a proper stacking order of the dialog window.
+
     Two APIs for using QMessageBox are provided, the property-based
     API, and the static functions. Calling one of the static functions
     is the simpler approach, but it is less flexible than using the
@@ -581,7 +593,7 @@ void QMessageBoxPrivate::helperClicked(QPlatformDialogHelper::StandardButton hel
     box. The rest of the GUI is blocked until the message box is
     dismissed.
 
-    \image msgbox1.png
+    \image msgbox1.png {Message box with a simple message and an OK button}
 
     A better approach than just alerting the user to an event is to
     also ask the user what to do about it.
@@ -601,6 +613,7 @@ void QMessageBoxPrivate::helperClicked(QPlatformDialogHelper::StandardButton hel
     \snippet code/src_gui_dialogs_qmessagebox.cpp 6
 
     \image msgbox2.png
+           {Message box with a "Save", "Don't Save", and "Cancel" buttons}
 
     The exec() slot returns the StandardButtons value of the button
     that was clicked.
@@ -612,11 +625,12 @@ void QMessageBoxPrivate::helperClicked(QPlatformDialogHelper::StandardButton hel
     Depending on the platform the \l{QMessageBox::detailedText} {detailed text},
     may require the user to click a \uicontrol{Show Details...} button to be shown.
 
-    \image msgbox3.png
+    \image msgbox3.png {Save message box with a "Show Details..." button}
 
     Clicking the \uicontrol{Show Details...} button displays the detailed text.
 
     \image msgbox4.png
+           {Save message box showing the detailed text}
 
     \section2 Rich Text and the Text Format Property
 
@@ -648,19 +662,19 @@ void QMessageBoxPrivate::helperClicked(QPlatformDialogHelper::StandardButton hel
 
     \table
     \row
-    \li \image qmessagebox-quest.png
+    \li \image qmessagebox-quest.png {Question mark icon}
     \li \l Question
     \li For asking a question during normal operations.
     \row
-    \li \image qmessagebox-info.png
+    \li \image qmessagebox-info.png {Information icon}
     \li \l Information
     \li For reporting information about normal operations.
     \row
-    \li \image qmessagebox-warn.png
+    \li \image qmessagebox-warn.png {Warning icon}
     \li \l Warning
     \li For reporting non-critical errors.
     \row
-    \li \image qmessagebox-crit.png
+    \li \image qmessagebox-crit.png {Critical problem icon}
     \li \l Critical
     \li For reporting critical errors.
     \endtable
@@ -1258,6 +1272,9 @@ QCheckBox* QMessageBox::checkBox() const
 */
 void QMessageBox::setOption(QMessageBox::Option option, bool on)
 {
+    Q_D(QMessageBox);
+    d->optionsExplicitlySet = true;
+
     const QMessageBox::Options previousOptions = options();
     if (!(previousOptions & option) != !on)
         setOptions(previousOptions ^ option);
@@ -1280,10 +1297,10 @@ bool QMessageBox::testOption(QMessageBox::Option option) const
 void QMessageBox::setOptions(QMessageBox::Options options)
 {
     Q_D(QMessageBox);
+    d->optionsExplicitlySet = true;
 
     if (QMessageBox::options() == options)
         return;
-
     d->options->setOptions(QMessageDialogOptions::Option(int(options)));
 }
 
@@ -1485,13 +1502,18 @@ void QMessageBox::setTextInteractionFlags(Qt::TextInteractionFlags flags)
 */
 bool QMessageBox::event(QEvent *e)
 {
-    bool result =QDialog::event(e);
+    Q_D(QMessageBox);
+    bool result = QDialog::event(e);
     switch (e->type()) {
         case QEvent::LayoutRequest:
             d_func()->updateSize();
             break;
         case QEvent::LanguageChange:
             d_func()->retranslateStrings();
+            break;
+        case QEvent::Polish:
+            if (!d->optionsExplicitlySet && metaObject() != &QMessageBox::staticMetaObject)
+                setOption(QMessageBox::Option::DontUseNativeDialog);
             break;
         default:
             break;
@@ -1544,7 +1566,7 @@ void QMessageBox::changeEvent(QEvent *ev)
     }
     case QEvent::FontChange:
     case QEvent::ApplicationFontChange:
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     {
         QFont f = font();
         f.setBold(true);
@@ -1567,7 +1589,7 @@ void QMessageBox::keyPressEvent(QKeyEvent *e)
         Q_D(QMessageBox);
         if (e->matches(QKeySequence::Cancel)) {
             if (d->detectedEscapeButton) {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
                 d->detectedEscapeButton->animateClick();
 #else
                 d->detectedEscapeButton->click();
@@ -1657,12 +1679,15 @@ void QMessageBox::open(QObject *receiver, const char *member)
 
 void QMessageBoxPrivate::setVisible(bool visible)
 {
-    Q_Q(QMessageBox);
-
     // Last minute setup
-    if (autoAddOkButton)
-        q->addButton(QMessageBox::Ok);
-    detectEscapeButton();
+    if (visible) {
+        Q_Q(QMessageBox);
+        if (autoAddOkButton)
+            q->addButton(QMessageBox::Ok);
+        detectEscapeButton();
+    }
+    // On hide, we may be called from ~QDialog(), so prevent accessing
+    // q_ptr as a QMessageBox!
 
     if (canBeNativeDialog())
         setNativeDialogVisible(visible);
@@ -1670,7 +1695,7 @@ void QMessageBoxPrivate::setVisible(bool visible)
     // Update WA_DontShowOnScreen based on whether the native dialog was shown,
     // so that QDialog::setVisible(visible) below updates the QWidget state correctly,
     // but skips showing the non-native version.
-    q->setAttribute(Qt::WA_DontShowOnScreen, nativeDialogInUse);
+    static_cast<QWidget*>(q_ptr)->setAttribute(Qt::WA_DontShowOnScreen, nativeDialogInUse);
 
     QDialogPrivate::setVisible(visible);
 }
@@ -1906,7 +1931,7 @@ QMessageBox::StandardButton QMessageBox::critical(QWidget *parent, const QString
 */
 void QMessageBox::about(QWidget *parent, const QString &title, const QString &text)
 {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     static QPointer<QMessageBox> oldMsgBox;
 
     if (oldMsgBox && oldMsgBox->text() == text) {
@@ -1918,17 +1943,16 @@ void QMessageBox::about(QWidget *parent, const QString &title, const QString &te
 #endif
 
     QMessageBox *msgBox = new QMessageBox(Information, title, text, NoButton, parent
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
                                           , Qt::WindowTitleHint | Qt::WindowSystemMenuHint
 #endif
     );
     msgBox->setAttribute(Qt::WA_DeleteOnClose);
     QIcon icon = msgBox->windowIcon();
-    QSize size = icon.actualSize(QSize(64, 64));
-    msgBox->setIconPixmap(icon.pixmap(size));
+    msgBox->setIconPixmap(icon.pixmap(QSize(64, 64), msgBox->devicePixelRatio()));
 
     // should perhaps be a style hint
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     oldMsgBox = msgBox;
     auto *d = msgBox->d_func();
     d->buttonBox->setCenterButtons(true);
@@ -1960,7 +1984,7 @@ void QMessageBox::about(QWidget *parent, const QString &title, const QString &te
 */
 void QMessageBox::aboutQt(QWidget *parent, const QString &title)
 {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     static QPointer<QMessageBox> oldMsgBox;
 
     if (oldMsgBox) {
@@ -2013,7 +2037,7 @@ void QMessageBox::aboutQt(QWidget *parent, const QString &title)
         msgBox->setIconPixmap(pm);
 
     // should perhaps be a style hint
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     oldMsgBox = msgBox;
     auto *d = msgBox->d_func();
     d->buttonBox->setCenterButtons(true);
@@ -2678,7 +2702,7 @@ void QMessageBox::setInformativeText(const QString &text)
             label->setTextInteractionFlags(Qt::TextInteractionFlags(style()->styleHint(QStyle::SH_MessageBox_TextInteractionFlags, nullptr, this)));
             label->setAlignment(Qt::AlignTop | Qt::AlignLeft);
             label->setOpenExternalLinks(true);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
             // apply a smaller font the information label on the mac
             label->setFont(qt_app_fonts_hash()->value("QTipLabel"));
 #endif
@@ -2701,7 +2725,7 @@ void QMessageBox::setInformativeText(const QString &text)
 void QMessageBox::setWindowTitle(const QString &title)
 {
     // Message boxes on the mac do not have a title
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     QDialog::setWindowTitle(title);
 #else
     Q_UNUSED(title);
@@ -2801,7 +2825,7 @@ bool QMessageBoxPrivate::canBeNativeDialog() const
 {
     // Don't use Q_Q here! This function is called from ~QDialog,
     // so Q_Q calling q_func() invokes undefined behavior (invalid cast in q_func()).
-    const QDialog * const q = static_cast<const QMessageBox*>(q_ptr);
+    const QDialog * const q = static_cast<const QDialog*>(q_ptr);
     if (nativeDialogInUse)
         return true;
     if (QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs)
@@ -2810,9 +2834,6 @@ bool QMessageBoxPrivate::canBeNativeDialog() const
         || (options->options() & QMessageDialogOptions::Option::DontUseNativeDialog)) {
         return false;
     }
-
-    if (strcmp(QMessageBox::staticMetaObject.className(), q->metaObject()->className()) != 0)
-        return false;
 
 #if QT_CONFIG(menu)
     for (auto *customButton : buttonBox->buttons()) {

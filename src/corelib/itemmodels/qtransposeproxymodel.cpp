@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Luca Beldi <v.ronin@yahoo.it>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtransposeproxymodel.h"
 #include <private/qtransposeproxymodel_p.h>
@@ -9,6 +10,12 @@
 #include <QtCore/qmap.h>
 
 QT_BEGIN_NAMESPACE
+
+QTransposeProxyModelPrivate::QTransposeProxyModelPrivate()
+    = default;
+
+QTransposeProxyModelPrivate::~QTransposeProxyModelPrivate()
+    = default;
 
 QModelIndex QTransposeProxyModelPrivate::uncheckedMapToSource(const QModelIndex &proxyIndex) const
 {
@@ -172,14 +179,13 @@ void QTransposeProxyModel::setSourceModel(QAbstractItemModel* newSourceModel)
         return;
     beginResetModel();
     if (d->model) {
-        for (const QMetaObject::Connection& discIter : std::as_const(d->sourceConnections))
+        for (QMetaObject::Connection &discIter : d->sourceConnections)
             disconnect(discIter);
     }
-    d->sourceConnections.clear();
     QAbstractProxyModel::setSourceModel(newSourceModel);
     if (d->model) {
         using namespace std::placeholders;
-        d->sourceConnections = QList<QMetaObject::Connection>{
+        d->sourceConnections = std::array{
             connect(d->model, &QAbstractItemModel::modelAboutToBeReset, this, &QTransposeProxyModel::beginResetModel),
             connect(d->model, &QAbstractItemModel::modelReset, this, &QTransposeProxyModel::endResetModel),
             connect(d->model, &QAbstractItemModel::dataChanged, this, std::bind(&QTransposeProxyModelPrivate::onDataChanged, d, _1, _2, _3)),

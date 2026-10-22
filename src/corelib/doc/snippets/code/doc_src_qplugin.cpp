@@ -1,10 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#include <QtPlugin>
+
+QT_BEGIN_NAMESPACE
+
 //! [0]
 namespace Foo
 {
-    struct MyInterface { ... };
+    struct MyInterface { /*...*/ };
 }
 
 Q_DECLARE_INTERFACE(Foo::MyInterface, "org.examples.MyInterface")
@@ -22,3 +26,5 @@ class MyInstance : public QObject
 //! [2]
 Q_IMPORT_PLUGIN(qjpeg)
 //! [2]
+
+QT_END_NAMESPACE

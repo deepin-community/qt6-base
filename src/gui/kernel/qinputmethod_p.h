@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QINPUTMETHOD_P_H
 #define QINPUTMETHOD_P_H
@@ -18,7 +19,6 @@
 #include <QtGui/private/qtguiglobal_p.h>
 #include <qinputmethod.h>
 #include <private/qobject_p.h>
-#include <QtCore/QWeakPointer>
 #include <QTransform>
 #include <qpa/qplatforminputcontext.h>
 #include <qpa/qplatformintegration.h>

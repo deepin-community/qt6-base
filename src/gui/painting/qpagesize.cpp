@@ -1,5 +1,6 @@
 // Copyright (C) 2014 John Layt <jlayt@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpagesize.h"
 
@@ -1207,9 +1208,7 @@ QPageSize &QPageSize::operator=(const QPageSize &other)
 
 /*!
     \fn void QPageSize::swap(QPageSize &other)
-
-    Swaps this QPageSize with \a other. This function is very fast and
-    never fails.
+    \memberswap{QPageSize}
 */
 
 /*!

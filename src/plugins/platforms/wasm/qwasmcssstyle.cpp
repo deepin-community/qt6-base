@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwasmcssstyle.h"
 
@@ -30,30 +31,36 @@ const char *Style = R"css(
     touch-action: none;
 }
 
-.qt-window {
+.qt-decorated-window {
     position: absolute;
     background-color: lightgray;
 }
 
-.qt-window-contents {
-    overflow: hidden;
+.qt-window {
+    overflow: clip;
     position: relative;
 }
 
-.qt-window.transparent-for-input {
+.qt-window-canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+.qt-decorated-window.transparent-for-input {
     pointer-events: none;
 }
 
-.qt-window.has-shadow {
+.qt-decorated-window.has-shadow {
     box-shadow: rgb(0 0 0 / 20%) 0px 10px 16px 0px, rgb(0 0 0 / 19%) 0px 6px 20px 0px;
 }
 
-.qt-window.has-border {
+.qt-decorated-window.has-border {
     border: var(--border-width) solid lightgray;
     caret-color: transparent;
 }
 
-.qt-window.frameless {
+.qt-decorated-window.frameless {
     background-color: transparent;
 }
 
@@ -62,9 +69,9 @@ const char *Style = R"css(
     display: none;
 }
 
-.qt-window.no-resize > .resize-outline { display: none; }
+.qt-decorated-window.no-resize > .resize-outline { display: none; }
 
-.qt-window.has-border:not(.maximized):not(.no-resize) > .resize-outline {
+.qt-decorated-window.has-border:not(.maximized):not(.no-resize) > .resize-outline {
     display: block;
 }
 
@@ -140,7 +147,7 @@ const char *Style = R"css(
     padding-bottom: 4px;
 }
 
-.qt-window.has-border > .title-bar {
+.qt-decorated-window.has-border > .title-bar {
     display: flex;
 }
 
@@ -153,7 +160,7 @@ const char *Style = R"css(
 }
 
 
-.qt-window.has-title .title-bar .window-name {
+.qt-decorated-window.has-title .title-bar .window-name {
     display: block;
 }
 
@@ -161,13 +168,8 @@ const char *Style = R"css(
     flex-grow: 1
 }
 
-.qt-window.inactive .title-bar {
+.qt-decorated-window.inactive .title-bar {
     opacity: 0.35;
-}
-
-.qt-window-canvas-container {
-    display: flex;
-    pointer-events: none;
 }
 
 .title-bar div {
@@ -176,6 +178,8 @@ const char *Style = R"css(
 
 .qt-window-a11y-container {
     position: absolute;
+    left: 0;
+    top: 0;
     z-index: -1;
 }
 
@@ -201,7 +205,7 @@ const char *Style = R"css(
     pointer-events: all;
 }
 
-.qt-window.blocked div {
+.qt-decorated-window.blocked div {
     pointer-events: none;
 }
 
@@ -230,6 +234,14 @@ const char *Style = R"css(
     overflow: hidden;
     padding: 0;
     position: absolute;
+}
+
+.hidden-drag-image {
+    visibility: visible;
+    display: block;
+    opacity: 1.0;
+    position: absolute;
+    z-index: -1;
 }
 
 )css";

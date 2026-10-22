@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef HPACK_P_H
 #define HPACK_P_H
@@ -17,11 +18,11 @@
 
 #include "hpacktable_p.h"
 
-#include <QtCore/qglobal.h>
 #include <QtCore/qurl.h>
 
 #include <vector>
 #include <optional>
+#include <limits>
 
 QT_BEGIN_NAMESPACE
 
@@ -39,6 +40,8 @@ public:
     Encoder(quint32 maxTableSize, bool compressStrings);
 
     quint32 dynamicTableSize() const;
+    quint32 dynamicTableCapacity() const;
+    quint32 maxDynamicTableCapacity() const;
 
     bool encodeRequest(class BitOStream &outputStream,
                        const HttpHeader &header);
@@ -94,8 +97,11 @@ public:
     }
 
     quint32 dynamicTableSize() const;
+    quint32 dynamicTableCapacity() const;
+    quint32 maxDynamicTableCapacity() const;
 
     void setMaxDynamicTableSize(quint32 size);
+    void setMaxHeaderListSize(quint32 size);
 
 private:
 
@@ -112,6 +118,9 @@ private:
 
     HttpHeader header;
     FieldLookupTable lookupTable;
+
+    quint64 headerListSize = 0;
+    quint32 maxHeaderListSize = (std::numeric_limits<quint32>::max)();
 };
 
 std::optional<QUrl> makePromiseKeyUrl(const HttpHeader &requestHeader);

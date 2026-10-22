@@ -18,6 +18,7 @@ private Q_SLOTS:
 #if QT_CONFIG(timezone)
     void isTimeZoneIdAvailable();
     void systemTimeZone();
+    void utc();
     void zoneByName_data();
     void zoneByName();
     void displayName_data();
@@ -40,15 +41,17 @@ static QList<QByteArray> enoughZones()
         QByteArray("UTC"),
         // Those named overtly in tst_QDateTime - special cases first:
         QByteArray("UTC-02:00"), QByteArray("UTC+02:00"), QByteArray("UTC+12:00"),
-        QByteArray("Etc/GMT+3"), QByteArray("GMT-2"), QByteArray("GMT"),
+        QByteArray("Etc/GMT+3"), QByteArray("GMT-0"), QByteArray("GMT"),
         // ... then ordinary names in alphabetic order:
+        QByteArray("America/Anchorage"), QByteArray("America/Metlakatla"),
         QByteArray("America/New_York"), QByteArray("America/Sao_Paulo"),
-        QByteArray("America/Vancouver"),
-        QByteArray("Asia/Kathmandu"), QByteArray("Asia/Singapore"),
+        QByteArray("America/Toronto"), QByteArray("America/Vancouver"),
+        QByteArray("Asia/Kathmandu"), QByteArray("Asia/Manila"), QByteArray("Asia/Singapore"),
         QByteArray("Australia/Brisbane"), QByteArray("Australia/Eucla"),
         QByteArray("Australia/Sydney"),
         QByteArray("Europe/Berlin"), QByteArray("Europe/Helsinki"),
-        QByteArray("Europe/Rome"), QByteArray("Europe/Oslo"),
+        QByteArray("Europe/Lisbon"), QByteArray("Europe/Oslo"),
+        QByteArray("Europe/Rome"),
         QByteArray("Pacific/Apia"), QByteArray("Pacific/Auckland"),
         QByteArray("Pacific/Kiritimati")
     };
@@ -69,9 +72,17 @@ void tst_QTimeZone::isTimeZoneIdAvailable()
 void tst_QTimeZone::systemTimeZone()
 {
     QBENCHMARK {
-        QTimeZone::systemTimeZone();
+        [[maybe_unused]] const auto r = QTimeZone::systemTimeZone();
     }
 }
+
+void tst_QTimeZone::utc()
+{
+    QBENCHMARK {
+        [[maybe_unused]] const auto r = QTimeZone::utc();
+    }
+}
+
 void tst_QTimeZone::zoneByName_data()
 {
     QTest::addColumn<QByteArray>("name");
@@ -123,7 +134,7 @@ void tst_QTimeZone::displayName_data()
     const auto names = enoughZones();
     for (const auto &name : names) {
         for (const auto &when : times) {
-            qsizetype locIndex = 0;
+            std::size_t locIndex = 0;
             for (const auto &where : locs) {
                 const QByteArray dt = when.toString(Qt::ISODate).toUtf8();
                 const QByteArray loc =

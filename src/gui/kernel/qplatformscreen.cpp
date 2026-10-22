@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformscreen.h"
 #include <QtCore/qdebug.h>
@@ -152,7 +153,7 @@ QDpi QPlatformScreen::logicalDpi() const
 
 // Helper function for accessing the platform screen logical dpi
 // which accounts for QT_FONT_DPI.
-QPair<qreal, qreal> QPlatformScreen::overrideDpi(const QPair<qreal, qreal> &in)
+QDpi QPlatformScreen::overrideDpi(const QDpi &in)
 {
     static const int overrideDpi = qEnvironmentVariableIntValue("QT_FONT_DPI");
     return overrideDpi > 0 ?  QDpi(overrideDpi, overrideDpi) : in;
@@ -338,7 +339,7 @@ void QPlatformScreen::resizeMaximizedWindows()
         // QWindow and QScreen sizes.
         if (supportsMaximizeUsingFullscreen
                 && w->windowState() & Qt::WindowMaximized
-                && w->flags() & Qt::MaximizeUsingFullscreenGeometryHint) {
+                && w->flags() & Qt::ExpandedClientAreaHint) {
             w->handle()->setGeometry(newNativeGeometry);
         } else if (w->windowState() & Qt::WindowMaximized || w->geometry() == oldAvailableGeometry) {
             w->handle()->setGeometry(newNativeAvailableGeometry);

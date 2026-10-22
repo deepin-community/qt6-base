@@ -1,6 +1,14 @@
 // Copyright (C) 2022 Laszlo Papp <lpapp@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#include <QtCore/qglobal.h>
+
+#if defined(Q_OS_WIN)
+
+#include <windows.h>
+#include <QByteArray>
+#include <QAbstractNativeEventFilter>
+
 //! [0]
 class MyMSGEventFilter : public QAbstractNativeEventFilter
 {
@@ -18,3 +26,4 @@ public:
     }
 };
 //! [0]
+#endif

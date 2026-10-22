@@ -1,0 +1,2 @@
+usr/bin/${DEB_HOST_GNU_TYPE}-qtpaths6
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/qt6.conf

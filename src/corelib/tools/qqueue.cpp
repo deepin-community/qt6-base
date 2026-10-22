@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QQueue
@@ -8,11 +9,13 @@
 
     \ingroup tools
     \ingroup shared
+    \ingroup containers
 
     \reentrant
 
-    QQueue\<T\> is one of Qt's generic \l{container classes}. It
-    implements a queue data structure for items of a same type.
+    QQueue\<T\> is one of Qt's generic \l{container classes}, where
+    \a T specifies the element type. It implements a queue data structure
+    for items of a same type.
 
     A queue is a first in, first out (FIFO) structure. Items are
     added to the tail of the queue using enqueue() and retrieved from
@@ -43,13 +46,12 @@
 /*!
     \fn template <class T> void QQueue<T>::swap(QQueue<T> &other)
     \since 4.8
-
-    Swaps queue \a other with this queue. This operation is very
-    fast and never fails.
+    \memberswap{queue}
 */
 
 /*!
     \fn template <class T> void QQueue<T>::enqueue(const T& t)
+    \fn template <class T> void QQueue<T>::enqueue(T&& t)
 
     Adds value \a t to the tail of the queue.
 

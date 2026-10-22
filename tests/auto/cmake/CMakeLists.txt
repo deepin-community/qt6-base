@@ -70,20 +70,28 @@ enable_testing()
 # doesn't seem to be the case.
 # Until this is figured out, disable the tests when cross-compiling to Linux.
 if(UNIX AND NOT APPLE AND NOT WIN32 AND CMAKE_CROSSCOMPILING AND NOT QT_ENABLE_CMAKE_BOOT2QT_TESTS
-    AND NOT QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS)
+    AND NOT QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS AND NOT ANDROID)
     message(STATUS "Running CMake tests is disabled when cross-compiling to Linux / Boot2Qt.")
     return()
 endif()
 
-set(required_packages Core Network Xml Sql Test)
-set(optional_packages DBus Gui Widgets PrintSupport OpenGL Concurrent)
+# On coin for WoA we have hackish setup to reduce integration time where
+# host tools are deliver by mingw, build is done as cross build
+# and tests run natively on WoA, meaning tooling can not execute natively.
+if(WIN32 AND CMAKE_CROSSCOMPILING)
+    message(STATUS "Running CMake tests is disabled when cross-compiling to WoA")
+    return()
+endif()
 
-# Setup the test when called as a completely standalone project.
 if(TARGET Qt6::Core)
     # Tests are built as part of the qtbase build tree.
     # Setup paths so that the Qt packages are found, similar to examples.
     qt_internal_set_up_build_dir_package_paths()
 endif()
+
+set(required_packages Core Network Xml Sql Test TestInternalsPrivate)
+set(optional_packages DBus Gui Widgets PrintSupport OpenGL Concurrent)
+
 find_package(Qt6 REQUIRED COMPONENTS ${required_packages})
 find_package(Qt6 OPTIONAL_COMPONENTS ${optional_packages})
 
@@ -115,53 +123,93 @@ endif()
 
 include("${_Qt6CTestMacros}")
 
-# Test only multi-abi specific functionality when QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS is ON.
-# Qt::Gui is the prerequisite for all Android tests.
-if(QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS AND NOT NO_GUI)
-    unset(multi_abi_vars)
-    foreach(abi IN LISTS QT_ANDROID_ABIS)
-        list(APPEND multi_abi_vars "-DQT_PATH_ANDROID_ABI_${abi}=${QT_PATH_ANDROID_ABI_${abi}}")
-    endforeach()
-    if(QT_ANDROID_BUILD_ALL_ABIS)
-        list(APPEND multi_abi_vars "-DQT_ANDROID_BUILD_ALL_ABIS=${QT_ANDROID_BUILD_ALL_ABIS}")
+
+if(ANDROID)
+    # Qt::Gui is the prerequisite for all Android tests.
+    if(NO_GUI)
+        return()
     endif()
 
-    list(APPEND multi_abi_vars "-DQT_HOST_PATH=${QT_HOST_PATH}")
+    if(NOT QT_ANDROID_GRADLE_MULTI_MODULE)
+        set(QT_ANDROID_GRADLE_MULTI_MODULE OFF)
+    endif()
+    if(NOT QT_USE_TARGET_ANDROID_BUILD_DIR)
+        set(QT_USE_TARGET_ANDROID_BUILD_DIR OFF)
+    endif()
 
-    set(multi_abi_forward_vars
-        TEST_SINGLE_VALUE_ARG
-        TEST_SPACES_VALUE_ARG
-        TEST_LIST_VALUE_ARG
-        TEST_ESCAPING_VALUE_ARG
-    )
-    string(REPLACE ";" "[[;]]" multi_abi_forward_vars "${multi_abi_forward_vars}")
+    set(common_android_vars "-DQT_HOST_PATH=${QT_HOST_PATH}"
+        "-DQT_ANDROID_GRADLE_MULTI_MODULE=${QT_ANDROID_GRADLE_MULTI_MODULE}"
+        "-DQT_USE_TARGET_ANDROID_BUILD_DIR=${QT_USE_TARGET_ANDROID_BUILD_DIR}")
 
-    set(single_value "TestValue")
-    set(list_value "TestValue[[;]]TestValue2[[;]]TestValue3")
-    set(escaping_value "TestValue\\\\[[;]]TestValue2\\\\[[;]]TestValue3")
-    set(spaces_value "TestValue TestValue2 TestValue3")
-    _qt_internal_test_expect_pass(test_android_multi_abi_forward_vars
-        BUILD_OPTIONS
-            ${multi_abi_vars}
-            "-DQT_ANDROID_MULTI_ABI_FORWARD_VARS=${multi_abi_forward_vars}"
-            "-DTEST_SINGLE_VALUE_ARG=${single_value}"
-            "-DTEST_LIST_VALUE_ARG=${list_value}"
-            "-DTEST_ESCAPING_VALUE_ARG=${escaping_value}"
-            "-DTEST_SPACES_VALUE_ARG=${spaces_value}"
+    set(signing_test_common_environment
+        "QT_ANDROID_KEYSTORE_ALIAS=qttest"
+        "QT_ANDROID_KEYSTORE_STORE_PASS=qttest"
+        "QT_ANDROID_KEYSTORE_KEY_PASS=qttest"
     )
 
-    #Run test_android_aar only if the host is Unix and zipinfo is available
-    find_program(ZIPINFO_EXECUTABLE zipinfo)
-    if(CMAKE_HOST_UNIX AND ZIPINFO_EXECUTABLE)
-        _qt_internal_test_expect_pass(test_android_aar
+    foreach(package_type aab apk)
+        string(TOUPPER "${package_type}" package_type_upper)
+        set(test_name "test_android_signing_${package_type}")
+        _qt_internal_test_expect_pass(test_android_signing
+            TESTNAME ${test_name}
+            BUILD_OPTIONS ${common_android_vars} -DQT_ANDROID_SIGN_${package_type_upper}=ON
+            BUILD_DIR ${test_name}
+            BUILD_TARGET test_android_signing_make_${package_type}
+            BINARY ${CMAKE_CTEST_COMMAND}
+            BINARY_ARGS -V
+        )
+        set_property(TEST ${test_name} APPEND PROPERTY
+            ENVIRONMENT ${signing_test_common_environment}
+            "QT_ANDROID_KEYSTORE_PATH=${CMAKE_CURRENT_BINARY_DIR}/${test_name}/qttest.jks"
+        )
+    endforeach()
+
+    # Test only multi-abi specific functionality when QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS is
+    # ON.
+    if(QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS)
+        set(multi_abi_vars "${common_android_vars}")
+        foreach(abi IN LISTS QT_ANDROID_ABIS)
+            list(APPEND multi_abi_vars "-DQT_PATH_ANDROID_ABI_${abi}=${QT_PATH_ANDROID_ABI_${abi}}")
+        endforeach()
+        if(QT_ANDROID_BUILD_ALL_ABIS)
+            list(APPEND multi_abi_vars "-DQT_ANDROID_BUILD_ALL_ABIS=${QT_ANDROID_BUILD_ALL_ABIS}")
+        endif()
+
+        set(multi_abi_forward_vars
+            TEST_SINGLE_VALUE_ARG
+            TEST_SPACES_VALUE_ARG
+            TEST_LIST_VALUE_ARG
+            TEST_ESCAPING_VALUE_ARG
+        )
+        string(REPLACE ";" "[[;]]" multi_abi_forward_vars "${multi_abi_forward_vars}")
+
+        set(single_value "TestValue")
+        set(list_value "TestValue[[;]]TestValue2[[;]]TestValue3")
+        set(escaping_value "TestValue\\\\[[;]]TestValue2\\\\[[;]]TestValue3")
+        set(spaces_value "TestValue TestValue2 TestValue3")
+        _qt_internal_test_expect_pass(test_android_multi_abi_forward_vars
             BUILD_OPTIONS
                 ${multi_abi_vars}
-                --build-target verify_aar
+                "-DQT_ANDROID_MULTI_ABI_FORWARD_VARS=${multi_abi_forward_vars}"
+                "-DTEST_SINGLE_VALUE_ARG=${single_value}"
+                "-DTEST_LIST_VALUE_ARG=${list_value}"
+                "-DTEST_ESCAPING_VALUE_ARG=${escaping_value}"
+                "-DTEST_SPACES_VALUE_ARG=${spaces_value}"
         )
-    else()
-        message(WARNING
-            "Skipping test_android_aar CMake build test because \
-            the host is not Unix or zipinfo is not found")
+
+        #Run test_android_aar only if the host is Unix and zipinfo is available
+        find_program(ZIPINFO_EXECUTABLE zipinfo)
+        if(CMAKE_HOST_UNIX AND ZIPINFO_EXECUTABLE)
+            _qt_internal_test_expect_pass(test_android_aar
+                BUILD_OPTIONS
+                    ${multi_abi_vars}
+                    --build-target verify_aar
+            )
+        else()
+            message(WARNING
+                "Skipping test_android_aar CMake build test because \
+                the host is not Unix or zipinfo is not found")
+        endif()
     endif()
 
     return()
@@ -217,8 +265,17 @@ _qt_internal_test_expect_build_fail(test_add_resource_options)
 _qt_internal_test_expect_build_fail(test_wrap_cpp_options)
 _qt_internal_test_expect_pass(test_wrap_cpp_moc)
 _qt_internal_test_expect_pass(test_wrap_cpp_moc_target)
+_qt_internal_test_expect_pass(test_wrap_cpp_target_in_subdir)
+_qt_internal_test_expect_pass(test_wrap_cpp_target_moc_in_subdir)
+_qt_internal_test_expect_pass(test_wrap_cpp_target_mixed_files)
+_qt_internal_test_expect_pass(test_wrap_cpp_target_multiple_calls)
+_qt_internal_test_expect_pass(test_wrap_cpp_in_subdir)
+_qt_internal_test_expect_pass(test_wrap_cpp_moc_in_subdir)
+_qt_internal_test_expect_pass(test_wrap_cpp_mixed_files)
+_qt_internal_test_expect_pass(test_wrap_cpp_multiple_calls)
 _qt_internal_test_expect_pass(test_platform_defs_include)
 _qt_internal_test_expect_pass(test_qtmainwin_library)
+_qt_internal_test_expect_pass(test_read_qt_namespace)
 
 if (CMAKE_GENERATOR STREQUAL Ninja AND UNIX AND NOT WIN32)
     _qt_internal_test_expect_pass(test_QFINDTESTDATA
@@ -396,15 +453,22 @@ endif()
 
 _qt_internal_test_expect_pass(test_qt_extract_metatypes)
 
-set(deploy_args
+set(deployment_tests
+    test_plugin_deployment
     test_widgets_app_deployment
-    BINARY "${CMAKE_CTEST_COMMAND}"
-    BINARY_ARGS "-V"
-    # Need to explicitly specify a writable install prefix.
-    BUILD_OPTIONS
-        -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/test_widgets_app_deployment_installed
-    NO_RUN_ENVIRONMENT_PLUGIN_PATH
 )
+foreach(test_name IN LISTS deployment_tests)
+    set(${test_name}_args
+        ${test_name}
+        BINARY "${CMAKE_CTEST_COMMAND}"
+        BINARY_ARGS "-V"
+        # Need to explicitly specify a writable install prefix.
+        BUILD_OPTIONS
+            -DQT_ENABLE_VERBOSE_DEPLOYMENT=ON
+            -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/${test_name}_installed
+        NO_RUN_ENVIRONMENT_PLUGIN_PATH
+    )
+endforeach()
 
 set(is_desktop_linux FALSE)
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT CMAKE_CROSSCOMPILING)
@@ -415,11 +479,13 @@ endif()
 # and fail on other platforms, because there is no support for runtime dependency deployment on
 # those platforms.
 # With static builds the runtime dependencies are just skipped, but the test should still pass.
-if(WIN32 OR (APPLE AND NOT IOS) OR is_desktop_linux)
-    _qt_internal_test_expect_pass(${deploy_args})
-else()
-    _qt_internal_test_expect_fail(${deploy_args})
-endif()
+foreach(test_name IN LISTS deployment_tests)
+    if(WIN32 OR (APPLE AND NOT IOS) OR is_desktop_linux)
+        _qt_internal_test_expect_pass(${${test_name}_args})
+    else()
+        _qt_internal_test_expect_fail(${${test_name}_args})
+    endif()
+endforeach()
 
 _qt_internal_test_expect_pass(test_config_expressions)
 _qt_internal_test_expect_pass(test_QTP0003)
@@ -465,3 +531,49 @@ if(NOT QNX AND NOT WASM AND NOT (WIN32 AND QT_BUILD_MINIMAL_STATIC_TESTS)
     _qt_internal_test_expect_pass(test_qt_add_ui_11)
 endif()
 
+# Valid plugin names
+set(valid_plugin_class_names
+    TestPluginNameUpper
+    Test_Plugin_Name
+    _Test_plugin_name
+    testpluginnamelower
+    Test0PluginName
+)
+foreach(plugin_class_name IN LISTS valid_plugin_class_names)
+    _qt_internal_test_expect_pass(test_plugin_class_name
+        TESTNAME test_plugin_class_name_${plugin_class_name}
+        BUILD_OPTIONS
+            -DPLUGIN_CLASS_NAME=${plugin_class_name}
+    )
+endforeach()
+
+# Invalid plugin names
+set(invalid_plugin_class_names
+    0TestPluginName
+    Test-Plugin-Name
+    Test.plugin.name
+)
+foreach(plugin_class_name IN LISTS invalid_plugin_class_names)
+    _qt_internal_test_expect_fail(test_plugin_class_name
+        TESTNAME test_plugin_class_name_${plugin_class_name}
+        BUILD_OPTIONS
+            -DPLUGIN_CLASS_NAME=${plugin_class_name}
+    )
+endforeach()
+
+# Restricted to Apple platforms, as building the C++ standard library as a
+# Clang module is not viable with the standard libraries used elsewhere.
+if(QT_FEATURE_clang_module_maps AND APPLE AND "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    add_subdirectory(test_clang_module_maps)
+
+    if(QT_WILL_INSTALL)
+        _qt_internal_test_expect_pass(test_clang_module_maps_disabled)
+    endif()
+endif()
+
+if(QT_FEATURE_framework)
+    add_subdirectory(test_framework_forwarding_headers)
+endif()
+
+# Add all tests using CMake's RunCMake test module
+add_subdirectory(RunCMake)

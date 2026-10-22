@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwidgetresizehandler_p.h"
 
@@ -76,7 +77,7 @@ bool QWidgetResizeHandler::eventFilter(QObject *o, QEvent *ee)
         if (w->isMaximized())
             break;
         const QRect widgetRect = widget->rect().marginsAdded(QMargins(range, range, range, range));
-        const QPoint cursorPoint = widget->mapFromGlobal(e->globalPosition().toPoint());
+        const QPoint cursorPoint = widget->mapFromGlobal(e->globalPosition()).toPoint();
         if (!widgetRect.contains(cursorPoint))
             return false;
         if (e->button() == Qt::LeftButton) {
@@ -84,7 +85,7 @@ bool QWidgetResizeHandler::eventFilter(QObject *o, QEvent *ee)
             emit activate();
             mouseMoveEvent(e);
             buttonDown = true;
-            moveOffset = widget->mapFromGlobal(e->globalPosition().toPoint());
+            moveOffset = widget->mapFromGlobal(e->globalPosition()).toPoint();
             invertedMoveOffset = widget->rect().bottomRight() - moveOffset;
             if (mode != Center)
                 return true;
@@ -130,7 +131,7 @@ bool QWidgetResizeHandler::eventFilter(QObject *o, QEvent *ee)
 
 void QWidgetResizeHandler::mouseMoveEvent(QMouseEvent *e)
 {
-    QPoint pos = widget->mapFromGlobal(e->globalPosition().toPoint());
+    QPoint pos = widget->mapFromGlobal(e->globalPosition()).toPoint();
     if (!active && !buttonDown) {
         if (pos.y() <= range && pos.x() <= range)
             mode = TopLeft;
@@ -169,7 +170,7 @@ void QWidgetResizeHandler::mouseMoveEvent(QMouseEvent *e)
 
 
     QPoint globalPos = (!widget->isWindow() && widget->parentWidget()) ?
-                       widget->parentWidget()->mapFromGlobal(e->globalPosition().toPoint()) : e->globalPosition().toPoint();
+                       widget->parentWidget()->mapFromGlobal(e->globalPosition()).toPoint() : e->globalPosition().toPoint();
     if (!widget->isWindow() && !widget->parentWidget()->rect().contains(globalPos)) {
         if (globalPos.x() < 0)
             globalPos.rx() = 0;

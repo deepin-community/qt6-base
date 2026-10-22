@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOCOAVULKANINSTANCE_H
 #define QCOCOAVULKANINSTANCE_H
@@ -26,12 +27,13 @@ public:
     VkSurfaceKHR *surface(QWindow *window);
 
 private:
-    VkSurfaceKHR createSurface(NSView *view);
+    VkSurfaceKHR createSurface(CALayer *layer);
 
     QVulkanInstance *m_instance = nullptr;
     QLibrary m_lib;
     VkSurfaceKHR m_nullSurface = nullptr;
     PFN_vkCreateMacOSSurfaceMVK m_createSurface = nullptr;
+    PFN_vkCreateMetalSurfaceEXT m_createMetalSurface = nullptr;
 };
 
 QT_END_NAMESPACE

@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <iterator>
 
+QT_BEGIN_NAMESPACE
+
 std::wostream &operator<<(std::wostream &str, const QString &s)
 {
     str << s.toStdWString();
@@ -65,6 +67,8 @@ bool operator<(const QMimeType &t1, const QMimeType &t2)
 {
     return t1.name() < t2.name();
 }
+
+QT_END_NAMESPACE
 
 int main(int argc, char *argv[])
 {

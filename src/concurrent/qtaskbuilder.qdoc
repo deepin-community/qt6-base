@@ -9,6 +9,9 @@
 
     \ingroup thread
 
+    The template parameter \a Task specifies the callable type, and \a Args
+    specifies the argument types that the task will be invoked with.
+
     It's not possible to create an object of this class manually. See
     \l {Concurrent Task} for more details and usage examples.
 */

@@ -1,8 +1,10 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "quuid.h"
+#include "quuid_p.h"
 
 #include "qcryptographichash.h"
 #include "qdatastream.h"
@@ -33,6 +35,9 @@ void _q_toHex(char *&dst, Integral value)
     }
 }
 
+#if QT_VERSION_MAJOR == 7
+#  warning Consider storing the UUID as simple bytes, not as {uint, ushort, short, array}
+#endif
 template <class Integral>
 bool _q_fromHex(const char *&src, Integral &value)
 {
@@ -540,7 +545,7 @@ QUuid QUuid::fromString(QAnyStringView text) noexcept
   \note In Qt versions prior to 6.8, this function took QByteArray, not
   QByteArrayView.
 
-  \sa variant(), version(), createUuidV5()
+  \sa variant(), version(), createUuidV5(), createUuidV7()
 */
 
 /*!
@@ -550,7 +555,7 @@ QUuid QUuid::fromString(QAnyStringView text) noexcept
   This function returns a new UUID with variant QUuid::DCE and version QUuid::Md5.
   \a ns is the namespace and \a baseData is the basic data as described by RFC 4122.
 
-  \sa variant(), version(), createUuidV5()
+  \sa variant(), version(), createUuidV5(), createUuidV7()
 */
 
 /*!
@@ -575,16 +580,31 @@ QUuid QUuid::fromString(QAnyStringView text) noexcept
 
   \sa variant(), version(), createUuidV3()
 */
-#ifndef QT_BOOTSTRAPPED
 QUuid QUuid::createUuidV3(QUuid ns, QByteArrayView baseData) noexcept
 {
     return createFromName(ns, baseData, QCryptographicHash::Md5, 3);
 }
-#endif
 
 QUuid QUuid::createUuidV5(QUuid ns, QByteArrayView baseData) noexcept
 {
     return createFromName(ns, baseData, QCryptographicHash::Sha1, 5);
+}
+
+/*!
+    \since 6.9
+
+    This function returns a new UUID with variant QUuid::DCE and version
+    QUuid::UnixEpoch.
+
+    It uses a time-ordered value field derived from the number of milliseconds
+    since the UNIX Epoch as described by
+    \l {https://datatracker.ietf.org/doc/html/rfc9562#name-uuid-version-7}{RFC9562}.
+
+    \sa variant(), version(), createUuidV3(), createUuidV5()
+*/
+QUuid QUuid::createUuidV7()
+{
+    return createUuidV7_internal(std::chrono::system_clock::now());
 }
 
 /*!
@@ -823,15 +843,11 @@ QDataStream &operator>>(QDataStream &s, QUuid &id)
 #endif // QT_NO_DATASTREAM
 
 /*!
+    \fn bool QUuid::isNull() const
+
     Returns \c true if this is the null UUID
     {00000000-0000-0000-0000-000000000000}; otherwise returns \c false.
 */
-bool QUuid::isNull() const noexcept
-{
-    return data4[0] == 0 && data4[1] == 0 && data4[2] == 0 && data4[3] == 0 &&
-           data4[4] == 0 && data4[5] == 0 && data4[6] == 0 && data4[7] == 0 &&
-           data1 == 0 && data2 == 0 && data3 == 0;
-}
 
 /*!
     \enum QUuid::Variant
@@ -862,7 +878,9 @@ bool QUuid::isNull() const noexcept
     \value Name Name-based, by using values from a name for all sections
     \value Md5 Alias for Name
     \value Random Random-based, by using random numbers for all sections
-    \value Sha1
+    \value Sha1      Name-based version that uses SHA-1 hashing
+    \value UnixEpoch [since 6.9] Time-based UUID using the number of
+                     milliseconds since the UNIX epoch
 */
 
 /*!
@@ -875,17 +893,6 @@ bool QUuid::isNull() const noexcept
 
     \sa version()
 */
-QUuid::Variant QUuid::variant() const noexcept
-{
-    if (isNull())
-        return VarUnknown;
-    // Check the 3 MSB of data4[0]
-    if ((data4[0] & 0x80) == 0x00) return NCS;
-    else if ((data4[0] & 0xC0) == 0x80) return DCE;
-    else if ((data4[0] & 0xE0) == 0xC0) return Microsoft;
-    else if ((data4[0] & 0xE0) == 0xE0) return Reserved;
-    return VarUnknown;
-}
 
 /*!
     \fn QUuid::Version QUuid::version() const
@@ -896,17 +903,6 @@ QUuid::Variant QUuid::variant() const noexcept
 
     \sa variant()
 */
-QUuid::Version QUuid::version() const noexcept
-{
-    // Check the 4 MSB of data3
-    Version ver = (Version)(data3>>12);
-    if (isNull()
-         || (variant() != DCE)
-         || ver < Time
-         || ver > Sha1)
-        return VerUnknown;
-    return ver;
-}
 
 /*!
     \fn bool QUuid::operator<(const QUuid &lhs, const QUuid &rhs)
@@ -949,7 +945,7 @@ QUuid QUuid::createUuid()
     return result;
 }
 
-#elif !defined(QT_BOOTSTRAPPED)
+#else
 
 QUuid QUuid::createUuid()
 {
@@ -963,7 +959,7 @@ QUuid QUuid::createUuid()
 
     return result;
 }
-#endif // !Q_OS_WIN && !QT_BOOTSTRAPPED
+#endif // !Q_OS_WIN
 
 /*!
     \fn bool QUuid::operator==(const QUuid &lhs, const GUID &rhs)
@@ -993,16 +989,15 @@ QDebug operator<<(QDebug dbg, const QUuid &id)
 #endif
 
 /*!
+    \fn size_t qHash(const QUuid &key, size_t seed)
     \since 5.0
-    \relates QUuid
-    Returns a hash of the UUID \a uuid, using \a seed to seed the calculation.
+    \qhashold{QUuid}
 */
 size_t qHash(const QUuid &uuid, size_t seed) noexcept
 {
-    return uuid.data1 ^ uuid.data2 ^ (uuid.data3 << 16)
-            ^ ((uuid.data4[0] << 24) | (uuid.data4[1] << 16) | (uuid.data4[2] << 8) | uuid.data4[3])
-            ^ ((uuid.data4[4] << 24) | (uuid.data4[5] << 16) | (uuid.data4[6] << 8) | uuid.data4[7])
-            ^ seed;
+    static_assert(std::has_unique_object_representations_v<QUuid>,
+                  "Can't use qHashBits() if the type has padding holes.");
+    return qHashBits(&uuid, sizeof(QUuid), seed);
 }
 
 

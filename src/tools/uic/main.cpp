@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #include "uic.h"
 #include "option.h"
@@ -85,7 +86,7 @@ int runUic(int argc, char *argv[])
     parser.addOption(noProtOption);
 
     QCommandLineOption noImplicitIncludesOption(QStringList{u"n"_s, u"no-implicit-includes"_s});
-    noImplicitIncludesOption.setDescription(u"Disable generation of #include-directives."_s);
+    noImplicitIncludesOption.setDescription(u"Disable generation of custom widget #include-directives."_s);
     parser.addOption(noImplicitIncludesOption);
 
     QCommandLineOption postfixOption(u"postfix"_s);
@@ -187,7 +188,7 @@ int runUic(int argc, char *argv[])
         if (parser.isSet(pythonPathOption))
             pythonPaths = parser.value(pythonPathOption);
         else if (qEnvironmentVariableIsSet(pythonPathVar))
-            pythonPaths = QString::fromUtf8(qgetenv(pythonPathVar));
+            pythonPaths = qEnvironmentVariable(pythonPathVar);
         driver.option().pythonRoot = pythonRoot(pythonPaths, inputFile);
     }
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qiosinputcontext.h"
 
@@ -371,7 +372,8 @@ void QIOSInputContext::updateKeyboardState(NSNotification *notification)
         // with input-accessory-views. The reason for using frameEnd here (the future state),
         // instead of the current state reflected in frameBegin, is that QInputMethod::isVisible()
         // is documented to reflect the future state in the case of animated transitions.
-        m_keyboardState.keyboardVisible = CGRectIntersectsRect(frameEnd, [UIScreen mainScreen].bounds);
+        m_keyboardState.keyboardVisible = !CGRectIsEmpty(UIScreen.mainScreen.bounds) &&
+            !CGRectIsEmpty(frameEnd) && CGRectIntersectsRect(frameEnd, UIScreen.mainScreen.bounds);
 
         // Used for auto-scroller, and will be used for animation-signal in the future
         m_keyboardState.keyboardEndRect = frameEnd;
@@ -639,8 +641,10 @@ void QIOSInputContext::update(Qt::InputMethodQueries updatedProperties)
     // focus object. We try to detect code paths that fail this assertion and smooth
     // over the situation by doing a manual update of the focus object.
     if (qApp->focusObject() != m_imeState.focusObject && updatedProperties != Qt::ImQueryAll) {
-        qWarning() << "stale focus object" << static_cast<void *>(m_imeState.focusObject)
-                   << ", doing manual update";
+        qCWarning(lcQpaInputMethods).verbosity(0) << "Updating input context" << updatedProperties
+            << "with last reported focus object" << m_imeState.focusObject
+            << "but qGuiApp reports" << qApp->focusObject()
+            << "which means someone failed to call QPlatformInputContext::setFocusObject()";
         setFocusObject(qApp->focusObject());
         return;
     }

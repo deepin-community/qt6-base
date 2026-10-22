@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSQLFIELD_H
 #define QSQLFIELD_H
@@ -70,7 +71,7 @@ public:
         : QSqlField(fieldName, QMetaType(type), tableName)
     {}
     QT_DEPRECATED_VERSION_X_6_0("Use metaType() instead")
-    QVariant::Type type() const { return QVariant::Type(metaType().id()); };
+    QVariant::Type type() const { return QVariant::Type(metaType().id()); }
     QT_DEPRECATED_VERSION_X_6_0("Use setMetaType() instead")
     void setType(QVariant::Type type) { setMetaType(QMetaType(int(type))); }
     QT_WARNING_POP

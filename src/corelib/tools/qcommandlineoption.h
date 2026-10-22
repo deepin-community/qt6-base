@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2013 Laszlo Papp <lpapp@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCOMMANDLINEOPTION_H
 #define QCOMMANDLINEOPTION_H
@@ -19,7 +20,8 @@ class Q_CORE_EXPORT QCommandLineOption
 public:
     enum Flag {
         HiddenFromHelp = 0x1,
-        ShortOptionStyle = 0x2
+        ShortOptionStyle = 0x2,
+        IgnoreOptionsAfter = 0x4,
     };
     Q_DECLARE_FLAGS(Flags, Flag)
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qapplication.h"
 #include "qbitmap.h"
@@ -44,7 +45,8 @@ QT_BEGIN_NAMESPACE
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-pushbutton.png
+    \image fusion-pushbutton.png
+           {Push button for creating a new document}
 
     The push button, or command button, is perhaps the most commonly
     used widget in any graphical user interface. Push (click) a button
@@ -74,6 +76,8 @@ QT_BEGIN_NAMESPACE
     this signal to perform the button's action. Push buttons also
     provide less commonly used signals, for example pressed() and
     released().
+
+    \snippet code/src_gui_widgets_qpushbutton.cpp clicked
 
     Command buttons in dialogs are by default auto-default buttons,
     i.e., they become the default push button automatically when they
@@ -288,14 +292,7 @@ void QPushButton::initStyleOption(QStyleOptionButton *option) const
         option->features |= QStyleOptionButton::AutoDefaultButton;
     if (d->defaultButton)
         option->features |= QStyleOptionButton::DefaultButton;
-    if (d->down || d->menuOpen)
-        option->state |= QStyle::State_Sunken;
-    if (d->checked)
-        option->state |= QStyle::State_On;
-    if (!d->flat && !d->down)
-        option->state |= QStyle::State_Raised;
-    if (underMouse() && hasMouseTracking())
-        option->state.setFlag(QStyle::State_MouseOver, d->hovering);
+    option->state = d->styleButtonState(option->state);
     option->text = d->text;
     option->icon = d->icon;
     option->iconSize = iconSize();
@@ -367,7 +364,7 @@ QSize QPushButton::sizeHint() const
     // calculate contents size...
 #if !defined(QT_NO_ICON) && QT_CONFIG(dialogbuttonbox)
     bool showButtonBoxIcons = qobject_cast<QDialogButtonBox*>(parentWidget())
-                          && style()->styleHint(QStyle::SH_DialogButtonBox_ButtonsHaveIcons);
+                          && style()->styleHint(QStyle::SH_DialogButtonBox_ButtonsHaveIcons, nullptr, this);
 
     if (!icon().isNull() || showButtonBoxIcons) {
         int ih = opt.iconSize.height();
@@ -512,7 +509,8 @@ bool QPushButton::hitButton(const QPoint &pos) const
 
     Ownership of the menu is \e not transferred to the push button.
 
-    \image fusion-pushbutton-menu.png Screenshot of a Fusion style push button with popup menu.
+    \image fusion-pushbutton-menu.png
+           {Push button with popup menu}
     A push button with popup menus shown in the \l{Qt Widget Gallery}
     {Fusion widget style}.
 
@@ -642,6 +640,21 @@ void QPushButtonPrivate::resetLayoutItemMargins()
     setLayoutItemMargins(QStyle::SE_PushButtonLayoutItem, &opt);
 }
 
+QStyle::State QPushButtonPrivate::styleButtonState(QStyle::State state) const
+{
+    Q_Q(const QPushButton);
+    state = QAbstractButtonPrivate::styleButtonState(state);
+    if (menuOpen)
+        state |= QStyle::State_Sunken;
+    if (checked)
+        state |= QStyle::State_On;
+    if (!flat && !down)
+        state |= QStyle::State_Raised;
+    if (q->underMouse() && q->hasMouseTracking())
+        state.setFlag(QStyle::State_MouseOver, hovering);
+    return state;
+}
+
 void QPushButton::setFlat(bool flat)
 {
     Q_D(QPushButton);
@@ -672,7 +685,7 @@ bool QPushButton::event(QEvent *e)
         }
 #endif
     } else if (e->type() == QEvent::StyleChange
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
                || e->type() == QEvent::MacSizeChange
 #endif
                ) {

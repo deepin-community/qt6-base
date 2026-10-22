@@ -1,11 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QREADWRITELOCK_H
 #define QREADWRITELOCK_H
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qdeadlinetimer.h>
+#include <QtCore/qtsan_impl.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -13,7 +15,137 @@ QT_BEGIN_NAMESPACE
 
 class QReadWriteLockPrivate;
 
-class Q_CORE_EXPORT QReadWriteLock
+class QBasicReadWriteLock
+{
+public:
+    constexpr QBasicReadWriteLock() = default;
+
+    void lockForRead()
+    {
+        tryLockForReadInternal(QDeadlineTimer::Forever, 0);
+    }
+    bool tryLockForRead()
+    {
+        return tryLockForReadInternal(QDeadlineTimer(), QtTsan::TryLock);
+    }
+    bool tryLockForRead(QDeadlineTimer timeout)
+    {
+        return tryLockForReadInternal(timeout, QtTsan::TryLock);
+    }
+
+    void lockForWrite()
+    {
+        tryLockForWriteInternal(QDeadlineTimer::Forever, 0);
+    }
+    bool tryLockForWrite()
+    {
+        return tryLockForWriteInternal(QDeadlineTimer(), QtTsan::TryLock);
+    }
+    bool tryLockForWrite(QDeadlineTimer timeout)
+    {
+        return tryLockForWriteInternal(timeout, QtTsan::TryLock);
+    }
+
+    void unlock()
+    {
+        QReadWriteLockPrivate *d = d_ptr.loadRelaxed();
+        unsigned flags = describeLockForTSan(d);
+        quintptr u = quintptr(d);
+        Q_ASSERT_X(u, "QReadWriteLock::unlock()", "Cannot unlock an unlocked lock");
+
+        QtTsan::mutexPreUnlock(this, flags);
+        if (u > StateMask || !d_ptr.testAndSetRelease(d, nullptr, d))
+            contendedUnlock(d);
+        QtTsan::mutexPostUnlock(this, flags);
+    }
+
+    // std::shared_mutex API:
+    void lock() { lockForWrite(); }
+    void lock_shared() { lockForRead(); }
+    bool try_lock() { return tryLockForWrite(); }
+    bool try_lock_shared() { return tryLockForRead(); }
+    void unlock_shared() { unlock(); }
+
+protected:
+    static constexpr quintptr StateLockedForRead = 0x1;
+    static constexpr quintptr StateLockedForWrite = 0x2;
+    static constexpr quintptr StateMask = StateLockedForRead | StateLockedForWrite;
+    static constexpr quintptr Counter = 0x10;
+
+    Q_ALWAYS_INLINE bool fastTryLockForRead(QReadWriteLockPrivate *&d)
+    {
+        if (d == nullptr) {
+            auto dummyValue = reinterpret_cast<QReadWriteLockPrivate *>(StateLockedForRead);
+            return d_ptr.testAndSetAcquire(nullptr, dummyValue, d);
+        } else if (quintptr u = quintptr(d), v = u + Counter; u & StateLockedForRead) {
+            return d_ptr.testAndSetAcquire(d, reinterpret_cast<QReadWriteLockPrivate *>(v), d);
+        }
+        return false;
+    }
+
+    Q_ALWAYS_INLINE bool tryLockForReadInternal(QDeadlineTimer timeout, unsigned tsanFlags)
+    {
+        tsanFlags |= QtTsan::ReadLock;
+        QtTsan::mutexPreLock(this, tsanFlags);
+
+        QReadWriteLockPrivate *d = d_ptr.loadRelaxed();
+        bool locked = fastTryLockForRead(d);
+        if (!locked)
+            locked = contendedTryLockForRead(timeout, d);
+
+        if (!locked)
+            tsanFlags |= QtTsan::TryLockFailed;
+        QtTsan::mutexPostLock(this, tsanFlags, 0);
+        return locked;
+    }
+
+    Q_ALWAYS_INLINE bool fastTryLockForWrite(QReadWriteLockPrivate *&d)
+    {
+        auto dummyValue = reinterpret_cast<QReadWriteLockPrivate *>(StateLockedForWrite);
+        if (d == nullptr)
+            return d_ptr.testAndSetAcquire(nullptr, dummyValue, d);
+        return false;
+    }
+
+    Q_ALWAYS_INLINE bool tryLockForWriteInternal(QDeadlineTimer timeout, unsigned tsanFlags)
+    {
+        QtTsan::mutexPreLock(this, tsanFlags);
+
+        QReadWriteLockPrivate *d = d_ptr.loadRelaxed();
+        bool locked = fastTryLockForWrite(d);
+        if (!locked)
+            locked = contendedTryLockForWrite(timeout, d);
+
+        if (!locked)
+            tsanFlags |= QtTsan::TryLockFailed;
+        QtTsan::mutexPostLock(this, tsanFlags, 0);
+        return locked;
+    }
+
+    Q_CORE_EXPORT bool contendedTryLockForRead(QDeadlineTimer timeout, void *dd);
+    Q_CORE_EXPORT bool contendedTryLockForWrite(QDeadlineTimer timeout, void *dd);
+    Q_CORE_EXPORT void contendedUnlock(void *dd);
+#if QT_CORE_REMOVED_SINCE(6, 12)
+    Q_CORE_EXPORT bool isContendedLockForRead(const void *dd) Q_DECL_PURE_FUNCTION;
+#endif
+    static Q_CORE_EXPORT quintptr describeLockInternal(void *dd) noexcept Q_DECL_PURE_FUNCTION;
+    static uint describeLockForTSan(QReadWriteLockPrivate *d, uint flags = 0) noexcept
+    {
+        if constexpr (QtTsan::IsEnabled) {
+            if (describeLockInternal(d) & StateLockedForRead)
+                flags |= QtTsan::ReadLock;
+        }
+        return flags;
+    }
+
+    constexpr QBasicReadWriteLock(QReadWriteLockPrivate *d) noexcept : d_ptr(d)
+    {}
+    Q_DISABLE_COPY(QBasicReadWriteLock)
+    QAtomicPointer<QReadWriteLockPrivate> d_ptr = { nullptr };
+    friend class QReadWriteLockPrivate;
+};
+
+class QT6_ONLY(Q_CORE_EXPORT) QReadWriteLock : public QBasicReadWriteLock
 {
 public:
     enum RecursionMode { NonRecursive, Recursive };
@@ -23,59 +155,80 @@ public:
     QT_CORE_INLINE_SINCE(6, 6)
     ~QReadWriteLock();
 
-    QT_CORE_INLINE_SINCE(6, 6)
+#if QT_CORE_REMOVED_SINCE(6, 11) || defined(Q_QDOC)
+    // was: QT_CORE_INLINE_SINCE(6, 6)
     void lockForRead();
-#if QT_CORE_REMOVED_SINCE(6, 6)
     bool tryLockForRead();
 #endif
     QT_CORE_INLINE_SINCE(6, 6)
     bool tryLockForRead(int timeout);
+#if QT_CORE_REMOVED_SINCE(6, 11) || defined(Q_QDOC)
     bool tryLockForRead(QDeadlineTimer timeout = {});
+#endif
+    using QBasicReadWriteLock::tryLockForRead;
 
-    QT_CORE_INLINE_SINCE(6, 6)
+#if QT_CORE_REMOVED_SINCE(6, 11) || defined(Q_QDOC)
+    // was: QT_CORE_INLINE_SINCE(6, 6)
     void lockForWrite();
-#if QT_CORE_REMOVED_SINCE(6, 6)
     bool tryLockForWrite();
 #endif
     QT_CORE_INLINE_SINCE(6, 6)
     bool tryLockForWrite(int timeout);
+#if QT_CORE_REMOVED_SINCE(6, 11) || defined(Q_QDOC)
     bool tryLockForWrite(QDeadlineTimer timeout = {});
+#endif
+    using QBasicReadWriteLock::tryLockForWrite;
 
+#if QT_CORE_REMOVED_SINCE(6, 11) || defined(Q_QDOC)
     void unlock();
+#endif
 
 private:
-    Q_DISABLE_COPY(QReadWriteLock)
-    QAtomicPointer<QReadWriteLockPrivate> d_ptr;
-    friend class QReadWriteLockPrivate;
+#if QT_CORE_REMOVED_SINCE(6, 12)
     static QReadWriteLockPrivate *initRecursive();
     static void destroyRecursive(QReadWriteLockPrivate *);
+#endif
+
+    QT7_ONLY(Q_CORE_EXPORT) static void *initRecursiveHelper();
+    QT7_ONLY(Q_CORE_EXPORT) static void destroyRecursiveHelper(void *) noexcept;
+    static QReadWriteLockPrivate *initRecursiveInline()
+    {
+        auto d = static_cast<QReadWriteLockPrivate *>(initRecursiveHelper());
+        Q_PRESUME(quintptr(d) > StateMask);
+#ifdef QT_BUILDING_UNDER_TSAN
+        unsigned flags = __tsan_mutex_write_reentrant | __tsan_mutex_read_reentrant;
+#  if (defined(Q_CC_GNU_ONLY) && Q_CC_GNU >= 1200) || (defined(Q_CC_CLANG) && Q_CC_CLANG >= 1200)
+        flags |= __tsan_mutex_not_static;
+#  endif
+        __tsan_mutex_create(d, flags);
+#endif
+        return d;
+    }
+    static void destroyRecursiveInline(QReadWriteLockPrivate *d)
+    {
+#ifdef QT_BUILDING_UNDER_TSAN
+        unsigned flags = 0;
+        __tsan_mutex_destroy(d, flags);
+#endif
+        destroyRecursiveHelper(d);
+    }
 };
 
 #if QT_CORE_INLINE_IMPL_SINCE(6, 6)
 QReadWriteLock::QReadWriteLock(RecursionMode recursionMode)
-    : d_ptr(recursionMode == Recursive ? initRecursive() : nullptr)
+    : QBasicReadWriteLock(recursionMode == Recursive ? initRecursiveInline() : nullptr)
 {
 }
 
 QReadWriteLock::~QReadWriteLock()
 {
     if (auto d = d_ptr.loadAcquire())
-        destroyRecursive(d);
-}
-
-void QReadWriteLock::lockForRead()
-{
-    tryLockForRead(QDeadlineTimer(QDeadlineTimer::Forever));
+        destroyRecursiveInline(d);
 }
 
 bool QReadWriteLock::tryLockForRead(int timeout)
 {
     return tryLockForRead(QDeadlineTimer(timeout));
-}
-
-void QReadWriteLock::lockForWrite()
-{
-    tryLockForWrite(QDeadlineTimer(QDeadlineTimer::Forever));
 }
 
 bool QReadWriteLock::tryLockForWrite(int timeout)

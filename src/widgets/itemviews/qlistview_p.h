@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLISTVIEW_P_H
 #define QLISTVIEW_P_H
@@ -343,6 +344,10 @@ public:
 #if QT_CONFIG(draganddrop)
     QAbstractItemView::DropIndicatorPosition position(const QPoint &pos, const QRect &rect, const QModelIndex &idx) const override;
     bool dropOn(QDropEvent *event, int *row, int *col, QModelIndex *index) override;
+#endif
+
+#if QT_CONFIG(accessibility)
+    int accessibleChildIndex(const QModelIndex &index) const override;
 #endif
 
     inline void setGridSize(const QSize &size) { grid = size; }

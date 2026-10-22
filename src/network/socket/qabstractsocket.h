@@ -1,24 +1,20 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTSOCKET_H
 #define QABSTRACTSOCKET_H
 
 #include <QtNetwork/qtnetworkglobal.h>
-#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
-#include <QtNetwork/qabstractsocket.h>
-#endif
-#ifdef Q_QDOC
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(Q_QDOC)
 #include <QtNetwork/qhostaddress.h>
 #endif
 #include <QtCore/qiodevice.h>
 #include <QtCore/qobject.h>
-#ifndef QT_NO_DEBUG_STREAM
-#include <QtCore/qdebug.h>
-#endif
 
 QT_BEGIN_NAMESPACE
 
+class QDebug;
 
 class QHostAddress;
 #ifndef QT_NO_NETWORKPROXY
@@ -30,7 +26,6 @@ class QAuthenticator;
 class Q_NETWORK_EXPORT QAbstractSocket : public QIODevice
 {
     Q_OBJECT
-    Q_MOC_INCLUDE(<QtNetwork/qauthenticator.h>)
 
 public:
     enum SocketType {
@@ -52,10 +47,7 @@ public:
 #else
     // compatibility with Qt 4 to 6
     using NetworkLayerProtocol = QHostAddress::NetworkLayerProtocol;
-    static constexpr auto IPv4Protocol = QHostAddress::IPv4Protocol;
-    static constexpr auto IPv6Protocol = QHostAddress::IPv6Protocol;
-    static constexpr auto AnyIPProtocol = QHostAddress::AnyIPProtocol;
-    static constexpr auto UnknownNetworkLayerProtocol = QHostAddress::UnknownNetworkLayerProtocol;
+    using enum NetworkLayerProtocol;
 #endif
 
     enum SocketError {
@@ -104,7 +96,10 @@ public:
         TypeOfServiceOption, //IP_TOS
         SendBufferSizeSocketOption,    //SO_SNDBUF
         ReceiveBufferSizeSocketOption,  //SO_RCVBUF
-        PathMtuSocketOption // IP_MTU
+        PathMtuSocketOption, // IP_MTU
+        KeepAliveIdleOption, // TCP_KEEPIDLE
+        KeepAliveIntervalOption, // TCP_KEEPINTVL
+        KeepAliveCountOption, // TCP_KEEPCNT
     };
     Q_ENUM(SocketOption)
     enum BindFlag {
@@ -227,10 +222,12 @@ private:
 Q_DECLARE_OPERATORS_FOR_FLAGS(QAbstractSocket::BindMode)
 Q_DECLARE_OPERATORS_FOR_FLAGS(QAbstractSocket::PauseModes)
 
+#if QT_NETWORK_REMOVED_SINCE(6, 12)
 #ifndef QT_NO_DEBUG_STREAM
 Q_NETWORK_EXPORT QDebug operator<<(QDebug, QAbstractSocket::SocketError);
 Q_NETWORK_EXPORT QDebug operator<<(QDebug, QAbstractSocket::SocketState);
 #endif
+#endif // QT_NETWORK_REMOVED_SINCE(6, 12)
 
 QT_END_NAMESPACE
 

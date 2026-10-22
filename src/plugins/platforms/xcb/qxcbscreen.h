@@ -1,8 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#ifndef QXCBSCREEN_H
-#define QXCBSCREEN_H
+#pragma once
 
 #include <qpa/qplatformscreen.h>
 #include <qpa/qplatformscreen_p.h>
@@ -96,8 +96,8 @@ private:
     QRect m_workArea;
 
     int m_forcedDpi = -1;
-    QFontEngine::HintStyle m_hintStyle = QFontEngine::HintStyle(-1);
-    QFontEngine::SubpixelAntialiasingType m_subpixelType = QFontEngine::SubpixelAntialiasingType(-1);
+    QFontEngine::HintStyle m_hintStyle = QFontEngine::HintUnset;
+    QFontEngine::SubpixelAntialiasingType m_subpixelType = QFontEngine::Subpixel_Unset;
     int m_antialiasingEnabled = -1;
     QString m_windowManagerName;
     QMap<xcb_visualid_t, xcb_visualtype_t> m_visuals;
@@ -228,5 +228,3 @@ Q_GUI_EXPORT QDebug operator<<(QDebug, const QXcbScreen *);
 #endif
 
 QT_END_NAMESPACE
-
-#endif

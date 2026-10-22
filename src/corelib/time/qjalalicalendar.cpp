@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qglobal.h"
 #include "qjalalicalendar_p.h"
@@ -26,19 +27,30 @@ static inline int cycle(qint64 jdn)
     return qDiv<cycleDays>(jdn - jalaliEpoch);
 }
 
-qint64 cycleStart(int cycleNo)
+static qint64 cycleStart(int cycleNo)
 {
-    return jalaliEpoch + cycleNo * cycleDays;
+    return jalaliEpoch + cycleNo * qint64(cycleDays);
 }
 
-qint64 firstDayOfYear(int year, int cycleNo)
+static qint64 firstDayOfYear(int year, int cycleNo)
 {
-    qint64 firstDOYinEra = static_cast<qint64>(qFloor(year * yearLength));
-    return jalaliEpoch + cycleNo * cycleDays + firstDOYinEra;
+    using std::floor;
+    qint64 firstDOYinEra
+        = QtPrivate::qCheckedFPConversionToInteger<qint64>(floor(year * yearLength));
+    return jalaliEpoch + cycleNo * qint64(cycleDays) + firstDOYinEra;
+}
+
+// Promoted to qint64 to avoid overflows and handle julianDayToDate()'s qint64.
+static bool isLeap(qint64 year)
+{
+    // This handles a year < 0 ? year + 1 : year adjusted year, or a value due
+    // to be subjected to the reverse of that to deliver a year.
+    return qMod<2820>((year + 2346) * 683) < 683;
 }
 
 /*!
     \since 5.14
+    \internal
 
     \class QJalaliCalendar
     \inmodule QtCore
@@ -96,8 +108,9 @@ bool QJalaliCalendar::isLeapYear(int year) const
     if (year == QCalendar::Unspecified)
         return false;
     if (year < 0)
-        year++;
-    return qMod<2820>((year + 2346) * 683) < 683;
+        ++year;
+
+    return isLeap(year);
 }
 
 bool QJalaliCalendar::isLunar() const
@@ -121,26 +134,41 @@ bool QJalaliCalendar::dateToJulianDay(int year, int month, int day, qint64 *jd) 
     if (!isDateValid(year, month, day))
         return false;
 
-    const int y = year - (year < 0 ? 474 : 475);
-    const int c = qDiv<cycleYears>(y);
-    const int yearInCycle = y - c * cycleYears;
+    const int yearOffset = year < 0 ? 474 : 475;
+    auto yModCycle = qDivMod<cycleYears>(year);
+    if (yModCycle.remainder < yearOffset) {
+        yModCycle.quotient -= 1;
+        yModCycle.remainder += cycleYears;
+    }
+    yModCycle.remainder -= yearOffset;
+
     int dayInYear = day;
     for (int i = 1; i < month; ++i)
         dayInYear += daysInMonth(i, year);
-    *jd = firstDayOfYear(yearInCycle, c) + dayInYear - 1;
+    *jd = firstDayOfYear(yModCycle.remainder, yModCycle.quotient) + dayInYear - 1;
     return true;
 }
 
 QCalendar::YearMonthDay QJalaliCalendar::julianDayToDate(qint64 jd) const
 {
+    using Bound = std::numeric_limits<int>;
+    constexpr qint64 maxInt = Bound::max();
     const int c = cycle(jd);
     int yearInCycle = qFloor((jd - cycleStart(c)) / yearLength);
-    int year = yearInCycle + 475 + c * cycleYears;
     int day = jd - firstDayOfYear(yearInCycle, c) + 1;
-    if (day > daysInYear(year <= 0 ? year - 1 : year)) {
-        year++;
+
+    // Near the bounds of the supported range this is just outside int's range:
+    qint64 y = yearInCycle + 475 + c * qint64(cycleYears);
+    // Inline daysInYear() to bypass corrections for no year 0 (and its int parameter):
+    if (day > (isLeap(y) ? 366 : 365)) {
+        ++y;
         day = 1;
     }
+    // We'll be subtracting 1 if negative, so -maxInt is the lower bound, not Bound::min().
+    if (y > maxInt || y < -maxInt)
+        return {};
+
+    int year = static_cast<int>(y);
     if (year <= 0)
         year--;
     int month;
@@ -150,15 +178,21 @@ QCalendar::YearMonthDay QJalaliCalendar::julianDayToDate(qint64 jd) const
             break;
         day -= last;
     }
-    return QCalendar::YearMonthDay(year, month, day);
+    return {year, month, day};
 }
 
 int QJalaliCalendar::daysInMonth(int month, int year) const
 {
-    if (year && month > 0 && month <= 12)
-        return month < 7 ? 31 : month < 12 || isLeapYear(year) ? 30 : 29;
+    if (!year || month < 1 || month > 12)
+        return 0;
 
-    return 0;
+    if (month < 7)
+        return 31;
+
+    if (month < 12 || year == QCalendar::Unspecified || isLeapYear(year))
+        return 30;
+
+    return 29;
 }
 
 const QCalendarLocale *QJalaliCalendar::localeMonthIndexData() const

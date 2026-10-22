@@ -1,10 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:insignificant reason:build-tool
 
 #ifndef VALIDATOR_H
 #define VALIDATOR_H
 
 #include "treewalker.h"
+
+#include <qstringlist.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -27,7 +30,15 @@ struct Validator : public TreeWalker
     void acceptActionGroup(DomActionGroup *node) override;
     void acceptAction(DomAction *node) override;
 
+    void acceptCustomWidget(DomCustomWidget *customWidget) override;
+    void acceptInclude(DomInclude *incl) override;
+
+    void acceptConnection(DomConnection *connection) override;
+
+    const QStringList &errors() const { return m_errors; }
+
 private:
+    QStringList m_errors;
     Driver *m_driver;
 };
 

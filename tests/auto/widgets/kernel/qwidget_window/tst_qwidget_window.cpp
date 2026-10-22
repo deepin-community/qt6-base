@@ -31,6 +31,8 @@
 #include <QtWidgets/private/qapplication_p.h>
 
 using namespace QTestPrivate;
+using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 // Compare a window position that may go through scaling in the platform plugin with fuzz.
 static inline bool qFuzzyCompareWindowPosition(const QPoint &p1, const QPoint p2, int fuzz)
@@ -197,6 +199,7 @@ void tst_QWidget_window::tst_show_move()
 {
     QWidget w;
     w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
     const QPoint pos(100, 100);
     w.move(pos);
     QVERIFY2(qFuzzyCompareWindowPosition(w.pos(), pos, m_fuzz),
@@ -509,17 +512,24 @@ void tst_QWidget_window::tst_paintEventOnResize_QTBUG50796()
 
     PaintTestWidget *native = new PaintTestWidget(&root);
     native->winId(); // We're testing native widgets
-    native->setGeometry(10, 10, 50, 50);
+    native->setGeometry(50, 50, 50, 50); // position it outside of potentially unsafe area
 
     root.show();
     QVERIFY(QTest::qWaitForWindowExposed(&root));
     QVERIFY(QTest::qWaitForWindowActive(&root));
     QVERIFY(native->isVisible());
 
+    // The top level widget can receive new margins after show
+    // if the size is big enough to end up overlapping safe areas.
+    int safeMarginsResizeCount = 0;
+    connect(root.windowHandle(), &QWindow::safeAreaMarginsChanged, this, [&]() {
+        ++safeMarginsResizeCount;
+    });
+
     native->paintEventCount = 0;
     native->resize(native->width() + 10, native->height() + 10);
     QTest::qWait(50); // Wait for paint events
-    QTRY_COMPARE(native->paintEventCount, 1); // Only one paint event must occur
+    QTRY_COMPARE(native->paintEventCount - safeMarginsResizeCount, 1); // Only one paint event must occur
 }
 
 #if QT_CONFIG(draganddrop)
@@ -697,7 +707,7 @@ void tst_QWidget_window::tst_dnd()
     mimeData.setText(QLatin1String("testmimetext"));
 
     // Simulate DnD events on the QWidgetWindow.
-    QPoint position = QPoint(11, 1);
+    QPointF position = QPointF(11, 1);
     QDragEnterEvent e(position, Qt::CopyAction, &mimeData, Qt::LeftButton, Qt::NoModifier);
     QWindow *window = dndTestWidget.windowHandle();
     qApp->sendEvent(window, &e);
@@ -718,15 +728,15 @@ void tst_QWidget_window::tst_dnd()
     }
 
     window = nativeWidget->windowHandle();
-    QDragEnterEvent enterEvent(QPoint(0, 0), Qt::CopyAction, &mimeData, Qt::LeftButton, Qt::NoModifier);
+    QDragEnterEvent enterEvent(QPointF(0, 0), Qt::CopyAction, &mimeData, Qt::LeftButton, Qt::NoModifier);
     qApp->sendEvent(window, &enterEvent);
     log.push_back(msgEventAccepted(enterEvent));
 
-    QDragMoveEvent moveEvent(QPoint(1, 1), Qt::CopyAction, &mimeData, Qt::LeftButton, Qt::NoModifier);
+    QDragMoveEvent moveEvent(QPointF(1, 1), Qt::CopyAction, &mimeData, Qt::LeftButton, Qt::NoModifier);
     qApp->sendEvent(window, &moveEvent);
     log.push_back(msgEventAccepted(moveEvent));
 
-    QDropEvent dropEvent(QPoint(2, 2), Qt::CopyAction, &mimeData, Qt::LeftButton, Qt::NoModifier);
+    QDropEvent dropEvent(QPointF(2, 2), Qt::CopyAction, &mimeData, Qt::LeftButton, Qt::NoModifier);
     qApp->sendEvent(window, &dropEvent);
     log.push_back(msgEventAccepted(dropEvent));
 
@@ -754,40 +764,50 @@ class DnDEventRecorder : public QWidget
 {
     Q_OBJECT
 public:
-    QString _dndEvents;
     DnDEventRecorder() { setAcceptDrops(true); }
+    const QList<QEvent::Type> dndEvents() const { return m_dndEvents; }
+    void reset()
+    {
+        m_dndEvents.clear();
+        m_mousePressCount = 0;
+    }
+    bool moveTimeout() const { return m_dndEvents.count(QEvent::DragEnter) > 0
+                                      && m_mousePressCount > m_dndEvents.count(QEvent::DragMove); }
 
 protected:
     void mousePressEvent(QMouseEvent *) override
     {
+        ++m_mousePressCount;
         QMimeData *mimeData = new QMimeData;
         mimeData->setData("application/x-dnditemdata", "some data");
         QDrag *drag = new QDrag(this);
         drag->setMimeData(mimeData);
+
+        // Cancel the drag, if the platform doesn't correctly move the cursor
+        // and no DragMove is seen.
+        QTimer::singleShot(150ms, this, [this, drag] {
+            if (moveTimeout())
+                drag->cancel();
+        });
         drag->exec();
     }
-
-    void dragEnterEvent(QDragEnterEvent *e) override
+    void dragEnterEvent(QDragEnterEvent *e) override { recordEvent(e); }
+    void dragLeaveEvent(QDragLeaveEvent *e) override { recordEvent(e); }
+    void dropEvent(QDropEvent *e) override { recordEvent(e); }
+    void recordEvent(QEvent *e)
     {
+        m_dndEvents << e->type();
         e->accept();
-        _dndEvents.append(QStringLiteral("DragEnter "));
     }
     void dragMoveEvent(QDragMoveEvent *e) override
     {
-        e->accept();
-        _dndEvents.append(QStringLiteral("DragMove "));
+        recordEvent(e);
         emit dragMoveReceived();
     }
-    void dragLeaveEvent(QDragLeaveEvent *e) override
-    {
-        e->accept();
-        _dndEvents.append(QStringLiteral("DragLeave "));
-    }
-    void dropEvent(QDropEvent *e) override
-    {
-        e->accept();
-        _dndEvents.append(QStringLiteral("DropEvent "));
-    }
+private:
+    QList<QEvent::Type> m_dndEvents;
+    short m_mousePressCount = 0;
+    short m_dragMoveCount = 0;
 
 signals:
     void dragMoveReceived();
@@ -805,18 +825,29 @@ void tst_QWidget_window::tst_dnd_events()
     // catch regressions at cross platform code: QGuiApplication::processDrag/Leave().
     if (platformName != "xcb")
         return;
+    if (qgetenv("XDG_CURRENT_DESKTOP").toLower().contains("ubuntu") && QSysInfo::productVersion() == "24.04"_L1)
+        QSKIP("This hangs on Ubuntu 24.04 X11, see also QTBUG-129567.");
 
-    const QString expectedDndEvents = "DragEnter DragMove DropEvent DragEnter DragMove "
-                                      "DropEvent DragEnter DragMove DropEvent ";
+    const QList<QEvent::Type> expectedDndEvents {
+        QEvent::DragEnter,
+        QEvent::DragMove,
+        QEvent::Drop,
+        QEvent::DragEnter,
+        QEvent::DragMove,
+        QEvent::Drop,
+        QEvent::DragEnter,
+        QEvent::DragMove,
+        QEvent::Drop
+    };
+
     DnDEventRecorder dndWidget;
     dndWidget.setGeometry(100, 100, 200, 200);
     dndWidget.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dndWidget));
     QVERIFY(QTest::qWaitForWindowActive(&dndWidget));
 
-    // ### FIXME - QTBUG-35117 ???
-    auto targetCenter = QPoint(dndWidget.width(), dndWidget.height()) / 2;
-    auto targetCenterGlobal = dndWidget.mapToGlobal(targetCenter);
+    const auto targetCenter = QPoint(dndWidget.width(), dndWidget.height()) / 2;
+    const auto targetCenterGlobal = dndWidget.mapToGlobal(targetCenter);
     QCursor::setPos(targetCenterGlobal);
     QVERIFY(QTest::qWaitFor([&]() { return QCursor::pos() == targetCenterGlobal; }));
     QCoreApplication::processEvents(); // clear mouse events generated from cursor
@@ -825,17 +856,20 @@ void tst_QWidget_window::tst_dnd_events()
 
     // Some dnd implementation rely on running internal event loops, so we have to use
     // the following queued signal hack to simulate mouse clicks in the widget.
-    QObject::connect(&dndWidget, &DnDEventRecorder::dragMoveReceived, this, [=]() {
+    auto connection = QObject::connect(&dndWidget, &DnDEventRecorder::dragMoveReceived, this,
+                                        [=]() {
         QTest::mouseRelease(window, Qt::LeftButton);
     }, Qt::QueuedConnection);
 
-    QTest::mousePress(window, Qt::LeftButton);
-    QTest::mousePress(window, Qt::LeftButton);
-    QTest::mousePress(window, Qt::LeftButton);
+    for (short i = 0; i < 3; ++i)
+        QTest::mousePress(window, Qt::LeftButton);
 
-    QCOMPARE(dndWidget._dndEvents, expectedDndEvents);
+    if (dndWidget.moveTimeout())
+        QSKIP("Operating system didn't react to QCursor::setPost()");
 
-    dndWidget._dndEvents.clear();
+    QCOMPARE(dndWidget.dndEvents(), expectedDndEvents);
+
+    dndWidget.reset();
     dndWidget.disconnect();
     int step = 0;
     QObject::connect(&dndWidget, &DnDEventRecorder::dragMoveReceived, this, [window, &step]() {
@@ -853,8 +887,10 @@ void tst_QWidget_window::tst_dnd_events()
     }, Qt::QueuedConnection);
 
     QTest::mousePress(window, Qt::LeftButton);
-    const QString expectedDndWithModsEvents = "DragEnter DragMove DragMove DragMove DropEvent ";
-    QCOMPARE(dndWidget._dndEvents, expectedDndWithModsEvents);
+    const QList<QEvent::Type> expectedDndWithModsEvents {
+        QEvent::DragEnter, QEvent::DragMove, QEvent::DragMove, QEvent::DragMove, QEvent::Drop
+    };
+    QCOMPARE(dndWidget.dndEvents(), expectedDndWithModsEvents);
 }
 
 class DropTarget : public QWidget
@@ -1195,7 +1231,7 @@ void tst_QWidget_window::tst_showhide_count()
             return QObject::eventFilter(receiver, event);
         }
     private:
-        using Entry = QPair<QWidget*, QEvent::Type>;
+        using Entry = std::pair<QWidget*, QEvent::Type>;
         QHash<Entry, int> counter;
     };
 
@@ -1362,10 +1398,10 @@ void tst_QWidget_window::setWindowState_data()
     QString platformName = QGuiApplication::platformName().toLower();
 
     QTest::addColumn<Qt::WindowStates>("state");
-    QTest::newRow("0") << Qt::WindowStates();
-    QTest::newRow("Qt::WindowMaximized") << Qt::WindowStates(Qt::WindowMaximized);
-    QTest::newRow("Qt::WindowMinimized") << Qt::WindowStates(Qt::WindowMinimized);
-    QTest::newRow("Qt::WindowFullScreen") << Qt::WindowStates(Qt::WindowFullScreen);
+    QTest::newRow("nostate") << Qt::WindowStates();
+    QTest::newRow("maximized") << Qt::WindowStates(Qt::WindowMaximized);
+    QTest::newRow("minimized") << Qt::WindowStates(Qt::WindowMinimized);
+    QTest::newRow("fullscreen") << Qt::WindowStates(Qt::WindowFullScreen);
 
     if (platformName != "xcb" && platformName != "windows" && !platformName.startsWith("wayland")
         && platformName != "offscreen")
@@ -1555,8 +1591,9 @@ void tst_QWidget_window::mouseMoveWithPopup()
         if (!window)
             return QEvent::None;
 
-        bool result = QWindowSystemInterface::handleMouseEvent(window, window->mapFromGlobal(mousePos),
-                                                               mousePos, buttons, button, type);
+        bool result = QWindowSystemInterface::handleMouseEvent(
+                window, QHighDpi::toNativeLocalPosition(window->mapFromGlobal(mousePos), window),
+                QHighDpi::toNativeGlobalPosition(mousePos, window), buttons, button, type);
         QCoreApplication::processEvents();
         if (type == QEvent::MouseButtonRelease && buttons == Qt::NoButton)
             window = nullptr;

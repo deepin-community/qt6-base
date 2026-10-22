@@ -1,9 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "qhttpnetworkconnection_p.h"
 #include <private/qabstractsocket_p.h>
 #include "qhttpnetworkconnectionchannel_p.h"
+#include <private/qhttp2protocolhandler_p.h>
 #include "private/qnoncontiguousbytedevice_p.h"
 #include <private/qnetworkrequest_p.h>
 #include <private/qobject_p.h>
@@ -16,7 +18,6 @@
 #include <private/qsocketabstraction_p.h>
 
 #include <qbuffer.h>
-#include <qpair.h>
 #include <qdebug.h>
 #include <qspan.h>
 #include <qvarlengtharray.h>
@@ -112,10 +113,12 @@ void QHttpNetworkConnectionPrivate::pauseConnection()
             else
 #endif
                 QAbstractSocketPrivate::pauseSocketNotifiers(absSocket);
+#if QT_CONFIG(localserver)
         } else if (qobject_cast<QLocalSocket *>(channels[i].socket)) {
             // @todo how would we do this?
 #if 0 // @todo Enable this when there is a debug category for this
             qDebug() << "Should pause socket but there is no way to do it for local sockets";
+#endif
 #endif
         }
     }
@@ -137,9 +140,11 @@ void QHttpNetworkConnectionPrivate::resumeConnection()
             // Resume pending upload if needed
             if (channels[i].state == QHttpNetworkConnectionChannel::WritingState)
                 QMetaObject::invokeMethod(&channels[i], "_q_uploadDataReadyRead", Qt::QueuedConnection);
+#if QT_CONFIG(localserver)
         } else if (qobject_cast<QLocalSocket *>(channels[i].socket)) {
 #if 0 // @todo Enable this when there is a debug category for this
             qDebug() << "Should resume socket but there is no way to do it for local sockets";
+#endif
 #endif
         }
     }
@@ -231,6 +236,18 @@ static QByteArray makeAcceptLanguage()
     return (systemLocale + ",en,*"_L1).toLatin1();
 }
 
+static QStringView removeZoneId(QStringView ipv6HostAddress)
+{
+    const auto zoneIdentfierIndex = ipv6HostAddress.indexOf(u'%');
+    // Only perform a minimal sanity check, as at this point the
+    // ipv6HostAddress was already used successfully to establish the connection.
+    if (zoneIdentfierIndex == -1) {
+        return ipv6HostAddress;
+    }
+
+    return ipv6HostAddress.left(zoneIdentfierIndex);
+}
+
 void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
 {
     QHttpNetworkRequest &request = messagePair.first;
@@ -314,7 +331,7 @@ void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
         QByteArray host;
         if (add.setAddress(hostName)) {
             if (add.protocol() == QAbstractSocket::IPv6Protocol)
-                host = (u'[' + hostName + u']').toLatin1(); //format the ipv6 in the standard way
+                host = (u'[' + removeZoneId(hostName) + u']').toLatin1(); //format the ipv6 in the standard way
             else
                 host = hostName.toLatin1();
 
@@ -626,7 +643,7 @@ QHttpNetworkReply* QHttpNetworkConnectionPrivate::queueRequest(const QHttpNetwor
     reply->setRequest(request);
     reply->d_func()->connection = q;
     reply->d_func()->connectionChannel = &channels[0]; // will have the correct one set later
-    HttpMessagePair pair = qMakePair(request, reply);
+    HttpMessagePair pair = std::pair(request, reply);
 
     if (request.isPreConnect())
         preConnectRequests++;
@@ -999,6 +1016,13 @@ void QHttpNetworkConnectionPrivate::removeReply(QHttpNetworkReply *reply)
             QMetaObject::invokeMethod(q, "_q_startNextRequest", Qt::QueuedConnection);
             return;
         }
+        // Check if the h2 protocol handler already started processing it
+        if ((connectionType == QHttpNetworkConnection::ConnectionTypeHTTP2Direct
+             || channels[i].switchedToHttp2)
+            && channels[i].protocolHandler) {
+            if (channels[i].protocolHandler->tryRemoveReply(reply))
+                return;
+        }
     }
     // remove from the high priority queue
     if (!highPriorityQueue.isEmpty()) {
@@ -1079,28 +1103,34 @@ void QHttpNetworkConnectionPrivate::_q_startNextRequest()
     }
     case QHttpNetworkConnection::ConnectionTypeHTTP2Direct:
     case QHttpNetworkConnection::ConnectionTypeHTTP2: {
-        if (channels[0].h2RequestsToSend.isEmpty() && !channels[0].reply
+        auto &channel = channels[0];
+        if (channel.h2RequestsToSend.isEmpty() && !channel.reply
             && highPriorityQueue.isEmpty() && lowPriorityQueue.isEmpty()) {
             return;
         }
 
         if (networkLayerState == IPv4)
-            channels[0].networkLayerPreference = QAbstractSocket::IPv4Protocol;
+            channel.networkLayerPreference = QAbstractSocket::IPv4Protocol;
         else if (networkLayerState == IPv6)
-            channels[0].networkLayerPreference = QAbstractSocket::IPv6Protocol;
-        channels[0].ensureConnection();
-        if (auto *s = channels[0].socket; s
+            channel.networkLayerPreference = QAbstractSocket::IPv6Protocol;
+        channel.ensureConnection();
+
+        // Connection is going away: hold new requests until the channel reconnects.
+        if (channel.isPendingReconnect())
+            return;
+
+        if (auto *s = channel.socket; s
             && QSocketAbstraction::socketState(s) == QAbstractSocket::ConnectedState
-            && !channels[0].pendingEncrypt) {
-            if (channels[0].h2RequestsToSend.size()) {
-                channels[0].sendRequest();
-            } else if (!channels[0].reply && !channels[0].switchedToHttp2) {
+            && !channel.pendingEncrypt) {
+            if (channel.h2RequestsToSend.size()) {
+                channel.sendRequest();
+            } else if (!channel.reply && !channel.switchedToHttp2) {
                 // This covers an edge-case where we're already connected and the "connected"
                 // signal was already sent, but we didn't have any request available at the time,
                 // so it was missed. As such we need to dequeue a request and send it now that we
                 // have one.
-                dequeueRequest(channels[0].socket);
-                channels[0].sendRequest();
+                dequeueRequest(channel.socket);
+                channel.sendRequest();
             }
         }
         break;
@@ -1363,10 +1393,6 @@ QHttpNetworkConnection::QHttpNetworkConnection(quint16 connectionCount, const QS
 {
     Q_D(QHttpNetworkConnection);
     d->init();
-    if (QNetworkConnectionMonitor::isEnabled()) {
-        connect(&d->connectionMonitor, &QNetworkConnectionMonitor::reachabilityChanged,
-                this, &QHttpNetworkConnection::onlineStateChanged, Qt::QueuedConnection);
-    }
 }
 
 QHttpNetworkConnection::~QHttpNetworkConnection()
@@ -1466,6 +1492,18 @@ void QHttpNetworkConnection::setHttp2Parameters(const QHttp2Configuration &param
     d->http2Parameters = params;
 }
 
+QTcpKeepAliveConfiguration QHttpNetworkConnection::tcpKeepAliveParameters() const
+{
+    Q_D(const QHttpNetworkConnection);
+    return d->tcpKeepAliveConfiguration;
+}
+
+void QHttpNetworkConnection::setTcpKeepAliveParameters(QTcpKeepAliveConfiguration config)
+{
+    Q_D(QHttpNetworkConnection);
+    d->tcpKeepAliveConfiguration = config;
+}
+
 // SSL support below
 #ifndef QT_NO_SSL
 void QHttpNetworkConnection::setSslConfiguration(const QSslConfiguration &config)
@@ -1561,9 +1599,6 @@ void QHttpNetworkConnection::onlineStateChanged(bool isOnline)
         channel.emitFinishedWithError(QNetworkReply::TemporaryNetworkFailureError, "Temporary network failure.");
         channel.close();
     }
-
-    // We don't care, this connection is broken from our POV.
-    d->connectionMonitor.stopMonitoring();
 }
 
 #ifndef QT_NO_NETWORKPROXY

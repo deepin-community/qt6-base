@@ -4,6 +4,8 @@
 //! [0]
 #include <QDir>
 #include <iostream>
+#include <QCoreApplication>
+
 
 int main(int argc, char *argv[])
 {

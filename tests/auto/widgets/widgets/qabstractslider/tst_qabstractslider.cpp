@@ -3,11 +3,14 @@
 
 
 #include <QTest>
+
 #include <QAbstractSlider>
+#include <QtWidgets/qdial.h>
 #include <QScrollBar>
 #include <QSlider>
 #include <QStyle>
 #include <QStyleOption>
+
 #include <QElapsedTimer>
 #include <QDebug>
 #include <QSignalSpy>
@@ -66,12 +69,18 @@ private slots:
     void setRepeatAction();
     void connectedSliders();
 
+    void sliderChange_QDial() { sliderChange_impl<QDial>(); }
+    void sliderChange_QScrollBar() { sliderChange_impl<QScrollBar>(); }
+    void sliderChange_QSlider() { sliderChange_impl<QSlider>(); }
+
 private:
+    template <typename Slider>
+    void sliderChange_impl();
     void waitUntilTimeElapsed(const QElapsedTimer &t, int ms);
 
     QWidget *topLevel;
     Slider *slider;
-    int previousAction;
+    QAbstractSlider::SliderAction previousAction;
     int reportedMinimum;
     int reportedMaximum;
     int reportedValue;
@@ -82,8 +91,6 @@ private:
     qint64 rangeChangedTimeStamp;
     qint64 sliderMovedTimeStamp;
 };
-
-Q_DECLARE_METATYPE(QList<Qt::Key>)
 
 void tst_QAbstractSlider::initTestCase()
 {
@@ -109,7 +116,7 @@ void tst_QAbstractSlider::cleanupTestCase()
 
 void tst_QAbstractSlider::actionTriggered(int action)
 {
-    previousAction = action;
+    previousAction = QAbstractSlider::SliderAction(action);
     actionTriggeredTimeStamp = timeStamp++;
 }
 
@@ -134,7 +141,7 @@ void tst_QAbstractSlider::sliderMoved(int value)
 
 void tst_QAbstractSlider::triggerAction_data()
 {
-    QTest::addColumn<int>("sliderAction");
+    QTest::addColumn<QAbstractSlider::SliderAction>("sliderAction");
     QTest::addColumn<int>("maximum");
     QTest::addColumn<int>("minimum");
     QTest::addColumn<int>("initialSliderPosition");
@@ -142,7 +149,7 @@ void tst_QAbstractSlider::triggerAction_data()
     QTest::addColumn<int>("pageStep");
     QTest::addColumn<int>("expectedSliderPosition");
 
-    QTest::newRow("No action") << int(QAbstractSlider::SliderNoAction) // sliderAction
+    QTest::newRow("No action")  << QAbstractSlider::SliderNoAction  // sliderAction
                             << 1000                                 // max
                             << 900                                  // min
                             << 987                                  // initial position
@@ -150,7 +157,7 @@ void tst_QAbstractSlider::triggerAction_data()
                             << 234                                  // page step size
                             << 987;                                 // expected position after
 
-    QTest::newRow("Move action") << int(QAbstractSlider::SliderMove) // sliderAction
+    QTest::newRow("Move action")  << QAbstractSlider::SliderMove  // sliderAction
                               << 1000                                 // max
                               << 900                                  // min
                               << 988                                  // initial position
@@ -158,7 +165,7 @@ void tst_QAbstractSlider::triggerAction_data()
                               << 234                                  // page step size
                               << 988;                                 // expected position after
 
-    QTest::newRow("Empty step add") << int(QAbstractSlider::SliderSingleStepAdd) // sliderAction
+    QTest::newRow("Empty step add")  << QAbstractSlider::SliderSingleStepAdd  // sliderAction
                                  << 1000                                      // max
                                  << 900                                       // min
                                  << 988                                       // initial position
@@ -166,7 +173,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                  << 234                                       // page step size
                                  << 988;                                      // expected position after
 
-     QTest::newRow("Empty step sub") << int(QAbstractSlider::SliderSingleStepSub) // sliderAction
+     QTest::newRow("Empty step sub")  << QAbstractSlider::SliderSingleStepSub  // sliderAction
                                  << 1000                                       // max
                                  << 900                                        // min
                                  << 987                                        // initial position
@@ -174,7 +181,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                  << 234                                        // page step size
                                  << 987;                                       // expected position after
 
-    QTest::newRow("Empty page add") << int(QAbstractSlider::SliderPageStepAdd) // sliderAction
+    QTest::newRow("Empty page add")  << QAbstractSlider::SliderPageStepAdd  // sliderAction
                                  << 1000                                    // max
                                  << 900                                     // min
                                  << 988                                     // initial position
@@ -182,7 +189,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                  << 0                                       // page step size
                                  << 988;                                    // expected position after
 
-     QTest::newRow("Empty page sub") << int(QAbstractSlider::SliderPageStepSub) // sliderAction
+     QTest::newRow("Empty page sub")  << QAbstractSlider::SliderPageStepSub  // sliderAction
                                  << 1000                                     // max
                                  << 900                                      // min
                                  << 987                                      // initial position
@@ -190,7 +197,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                  << 0                                        // page step size
                                  << 987;                                     // expected position after
 
-    QTest::newRow("Legal step add") << int(QAbstractSlider::SliderSingleStepAdd) // sliderAction
+    QTest::newRow("Legal step add")  << QAbstractSlider::SliderSingleStepAdd  // sliderAction
                                  << 1000                                      // max
                                  << 900                                       // min
                                  << 988                                       // initial position
@@ -198,7 +205,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                  << 234                                       // page step size
                                  << 993;                                      // expected position after
 
-     QTest::newRow("Legal step sub") << int(QAbstractSlider::SliderSingleStepSub) // sliderAction
+     QTest::newRow("Legal step sub")  << QAbstractSlider::SliderSingleStepSub  // sliderAction
                                  << 1000                                       // max
                                  << 900                                        // min
                                  << 987                                        // initial position
@@ -206,7 +213,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                  << 234                                        // page step size
                                  << 982;                                       // expected position after
 
-    QTest::newRow("Legal page add") << int(QAbstractSlider::SliderPageStepAdd) // sliderAction
+    QTest::newRow("Legal page add")  << QAbstractSlider::SliderPageStepAdd  // sliderAction
                                  << 1000                                    // max
                                  << 900                                     // min
                                  << 988                                     // initial position
@@ -214,7 +221,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                  << 5                                       // page step size
                                  << 993;                                    // expected position after
 
-     QTest::newRow("Legal page sub") << int(QAbstractSlider::SliderPageStepSub) // sliderAction
+     QTest::newRow("Legal page sub")  << QAbstractSlider::SliderPageStepSub  // sliderAction
                                  << 1000                                     // max
                                  << 900                                      // min
                                  << 987                                      // initial position
@@ -222,7 +229,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                  << 5                                        // page step size
                                  << 982;                                     // expected position after
 
-    QTest::newRow("Illegal step add") << int(QAbstractSlider::SliderSingleStepAdd) // sliderAction
+    QTest::newRow("Illegal step add")  << QAbstractSlider::SliderSingleStepAdd  // sliderAction
                                    << 1000                                      // max
                                    << 900                                       // min
                                    << 988                                       // initial position
@@ -230,7 +237,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                    << 234                                       // page step size
                                    << 1000;                                     // expected position after
 
-     QTest::newRow("Illegal step sub") << int(QAbstractSlider::SliderSingleStepSub) // sliderAction
+     QTest::newRow("Illegal step sub")  << QAbstractSlider::SliderSingleStepSub  // sliderAction
                                     << 1000                                      // max
                                     << 900                                       // min
                                     << 987                                       // initial position
@@ -238,7 +245,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                     << 234                                       // page step size
                                     << 900;                                      // expected position after
 
-    QTest::newRow("Illegal page add") << int(QAbstractSlider::SliderPageStepAdd) // sliderAction
+    QTest::newRow("Illegal page add")  << QAbstractSlider::SliderPageStepAdd  // sliderAction
                                    << 1000                                    // max
                                    << 900                                     // min
                                    << 988                                     // initial position
@@ -246,7 +253,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                    << 500                                     // page step size
                                    << 1000;                                   // expected position after
 
-     QTest::newRow("Illegal page sub") << int(QAbstractSlider::SliderPageStepSub) // sliderAction
+     QTest::newRow("Illegal page sub")  << QAbstractSlider::SliderPageStepSub  // sliderAction
                                     << 1000                                    // max
                                     << 900                                     // min
                                     << 987                                     // initial position
@@ -255,7 +262,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                     << 900;                                    // expected position after
 
     // Negative steps will also be abs()'d so, check that case.
-    QTest::newRow("Negative step add") << int(QAbstractSlider::SliderSingleStepAdd) // sliderAction
+    QTest::newRow("Negative step add")  << QAbstractSlider::SliderSingleStepAdd  // sliderAction
                                     << 1000                                      // max
                                     << 900                                       // min
                                     << 988                                       // initial position
@@ -263,7 +270,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                     << 234                                       // page step size
                                     << 989;                                      // expected position after
 
-     QTest::newRow("Negative step sub") << int(QAbstractSlider::SliderSingleStepSub) // sliderAction
+     QTest::newRow("Negative step sub")  << QAbstractSlider::SliderSingleStepSub  // sliderAction
                                      << 1000                                      // max
                                      << 900                                       // min
                                      << 987                                       // initial position
@@ -271,7 +278,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                      << 234                                       // page step size
                                      << 986;                                      // expected position after
 
-    QTest::newRow("Negative page add") << int(QAbstractSlider::SliderPageStepAdd) // sliderAction
+    QTest::newRow("Negative page add")  << QAbstractSlider::SliderPageStepAdd  // sliderAction
                                     << 1000                                    // max
                                     << 900                                     // min
                                     << 988                                     // initial position
@@ -279,7 +286,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                     << -1                                      // page step size
                                     << 989;                                    // expected position after
 
-     QTest::newRow("Negative page sub") << int(QAbstractSlider::SliderPageStepSub) // sliderAction
+     QTest::newRow("Negative page sub")  << QAbstractSlider::SliderPageStepSub  // sliderAction
                                      << 1000                                    // max
                                      << 900                                     // min
                                      << 987                                     // initial position
@@ -287,7 +294,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                      << -1                                      // page step size
                                      << 986;                                    // expected position after
 
-    QTest::newRow("Illegal negative step add") << int(QAbstractSlider::SliderSingleStepAdd) // sliderAction
+    QTest::newRow("Illegal negative step add")  << QAbstractSlider::SliderSingleStepAdd  // sliderAction
                                             << 1000                                      // max
                                             << 900                                       // min
                                             << 988                                       // initial position
@@ -296,7 +303,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                             << 1000;                                      // expected position after
 
 
-    QTest::newRow("Illegal negative step sub") << int(QAbstractSlider::SliderSingleStepSub) // sliderAction
+    QTest::newRow("Illegal negative step sub")  << QAbstractSlider::SliderSingleStepSub  // sliderAction
                                             << 1000                                      // max
                                             << 900                                       // min
                                             << 988                                       // initial position
@@ -304,7 +311,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                             << 234                                       // page step size
                                             << 900;                                     // expected position after
 
-    QTest::newRow("Illegal negative page add") << int(QAbstractSlider::SliderPageStepAdd) // sliderAction
+    QTest::newRow("Illegal negative page add")  << QAbstractSlider::SliderPageStepAdd  // sliderAction
                                             << 1000                                    // max
                                             << 900                                     // min
                                             << 988                                     // initial position
@@ -312,7 +319,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                             << -500                                    // page step size
                                             << 1000;                                    // expected position after
 
-    QTest::newRow("Illegal negative page sub") << int(QAbstractSlider::SliderPageStepSub) // sliderAction
+    QTest::newRow("Illegal negative page sub")  << QAbstractSlider::SliderPageStepSub  // sliderAction
                                             << 1000                                    // max
                                             << 900                                     // min
                                             << 988                                     // initial position
@@ -320,7 +327,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                             << -500                                    // page step size
                                             << 900;                                   // expected position after
 
-    QTest::newRow("Slider to minimum") << int(QAbstractSlider::SliderToMinimum)   // sliderAction
+    QTest::newRow("Slider to minimum")  << QAbstractSlider::SliderToMinimum    // sliderAction
                                     << 1000                                    // max
                                     << 900                                     // min
                                     << 988                                     // initial position
@@ -328,7 +335,7 @@ void tst_QAbstractSlider::triggerAction_data()
                                     << 1                                       // page step size
                                     << 900;                                    // expected position after
 
-    QTest::newRow("Slider to maximum") << int(QAbstractSlider::SliderToMaximum)   // sliderAction
+    QTest::newRow("Slider to maximum")  << QAbstractSlider::SliderToMaximum    // sliderAction
                                     << 1000                                    // max
                                     << 900                                     // min
                                     << 988                                     // initial position
@@ -340,7 +347,7 @@ void tst_QAbstractSlider::triggerAction_data()
 
 void tst_QAbstractSlider::triggerAction()
 {
-    QFETCH(int,sliderAction);
+    QFETCH(QAbstractSlider::SliderAction,sliderAction);
     QFETCH(int,maximum);
     QFETCH(int,minimum);
     QFETCH(int,initialSliderPosition);
@@ -358,19 +365,16 @@ void tst_QAbstractSlider::triggerAction()
     int oldPosition = slider->sliderPosition();
     slider->setSliderPosition(initialSliderPosition);
 
-    QVERIFY( (oldPosition == initialSliderPosition && previousAction == int(QAbstractSlider::SliderNoAction)) ||
-            (oldPosition != initialSliderPosition && previousAction == int(QAbstractSlider::SliderMove)));
-    previousAction = int(QAbstractSlider::SliderNoAction);
+    QVERIFY( (oldPosition == initialSliderPosition && previousAction == QAbstractSlider::SliderNoAction) ||
+            (oldPosition != initialSliderPosition && previousAction == QAbstractSlider::SliderMove));
+    previousAction = QAbstractSlider::SliderNoAction;
 
-    QAbstractSlider::SliderAction *action = reinterpret_cast<QAbstractSlider::SliderAction*>(&sliderAction);
-    QVERIFY(action != 0);
-
-    slider->triggerAction(*action);
+    slider->triggerAction(sliderAction);
     QCOMPARE(previousAction,sliderAction); // previousAction set in the actionTriggered() slot
     QCOMPARE(slider->sliderPosition(),expectedSliderPosition);
     QCOMPARE(slider->value(),expectedSliderPosition);
     QCOMPARE(reportedValue,expectedSliderPosition);
-    previousAction = int(QAbstractSlider::SliderNoAction);
+    previousAction = QAbstractSlider::SliderNoAction;
     if (initialSliderPosition != expectedSliderPosition)
         QVERIFY(actionTriggeredTimeStamp < valueChangedTimeStamp);
 }
@@ -1507,7 +1511,7 @@ void tst_QAbstractSlider::wheelEvent_data()
                                    << 1                                  // delta
                                    << Qt::Vertical                       // orientation of slider
                                    << Qt::Vertical                       // orientation of wheel
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
                                    << 1                                  // expected position after
 #else
                                    // We don't restrict scrolling to pageStep on Mac
@@ -1525,7 +1529,7 @@ void tst_QAbstractSlider::wheelEvent_data()
                                         << 1                             // delta
                                         << Qt::Horizontal                // orientation of slider
                                         << Qt::Vertical                  // orientation of wheel
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
                                         << 1                             // expected position after
 #else
                                         // We don't restrict scrolling to pageStep on Mac
@@ -1544,7 +1548,7 @@ void tst_QAbstractSlider::wheelEvent_data()
                                         << 1                             // delta
                                         << Qt::Horizontal                // orientation of slider
                                         << Qt::Vertical                  // orientation of wheel
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
                                         << 1                             // expected position after
 #else
                                         // We don't restrict scrolling to pageStep on Mac
@@ -1645,7 +1649,7 @@ void tst_QAbstractSlider::wheelEvent()
     QWheelEvent event(wheelPoint, slider->mapToGlobal(wheelPoint), QPoint(), angleDelta,
                       Qt::NoButton, k, Qt::NoScrollPhase, false);
     QVERIFY(applicationInstance->sendEvent(slider,&event));
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QEXPECT_FAIL("Normal data page", "QTBUG-23679", Continue);
     QEXPECT_FAIL("Different orientation", "QTBUG-23679", Continue);
     QEXPECT_FAIL("Different orientation2", "QTBUG-23679", Continue);
@@ -1659,7 +1663,7 @@ void tst_QAbstractSlider::wheelEvent()
     QSignalSpy spy1(slider, SIGNAL(actionTriggered(int)));
     QSignalSpy spy2(slider, SIGNAL(valueChanged(int)));
     QVERIFY(applicationInstance->sendEvent(slider,&event2));
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QEXPECT_FAIL("Normal data page", "QTBUG-23679", Continue);
     QEXPECT_FAIL("Different orientation", "QTBUG-23679", Continue);
     QEXPECT_FAIL("Different orientation2", "QTBUG-23679", Continue);
@@ -1812,8 +1816,7 @@ void tst_QAbstractSlider::sliderPressedReleased()
     if (qApp->style()->styleHint(QStyle::SH_ScrollBar_LeftClickAbsolutePosition))
         QSKIP("The result depends on system setting on mac");
 
-    QTest::mousePress(slider, Qt::LeftButton, {},
-                      QPoint(rect.center().x() + 2, rect.center().y() + 2));
+    QTest::mousePress(slider, Qt::LeftButton, {}, rect.center());
     QCOMPARE(spy1.size(), expectedCount);
     QTest::mouseRelease(slider, Qt::LeftButton, {}, rect.center());
     QCOMPARE(spy2.size(), expectedCount);
@@ -2099,6 +2102,55 @@ void tst_QAbstractSlider::connectedSliders()
     QCOMPARE(slider2->minimum(), sliderlow);
     QCOMPARE(slider2->maximum(), sliderhigh);
     delete slider2;
+}
+
+
+
+template<typename Slider>
+void tst_QAbstractSlider::sliderChange_impl()
+{
+    struct Tracker : Slider {
+        using Slider::Slider;
+        using QAbstractSlider::SliderChange; // make it public
+
+        std::vector<QAbstractSlider::SliderChange> changes;
+
+        void sliderChange(QAbstractSlider::SliderChange c) override
+        {
+            Slider::sliderChange(c);
+            changes.push_back(c);
+        }
+    };
+    using SliderChange = typename Tracker::SliderChange;
+
+    Tracker sl;
+    QCOMPARE(sl.changes.size(), 0U);
+
+    sl.setRange(0, 100'000);
+    QCOMPARE(sl.changes.size(), 1U);
+    QCOMPARE(sl.changes.back(), SliderChange::SliderRangeChange);
+    sl.changes.clear();
+
+    sl.setOrientation(sl.orientation() == Qt::Horizontal ? Qt::Vertical
+                      /* else */                         : Qt::Horizontal);
+    QCOMPARE(sl.changes.size(), 1U);
+    QCOMPARE(sl.changes.back(), SliderChange::SliderOrientationChange);
+    sl.changes.clear();
+
+    sl.setPageStep(1025); // unlikely to be the default ;)
+    QCOMPARE(sl.changes.size(), 1U);
+    QCOMPARE(sl.changes.back(), SliderChange::SliderStepsChange);
+    sl.changes.clear();
+
+    sl.setSingleStep(42); // unlikely to be the default ;)
+    QCOMPARE(sl.changes.size(), 1U);
+    QCOMPARE(sl.changes.back(), SliderChange::SliderStepsChange);
+    sl.changes.clear();
+
+    sl.setValue(131); // unlikely to be the default ;)
+    QCOMPARE(sl.changes.size(), 1U);
+    QCOMPARE(sl.changes.back(), SliderChange::SliderValueChange);
+    sl.changes.clear();
 }
 
 QTEST_MAIN(tst_QAbstractSlider)

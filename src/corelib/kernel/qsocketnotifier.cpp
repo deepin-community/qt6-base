@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #define BUILDING_QSOCKETNOTIFIER
 #include "qsocketnotifier.h"
@@ -19,9 +20,6 @@
 #include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcSocketNotifierDeprecation)
-Q_LOGGING_CATEGORY(lcSocketNotifierDeprecation, "qt.core.socketnotifier_deprecation");
 
 QT_IMPL_METATYPE_EXTERN_TAGGED(QSocketNotifier::Type, QSocketNotifier_Type)
 QT_IMPL_METATYPE_EXTERN(QSocketDescriptor)
@@ -156,10 +154,10 @@ QSocketNotifier::QSocketNotifier(qintptr socket, Type type, QObject *parent)
 
     if (!d->sockfd.isValid())
         qWarning("QSocketNotifier: Invalid socket specified");
-    else if (!thisThreadData->hasEventDispatcher())
-        qWarning("QSocketNotifier: Can only be used with threads started with QThread");
+    else if (auto dispatcher = thisThreadData->eventDispatcher.loadRelaxed())
+        dispatcher->registerSocketNotifier(this);
     else
-        thisThreadData->eventDispatcher.loadRelaxed()->registerSocketNotifier(this);
+        qWarning("QSocketNotifier: current thread's event dispatcher has already been destroyed");
 }
 
 /*!
@@ -173,8 +171,8 @@ QSocketNotifier::~QSocketNotifier()
 
 
 /*!
-    \fn void QSocketNotifier::activated(int socket)
-    \deprecated To avoid unintended truncation of the descriptor, use
+    \fn void QSocketNotifier::activated(int socket, QPrivateSignal)
+    \deprecated [5.15] To avoid unintended truncation of the descriptor, use
     the QSocketDescriptor overload of this function. If you need
     compatibility with versions older than 5.15 you need to change
     the slot to accept qintptr if it currently accepts an int, and

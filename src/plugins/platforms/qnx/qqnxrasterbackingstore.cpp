@@ -1,5 +1,6 @@
 // Copyright (C) 2011 - 2013 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qqnxrasterbackingstore.h"
 #include "qqnxrasterwindow.h"
@@ -7,6 +8,9 @@
 #include "qqnxglobal.h"
 
 #include <QtCore/QDebug>
+#include <QtGui/QBackingStore>
+
+#include <private/qhighdpiscaling_p.h>
 
 #include <errno.h>
 
@@ -59,12 +63,12 @@ void QQnxRasterBackingStore::flush(QWindow *window, const QRegion &region, const
 
 void QQnxRasterBackingStore::resize(const QSize &size, const QRegion &staticContents)
 {
-    Q_UNUSED(size);
     Q_UNUSED(staticContents);
     qCDebug(lcQpaBackingStore) << Q_FUNC_INFO << "w =" << window() << ", s =" << size;
 
     // NOTE: defer resizing window buffers until next paint as
     // resize() can be called multiple times before a paint occurs
+    m_requestedSize = size;
 }
 
 bool QQnxRasterBackingStore::scroll(const QRegion &area, int dx, int dy)
@@ -74,7 +78,15 @@ bool QQnxRasterBackingStore::scroll(const QRegion &area, int dx, int dy)
     m_needsPosting = true;
 
     if (!m_scrolled) {
+#if defined(QQNX_INCREMENTAL_RASTER_UPDATE)
         platformWindow()->scroll(area, dx, dy, true);
+#else
+        platformWindow()->scroll(area, dx, dy, false);
+        const QSize backingStoreSize = QHighDpi::toNativePixels(backingStore()->size(), window());
+        QRegion remainder = QRect(QPoint(0, 0), backingStoreSize);
+        remainder -= area.translated(dx, dy);
+        platformWindow()->scroll(remainder, 0, 0, true);
+#endif
         m_scrolled = true;
         return true;
     }
@@ -88,8 +100,10 @@ void QQnxRasterBackingStore::beginPaint(const QRegion &region)
     qCDebug(lcQpaBackingStore) << Q_FUNC_INFO << "w =" << window();
     m_needsPosting = true;
 
-    platformWindow()->adjustBufferSize();
+    platformWindow()->adjustBufferSize(
+        QHighDpi::toNativePixels(m_requestedSize, window()));
 
+#if defined(QQNX_INCREMENTAL_RASTER_UPDATE)
     if (window()->requestedFormat().alphaBufferSize() > 0) {
         auto platformScreen = static_cast<QQnxScreen *>(platformWindow()->screen());
         for (const QRect &r : region) {
@@ -109,6 +123,12 @@ void QQnxRasterBackingStore::beginPaint(const QRegion &region)
         Q_SCREEN_CHECKERROR(screen_flush_blits(platformScreen->nativeContext(),
                     SCREEN_WAIT_IDLE), "failed to flush blits");
     }
+#else
+    if (!m_scrolled) {
+        const QSize backingStoreSize = QHighDpi::toNativePixels(backingStore()->size(), window());
+        platformWindow()->scroll(QRect(QPoint(0, 0), backingStoreSize), 0, 0, true);
+    }
+#endif
 }
 
 void QQnxRasterBackingStore::endPaint()

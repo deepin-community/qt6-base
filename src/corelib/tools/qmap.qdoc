@@ -6,14 +6,17 @@
     \class QMap
     \inmodule QtCore
     \brief The QMap class is a template class that provides an associative array.
+    \compares equality
 
     \ingroup tools
     \ingroup shared
+    \ingroup containers
 
     \reentrant
 
-    QMap\<Key, T\> is one of Qt's generic \l{container classes}. It
-    stores (key, value) pairs and provides fast lookup by key.
+    QMap\<Key, T\> is one of Qt's generic \l{container classes}, where
+    \a Key is the type used for lookup keys and \a T is the mapped value
+    type. It stores (key, value) pairs and provides fast lookup by key.
 
     QMap and QHash provide very similar functionality. The
     differences are:
@@ -171,9 +174,7 @@
 
 /*! \fn template <class Key, class T> void QMap<Key, T>::swap(QMap<Key, T> &other) noexcept
     \since 4.8
-
-    Swaps map \a other with this map. This operation is very
-    fast and never fails.
+    \memberswap{map}
 */
 
 /*! \fn template <class Key, class T> QMap<Key, T>::QMap(std::initializer_list<std::pair<Key,T> > list)
@@ -237,6 +238,67 @@
     operator==().
 
     \sa operator==()
+*/
+
+/*! \fn template <class Key, class T> bool QMap<Key, T>::operator<(const QMap<Key, T> &lhs, const QMap<Key, T> &rhs)
+    \since 6.12
+
+    Returns \c true if \a lhs is
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically less than} \a rhs; otherwise returns \c false.
+
+//! [operator_uses_qt_lex_compare_three_way]
+    This operator is available if both the key type \c Key and the mapped type
+    \c T provide one of \c {operator<=>()} (in C++20 mode),
+    \c {compareThreeWay()} helper method, or \c {operator<()}.
+//! [operator_uses_qt_lex_compare_three_way]
+*/
+
+/*! \fn template <class Key, class T> bool QMap<Key, T>::operator>(const QMap<Key, T> &lhs, const QMap<Key, T> &rhs)
+    \since 6.12
+
+    Returns \c true if \a lhs is
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically greater than} \a rhs; otherwise returns \c false.
+
+    \include qmap.qdoc operator_uses_qt_lex_compare_three_way
+*/
+
+/*! \fn template <class Key, class T> bool QMap<Key, T>::operator<=(const QMap<Key, T> &lhs, const QMap<Key, T> &rhs)
+    \since 6.12
+
+    Returns \c true if \a lhs is
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically less or equal than} \a rhs; otherwise returns \c false.
+
+    \include qmap.qdoc operator_uses_qt_lex_compare_three_way
+*/
+
+/*! \fn template <class Key, class T> bool QMap<Key, T>::operator>=(const QMap<Key, T> &lhs, const QMap<Key, T> &rhs)
+    \since 6.12
+
+    Returns \c true if \a lhs is
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically greater or equal than} \a rhs; otherwise returns \c false.
+
+    \include qmap.qdoc operator_uses_qt_lex_compare_three_way
+*/
+
+/*! \fn template <class Key, class T> auto QMap<Key, T>::operator<=>(const QMap<Key, T> &lhs, const QMap<Key, T> &rhs)
+    \since 6.12
+
+    Compares the contents of \a lhs and \a rhs
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically}. Returns the result of the strongest applicable category
+    type.
+
+//! [operator_in_cpp20_only]
+    \note This operator is only available in C++20 mode when both the key type
+    \c Key and the mapped type \c T meet the requirements of
+    \c {std::three_way_comparable} concept or provide \c {operator<()}.
+    In this case the \c{<}, \c{<=}, \c{>}, and \c{>=} operators are synthesized
+    from \c {operator<=>()} and \c {operator==()}.
+//! [operator_in_cpp20_only]
 */
 
 /*! \fn template <class Key, class T> size_type QMap<Key, T>::size() const
@@ -448,7 +510,7 @@
     Returns a reference to the largest key in the map.
     This function assumes that the map is not empty.
 
-    This executes in \l{logarithmic time}.
+    This executes in \l{constant time}.
 
     \sa firstKey(), last(), keyEnd(), isEmpty()
 */
@@ -476,7 +538,7 @@
     Returns a reference to the last value in the map, that is the value mapped
     to the largest key. This function assumes that the map is not empty.
 
-    When unshared (or const version is called), this executes in \l{logarithmic time}.
+    When unshared (or const version is called), this executes in \l{constant time}.
 
     \sa first(), lastKey(), isEmpty()
 */
@@ -729,6 +791,9 @@
 
     If there is already an item with the key \a key, that item's value
     is replaced with \a value.
+
+    Inserting a key/value pair with an existing key replaces the existing
+    value.
 
     Returns an iterator pointing to the new/updated element.
 */
@@ -1393,8 +1458,5 @@
 /*!
     \fn template <class Key, class T> size_t QMap<Key, T>::qHash(const QMap &key, size_t seed) noexcept
     \since 6.8
-
-    Returns the hash value for \a key, using \a seed to seed the calculation.
-
-    Types \c Key and \c T must be supported by qHash().
+    \qhashTS{QMap}{Key}{T}
 */

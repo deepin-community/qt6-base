@@ -1,5 +1,6 @@
 // Copyright (C) 2013 Klaralvdalens Datakonsult AB (KDAB).
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qopengltexturehelper_p.h"
 
@@ -16,8 +17,13 @@ QOpenGLTextureHelper::QOpenGLTextureHelper(QOpenGLContext *context)
     // However, disable it on some systems where DSA is known to be unreliable.
     bool allowDSA = true;
     const char *renderer = reinterpret_cast<const char *>(context->functions()->glGetString(GL_RENDERER));
+    const char *version =
+            reinterpret_cast<const char *>(context->functions()->glGetString(GL_VERSION));
     // QTBUG-40653, QTBUG-44988
     if (renderer && strstr(renderer, "AMD Radeon HD"))
+        allowDSA = false;
+    // QTBUG-147866: EXT_direct_state_access texture storage is broken on Mesa
+    if (version && strstr(version, "Mesa"))
         allowDSA = false;
 
     if (allowDSA && !context->isOpenGLES()
@@ -111,6 +117,8 @@ QOpenGLTextureHelper::QOpenGLTextureHelper(QOpenGLContext *context)
     // Here we are targeting OpenGL ES 2.0+ only. This is likely using EGL, where,
     // similarly to WGL, non-extension functions (i.e. any function that is part of the
     // GLES spec) *may* not be queried via eglGetProcAddress.
+    QOpenGLExtraFunctionsPrivate *extra = static_cast<QOpenGLExtensions *>(context->extraFunctions())->d();
+    QOpenGLFunctionsPrivate *base = extra; // ES 2 core entry points live on the base
 
     // OpenGL 1.0
     TexImage1D = 0;
@@ -121,13 +129,13 @@ QOpenGLTextureHelper::QOpenGLTextureHelper(QOpenGLContext *context)
     // OpenGL 1.3
     GetCompressedTexImage = 0;
     CompressedTexSubImage1D = 0;
-    CompressedTexSubImage2D = ::glCompressedTexSubImage2D;
+    CompressedTexSubImage2D = base->f.CompressedTexSubImage2D ? base->f.CompressedTexSubImage2D : ::glCompressedTexSubImage2D;
     CompressedTexImage1D = 0;
-    CompressedTexImage2D = ::glCompressedTexImage2D;
-    ActiveTexture = ::glActiveTexture;
+    CompressedTexImage2D = base->f.CompressedTexImage2D ? base->f.CompressedTexImage2D : ::glCompressedTexImage2D;
+    ActiveTexture = base->f.ActiveTexture ? base->f.ActiveTexture : ::glActiveTexture;
 
     // OpenGL 3.0
-    GenerateMipmap = ::glGenerateMipmap;
+    GenerateMipmap = base->f.GenerateMipmap ? base->f.GenerateMipmap : ::glGenerateMipmap;
 
     // OpenGL 3.2
     TexImage3DMultisample = 0;
@@ -137,7 +145,6 @@ QOpenGLTextureHelper::QOpenGLTextureHelper(QOpenGLContext *context)
     QOpenGLContext *ctx = QOpenGLContext::currentContext();
     if (ctx->format().majorVersion() >= 3) {
         // OpenGL ES 3.0+ has immutable storage for 2D and 3D at least.
-        QOpenGLExtraFunctionsPrivate *extra = static_cast<QOpenGLExtensions *>(context->extraFunctions())->d();
         TexStorage3D = extra->f.TexStorage3D;
         TexStorage2D = extra->f.TexStorage2D;
     } else {
@@ -153,11 +160,8 @@ QOpenGLTextureHelper::QOpenGLTextureHelper(QOpenGLContext *context)
     TextureView = 0;
 
     // OpenGL ES 3.1+ has TexStorage2DMultisample
-    if (ctx->format().version() >= qMakePair(3, 1)) {
-        QOpenGLExtraFunctionsPrivate *extra = static_cast<QOpenGLExtensions *>(context->extraFunctions())->d();
+    if (ctx->format().version() >= std::pair(3, 1))
         TexStorage2DMultisample = extra->f.TexStorage2DMultisample;
-    }
-
 #endif
 
     if (context->isOpenGLES() && context->hasExtension(QByteArrayLiteral("GL_OES_texture_3D"))) {

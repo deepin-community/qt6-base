@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qstylehelper_p.h"
@@ -71,7 +72,7 @@ QT_BEGIN_NAMESPACE
     \value SO_GraphicsItem \l QStyleOptionGraphicsItem
     \value SO_GroupBox \l QStyleOptionGroupBox
     \value SO_Header \l QStyleOptionHeader
-    \value SO_MenuItem \l QStyleOptionMenuItem
+    \value SO_MenuItem \l QStyleOptionMenuItemV2
     \value SO_ProgressBar \l QStyleOptionProgressBar
     \value SO_RubberBand \l QStyleOptionRubberBand
     \value SO_SizeGrip \l QStyleOptionSizeGrip
@@ -163,11 +164,6 @@ void QStyleOption::initFrom(const QWidget *widget)
     default:
         ;
     }
-#ifdef QT_KEYPAD_NAVIGATION
-    if (widget->hasEditFocus())
-        state |= QStyle::State_HasEditFocus;
-#endif
-
     direction = widget->layoutDirection();
     rect = widget->rect();
     palette = widget->palette();
@@ -1069,6 +1065,7 @@ QStyleOptionToolBar::QStyleOptionToolBar(int version)
     \enum QStyleOptionToolBar::ToolBarPosition
 
     \image qstyleoptiontoolbar-position.png
+    {Diagram of thee toolbar line and the positions relative to the line}
 
     This enum is used to describe the position of a toolbar line, as
     well as the toolbar's position within the line.
@@ -1401,6 +1398,8 @@ QStyleOptionTab::QStyleOptionTab(int version)
 
     \value None A normal tab button.
     \value HasFrame The tab button is positioned on a tab frame
+    \value [since 6.9] MinimumSizeHint The tab button's minimum size hint is being measured,
+           in contrast to its regular size hint.
 
     \sa QStyleOptionToolBar::features
 */
@@ -1594,6 +1593,47 @@ QStyleOptionProgressBar::QStyleOptionProgressBar(int version)
 */
 
 /*!
+    \class QStyleOptionMenuItemV2
+    \since 6.11
+    \brief The QStyleOptionMenuItemV2 class enhances
+    QStyleOptionMenuItem with new members.
+
+    \inmodule QtWidgets
+*/
+
+/*!
+    \fn QStyleOptionMenuItemV2::QStyleOptionMenuItemV2()
+
+    Constructs a QStyleOptionMenuItemV2, initializing the members
+    variables to their default values.
+*/
+
+/*!
+    \fn QStyleOptionMenuItemV2::QStyleOptionMenuItemV2(const QStyleOptionMenuItemV2 &other)
+
+    Constructs a copy of the \a other style option.
+*/
+
+/*!
+    \internal
+*/
+QStyleOptionMenuItemV2::QStyleOptionMenuItemV2(int version)
+    : QStyleOptionMenuItem(version),
+      mouseDown{false},
+      unused{0}
+{}
+
+/*!
+    \variable QStyleOptionMenuItemV2::mouseDown
+    \brief true when the mouse is pressed down.
+
+    This is needed because there is no differentation between
+    a pressed and a sunken state when QStyle::State_Sunken is set.
+    QStyle::State_Sunken is also set when the menu is open
+    (i.e. showing the popup menu)
+*/
+
+/*!
     \class QStyleOptionMenuItem
     \brief The QStyleOptionMenuItem class is used to describe the
     parameter necessary for drawing a menu item.
@@ -1681,7 +1721,7 @@ QStyleOptionMenuItem::QStyleOptionMenuItem(int version)
     \value SubMenu Indicates the menu item points to a sub-menu.
     \value Scroller A popup menu scroller (currently only used on \macos).
     \value TearOff A tear-off handle for the menu.
-    \value Margin The margin of the menu.
+    \value Margin Deprecated and not used. The margin of the menu.
     \value EmptyArea The empty area of the menu.
 
     \sa menuItemType
@@ -2283,6 +2323,7 @@ QStyleOptionDockWidget::QStyleOptionDockWidget(int version)
     The default value is true.
 */
 
+#if QT_CONFIG(toolbutton)
 /*!
     \class QStyleOptionToolButton
     \brief The QStyleOptionToolButton class is used to describe the
@@ -2443,6 +2484,7 @@ QStyleOptionToolButton::QStyleOptionToolButton(int version)
     Qt::ToolButtonTextOnly. By default, the application's default font
     is used.
 */
+#endif  // QT_CONFIG(toolbutton)
 
 /*!
     \class QStyleOptionComboBox
@@ -2946,6 +2988,23 @@ QStyleOptionTitleBar::QStyleOptionTitleBar(int version)
 */
 
 /*!
+    \variable QStyleOptionViewItem::locale
+    \brief the locale to use for displaying text, numbers and dates.
+
+    This allows the style to display e.g. dates in a different locale than
+    the default locale of the application.
+*/
+
+/*!
+    \variable QStyleOptionViewItem::widget
+    \brief the parent widget of the item
+
+    This member contains the parent widget (itemview) of the item to
+    be able to e.g. access some properties within the QStyledItemDelegate
+    methods.
+*/
+
+/*!
     \variable QStyleOptionViewItem::textElideMode
     \brief where ellipsis should be added for text that is too long to fit
     into an item
@@ -3074,6 +3133,10 @@ QStyleOptionViewItem::QStyleOptionViewItem(int version)
     \value HasCheckIndicator Indicates that the item has a check state indicator.
     \value HasDisplay        Indicates that the item has a display role.
     \value HasDecoration     Indicates that the item has a decoration role.
+    \value [since 6.9] IsDecoratedRootColumn  Indicates that the item has a tree view branch
+    part for painting.
+    \value [since 6.9] IsDecorationForRootColumn  Indicates that the item contains the
+    information to draw the tree view branch part.
 */
 
 /*!

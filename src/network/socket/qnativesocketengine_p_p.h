@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNATIVESOCKETENGINE_P_P_H
 #define QNATIVESOCKETENGINE_P_P_H
@@ -126,6 +127,7 @@ public:
     bool createNewSocket(QAbstractSocket::SocketType type, QAbstractSocket::NetworkLayerProtocol &protocol);
 
     bool nativeConnect(const QHostAddress &address, quint16 port);
+    bool nativeCheckConnection();
     bool nativeBind(const QHostAddress &address, quint16 port);
     bool nativeListen(int backlog);
     qintptr nativeAccept();

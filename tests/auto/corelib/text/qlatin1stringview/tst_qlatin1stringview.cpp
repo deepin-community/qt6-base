@@ -14,11 +14,24 @@ Q_DECLARE_TYPEINFO(QLatin1StringViewContainer, Q_RELOCATABLE_TYPE);
 QT_END_NAMESPACE
 Q_DECLARE_METATYPE(QLatin1StringViewContainer)
 
+// QTBUG-112746
+namespace {
+extern const char string_array[];
+static void from_array_of_unknown_size()
+{
+    auto sv = QLatin1StringView{string_array};
+    QCOMPARE(sv.size(), 3);
+}
+const char string_array[] = "abc\0def";
+
+} // unnamed namespace
+
 class tst_QLatin1StringView : public QObject
 {
     Q_OBJECT
 
 private Q_SLOTS:
+    void fromArraysOfUnknownSize() { from_array_of_unknown_size(); }
     void constExpr();
     void construction();
     void userDefinedLiterals();
@@ -33,6 +46,8 @@ private Q_SLOTS:
     void count();
     void indexOf_data();
     void indexOf();
+    void toUtf8_data();
+    void toUtf8();
 };
 
 void tst_QLatin1StringView::constExpr()
@@ -133,7 +148,7 @@ void tst_QLatin1StringView::construction()
 void tst_QLatin1StringView::userDefinedLiterals()
 {
     {
-        using namespace Qt::Literals::StringLiterals;
+        using namespace Qt::StringLiterals;
 
         auto str = "abcd"_L1;
         static_assert(std::is_same_v<decltype(str), QLatin1StringView>);
@@ -406,13 +421,13 @@ void tst_QLatin1StringView::count()
     QCOMPARE(emptyStr.count(QLatin1StringView()), 1);
     QCOMPARE(emptyStr.count(QLatin1StringView("")), 1);
 
-    using namespace Qt::Literals::StringLiterals;
+    using namespace Qt::StringLiterals;
     QCOMPARE("a\0b"_L1.count(QChar::SpecialCharacter::LineSeparator), 0);
 }
 
 void tst_QLatin1StringView::indexOf_data()
 {
-    using namespace Qt::Literals::StringLiterals;
+    using namespace Qt::StringLiterals;
 
     QTest::addColumn<QLatin1StringView>("needle");
     QTest::addColumn<QLatin1StringView>("haystack");
@@ -510,6 +525,43 @@ void tst_QLatin1StringView::indexOf()
     QFETCH(int, indexCaseInsensitive);
     QCOMPARE(haystack.indexOf(needle, from, Qt::CaseSensitive), (qsizetype)indexCaseSensitive);
     QCOMPARE(haystack.indexOf(needle, from, Qt::CaseInsensitive), (qsizetype)indexCaseInsensitive);
+}
+
+void tst_QLatin1StringView::toUtf8_data()
+{
+    QTest::addColumn<QByteArray>("input");
+    QTest::newRow("null") << QByteArray();
+    QTest::newRow("empty") << QByteArray("");
+
+    for (int i = 0; i < 256; ++i) {
+        char c = i;
+        QTest::addRow("char-0x%02x", i) << QByteArray(1, c);
+    }
+
+    QByteArray ba = "abcd";
+    for (int i = 0; i < 6; ++i) {
+        QTest::addRow("ascii-%d", int(ba.size())) << ba;
+        ba += ba;
+        QTest::addRow("ascii-%d", int(ba.size()) - 1) << ba.left(ba.size() - 1);
+    }
+
+    ba = "\xe0""abcdef\xff";
+    for (int i = 0; i < 6; ++i) {
+        QTest::addRow("nonascii-%d", int(ba.size())) << ba;
+        ba += ba;
+        QTest::addRow("nonascii-%d", int(ba.size()) - 1) << ba.left(ba.size() - 1);
+    }
+}
+
+void tst_QLatin1StringView::toUtf8()
+{
+    QFETCH(QByteArray, input);
+    QLatin1StringView sv(input);
+    QByteArray expected = sv.toString().toUtf8();
+
+    QByteArray result = sv.toUtf8();
+    QCOMPARE(result.isNull(), sv.isNull());
+    QCOMPARE(result, expected);
 }
 
 QTEST_APPLESS_MAIN(tst_QLatin1StringView)

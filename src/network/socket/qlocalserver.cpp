@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlocalserver.h"
 #include "qlocalserver_p.h"
@@ -197,7 +198,7 @@ qintptr QLocalServer::socketDescriptor() const
     return d->tcpServer.socketDescriptor();
 #elif defined(Q_OS_WIN)
     const auto handle = d->connectionEventNotifier->handle();
-    return handle != INVALID_HANDLE_VALUE ? qintptr(handle) : -1;
+    return handle ? qintptr(handle) : -1;
 #else
     return d->socketNotifier->socket();
 #endif
@@ -291,8 +292,8 @@ void QLocalServer::addPendingConnection(QLocalSocket *socket)
 }
 
 /*!
-    Returns \c true if the server is listening for incoming connections
-    otherwise false.
+    Returns \c true if the server is listening for incoming connections,
+    \c false otherwise.
 
     \sa listen(), close()
  */
@@ -304,21 +305,22 @@ bool QLocalServer::isListening() const
 
 /*!
     Tells the server to listen for incoming connections on \a name.
-    If the server is currently listening then it will return false.
-    Return true on success otherwise false.
+    If the server is already listening, listen() will fail.
+    Returns \c true on success, \c false otherwise.
 
     \a name can be a single name and QLocalServer will determine
     the correct platform specific path.  serverName() will return
-    the name that is passed into listen.
+    the name that was passed into listen().
 
     Usually you would just pass in a name like "foo", but on Unix this
     could also be a path such as "/tmp/foo" and on Windows this could
     be a pipe path such as "\\\\.\\pipe\\foo"
 
-    \note On Unix if the server crashes without closing listen will fail
-    with AddressInUseError.  To create a new server the file should be removed.
-    On Windows two local servers can listen to the same pipe at the same
-    time, but any connections will go to one of the server.
+    \note On Unix, if the server previously crashed without closing,
+    listen() will fail with AddressInUseError.  To create a new server,
+    the file should first be removed.
+    On Windows, two local servers can listen to the same pipe at the same
+    time, but each incoming connection will go to any one of them.
 
     \sa serverName(), isListening(), close()
  */
@@ -453,7 +455,7 @@ bool QLocalServer::removeServer(const QString &name)
 
 /*!
     Returns the server name if the server is listening for connections;
-    otherwise returns QString()
+    otherwise returns QString().
 
     \sa listen(), fullServerName()
  */
@@ -570,4 +572,3 @@ int QLocalServer::listenBacklogSize() const
 QT_END_NAMESPACE
 
 #include "moc_qlocalserver.cpp"
-

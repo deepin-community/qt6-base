@@ -1,26 +1,49 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
+
+#define UMDF_USING_NTSTATUS // Avoid ntstatus redefinitions
 
 #include "qwinregistry_p.h"
 #include <QtCore/qvarlengtharray.h>
+#include <QtCore/qdebug.h>
 #include <QtCore/qendian.h>
 #include <QtCore/qlist.h>
+#include <QtCore/qwineventnotifier.h>
+#include <QtCore/private/qsystemerror_p.h>
+
+#include <ntstatus.h>
+
+// User mode version of ZwQueryKey, as per:
+// https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwquerykey
+extern "C" NTSTATUS NTSYSCALLAPI NTAPI NtQueryKey(HANDLE KeyHandle, int KeyInformationClass,
+    PVOID KeyInformation, ULONG Length, PULONG ResultLength);
 
 QT_BEGIN_NAMESPACE
 
-QWinRegistryKey::QWinRegistryKey()
+using namespace Qt::StringLiterals;
+
+static const wchar_t *nullTerminate(const QString &s)
 {
+    // ### port to QString::nullTerminate() if this stays around for longer
+    return reinterpret_cast<const wchar_t*>(s.utf16());
 }
 
 // Open a key with the specified permissions (KEY_READ/KEY_WRITE).
 // "access" is to explicitly use the 32- or 64-bit branch.
-QWinRegistryKey::QWinRegistryKey(HKEY parentHandle, QStringView subKey,
+QWinRegistryKey::QWinRegistryKey(HKEY parentHandle, const wchar_t *subKey,
                                  REGSAM permissions, REGSAM access)
 {
-    if (RegOpenKeyExW(parentHandle, reinterpret_cast<const wchar_t *>(subKey.utf16()),
+    if (RegOpenKeyExW(parentHandle, subKey,
                       0, permissions | access, &m_key) != ERROR_SUCCESS) {
         m_key = nullptr;
     }
+}
+
+QWinRegistryKey::QWinRegistryKey(HKEY parentHandle, const QString &subKey,
+                                 REGSAM permissions, REGSAM access)
+    : QWinRegistryKey(parentHandle, nullTerminate(subKey), permissions, access)
+{
 }
 
 QWinRegistryKey::~QWinRegistryKey()
@@ -36,7 +59,40 @@ void QWinRegistryKey::close()
     }
 }
 
-QVariant QWinRegistryKey::value(QStringView subKey) const
+QString QWinRegistryKey::name() const
+{
+    if (!isValid())
+        return {};
+
+    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-_key_name_information
+    constexpr int kKeyNameInformation = 3;
+    struct KeyNameInformation { ULONG length = 0; WCHAR name[1] = {}; };
+
+    // Resolve name of key iteratively by first computing the needed size,
+    // and then querying the name, accounting for the possibility that the
+    // name length changes behind our back a few times.
+    DWORD keyInformationSize = 0;
+    for (int i = 0; i < 5; ++i) {
+        QByteArray buffer(keyInformationSize, 0u);
+        auto *keyNameInformation = reinterpret_cast<KeyNameInformation *>(buffer.data());
+        switch (NtQueryKey(m_key, kKeyNameInformation, keyNameInformation,
+            keyInformationSize, &keyInformationSize)) {
+        case STATUS_BUFFER_TOO_SMALL:
+        case STATUS_BUFFER_OVERFLOW:
+            continue;
+        case STATUS_SUCCESS: {
+            return QString::fromWCharArray(keyNameInformation->name,
+                keyNameInformation->length / sizeof(wchar_t));
+        }
+        default:
+            return {};
+        }
+    }
+
+    return {};
+}
+
+QVariant QWinRegistryKey::value(const wchar_t *subKey) const
 {
     // NOTE: Empty value name is allowed in Windows registry, it means the default
     // or unnamed value of a key, you can read/write/delete such value normally.
@@ -44,13 +100,10 @@ QVariant QWinRegistryKey::value(QStringView subKey) const
     if (!isValid())
         return {};
 
-    // Use nullptr when we need to access the default value.
-    const auto subKeyC = subKey.isEmpty() ? nullptr : reinterpret_cast<const wchar_t *>(subKey.utf16());
-
     // Get the size and type of the value.
     DWORD dataType = REG_NONE;
     DWORD dataSize = 0;
-    LONG ret = RegQueryValueExW(m_key, subKeyC, nullptr, &dataType, nullptr, &dataSize);
+    LONG ret = RegQueryValueExW(m_key, subKey, nullptr, &dataType, nullptr, &dataSize);
     if (ret != ERROR_SUCCESS)
         return {};
 
@@ -64,7 +117,7 @@ QVariant QWinRegistryKey::value(QStringView subKey) const
     QVarLengthArray<unsigned char> data(dataSize);
     std::fill(data.data(), data.data() + dataSize, 0u);
 
-    ret = RegQueryValueExW(m_key, subKeyC, nullptr, nullptr, data.data(), &dataSize);
+    ret = RegQueryValueExW(m_key, subKey, nullptr, nullptr, data.data(), &dataSize);
     if (ret != ERROR_SUCCESS)
         return {};
 
@@ -120,15 +173,82 @@ QVariant QWinRegistryKey::value(QStringView subKey) const
     return {};
 }
 
-QString QWinRegistryKey::stringValue(QStringView subKey) const
+QVariant QWinRegistryKey::value(const QString &subKey) const
 {
-    return value<QString>(subKey).value_or(QString());
+    return value(nullTerminate(subKey));
 }
 
-std::pair<DWORD, bool> QWinRegistryKey::dwordValue(QStringView subKey) const
+// Returns the value of the specified subKey as a string, obtained using
+// qvariant_cast from the underlying QVariant. If that value is not a string,
+// or the subKey has no value, a string whose isNull() is true is returned.
+// Otherwise, the resulting string (which may be empty) is returned.
+QString QWinRegistryKey::stringValue(const wchar_t *subKey) const
 {
-    const std::optional<DWORD> val = value<DWORD>(subKey);
-    return {val.value_or(0), val.has_value()};
+    if (auto v = value<QString>(subKey))
+        return std::move(*v);
+    return QString();
 }
+
+QString QWinRegistryKey::stringValue(const QString &subKey) const
+{
+    return stringValue(nullTerminate(subKey));
+}
+
+QWinRegistryNotifier::QWinRegistryNotifier(HKEY parentHandle, const wchar_t *subKey,
+                                           QObject *parent)
+    : QWinRegistryNotifier(QWinRegistryKey(parentHandle, subKey), parent)
+{
+}
+
+QWinRegistryNotifier::QWinRegistryNotifier(HKEY parentHandle, const QString &subKey,
+                                           QObject *parent)
+    : QWinRegistryNotifier(QWinRegistryKey(parentHandle, subKey), parent)
+{
+}
+
+QWinRegistryNotifier::QWinRegistryNotifier(QWinRegistryKey &&key, QObject *parent)
+    : QObject(parent), m_key(std::move(key))
+{
+    if (!m_key.isValid())
+        return;
+
+    m_keyChangedEvent.reset(CreateEvent(nullptr, false, false, nullptr));
+    auto *notifier = new QWinEventNotifier(m_keyChangedEvent.get(), this);
+
+    auto registerForNotification = [this] {
+        constexpr auto changeFilter =
+              REG_NOTIFY_CHANGE_NAME
+            | REG_NOTIFY_CHANGE_ATTRIBUTES
+            | REG_NOTIFY_CHANGE_LAST_SET
+            | REG_NOTIFY_CHANGE_SECURITY;
+
+        if (auto status = RegNotifyChangeKeyValue(m_key.handle(), true, changeFilter,
+            m_keyChangedEvent.get(), true); status != ERROR_SUCCESS) {
+            qWarning() << "Failed to register notification for registry key"
+                       << this << "due to" << QSystemError::windowsString(status);
+        }
+    };
+
+    QObject::connect(notifier, &QWinEventNotifier::activated, this,
+        [this, registerForNotification] {
+            emit valueChanged();
+            registerForNotification();
+        });
+
+    registerForNotification();
+}
+
+#ifndef QT_NO_DEBUG_STREAM
+QDebug operator<<(QDebug debug, const QWinRegistryKey &key)
+{
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+    debug << "QWinRegistryKey(";
+    if (key.isValid())
+        debug << key.name();
+    debug << ')';
+    return debug;
+}
+#endif
 
 QT_END_NAMESPACE

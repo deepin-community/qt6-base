@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qfilesystemengine_p.h"
 #include "qoperatingsystemversion.h"
@@ -40,6 +41,7 @@
 #include <cstdio>
 
 #include <QtCore/private/qfunctions_win_p.h>
+#include <QtCore/private/wcharhelpers_win_p.h>
 
 #ifndef SPI_GETPLATFORMTYPE
 #define SPI_GETPLATFORMTYPE 257
@@ -684,8 +686,7 @@ static QString readSymLink(const QFileSystemEntry &link)
             DWORD len;
             wchar_t buffer[MAX_PATH];
             const QString volumeName = "\\\\?\\"_L1 + matchVolume.captured();
-            if (GetVolumePathNamesForVolumeName(reinterpret_cast<LPCWSTR>(volumeName.utf16()),
-                                                buffer, MAX_PATH, &len)
+            if (GetVolumePathNamesForVolumeName(qt_castToWchar(volumeName), buffer, MAX_PATH, &len)
                 != 0) {
                 result.replace(0, matchVolume.capturedLength(), QString::fromWCharArray(buffer));
             }
@@ -1390,7 +1391,7 @@ bool QFileSystemEngine::fillMetaData(const QFileSystemEntry &entry, QFileSystemM
     // Check for ".lnk": Directories named ".lnk" should be skipped, corrupted
     // link files should still be detected as links.
     const QString origFilePath = entry.filePath();
-    if (origFilePath.endsWith(".lnk"_L1) && !isDirPath(origFilePath, nullptr)) {
+    if (bool exists; origFilePath.endsWith(".lnk"_L1) && !isDirPath(origFilePath, &exists) && exists) {
         data.entryFlags |= QFileSystemMetaData::WinLnkType;
         fname = QFileSystemEntry(readLink(entry));
     } else {
@@ -1526,64 +1527,80 @@ static bool createDirectoryWithParents(const QString &nativeName,
     return isDir(nativeName);
 }
 
-//static
-bool QFileSystemEngine::createDirectory(const QFileSystemEntry &entry, bool createParents,
-                                        std::optional<QFile::Permissions> permissions)
+bool QFileSystemEngine::mkpath(const QFileSystemEntry &entry,
+                               std::optional<QFile::Permissions> permissions)
 {
     QString dirName = entry.filePath();
     Q_CHECK_FILE_NAME(dirName, false);
-
-    dirName = QDir::toNativeSeparators(QDir::cleanPath(dirName));
 
     QNativeFilePermissions nativePermissions(permissions, true);
     if (!nativePermissions.isOk())
         return false;
 
     auto securityAttributes = nativePermissions.securityAttributes();
+    dirName = QDir::toNativeSeparators(QDir::cleanPath(dirName));
 
     // try to mkdir this directory
     DWORD lastError;
     if (mkDir(dirName, securityAttributes, &lastError))
         return true;
-    // mkpath should return true, if the directory already exists, mkdir false.
-    if (!createParents)
-        return false;
+    // mkpath should return true, if the directory already exists
     if (lastError == ERROR_ALREADY_EXISTS || lastError == ERROR_ACCESS_DENIED)
         return isDirPath(dirName, nullptr);
 
     return createDirectoryWithParents(dirName, securityAttributes, false);
 }
 
-//static
-bool QFileSystemEngine::removeDirectory(const QFileSystemEntry &entry, bool removeEmptyParents)
+bool QFileSystemEngine::mkdir(const QFileSystemEntry &entry,
+                              std::optional<QFile::Permissions> permissions)
 {
     QString dirName = entry.filePath();
     Q_CHECK_FILE_NAME(dirName, false);
 
-    if (removeEmptyParents) {
-        dirName = QDir::toNativeSeparators(QDir::cleanPath(dirName));
-        for (int oldslash = 0, slash=dirName.length(); slash > 0; oldslash = slash) {
-            const auto chunkRef = QStringView{dirName}.left(slash);
-            if (chunkRef.length() == 2 && chunkRef.at(0).isLetter()
-                && chunkRef.at(1) == u':') {
-                break;
-            }
-            const QString chunk = chunkRef.toString();
-            if (!isDirPath(chunk, nullptr))
-                return false;
-            if (!rmDir(chunk))
-                return oldslash != 0;
-            slash = dirName.lastIndexOf(QDir::separator(), oldslash-1);
+
+    QNativeFilePermissions nativePermissions(permissions, true);
+    if (!nativePermissions.isOk())
+        return false;
+
+    dirName = QDir::toNativeSeparators(QDir::cleanPath(dirName));
+    return mkDir(dirName, nativePermissions.securityAttributes());
+}
+
+bool QFileSystemEngine::rmdir(const QFileSystemEntry &entry)
+{
+    QString dirName = entry.filePath();
+    Q_CHECK_FILE_NAME(dirName, false);
+
+    return rmDir(dirName);
+}
+
+bool QFileSystemEngine::rmpath(const QFileSystemEntry &entry)
+{
+    const QString dirName = QDir::toNativeSeparators(QDir::cleanPath(entry.filePath()));
+    Q_CHECK_FILE_NAME(dirName, false);
+
+    for (int oldslash = 0, slash = dirName.size(); slash > 0; oldslash = slash) {
+        const auto chunkRef = QStringView{dirName}.left(slash);
+        if (chunkRef.length() == 2 && chunkRef.at(0).isLetter()
+            && chunkRef.at(1) == u':') {
+            break;
         }
-        return true;
+        const QString chunk = chunkRef.toString();
+        // TODO: get isDirPath() and rmDir() to accept QStringView
+        if (!isDirPath(chunk, nullptr))
+            return false;
+        if (!rmDir(chunk))
+            return oldslash != 0;
+        slash = dirName.lastIndexOf(QDir::separator(), oldslash - 1);
     }
-    return rmDir(entry.filePath());
+
+    return true;
 }
 
 //static
 QString QFileSystemEngine::rootPath()
 {
-    QString ret = QString::fromLatin1(qgetenv("SystemDrive"));
+    QString ret = qEnvironmentVariable("SystemDrive");
     if (ret.isEmpty())
         ret = "c:"_L1;
     ret.append(u'/');
@@ -1617,12 +1634,12 @@ QString QFileSystemEngine::homePath()
     }
 #endif
     if (ret.isEmpty() || !QFile::exists(ret)) {
-        ret = QString::fromLocal8Bit(qgetenv("USERPROFILE"));
+        ret = qEnvironmentVariable("USERPROFILE");
         if (ret.isEmpty() || !QFile::exists(ret)) {
-            ret = QString::fromLocal8Bit(qgetenv("HOMEDRIVE"))
-                  + QString::fromLocal8Bit(qgetenv("HOMEPATH"));
+            ret = qEnvironmentVariable("HOMEDRIVE")
+                  + qEnvironmentVariable("HOMEPATH");
             if (ret.isEmpty() || !QFile::exists(ret)) {
-                ret = QString::fromLocal8Bit(qgetenv("HOME"));
+                ret = qEnvironmentVariable("HOME");
                 if (ret.isEmpty() || !QFile::exists(ret))
                     ret = rootPath();
             }
@@ -1635,7 +1652,15 @@ QString QFileSystemEngine::tempPath()
 {
     QString ret;
     wchar_t tempPath[MAX_PATH];
-    const DWORD len = GetTempPath(MAX_PATH, tempPath);
+    using GetTempPathPrototype = DWORD (WINAPI *)(DWORD, LPWSTR);
+    // We try to resolve GetTempPath2 and use that, otherwise fall back to GetTempPath:
+    static GetTempPathPrototype getTempPathW = []() {
+        const HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+        if (auto *func = QFunctionPointer(GetProcAddress(kernel32, "GetTempPath2W")))
+            return GetTempPathPrototype(func);
+        return GetTempPath;
+    }();
+    const DWORD len = getTempPathW(MAX_PATH, tempPath);
     if (len) { // GetTempPath() can return short names, expand.
         wchar_t longTempPath[MAX_PATH];
         const DWORD longLen = GetLongPathName(tempPath, longTempPath, MAX_PATH);
@@ -1772,6 +1797,12 @@ bool QFileSystemEngine::removeFile(const QFileSystemEntry &entry, QSystemError &
     return ret;
 }
 
+//static
+bool QFileSystemEngine::supportsMoveFileToTrash()
+{
+    return true;
+}
+
 /*
     If possible, we use the IFileOperation implementation, which allows us to determine
     the location of the object in the trash.
@@ -1830,12 +1861,10 @@ bool QFileSystemEngine::moveFileToTrash(const QFileSystemEntry &source,
 
 //static
 bool QFileSystemEngine::setPermissions(const QFileSystemEntry &entry,
-                                       QFile::Permissions permissions, QSystemError &error,
-                                       QFileSystemMetaData *data)
+                                       QFile::Permissions permissions, QSystemError &error)
 {
     Q_CHECK_FILE_NAME(entry, false);
 
-    Q_UNUSED(data);
     int mode = 0;
 
     if (permissions & (QFile::ReadOwner | QFile::ReadUser | QFile::ReadGroup | QFile::ReadOther))
@@ -1853,6 +1882,12 @@ bool QFileSystemEngine::setPermissions(const QFileSystemEntry &entry,
     if (!ret)
         error = QSystemError(errno, QSystemError::StandardLibraryError);
     return ret;
+}
+
+bool QFileSystemEngine::isCaseSensitive(const QFileSystemEntry &, QFileSystemMetaData &)
+{
+    // FIXME: This may not be accurate for all file systems (QTBUG-28246)
+    return false;
 }
 
 static inline QDateTime fileTimeToQDateTime(const FILETIME *time)

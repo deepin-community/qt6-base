@@ -1,11 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWINDOWSDIRECT2DWINDOW_H
 #define QWINDOWSDIRECT2DWINDOW_H
 
 #include "qwindowswindow.h"
-#include <wrl.h>
+#include <QtCore/private/qcomptr_p.h>
 
 struct IDXGISwapChain1;
 struct ID2D1DeviceContext;
@@ -34,8 +35,8 @@ private:
     void setupBitmap();
 
 private:
-    Microsoft::WRL::ComPtr<IDXGISwapChain1> m_swapChain;
-    Microsoft::WRL::ComPtr<ID2D1DeviceContext> m_deviceContext;
+    ComPtr<IDXGISwapChain1> m_swapChain;
+    ComPtr<ID2D1DeviceContext> m_deviceContext;
     QScopedPointer<QWindowsDirect2DBitmap> m_bitmap;
     QScopedPointer<QPixmap> m_pixmap;
     bool m_needsFullFlush = true;

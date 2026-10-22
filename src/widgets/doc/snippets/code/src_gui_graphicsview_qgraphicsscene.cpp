@@ -1,59 +1,94 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-//! [0]
-QGraphicsScene scene;
-scene.addText("Hello, world!");
+#include <QtWidgets>
+#include <QPrinter>
 
-QGraphicsView view(&scene);
-view.show();
-//! [0]
+void examples()
+{
+    {
+        //! [0]
+        QGraphicsScene scene;
+        scene.addText("Hello, world!");
 
+        QGraphicsView view(&scene);
+        view.show();
+        //! [0]
+    }
 
-//! [1]
-QGraphicsScene scene;
-scene.addItem(...
-...
-QPrinter printer(QPrinter::HighResolution);
-printer.setPaperSize(QPrinter::A4);
+    {
+        QGraphicsItem *someItem;
 
-QPainter painter(&printer);
-scene.render(&painter);
-//! [1]
+        //! [1]
+        QGraphicsScene scene;
+        scene.addItem(someItem);
+        //...
+        QPrinter printer(QPrinter::HighResolution);
+        printer.setPageSize(QPageSize::A4);
 
+        QPainter painter(&printer);
+        scene.render(&painter);
+        //! [1]
+    }
 
-//! [2]
-QSizeF segmentSize = sceneRect().size() / pow(2, depth - 1);
-//! [2]
+    {
+        int depth;
+        auto sceneRect = []() {return QRectF(); };
 
+        //! [2]
+        QSizeF segmentSize = sceneRect().size() / pow(2, depth - 1);
+        //! [2]
+    }
 
-//! [3]
-QGraphicsScene scene;
-QGraphicsView view(&scene);
-view.show();
+    {
+        //! [3]
+        QGraphicsScene scene;
+        QGraphicsView view(&scene);
+        view.show();
 
-// a blue background
-scene.setBackgroundBrush(Qt::blue);
+        // a blue background
+        scene.setBackgroundBrush(Qt::blue);
 
-// a gradient background
-QRadialGradient gradient(0, 0, 10);
-gradient.setSpread(QGradient::RepeatSpread);
-scene.setBackgroundBrush(gradient);
-//! [3]
+        // a gradient background
+        QRadialGradient gradient(0, 0, 10);
+        gradient.setSpread(QGradient::RepeatSpread);
+        scene.setBackgroundBrush(gradient);
+        //! [3]
+    }
 
+    {
+        //! [4]
+        QGraphicsScene scene;
+        QGraphicsView view(&scene);
+        view.show();
 
-//! [4]
-QGraphicsScene scene;
-QGraphicsView view(&scene);
-view.show();
+        // a white semi-transparent foreground
+        scene.setForegroundBrush(QColor(255, 255, 255, 127));
 
-// a white semi-transparent foreground
-scene.setForegroundBrush(QColor(255, 255, 255, 127));
+        // a grid foreground
+        scene.setForegroundBrush(QBrush(Qt::lightGray, Qt::CrossPattern));
+        //! [4]
+    }
+}
 
-// a grid foreground
-scene.setForegroundBrush(QBrush(Qt::lightGray, Qt::CrossPattern));
-//! [4]
+class TileScene : public QGraphicsScene
+{
+ public:
+    TileScene(int numTilesH, int numTilesV, int tileWidth, int tileHeight, QObject *parent = nullptr);
 
+    QRectF rectForTile(int x, int y) const;
+    void setTile(int x, int y, const QPixmap &pixmap);
+
+ protected:
+    void drawBackground(QPainter *painter, const QRectF &exposed) override;
+
+ private:
+    int numTilesH;
+    int numTilesV;
+    int tileWidth;
+    int tileHeight;
+    QVector<QVector<QPixmap>> tiles;
+};
 
 //! [5]
 QRectF TileScene::rectForTile(int x, int y) const

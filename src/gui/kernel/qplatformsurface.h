@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMSURFACE_H
 #define QPLATFORMSURFACE_H
@@ -36,8 +37,6 @@ public:
 
     QSurface *surface() const;
     virtual QPlatformScreen *screen() const = 0;
-
-    static bool isRasterSurface(QSurface *surface);
 
 private:
     explicit QPlatformSurface(QSurface *surface);

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qsqltablemodel.h"
 
@@ -1107,9 +1108,6 @@ bool QSqlTableModel::insertRows(int row, int count, const QModelIndex &parent)
 
     d->busyInsertingRows = true;
     beginInsertRows(parent, row, row + count - 1);
-
-    if (d->strategy != OnManualSubmit)
-        d->cache.empty();
 
     if (!d->cache.isEmpty()) {
         QMap<int, QSqlTableModelPrivate::ModifiedRow>::Iterator it = d->cache.end();

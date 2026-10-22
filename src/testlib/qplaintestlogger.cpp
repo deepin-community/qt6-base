@@ -29,6 +29,10 @@
 #  include <qt_windows.h>
 #endif
 
+#ifdef Q_OS_HARMONY
+#  include <QtCore/private/qohoslogger_p.h>
+#endif
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
@@ -172,62 +176,17 @@ namespace QTest {
         return digits;
     }
 
-    // Pretty-prints a benchmark result using the given number of digits.
+    // Pretty-prints a benchmark result using the given number of significant digits.
     template <typename T> QByteArray formatResult(T number, int significantDigits)
     {
-        if (number < T(0))
-            return "NAN";
+        if (qIsNaN(number) || number < T(0)) // (includes -ve infinity)
+            return "NaN";
+        if (qIsInf(number))
+            return "INF";
         if (number == T(0))
             return "0";
 
-        QByteArray beforeDecimalPoint = QByteArray::number(qint64(number), 'f', 0);
-        QByteArray afterDecimalPoint = QByteArray::number(number, 'f', 20);
-        afterDecimalPoint.remove(0, beforeDecimalPoint.size() + 1);
-
-        int beforeUse = qMin(beforeDecimalPoint.size(), significantDigits);
-        int beforeRemove = beforeDecimalPoint.size() - beforeUse;
-
-        // Replace insignificant digits before the decimal point with zeros.
-        beforeDecimalPoint.chop(beforeRemove);
-        for (int i = 0; i < beforeRemove; ++i) {
-            beforeDecimalPoint.append(u'0');
-        }
-
-        int afterUse = significantDigits - beforeUse;
-
-        // leading zeroes after the decimal point does not count towards the digit use.
-        if (beforeDecimalPoint == "0" && !afterDecimalPoint.isEmpty()) {
-            ++afterUse;
-
-            int i = 0;
-            while (i < afterDecimalPoint.size() && afterDecimalPoint.at(i) == '0')
-                ++i;
-
-            afterUse += i;
-        }
-
-        int afterRemove = afterDecimalPoint.size() - afterUse;
-        afterDecimalPoint.chop(afterRemove);
-
-        char separator = ',';
-        char decimalPoint = '.';
-
-        // insert thousands separators
-        int length = beforeDecimalPoint.size();
-        for (int i = beforeDecimalPoint.size() -1; i >= 1; --i) {
-            if ((length - i) % 3 == 0)
-                beforeDecimalPoint.insert(i, separator);
-        }
-
-        QByteArray print;
-        print = beforeDecimalPoint;
-        if (afterUse > 0)
-            print.append(decimalPoint);
-
-        print += afterDecimalPoint;
-
-
-        return print;
+        return QByteArray::number(number, 'e', qMax(1, significantDigits - 1));
     }
 }
 
@@ -250,6 +209,8 @@ void QPlainTestLogger::outputMessage(const char *str)
     }
 #elif defined(Q_OS_ANDROID)
     __android_log_write(ANDROID_LOG_INFO, "QTestLib", str);
+#elif defined(Q_OS_HARMONY)
+    qOhosLogMessage(LOG_INFO, "QTestLib", str);
 #endif
     outputString(str);
 }
@@ -301,8 +262,15 @@ void QPlainTestLogger::printBenchmarkResultsHeader(const QBenchmarkResult &resul
     buf.appendf("%s: %s::%s", QTest::benchmarkResult2String(),
                 QTestResult::currentTestObjectName(), result.context.slotName.toLatin1().data());
 
-    if (QByteArray tag = result.context.tag.toLocal8Bit(); !tag.isEmpty())
-        buf.appendf(":\"%s\":\n", tag.data());
+    QByteArray tag = QTestResult::currentDataTag();
+    QByteArray gtag = QTestResult::currentGlobalDataTag();
+
+    if (!gtag.isEmpty() && !tag.isEmpty())
+        buf.appendf(":\"%s:%s\":\n", gtag.constData(), tag.constData());
+    else if (!gtag.isEmpty())
+        buf.appendf(":\"%s\":\n", gtag.constData());
+    else if (!tag.isEmpty())
+        buf.appendf(":\"%s\":\n", tag.constData());
     else
         buf.append(":\n");
     outputMessage(buf);
@@ -393,10 +361,22 @@ void QPlainTestLogger::printBenchmarkResults(const QList<QBenchmarkResult> &resu
         }
 
         Q_ASSERT(result.iterations > 0);
-        buf.appendf(" (total: %s, iterations: %d)\n",
-                    QTest::formatResult(result.measurement.value, significantDigits).constData(),
-                    result.iterations);
-
+        if (result.measurement.variance) {
+            buf.appendf(" (total: %s %s, std.dev: %s %s, iterations: %d)\n",
+                        QTest::formatResult(result.measurement.value,
+                                            significantDigits).constData(),
+                        unitText,
+                        QTest::formatResult(sqrt(result.measurement.variance),
+                                            significantDigits).constData(),
+                        unitText,
+                        result.iterations);
+        } else {
+            buf.appendf(" (total: %s %s, iterations: %d)\n",
+                        QTest::formatResult(result.measurement.value,
+                                            significantDigits).constData(),
+                        unitText,
+                        result.iterations);
+        }
         outputMessage(buf);
     }
 }

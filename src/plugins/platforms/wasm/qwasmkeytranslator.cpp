@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwasmkeytranslator.h"
 #include "qwasmevent.h"
@@ -248,48 +249,6 @@ std::optional<Qt::Key> QWasmKeyTranslator::mapWebKeyTextToQtKey(const char *toFi
                                      searchKey);
     return it != WebToQtKeyCodeMappings.cend() && searchKey == *it ? static_cast<Qt::Key>(it->qt)
                                                                    : std::optional<Qt::Key>();
-}
-
-QWasmDeadKeySupport::QWasmDeadKeySupport() = default;
-
-QWasmDeadKeySupport::~QWasmDeadKeySupport() = default;
-
-void QWasmDeadKeySupport::applyDeadKeyTranslations(KeyEvent *event)
-{
-    if (event->deadKey) {
-        m_activeDeadKey = event->key;
-    } else if (m_activeDeadKey != Qt::Key_unknown
-               && (((m_keyModifiedByDeadKeyOnPress == Qt::Key_unknown
-                     && event->type == EventType::KeyDown))
-                   || (m_keyModifiedByDeadKeyOnPress == event->key
-                       && event->type == EventType::KeyUp))) {
-        const Qt::Key baseKey = event->key;
-        const Qt::Key translatedKey = translateBaseKeyUsingDeadKey(baseKey, m_activeDeadKey);
-        if (translatedKey != Qt::Key_unknown) {
-            event->key = translatedKey;
-
-            auto foundText = event->modifiers.testFlag(Qt::ShiftModifier)
-                    ? findKeyTextByKeyId(DiacriticalCharsKeyToTextUppercase, event->key)
-                    : findKeyTextByKeyId(DiacriticalCharsKeyToTextLowercase, event->key);
-            Q_ASSERT(foundText.has_value());
-            event->text = foundText->size() == 1 ? *foundText : QString();
-        }
-
-        if (!event->text.isEmpty()) {
-            if (event->type == EventType::KeyDown) {
-                // Assume the first keypress with an active dead key is treated as modified,
-                // regardless of whether it has actually been modified or not. Take into account
-                // only events that produce actual key text.
-                if (!event->text.isEmpty())
-                    m_keyModifiedByDeadKeyOnPress = baseKey;
-            } else {
-                Q_ASSERT(event->type == EventType::KeyUp);
-                Q_ASSERT(m_keyModifiedByDeadKeyOnPress == baseKey);
-                m_keyModifiedByDeadKeyOnPress = Qt::Key_unknown;
-                m_activeDeadKey = Qt::Key_unknown;
-            }
-        }
-    }
 }
 
 QT_END_NAMESPACE

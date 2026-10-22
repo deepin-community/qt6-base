@@ -1,5 +1,6 @@
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
@@ -47,13 +48,13 @@ namespace QtAndroidMenu
     void resetMenuBar()
     {
         AndroidBackendRegister *reg = QtAndroid::backendRegister();
-        reg->callInterface<QtJniTypes::QtMenuInterface, void>("resetOptionsMenu");
+        reg->callInterface<QtJniTypes::QtMenuInterface>("resetOptionsMenu");
     }
 
     void openOptionsMenu()
     {
         AndroidBackendRegister *reg = QtAndroid::backendRegister();
-        reg->callInterface<QtJniTypes::QtMenuInterface, void>("openOptionsMenu");
+        reg->callInterface<QtJniTypes::QtMenuInterface>("openOptionsMenu");
     }
 
     void showContextMenu(QAndroidPlatformMenu *menu, const QRect &anchorRect)
@@ -74,7 +75,7 @@ namespace QtAndroidMenu
         QMutexLocker lock(&visibleMenuMutex);
         if (visibleMenu == menu) {
             AndroidBackendRegister *reg = QtAndroid::backendRegister();
-            reg->callInterface<QtJniTypes::QtMenuInterface, void>("closeContextMenu");
+            reg->callInterface<QtJniTypes::QtMenuInterface>("closeContextMenu");
             pendingContextMenus.clear();
         } else {
             pendingContextMenus.removeOne(menu);
@@ -113,7 +114,7 @@ namespace QtAndroidMenu
         if (!window)
             return;
 
-        bool isNonRegularWindow = flags & (Qt::Desktop | Qt::Popup | Qt::Dialog | Qt::Sheet) & ~Qt::Window;
+        bool isNonRegularWindow = flags & (Qt::Popup | Qt::Dialog | Qt::Sheet) & ~Qt::Window;
         if (isNonRegularWindow)
             return;
 

@@ -6,14 +6,17 @@
     \class QMultiMap
     \inmodule QtCore
     \brief The QMultiMap class is a template class that provides an associative array with multiple equivalent keys.
+    \compares equality
 
     \ingroup tools
     \ingroup shared
+    \ingroup containers
 
     \reentrant
 
-    QMultiMap\<Key, T\> is one of Qt's generic \l{container classes}. It
-    stores (key, value) pairs and provides fast lookup by key.
+    QMultiMap\<Key, T\> is one of Qt's generic \l{container classes}, where
+    \a Key is the type used for lookup keys and \a T is the mapped value
+    type. It stores (key, value) pairs and provides fast lookup by key.
 
     QMultiMap and QMultiHash provide very similar functionality. The
     differences are:
@@ -37,7 +40,7 @@
 
     \snippet code/src_corelib_tools_qmultimap.cpp 2
 
-    This inserts the following three (key, value) pairs into the
+    This inserts the following four (key, value) pairs into the
     QMultiMap: ("a", 1), ("b", 3), ("c", 7), and ("c", -5); note
     that duplicate keys are allowed.
 
@@ -90,6 +93,7 @@
     key and iterate from there:
 
     \snippet code/src_corelib_tools_qmultimap.cpp 11
+    \snippet code/src_corelib_tools_qmultimap.cpp 11_better
 
     If you only need to extract the values from a map (not the keys),
     you can also use range-based for:
@@ -205,7 +209,7 @@
 */
 
 /*! \fn template <class Key, class T> std::multimap<Key, T> QMultiMap<Key, T>::toStdMap() const
-    \deprecated Use toStdMultiMap() instead.
+    \deprecated [6.0] Use toStdMultiMap() instead.
 
     Returns an STL multi map equivalent to this QMultiMap.
 */
@@ -217,9 +221,7 @@
 
 /*! \fn template <class Key, class T> void QMultiMap<Key, T>::swap(QMultiMap<Key, T> &other)
     \since 4.8
-
-    Swaps multi map \a other with this multi map. This operation is very
-    fast and never fails.
+    \memberswap{multi map}
 */
 
 /*! \fn template<class Key, class T> bool QMultiMap<Key, T>::operator==(const QMultiMap<Key, T> &lhs, const QMultiMap<Key, T> &rhs)
@@ -248,6 +250,57 @@
     operator==().
 
     \sa operator==()
+*/
+
+/*! \fn template <class Key, class T> bool QMultiMap<Key, T>::operator<(const QMultiMap<Key, T> &lhs, const QMultiMap<Key, T> &rhs)
+    \since 6.12
+
+    Returns \c true if \a lhs is
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically less than} \a rhs; otherwise returns \c false.
+
+    \include qmap.qdoc operator_uses_qt_lex_compare_three_way
+*/
+
+/*! \fn template <class Key, class T> bool QMultiMap<Key, T>::operator>(const QMultiMap<Key, T> &lhs, const QMultiMap<Key, T> &rhs)
+    \since 6.12
+
+    Returns \c true if \a lhs is
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically greater than} \a rhs; otherwise returns \c false.
+
+    \include qmap.qdoc operator_uses_qt_lex_compare_three_way
+*/
+
+/*! \fn template <class Key, class T> bool QMultiMap<Key, T>::operator<=(const QMultiMap<Key, T> &lhs, const QMultiMap<Key, T> &rhs)
+    \since 6.12
+
+    Returns \c true if \a lhs is
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically less or equal than} \a rhs; otherwise returns \c false.
+
+    \include qmap.qdoc operator_uses_qt_lex_compare_three_way
+*/
+
+/*! \fn template <class Key, class T> bool QMultiMap<Key, T>::operator>=(const QMultiMap<Key, T> &lhs, const QMultiMap<Key, T> &rhs)
+    \since 6.12
+
+    Returns \c true if \a lhs is
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically greater or equal than} \a rhs; otherwise returns \c false.
+
+    \include qmap.qdoc operator_uses_qt_lex_compare_three_way
+*/
+
+/*! \fn template <class Key, class T> auto QMultiMap<Key, T>::operator<=>(const QMultiMap<Key, T> &lhs, const QMultiMap<Key, T> &rhs)
+    \since 6.12
+
+    Compares the contents of \a lhs and \a rhs
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically}. Returns the result of the strongest applicable category
+    type.
+
+    \include qmap.qdoc operator_in_cpp20_only
 */
 
 /*! \fn template <class Key, class T> qsizetype QMultiMap<Key, T>::size() const
@@ -457,7 +510,7 @@
 
     Returns the number of items associated with key \a key.
 
-    \sa contains(), QMultiMap::count()
+    \sa contains(), QMultiMap::count(const Key &key, const T &value)
 */
 
 /*! \fn template <class Key, class T> qsizetype QMultiMap<Key, T>::count(const Key &key, const T &value) const
@@ -485,7 +538,7 @@
     Returns a reference to the largest key in the multi map.
     This function assumes that the multi map is not empty.
 
-    This executes in \l{logarithmic time}.
+    This executes in \l{constant time}.
 
     \sa firstKey(), last(), keyEnd(), isEmpty()
 */
@@ -513,7 +566,7 @@
     Returns a reference to the last value in the multi map, that is the value mapped
     to the largest key. This function assumes that the map is not empty.
 
-    When unshared (or const version is called), this executes in \l{logarithmic time}.
+    When unshared (or const version is called), this executes in \l{constant time}.
 
     \sa first(), lastKey(), isEmpty()
 */
@@ -715,6 +768,7 @@
     the items with the same key:
 
     \snippet code/src_corelib_tools_qmultimap.cpp 11
+    \snippet code/src_corelib_tools_qmultimap.cpp 11_better
 
     \sa constFind(), value(), values(), lowerBound(), upperBound()
 */
@@ -733,7 +787,7 @@
     If the multi map contains no item with key \a key, the function
     returns constEnd().
 
-    \sa find(), QMultiMap::constFind()
+    \sa find(), QMultiMap::constFind(const Key &key, const T &value)
 */
 
 /*!
@@ -817,6 +871,10 @@
     different from replace(), which overwrites the value of an
     existing item.)
 
+    QMultiMap allows duplicate keys and stores items in ascending
+    key order. For duplicate keys, the values are stored in reverse
+    insertion order (the most recently inserted value comes first).
+
     Returns an iterator pointing to the new element.
 
     \sa replace()
@@ -849,13 +907,13 @@
 
 #if QT_DEPRECATED_SINCE(6, 0)
 /*! \fn template <class Key, class T> QMultiMap<Key, T>::iterator QMultiMap<Key, T>::insertMulti(const Key &key, const T &value)
-    \deprecated Use insert() instead.
+    \deprecated [6.0] Use insert() instead.
 
     Inserts a new item with the key \a key and a value of \a value, and returns an iterator pointing to the new item.
 */
 
 /*! \fn template <class Key, class T> QMultiMap<Key, T>::iterator QMultiMap<Key, T>::insertMulti(const_iterator pos, const Key &key, const T &value)
-    \deprecated Use insert() instead.
+    \deprecated [6.0] Use insert() instead.
     \overload
 
     Inserts a new item with the key \a key and value \a value and with hint \a pos
@@ -864,14 +922,14 @@
 
 /*! \fn template <class Key, class T> void QMultiMap<Key, T>::insert(const QMultiMap<Key, T> &map)
     \since 5.15
-    \deprecated Use unite() instead.
+    \deprecated [6.0] Use unite() instead.
 
     Inserts all the items in \a map into this map.
 */
 
 /*! \fn template <class Key, class T> void QMultiMap<Key, T>::insert(QMultiMap<Key, T> &&map)
     \since 5.15
-    \deprecated Use unite() instead.
+    \deprecated [6.0] Use unite() instead.
     \overload
 
     Moves all the items from \a map into this map.

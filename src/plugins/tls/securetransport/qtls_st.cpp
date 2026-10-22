@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2014 Jeremy Lainé <jeremy.laine@m4x.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 #include "qtls_st_p.h"
 #include "qtlsbackend_st_p.h"
@@ -372,7 +373,9 @@ void TlsCryptographSecureTransport::disconnectFromHost()
     Q_ASSERT(d && d->plainTcpSocket());
     if (context) {
         if (!shutdown) {
-            SSLClose(context);
+            // Don't write close_notify to an already-invalid socket.
+            if (d->plainTcpSocket()->isValid())
+                SSLClose(context);
             context.reset(nullptr);
             shutdown = true;
         }
@@ -817,17 +820,32 @@ bool TlsCryptographSecureTransport::setSessionCertificate(QString &errorDescript
         const void *values[2] = { password };
         CFIndex nKeys = 1;
 #ifdef Q_OS_MACOS
-        bool envOk = false;
-        const int env = qEnvironmentVariableIntValue("QT_SSL_USE_TEMPORARY_KEYCHAIN", &envOk);
-        if (envOk && env) {
-            static const EphemeralSecKeychain temporaryKeychain;
-            if (temporaryKeychain.keychain) {
-                nKeys = 2;
-                keys[1] = kSecImportExportKeychain;
-                values[1] = temporaryKeychain.keychain;
+#if QT_APPLE_SDK_EQUAL_OR_ABOVE(MACOS(15), IOS(18))
+        // Starting from macOS 15 our temporary keychain is ignored.
+        // We have to use kSecImportToMemoryOnly/kCFBooleanTrue key/value
+        // instead. This key is "memory" but looks like Security framework
+        // does not compare strings, but pointers instead, so we need an actual
+        // key/constant.
+        if (__builtin_available(macOS 15, *)) {
+            nKeys = 2;
+            keys[1] = kSecImportToMemoryOnly;
+            values[1] = kCFBooleanTrue;
+        } else {
+#else
+        {
+#endif
+            bool envOk = false;
+            const int env = qEnvironmentVariableIntValue("QT_SSL_USE_TEMPORARY_KEYCHAIN", &envOk);
+            if (envOk && env) {
+                static const EphemeralSecKeychain temporaryKeychain;
+                if (temporaryKeychain.keychain) {
+                    nKeys = 2;
+                    keys[1] = kSecImportExportKeychain;
+                    values[1] = temporaryKeychain.keychain;
+                }
             }
         }
-#endif
+#endif // Q_OS_MACOS
         QCFType<CFDictionaryRef> options = CFDictionaryCreate(nullptr, keys, values, nKeys,
                                                               nullptr, nullptr);
         QCFType<CFArrayRef> items;

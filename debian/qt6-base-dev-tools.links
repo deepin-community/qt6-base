@@ -1,5 +1,4 @@
-# qtpaths and qtpaths6 are identical files. We want people to use qtpaths6,
-# so we do not install qtpaths. Instead, qtpaths is a symbolic link pointing to qtpaths6.
-usr/lib/qt6/bin/qtpaths6 usr/lib/qt6/bin/qtpaths
-# On public path we want qtpaths6.
-usr/lib/qt6/bin/qtpaths6 usr/bin/qtpaths6
+# androiddeployqt and androiddeployqt6 are identical files. We want people to use androiddeployqt6,
+# so we do not install androiddeployqt. Instead, androiddeployqt is a symbolic link pointing to androiddeployqt6.
+usr/lib/qt6/bin/androiddeployqt6 usr/lib/qt6/bin/androiddeployqt
+usr/lib/qt6/bin/wasmdeployqt6 usr/lib/qt6/bin/wasmdeployqt

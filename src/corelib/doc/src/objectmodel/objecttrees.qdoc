@@ -59,7 +59,9 @@
     behavior applies. Normally, the order of destruction still doesn't
     present a problem. Consider the following snippet:
 
-    \snippet code/doc_src_objecttrees.cpp 0
+    \snippet code/doc_src_objecttrees.cpp open
+    \snippet code/doc_src_objecttrees.cpp example1
+    \snippet code/doc_src_objecttrees.cpp close
 
     The parent, \c window, and the child, \c quit, are both \l {QObject}
     {QObjects} because QPushButton inherits QWidget, and QWidget inherits
@@ -73,7 +75,9 @@
     But now consider what happens if we swap the order of construction, as
     shown in this second snippet:
 
-    \snippet code/doc_src_objecttrees.cpp 1
+    \snippet code/doc_src_objecttrees.cpp open
+    \snippet code/doc_src_objecttrees.cpp example2
+    \snippet code/doc_src_objecttrees.cpp close
 
     In this case, the order of destruction causes a problem. The parent's
     destructor is called first because it was created last. It then calls

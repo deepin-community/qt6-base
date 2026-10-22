@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QUNIQUEHANDLE_P_H
 #define QUNIQUEHANDLE_P_H
@@ -17,8 +18,14 @@
 
 #include <QtCore/qtconfigmacros.h>
 #include <QtCore/qassert.h>
+#include <QtCore/qcompare.h>
+#include <QtCore/qfunctionaltools_impl.h>
+#include <QtCore/qswap.h>
+#include <QtCore/qtclasshelpermacros.h>
 
 #include <memory>
+#include <utility>
+#include <type_traits>
 
 QT_BEGIN_NAMESPACE
 
@@ -94,6 +101,42 @@ QT_BEGIN_NAMESPACE
 
         ...
 
+    Example 3:
+
+        struct TempFileTraits {
+            using Type = FILE*;
+
+            static Type invalidValue() {
+                return nullptr;
+            }
+
+            static bool close(Type handle) {
+                return fclose(handle) == 0;
+            }
+        };
+
+        struct TempFileDeleter {
+            using Type = TempFileTraits::Type;
+
+            void operator()(Type handle) {
+                if (handle != TempFileTraits::invalidValue()) {
+                    TempFileTraits::close(handle);
+                    if (path)
+                        remove(path);
+                }
+            }
+
+            const char* path{ nullptr };
+        };
+
+        using TempFileHandle = QUniqueHandle<TempFileTraits, TempFileDeleter>;
+
+    Usage:
+
+        TempFileHandle tempFile(fopen("temp.bin", "wb"), TempFileDeleter{ "my_temp.bin" });
+
+        ...
+
     NOTE: The QUniqueHandle assumes that closing a resource is
     guaranteed to succeed, and provides no support for handling failure
     to close a resource. It is therefore only recommended for use cases
@@ -103,34 +146,87 @@ QT_BEGIN_NAMESPACE
 
 // clang-format off
 
+namespace QtUniqueHandleTraits {
+
 template <typename HandleTraits>
-class QUniqueHandle
+struct DefaultDeleter
 {
-public:
     using Type = typename HandleTraits::Type;
 
-    QUniqueHandle() = default;
+    void operator()(Type handle) const noexcept
+    {
+        if (handle != HandleTraits::invalidValue()) {
+            const bool success = HandleTraits::close(handle);
+            Q_ASSERT(success);
+        }
+    }
+};
 
+} // namespace QtUniqueHandleTraits
+
+template <typename HandleTraits, typename Deleter = QtUniqueHandleTraits::DefaultDeleter<HandleTraits>>
+class QUniqueHandle : private QtPrivate::CompactStorage<Deleter>
+{
+    using Storage = QtPrivate::CompactStorage<Deleter>;
+
+    template <typename D>
+    using if_default_constructible = std::enable_if_t<std::is_default_constructible_v<D>, bool>;
+
+public:
+    using Type = typename HandleTraits::Type;
+    static_assert(std::is_nothrow_default_constructible_v<Type>);
+    static_assert(std::is_nothrow_constructible_v<Type>);
+    static_assert(std::is_nothrow_copy_constructible_v<Type>);
+    static_assert(std::is_nothrow_move_constructible_v<Type>);
+    static_assert(std::is_nothrow_copy_assignable_v<Type>);
+    static_assert(std::is_nothrow_move_assignable_v<Type>);
+    static_assert(std::is_nothrow_destructible_v<Type>);
+    static_assert(std::is_nothrow_copy_constructible_v<Deleter>);
+    static_assert(std::is_nothrow_move_constructible_v<Deleter>);
+    static_assert(std::is_nothrow_copy_assignable_v<Deleter>);
+    static_assert(std::is_nothrow_move_assignable_v<Deleter>);
+    static_assert(std::is_nothrow_destructible_v<Deleter>);
+    static_assert(noexcept(std::declval<Type>() == std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() != std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() < std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() <= std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() > std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() >= std::declval<Type>()));
+
+    template <if_default_constructible<Deleter> = true>
+    QUniqueHandle() noexcept
+    {}
+
+    template <if_default_constructible<Deleter> = true>
     explicit QUniqueHandle(const Type &handle) noexcept
         : m_handle{ handle }
     {}
 
-    QUniqueHandle(QUniqueHandle &&other) noexcept
-        : m_handle{ other.release() }
+    QUniqueHandle(const Type &handle, const Deleter &deleter) noexcept
+        : Storage{ deleter }, m_handle{ handle }
     {}
+
+    QUniqueHandle(const Type &handle, Deleter &&deleter) noexcept
+        : Storage{ std::move(deleter) }, m_handle{ handle }
+    {}
+
+    QUniqueHandle(QUniqueHandle &&other) noexcept
+        : Storage{ std::move(other.deleter()) }, m_handle{ other.release() }
+    {
+    }
 
     ~QUniqueHandle() noexcept
     {
         close();
     }
 
-    QUniqueHandle& operator=(QUniqueHandle &&rhs) noexcept
+    void swap(QUniqueHandle &other) noexcept
     {
-        if (this != std::addressof(rhs))
-            reset(rhs.release());
-
-        return *this;
+        qSwap(m_handle, other.m_handle);
+        qSwap(deleter(), other.deleter());
     }
+
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QUniqueHandle)
 
     QUniqueHandle(const QUniqueHandle &) = delete;
     QUniqueHandle &operator=(const QUniqueHandle &) = delete;
@@ -151,7 +247,17 @@ public:
         return m_handle;
     }
 
-    void reset(const Type& handle) noexcept
+    [[nodiscard]] Deleter& deleter() noexcept
+    {
+        return Storage::object();
+    }
+
+    [[nodiscard]] const Deleter& deleter() const noexcept
+    {
+        return Storage::object();
+    }
+
+    void reset(const Type& handle = HandleTraits::invalidValue()) noexcept
     {
         if (handle == m_handle)
             return;
@@ -162,9 +268,7 @@ public:
 
     [[nodiscard]] Type release() noexcept
     {
-        Type handle = m_handle;
-        m_handle = HandleTraits::invalidValue();
-        return handle;
+        return std::exchange(m_handle, HandleTraits::invalidValue());
     }
 
     [[nodiscard]] Type *operator&() noexcept  // NOLINT(google-runtime-operator)
@@ -178,47 +282,40 @@ public:
         if (!isValid())
             return;
 
-        const bool success = HandleTraits::close(m_handle);
-        Q_ASSERT(success);
+        deleter()(m_handle);
 
         m_handle = HandleTraits::invalidValue();
     }
 
-    [[nodiscard]] friend bool operator==(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
+private:
+    friend bool comparesEqual(const QUniqueHandle& lhs, const QUniqueHandle& rhs) noexcept
     {
         return lhs.get() == rhs.get();
     }
 
-    [[nodiscard]] friend bool operator!=(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
+    friend Qt::strong_ordering compareThreeWay(const QUniqueHandle& lhs,
+                                               const QUniqueHandle& rhs) noexcept
     {
-        return lhs.get() != rhs.get();
+        if constexpr (std::is_pointer_v<Type>)
+            return qCompareThreeWay(Qt::totally_ordered_wrapper{ lhs.get() },
+                                    Qt::totally_ordered_wrapper{ rhs.get() });
+        else
+            return qCompareThreeWay(lhs.get(), rhs.get());
     }
 
-    [[nodiscard]] friend bool operator<(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
-    {
-        return lhs.get() < rhs.get();
-    }
+    Q_DECLARE_STRONGLY_ORDERED(QUniqueHandle)
 
-    [[nodiscard]] friend bool operator<=(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
-    {
-        return lhs.get() <= rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator>(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
-    {
-        return lhs.get() > rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator>=(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
-    {
-        return lhs.get() >= rhs.get();
-    }
-
-private:
     Type m_handle{ HandleTraits::invalidValue() };
 };
 
 // clang-format on
+
+template <typename Trait, typename Deleter>
+void swap(QUniqueHandle<Trait, Deleter> &lhs, QUniqueHandle<Trait, Deleter> &rhs) noexcept
+{
+    lhs.swap(rhs);
+}
+
 
 QT_END_NAMESPACE
 

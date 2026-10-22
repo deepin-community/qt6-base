@@ -7,6 +7,8 @@
 #include <QDomDocument>
 #include <QTextBlock>
 
+QT_BEGIN_NAMESPACE
+
 class QTextDocument;
 
 class XmlWriter
@@ -24,5 +26,7 @@ private:
     QDomDocument *document;
     QTextDocument *textDocument;
 };
+
+QT_END_NAMESPACE
 
 #endif

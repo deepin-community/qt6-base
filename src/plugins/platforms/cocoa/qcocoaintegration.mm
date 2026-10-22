@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -76,6 +77,8 @@ static void logVersionInformation()
             qtDeploymentTarget.majorVersion(), qtDeploymentTarget.minorVersion(), qtDeploymentTarget.microVersion(),
             appBuildSDK.majorVersion(), appBuildSDK.minorVersion(), appBuildSDK.microVersion(),
             appDeploymentTarget.majorVersion(), appDeploymentTarget.minorVersion(), appDeploymentTarget.microVersion());
+
+    qCInfo(lcQpa) << "Running with Liquid Glass enabled:" << qt_apple_runningWithLiquidGlass();
 }
 
 
@@ -109,7 +112,6 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
 #endif
     , mCocoaDrag(new QCocoaDrag)
     , mNativeInterface(new QCocoaNativeInterface)
-    , mServices(new QCocoaServices)
     , mKeyboardMapper(new QAppleKeyMapper)
 {
     logVersionInformation();
@@ -233,17 +235,51 @@ bool QCocoaIntegration::hasCapability(QPlatformIntegration::Capability cap) cons
         // layer-backed.
         return false;
     case OpenGL:
+#if defined(Q_PROCESSOR_ARM)
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSTahoe) {
+            // Tahoe has issues with software-backed GL, crashing in common operations
+            static bool isSoftwareContext = []{
+                QOpenGLContext context;
+                context.create();
+                auto *cocoaContext = static_cast<QCocoaGLContext*>(context.handle());
+                if (cocoaContext->isSoftwareContext()) {
+                    qWarning() << "Detected software OpenGL backend,"
+                        << "which is known to be broken on"
+                        << qUtf8Printable(QSysInfo::prettyProductName());
+                    return true;
+                } else {
+                    return false;
+                }
+            }();
+            return !isSoftwareContext;
+        }
+#endif
+        Q_FALLTHROUGH();
     case BufferQueueingOpenGL:
 #endif
     case ThreadedPixmaps:
     case WindowMasks:
     case MultipleWindows:
     case ForeignWindows:
-    case RasterGLSurface:
     case ApplicationState:
     case ApplicationIcon:
     case BackingStoreStaticContents:
+    case OffscreenSurface:
         return true;
+    case ScreenWindowGrabbing: {
+#if defined(Q_PROCESSOR_X86_64)
+        // ScreenCaptureKit brings down WindowServer on macOS 14 x86_64 VMs in CI
+        if (QOperatingSystemVersion::current() <= QOperatingSystemVersion::MacOSSonoma
+            && qEnvironmentVariable("QTEST_ENVIRONMENT") == "ci") {
+                return false;
+        }
+#endif
+        return true;
+    }
+    case MouseCursorPositioning:
+        return AXIsProcessTrustedWithOptions(CFDictionaryRef(@{
+            id(kAXTrustedCheckOptionPrompt): @NO
+        }));
     default:
         return QPlatformIntegration::hasCapability(cap);
     }
@@ -299,6 +335,8 @@ QOpenGLContext *QCocoaIntegration::createOpenGLContext(NSOpenGLContext *nativeCo
 
 QPlatformBackingStore *QCocoaIntegration::createPlatformBackingStore(QWindow *window) const
 {
+    QMacAutoReleasePool pool;
+
     QCocoaWindow *platformWindow = static_cast<QCocoaWindow*>(window->handle());
     if (!platformWindow) {
         qWarning() << window << "must be created before being used with a backingstore";
@@ -394,6 +432,9 @@ QPlatformTheme *QCocoaIntegration::createPlatformTheme(const QString &name) cons
 
 QCocoaServices *QCocoaIntegration::services() const
 {
+    if (mServices.isNull())
+        mServices.reset(new QCocoaServices);
+
     return mServices.data();
 }
 
@@ -419,9 +460,22 @@ QPlatformKeyMapper *QCocoaIntegration::keyMapper() const
 
 void QCocoaIntegration::setApplicationIcon(const QIcon &icon) const
 {
-    // Fall back to a size that looks good on the highest resolution screen available
-    auto fallbackSize = NSApp.dockTile.size.width * qGuiApp->devicePixelRatio();
-    NSApp.applicationIconImage = [NSImage imageFromQIcon:icon withSize:fallbackSize];
+    if (icon.isNull()) {
+        NSApp.applicationIconImage = nil;
+        return;
+    }
+
+    // Request a size that looks good on the highest resolution screen available
+    // for icon engines that don't have an intrinsic size (like SVG).
+    const auto dockTitleSize = QSizeF::fromCGSize(NSApp.dockTile.size).toSize();
+    auto image = icon.pixmap(dockTitleSize, qGuiApp->devicePixelRatio()).toImage();
+
+    // The assigned image is scaled by the system to fit into the tile,
+    // but without taking aspect ratio into account, so let's pad the
+    // image up front if it's not already square.
+    image = qt_mac_padToSquareImage(image);
+
+    NSApp.applicationIconImage = [NSImage imageFromQImage:image];
 }
 
 void QCocoaIntegration::setApplicationBadge(qint64 number)

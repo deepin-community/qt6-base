@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTEXTEDIT_H
 #define QTEXTEDIT_H
@@ -12,6 +13,8 @@
 #include <QtGui/qtextformat.h>
 
 QT_REQUIRE_CONFIG(textedit);
+
+class tst_QTextEdit;
 
 QT_BEGIN_NAMESPACE
 
@@ -283,6 +286,7 @@ private:
     friend class QTextEditControl;
     friend class QTextDocument;
     friend class QWidgetTextControl;
+    friend class ::tst_QTextEdit;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QTextEdit::AutoFormatting)

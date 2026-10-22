@@ -7,6 +7,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QApplication>
+#include <QMainWindow>
 
 #include <private/qhighdpiscaling_p.h>
 #include <private/qwidget_p.h>
@@ -261,6 +262,7 @@ private slots:
     void scroll();
     void paintOnScreenUpdates();
     void evaluateRhi();
+    void rhiRecreateMaintainsWindowProperties();
 
 #if defined(QT_BUILD_INTERNAL)
     void scrollWithOverlap();
@@ -526,14 +528,19 @@ void tst_QWidgetRepaintManager::paintOnScreenUpdates()
 
         topLevel.initialShow();
 
+        QWindow *window = topLevel.windowHandle();
+        QVERIFY(window);
+
+        const QRect safeRect = topLevel.rect().marginsRemoved(window->safeAreaMargins());
+        const QRect paintOnScreenGeometry(QPoint(safeRect.left() + 200, safeRect.top()),
+                                          paintOnScreenWidget.size());
+        paintOnScreenWidget.setGeometry(paintOnScreenGeometry.intersected(safeRect));
+
         // Updating before toggling WA_PaintOnScreen should work fine
         paintOnScreenWidget.update();
         paintOnScreenWidget.waitForPainted();
         QVERIFY(paintOnScreenWidget.waitForPainted());
 
-#ifdef Q_OS_ANDROID
-        QEXPECT_FAIL("", "This test fails on Android", Abort);
-#endif
         QCOMPARE(paintOnScreenWidget.takePaintedRegions(), paintOnScreenWidget.rect());
 
         renderToTextureWidget.update();
@@ -652,6 +659,9 @@ void tst_QWidgetRepaintManager::evaluateRhi()
     }
 
 #if QT_CONFIG(opengl)
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::OpenGL))
+        return;
+
     {
         // Non-native child RHI widget enables RHI for top level regular widget
         QWidget topLevel;
@@ -796,6 +806,32 @@ void tst_QWidgetRepaintManager::evaluateRhi()
 #endif // QT_CONFIG(metal)
 
 #endif // QT_CONFIG(opengl)
+}
+
+void tst_QWidgetRepaintManager::rhiRecreateMaintainsWindowProperties()
+{
+    const auto *integration = QGuiApplicationPrivate::platformIntegration();
+    if (!integration->hasCapability(QPlatformIntegration::RhiBasedRendering))
+        QSKIP("Platform does not support RHI based rendering");
+
+#if !QT_CONFIG(opengl)
+    QSKIP("Platform does not support OpenGL RHI based rendering");
+#endif
+
+    if (!integration->hasCapability(QPlatformIntegration::OpenGL))
+        QSKIP("OpenGL is not supported on this platform.");
+
+    // Reparenting Rhi widget into a window causes the window to be
+    // recreated, but after recreation the window properties such as
+    // window position must remain the same
+    QMainWindow topLevel;
+    topLevel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+    QPoint windowPos = topLevel.pos();
+    RhiWidget nativeRhiWidget(QPlatformBackingStoreRhiConfig::OpenGL, &topLevel);
+    QVERIFY(QWidgetPrivate::get(&topLevel)->usesRhiFlush);
+    QVERIFY(QWidgetPrivate::get(&topLevel)->rhi());
+    QCOMPARE(topLevel.pos(), windowPos);
 }
 
 #if defined(QT_BUILD_INTERNAL)

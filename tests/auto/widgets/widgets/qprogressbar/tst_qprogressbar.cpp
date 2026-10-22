@@ -24,7 +24,7 @@ private slots:
     void format();
     void setValueRepaint_data();
     void setValueRepaint();
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     void setMinMaxRepaint();
 #endif
     void sizeHint();
@@ -213,20 +213,32 @@ void tst_QProgressBar::setValueRepaint()
 // This test is invalid on Mac, since progressbars
 // are animated there
 
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
 void tst_QProgressBar::setMinMaxRepaint()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This fails. Figure out why.");
 
     ProgressBar pbar;
+    QSize size(200, 25);
+
+    // On OHOS, the minimum window height is 72 virtual pixels (vp) by default, or 40vp when the
+    // platform sets forcible window limits (on 2-in-1 devices).
+    if (QGuiApplication::platformName().startsWith(QLatin1String("ohos"), Qt::CaseInsensitive))
+        size.setHeight(80);
+
+    pbar.setWindowFlag(Qt::FramelessWindowHint);
     pbar.setMinimum(0);
     pbar.setMaximum(10);
     pbar.setFormat("%v");
     pbar.move(300, 300);
+    pbar.resize(size);
     pbar.show();
-    QApplicationPrivate::setActiveWindow(&pbar);
     QVERIFY(QTest::qWaitForWindowActive(&pbar));
+    QTRY_COMPARE(pbar.size(), size);
+
+    // Ensure pbar is displayed before updating the minimum and maximum values
+    QApplication::processEvents();
 
     // No repaint when setting minimum to the current minimum
     pbar.repainted = false;
@@ -254,7 +266,7 @@ void tst_QProgressBar::setMinMaxRepaint()
         QTRY_VERIFY(pbar.repainted);
     }
 }
-#endif //Q_OS_MAC
+#endif // Q_OS_MACOS
 
 void tst_QProgressBar::sizeHint()
 {
@@ -263,7 +275,7 @@ void tst_QProgressBar::sizeHint()
     bar.setMaximum(10);
     bar.setValue(5);
 
-    //test if the sizeHint is big enough
+    // test if the sizeHint is big enough
     QFontMetrics fm = bar.fontMetrics();
     QStyleOptionProgressBar opt;
     bar.initStyleOption(&opt);
@@ -282,10 +294,10 @@ void tst_QProgressBar::formatedText_data()
     QTest::addColumn<QString>("format");
     QTest::addColumn<QString>("text");
 
-    QTest::newRow("1") <<  -100 << 100 << 0 << QString::fromLatin1(" %p - %v - %m ") << QString::fromLatin1(" 50 - 0 - 200 ");
-    QTest::newRow("2") <<  -100 << 0 << -25 << QString::fromLatin1(" %p - %v - %m ") << QString::fromLatin1(" 75 - -25 - 100 ");
-    QTest::newRow("3") <<  10 << 10 << 10 << QString::fromLatin1(" %p - %v - %m ") << QString::fromLatin1(" 100 - 10 - 0 ");
-    QTest::newRow("task152227") <<  INT_MIN << INT_MAX << 42 << QString::fromLatin1(" %p - %v - %m ") << QString::fromLatin1(" 50 - 42 - 4294967295 ");
+    QTest::newRow("1") <<  -100 << 100 << 0 << " %p - %v - %m " << " 50 - 0 - 200 ";
+    QTest::newRow("2") <<  -100 << 0 << -25 << " %p - %v - %m " << " 75 - -25 - 100 ";
+    QTest::newRow("3") <<  10 << 10 << 10 << " %p - %v - %m " << " 100 - 10 - 0 ";
+    QTest::newRow("task152227") <<  INT_MIN << INT_MAX << 42 << " %p - %v - %m " << " 50 - 42 - 4294967295 ";
 }
 
 void tst_QProgressBar::formatedText()
@@ -362,7 +374,7 @@ void tst_QProgressBar::task245201_testChangeStyleAndDelete()
     QTest::qWait(10);
 
     delete bar;
-    QTest::qWait(100); //should not crash
+    QTest::qWait(100); // should not crash
     delete style;
     delete style2;
 }

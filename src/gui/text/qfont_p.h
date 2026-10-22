@@ -17,12 +17,14 @@
 
 #include <QtGui/private/qtguiglobal_p.h>
 #include "QtGui/qfont.h"
+#include "QtCore/qbasictimer.h"
 #include "QtCore/qmap.h"
 #include "QtCore/qhash.h"
 #include "QtCore/qobject.h"
 #include "QtCore/qstringlist.h"
 #include <QtGui/qfontdatabase.h>
 #include "private/qfixed_p.h"
+#include "private/qfontdatabase_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -49,6 +51,13 @@ struct QFontDef
           fixedPitchComputed(0),
           reserved(0)
     {
+    }
+
+    // Convenience that returns the first family in the list or an empty string if the list
+    // is empty.
+    inline QString family() const
+    {
+        return families.value(0);
     }
 
     QStringList families;
@@ -152,8 +161,7 @@ public:
     QAtomicInt ref;
     const int fontCacheId;
 
-    QFontEngine *engines[QChar::ScriptCount];
-
+    QFontEngine *engines[QFontDatabasePrivate::ScriptCount];
 private:
     Q_DISABLE_COPY_MOVE(QFontEngineData)
 };
@@ -162,12 +170,19 @@ private:
 class Q_GUI_EXPORT QFontPrivate
 {
 public:
+    enum class EngineQueryOption {
+        Default = 0,
+        IgnoreSmallCapsEngine = 0x1,
+    };
+    Q_DECLARE_FLAGS(EngineQueryOptions, EngineQueryOption)
 
     QFontPrivate();
     QFontPrivate(const QFontPrivate &other);
+    QFontPrivate &operator=(const QFontPrivate &) = delete;
     ~QFontPrivate();
 
     QFontEngine *engineForScript(int script) const;
+    QFontEngine *engineForCharacter(char32_t c, EngineQueryOptions opt = {}) const;
     void alterCharForCapitalization(QChar &c) const;
 
     QAtomicInt ref;
@@ -184,7 +199,7 @@ public:
 
     QFixed letterSpacing;
     QFixed wordSpacing;
-    QHash<QFont::Tag, quint32> features;
+    QMap<QFont::Tag, quint32> features;
 
     mutable QFontPrivate *scFont;
     QFont smallCapsFont() const { return QFont(smallCapsFontPrivate()); }
@@ -205,10 +220,8 @@ public:
     void setVariableAxis(QFont::Tag tag, float value);
     void unsetVariableAxis(QFont::Tag tag);
     bool hasVariableAxis(QFont::Tag tag, float value) const;
-
-private:
-    QFontPrivate &operator=(const QFontPrivate &) { return *this; }
 };
+Q_DECLARE_OPERATORS_FOR_FLAGS(QFontPrivate::EngineQueryOptions)
 
 
 class Q_GUI_EXPORT QFontCache : public QObject
@@ -288,10 +301,11 @@ private:
     uint current_timestamp;
     bool fast;
     const bool autoClean;
-    int timer_id;
+    QBasicTimer timer;
     const int m_id;
 };
 
+Q_GUI_EXPORT QPoint qt_defaultDpis();
 Q_GUI_EXPORT int qt_defaultDpiX();
 Q_GUI_EXPORT int qt_defaultDpiY();
 Q_GUI_EXPORT int qt_defaultDpi();

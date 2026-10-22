@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QINPUTDEVICE_P_H
 #define QINPUTDEVICE_P_H
@@ -60,9 +61,19 @@ public:
             return;
 
         availableVirtualGeometry = a;
-        capabilities |= QInputDevice::Capability::NormalizedPosition;
+        setCapabilities(capabilities | QInputDevice::Capability::NormalizedPosition);
         Q_Q(QInputDevice);
         Q_EMIT q->availableVirtualGeometryChanged(availableVirtualGeometry);
+    }
+
+    void setCapabilities(QInputDevice::Capabilities c)
+    {
+        if (c == capabilities)
+            return;
+
+        capabilities = c;
+        Q_Q(QInputDevice);
+        Q_EMIT q->capabilitiesChanged(capabilities);
     }
 
     inline static QInputDevicePrivate *get(QInputDevice *q)

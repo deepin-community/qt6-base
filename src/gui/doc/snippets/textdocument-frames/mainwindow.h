@@ -6,6 +6,8 @@
 
 #include <QMainWindow>
 
+QT_BEGIN_NAMESPACE
+
 class QTextEdit;
 class QTextFrame;
 class QTextBlock;
@@ -27,5 +29,7 @@ private:
 
     QTextEdit *editor = nullptr;
 };
+
+QT_END_NAMESPACE
 
 #endif

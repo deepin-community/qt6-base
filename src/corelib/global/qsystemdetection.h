@@ -1,6 +1,7 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // Copyright (C) 2019 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #if 0
 #pragma qt_class(QtSystemDetection)
@@ -83,6 +84,9 @@
 #elif defined(__ANDROID__) || defined(ANDROID)
 #  define Q_OS_ANDROID
 #  define Q_OS_LINUX
+#elif defined(__OHOS__)
+#  define Q_OS_HARMONY
+#  define Q_OS_LINUX
 #elif defined(__CYGWIN__)
 #  define Q_OS_CYGWIN
 #elif !defined(SAG_COM) && (!defined(WINAPI_FAMILY) || WINAPI_FAMILY==WINAPI_FAMILY_DESKTOP_APP) && (defined(WIN64) || defined(_WIN64) || defined(__WIN64__))
@@ -153,7 +157,8 @@
 #ifdef Q_OS_DARWIN
 #  pragma clang diagnostic push
 #  pragma clang diagnostic ignored "-Wunknown-pragmas"
-#  define Q_OS_MAC // FIXME: Deprecate
+#  define Q_OS_MAC
+#  pragma clang deprecated(Q_OS_MAC, "use Q_OS_MACOS for macOS or Q_OS_APPLE for all Apple platforms instead")
 #  ifdef __LP64__
 #    define Q_OS_DARWIN64
 #    pragma clang deprecated(Q_OS_DARWIN64, "use Q_OS_DARWIN and QT_POINTER_SIZE/Q_PROCESSOR_* instead")
@@ -177,6 +182,7 @@
 #ifdef Q_OS_DARWIN
 #  include <Availability.h>
 #  include <AvailabilityMacros.h>
+#  include <QtCore/qtpreprocessorsupport.h>
 
 #  define QT_DARWIN_PLATFORM_SDK_EQUAL_OR_ABOVE(macos, ios, tvos, watchos) \
     ((defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && macos != __MAC_NA && __MAC_OS_X_VERSION_MAX_ALLOWED >= macos) || \
@@ -201,6 +207,8 @@
 #  define QT_WATCHOS_PLATFORM_SDK_EQUAL_OR_ABOVE(watchos) \
       QT_DARWIN_PLATFORM_SDK_EQUAL_OR_ABOVE(__MAC_NA, __IPHONE_NA, __TVOS_NA, watchos)
 
+#  pragma clang deprecated(QT_DARWIN_PLATFORM_SDK_EQUAL_OR_ABOVE, "Use QT_APPLE_SDK_EQUAL_OR_ABOVE instead")
+
 #  define QT_MACOS_IOS_DEPLOYMENT_TARGET_BELOW(macos, ios) \
       QT_DARWIN_DEPLOYMENT_TARGET_BELOW(macos, ios, __TVOS_NA, __WATCHOS_NA)
 #  define QT_MACOS_DEPLOYMENT_TARGET_BELOW(macos) \
@@ -212,6 +220,52 @@
 #  define QT_WATCHOS_DEPLOYMENT_TARGET_BELOW(watchos) \
       QT_DARWIN_DEPLOYMENT_TARGET_BELOW(__MAC_NA, __IPHONE_NA, __TVOS_NA, watchos)
 
+#  pragma clang deprecated(QT_DARWIN_DEPLOYMENT_TARGET_BELOW, "Use @available instead")
+
+/*!
+    \macro QT_APPLE_SDK_EQUAL_OR_ABOVE
+    \internal
+
+    Generalized Apple platform SDK check, for code requiring
+    a minimum version of build SDK, e.g.:
+
+      #if QT_APPLE_SDK_EQUAL_OR_ABOVE(MACOS(26, 6, 1), IOS(17, 2), VISIONOS(2))
+
+    For runtime version checks, use @available
+*/
+
+#  define QT_APPLE_SDK_VERSION(...) QT_APPLE_SDK_VERSION_IMPL(__VA_ARGS__, 0, 0)
+#  define QT_APPLE_SDK_VERSION_IMPL(major, minor, patch, ...) \
+      ((major) * 10000 + (minor) * 100 + (patch))
+
+#  define QT_APPLE_SDK_PLATFORM_MACOS(...) \
+      (__MAC_OS_X_VERSION_MAX_ALLOWED >= QT_APPLE_SDK_VERSION(__VA_ARGS__))
+#  define QT_APPLE_SDK_PLATFORM_IOS(...) \
+      (__IPHONE_OS_VERSION_MAX_ALLOWED >= QT_APPLE_SDK_VERSION(__VA_ARGS__))
+#  define QT_APPLE_SDK_PLATFORM_TVOS(...) \
+      (__TV_OS_VERSION_MAX_ALLOWED >= QT_APPLE_SDK_VERSION(__VA_ARGS__))
+#  define QT_APPLE_SDK_PLATFORM_WATCHOS(...) \
+      (__WATCH_OS_VERSION_MAX_ALLOWED >= QT_APPLE_SDK_VERSION(__VA_ARGS__))
+#  define QT_APPLE_SDK_PLATFORM_VISIONOS(...) \
+      (__VISION_OS_VERSION_MAX_ALLOWED >= QT_APPLE_SDK_VERSION(__VA_ARGS__))
+
+#  define QT_APPLE_SDK_EQUAL_OR_ABOVE_1(p1) \
+      (QT_APPLE_SDK_PLATFORM_##p1)
+#  define QT_APPLE_SDK_EQUAL_OR_ABOVE_2(p1, p2) \
+      (QT_APPLE_SDK_PLATFORM_##p1 || QT_APPLE_SDK_PLATFORM_##p2)
+#  define QT_APPLE_SDK_EQUAL_OR_ABOVE_3(p1, p2, p3) \
+      (QT_APPLE_SDK_PLATFORM_##p1 || QT_APPLE_SDK_PLATFORM_##p2 \
+       || QT_APPLE_SDK_PLATFORM_##p3)
+#  define QT_APPLE_SDK_EQUAL_OR_ABOVE_4(p1, p2, p3, p4) \
+      (QT_APPLE_SDK_PLATFORM_##p1 || QT_APPLE_SDK_PLATFORM_##p2 \
+       || QT_APPLE_SDK_PLATFORM_##p3 || QT_APPLE_SDK_PLATFORM_##p4)
+#  define QT_APPLE_SDK_EQUAL_OR_ABOVE_5(p1, p2, p3, p4, p5) \
+      (QT_APPLE_SDK_PLATFORM_##p1 || QT_APPLE_SDK_PLATFORM_##p2 \
+       || QT_APPLE_SDK_PLATFORM_##p3 || QT_APPLE_SDK_PLATFORM_##p4 \
+       || QT_APPLE_SDK_PLATFORM_##p5)
+
+#  define QT_APPLE_SDK_EQUAL_OR_ABOVE(...) QT_OVERLOADED_MACRO(QT_APPLE_SDK_EQUAL_OR_ABOVE, __VA_ARGS__)
+
 #else // !Q_OS_DARWIN
 
 #define QT_DARWIN_PLATFORM_SDK_EQUAL_OR_ABOVE(macos, ios, tvos, watchos) (0)
@@ -220,6 +274,7 @@
 #define QT_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(ios) (0)
 #define QT_TVOS_PLATFORM_SDK_EQUAL_OR_ABOVE(tvos) (0)
 #define QT_WATCHOS_PLATFORM_SDK_EQUAL_OR_ABOVE(watchos) (0)
+#define QT_APPLE_SDK_EQUAL_OR_ABOVE(...) (0)
 
 #endif // Q_OS_DARWIN
 
@@ -242,7 +297,8 @@
 #if defined(__SIZEOF_INT128__)
 // Compiler used in VxWorks SDK declares __SIZEOF_INT128__ but VxWorks doesn't support this type,
 // so we can't rely solely on compiler here.
-#if !defined(Q_OS_VXWORKS)
+// MSVC STL used by MSVC and clang-cl does not support int128
+#if !defined(Q_OS_VXWORKS) && !defined(_MSC_VER)
 #  define QT_COMPILER_SUPPORTS_INT128 __SIZEOF_INT128__
 #endif
 #endif // defined(__SIZEOF_INT128__)

@@ -11,8 +11,8 @@
 # Variables:
 #   QT_ANDROID_JAR
 #       Location of the adroid sdk jar for java code
-#   QT_ANDROID_API_VERSION
-#       Android API version
+#   QT_ANDROID_API_USED_FOR_JAVA
+#       Android API version for building java code
 #
 
 if (NOT DEFINED ANDROID_SDK_ROOT)
@@ -23,88 +23,14 @@ if (NOT IS_DIRECTORY "${ANDROID_SDK_ROOT}")
     message(FATAL_ERROR "Could not find ANDROID_SDK_ROOT or path is not a directory: ${ANDROID_SDK_ROOT}")
 endif()
 
-# Get the Android SDK jar for an API version other than the one specified with
-# QT_ANDROID_API_VERSION.
-function(qt_get_android_sdk_jar_for_api api out_jar_location)
-    set(jar_location "${ANDROID_SDK_ROOT}/platforms/${api}/android.jar")
-    if (NOT EXISTS "${jar_location}")
-        message(WARNING "Could not locate Android SDK jar for api '${api}', defaulting to ${QT_ANDROID_API_VERSION}")
-        set(${out_jar_location} ${QT_ANDROID_JAR} PARENT_SCOPE)
-    else()
-        set(${out_jar_location} ${jar_location} PARENT_SCOPE)
-    endif()
-endfunction()
-
-# Minimum recommend android SDK api version
-set(QT_ANDROID_API_VERSION "android-34")
-
-function(qt_internal_sort_android_platforms out_var)
-    if(CMAKE_VERSION GREATER_EQUAL 3.18)
-        set(platforms ${ARGN})
-        list(SORT platforms COMPARE NATURAL)
-    else()
-        # Simulate natural sorting:
-        # - prepend every platform with its version as three digits, zero-padded
-        # - regular sort
-        # - remove the padded version prefix
-        set(platforms)
-        foreach(platform IN LISTS ARGN)
-            set(version "000")
-            if(platform MATCHES ".*-([0-9]+)$")
-                set(version ${CMAKE_MATCH_1})
-                string(LENGTH "${version}" version_length)
-                math(EXPR padding_length "3 - ${version_length}")
-                string(REPEAT "0" ${padding_length} padding)
-                string(PREPEND version ${padding})
-            endif()
-            list(APPEND platforms "${version}~${platform}")
-        endforeach()
-        list(SORT platforms)
-        list(TRANSFORM platforms REPLACE "^.*~" "")
-    endif()
-    set("${out_var}" "${platforms}" PARENT_SCOPE)
-endfunction()
-
-macro(qt_internal_get_android_platform_version out_var android_platform)
-    string(REGEX REPLACE ".*-([0-9]+)$" "\\1" ${out_var} "${android_platform}")
-endmacro()
-
-# Locate the highest available platform
-file(GLOB android_platforms
-    LIST_DIRECTORIES true
-    RELATIVE "${ANDROID_SDK_ROOT}/platforms"
-    "${ANDROID_SDK_ROOT}/platforms/*")
-# If list is not empty
-if(android_platforms)
-    qt_internal_sort_android_platforms(android_platforms ${android_platforms})
-    list(REVERSE android_platforms)
-    list(GET android_platforms 0 android_platform_latest)
-
-    qt_internal_get_android_platform_version(latest_platform_version
-        "${android_platform_latest}")
-    qt_internal_get_android_platform_version(required_platform_version
-        "${QT_ANDROID_API_VERSION}")
-
-    if("${latest_platform_version}" VERSION_GREATER "${required_platform_version}")
-        set(QT_ANDROID_API_VERSION ${android_platform_latest})
-    endif()
-endif()
-
-set(QT_ANDROID_JAR "${ANDROID_SDK_ROOT}/platforms/${QT_ANDROID_API_VERSION}/android.jar")
-if(NOT EXISTS "${QT_ANDROID_JAR}")
-    message(FATAL_ERROR
-        "No suitable Android SDK platform found in '${ANDROID_SDK_ROOT}/platforms'."
-        " Minimum version is ${QT_ANDROID_API_VERSION}"
-    )
-endif()
-
-message(STATUS "Using Android SDK API ${QT_ANDROID_API_VERSION} from ${ANDROID_SDK_ROOT}/platforms")
+_qt_internal_locate_android_jar()
 
 # Locate Java
 include(UseJava)
 
 # Find JDK 8.0
 find_package(Java 1.8 COMPONENTS Development REQUIRED)
+find_package(Bundletool)
 
 # Ensure we are using the shared version of libc++
 if(NOT ANDROID_STL STREQUAL c++_shared)
@@ -184,31 +110,56 @@ define_property(TARGET
         "This variable can be used to exclude Qt shared libraries from being packaged inside the APK when deploying on Android. Not supported when deploying as Android Application Bundle."
 )
 
+define_property(TARGET
+    PROPERTY QT_ANDROID_BUILD_DIR
+    BRIEF_DOCS "Read-only path to the Android build directory for the target."
+    FULL_DOCS
+        "Contains the path to the android-build directory used for packaging the target as
+        an Android package. The path depends on QT_USE_TARGET_ANDROID_BUILD_DIR: when TRUE
+        the path is <binary-dir>/android-build-<target>; otherwise <binary-dir>/android-build.
+        The property is set when qt6_add_executable() is called and is immediately available
+        without waiting for target finalization."
+)
+
+option(QT_ANDROID_POST_BUILD_GRADLE_CLEANUP
+    "Clean Android libs and Gradle's build directories after APK creation." OFF)
+
+option(QT_ANDROID_CREATE_SYMLINKS_ONLY
+    "Only create symlinks instead of copy when preparing the Gradle build directory." OFF)
+
 # Returns test execution arguments for Android targets
-function(qt_internal_android_test_arguments target timeout out_test_runner out_test_arguments)
-    set(${out_test_runner} "${QT_HOST_PATH}/${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_BINDIR}/androidtestrunner" PARENT_SCOPE)
-    set(deployment_tool "${QT_HOST_PATH}/${QT${PROJECT_VERSION_MAJOR}_HOST_INFO_BINDIR}/androiddeployqt")
+function(qt_internal_android_test_runner_arguments target out_test_runner out_test_arguments)
+    qt_internal_get_host_info_var_prefix(host_info_var_prefix)
+    set(host_bin_dir "${QT_HOST_PATH}/${${host_info_var_prefix}_BINDIR}")
+    set(${out_test_runner} "${host_bin_dir}/androidtestrunner" PARENT_SCOPE)
+    set(deployment_tool "${host_bin_dir}/androiddeployqt")
 
-    get_target_property(deployment_file ${target} QT_ANDROID_DEPLOYMENT_SETTINGS_FILE)
-    if (NOT deployment_file)
-        message(FATAL_ERROR "Target ${target} is not a valid android executable target\n")
-    endif()
-
-    set(target_binary_dir "$<TARGET_PROPERTY:${target},BINARY_DIR>")
-    if(QT_USE_TARGET_ANDROID_BUILD_DIR)
-        set(apk_dir "${target_binary_dir}/android-build-${target}")
-    else()
-        set(apk_dir "${target_binary_dir}/android-build")
-    endif()
-    set(${out_test_arguments}
-        "--path" "${apk_dir}"
-        "--adb" "${ANDROID_SDK_ROOT}/platform-tools/adb"
-        "--skip-install-root"
-        "--make" "\"${CMAKE_COMMAND}\" --build ${CMAKE_BINARY_DIR} --target ${target}_make_apk"
-        "--apk" "${apk_dir}/${target}.apk"
+    _qt_internal_android_get_target_android_build_dir(android_build_dir ${target})
+    _qt_internal_android_get_platform_tools_path(platform_tools)
+    set(test_arguments
+        "--path" "${android_build_dir}"
+        "--adb" "${platform_tools}/adb"
         "--ndk-stack" "${ANDROID_NDK_ROOT}/ndk-stack"
-        "--timeout" "${timeout}"
-        "--verbose"
-        PARENT_SCOPE
     )
+
+    if(QT_ANDROID_GRADLE_MULTI_MODULE)
+        _qt_internal_android_get_target_deployment_dir(target_deployment_dir ${target})
+        list(APPEND test_arguments
+            "--manifest" "${target_deployment_dir}/AndroidManifest.xml")
+    endif()
+
+    if(EXISTS "${Bundletool_EXECUTABLE}" AND QT_ANDROID_GRADLE_MULTI_MODULE)
+        list(APPEND test_arguments
+            "--make" "\"${CMAKE_COMMAND}\" --build ${CMAKE_BINARY_DIR} --target ${target}_make_aab"
+            "--aab" "${android_build_dir}/${target}.aab"
+            "--bundletool" "${Bundletool_EXECUTABLE}"
+        )
+    else()
+        list(APPEND test_arguments
+            "--make" "\"${CMAKE_COMMAND}\" --build ${CMAKE_BINARY_DIR} --target ${target}_make_apk"
+            "--apk" "${android_build_dir}/${target}.apk"
+        )
+    endif()
+
+    set(${out_test_arguments} "${test_arguments}" PARENT_SCOPE)
 endfunction()

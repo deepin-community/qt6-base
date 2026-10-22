@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qelfparser_p.h"
 
@@ -35,7 +36,7 @@ static constexpr bool IncludeValidityChecks = true;
 #  define QELFPARSER_DEBUG
 #endif
 #if defined(QELFPARSER_DEBUG)
-static Q_LOGGING_CATEGORY(lcElfParser, "qt.core.plugin.elfparser")
+Q_STATIC_LOGGING_CATEGORY(lcElfParser, "qt.core.plugin.elfparser")
 #  define qEDebug       qCDebug(lcElfParser) << reinterpret_cast<const char16_t *>(error.errMsg->constData()) << ':'
 #else
 #  define qEDebug       if (false) {} else QNoDebug()
@@ -501,7 +502,7 @@ struct ErrorMaker
 
     Q_DECL_COLD_FUNCTION QLibraryScanResult operator()(QString &&text) const
     {
-        *errMsg = QLibrary::tr("'%1' is not a valid ELF object (%2)").arg(*errMsg, std::move(text));
+        *errMsg = QLibrary::tr("'%1' is not a valid ELF object (%2)").arg(*errMsg, text);
         return {};
     }
 

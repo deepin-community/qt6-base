@@ -1,5 +1,7 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #ifndef QDUPLICATETRACKER_P_H
 #define QDUPLICATETRACKER_P_H
 
@@ -45,7 +47,8 @@ class QDuplicateTracker {
 
     char buffer[bufferSize(Prealloc)];
     std::pmr::monotonic_buffer_resource res{buffer, sizeof buffer};
-    std::pmr::unordered_set<T, QHasher<T>> set{Prealloc, &res};
+    using Set = std::pmr::unordered_set<T, QHasher<T>>;
+    Set set{Prealloc, &res};
 #else
     class Set : public QSet<T> {
         qsizetype setSize = 0;
@@ -67,7 +70,7 @@ class QDuplicateTracker {
     };
     Set set{Prealloc};
 #endif
-    Q_DISABLE_COPY_MOVE(QDuplicateTracker);
+    Q_DISABLE_COPY_MOVE(QDuplicateTracker)
 public:
     static constexpr inline bool uses_pmr =
         #ifdef __cpp_lib_memory_resource
@@ -76,7 +79,7 @@ public:
             false
         #endif
             ;
-    QDuplicateTracker() = default;
+    QDuplicateTracker() {} // don't `= default`, lest we value-initialize `buffer`
     explicit QDuplicateTracker(qsizetype n)
 #ifdef __cpp_lib_memory_resource
         : set{size_t(n), &res}
@@ -93,6 +96,11 @@ public:
     [[nodiscard]] bool hasSeen(T &&s)
     {
         return !set.insert(std::move(s)).second;
+    }
+    // For when you want to know, but aren't *yet* sure you'll add it:
+    [[nodiscard]] bool contains(const T &s) const
+    {
+        return set.find(s) != set.end(); // TODO C++20: can use set.contains()
     }
 
     template <typename C>
@@ -113,10 +121,13 @@ public:
         }
     }
 
-    void clear()
-    {
-        set.clear();
-    }
+    void clear() = delete; // use QSet or std::optional<QDT> if you want to reuse it
+
+    using const_iterator = typename Set::const_iterator;
+    const_iterator begin() const { return set.cbegin(); }
+    const_iterator end() const { return set.cend(); }
+    const_iterator cbegin() const { return begin(); }
+    const_iterator cend() const { return end(); }
 };
 
 QT_END_NAMESPACE

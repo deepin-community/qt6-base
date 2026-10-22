@@ -1,6 +1,8 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "../qstringview/arrays_of_unknown_bounds.h"
+
 #include <QByteArrayView>
 
 #include <QTest>
@@ -20,24 +22,43 @@ static_assert(!CanConvert<const char16_t*>);
 static_assert(!CanConvert<char>);
 static_assert(CanConvert<char[1]>);
 static_assert(CanConvert<const char[1]>);
+#ifndef Q_OS_INTEGRITY // ¯\_(ツ)_/¯
+static_assert(CanConvert<char[]>);
+static_assert(CanConvert<const char[]>);
+#endif
 static_assert(CanConvert<char*>);
 static_assert(CanConvert<const char*>);
 
 static_assert(!CanConvert<uchar>);
+// sic! policy decision:
 static_assert(!CanConvert<uchar[1]>);
 static_assert(!CanConvert<const uchar[1]>);
+#ifndef Q_OS_INTEGRITY // ¯\_(ツ)_/¯
+static_assert(CanConvert<uchar[]>);
+static_assert(CanConvert<const uchar[]>);
+#endif
 static_assert(CanConvert<uchar*>);
 static_assert(CanConvert<const uchar*>);
 
 static_assert(!CanConvert<signed char>);
+// sic! policy decision:
 static_assert(!CanConvert<signed char[1]>);
 static_assert(!CanConvert<const signed char[1]>);
+#ifndef Q_OS_INTEGRITY // ¯\_(ツ)_/¯
+static_assert(CanConvert<signed char[]>);
+static_assert(CanConvert<const signed char[]>);
+#endif
 static_assert(CanConvert<signed char*>);
 static_assert(CanConvert<const signed char*>);
 
 static_assert(!CanConvert<std::byte>);
+// sic! policy decision:
 static_assert(!CanConvert<std::byte[1]>);
 static_assert(!CanConvert<const std::byte[1]>);
+#ifndef Q_OS_INTEGRITY // ¯\_(ツ)_/¯
+static_assert(CanConvert<std::byte[]>);
+static_assert(CanConvert<const std::byte[]>);
+#endif
 static_assert(CanConvert<std::byte*>);
 static_assert(CanConvert<const std::byte*>);
 
@@ -76,6 +97,26 @@ static_assert(CanConvert<const std::array<char, 1> >);
 static_assert(CanConvert<      std::array<char, 1>&>);
 static_assert(CanConvert<const std::array<char, 1>&>);
 
+static_assert(CanConvert<      QSpan<char> >);
+static_assert(CanConvert<const QSpan<char> >);
+static_assert(CanConvert<      QSpan<char>&>);
+static_assert(CanConvert<const QSpan<char>&>);
+
+static_assert(CanConvert<      QSpan<char, 42> >);
+static_assert(CanConvert<const QSpan<char, 42> >);
+static_assert(CanConvert<      QSpan<char, 42>&>);
+static_assert(CanConvert<const QSpan<char, 42>&>);
+
+static_assert(CanConvert<      QSpan<std::byte> >);
+static_assert(CanConvert<const QSpan<std::byte> >);
+static_assert(CanConvert<      QSpan<std::byte>&>);
+static_assert(CanConvert<const QSpan<std::byte>&>);
+
+static_assert(CanConvert<      QSpan<std::byte, 42> >);
+static_assert(CanConvert<const QSpan<std::byte, 42> >);
+static_assert(CanConvert<      QSpan<std::byte, 42>&>);
+static_assert(CanConvert<const QSpan<std::byte, 42>&>);
+
 static_assert(!CanConvert<std::deque<char>>);
 static_assert(!CanConvert<std::list<char>>);
 
@@ -88,6 +129,13 @@ private slots:
     void basics() const;
     void literals() const;
     void fromArray() const;
+    void fromArrayWithUnknownSize() const
+    {
+        from_array_of_unknown_size<QByteArrayView>();
+        from_uarray_of_unknown_size<QByteArrayView>();
+        from_sarray_of_unknown_size<QByteArrayView>();
+        from_byte_array_of_unknown_size<QByteArrayView>();
+    }
     void literalsWithInternalNulls() const;
     void at() const;
 
@@ -673,7 +721,11 @@ void tst_QByteArrayView::fromContainers() const
     fromContainer<Char, QVector<Char>>();
     fromContainer<Char, QVarLengthArray<Char>>();
     fromContainer<Char, std::vector<Char>>();
-    fromContainer<Char, std::basic_string<Char>>();
+    if constexpr (std::is_same_v<Char, char>) {
+        // std::basic_string only supports a few specific types
+        // (std::char_traits requirement)
+        fromContainer<Char, std::basic_string<Char>>();
+    }
 }
 
 void tst_QByteArrayView::comparison() const

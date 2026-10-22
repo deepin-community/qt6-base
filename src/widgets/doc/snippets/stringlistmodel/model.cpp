@@ -22,7 +22,7 @@ int StringListModel::rowCount(const QModelIndex &parent) const
 //! [0]
 
 
-#ifdef 0
+#if 0
 // This represents a read-only version of data(), an early stage in the
 // development of the example leading to an editable StringListModel.
 

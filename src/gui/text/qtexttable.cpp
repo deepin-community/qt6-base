@@ -72,10 +72,12 @@ using namespace Qt::StringLiterals;
     Sets the cell's character format to \a format. This can for example be used to change
     the background color of the entire cell:
 
+    \code
     QTextTableCell cell = table->cellAt(2, 3);
     QTextCharFormat format = cell.format();
     format.setBackground(Qt::blue);
     cell.setFormat(format);
+    \endcode
 
     Note that the cell's row or column span cannot be changed through this function. You have
     to use QTextTable::mergeCells and QTextTable::splitCell instead.
@@ -392,11 +394,9 @@ void QTextTablePrivate::fragmentRemoved(QChar type, uint fragment)
 }
 
 /*!
-    /fn void QTextTablePrivate::update() const
-
+    \internal
     This function is usually called when the table is "dirty".
     It seems to update all kind of table information.
-
 */
 void QTextTablePrivate::update() const
 {
@@ -499,21 +499,21 @@ void QTextTablePrivate::update() const
 
     \table 80%
     \row
-        \li \inlineimage texttable-split.png Original Table
+        \li \inlineimage texttable-split.png {Table with separate header cells}
         \li Suppose we have a 2x3 table of names and addresses. To merge both
         columns in the first row we invoke mergeCells() with \a row = 0,
         \a column = 0, \a numRows = 1 and \a numColumns = 2.
         \snippet textdocument-texttable/main.cpp 0
 
     \row
-        \li \inlineimage texttable-merge.png
+        \li \inlineimage texttable-merge.png {Table with merged header cell}
         \li  This gives us the following table. To split the first row of the table
         back into two cells, we invoke the splitCell() function with \a numRows
         and \a numCols = 1.
         \snippet textdocument-texttable/main.cpp 1
 
     \row
-        \li \inlineimage texttable-split.png Split Table
+        \li \inlineimage texttable-split.png {Table with separate header cells}
         \li This results in the original table.
     \endtable
 
@@ -722,7 +722,7 @@ void QTextTable::insertColumns(int pos, int num)
         if (i == d->nRows - 1 && pos == d->nCols) {
             cell = d->fragment_end;
         } else {
-            int logicalGridIndexBeforePosition = pos > 0
+            int logicalGridIndexBeforePosition = pos > 0 || i > 0
                                                  ? d->findCellIndex(d->grid[i*d->nCols + pos - 1])
                                                  : -1;
 

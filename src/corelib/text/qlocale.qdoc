@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+// Qt-Security score:insignificant reason:docs
 
 /*!
     \class QLocale
@@ -51,7 +52,23 @@
     \note For the current keyboard input locale take a look at
     QInputMethod::locale().
 
-    QLocale's data is based on Common Locale Data Repository v45.
+    \section1 Appropriateness of the formats
+
+    QLocale's data is based on Common Locale Data Repository v48.2.
+
+    This data is published by The Unicode Consortium, who aim to follow
+    customary, common use by writers of each language, in each script, in each
+    territory for which data is given. This may in some cases differ from what
+    is recognized as official, depending on how widely that official standard is
+    followed in practice.
+
+    For example, although the relevant international standard (from the BIPM)
+    mandates a thin non-breaking space as the separator between groups of digits
+    in numbers, when they are split up to aid readability, and many
+    jurisdictions have adopted this as their official standard for the
+    formatting of numbers, many locales in fact have a traditional way of
+    formatting numbers with punctuators separating groups of digits. CLDR, and
+    thus QLocale, follows this common usage rather than the official standard.
 
     \section1 Matching combinations of language, script and territory
 
@@ -235,6 +252,7 @@
     \value [since 6.7] Kangri
     \value Kannada
     \value Kanuri
+    \value [since 6.9] KaraKalpak
     \value Kashmiri
     \value Kazakh
     \value [since 5.5] Kenyang
@@ -258,6 +276,7 @@
     \value Kwanyama Obsolete, please use Kuanyama
     \value Kwasio
     \value [since 6.0] Kyrgyz
+    \value [since 6.11] Ladin
     \value [since 5.3] Lakota
     \value Langi
     \value Lao
@@ -372,6 +391,7 @@
     \value Sena
     \value Serbian
     \value Shambala
+    \value [since 6.11] Shan
     \value Shona
     \value SichuanYi
     \value [since 5.12] Sicilian
@@ -392,6 +412,7 @@
     \value [since 5.3] StandardMoroccanTamazight
     \value Sundanese
     \value Swahili
+    \value [since 6.9] SwampyCree
     \value Swati
     \value Swedish
     \value SwissGerman
@@ -964,12 +985,15 @@
     conversions. They can be retrieved with numberOptions() and set with
     setNumberOptions().
 
-    \value DefaultNumberOptions This option represents the default behavior, with
-            group separators, with one leading zero in single digit exponents, and
-            without trailing zeroes after the decimal dot.
-    \value OmitGroupSeparator If this option is set, the number-to-string functions
-            will not insert group separators in their return values. The default
-            is to insert group separators.
+    \value DefaultNumberOptions This option represents the default behavior for
+            all locales except the C locale, with group separators, with one
+            leading zero in single digit exponents, and without trailing zeroes
+            at the end of the fractional part (when present).
+    \value OmitGroupSeparator If this option is set, the number-to-string
+            functions will not break up digits into groups. The C locale sets
+            this option by default. The default for all other locales is to
+            break up digits into groups, in the whole-number part of a number,
+            with group separators.
     \value RejectGroupSeparator If this option is set, the string-to-number functions
             will fail if they encounter group separators in their input. The default
             is to accept numbers containing correctly placed group separators.
@@ -981,14 +1005,16 @@
             functions will fail if they encounter an exponent padded with zeroes when
             parsing a floating point number in scientific notation. The default is to
             accept such padding.
-    \value IncludeTrailingZeroesAfterDot If this option is set, the number-to-string
-            functions will pad numbers with zeroes to the requested precision in "g"
-            or "most concise" mode, even if the number of significant digits is lower
-            than the requested precision. The default is to omit trailing zeroes.
-    \value RejectTrailingZeroesAfterDot If this option is set, the string-to-number
-            functions will fail if they encounter trailing zeroes after the decimal
-            dot when parsing a number in scientific or decimal representation. The
-            default is to accept trailing zeroes.
+    \value IncludeTrailingZeroesAfterDot If this option is set, the
+            number-to-string functions will pad numbers with zeroes to the
+            requested precision in "g" or "most concise" mode. The default is to
+            omit trailing zeroes, which may leave fewer digits in the fractional
+            part than the precision asked for.
+    \value RejectTrailingZeroesAfterDot If this option is set, the
+            string-to-number functions will fail if they encounter trailing
+            zeroes at the end of the fractional part, when parsing a number in
+            scientific or decimal representation. The default is to accept
+            trailing zeroes.
 
     \sa setNumberOptions(), numberOptions(), FloatingPointPrecisionOption
 */
@@ -1016,7 +1042,8 @@
     This enum defines which units are used for measurement.
 
     \value MetricSystem This value indicates metric units, such as meters,
-            centimeters and millimeters.
+            centimeters and millimeters, based on \l
+            {https://www.bipm.org/en/measurement-units} {SI}.
     \value ImperialUSSystem This value indicates imperial units, such as inches and
             miles as they are used in the United States.
     \value ImperialUKSystem This value indicates imperial units, such as inches and

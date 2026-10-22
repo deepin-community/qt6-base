@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qprintengine_pdf_p.h"
 
@@ -195,7 +196,7 @@ void QPdfPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
         break;
     }
     case PPK_QPageMargins: {
-        QPair<QMarginsF, QPageLayout::Unit> pair = qvariant_cast<QPair<QMarginsF, QPageLayout::Unit> >(value);
+        auto pair = qvariant_cast<std::pair<QMarginsF, QPageLayout::Unit>>(value);
         d->m_pageLayout.setUnits(pair.second);
         d->m_pageLayout.setMargins(pair.first, QPageLayout::OutOfBoundsPolicy::Clamp);
         break;
@@ -308,7 +309,7 @@ QVariant QPdfPrintEngine::property(PrintEnginePropertyKey key) const
         ret.setValue(d->m_pageLayout.pageSize());
         break;
     case PPK_QPageMargins: {
-        QPair<QMarginsF, QPageLayout::Unit> pair = qMakePair(d->m_pageLayout.margins(), d->m_pageLayout.units());
+        std::pair<QMarginsF, QPageLayout::Unit> pair(d->m_pageLayout.margins(), d->m_pageLayout.units());
         ret.setValue(pair);
         break;
     }

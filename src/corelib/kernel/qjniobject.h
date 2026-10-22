@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QJNIOBJECT_H
 #define QJNIOBJECT_H
@@ -9,58 +10,154 @@
 #if defined(Q_QDOC) || defined(Q_OS_ANDROID)
 #include <jni.h>
 #include <QtCore/qjnienvironment.h>
+#include <QtCore/qxptype_traits.h>
 
 QT_BEGIN_NAMESPACE
 
 class QJniObjectPrivate;
+class QJniObject;
+
+namespace QtJniTypes
+{
+namespace Detail
+{
+// any type with an "jobject object()" member function stores a global reference
+template <typename T, typename = void> struct StoresGlobalRefTest : std::false_type {};
+template <typename T>
+struct StoresGlobalRefTest<T, std::void_t<decltype(std::declval<T>().object())>>
+    : std::is_same<decltype(std::declval<T>().object()), jobject>
+{};
+
+// detect if a type is std::expected-like
+template <typename R, typename = void>
+struct CallerHandlesException : std::false_type {
+    using value_type = R;
+};
+template <typename R>
+struct CallerHandlesException<R, std::void_t<typename R::unexpected_type,
+                                                typename R::value_type,
+                                                typename R::error_type>> : std::true_type
+{
+    using value_type = typename R::value_type;
+};
+
+template <typename ReturnType>
+constexpr bool callerHandlesException = CallerHandlesException<ReturnType>::value;
+
+template <typename ...Args>
+struct LocalFrame
+{
+    mutable JNIEnv *env;
+    bool hasFrame = false;
+
+    explicit LocalFrame(JNIEnv *env = nullptr) noexcept
+        : env(env)
+    {
+    }
+    ~LocalFrame()
+    {
+        if (hasFrame)
+            env->PopLocalFrame(nullptr);
+    }
+    bool ensureFrame()
+    {
+        if (!hasFrame)
+            hasFrame = jniEnv()->PushLocalFrame(sizeof...(Args)) == 0;
+        return hasFrame;
+    }
+    JNIEnv *jniEnv() const
+    {
+        if (!env)
+            env = QJniEnvironment::getJniEnv();
+        return env;
+    }
+
+    template <typename T>
+    auto convertToJni(T &&value)
+    {
+        using Type = q20::remove_cvref_t<T>;
+        using ResultType = decltype(QtJniTypes::Traits<Type>::convertToJni(jniEnv(),
+                                                                           std::declval<T&&>()));
+        if constexpr (std::is_base_of_v<std::remove_pointer_t<jobject>,
+                                        std::remove_pointer_t<ResultType>>) {
+            // Make sure the local frame is engaged if we create a jobject, unless
+            // we know that the value stores a global reference that it returns.
+            if constexpr (!qxp::is_detected_v<StoresGlobalRefTest, Type>) {
+                if (!ensureFrame())
+                    return ResultType{};
+            }
+        }
+        return QtJniTypes::Traits<Type>::convertToJni(jniEnv(), std::forward<T>(value));
+    }
+    template <typename T>
+    auto convertFromJni(QJniObject &&object)
+    {
+        using Type = q20::remove_cvref_t<T>;
+        return QtJniTypes::Traits<Type>::convertFromJni(std::move(object));
+    }
+};
+
+template <typename Ret, typename ...Args>
+struct LocalFrameWithReturn : LocalFrame<Args...>
+{
+    using ReturnType = Ret;
+
+    using LocalFrame<Args...>::LocalFrame;
+
+    template <typename T>
+    auto convertFromJni(QJniObject &&object)
+    {
+        return LocalFrame<Args...>::template convertFromJni<T>(std::move(object));
+    }
+
+    template <typename T>
+    auto convertFromJni(jobject object);
+
+    bool checkAndClearExceptions() const
+    {
+        if constexpr (callerHandlesException<ReturnType>)
+            return false;
+        else
+            return QJniEnvironment::checkAndClearExceptions(this->jniEnv());
+    }
+
+    auto makeResult()
+    {
+        if constexpr (callerHandlesException<ReturnType>) {
+            JNIEnv *env = this->jniEnv();
+            if (env->ExceptionCheck()) {
+                jthrowable exception = env->ExceptionOccurred();
+                env->ExceptionClear();
+                return ReturnType(typename ReturnType::unexpected_type(exception));
+            }
+            return ReturnType();
+        } else {
+            checkAndClearExceptions();
+        }
+    }
+
+    template <typename Value>
+    auto makeResult(Value &&value)
+    {
+        if constexpr (callerHandlesException<ReturnType>) {
+            auto maybeValue = makeResult();
+            if (maybeValue)
+                return ReturnType(std::forward<Value>(value));
+            return std::move(maybeValue);
+        } else {
+            checkAndClearExceptions();
+            return std::forward<Value>(value);
+        }
+    }
+};
+}
+}
 
 class Q_CORE_EXPORT QJniObject
 {
-    friend class QJniArrayBase;
+    template <typename Ret, typename ...Args> using LocalFrame
+        = QtJniTypes::Detail::LocalFrameWithReturn<Ret, Args...>;
 
-    template <typename ...Args>
-    struct LocalFrame {
-        mutable JNIEnv *env;
-        bool hasFrame = false;
-        explicit LocalFrame(JNIEnv *env = nullptr) noexcept
-            : env(env)
-        {
-        }
-        ~LocalFrame()
-        {
-            if (hasFrame)
-                env->PopLocalFrame(nullptr);
-        }
-        template <typename T>
-        auto newLocalRef(jobject object)
-        {
-            if (!hasFrame) {
-                if (jniEnv()->PushLocalFrame(sizeof...(Args)) < 0)
-                    return T{}; // JVM is out of memory, avoid making matters worse
-                hasFrame = true;
-            }
-            return static_cast<T>(jniEnv()->NewLocalRef(object));
-        }
-        template <typename T>
-        auto newLocalRef(const QJniObject &object)
-        {
-            return newLocalRef<T>(object.template object<T>());
-        }
-        JNIEnv *jniEnv() const
-        {
-            if (!env)
-                env = QJniEnvironment::getJniEnv();
-            return env;
-        }
-        bool checkAndClearExceptions()
-        {
-            return env ? QJniEnvironment::checkAndClearExceptions(env) : false;
-        }
-        template <typename T>
-        auto convertToJni(T &&value);
-        template <typename T>
-        auto convertFromJni(QJniObject &&object);
-    };
 public:
     QJniObject();
     explicit QJniObject(const char *className);
@@ -71,12 +168,12 @@ public:
 #endif
         >
     explicit QJniObject(const char *className, Args &&...args)
-        : QJniObject(LocalFrame<Args...>{}, className, std::forward<Args>(args)...)
+        : QJniObject(QtJniTypes::Detail::LocalFrame<Args...>{}, className, std::forward<Args>(args)...)
     {
     }
 private:
     template<typename ...Args>
-    explicit QJniObject(LocalFrame<Args...> localFrame, const char *className, Args &&...args)
+    explicit QJniObject(QtJniTypes::Detail::LocalFrame<Args...> localFrame, const char *className, Args &&...args)
         : QJniObject(className, QtJniTypes::constructorSignature<Args...>().data(),
                      localFrame.convertToJni(std::forward<Args>(args))...)
     {
@@ -104,13 +201,23 @@ public:
 
     void swap(QJniObject &other) noexcept { d.swap(other.d); }
 
-    template<typename Class, typename ...Args>
-    static inline QJniObject construct(Args &&...args)
+    template<typename Class, typename ...Args
+#ifndef Q_QDOC
+        , QtJniTypes::IfValidSignatureTypes<Class, Args...> = true
+#endif
+    >
+    static inline auto construct(Args &&...args)
     {
-        LocalFrame<Args...> frame;
-        return QJniObject(QtJniTypes::Traits<Class>::className().data(),
-                          QtJniTypes::constructorSignature<Args...>().data(),
-                          frame.convertToJni(std::forward<Args>(args))...);
+        LocalFrame<Class, Args...> frame;
+        jclass clazz = QJniObject::loadClassKeepExceptions(QtJniTypes::Traits<Class>::className().data(),
+                                                           frame.jniEnv());
+        auto res = clazz
+                 ? QJniObject(clazz, QtJniTypes::constructorSignature<Args...>().data(),
+                              frame.convertToJni(std::forward<Args>(args))...)
+                 : QtJniTypes::Detail::callerHandlesException<Class>
+                 ? QJniObject(Qt::Initialization::Uninitialized)
+                 : QJniObject();
+        return frame.makeResult(std::move(res));
     }
 
     jobject object() const;
@@ -123,47 +230,49 @@ public:
     jclass objectClass() const;
     QByteArray className() const;
 
-    template <typename Ret, typename ...Args
+    template <typename ReturnType = void, typename ...Args
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<Ret> = true
+        , QtJniTypes::IfValidFieldType<ReturnType> = true
 #endif
     >
     auto callMethod(const char *methodName, const char *signature, Args &&...args) const
     {
-        LocalFrame<Args...> frame(jniEnv());
+        using Ret = typename QtJniTypes::Detail::CallerHandlesException<ReturnType>::value_type;
+        LocalFrame<ReturnType, Args...> frame(jniEnv());
+        jmethodID id = getCachedMethodID(frame.jniEnv(), methodName, signature);
+
         if constexpr (QtJniTypes::isObjectType<Ret>()) {
-            return frame.template convertFromJni<Ret>(callObjectMethod(methodName, signature,
-                                                frame.convertToJni(std::forward<Args>(args))...));
+            return frame.makeResult(frame.template convertFromJni<Ret>(callObjectMethodImpl(
+                                        id, frame.convertToJni(std::forward<Args>(args))...))
+                                    );
         } else {
-            jmethodID id = getCachedMethodID(frame.jniEnv(), methodName, signature);
             if (id) {
                 if constexpr (std::is_same_v<Ret, void>) {
                     callVoidMethodV(frame.jniEnv(), id,
                                     frame.convertToJni(std::forward<Args>(args))...);
-                    frame.checkAndClearExceptions();
                 } else {
                     Ret res{};
                     callMethodForType<Ret>(frame.jniEnv(), res, object(), id,
                                            frame.convertToJni(std::forward<Args>(args))...);
-                    if (frame.checkAndClearExceptions())
-                        res = {};
-                    return res;
+                    return frame.makeResult(res);
                 }
             }
             if constexpr (!std::is_same_v<Ret, void>)
-                return Ret{};
+                return frame.makeResult(Ret{});
+            else
+                return frame.makeResult();
         }
     }
 
-    template <typename Ret, typename ...Args
+    template <typename ReturnType = void, typename ...Args
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidSignatureTypes<Ret, Args...> = true
+        , QtJniTypes::IfValidSignatureTypes<ReturnType, Args...> = true
 #endif
     >
     auto callMethod(const char *methodName, Args &&...args) const
     {
-        constexpr auto signature = QtJniTypes::methodSignature<Ret, Args...>();
-        return callMethod<Ret>(methodName, signature.data(), std::forward<Args>(args)...);
+        constexpr auto signature = QtJniTypes::methodSignature<ReturnType, Args...>();
+        return callMethod<ReturnType>(methodName, signature.data(), std::forward<Args>(args)...);
     }
 
     template <typename Ret, typename ...Args
@@ -175,100 +284,105 @@ public:
     {
         QtJniTypes::assertObjectType<Ret>();
         constexpr auto signature = QtJniTypes::methodSignature<Ret, Args...>();
-        LocalFrame<Args...> frame(jniEnv());
-        return frame.template convertFromJni<Ret>(callObjectMethod(methodName, signature,
+        LocalFrame<Ret, Args...> frame(jniEnv());
+        auto object = frame.template convertFromJni<Ret>(callObjectMethod(methodName, signature,
                                             frame.convertToJni(std::forward<Args>(args))...));
+        frame.checkAndClearExceptions();
+        return object;
     }
 
     QJniObject callObjectMethod(const char *methodName, const char *signature, ...) const;
 
-    template <typename Ret, typename ...Args>
+    template <typename Ret = void, typename ...Args>
     static auto callStaticMethod(const char *className, const char *methodName, const char *signature, Args &&...args)
     {
-        JNIEnv *env = QJniEnvironment::getJniEnv();
-        jclass clazz = QJniObject::loadClass(className, env);
+        LocalFrame<Ret, Args...> frame;
+        jclass clazz = QJniObject::loadClass(className, frame.jniEnv());
         return callStaticMethod<Ret>(clazz, methodName, signature, std::forward<Args>(args)...);
     }
 
-    template <typename Ret, typename ...Args>
+    template <typename Ret = void, typename ...Args>
     static auto callStaticMethod(jclass clazz, const char *methodName, const char *signature, Args &&...args)
     {
-        JNIEnv *env = QJniEnvironment::getJniEnv();
-        jmethodID id = clazz ? getMethodID(env, clazz, methodName, signature, true)
+        LocalFrame<Ret, Args...> frame;
+        jmethodID id = clazz ? getMethodID(frame.jniEnv(), clazz, methodName, signature, true)
                              : 0;
         return callStaticMethod<Ret>(clazz, id, std::forward<Args>(args)...);
     }
 
-    template <typename Ret, typename ...Args
+    template <typename ReturnType = void, typename ...Args
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<Ret> = true
+        , QtJniTypes::IfValidFieldType<ReturnType> = true
 #endif
     >
     static auto callStaticMethod(jclass clazz, jmethodID methodId, Args &&...args)
     {
-        LocalFrame<Args...> frame;
+        using Ret = typename QtJniTypes::Detail::CallerHandlesException<ReturnType>::value_type;
+        LocalFrame<ReturnType, Args...> frame;
         if constexpr (QtJniTypes::isObjectType<Ret>()) {
-            return frame.template convertFromJni<Ret>(callStaticObjectMethod(clazz, methodId,
-                                                frame.convertToJni(std::forward<Args>(args))...));
+            return frame.makeResult(frame.template convertFromJni<Ret>(callStaticObjectMethod(
+                                        clazz, methodId,
+                                        frame.convertToJni(std::forward<Args>(args))...))
+                                    );
         } else {
             if (clazz && methodId) {
                 if constexpr (std::is_same_v<Ret, void>) {
                     callStaticMethodForVoid(frame.jniEnv(), clazz, methodId,
                                             frame.convertToJni(std::forward<Args>(args))...);
-                    frame.checkAndClearExceptions();
                 } else {
                     Ret res{};
                     callStaticMethodForType<Ret>(frame.jniEnv(), res, clazz, methodId,
                                                  frame.convertToJni(std::forward<Args>(args))...);
-                    if (frame.checkAndClearExceptions())
-                        res = {};
-                    return res;
+                    return frame.makeResult(res);
                 }
             }
             if constexpr (!std::is_same_v<Ret, void>)
-                return Ret{};
+                return frame.makeResult(Ret{});
+            else
+                return frame.makeResult();
         }
     }
 
-    template <typename Ret, typename ...Args
+    template <typename ReturnType = void, typename ...Args
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidSignatureTypes<Ret, Args...> = true
+        , QtJniTypes::IfValidSignatureTypes<ReturnType, Args...> = true
 #endif
     >
     static auto callStaticMethod(const char *className, const char *methodName, Args &&...args)
     {
-        JNIEnv *env = QJniEnvironment::getJniEnv();
-        jclass clazz = QJniObject::loadClass(className, env);
-        const jmethodID id = clazz ? getMethodID(env, clazz, methodName,
+        using Ret = typename QtJniTypes::Detail::CallerHandlesException<ReturnType>::value_type;
+        LocalFrame<Ret, Args...> frame;
+        jclass clazz = QJniObject::loadClass(className, frame.jniEnv());
+        const jmethodID id = clazz ? getMethodID(frame.jniEnv(), clazz, methodName,
                                          QtJniTypes::methodSignature<Ret, Args...>().data(), true)
                                    : 0;
-        return callStaticMethod<Ret>(clazz, id, std::forward<Args>(args)...);
+        return callStaticMethod<ReturnType>(clazz, id, std::forward<Args>(args)...);
     }
 
-    template <typename Ret, typename ...Args
+    template <typename ReturnType = void, typename ...Args
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidSignatureTypes<Ret, Args...> = true
+        , QtJniTypes::IfValidSignatureTypes<ReturnType, Args...> = true
 #endif
     >
     static auto callStaticMethod(jclass clazz, const char *methodName, Args &&...args)
     {
-        constexpr auto signature = QtJniTypes::methodSignature<Ret, Args...>();
-        return callStaticMethod<Ret>(clazz, methodName, signature.data(), std::forward<Args>(args)...);
+        constexpr auto signature = QtJniTypes::methodSignature<ReturnType, Args...>();
+        return callStaticMethod<ReturnType>(clazz, methodName, signature.data(), std::forward<Args>(args)...);
     }
-    template <typename Klass, typename Ret, typename ...Args
+    template <typename Klass, typename ReturnType = void, typename ...Args
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidSignatureTypes<Ret, Args...> = true
+        , QtJniTypes::IfValidSignatureTypes<ReturnType, Args...> = true
 #endif
     >
     static auto callStaticMethod(const char *methodName, Args &&...args)
     {
-        JNIEnv *env = QJniEnvironment::getJniEnv();
+        LocalFrame<ReturnType, Args...> frame;
         const jclass clazz = QJniObject::loadClass(QtJniTypes::Traits<Klass>::className().data(),
-                                                   env);
-        const jmethodID id = clazz ? getMethodID(env, clazz, methodName,
-                                         QtJniTypes::methodSignature<Ret, Args...>().data(), true)
+                                                   frame.jniEnv());
+        const jmethodID id = clazz ? getMethodID(frame.jniEnv(), clazz, methodName,
+                                         QtJniTypes::methodSignature<ReturnType, Args...>().data(), true)
                                    : 0;
-        return callStaticMethod<Ret>(clazz, id, std::forward<Args>(args)...);
+        return callStaticMethod<ReturnType>(clazz, id, std::forward<Args>(args)...);
     }
 
     static QJniObject callStaticObjectMethod(const char *className, const char *methodName,
@@ -289,7 +403,7 @@ public:
     {
         QtJniTypes::assertObjectType<Ret>();
         constexpr auto signature = QtJniTypes::methodSignature<Ret, Args...>();
-        LocalFrame<Args...> frame;
+        LocalFrame<QJniObject, Args...> frame;
         return frame.template convertFromJni<Ret>(callStaticObjectMethod(className, methodName, signature.data(),
                                             frame.convertToJni(std::forward<Args>(args))...));
     }
@@ -303,72 +417,32 @@ public:
     {
         QtJniTypes::assertObjectType<Ret>();
         constexpr auto signature = QtJniTypes::methodSignature<Ret, Args...>();
-        LocalFrame<Args...> frame;
+        LocalFrame<QJniObject, Args...> frame;
         return frame.template convertFromJni<Ret>(callStaticObjectMethod(clazz, methodName, signature.data(),
-                                            frame.convertToJni(std::forward<Args>(args))...));
+                                                  frame.convertToJni(std::forward<Args>(args))...));
     }
 
-    template <typename T
+    template <typename Type
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
+        , QtJniTypes::IfValidFieldType<Type> = true
 #endif
     >
     auto getField(const char *fieldName) const
     {
-        LocalFrame<T> frame(jniEnv());
+        using T = typename QtJniTypes::Detail::CallerHandlesException<Type>::value_type;
+        LocalFrame<Type, T> frame(jniEnv());
+        constexpr auto signature = QtJniTypes::fieldSignature<T>();
+        jfieldID id = getCachedFieldID(frame.jniEnv(), fieldName, signature);
+
         if constexpr (QtJniTypes::isObjectType<T>()) {
-            return frame.template convertFromJni<T>(getObjectField<T>(fieldName));
+            return frame.makeResult(frame.template convertFromJni<T>(getObjectFieldImpl(
+                                        frame.jniEnv(), id))
+                                   );
         } else {
             T res{};
-            constexpr auto signature = QtJniTypes::fieldSignature<T>();
-            jfieldID id = getCachedFieldID(frame.jniEnv(), fieldName, signature);
-            if (id) {
+            if (id)
                 getFieldForType<T>(frame.jniEnv(), res, object(), id);
-                if (frame.checkAndClearExceptions())
-                    res = {};
-            }
-            return res;
-        }
-    }
-
-    template <typename T
-#ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
-#endif
-    >
-    static auto getStaticField(const char *className, const char *fieldName)
-    {
-        LocalFrame<T> frame;
-        if constexpr (QtJniTypes::isObjectType<T>()) {
-            return frame.template convertFromJni<T>(getStaticObjectField<T>(className, fieldName));
-        } else {
-            jclass clazz = QJniObject::loadClass(className, frame.jniEnv());
-            if (!clazz)
-                return T{};
-            return getStaticField<T>(clazz, fieldName);
-        }
-    }
-
-    template <typename T
-#ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
-#endif
-    >
-    static auto getStaticField(jclass clazz, const char *fieldName)
-    {
-        LocalFrame<T> frame;
-        if constexpr (QtJniTypes::isObjectType<T>()) {
-            return frame.template convertFromJni<T>(getStaticObjectField<T>(clazz, fieldName));
-        } else {
-            T res{};
-            constexpr auto signature = QtJniTypes::fieldSignature<T>();
-            jfieldID id = getFieldID(frame.jniEnv(), clazz, fieldName, signature, true);
-            if (id) {
-                getStaticFieldForType<T>(frame.jniEnv(), res, clazz, id);
-                if (frame.checkAndClearExceptions())
-                    res = {};
-            }
-            return res;
+            return frame.makeResult(res);
         }
     }
 
@@ -394,6 +468,43 @@ public:
     }
 
     QJniObject getObjectField(const char *fieldName, const char *signature) const;
+
+    template <typename Type
+#ifndef Q_QDOC
+        , QtJniTypes::IfValidFieldType<Type> = true
+#endif
+    >
+    static auto getStaticField(const char *className, const char *fieldName)
+    {
+        using T = typename QtJniTypes::Detail::CallerHandlesException<Type>::value_type;
+        LocalFrame<Type, T> frame;
+        jclass clazz = QJniObject::loadClass(className, frame.jniEnv());
+        return getStaticField<Type>(clazz, fieldName);
+    }
+
+    template <typename Type
+#ifndef Q_QDOC
+        , QtJniTypes::IfValidFieldType<Type> = true
+#endif
+    >
+    static auto getStaticField(jclass clazz, const char *fieldName)
+    {
+        using T = typename QtJniTypes::Detail::CallerHandlesException<Type>::value_type;
+        LocalFrame<Type, T> frame;
+        constexpr auto signature = QtJniTypes::fieldSignature<T>();
+        jfieldID id = clazz ? getFieldID(frame.jniEnv(), clazz, fieldName, signature, true)
+                    : nullptr;
+        if constexpr (QtJniTypes::isObjectType<T>()) {
+            return frame.makeResult(frame.template convertFromJni<T>(getStaticObjectFieldImpl(
+                                        frame.jniEnv(), clazz, id))
+                                   );
+        } else {
+            T res{};
+            if (id)
+                getStaticFieldForType<T>(frame.jniEnv(), res, clazz, id);
+            return frame.makeResult(res);
+        }
+    }
 
     template <typename T
 #ifndef Q_QDOC
@@ -424,114 +535,122 @@ public:
     static QJniObject getStaticObjectField(jclass clazz, const char *fieldName,
                                            const char *signature);
 
-    template <typename T
+    template <typename Ret = void, typename Type
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
+        , QtJniTypes::IfValidFieldType<Type> = true
 #endif
     >
-    void setField(const char *fieldName, T value)
+    auto setField(const char *fieldName, Type value)
     {
+        // handle old code that explicitly specifies the field type (i.e. Ret != void)
+        using T = std::conditional_t<std::is_void_v<Ret> || QtJniTypes::Detail::callerHandlesException<Ret>,
+                                     Type, Ret>;
+        LocalFrame<Ret, T> frame(jniEnv());
         constexpr auto signature = QtJniTypes::fieldSignature<T>();
         jfieldID id = getCachedFieldID(jniEnv(), fieldName, signature);
-        if (id) {
+        if (id)
             setFieldForType<T>(jniEnv(), object(), id, value);
-            QJniEnvironment::checkAndClearExceptions(jniEnv());
-        }
+        return frame.makeResult();
     }
 
-    template <typename T
+    template <typename Ret = void, typename Type
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
+        , QtJniTypes::IfValidFieldType<Type> = true
 #endif
     >
-    void setField(const char *fieldName, const char *signature, T value)
+    auto setField(const char *fieldName, const char *signature, Type value)
     {
-        jfieldID id = getCachedFieldID(jniEnv(), fieldName, signature);
-        if (id) {
+        // handle old code that explicitly specifies the field type (i.e. Ret != void)
+        using T = std::conditional_t<std::is_void_v<Ret> || QtJniTypes::Detail::callerHandlesException<Ret>,
+                                     Type, Ret>;
+        LocalFrame<Ret, T> frame(jniEnv());
+        jfieldID id = getCachedFieldID(frame.jniEnv(), fieldName, signature);
+        if (id)
             setFieldForType<T>(jniEnv(), object(), id, value);
-            QJniEnvironment::checkAndClearExceptions(jniEnv());
+        return frame.makeResult();
+    }
+
+    template <typename Ret = void, typename Type
+#ifndef Q_QDOC
+        , QtJniTypes::IfValidFieldType<Type> = true
+#endif
+    >
+    static auto setStaticField(const char *className, const char *fieldName, Type value)
+    {
+        // handle old code that explicitly specifies the field type (i.e. Ret != void)
+        using T = std::conditional_t<std::is_void_v<Ret> || QtJniTypes::Detail::callerHandlesException<Ret>,
+                                     Type, Ret>;
+        LocalFrame<Ret, T> frame;
+        if (jclass clazz = QJniObject::loadClass(className, frame.jniEnv())) {
+            constexpr auto signature = QtJniTypes::fieldSignature<q20::remove_cvref_t<T>>();
+            jfieldID id = getCachedFieldID(frame.jniEnv(), clazz, className, fieldName,
+                                           signature, true);
+            if (id)
+                setStaticFieldForType<T>(frame.jniEnv(), clazz, id, value);
         }
+        return frame.makeResult();
     }
 
-    template <typename T
+    template <typename Ret = void, typename Type
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
+        , QtJniTypes::IfValidFieldType<Type> = true
 #endif
     >
-    static void setStaticField(const char *className, const char *fieldName, T value)
+    static auto setStaticField(const char *className, const char *fieldName,
+                               const char *signature, Type value)
     {
-        LocalFrame<T> frame;
-        jclass clazz = QJniObject::loadClass(className, frame.jniEnv());
-        if (!clazz)
-            return;
-
-        constexpr auto signature = QtJniTypes::fieldSignature<T>();
-        jfieldID id = getCachedFieldID(frame.jniEnv(), clazz, className, fieldName,
-                                       signature, true);
-        if (!id)
-            return;
-
-        setStaticFieldForType<T>(frame.jniEnv(), clazz, id, value);
-        frame.checkAndClearExceptions();
-    }
-
-    template <typename T
-#ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
-#endif
-    >
-    static void setStaticField(const char *className, const char *fieldName,
-                               const char *signature, T value)
-    {
-        JNIEnv *env = QJniEnvironment::getJniEnv();
-        jclass clazz = QJniObject::loadClass(className, env);
-
-        if (!clazz)
-            return;
-
-        jfieldID id = getCachedFieldID(env, clazz, className, fieldName,
-                                       signature, true);
-        if (id) {
-            setStaticFieldForType<T>(env, clazz, id, value);
-            QJniEnvironment::checkAndClearExceptions(env);
+        // handle old code that explicitly specifies the field type (i.e. Ret != void)
+        using T = std::conditional_t<std::is_void_v<Ret> || QtJniTypes::Detail::callerHandlesException<Ret>,
+                                     Type, Ret>;
+        LocalFrame<Ret, T> frame;
+        if (jclass clazz = QJniObject::loadClass(className, frame.jniEnv())) {
+            jfieldID id = getCachedFieldID(frame.jniEnv(), clazz, className, fieldName,
+                                           signature, true);
+            if (id)
+                setStaticFieldForType<T>(frame.jniEnv(), clazz, id, value);
         }
+        return frame.makeResult();
     }
 
-    template <typename T
+    template <typename Ret = void, typename Type
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
+        , QtJniTypes::IfValidFieldType<Type> = true
 #endif
     >
-    static void setStaticField(jclass clazz, const char *fieldName,
-                               const char *signature, T value)
+    static auto setStaticField(jclass clazz, const char *fieldName,
+                               const char *signature, Type value)
     {
-        JNIEnv *env = QJniEnvironment::getJniEnv();
-        jfieldID id = getFieldID(env, clazz, fieldName, signature, true);
+        // handle old code that explicitly specifies the field type (i.e. Ret != void)
+        using T = std::conditional_t<std::is_void_v<Ret> || QtJniTypes::Detail::callerHandlesException<Ret>,
+                                     Type, Ret>;
+        LocalFrame<Ret, T> frame;
+        jfieldID id = getFieldID(frame.jniEnv(), clazz, fieldName, signature, true);
 
-        if (id) {
-            setStaticFieldForType<T>(env, clazz, id, value);
-            QJniEnvironment::checkAndClearExceptions(env);
-        }
+        if (id)
+            setStaticFieldForType<T>(frame.jniEnv(), clazz, id, value);
+        return frame.makeResult();
     }
 
-    template <typename T
+    template <typename Ret = void, typename Type
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
+        , QtJniTypes::IfValidFieldType<Type> = true
 #endif
     >
-    static void setStaticField(jclass clazz, const char *fieldName, T value)
+    static auto setStaticField(jclass clazz, const char *fieldName, Type value)
     {
-        setStaticField(clazz, fieldName, QtJniTypes::fieldSignature<T>(), value);
+        return setStaticField<Ret, Type>(clazz, fieldName,
+                                         QtJniTypes::fieldSignature<q20::remove_cvref_t<Type>>(),
+                                         value);
     }
 
-    template <typename Klass, typename T
+    template <typename Klass, typename Ret = void, typename Type
 #ifndef Q_QDOC
-        , QtJniTypes::IfValidFieldType<T> = true
+        , QtJniTypes::IfValidFieldType<Type> = true
 #endif
     >
-    static void setStaticField(const char *fieldName, T value)
+    static auto setStaticField(const char *fieldName, Type value)
     {
-        setStaticField(QtJniTypes::Traits<Klass>::className(), fieldName, value);
+        return setStaticField<Ret, Type>(QtJniTypes::Traits<Klass>::className(), fieldName, value);
     }
 
     static QJniObject fromString(const QString &string);
@@ -557,6 +676,7 @@ protected:
 
 private:
     static jclass loadClass(const QByteArray &className, JNIEnv *env);
+    static jclass loadClassKeepExceptions(const QByteArray &className, JNIEnv *env);
 
 #if QT_CORE_REMOVED_SINCE(6, 7)
     // these need to stay in the ABI as they were used in inline methods before 6.7
@@ -594,10 +714,23 @@ private:
     template<typename T>
     static constexpr void callMethodForType(JNIEnv *env, T &res, jobject obj, jmethodID id, ...)
     {
+        if (!id)
+            return;
+
         va_list args = {};
         va_start(args, id);
         QtJniTypes::Caller<T>::callMethodForType(env, res, obj, id, args);
         va_end(args);
+    }
+
+    jobject callObjectMethodImpl(jmethodID method, ...) const
+    {
+        va_list args;
+        va_start(args, method);
+        jobject res = method ? jniEnv()->CallObjectMethodV(javaObject(), method, args)
+                             : nullptr;
+        va_end(args);
+        return res;
     }
 
     template<typename T>
@@ -626,6 +759,9 @@ private:
     template<typename T>
     static constexpr void getFieldForType(JNIEnv *env, T &res, jobject obj, jfieldID id)
     {
+        if (!id)
+            return;
+
         QtJniTypes::Caller<T>::getFieldForType(env, res, obj, id);
     }
 
@@ -635,22 +771,42 @@ private:
         QtJniTypes::Caller<T>::getStaticFieldForType(env, res, clazz, id);
     }
 
-    template<typename T>
-    static constexpr void setFieldForType(JNIEnv *env, jobject obj, jfieldID id, T value)
+    template<typename Type>
+    static constexpr void setFieldForType(JNIEnv *env, jobject obj, jfieldID id, Type value)
     {
+        if (!id)
+            return;
+
+        using T = q20::remove_cvref_t<Type>;
         if constexpr (QtJniTypes::isObjectType<T>()) {
-            LocalFrame<T> frame(env);
+            LocalFrame<T, T> frame(env);
             env->SetObjectField(obj, id, static_cast<jobject>(frame.convertToJni(value)));
         } else {
-            QtJniTypes::Caller<T>::setFieldForType(env, obj, id, value);
+            using ValueType = typename QtJniTypes::Detail::CallerHandlesException<T>::value_type;
+            QtJniTypes::Caller<ValueType>::setFieldForType(env, obj, id, value);
         }
     }
 
-    template<typename T>
-    static constexpr void setStaticFieldForType(JNIEnv *env, jclass clazz, jfieldID id, T value)
+    jobject getObjectFieldImpl(JNIEnv *env, jfieldID field) const
     {
+        return field ? env->GetObjectField(javaObject(), field) : nullptr;
+    }
+
+    static jobject getStaticObjectFieldImpl(JNIEnv *env, jclass clazz, jfieldID field)
+    {
+        return clazz && field ? env->GetStaticObjectField(clazz, field)
+                              : nullptr;
+    }
+
+    template<typename Type>
+    static constexpr void setStaticFieldForType(JNIEnv *env, jclass clazz, jfieldID id, Type value)
+    {
+        if (!clazz || !id)
+            return;
+
+        using T = q20::remove_cvref_t<Type>;
         if constexpr (QtJniTypes::isObjectType<T>()) {
-            LocalFrame<T> frame(env);
+            LocalFrame<T, T> frame(env);
             env->SetStaticObjectField(clazz, id, static_cast<jobject>(frame.convertToJni(value)));
         } else {
             QtJniTypes::Caller<T>::setStaticFieldForType(env, clazz, id, value);
@@ -672,7 +828,7 @@ inline bool operator!=(const QJniObject &obj1, const QJniObject &obj2)
 }
 
 namespace QtJniTypes {
-struct QT_TECH_PREVIEW_API JObjectBase
+struct JObjectBase
 {
     operator QJniObject() const { return m_object; }
 
@@ -701,7 +857,7 @@ protected:
 };
 
 template<typename Type>
-class QT_TECH_PREVIEW_API JObject : public JObjectBase
+class JObject : public JObjectBase
 {
 public:
     using Class = Type;
@@ -745,6 +901,13 @@ public:
         return JObject(QJniObject::fromLocalRef(lref));
     }
 
+#ifdef Q_QDOC // from JObjectBase, which we don't document
+    bool isValid() const;
+    jclass objectClass() const;
+    QString toString() const;
+    template <typename T = jobject> object() const;
+#endif
+
     static bool registerNativeMethods(std::initializer_list<JNINativeMethod> methods)
     {
         QJniEnvironment env;
@@ -752,7 +915,7 @@ public:
     }
 
     // public API forwarding to QJniObject, with the implicit Class template parameter
-    template <typename Ret, typename ...Args
+    template <typename Ret = void, typename ...Args
 #ifndef Q_QDOC
         , QtJniTypes::IfValidSignatureTypes<Ret, Args...> = true
 #endif
@@ -771,18 +934,18 @@ public:
     {
         return QJniObject::getStaticField<Class, T>(field);
     }
-    template <typename T
+    template <typename Ret = void, typename T
 #ifndef Q_QDOC
         , QtJniTypes::IfValidFieldType<T> = true
 #endif
     >
-    static void setStaticField(const char *field, T &&value)
+    static auto setStaticField(const char *field, T &&value)
     {
-        QJniObject::setStaticField<Class, T>(field, std::forward<T>(value));
+        return QJniObject::setStaticField<Class, Ret, T>(field, std::forward<T>(value));
     }
 
     // keep only these overloads, the rest is made private
-    template <typename Ret, typename ...Args
+    template <typename Ret = void, typename ...Args
 #ifndef Q_QDOC
         , QtJniTypes::IfValidSignatureTypes<Ret, Args...> = true
 #endif
@@ -801,18 +964,23 @@ public:
         return m_object.getField<T>(fieldName);
     }
 
-    template <typename T
+    template <typename Ret = void, typename T
 #ifndef Q_QDOC
         , QtJniTypes::IfValidFieldType<T> = true
 #endif
     >
-    void setField(const char *fieldName, T &&value)
+    auto setField(const char *fieldName, T &&value)
     {
-        m_object.setField(fieldName, std::forward<T>(value));
+        return m_object.setField<Ret>(fieldName, std::forward<T>(value));
     }
 
     QByteArray className() const {
         return QtJniTypes::Traits<Class>::className().data();
+    }
+
+    static bool isClassAvailable()
+    {
+        return QJniObject::isClassAvailable(QtJniTypes::Traits<Class>::className().data());
     }
 
 private:
@@ -824,6 +992,14 @@ private:
 template <typename T> struct Traits<JObject<T>> {
     static constexpr auto signature() { return Traits<T>::signature(); }
     static constexpr auto className() { return Traits<T>::className(); }
+    static auto convertToJni(JNIEnv *, const JObject<T> &value)
+    {
+        return value.object();
+    }
+    static auto convertFromJni(QJniObject &&object)
+    {
+        return JObject<T>(std::move(object));
+    }
 };
 
 template<>
@@ -838,76 +1014,90 @@ struct Traits<QJniObject>
     {
         return CTString("Ljava/lang/Object;");
     }
+
+    static auto convertToJni(JNIEnv *, const QJniObject &value)
+    {
+        return value.object();
+    }
+    static auto convertFromJni(QJniObject &&object)
+    {
+        return std::move(object);
+    }
+};
+
+template<>
+struct Traits<QString>
+{
+    static constexpr auto className()
+    {
+        return CTString("java/lang/String");
+    }
+    static constexpr auto signature()
+    {
+        return CTString("Ljava/lang/String;");
+    }
+
+    static auto convertToJni(JNIEnv *env, const QString &value)
+    {
+        return QtJniTypes::Detail::fromQString(value, env);
+    }
+
+    static auto convertFromJni(QJniObject &&object)
+    {
+        return object.toString();
+    }
+};
+
+template<>
+struct Traits<QStringView>
+{
+    static constexpr auto className()
+    {
+        return CTString("java/lang/String");
+    }
+    static constexpr auto signature()
+    {
+        return CTString("Ljava/lang/String;");
+    }
+
+    static auto convertToJni(JNIEnv *env, QStringView value)
+    {
+        return QtJniTypes::Detail::fromQString(value, env);
+    }
+};
+
+template <typename T>
+struct Traits<T, std::enable_if_t<QtJniTypes::Detail::callerHandlesException<T>>>
+{
+    static constexpr auto className()
+    {
+        return Traits<typename T::value_type>::className();
+    }
+
+    static constexpr auto signature()
+    {
+        return Traits<typename T::value_type>::signature();
+    }
 };
 
 }
 
-// This cannot be included earlier as QJniArray is a QJniObject subclass, but it
-// must be included so that we can implement QJniObject::LocalFrame conversion.
-QT_END_NAMESPACE
-#include <QtCore/qjniarray.h>
-QT_BEGIN_NAMESPACE
-
-namespace QtJniTypes {
-namespace detail {
-template <typename C>
-using FromContainerTest = decltype(QJniArrayBase::fromContainer(std::declval<C>()));
-
-template <typename C>
-static constexpr bool isCompatibleSourceContainer = qxp::is_detected_v<FromContainerTest, C>;
-}
-}
-
-template <typename ...Args>
+template <typename ReturnType, typename ...Args>
 template <typename T>
-auto QJniObject::LocalFrame<Args...>::convertToJni(T &&value)
+auto QtJniTypes::Detail::LocalFrameWithReturn<ReturnType, Args...>::convertFromJni(jobject object)
 {
-    using Type = q20::remove_cvref_t<T>;
-    if constexpr (std::is_same_v<Type, QString>) {
-        return newLocalRef<jstring>(QJniObject::fromString(value));
-    } else if constexpr (QtJniTypes::IsJniArray<Type>::value) {
-        return value.arrayObject();
-    } else if constexpr (QtJniTypes::detail::isCompatibleSourceContainer<T>) {
-        using QJniArrayType = decltype(QJniArrayBase::fromContainer(std::forward<T>(value)));
-        using ArrayType = decltype(std::declval<QJniArrayType>().arrayObject());
-        return newLocalRef<ArrayType>(QJniArrayBase::fromContainer(std::forward<T>(value)).template object<jobject>());
-    } else if constexpr (std::is_base_of_v<QJniObject, Type>
-                      || std::is_base_of_v<QtJniTypes::JObjectBase, Type>) {
-        return value.object();
-    } else {
-        return std::forward<T>(value);
-    }
+    // If the caller wants to handle exceptions through a std::expected-like
+    // type, then we cannot turn the jobject into a QJniObject, as a
+    // std::expected<jobject, jthrowable> cannot be constructed from a QJniObject.
+    // The caller will have to take care of this themselves, by asking for a
+    // std::expected<QJniObject, ...>, or (typically) using a declared JNI class
+    // or implicitly supported Qt type (QString or array type).
+    if constexpr (callerHandlesException<ReturnType> &&
+                  std::is_base_of_v<std::remove_pointer_t<jobject>, std::remove_pointer_t<T>>)
+        return static_cast<T>(object);
+    else
+        return convertFromJni<T>(object ? QJniObject::fromLocalRef(object) : QJniObject());
 }
-
-template <typename ...Args>
-template <typename T>
-auto QJniObject::LocalFrame<Args...>::convertFromJni(QJniObject &&object)
-{
-    using Type = q20::remove_cvref_t<T>;
-    if constexpr (std::is_same_v<Type, QString>) {
-        return object.toString();
-    } else if constexpr (QtJniTypes::IsJniArray<Type>::value) {
-        return T(std::move(object));
-    } else if constexpr (QtJniTypes::detail::isCompatibleSourceContainer<Type>) {
-        // if we were to create a QJniArray from Type...
-        using QJniArrayType = decltype(QJniArrayBase::fromContainer(std::declval<Type>()));
-        // then that QJniArray would have elements of type
-        using ElementType = typename QJniArrayType::Type;
-        // construct a QJniArray from a jobject pointer of that type
-        return QJniArray<ElementType>(object.template object<jarray>()).toContainer();
-    } else if constexpr (std::is_array_v<Type>) {
-        using ElementType = std::remove_extent_t<Type>;
-        return QJniArray<ElementType>(std::move(object));
-    } else if constexpr (std::is_base_of_v<QJniObject, Type>
-                        && !std::is_same_v<QJniObject, Type>) {
-        return T{std::move(object)};
-    } else if constexpr (std::is_base_of_v<QtJniTypes::JObjectBase, Type>) {
-        return T{std::move(object)};
-    } else {
-        return std::move(object);
-    }
-}
-
 
 QT_END_NAMESPACE
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeglfscursor_p.h"
 #include "qeglfsintegration_p.h"
@@ -147,21 +148,35 @@ void QEglFSCursor::initCursorAtlas()
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     QJsonObject object = doc.object();
 
-    QString atlas = object.value("image"_L1).toString();
-    Q_ASSERT(!atlas.isEmpty());
+    const QString atlas = object.value("image"_L1).toString();
+    const int cursorsPerRow = object.value("cursorsPerRow"_L1).toInt();
+    const QJsonArray hotSpots = object.value("hotSpots"_L1).toArray();
 
-    const int cursorsPerRow = object.value("cursorsPerRow"_L1).toDouble();
-    Q_ASSERT(cursorsPerRow);
+    if (atlas.isEmpty() || cursorsPerRow <= 0 || cursorsPerRow > Qt::LastCursor + 1
+        || hotSpots.count() != Qt::LastCursor + 1)
+    {
+        qWarning("Invalid cursor atlas '%s', disabling the cursor. Expected a non-empty "
+                 "'image', a 'cursorsPerRow' between 1 and %d, and %d 'hotSpots' entries.",
+                 json.constData(), Qt::LastCursor + 1, Qt::LastCursor + 1);
+        m_visible = false;
+        return;
+    }
+
     m_cursorAtlas.cursorsPerRow = cursorsPerRow;
 
-    const QJsonArray hotSpots = object.value("hotSpots"_L1).toArray();
-    Q_ASSERT(hotSpots.count() == Qt::LastCursor + 1);
     for (int i = 0; i < hotSpots.count(); i++) {
         QPoint hotSpot(hotSpots[i].toArray()[0].toDouble(), hotSpots[i].toArray()[1].toDouble());
         m_cursorAtlas.hotSpots << hotSpot;
     }
 
     QImage image = QImage(atlas).convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    if (image.isNull()) {
+        qWarning("Failed to load cursor atlas image '%s', disabling the cursor",
+                 qPrintable(atlas));
+        m_visible = false;
+        return;
+    }
+
     m_cursorAtlas.cursorWidth = image.width() / m_cursorAtlas.cursorsPerRow;
     m_cursorAtlas.cursorHeight = image.height() / ((Qt::LastCursor + cursorsPerRow) / cursorsPerRow);
     m_cursorAtlas.width = image.width();
@@ -247,7 +262,8 @@ bool QEglFSCursor::event(QEvent *e)
                 QWindowSystemInterface::flushWindowSystemEvents(QEventLoop::ExcludeUserInputEvents);
             }
         } else {
-            for (QWindow *w : qGuiApp->topLevelWindows())
+            const auto windows = qGuiApp->topLevelWindows();
+            for (QWindow *w : windows)
                 QWindowSystemInterface::handleExposeEvent(w, w->geometry());
             QWindowSystemInterface::flushWindowSystemEvents(QEventLoop::ExcludeUserInputEvents);
         }
@@ -283,7 +299,8 @@ void QEglFSCursor::setPos(const QPoint &pos)
     const QRect oldCursorRect = cursorRect();
     m_cursor.pos = pos;
     update(oldCursorRect | cursorRect(), false);
-    for (QPlatformScreen *screen : m_screen->virtualSiblings())
+    const auto siblings = m_screen->virtualSiblings();
+    for (QPlatformScreen *screen : siblings)
         static_cast<QEglFSScreen *>(screen)->handleCursorMove(m_cursor.pos);
 }
 
@@ -294,7 +311,8 @@ void QEglFSCursor::pointerEvent(const QMouseEvent &event)
     const QRect oldCursorRect = cursorRect();
     m_cursor.pos = event.globalPosition().toPoint();
     update(oldCursorRect | cursorRect(), false);
-    for (QPlatformScreen *screen : m_screen->virtualSiblings())
+    const auto siblings = m_screen->virtualSiblings();
+    for (QPlatformScreen *screen : siblings)
         static_cast<QEglFSScreen *>(screen)->handleCursorMove(m_cursor.pos);
 }
 
@@ -311,7 +329,8 @@ void QEglFSCursor::paintOnScreen()
     // variants of KMS/DRM) will enable this by default. In this case all
     // screens are siblings of each other. When not enabled, the sibling list
     // only contains m_screen itself.
-    for (QPlatformScreen *screen : m_screen->virtualSiblings()) {
+    const auto siblings = m_screen->virtualSiblings();
+    for (QPlatformScreen *screen : siblings) {
         if (screen->geometry().contains(cr.topLeft().toPoint() + m_cursor.hotSpot))
         {
             cr.translate(-screen->geometry().topLeft());

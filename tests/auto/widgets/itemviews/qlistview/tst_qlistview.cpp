@@ -1387,9 +1387,6 @@ void tst_QListView::scrollBarAsNeeded_data()
 
 void tst_QListView::scrollBarAsNeeded()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QFETCH(QSize, size);
     QFETCH(int, itemCount);
     QFETCH(QAbstractItemView::ScrollMode, verticalScrollMode);
@@ -1656,9 +1653,6 @@ void tst_QListView::task196118_visualRegionForSelection()
 
 void tst_QListView::task254449_draggingItemToNegativeCoordinates()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     //we'll check that the items are painted correctly
     PublicListView list;
     QStandardItemModel model(1, 1);
@@ -1698,9 +1692,6 @@ void tst_QListView::task254449_draggingItemToNegativeCoordinates()
 
 void tst_QListView::keyboardSearch()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QStringListModel model({"AB", "AC", "BA", "BB", "BD", "KAFEINE",
                             "KONQUEROR", "KOPETE", "KOOKA", "OKULAR"});
 
@@ -1781,9 +1772,6 @@ void tst_QListView::shiftSelectionWithNonUniformItemSizes()
 
 void tst_QListView::shiftSelectionWithItemAlignment()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QStringList items;
     for (int c = 0; c < 2; c++) {
         for (int i = 10; i > 0; i--)
@@ -1853,9 +1841,6 @@ void tst_QListView::clickOnViewportClearsSelection()
 
 void tst_QListView::task262152_setModelColumnNavigate()
 {
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QListView view;
     QStandardItemModel model(3,2);
     model.setItem(0, 1, new QStandardItem("[0,1]"));
@@ -2566,10 +2551,8 @@ void tst_QListView::taskQTBUG_58749_adjustToContent()
 
     // use the long text and make sure the width is adjusted.
     model.setData(model.index(0, 0), longText);
-    QApplication::processEvents();
-    const QRect itemRect = view->visualRect(model.index(0, 0));
-    QVERIFY(w.width() > itemRect.width());
-    QCOMPARE_GE(view->width(), itemRect.width());
+    QTRY_VERIFY(w.width() > view->visualRect(model.index(0, 0)).width());
+    QCOMPARE_GE(view->width(), view->visualRect(model.index(0, 0)).width());
 }
 
 void tst_QListView::taskQTBUG_51086_skippingIndexesInSelectedIndexes()
@@ -2997,6 +2980,7 @@ void tst_QListView::internalDragDropMove()
     // The test relies on the global position of mouse events; make sure
     // the window is properly mapped on X11.
     QVERIFY(QTest::qWaitForWindowActive(&list));
+    QTRY_VERIFY(QApplication::topLevelAt(list.geometry().center()));
     QVERIFY(QTest::qWaitFor([&]() { return list.m_gotValidResizeEvent; }));
     // execute as soon as the eventloop is running again
     // which is the case inside list.startDrag()

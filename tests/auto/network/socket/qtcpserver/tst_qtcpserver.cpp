@@ -101,7 +101,9 @@ private:
     bool ipv6GetsockoptionMissing(int level, int optname);
 #endif
 
+#if QT_CONFIG(process)
     QString crashingServerDir;
+#endif
 };
 
 // Testing get/set functions
@@ -128,9 +130,11 @@ void tst_QTcpServer::initTestCase_data()
     QTest::newRow("WithSocks5Proxy") << true << int(QNetworkProxy::Socks5Proxy);
 #endif
 
+#if QT_CONFIG(process)
     crashingServerDir = QFINDTESTDATA("crashingServer");
     QVERIFY2(!crashingServerDir.isEmpty(), qPrintable(
         QString::fromLatin1("Couldn't find crashingServer dir starting from %1.").arg(QDir::currentPath())));
+#endif
 }
 
 void tst_QTcpServer::initTestCase()
@@ -517,7 +521,7 @@ void tst_QTcpServer::setSocketDescriptor()
 #ifdef Q_OS_WIN
     // ensure winsock is started
     WSADATA wsaData;
-    QVERIFY(WSAStartup(MAKEWORD(2,0), &wsaData) == NO_ERROR);
+    QVERIFY(WSAStartup(MAKEWORD(2, 2), &wsaData) == NO_ERROR);
 #endif
 
     SOCKET sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -575,7 +579,7 @@ protected:
 void tst_QTcpServer::addressReusable()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QFETCH_GLOBAL(bool, setProxy);
     if (setProxy) {

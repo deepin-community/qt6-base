@@ -190,7 +190,7 @@ Symbols Preprocessor::tokenize(const QByteArray& input, int lineNum, Preprocesso
 
                         const QByteArray newString
                                 = '\"'
-                                + symbols.constLast().unquotedLexem()
+                                + symbols.constLast().unquotedLexemView()
                                 + input.mid(lexem - begin + 1, data - lexem - 2)
                                 + '\"';
                         symbols.last() = Symbol(symbols.constLast().lineNum,
@@ -377,6 +377,7 @@ Symbols Preprocessor::tokenize(const QByteArray& input, int lineNum, Preprocesso
                 symbols += Symbol(lineNum, PP_DEFINED);
                 continue;
             case PP_INCLUDE:
+            case PP_INCLUDE_NEXT:
                 mode = TokenizeInclude;
                 break;
             case PP_QUOTE:
@@ -510,11 +511,12 @@ void Preprocessor::macroExpand(Symbols *into, Preprocessor *that, const Symbols 
                                   int lineNum, bool one, const QSet<QByteArray> &excludeSymbols)
 {
     SymbolStack symbols;
+    symbols.reserve(8);
     SafeSymbols sf;
     sf.symbols = toExpand;
     sf.index = index;
     sf.excludedSymbols = excludeSymbols;
-    symbols.push(sf);
+    symbols.push(std::move(sf));
 
     if (toExpand.isEmpty())
         return;
@@ -533,7 +535,7 @@ void Preprocessor::macroExpand(Symbols *into, Preprocessor *that, const Symbols 
             sf.symbols = newSyms;
             sf.index = 0;
             sf.expandedMacro = macro;
-            symbols.push(sf);
+            symbols.push(std::move(sf));
         }
         if (!symbols.hasNext() || (one && symbols.size() == 1))
                 break;
@@ -648,12 +650,21 @@ Symbols Preprocessor::macroExpandIdentifier(Preprocessor *that, SymbolStack &sym
 
                 const Symbols &arg = arguments.at(index);
                 QByteArray stringified;
-                for (const Symbol &sym : arg)
-                    stringified += sym.lexem();
+                if (!arg.empty()) {
+                    stringified = arg.front().lexem();
+                    for (auto it = arg.cbegin(); std::next(it) != arg.cend(); ++it) {
+                        const auto next = std::next(it);
+                        if (next->from - (it->from + it->len) > 0)
+                            stringified += ' ' + next->lexem();
+                        else
+                            stringified += next->lexem();
+                    }
 
-                stringified.replace('"', "\\\"");
-                stringified.prepend('"');
-                stringified.append('"');
+                    stringified.replace('"', "\\\"");
+                    stringified.prepend('"');
+                    stringified.append('"');
+                }
+
                 expansion += Symbol(lineNum, STRING_LITERAL, stringified);
             } else if (mode == HashHash){
                 if (s.token == WHITESPACE)
@@ -706,17 +717,64 @@ void Preprocessor::substituteUntilNewline(Symbols &substituted)
             macroExpand(&substituted, this, symbols, index, symbol().lineNum, true);
         } else if (token == PP_DEFINED) {
             bool braces = test(PP_LPAREN);
-            next(PP_IDENTIFIER);
-            Symbol definedOrNotDefined = symbol();
-            definedOrNotDefined.token = macros.contains(definedOrNotDefined)? PP_MOC_TRUE : PP_MOC_FALSE;
-            substituted += definedOrNotDefined;
+            if (test(PP_HAS_INCLUDE) || test(PP_HAS_INCLUDE_NEXT)) {
+                // __has_include / __has_include_next are always supported
+                Symbol definedOrNotDefined = symbol();
+                definedOrNotDefined.token = PP_MOC_TRUE;
+                substituted += definedOrNotDefined;
+            } else {
+                next(PP_IDENTIFIER);
+                Symbol definedOrNotDefined = symbol();
+                definedOrNotDefined.token = macros.contains(definedOrNotDefined)? PP_MOC_TRUE : PP_MOC_FALSE;
+                substituted += definedOrNotDefined;
+            }
             if (braces)
                 test(PP_RPAREN);
             continue;
         } else if (token == PP_NEWLINE) {
             substituted += symbol();
             break;
-        } else {
+        } else if (token == PP_HAS_INCLUDE || token == PP_HAS_INCLUDE_NEXT) {
+            const bool isIncludeNext = (token == PP_HAS_INCLUDE_NEXT);
+            next(LPAREN);
+            Token tok = next(); // quote or LANGLE
+            bool usesAngleInclude = false;
+            QByteArray includeAsString;
+            Symbols innerSymbols;
+            if (tok == PP_LANGLE) {
+                usesAngleInclude = true;
+                next();
+                do {
+                    Symbol currentSymbol  = symbol();
+                    includeAsString += currentSymbol.lexem();
+                    if (currentSymbol.token == PP_IDENTIFIER)
+                        macroExpand(&innerSymbols, this, symbols, index, symbol().lineNum, true);
+                    else
+                        innerSymbols.append(currentSymbol);
+                } while (next() != PP_RANGLE);
+            } else {
+                includeAsString = unquotedLexem();
+            }
+            next(RPAREN);
+            const qsizetype startIndex = isIncludeNext ? includeNextStartIndex() : 0;
+            const auto exists = [&](const QByteArray &include) {
+                if (isIncludeNext)
+                    return !resolveIncludeNext(include, startIndex).isNull();
+                const QByteArray &relative = usesAngleInclude ? QByteArray() : currentFilenames.top();
+                return !resolveInclude(include, relative).isNull();
+            };
+            bool result = exists(includeAsString);
+            if (usesAngleInclude && !result) {
+                // try with expansion
+                includeAsString = {};
+                for (const auto &innerSymbol: innerSymbols)
+                    includeAsString.append(innerSymbol.lexem());
+                result = exists(includeAsString);
+            }
+            Symbol definedOrNotDefined = symbol();
+            definedOrNotDefined.token = result ? PP_MOC_TRUE : PP_MOC_FALSE;
+            substituted += definedOrNotDefined;
+        } else  {
             substituted += symbol();
         }
     }
@@ -926,9 +984,8 @@ int PP_Expression::primary_expression()
         test(PP_RPAREN);
     } else {
         next();
-        const QByteArray &lex = lexem();
-        auto lexView = QByteArrayView(lex);
-        if (lex.endsWith('L'))
+        auto lexView = lexemView();
+        if (lexView.endsWith('L'))
             lexView.chop(1);
         value = lexView.toInt(nullptr, 0);
     }
@@ -963,53 +1020,98 @@ static QByteArray readOrMapFile(QFile *file)
     return rawInput ? QByteArray::fromRawData(rawInput, size) : file->readAll();
 }
 
-static void mergeStringLiterals(Symbols *_symbols)
+void Symbol::mergeStringLiteral(const Symbol &next)
 {
-    Symbols &symbols = *_symbols;
-    for (Symbols::iterator i = symbols.begin(); i != symbols.end(); ++i) {
-        if (i->token == STRING_LITERAL) {
-            Symbols::Iterator mergeSymbol = i;
-            qsizetype literalsLength = mergeSymbol->len;
-            while (++i != symbols.end() && i->token == STRING_LITERAL)
-                literalsLength += i->len - 2; // no quotes
+    Q_ASSERT(len >= 2); // at least `""`
+    Q_ASSERT(from + len <= lex.size());
+    Q_ASSERT(next.len >= 2); // at least `""`
+    Q_ASSERT(next.from + next.len <= next.lex.size());
 
-            if (literalsLength != mergeSymbol->len) {
-                QByteArray mergeSymbolOriginalLexem = mergeSymbol->unquotedLexem();
-                QByteArray &mergeSymbolLexem = mergeSymbol->lex;
-                mergeSymbolLexem.resize(0);
-                mergeSymbolLexem.reserve(literalsLength);
-                mergeSymbolLexem.append('"');
-                mergeSymbolLexem.append(mergeSymbolOriginalLexem);
-                for (Symbols::iterator j = mergeSymbol + 1; j != i; ++j)
-                    mergeSymbolLexem.append(j->lex.constData() + j->from + 1, j->len - 2); // append j->unquotedLexem()
-                mergeSymbolLexem.append('"');
-                mergeSymbol->len = mergeSymbol->lex.size();
-                mergeSymbol->from = 0;
-                i = symbols.erase(mergeSymbol + 1, i);
-            }
-            if (i == symbols.end())
-                break;
-        }
+    if (len != lex.size()) {
+        // "rubbish" around lexem() in `lex`: clean up (`lex` may be the whole file)
+        QByteArray l = lexemView().chopped(1) % next.lexemView().sliced(1);
+        lex = std::move(l); // lexemView() aliases `lex`; only clobber it now
+        from = 0;
+    } else {
+        // like QByteArray::append(), but dealing with the "" around each lexem:
+        const auto unquoted = next.unquotedLexemView();
+        lex.insert(from + len - 1, // before closing `"`
+                   unquoted);
     }
+    len = lex.size();
 }
 
-static QByteArray searchIncludePaths(const QList<Parser::IncludePath> &includepaths,
-                                     const QByteArray &include,
-                                     const bool debugIncludes)
+static void mergeStringLiterals(Symbols &symbols)
+{
+    // like std::unique, but merges instead of skips adjacent STRING_LITERALs:
+
+    const auto mergeable = [](const Symbol &lhs, const Symbol &rhs) {
+        return lhs.token == STRING_LITERAL && rhs.token == STRING_LITERAL;
+    };
+
+    auto end = symbols.end();
+    auto it = std::adjacent_find(symbols.begin(), symbols.end(), mergeable);
+    if (it == end) // none found
+        return;
+
+    // we know `it`, `it + 1` are both STRING_LITERAL (adjacent_find post-condition)
+    // in particular: it + 1 < end
+
+    auto dst = it;
+    auto lit = dst;
+    ++it;
+    lit->mergeStringLiteral(*it);
+
+    while (++it != end) {
+        // Loop Invariants:
+        // - [begin(), dst] is already processed
+        // - `lit` is the last string literal
+        //   - we can merge if lit == dst
+        // - [it, end[ still to be checked
+        if (it->token == STRING_LITERAL) {
+            if (lit == dst) {            // can merge
+                lit->mergeStringLiteral(*it);
+            } else {                     // can't merge: not adjacent to previous STRING_LITERAL
+                *++dst = std::move(*it);
+                lit = dst;               // remember that this was a literal
+            }
+        } else {
+            *++dst = std::move(*it);
+        }
+    }
+
+    ++dst;
+
+    symbols.erase(dst, end);
+}
+
+// Searches the include path list for \a include, starting at \a startIndex.
+// For a plain #include startIndex is 0 (search the whole list); for
+// #include_next it is one past the directory the current file was found in.
+static IncludeResolution searchIncludePaths(const QList<Parser::IncludePath> &includepaths,
+                                            const QByteArray &include,
+                                            qsizetype startIndex,
+                                            const bool debugIncludes)
 {
     QFileInfo fi;
+    qsizetype foundIndex = -1;
 
     if (Q_UNLIKELY(debugIncludes)) {
         fprintf(stderr, "debug-includes: searching for '%s'\n", include.constData());
     }
 
-    for (const Parser::IncludePath &p : includepaths) {
+    for (qsizetype i = startIndex; i < includepaths.size(); ++i) {
+        const Parser::IncludePath &p = includepaths.at(i);
         if (fi.exists())
             break;
 
         if (p.isFrameworkPath) {
+            // A framework include names the framework, as in <Framework/Header>.
+            // An include without a slash is never resolved via a framework
+            // search path, matching Clang, so that an umbrella include such as
+            // <QtGui> only resolves through the module's own include directory.
             const qsizetype slashPos = include.indexOf('/');
-            if (slashPos == -1)
+            if (slashPos < 0)
                 continue;
             fi.setFile(QString::fromLocal8Bit(p.path + '/' + include.left(slashPos) + ".framework/Headers/"),
                        QString::fromLocal8Bit(include.mid(slashPos + 1)));
@@ -1028,13 +1130,14 @@ static QByteArray searchIncludePaths(const QList<Parser::IncludePath> &includepa
             fi = QFileInfo();
             continue;
         }
+        foundIndex = i;
     }
 
     if (!fi.exists() || fi.isDir()) {
         if (Q_UNLIKELY(debugIncludes)) {
             fprintf(stderr, "debug-includes: can't find '%s'\n", include.constData());
         }
-        return QByteArray();
+        return {};
     }
 
     const auto result = fi.canonicalFilePath().toLocal8Bit();
@@ -1043,16 +1146,27 @@ static QByteArray searchIncludePaths(const QList<Parser::IncludePath> &includepa
         fprintf(stderr, "debug-includes: found '%s'\n", result.constData());
     }
 
-    return result;
+    return { result, foundIndex };
 }
 
-QByteArray Preprocessor::resolveInclude(const QByteArray &include, const QByteArray &relativeTo)
+QByteArray Preprocessor::resolveInclude(const QByteArray &include, const QByteArray &relativeTo,
+                                        qsizetype *foundIndex)
 {
+    if (foundIndex)
+        *foundIndex = -1;
+
     if (!relativeTo.isEmpty()) {
         QFileInfo fi;
         fi.setFile(QFileInfo(QString::fromLocal8Bit(relativeTo)).dir(), QString::fromLocal8Bit(include));
-        if (fi.exists() && !fi.isDir())
+        if (fi.exists() && !fi.isDir()) {
+            // Found next to the including file, not via the search path. Inherit
+            // the includer's include-path position so a later #include_next
+            // resumes after that directory instead of being mistaken for one in
+            // the primary source file (e.g. GCC's syslimits.h via limits.h).
+            if (foundIndex && !currentIncludeDirIndex.empty())
+                *foundIndex = currentIncludeDirIndex.top();
             return fi.canonicalFilePath().toLocal8Bit();
+        }
     }
 
     auto it = nonlocalIncludePathResolutionCache.find(include);
@@ -1061,31 +1175,76 @@ QByteArray Preprocessor::resolveInclude(const QByteArray &include, const QByteAr
                                                       searchIncludePaths(
                                                           includes,
                                                           include,
+                                                          0,
                                                           debugIncludes));
-    return it.value();
+    if (foundIndex)
+        *foundIndex = it.value().foundIndex;
+    return it.value().path;
 }
 
-void Preprocessor::preprocess(const QByteArray &filename, Symbols &preprocessed)
+QByteArray Preprocessor::resolveIncludeNext(const QByteArray &include, qsizetype startIndex,
+                                            qsizetype *foundIndex)
+{
+    // #include_next never resolves relative to the including file, and its
+    // result depends on the start index, so it bypasses the resolution cache.
+    const IncludeResolution resolution = searchIncludePaths(includes, include, startIndex, debugIncludes);
+    if (foundIndex)
+        *foundIndex = resolution.foundIndex;
+    return resolution.path;
+}
+
+qsizetype Preprocessor::includeNextStartIndex()
+{
+    // #include_next continues the search after the directory the current file
+    // was found in. If the current file was not found via the include path
+    // (the primary source file, or a file included relative to it), search from
+    // the start of the path, matching GCC/Clang. This is not worth warning
+    // about: the same file is also seen by the compiler, either as its primary
+    // source file or, for a moc'ed header, through the relative #include in the
+    // generated moc_*.cpp, and it resolves the #include_next the same way.
+    const qsizetype currentDirIndex = currentIncludeDirIndex.top();
+    if (currentDirIndex < 0) {
+        if (Q_UNLIKELY(debugIncludes)) {
+            fprintf(stderr, "debug-includes: '%s' was not found via the include path; "
+                            "#include_next will search from the start\n",
+                    currentFilenames.top().constData());
+        }
+        return 0;
+    }
+    return currentDirIndex + 1;
+}
+
+void Preprocessor::preprocess(const QByteArray &filename, Symbols &preprocessed, qsizetype includeDirIndex)
 {
     currentFilenames.push(filename);
+    currentIncludeDirIndex.push(includeDirIndex);
     preprocessed.reserve(preprocessed.size() + symbols.size());
     while (hasNext()) {
         Token token = next();
 
         switch (token) {
         case PP_INCLUDE:
+        case PP_INCLUDE_NEXT:
         {
+            const bool includeNext = (token == PP_INCLUDE_NEXT);
             int lineNum = symbol().lineNum;
             QByteArray include;
             bool local = false;
             if (test(PP_STRING_LITERAL)) {
-                local = lexem().startsWith('\"');
+                local = lexemView().startsWith('\"');
                 include = unquotedLexem();
-            } else
+            } else {
                 continue;
+            }
+
+            qsizetype foundIndex = -1;
+            if (includeNext)
+                include = resolveIncludeNext(include, includeNextStartIndex(), &foundIndex);
+            else
+                include = resolveInclude(include, local ? filename : QByteArray(), &foundIndex);
+
             until(PP_NEWLINE);
 
-            include = resolveInclude(include, local ? filename : QByteArray());
             if (include.isNull())
                 continue;
 
@@ -1117,7 +1276,7 @@ void Preprocessor::preprocess(const QByteArray &filename, Symbols &preprocessed)
 
             // phase 3: preprocess conditions and substitute macros
             preprocessed += Symbol(0, MOC_INCLUDE_BEGIN, include);
-            preprocess(include, preprocessed);
+            preprocess(include, preprocessed, foundIndex);
             preprocessed += Symbol(lineNum, MOC_INCLUDE_END, include);
 
             symbols = saveSymbols;
@@ -1227,6 +1386,7 @@ void Preprocessor::preprocess(const QByteArray &filename, Symbols &preprocessed)
         preprocessed += symbol();
     }
 
+    currentIncludeDirIndex.pop();
     currentFilenames.pop();
 }
 
@@ -1259,7 +1419,7 @@ Symbols Preprocessor::preprocessed(const QByteArray &filename, QFile *file)
     // and calculating an average when running moc over FOSS projects.
     result.reserve(file->size() / 300000);
     preprocess(filename, result);
-    mergeStringLiterals(&result);
+    mergeStringLiterals(result);
 
 #if 0
     for (int j = 0; j < result.size(); ++j)
@@ -1281,7 +1441,7 @@ void Preprocessor::parseDefineArguments(Macro *m)
         if (t == PP_RPAREN)
             break;
         if (t != PP_IDENTIFIER) {
-            QByteArray l = lexem();
+            QByteArrayView l = lexemView();
             if (l == "...") {
                 m->isVariadic = true;
                 arguments += Symbol(symbol().lineNum, PP_IDENTIFIER, "__VA_ARGS__");
@@ -1305,7 +1465,7 @@ void Preprocessor::parseDefineArguments(Macro *m)
             break;
         if (t == PP_COMMA)
             continue;
-        if (lexem() == "...") {
+        if (lexemView() == "...") {
             //GCC extension:    #define FOO(x, y...) x(y)
             // The last argument was already parsed. Just mark the macro as variadic.
             m->isVariadic = true;

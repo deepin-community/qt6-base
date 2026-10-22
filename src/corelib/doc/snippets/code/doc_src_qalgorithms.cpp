@@ -1,11 +1,17 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-//! [1]
-QList<Employee *> list;
-list.append(new Employee("Blackpool", "Stephen"));
-list.append(new Employee("Twist", "Oliver"));
+#include <QList>
+#include <QColor>
 
-qDeleteAll(list.begin(), list.end());
-list.clear();
-//! [1]
+void example()
+{
+    //! [1]
+    QList<QColor *> list;
+    list.append(new QColor(Qt::blue));
+    list.append(new QColor(Qt::yellow));
+
+    qDeleteAll(list.begin(), list.end());
+    list.clear();
+    //! [1]
+}

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qeglfsglobal_p.h"
 #include <QtGui/QSurface>
@@ -79,8 +80,10 @@ void QEglFSContext::swapBuffers(QPlatformSurface *surface)
     // draw the cursor
     if (surface->surface()->surfaceClass() == QSurface::Window) {
         QPlatformWindow *window = static_cast<QPlatformWindow *>(surface);
-        if (QEglFSCursor *cursor = qobject_cast<QEglFSCursor *>(window->screen()->cursor()))
-            cursor->paintOnScreen();
+        if (QPlatformScreen *screen = window->screen()) {
+            if (QEglFSCursor *cursor = qobject_cast<QEglFSCursor *>(screen->cursor()))
+                cursor->paintOnScreen();
+        }
     }
 
     qt_egl_device_integration()->waitForVSync(surface);

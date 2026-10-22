@@ -7,13 +7,17 @@
 #include <qfile.h>
 #include <qdatetime.h>
 #include <qdir.h>
-#include <qset.h>
 #include <qstandardpaths.h>
 #include <qstring.h>
 #include <qtemporarydir.h>
 #include <qtemporaryfile.h>
 
 #include <QtTest/private/qtesthelpers_p.h>
+
+#include <QtCore/private/qduplicatetracker_p.h>
+#include <QtCore/qscopeguard.h>
+
+#include <optional>
 
 #if defined(Q_OS_WIN)
 # include <shlwapi.h>
@@ -62,6 +66,7 @@ private slots:
     void resize();
     void openOnRootDrives();
     void stressTest();
+    void rename_data();
     void rename();
     void renameFdLeak();
     void moveToTrash();
@@ -180,6 +185,7 @@ void tst_QTemporaryFile::fileTemplate_data()
     QTest::newRow("constructor with XXXXX prefix") << "qt_XXXXX" << "qt_XXXXX." << "" << "";
     QTest::newRow("constructor with XXXX  prefix and suffix") << "qt_XXXX_XXXXXX_XXXX" << "qt_XXXX_" << "_XXXX" << "";
     QTest::newRow("constructor with XXXXX prefix and suffix") << "qt_XXXXX_XXXXXX_XXXXX" << "qt_XXXXX_" << "_XXXXX" << "";
+    QTest::newRow("constructor with two placeholders") << "qt_XXXXXX_XXXXXX_" << "qt_XXXXXX_" << "_" << "";
 
     QTest::newRow("set template, no suffix") << "" << "foo" << "" << "foo";
     QTest::newRow("set template, with lowercase XXXXXX") << "" << "qt_" << "xxxxxx" << "qt_XXXXXXxxxxxx";
@@ -369,7 +375,7 @@ void tst_QTemporaryFile::nonWritableCurrentDir()
 
     ChdirOnReturn cor(QDir::currentPath());
 
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY)
     QDir::setCurrent("/data");
 #else
     QDir::setCurrent("/home");
@@ -546,27 +552,56 @@ void tst_QTemporaryFile::openOnRootDrives()
 #endif
 }
 
+QT_WARNING_PUSH
+// checked stack use and deemed it acceptable
+QT_WARNING_DISABLE_LARGE_STACK_FRAME
+
 void tst_QTemporaryFile::stressTest()
 {
-    const int iterations = 1000;
+    constexpr int iterations = 1000;
 
-    QSet<QString> names;
+    QDuplicateTracker<QString, iterations> names;
+
+    const auto remover = qScopeGuard([&] {
+            for (const QString &s : std::as_const(names))
+                QFile::remove(s);
+        });
+
     for (int i = 0; i < iterations; ++i) {
         QTemporaryFile file;
         file.setAutoRemove(false);
         QVERIFY2(file.open(), qPrintable(file.errorString()));
-        QVERIFY(!names.contains(file.fileName()));
-        names.insert(file.fileName());
+        QVERIFY(!names.hasSeen(file.fileName()));
     }
-    for (QSet<QString>::const_iterator it = names.constBegin(); it != names.constEnd(); ++it) {
-        QFile::remove(*it);
-    }
+}
+
+QT_WARNING_POP
+
+void tst_QTemporaryFile::rename_data()
+{
+    QTest::addColumn<bool>("targetExists");
+    QTest::addColumn<bool>("overwrite");
+    QTest::addColumn<bool>("expectedRenameResult");
+
+    QTest::addRow("success") << false << false << true;
+    QTest::addRow("failure") << true  << false << false;
+    QTest::addRow("overwrite") << true << true << true;
+}
+
+static QByteArray read_all(const QString &fileName)
+{
+    QFile file(fileName);
+    if (file.open(QFile::ReadOnly))
+        return file.readAll();
+    else
+        return QByteArray();
 }
 
 void tst_QTemporaryFile::rename()
 {
-    // This test checks that the temporary file is deleted, even after a
-    // rename.
+    QFETCH(const bool, targetExists);
+    QFETCH(const bool, overwrite);
+    QFETCH(const bool, expectedRenameResult);
 
     QDir dir;
     QVERIFY(!dir.exists("temporary-file.txt"));
@@ -576,13 +611,35 @@ void tst_QTemporaryFile::rename()
         QTemporaryFile file(dir.filePath("temporary-file.XXXXXX"));
 
         QVERIFY(file.open());
+        QCOMPARE(file.write("I am the tmpfile"), 16);
         tempname = file.fileName();
         QVERIFY(dir.exists(tempname));
 
-        QVERIFY(file.rename("temporary-file.txt"));
-        QVERIFY(!dir.exists(tempname));
+        std::optional<QFile> renameBlocker;
+        const auto cleanup = qScopeGuard([&] {
+                if (renameBlocker)
+                    renameBlocker->remove();
+            });
+
+        if (targetExists) {
+            renameBlocker.emplace(dir.filePath("temporary-file.txt"_L1));
+            QVERIFY2(renameBlocker->open(QFile::ReadWrite),
+                     qPrintable(renameBlocker->errorString()));
+            QCOMPARE(renameBlocker->write("I am the blocker"), 16);
+            renameBlocker->close();
+            QVERIFY(QFile::exists(dir.filePath("temporary-file.txt"_L1)));
+        }
+
+        if (overwrite)
+            QCOMPARE(file.renameOverwrite("temporary-file.txt"_L1), expectedRenameResult);
+        else
+            QCOMPARE(file.rename("temporary-file.txt"_L1), expectedRenameResult);
+        QCOMPARE(dir.exists(tempname), !expectedRenameResult);
         QVERIFY(dir.exists("temporary-file.txt"));
-        QCOMPARE(file.fileName(), QString("temporary-file.txt"));
+        QCOMPARE(read_all(dir.filePath("temporary-file.txt"_L1)),
+                 expectedRenameResult ? "I am the tmpfile" : "I am the blocker");
+        QCOMPARE(file.fileName(),
+                 expectedRenameResult ? QString("temporary-file.txt") : tempname);
     }
 
     QVERIFY(!dir.exists(tempname));
@@ -591,7 +648,15 @@ void tst_QTemporaryFile::rename()
 
 void tst_QTemporaryFile::renameFdLeak()
 {
+#if defined(Q_OS_VXWORKS)
+    QSKIP("QTBUG-130066");
+#endif
 #if defined(Q_OS_UNIX) && !defined(Q_OS_ANDROID)
+#if defined(Q_OS_HARMONY)
+    ChdirOnReturn cor(QDir::currentPath());
+    // TODO: OHOS: hardcode cache path until QStandardPaths is implemented
+    QDir::setCurrent("/data/storage/el2/base/cache");
+#endif
     QTemporaryFile file;
     QVERIFY(file.open());
     const QByteArray sourceFile = QFile::encodeName(file.fileName());
@@ -635,6 +700,11 @@ void tst_QTemporaryFile::moveToTrash()
 #if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS) || defined(Q_OS_VXWORKS)
     QSKIP("This platform doesn't implement a trash bin");
 #endif
+
+#if defined(Q_OS_HARMONY)
+    QSKIP("OHOS: moveToTrash requires user input via FilePicker to get temp permissions");
+#endif
+
 #ifdef Q_OS_WIN
     // QTemporaryFile won't really close the file with close(), so this is
     // expected to fail with a sharing violation error.
@@ -727,6 +797,9 @@ void tst_QTemporaryFile::keepOpenMode()
 
 void tst_QTemporaryFile::resetTemplateAfterError()
 {
+#if defined(Q_OS_VXWORKS)
+    QSKIP("QTBUG-130066");
+#endif
     // calling setFileTemplate on a failed open
 
     QString tempPath = QDir::tempPath();
@@ -781,6 +854,9 @@ void tst_QTemporaryFile::resetTemplateAfterError()
 
 void tst_QTemporaryFile::setTemplateAfterOpen()
 {
+#if defined(Q_OS_VXWORKS)
+    QSKIP("QTBUG-130066");
+#endif
     QTemporaryFile temp;
 
     QVERIFY( temp.fileName().isEmpty() );
@@ -807,37 +883,29 @@ void tst_QTemporaryFile::setTemplateAfterOpen()
 
 void tst_QTemporaryFile::autoRemoveAfterFailedRename()
 {
-    struct CleanOnReturn
-    {
-        ~CleanOnReturn()
-        {
+#if defined(Q_OS_VXWORKS)
+    QSKIP("QTBUG-130066");
+#endif
+
+    QString tempName;
+    auto cleaner = qScopeGuard([&] {
             if (!tempName.isEmpty())
                 QFile::remove(tempName);
-        }
-
-        void reset()
-        {
-            tempName.clear();
-        }
-
-        QString tempName;
-    };
-
-    CleanOnReturn cleaner;
+        });
 
     {
         QTemporaryFile file;
         QVERIFY( file.open() );
-        cleaner.tempName = file.fileName();
+        tempName = file.fileName();
 
-        QVERIFY( QFile::exists(cleaner.tempName) );
+        QVERIFY(QFile::exists(tempName));
         QVERIFY( !QFileInfo("i-do-not-exist").isDir() );
         QVERIFY( !file.rename("i-do-not-exist/file.txt") );
-        QVERIFY( QFile::exists(cleaner.tempName) );
+        QVERIFY(QFile::exists(tempName));
     }
 
-    QVERIFY( !QFile::exists(cleaner.tempName) );
-    cleaner.reset();
+    QVERIFY(!QFile::exists(tempName));
+    cleaner.dismiss(); // would fail: file is known to no longer exist
 }
 
 void tst_QTemporaryFile::createNativeFile_data()
@@ -1011,6 +1079,9 @@ void tst_QTemporaryFile::QTBUG_4796()
 
 void tst_QTemporaryFile::guaranteeUnique()
 {
+#if defined(Q_OS_VXWORKS)
+    QSKIP("QTBUG-130066");
+#endif
     QDir dir(QDir::tempPath());
     QString takenFileName;
 

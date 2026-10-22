@@ -15,6 +15,7 @@
  * pre-defined list of header files.
  */
 
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -205,6 +206,8 @@ public:
 
     const std::string &includeDir() const { return m_includeDir; }
 
+    const std::string &installIncludeDir() const { return m_installIncludeDir; }
+
     const std::string &privateIncludeDir() const { return m_privateIncludeDir; }
 
     const std::string &qpaIncludeDir() const { return m_qpaIncludeDir; }
@@ -213,9 +216,13 @@ public:
 
     const std::string &ssgIncludeDir() const { return m_ssgIncludeDir; }
 
+    const std::string &spiIncludeDir() const { return m_spiIncludeDir; }
+
     const std::string &stagingDir() const { return m_stagingDir; }
 
     const std::string &versionScriptFile() const { return m_versionScriptFile; }
+
+    const std::string &moduleMapFile() const { return m_moduleMapFile; }
 
     const std::set<std::string> &knownModules() const { return m_knownModules; }
 
@@ -224,6 +231,8 @@ public:
     const std::regex &rhiHeadersRegex() const { return m_rhiHeadersRegex; }
 
     const std::regex &ssgHeadersRegex() const { return m_ssgHeadersRegex; }
+
+    const std::regex &spiHeadersRegex() const { return m_spiHeadersRegex; }
 
     const std::regex &privateHeadersRegex() const { return m_privateHeadersRegex; }
 
@@ -249,14 +258,18 @@ public:
 
     bool showOnly() const { return m_showOnly; }
 
+    bool isFramework() const { return m_isFramework; }
+
     bool warningsAreErrors() const { return m_warningsAreErrors; }
 
     void printHelp() const
     {
         std::cout << "Usage: syncqt -sourceDir <dir> -binaryDir <dir> -module <module name>"
                      " -includeDir <dir> -privateIncludeDir <dir> -qpaIncludeDir <dir> -rhiIncludeDir <dir> -ssgIncludeDir <dir>"
+                     " -spiIncludeDir <dir>"
                      " -stagingDir <dir> <-headers <header list>|-all> [-debug]"
                      " [-versionScript <path>] [-qpaHeadersFilter <regex>] [-rhiHeadersFilter <regex>]"
+                     " [-spiHeadersFilter <regex>]"
                      " [-knownModules <module1> <module2>... <moduleN>]"
                      " [-nonQt] [-internal] [-copy]\n"
                      ""
@@ -281,11 +294,17 @@ public:
                      "                                  generated RHI header files.\n"
                      "  -ssgIncludeDir                  Module include directory for the \n"
                      "                                  generated SSG header files.\n"
+                     "  -spiIncludeDir                  Module include directory for the \n"
+                     "                                  generated SPI (semi-private or\n"
+                     "                                  service-provider interface) header files.\n"
                      "  -stagingDir                     Temporary staging directory to collect\n"
                      "                                  artifacts that need to be installed.\n"
                      "  -knownModules                   list of known modules. syncqt uses the\n"
                      "                                  list to check the #include macros\n"
                      "                                  consistency.\n"
+                     "  -moduleMapFile                  Module maps file to generate.\n"
+                     "                                  syncqt uses the .in file path as the\n"
+                     "                                  template.\n"
                      "Optional arguments:\n"
                      "  -internal                       Indicates that the module is internal.\n"
                      "  -nonQt                          Indicates that the module is not a Qt\n"
@@ -298,6 +317,9 @@ public:
                      "                                  the list of 'headers'.\n"
                      "  -ssgHeadersFilter               Regex that filters ssg files from.\n"
                      "                                  the list of 'headers'.\n"
+                     "  -spiHeadersFilter               Regex that filters SPI (semi-private or\n"
+                     "                                  service-provider interface) header files\n"
+                     "                                  from the list of 'headers'.\n"
                      "  -publicNamespaceFilter          Symbols that are in the specified\n"
                      "                                  namespace.\n"
                      "                                  are treated as public symbols.\n"
@@ -309,6 +331,10 @@ public:
                      "  -minimal                        Do not create CaMeL case headers for the\n"
                      "                                  public C++ symbols.\n"
                      "  -showonly                       Show actions, but not perform them.\n"
+                     "  -framework                      Indicates that the module is built as a\n"
+                     "                                  framework. Generates lowercase forwarding\n"
+                     "                                  headers so the framework's headers can\n"
+                     "                                  also be reached via a plain include path.\n"
                      "  -warningsAreErrors              Treat all warnings as errors.\n"
                      "  -help                           Print this help.\n";
     }
@@ -333,46 +359,52 @@ private:
         std::string qpaHeadersFilter;
         std::string rhiHeadersFilter;
         std::string ssgHeadersFilter;
+        std::string spiHeadersFilter;
         std::string privateHeadersFilter;
         std::string publicNamespaceFilter;
-        static std::unordered_map<std::string, CommandLineOption<std::string>> stringArgumentMap = {
+        const std::unordered_map<std::string, CommandLineOption<std::string>> stringArgumentMap = {
             { "-module", { &m_moduleName } },
             { "-sourceDir", { &m_sourceDir } },
             { "-binaryDir", { &m_binaryDir } },
+            { "-installIncludeDir", { &m_installIncludeDir, true } },
             { "-privateHeadersFilter", { &privateHeadersFilter, true } },
             { "-qpaHeadersFilter", { &qpaHeadersFilter, true } },
             { "-rhiHeadersFilter", { &rhiHeadersFilter, true } },
             { "-ssgHeadersFilter", { &ssgHeadersFilter, true } },
+            { "-spiHeadersFilter", { &spiHeadersFilter, true } },
             { "-includeDir", { &m_includeDir } },
             { "-privateIncludeDir", { &m_privateIncludeDir } },
             { "-qpaIncludeDir", { &m_qpaIncludeDir } },
             { "-rhiIncludeDir", { &m_rhiIncludeDir } },
             { "-ssgIncludeDir", { &m_ssgIncludeDir } },
+            { "-spiIncludeDir", { &m_spiIncludeDir } },
             { "-stagingDir", { &m_stagingDir, true } },
             { "-versionScript", { &m_versionScriptFile, true } },
             { "-publicNamespaceFilter", { &publicNamespaceFilter, true } },
+            { "-moduleMapFile", { &m_moduleMapFile, true } },
         };
 
-        static const std::unordered_map<std::string, CommandLineOption<std::set<std::string>>>
+        const std::unordered_map<std::string, CommandLineOption<std::set<std::string>>>
                 listArgumentMap = {
                     { "-headers", { &m_headers, true } },
                     { "-generatedHeaders", { &m_generatedHeaders, true } },
                     { "-knownModules", { &m_knownModules, true } },
                 };
 
-        static const std::unordered_map<std::string, CommandLineOption<bool>> boolArgumentMap = {
+        const std::unordered_map<std::string, CommandLineOption<bool>> boolArgumentMap = {
             { "-nonQt", { &m_isNonQtModule, true } }, { "-debug", { &m_debug, true } },
             { "-help", { &m_printHelpOnly, true } },
             { "-internal", { &m_isInternal, true } }, { "-all", { &m_scanAllMode, true } },
             { "-copy", { &m_copy, true } },           { "-minimal", { &m_minimal, true } },
             { "-showonly", { &m_showOnly, true } },   { "-showOnly", { &m_showOnly, true } },
+            { "-framework", { &m_isFramework, true } },
             { "-warningsAreErrors", { &m_warningsAreErrors, true } }
         };
 
         std::string *currentValue = nullptr;
         std::set<std::string> *currentListValue = nullptr;
 
-        auto parseArgument = [&currentValue, &currentListValue](const std::string &arg) -> bool {
+        auto parseArgument = [&](const std::string &arg) -> bool {
             if (arg[0] == '-') {
                 currentValue = nullptr;
                 currentListValue = nullptr;
@@ -467,6 +499,9 @@ private:
         if (!ssgHeadersFilter.empty())
             m_ssgHeadersRegex = std::regex(ssgHeadersFilter);
 
+        if (!spiHeadersFilter.empty())
+            m_spiHeadersRegex = std::regex(spiHeadersFilter);
+
         if (!privateHeadersFilter.empty())
             m_privateHeadersRegex = std::regex(privateHeadersFilter);
 
@@ -499,10 +534,11 @@ private:
     // Convert all paths from command line to a generic one.
     void normilizePaths()
     {
-        static std::array<std::string *, 8> paths = {
-            &m_sourceDir,     &m_binaryDir,  &m_includeDir,        &m_privateIncludeDir,
-            &m_qpaIncludeDir, &m_rhiIncludeDir, &m_stagingDir,
-            &m_versionScriptFile,
+        const std::array paths = {
+            &m_sourceDir,         &m_binaryDir,         &m_includeDir,
+            &m_installIncludeDir, &m_privateIncludeDir, &m_qpaIncludeDir,
+            &m_rhiIncludeDir,     &m_stagingDir,        &m_versionScriptFile,
+            &m_spiIncludeDir,
         };
         for (auto path : paths) {
             if (!path->empty())
@@ -514,12 +550,15 @@ private:
     std::string m_sourceDir;
     std::string m_binaryDir;
     std::string m_includeDir;
+    std::string m_installIncludeDir;
     std::string m_privateIncludeDir;
     std::string m_qpaIncludeDir;
     std::string m_rhiIncludeDir;
     std::string m_ssgIncludeDir;
+    std::string m_spiIncludeDir;
     std::string m_stagingDir;
     std::string m_versionScriptFile;
+    std::string m_moduleMapFile;
     std::set<std::string> m_knownModules;
     std::set<std::string> m_headers;
     std::set<std::string> m_generatedHeaders;
@@ -531,10 +570,12 @@ private:
     bool m_debug = false;
     bool m_minimal = false;
     bool m_showOnly = false;
+    bool m_isFramework = false;
     bool m_warningsAreErrors = false;
     std::regex m_qpaHeadersRegex;
     std::regex m_rhiHeadersRegex;
     std::regex m_ssgHeadersRegex;
+    std::regex m_spiHeadersRegex;
     std::regex m_privateHeadersRegex;
     std::regex m_publicNamespaceRegex;
 
@@ -588,7 +629,9 @@ class SyncScanner
             m_deprecatedHeaders;
     std::vector<std::string> m_versionScriptContents;
     std::set<std::string> m_producedHeaders;
+    std::set<std::string> m_publicHeaders;
     std::vector<std::string> m_headerCheckExceptions;
+    std::map<std::string,std::string> m_moduleMapContents;
     SymbolContainer m_symbols;
     std::ostream &scannerDebug() const
     {
@@ -606,7 +649,15 @@ class SyncScanner
     size_t m_currentFileLineNumber = 0;
     bool m_currentFileInSourceDir = false;
 
-    enum FileType { PublicHeader = 0, PrivateHeader = 1, QpaHeader = 2, ExportHeader = 4, RhiHeader = 8, SsgHeader = 16 };
+    enum FileType {
+        PublicHeader = 0,
+        PrivateHeader = 1,
+        QpaHeader = 2,
+        ExportHeader = 4,
+        RhiHeader = 8,
+        SsgHeader = 16,
+        SpiHeader = 32
+    };
     unsigned int m_currentFileType = PublicHeader;
 
     int m_criticalChecks = CriticalChecks;
@@ -642,19 +693,17 @@ public:
         // In the scan all mode we ingore the list of header files that is specified in the
         // '-headers' argument, and collect header files from the source directory tree.
         if (m_commandLineArgs->scanAllMode()) {
-            for (auto const &entry :
-                 std::filesystem::recursive_directory_iterator(m_commandLineArgs->sourceDir())) {
+            enum class HeaderOrigin { SourceTree, Generated };
+            const auto scanHeaderFile = [this, &error](const std::filesystem::path &path,
+                                                       bool isRegularFile, HeaderOrigin origin) {
+                const std::string filePath = path.generic_string();
+                const bool isHeaderFlag = isHeader(path);
+                const bool isDocFileHeuristicFlag = isDocFileHeuristic(filePath);
+                const bool isGenerated = origin == HeaderOrigin::Generated;
 
-                const bool isRegularFile = entry.is_regular_file();
-                const bool isHeaderFlag = isHeader(entry);
-                const bool isDocFileHeuristicFlag =
-                    isDocFileHeuristic(entry.path().generic_string());
-                const bool shouldProcessHeader =
-                    isRegularFile && isHeaderFlag && !isDocFileHeuristicFlag;
-                const std::string filePath = entry.path().generic_string();
-
-                if (shouldProcessHeader) {
-                    scannerDebug() << "Processing header: " << filePath << std::endl;
+                if (isRegularFile && isHeaderFlag && !isDocFileHeuristicFlag) {
+                    scannerDebug() << "Processing header: " << filePath
+                                   << " isGenerated: " << isGenerated << std::endl;
                     if (!processHeader(makeHeaderAbsolute(filePath)))
                         error = SyncFailed;
                 } else {
@@ -663,8 +712,25 @@ public:
                         << " isRegularFile: " << isRegularFile
                         << " isHeaderFlag: " << isHeaderFlag
                         << " isDocFileHeuristicFlag: " << isDocFileHeuristicFlag
+                        << " isGenerated: " << isGenerated
                         << std::endl;
                 }
+            };
+
+            for (auto const &entry :
+                 std::filesystem::recursive_directory_iterator(m_commandLineArgs->sourceDir())) {
+                scanHeaderFile(entry.path(), entry.is_regular_file(),
+                               HeaderOrigin::SourceTree);
+            }
+
+            // Headers that are generated into the build directory are not covered by the source
+            // directory scan above, so process them explicitly.
+            for (const auto &header : m_commandLineArgs->generatedHeaders()) {
+                if (header.empty())
+                    continue;
+                const auto headerPath = makeHeaderAbsolute(header);
+                scanHeaderFile(headerPath, std::filesystem::is_regular_file(headerPath),
+                               HeaderOrigin::Generated);
             }
         } else {
             // Since the list of header file is quite big syncqt supports response files to avoid
@@ -693,9 +759,10 @@ public:
         for (auto it = m_symbols.begin(); it != m_symbols.end(); ++it) {
             const std::string &filename = it->second.file();
             if (!filename.empty()) {
-                if (generateQtCamelCaseFileIfContentChanged(
-                            m_commandLineArgs->includeDir() + '/' + it->first, filename)) {
+                const auto camelCaseFile = m_commandLineArgs->includeDir() + '/' + it->first;
+                if (generateForwardingHeader(camelCaseFile, filename)) {
                     m_producedHeaders.insert(it->first);
+                    m_moduleMapContents.insert({camelCaseFile, filename});
                 } else {
                     error = SyncFailed;
                 }
@@ -715,14 +782,17 @@ public:
                 originalStamp = FileStamp::clock::now();
 
             if (generateVersionHeader(versionFile)) {
-                if (!generateAliasedHeaderFileIfTimestampChanged(
-                            m_commandLineArgs->includeDir() + '/' + versionHeaderCamel,
-                            versionHeaderFilename, originalStamp)) {
+                const auto camelCaseFile =
+                        m_commandLineArgs->includeDir() + '/' + versionHeaderCamel;
+                if (!generateAliasedHeaderFileIfTimestampChanged(camelCaseFile,
+                        versionFile, originalStamp)) {
                     error = SyncFailed;
                 }
                 m_masterHeaderContents[versionHeaderFilename] = {};
                 m_producedHeaders.insert(versionHeaderFilename);
                 m_producedHeaders.insert(versionHeaderCamel);
+                m_moduleMapContents.insert({versionFile, {}});
+                m_moduleMapContents.insert({camelCaseFile, versionFile});
             } else {
                 error = SyncFailed;
             }
@@ -748,11 +818,31 @@ public:
                 error = SyncFailed;
         }
 
+        if (!m_commandLineArgs->moduleMapFile().empty()) {
+            if (!generateModuleMapFile())
+                error = SyncFailed;
+        }
+
         if (!m_commandLineArgs->scanAllMode() && !m_commandLineArgs->stagingDir().empty()) {
             // Copy the generated files to a spearate staging directory to make the installation
             // process eaiser.
             if (!copyGeneratedHeadersToStagingDirectory(m_commandLineArgs->stagingDir()))
                 error = SyncFailed;
+
+            // For framework builds the staging directory is installed into the non-framework
+            // include/<Module> dir alongside the framework, so that its headers can also be
+            // reached via a plain include path. Generate lowercase forwarding headers there
+            // (in addition to the CaMeL case aliases copied above) so that bare includes like
+            // #include <qstring.h> resolve into the framework. These are generated after the
+            // copy above so they are not overwritten by the build-tree source aliases.
+            if (m_commandLineArgs->isFramework()) {
+                for (const auto &header : m_publicHeaders) {
+                    if (!generateForwardingHeader(m_commandLineArgs->stagingDir() + '/' + header,
+                                                  header, /*useIncludeNext=*/true)) {
+                        error = SyncFailed;
+                    }
+                }
+            }
         }
         return error;
     }
@@ -830,6 +920,9 @@ public:
         if (isHeaderSsg(m_currentFilename))
             m_currentFileType = SsgHeader | PrivateHeader;
 
+        if (isHeaderSpi(m_currentFilename))
+            m_currentFileType = SpiHeader | PrivateHeader;
+
         if (std::regex_match(m_currentFilename, ExportsHeaderRegex))
             m_currentFileType |= ExportHeader;
     }
@@ -843,6 +936,15 @@ public:
         static const std::regex ConfigHeaderRegex("^(q|.+-)config(_p)?\\.h");
 
         resetCurrentFileInfoData(headerFile);
+
+        bool isPrivate = m_currentFileType & PrivateHeader;
+        bool isQpa = m_currentFileType & QpaHeader;
+        bool isRhi = m_currentFileType & RhiHeader;
+        bool isSsg = m_currentFileType & SsgHeader;
+        bool isSpi = m_currentFileType & SpiHeader;
+        bool isExport = m_currentFileType & ExportHeader;
+        bool isPublic = !isPrivate && !isQpa && !isRhi && !isSsg && !isSpi;
+
         // We assume that header files ouside of the module source or build directories do not
         // belong to the module. Skip any processing.
         if (!m_currentFileInSourceDir
@@ -850,6 +952,19 @@ public:
             scannerDebug() << "Header file: " << headerFile
                            << " is outside the sync directories. Skipping." << std::endl;
             m_headerCheckExceptions.push_back(m_currentFileString);
+
+            // For some reason we don't treat the export header or Depends header as
+            // "belonging to the module", as per the comment above. Yet we do need it
+            // in the module map if it's in the include dir.
+            // And we need to create a forwarding header in the install include dir for
+            // framework builds.
+            if (m_currentFileString.find(m_commandLineArgs->includeDir()) == 0) {
+                m_moduleMapContents.insert({m_currentFileString, {}});
+
+                if (m_commandLineArgs->isFramework() && isPublic)
+                    m_publicHeaders.insert(m_currentFilename);
+            }
+
             return true;
         }
 
@@ -865,11 +980,6 @@ public:
             originalStamp = FileStamp::clock::now();
         ec.clear();
 
-        bool isPrivate = m_currentFileType & PrivateHeader;
-        bool isQpa = m_currentFileType & QpaHeader;
-        bool isRhi = m_currentFileType & RhiHeader;
-        bool isSsg = m_currentFileType & SsgHeader;
-        bool isExport = m_currentFileType & ExportHeader;
         scannerDebug()
             << "processHeader:start: " << headerFile
             << " m_currentFilename: " << m_currentFilename
@@ -877,6 +987,8 @@ public:
             << " isQpa: " << isQpa
             << " isRhi: " << isRhi
             << " isSsg: " << isSsg
+            << " isSpi: " << isSpi
+            << " isExport: " << isExport
             << std::endl;
 
         // Chose the directory where to generate the header aliases or to copy header file if
@@ -888,6 +1000,8 @@ public:
             outputDir = m_commandLineArgs->rhiIncludeDir();
         else if (isSsg)
             outputDir = m_commandLineArgs->ssgIncludeDir();
+        else if (isSpi)
+            outputDir = m_commandLineArgs->spiIncludeDir();
         else if (isPrivate)
             outputDir = m_commandLineArgs->privateIncludeDir();
 
@@ -911,6 +1025,12 @@ public:
                                                              originalStamp))
                 return false;
         }
+
+        // Remember the public headers so that, for framework builds, we can generate
+        // forwarding headers that re-expose them via a plain (non-framework) include path
+        // alongside the framework (see generateForwardingHeader).
+        if (isPublic)
+            m_publicHeaders.insert(m_currentFilename);
 
         // No further processing in minimal mode.
         if (m_commandLineArgs->minimal())
@@ -942,7 +1062,7 @@ public:
 
             // Collect checks that should skipped for the header file.
             if (m_commandLineArgs->isNonQtModule() || is3rdParty || isQpa || isRhi || isSsg
-                || !m_currentFileInSourceDir || isGenerated) {
+                || isSpi || !m_currentFileInSourceDir || isGenerated) {
                 skipChecks = AllChecks;
             } else {
                 if (std::regex_match(m_currentFilename, GlobalHeaderRegex) || isExport)
@@ -962,7 +1082,7 @@ public:
 
             ParsingResult parsingResult;
             parsingResult.masterInclude = m_currentFileInSourceDir && !isExport && !is3rdParty
-                    && !isQpa && !isRhi && !isSsg && !isPrivate && !isGenerated;
+                    && isPublic && !isGenerated;
             if (!parseHeader(headerFile, parsingResult, skipChecks)) {
                 scannerDebug() << "parseHeader failed: " << headerFile << std::endl;
                 return false;
@@ -979,7 +1099,7 @@ public:
             // Add the '#if QT_CONFIG(<feature>)' check for header files that supposed to be
             // included into the module master header only if corresponding feature is enabled.
             bool willBeInModuleMasterHeader = false;
-            if (!isQpa && !isRhi && !isSsg && !isPrivate) {
+            if (isPublic) {
                 if (m_currentFilename.find('_') == std::string::npos
                     && parsingResult.masterInclude) {
                     m_masterHeaderContents[m_currentFilename] = parsingResult.requireConfig;
@@ -998,6 +1118,8 @@ public:
             // Hardcode generating of QtConfig alias
             updateSymbolDescriptor("QtConfig", "qconfig.h", SyncScanner::SymbolDescriptor::Pragma);
         }
+
+        m_moduleMapContents.insert({outputDir + "/" + m_currentFilename, {}});
 
         return true;
     }
@@ -1282,7 +1404,7 @@ public:
 
             bool skipSymbols =
                     (m_currentFileType & PrivateHeader) || (m_currentFileType & QpaHeader) || (m_currentFileType & RhiHeader)
-                    || (m_currentFileType & SsgHeader);
+                    || (m_currentFileType & SsgHeader) || (m_currentFileType & SpiHeader);
 
             // Parse pragmas
             if (std::regex_match(buffer, MacroRegex)) {
@@ -1328,8 +1450,11 @@ public:
                         }
                         for (const auto &module : m_commandLineArgs->knownModules()) {
                             std::string suggestedHeader = "Qt" + module + '/' + includedHeader;
-                            if (std::filesystem::exists(m_commandLineArgs->includeDir() + "/../"
-                                                        + suggestedHeader)) {
+                            const std::string suggestedHeaderReversePath = "/../" + suggestedHeader;
+                            if (std::filesystem::exists(m_commandLineArgs->includeDir()
+                                                        + suggestedHeaderReversePath)
+                                || std::filesystem::exists(m_commandLineArgs->installIncludeDir()
+                                                           + '/' + suggestedHeader)) {
                                 faults |= IncludeChecks;
                                 std::cerr << m_warningMessagePreamble << m_currentFileString
                                           << ":" << m_currentFileLineNumber
@@ -1472,6 +1597,11 @@ public:
         return std::regex_match(headerFileName, m_commandLineArgs->ssgHeadersRegex());
     }
 
+    [[nodiscard]] bool isHeaderSpi(const std::string &headerFileName)
+    {
+        return std::regex_match(headerFileName, m_commandLineArgs->spiHeadersRegex());
+    }
+
     [[nodiscard]] bool isHeaderPrivate(const std::string &headerFile)
     {
         return std::regex_match(headerFile, m_commandLineArgs->privateHeadersRegex());
@@ -1481,6 +1611,21 @@ public:
     {
         static const std::string pchSuffix("_pch.h");
         return headerFilename.find(pchSuffix, headerFilename.size() - pchSuffix.size())
+                != std::string::npos;
+    }
+
+    [[nodiscard]] bool isHeaderImpl(const std::string &headerFilename) const
+    {
+        static const std::string implSuffix("_impl.h");
+        return headerFilename.find(implSuffix, headerFilename.size() - implSuffix.size())
+                != std::string::npos;
+    }
+
+    [[nodiscard]] bool isHeaderDeprecated(const std::string &headerFilename) const
+    {
+        static const std::string deprecatedSuffix("_deprecated.h");
+        return headerFilename.find(deprecatedSuffix,
+                                   headerFilename.size() - deprecatedSuffix.size())
                 != std::string::npos;
     }
 
@@ -1500,14 +1645,17 @@ public:
                 != m_commandLineArgs->generatedHeaders().end();
     }
 
-    [[nodiscard]] bool generateQtCamelCaseFileIfContentChanged(const std::string &outputFilePath,
-                                                               const std::string &aliasedFilePath);
+    [[nodiscard]] bool generateForwardingHeader(const std::string &outputFilePath,
+                                                const std::string &aliasedFilePath,
+                                                bool useIncludeNext = false);
 
     [[nodiscard]] bool generateAliasedHeaderFileIfTimestampChanged(
             const std::string &outputFilePath, const std::string &aliasedFilePath,
             const FileStamp &originalStamp = FileStamp::clock::now());
 
-    bool writeIfDifferent(const std::string &outputFile, const std::string &buffer);
+    [[nodiscard]] bool generateModuleMapFile();
+
+    bool writeIfDifferent(const std::string &outputFile, const std::string &buffer) const;
 
     [[nodiscard]] bool generateMasterHeader()
     {
@@ -1526,15 +1674,18 @@ public:
         for (const auto &headerContents : m_masterHeaderContents) {
             if (!headerContents.second.empty()) {
                 buffer << "#if QT_CONFIG(" << headerContents.second << ")\n"
-                       << "#include \"" << headerContents.first << "\"\n"
+                       << "#include <" << m_commandLineArgs->moduleName() << "/"
+                       << headerContents.first << ">\n"
                        << "#endif\n";
             } else {
-                buffer << "#include \"" << headerContents.first << "\"\n";
+                buffer << "#include <" << m_commandLineArgs->moduleName() << "/"
+                       << headerContents.first << ">\n";
             }
         }
         buffer << "#endif\n";
 
         m_producedHeaders.insert(m_commandLineArgs->moduleName());
+        m_moduleMapContents.insert({outputFile, {}});
         return writeIfDifferent(outputFile, buffer.str());
     }
 
@@ -1558,7 +1709,7 @@ public:
     [[nodiscard]] bool generateDeprecatedHeaders()
     {
         static std::regex cIdentifierSymbolsRegex("[^a-zA-Z0-9_]");
-        static std::string guard_base = "DEPRECATED_HEADER_" + m_commandLineArgs->moduleName();
+        const std::string guard_base = "DEPRECATED_HEADER_" + m_commandLineArgs->moduleName();
         bool result = true;
         for (auto it = m_deprecatedHeaders.begin(); it != m_deprecatedHeaders.end(); ++it) {
             const std::string &descriptor = it->first;
@@ -1663,7 +1814,7 @@ public:
 void SyncScanner::updateSymbolDescriptor(const std::string &symbol, const std::string &file,
                                          SymbolDescriptor::SourceType type)
 {
-    if (m_commandLineArgs->showOnly())
+    if (m_commandLineArgs->showOnly() || m_commandLineArgs->debug())
         std::cout << "    SYMBOL: " << symbol << std::endl;
     m_symbols[symbol].update(file, type);
 }
@@ -1712,20 +1863,37 @@ bool SyncScanner::updateOrCopy(const std::filesystem::path &src,
     return true;
 }
 
-// The function generates Qt CaMeL-case files.
-// CaMeL-case files can have timestamp that is the same as or newer than timestamp of file that
-// supposed to included there. It's not an issue when we generate regular aliases because the
-// content of aliases is always the same, but we only want to "touch" them when content of original
-// is changed.
-bool SyncScanner::generateQtCamelCaseFileIfContentChanged(const std::string &outputFilePath,
-                                                          const std::string &aliasedFilePath)
+// The function generates a forwarding header at outputFilePath that includes aliasedFilePath
+// from the current module (that is, <Module/aliasedFilePath>).
+//
+// With useIncludeNext the forwarder uses #include_next instead of a plain #include. This is
+// needed when the forwarder itself is found under the same spelling as it forwards to,
+// as is the case for the lowercase framework forwarders that re-expose a framework's own
+// headers via a plain include path: a plain #include would resolve back to the forwarder
+// itself and recurse, whereas #include_next continues the include search past the forwarder
+// into the framework.
+bool SyncScanner::generateForwardingHeader(const std::string &outputFilePath,
+                                           const std::string &aliasedFilePath,
+                                           bool useIncludeNext)
 {
     if (m_commandLineArgs->showOnly())
         return true;
 
-    std::string buffer = "#include \"";
+    // Safety check: aliasedFilePath should not be empty
+    if (aliasedFilePath.empty()) {
+        std::cerr << "ERROR: Empty aliasedFilePath for " << outputFilePath << std::endl;
+        return false;
+    }
+
+    std::string buffer;
+    if (useIncludeNext)
+        buffer += "#include_next <";
+    else
+        buffer += "#include <";
+
+    buffer += m_commandLineArgs->moduleName() + "/";
     buffer += aliasedFilePath;
-    buffer += "\" // IWYU pragma: export\n";
+    buffer += "> // IWYU pragma: export\n";
 
     return writeIfDifferent(outputFilePath, buffer);
 }
@@ -1740,6 +1908,17 @@ bool SyncScanner::generateAliasedHeaderFileIfTimestampChanged(const std::string 
     if (m_commandLineArgs->showOnly())
         return true;
 
+    std::filesystem::path aliased(aliasedFilePath);
+    std::filesystem::path includeDir(m_commandLineArgs->includeDir());
+
+    // Check if paths have the same root (drive on Windows).
+    // If they don't, the alias cannot be inside includeDir, so use absolute path.
+    bool sameRoot = !aliased.is_absolute() || includeDir.root_name() == aliased.root_name();
+
+    auto relativePath = sameRoot ? std::filesystem::relative(aliased, includeDir).generic_string()
+                                 : std::string();
+    bool aliasIsInsideIncludeDir = sameRoot && relativePath.find("../") != 0;
+
     if (std::filesystem::exists({ outputFilePath })
         && std::filesystem::last_write_time({ outputFilePath }) >= originalStamp) {
         return true;
@@ -1752,12 +1931,72 @@ bool SyncScanner::generateAliasedHeaderFileIfTimestampChanged(const std::string 
         std::cerr << "Unable to write header file alias: " << outputFilePath << std::endl;
         return false;
     }
-    ofs << "#include \"" << aliasedFilePath << "\" // IWYU pragma: export\n";
+
+    ofs << "#include ";
+    if (aliasIsInsideIncludeDir)
+        ofs << "<" << m_commandLineArgs->moduleName() + "/" << relativePath << ">";
+    else
+        ofs << "\"" << aliasedFilePath << "\"";
+    ofs << " // IWYU pragma: export\n";
     ofs.close();
     return true;
 }
 
-bool SyncScanner::writeIfDifferent(const std::string &outputFile, const std::string &buffer)
+bool SyncScanner::generateModuleMapFile()
+{
+    std::string content;
+    for (const auto& [header, aliasHeader] : m_moduleMapContents) {
+        auto relativePath = std::filesystem::relative(header, m_commandLineArgs->includeDir());
+        const auto &nonCamelCaseHeader = aliasHeader.empty() ? header : aliasHeader;
+        resetCurrentFileInfoData(nonCamelCaseHeader);
+        const bool isPrivate = m_currentFileType & PrivateHeader;
+        const bool isDeprecated =
+                m_deprecatedHeaders.find(nonCamelCaseHeader) != m_deprecatedHeaders.end()
+                || isHeaderDeprecated(nonCamelCaseHeader);
+
+        content += "    ";
+        if (isPrivate || isDeprecated)
+            content += "exclude ";
+        if (isHeaderImpl(header))
+            content += "textual ";
+
+        content += "header \"";
+        content += relativePath.string();
+        content += "\"\n";
+    }
+
+    std::filesystem::path moduleMapsTemplatePath =
+            m_commandLineArgs->binaryDir() + "/" +
+            m_commandLineArgs->moduleName() + "." + "module.modulemap.in";
+    if (!std::filesystem::exists(moduleMapsTemplatePath)) {
+        std::cerr << "Unable to read the modulemaps template file: " << moduleMapsTemplatePath
+            << std::endl;
+        return false;
+    }
+
+    std::ifstream input(moduleMapsTemplatePath, std::ifstream::in);
+    if (!input.is_open()) {
+        std::cerr << "Unable to open " << moduleMapsTemplatePath << std::endl;
+        return false;
+    }
+
+    std::string output;
+    std::string tmpLine;
+    while (std::getline(input, tmpLine)) {
+        if (tmpLine == "@SYNCQT_GENERATED_HEADER_LIST@") {
+            output += content;
+        } else {
+            output += tmpLine;
+            output += "\n";
+        }
+    }
+
+    std::string moduleMapsPath = m_commandLineArgs->moduleMapFile();
+    return writeIfDifferent(moduleMapsPath, output);
+}
+
+
+bool SyncScanner::writeIfDifferent(const std::string &outputFile, const std::string &buffer) const
 {
     if (m_commandLineArgs->showOnly())
         return true;

@@ -6,7 +6,7 @@
  * Lossless JPEG Modifications:
  * Copyright (C) 1999, Ken Murchison.
  * libjpeg-turbo Modifications:
- * Copyright (C) 2016, 2022, 2024, D. R. Commander.
+ * Copyright (C) 2016, 2022, 2024-2025, D. R. Commander.
  * For conditions of distribution and use, see the accompanying README.ijg
  * file.
  *
@@ -25,6 +25,9 @@
 #include "jinclude.h"
 #include "jpeglib.h"
 #include "jdmaster.h"
+#ifdef WITH_SIMD
+#include "../simd/jsimdconst.h"
+#endif
 
 
 /*
@@ -96,6 +99,10 @@ jpeg_CreateDecompress(j_decompress_ptr cinfo, int version, size_t structsize)
     (*cinfo->mem->alloc_small) ((j_common_ptr)cinfo, JPOOL_PERMANENT,
                                 sizeof(my_decomp_master));
   memset(cinfo->master, 0, sizeof(my_decomp_master));
+#ifdef WITH_SIMD
+  cinfo->master->simd_support = JSIMD_UNDEFINED;
+  cinfo->master->simd_huffman = 1;
+#endif
 }
 
 
@@ -161,17 +168,21 @@ default_decompress_parms(j_decompress_ptr cinfo)
       int cid2 = cinfo->comp_info[2].component_id;
 
       if (cid0 == 1 && cid1 == 2 && cid2 == 3) {
+#ifdef D_LOSSLESS_SUPPORTED
         if (cinfo->master->lossless)
           cinfo->jpeg_color_space = JCS_RGB; /* assume RGB w/out marker */
         else
+#endif
           cinfo->jpeg_color_space = JCS_YCbCr; /* assume JFIF w/out marker */
       } else if (cid0 == 82 && cid1 == 71 && cid2 == 66)
         cinfo->jpeg_color_space = JCS_RGB; /* ASCII 'R', 'G', 'B' */
       else {
         TRACEMS3(cinfo, 1, JTRC_UNKNOWN_IDS, cid0, cid1, cid2);
+#ifdef D_LOSSLESS_SUPPORTED
         if (cinfo->master->lossless)
           cinfo->jpeg_color_space = JCS_RGB; /* assume it's RGB */
         else
+#endif
           cinfo->jpeg_color_space = JCS_YCbCr; /* assume it's YCbCr */
       }
     }

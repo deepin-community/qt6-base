@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcssutil_p.h"
 #include "private/qcssparser_p.h"
@@ -21,7 +22,7 @@ static QPen qPenFromStyle(const QBrush& b, qreal width, BorderStyle s)
         ps  = Qt::DotLine;
         break;
     case BorderStyle_Dashed:
-        ps = width == 1 ? Qt::DotLine : Qt::DashLine;
+        ps = Qt::DashLine;
         break;
     case BorderStyle_DotDash:
         ps = Qt::DashDotLine;

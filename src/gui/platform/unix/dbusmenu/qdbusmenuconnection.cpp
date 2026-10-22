@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtGui/qtgui-config.h>
 
@@ -20,8 +21,6 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
-
-Q_DECLARE_LOGGING_CATEGORY(qLcMenu)
 
 const QString StatusNotifierWatcherService = "org.kde.StatusNotifierWatcher"_L1;
 const QString StatusNotifierWatcherPath = "/StatusNotifierWatcher"_L1;

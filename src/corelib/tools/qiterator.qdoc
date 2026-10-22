@@ -8,9 +8,12 @@
     \brief Iterator over the key/value pairs of an associative container.
 
     The QKeyValueIterator class provides an STL-style iterator for returning
-    key/value pairs from associative containers like QHash and QMap. It
-    supports the same API as the STL associative containers, i.e. getting a
-    key/value pair when iterating through the container.
+    key/value pairs from associative containers like QHash and QMap. The
+    template parameter \a Key specifies the key type, \a T specifies the value
+    type, \a Iterator is the underlying iterator type, and \a Traits specifies
+    the iterator traits. It supports the same API as the STL associative
+    containers, i.e. getting a key/value pair when iterating through the
+    container.
 
     This will allow for better interoperability between QMap, QHash and friends
     and STL-style algorithms.
@@ -41,22 +44,22 @@
     \internal
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> QKeyValueIterator<Key, T, Iterator>::QKeyValueIterator()
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> QKeyValueIterator<Key, T, Iterator, Traits>::QKeyValueIterator()
 
     Constructs a default QKeyValueIterator.
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> QKeyValueIterator<Key, T, Iterator>::QKeyValueIterator(Iterator o)
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> QKeyValueIterator<Key, T, Iterator, Traits>::QKeyValueIterator(Iterator o)
 
     Constructs a QKeyValueIterator on top of \a o.
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> std::pair<Key, T> QKeyValueIterator<Key, T, Iterator>::operator*() const
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> std::pair<Key, T> QKeyValueIterator<Key, T, Iterator, Traits>::operator*() const
 
     Returns the current entry as a pair.
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> pointer QKeyValueIterator<Key, T, Iterator>::operator->() const
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> pointer QKeyValueIterator<Key, T, Iterator,Traits>::operator->() const
 
     Returns the current entry as a pointer-like object to the pair.
 
@@ -65,7 +68,7 @@
     \sa operator*()
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> bool QKeyValueIterator<Key, T, Iterator>::operator==(QKeyValueIterator<Key, T, Iterator> lhs, QKeyValueIterator<Key, T, Iterator> rhs)
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> bool QKeyValueIterator<Key, T, Iterator, Traits>::operator==(QKeyValueIterator<Key, T, Iterator, Traits> lhs, QKeyValueIterator<Key, T, Iterator, Traits> rhs)
 
     Returns \c true if \a rhs points to the same item as \a lhs otherwise returns
     \c false.
@@ -73,7 +76,7 @@
     \sa operator!=()
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> bool QKeyValueIterator<Key, T, Iterator>::operator!=(QKeyValueIterator<Key, T, Iterator> lhs, QKeyValueIterator<Key, T, Iterator> rhs)
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> bool QKeyValueIterator<Key, T, Iterator, Traits>::operator!=(QKeyValueIterator<Key, T, Iterator, Traits> lhs, QKeyValueIterator<Key, T, Iterator, Traits> rhs)
 
     Returns \c true if \a rhs points to a different item than \a lhs otherwise
     returns \c false.
@@ -82,63 +85,65 @@
 */
 
 /*!
-    \fn template<typename Key, typename T, class Iterator> QKeyValueIterator &QKeyValueIterator<Key, T, Iterator>::operator++()
+    \fn template<typename Key, typename T, class Iterator, class Traits> QKeyValueIterator &QKeyValueIterator<Key, T, Iterator, Traits>::operator++()
 
     The prefix \c{++} operator (\c{++i}) advances the iterator to the
     next item in the container and returns the iterator.
 
-    \note Advancing the iterator past its container's end() constitutes
+    \note Advancing the iterator past its container's \l{iterator-end}{end()} constitutes
     undefined behavior.
 
     \sa operator--()
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> QKeyValueIterator QKeyValueIterator<Key, T, Iterator>::operator++(int)
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> QKeyValueIterator QKeyValueIterator<Key, T, Iterator, Traits>::operator++(int)
 
     \overload
 
     The postfix \c{++} operator (\c{i++}) advances the iterator to the
     next item in the container and returns the iterator's prior value.
 
-    \note Advancing the iterator past its container's end() constitutes
+    \note Advancing the iterator past its container's \l{iterator-end}{end()} constitutes
     undefined behavior.
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> QKeyValueIterator &QKeyValueIterator<Key, T, Iterator>::operator--()
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> QKeyValueIterator &QKeyValueIterator<Key, T, Iterator, Traits>::operator--()
 
     The prefix c{--} operator (\c{--i}) backs the iterator up to the previous item
     in the container and returns the iterator.
 
-    \note Backing up an iterator to before its container's begin() constitutes
+    \note Backing up an iterator to before its container's \l{iterator-begin}{begin()} constitutes
     undefined behavior.
 
     \sa operator++()
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> QKeyValueIterator QKeyValueIterator<Key, T, Iterator>::operator--(int)
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> QKeyValueIterator QKeyValueIterator<Key, T, Iterator, Traits>::operator--(int)
 
     \overload
 
     The postfix c{--} operator (\c{i--}) backs the iterator up to the previous item
     in the container and returns the iterator's prior value.
 
-    \note Backing up an iterator to before its container's begin() constitutes
+    \note Backing up an iterator to before its container's \l{iterator-begin}{begin()} constitutes
     undefined behavior.
 */
 
-/*! \fn template<typename Key, typename T, class Iterator> Iterator QKeyValueIterator<Key, T, Iterator>::base() const
+/*! \fn template<typename Key, typename T, class Iterator, class Traits> Iterator QKeyValueIterator<Key, T, Iterator, Traits>::base() const
     Returns the underlying iterator this QKeyValueIterator is based on.
 */
 
 /*!
     \class QListIterator
     \inmodule QtCore
+    \ingroup java-style-iterators
 
     \brief The QListIterator class provides a Java-style const iterator for QList and QQueue.
 
     QList has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a T specifies the type of
+    the items stored in the list.
 
     An alternative to using iterators is to use index positions. Most
     QList member functions take an index as their first parameter,
@@ -165,7 +170,7 @@
     position between the second and third item, and returns the second
     item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     Here's how to iterate over the elements in reverse order:
 
@@ -185,11 +190,13 @@
 /*!
     \class QSetIterator
     \inmodule QtCore
+    \ingroup java-style-iterators
     \brief The QSetIterator class provides a Java-style const iterator for QSet.
 
     QSet has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a T specifies the type of
+    the items stored in the set.
 
     QSetIterator\<T\> allows you to iterate over a QSet\<T\>. If you
     want to modify the set as you iterate over it, use
@@ -211,7 +218,7 @@
     position between the second and third item, returning the second
     item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     If you want to find all occurrences of a particular value, use
     findNext() in a loop.
@@ -232,7 +239,8 @@
 
     QList has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a T specifies the type of
+    the items stored in the list.
 
     An alternative to using iterators is to use index positions. Most
     QList member functions take an index as their first parameter,
@@ -260,7 +268,7 @@
     position between the second and third item, returning the second
     item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     Here's how to iterate over the elements in reverse order:
 
@@ -292,13 +300,15 @@
 /*!
     \class QMutableSetIterator
     \inmodule QtCore
+    \ingroup java-style-iterators
     \since 4.2
 
     \brief The QMutableSetIterator class provides a Java-style non-const iterator for QSet.
 
     QSet has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a T specifies the type of
+    the items stored in the set.
 
     QMutableSetIterator\<T\> allows you to iterate over a QSet\<T\>
     and remove items from the set as you iterate. If you don't want
@@ -321,7 +331,7 @@
     position between the second and third item, returning the second
     item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     If you want to remove items as you iterate over the set, use
     remove().
@@ -689,12 +699,14 @@
 /*!
     \class QMapIterator
     \inmodule QtCore
+    \ingroup java-style-iterators
 
     \brief The QMapIterator class provides a Java-style const iterator for QMap.
 
     QMap has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a Key specifies the map's
+    key type, and \a T specifies the value type.
 
     QMapIterator\<Key, T\> allows you to iterate over a QMap.
     If you want to modify the map as you iterate over
@@ -718,7 +730,7 @@
     next() advances the iterator to the position between the second
     and third item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     Here's how to iterate over the elements in reverse order:
 
@@ -740,11 +752,13 @@
 /*!
     \class QMultiMapIterator
     \inmodule QtCore
+    \ingroup java-style-iterators
 
     \brief The QMultiMapIterator class provides a Java-style const iterator for QMultiMap.
     QMultiMap has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a Key specifies the map's
+    key type, and \a T specifies the value type.
 
     QMultiMapIterator\<Key, T\> allows you to iterate over a QMultiMap.
     If you want to modify the map as you iterate over
@@ -768,7 +782,7 @@
     next() advances the iterator to the position between the second
     and third item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     Here's how to iterate over the elements in reverse order:
 
@@ -790,12 +804,14 @@
 /*!
     \class QHashIterator
     \inmodule QtCore
+    \ingroup java-style-iterators
 
     \brief The QHashIterator class provides a Java-style const iterator for QHash and QMultiHash.
 
     QHash has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a Key specifies the hash's
+    key type, and \a T specifies the value type.
 
     QHashIterator\<Key, T\> allows you to iterate over a QHash (or a
     QMultiHash). If you want to modify the hash as you iterate over
@@ -819,7 +835,7 @@
     next() advances the iterator to the position between the second
     and third item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     If you want to find all occurrences of a particular value, use
     findNext() in a loop. For example:
@@ -837,12 +853,14 @@
 /*!
     \class QMutableMapIterator
     \inmodule QtCore
+    \ingroup java-style-iterators
 
     \brief The QMutableMapIterator class provides a Java-style non-const iterator for QMap.
 
     QMap has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a Key specifies the map's
+    key type, and \a T specifies the value type.
 
     QMutableMapIterator\<Key, T\> allows you to iterate over a QMap
     and modify the map. If you don't want to modify
@@ -867,7 +885,7 @@
     next() advances the iterator to the position between the second
     and third item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     Here's how to iterate over the elements in reverse order:
 
@@ -906,7 +924,8 @@
 
     QMultiMap has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a Key specifies the map's
+    key type, and \a T specifies the value type.
 
     QMutableMultiMapIterator\<Key, T\> allows you to iterate over a QMultiMap
     and modify the map. If you don't want to modify
@@ -931,7 +950,7 @@
     next() advances the iterator to the position between the second
     and third item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     Here's how to iterate over the elements in reverse order:
 
@@ -965,12 +984,14 @@
 /*!
     \class QMutableHashIterator
     \inmodule QtCore
+    \ingroup java-style-iterators
 
     \brief The QMutableHashIterator class provides a Java-style non-const iterator for QHash and QMultiHash.
 
     QHash has both \l{Java-style iterators} and \l{STL-style
     iterators}. STL-style iterators are more efficient and should
-    be preferred.
+    be preferred. The template parameter \a Key specifies the hash's
+    key type, and \a T specifies the value type.
 
     QMutableHashIterator\<Key, T\> allows you to iterate over a QHash
     and modify the hash. If you don't want to modify the hash (or have
@@ -994,7 +1015,7 @@
     next() advances the iterator to the position between the second
     and third item; and so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between items A, B, C, D}
 
     If you want to find all occurrences of a particular value, use
     findNext() in a loop. For example:
@@ -1188,7 +1209,7 @@
     \sa hasNext(), next(), peekPrevious()
 */
 
-/*! \fn template <class Key, class T> QMutableMapIterator<Key, T>::Item QMutableMapIterator<Key, T>::peekNext() const
+/*!
     \fn template <class Key, class T> QMutableMultiMapIterator<Key, T>::Item QMutableMultiMapIterator<Key, T>::peekNext() const
 
     Returns a reference to the next item without moving the iterator.

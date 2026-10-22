@@ -1,12 +1,13 @@
 // Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcoreapplication.h"
 #include "qcoreapplication_p.h"
 #include "qstringlist.h"
+#include "qdir.h"
 #include "qfileinfo.h"
-#include "qcorecmdlineargs_p.h"
 #ifndef QT_NO_QOBJECT
 #include "qmutex.h"
 #include <private/qthread_p.h>
@@ -21,6 +22,9 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
+// By default, we get the path to the host .exe. ActiveQt can override this
+// with the component's DLL.
+Q_CONSTINIT void *QCoreApplicationPrivate::mainInstanceHandle = nullptr;
 QString qAppFileName()                // get application file name
 {
     /*
@@ -46,10 +50,14 @@ QString qAppFileName()                // get application file name
     do {
         size += MAX_PATH;
         space.resize(int(size));
-        v = GetModuleFileName(NULL, space.data(), DWORD(space.size()));
+        auto hInstance = reinterpret_cast<HINSTANCE>(QCoreApplicationPrivate::mainInstanceHandle);
+        v = GetModuleFileName(hInstance, space.data(), DWORD(space.size()));
     } while (Q_UNLIKELY(v >= size));
 
-    return QString::fromWCharArray(space.data(), v);
+    // QCoreApplication::applicationFilePath() expects a canonical path with
+    // Qt-style separators
+    QStringView nativePath(space.data(), v);
+    return QDir::fromNativeSeparators(nativePath.toString());
 }
 
 QString QCoreApplicationPrivate::appName() const
@@ -171,7 +179,7 @@ static const char *findWMstr(uint msg)
  { 0x0014, "WM_ERASEBKGND" },
  { 0x0015, "WM_SYSCOLORCHANGE" },
  { 0x0018, "WM_SHOWWINDOW" },
- { 0x001A, "WM_WININICHANGE" },
+ { 0x001A, "WM_SETTINGCHANGE" },
  { 0x001B, "WM_DEVMODECHANGE" },
  { 0x001C, "WM_ACTIVATEAPP" },
  { 0x001D, "WM_FONTCHANGE" },
@@ -403,6 +411,7 @@ static const char *findWMstr(uint msg)
  { 0x0317, "WM_PRINT" },
  { 0x0318, "WM_PRINTCLIENT" },
  { 0x0319, "WM_APPCOMMAND" },
+ { 0x0320, "WM_DWMCOLORIZATIONCOLORCHANGED" },
  { 0x031A, "WM_THEMECHANGED" },
  { 0x0358, "WM_HANDHELDFIRST" },
  { 0x0359, "WM_HANDHELDFIRST + 1" },
@@ -610,7 +619,13 @@ static const char *sessionMgrLogOffOption(uint p)
 
 // Returns a "human readable" string representation of the MSG and the
 // information it points to
+#if QT_DEPRECATED_SINCE(6, 12)
 QString decodeMSG(const MSG& msg)
+{
+    return qt_decodeMSG(msg);
+}
+#endif
+QString qt_decodeMSG(const MSG& msg)
 {
     const WPARAM wParam = msg.wParam;
     const LPARAM lParam = msg.lParam;
@@ -797,6 +812,10 @@ QString decodeMSG(const MSG& msg)
             if (const char *logoffOption = sessionMgrLogOffOption(uint(wParam)))
                 parameters += QLatin1StringView(logoffOption);
             break;
+        case WM_SETTINGCHANGE:
+            parameters = "wParam"_L1 + wParamS + " lParam("_L1
+                + QString::fromWCharArray(reinterpret_cast<LPCWSTR>(lParam)) + u')';
+            break;
         default:
             parameters = "wParam"_L1 + wParamS + " lParam"_L1 + lParamS;
             break;
@@ -810,7 +829,7 @@ QDebug operator<<(QDebug dbg, const MSG &msg)
     QDebugStateSaver saver(dbg);
     dbg.noquote();
     dbg.nospace();
-    dbg << decodeMSG(msg);
+    dbg << qt_decodeMSG(msg);
     return dbg;
 }
 #endif
@@ -840,5 +859,50 @@ void QCoreApplicationPrivate::removePostedTimerEvent(QObject *object, int timerI
     }
 }
 #endif // QT_NO_QOBJECT
+
+static bool hasValidStdOutHandle()
+{
+    const HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    return h != NULL && h != INVALID_HANDLE_VALUE;
+}
+
+void QCoreApplicationPrivate::initDebuggingConsole()
+{
+    if (hasValidStdOutHandle())
+        return;
+    const QString env = qEnvironmentVariable("QT_WIN_DEBUG_CONSOLE");
+    if (env.isEmpty())
+        return;
+    if (env.compare(u"new"_s, Qt::CaseInsensitive) == 0) {
+        if (AllocConsole() == FALSE)
+            return;
+        consoleAllocated = true;
+    } else if (env.compare(u"attach"_s, Qt::CaseInsensitive) == 0) {
+        // If the calling process is already attached to a console,
+        // the error code returned is ERROR_ACCESS_DENIED.
+        if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::GetLastError() != ERROR_ACCESS_DENIED)
+            return;
+    } else {
+        // Unknown input, don't make any decision for the user.
+        return;
+    }
+    // The std{in,out,err} handles are read-only, so we need to pass in dummies.
+    FILE *in = nullptr;
+    FILE *out = nullptr;
+    FILE *err = nullptr;
+    freopen_s(&in, "CONIN$", "r", stdin);
+    freopen_s(&out, "CONOUT$", "w", stdout);
+    freopen_s(&err, "CONOUT$", "w", stderr);
+    // However, things wouldn't work if the runtime did not preserve the pointers.
+    Q_ASSERT(in == stdin);
+    Q_ASSERT(out == stdout);
+    Q_ASSERT(err == stderr);
+}
+
+void QCoreApplicationPrivate::cleanupDebuggingConsole()
+{
+    if (consoleAllocated)
+        FreeConsole();
+}
 
 QT_END_NAMESPACE

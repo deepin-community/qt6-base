@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -21,6 +22,8 @@
 #include <QtGui/private/qguiapplication_p.h>
 #include <private/qcoregraphics_p.h>
 #include <qpa/qwindowsysteminterface.h>
+
+#include <Metal/Metal.h>
 
 #include <sys/sysctl.h>
 
@@ -129,13 +132,26 @@ static QString deviceModelIdentifier()
     size_t size;
     sysctlbyname(key, NULL, &size, NULL, 0);
 
-    char value[size];
-    sysctlbyname(key, &value, &size, NULL, 0);
+    QVarLengthArray<char> value(size);
+    sysctlbyname(key, value.data(), &size, NULL, 0);
 
-    return QString::fromLatin1(QByteArrayView(value, qsizetype(size)));
+    return QString::fromLatin1(QByteArrayView(value.constData(), qsizetype(size)));
 #endif
 }
 #endif // !defined(Q_OS_VISIONOS)
+
+
+void QIOSScreen::initializeScreens()
+{
+#if defined(Q_OS_VISIONOS)
+    // Qt requires a screen, so let's give it a dummy one
+    QWindowSystemInterface::handleScreenAdded(new QIOSScreen);
+#else
+    Q_ASSERT([UIScreen.screens containsObject:UIScreen.mainScreen]);
+    for (UIScreen *screen in UIScreen.screens)
+        QWindowSystemInterface::handleScreenAdded(new QIOSScreen(screen));
+#endif
+}
 
 #if defined(Q_OS_VISIONOS)
 QIOSScreen::QIOSScreen()
@@ -179,6 +195,36 @@ QIOSScreen::QIOSScreen(UIScreen *screen)
     m_displayLink = [m_uiScreen displayLinkWithBlock:^(CADisplayLink *) { deliverUpdateRequests(); }];
     m_displayLink.paused = YES; // Enabled when clients call QWindow::requestUpdate()
     [m_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
+
+
+    // The screen brightness might affect the EDR headroom of the display,
+    // which might affect the rendering of windows that opt in to EDR.
+    m_screenBrightnessObserver = QMacNotificationObserver(m_uiScreen,
+        UIScreenBrightnessDidChangeNotification, [&]() {
+            for (auto *window : QPlatformScreen::windows()) {
+                auto *platformWindow = static_cast<QIOSWindow*>(window->handle());
+                if (!platformWindow)
+                    continue;
+
+                UIView *view = platformWindow->view();
+
+                if (!view.layer.wantsExtendedDynamicRangeContent)
+                    continue;
+
+                [view setNeedsDisplay];
+            }
+        });
+
+    if (shouldPauseDisplayLinkWhenInactive()) {
+        // We're pausing the display link if the application moves out of the active state,
+        // so make sure to deliver to any windows that need it once the app becomes active.
+        QObject::connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](auto newState) {
+            if (newState == Qt::ApplicationActive) {
+                qCDebug(lcQpaApplication) << "Attempting update request delivery after becoming active";
+                deliverUpdateRequests();
+            }
+        });
+    }
 
 #endif // !defined(Q_OS_VISIONOS))
 
@@ -264,6 +310,18 @@ void QIOSScreen::setUpdatesPaused(bool paused)
 void QIOSScreen::deliverUpdateRequests() const
 {
     bool pauseUpdates = true;
+
+    if (shouldPauseDisplayLinkWhenInactive()
+        && QGuiApplication::applicationState() != Qt::ApplicationActive) {
+        // The applicationWillResignActive documentation describes that the app
+        // should "use this method to pause ongoing tasks, disable timers, and
+        // throttle down OpenGL ES frame rates", so we skip update request
+        // delivery if the app is not active. Once it becomes active again
+        // we re-try the update request delivery (see QIOSScreen constructor).
+        qCDebug(lcQpaApplication) << "Skipping update request delivery and pausing display link";
+        m_displayLink.paused = true;
+        return;
+    }
 
     QList<QWindow*> windows = QGuiApplication::allWindows();
     for (int i = 0; i < windows.size(); ++i) {
@@ -367,8 +425,32 @@ Qt::ScreenOrientation QIOSScreen::orientation() const
     // even if the orientation of the UI was locked to a subset
     // of the possible orientations via the app's Info.plist or
     // via [UIViewController supportedInterfaceOrientations].
-    return m_geometry.width() >= m_geometry.height() ?
-        Qt::LandscapeOrientation : Qt::PortraitOrientation;
+    auto *windowScene = rootViewForScreen(this).window.windowScene;
+    auto interfaceOrientation = windowScene ?
+        windowScene.interfaceOrientation : UIInterfaceOrientationUnknown;
+
+    // FIXME: On visionOS the interface orientation is reported
+    // as portrait, which seems strange, but at least it matches
+    // what we report as the native orientation.
+
+    switch (interfaceOrientation) {
+    case UIInterfaceOrientationPortrait:
+        return Qt::PortraitOrientation;
+    case UIInterfaceOrientationPortraitUpsideDown:
+        return Qt::InvertedPortraitOrientation;
+    case UIInterfaceOrientationLandscapeLeft:
+        return Qt::LandscapeOrientation;
+    case UIInterfaceOrientationLandscapeRight:
+        return Qt::InvertedLandscapeOrientation;
+    case UIInterfaceOrientationUnknown:
+    default:
+        // Fall back to the primary orientation, but with a concrete
+        // orientation instead of Qt::PrimaryOrientation, as when we
+        // report orientation changes the primary orientation has not
+        // been updated yet, so user's can't query it in response.
+        return m_geometry.width() >= m_geometry.height() ?
+            Qt::LandscapeOrientation : Qt::PortraitOrientation;
+    }
 }
 
 QPixmap QIOSScreen::grabWindow(WId window, int x, int y, int width, int height) const
@@ -387,21 +469,54 @@ QPixmap QIOSScreen::grabWindow(WId window, int x, int y, int width, int height) 
     CGRect captureRect = [view.window convertRect:CGRectMake(x, y, width, height) fromView:view];
     captureRect = CGRectIntersection(captureRect, view.window.bounds);
 
-    UIGraphicsBeginImageContextWithOptions(captureRect.size, NO, 0.0);
-    CGContextRef context = UIGraphicsGetCurrentContext();
-    CGContextTranslateCTM(context, -captureRect.origin.x, -captureRect.origin.y);
+    QMacAutoReleasePool autoReleasePool;
 
-    // Draws the complete view hierarchy of view.window into the given rect, which
-    // needs to be the same aspect ratio as the view.window's size. Since we've
-    // translated the graphics context, and are potentially drawing into a smaller
-    // context than the full window, the resulting image will be a subsection of the
-    // full screen.
-    [view.window drawViewHierarchyInRect:view.window.bounds afterScreenUpdates:NO];
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.opaque = NO;
+    format.scale = devicePixelRatio();
+    // Could be adjusted to support HDR in the future.
+    format.preferredRange = UIGraphicsImageRendererFormatRangeStandard;
 
-    UIImage *screenshot = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+    UIGraphicsImageRenderer *renderer = [[[UIGraphicsImageRenderer alloc]
+        initWithSize:captureRect.size format:format]
+        autorelease];
+
+    UIImage *screenshot = [renderer imageWithActions:^(UIGraphicsImageRendererContext *rendererContext) {
+        CGContextRef context = rendererContext.CGContext;
+        CGContextTranslateCTM(context, -captureRect.origin.x, -captureRect.origin.y);
+
+        // Draws the complete view hierarchy of view.window into the given rect, which
+        // needs to be the same aspect ratio as the view.window's size. Since we've
+        // translated the graphics context, and are potentially drawing into a smaller
+        // context than the full window, the resulting image will be a subsection of the
+        // full screen.
+        //
+        // TODO: Should only be run on the UI thread in the future. At
+        // the time of writing, QScreen::grabWindow doesn't include any
+        // requirements as to which thread it can be called from.
+        [view.window drawViewHierarchyInRect:view.window.bounds afterScreenUpdates:NO];
+    }];
 
     return QPixmap::fromImage(qt_mac_toQImage(screenshot.CGImage));
+}
+
+bool QIOSScreen::shouldPauseDisplayLinkWhenInactive() const
+{
+    // iPad 7 with iOS 18 has been observed to crash during swapBuffers
+    // if the user enters split-view mode and drags the divider around.
+    // This is likely a GL driver issue. To reduce the chance of hitting
+    // this crash we pause the display link when the app is inactive.
+    // We limit it to A10 devices, as the crash has not been observed on
+    // other SoCs. See QTBUG-132314 for more information.
+
+    static const bool isA10GPU = []{
+        auto device = MTLCreateSystemDefaultDevice();
+        return [device.name containsString:@"A10"];
+    }();
+
+    static const bool pauseWhenInactive = qEnvironmentVariableIntegerValue(
+        "QT_IOS_PAUSE_DISPLAY_LINK_WHEN_INACTIVE").value_or(isA10GPU);
+    return pauseWhenInactive;
 }
 
 #if !defined(Q_OS_VISIONOS)

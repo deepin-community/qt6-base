@@ -1,7 +1,5 @@
 TEMPLATE = subdirs
-SUBDIRS = delegate \
-  qconcatenatetablesproxymodel \
-  qheaderview \
+SUBDIRS = qheaderview \
   qtreeview \
   qtreewidget \
   tableview-span-navigation \

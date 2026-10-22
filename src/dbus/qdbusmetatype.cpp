@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdbusmetatype.h"
 #include "qdbusmetatype_p.h"
@@ -87,6 +88,7 @@ void QDBusMetaTypeId::init()
         qDBusRegisterMetaType<QList<qlonglong> >();
         qDBusRegisterMetaType<QList<qulonglong> >();
         qDBusRegisterMetaType<QList<double> >();
+        qDBusRegisterMetaType<QMap<QString, QVariantMap>>();
 
         // plus lists of our own types
         qDBusRegisterMetaType<QList<QDBusVariant> >();
@@ -454,7 +456,7 @@ const char *QDBusMetaType::typeToSignature(QMetaType type)
     {
         QReadLocker locker(&ct->lock);
         auto it = ct->hash.constFind(type.id());
-        if (it == ct->hash.end())
+        if (it == ct->hash.cend())
             return nullptr;
 
         const QDBusCustomTypeInfo &info = *it;

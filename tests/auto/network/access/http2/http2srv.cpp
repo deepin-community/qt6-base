@@ -101,6 +101,11 @@ void Http2Server::setResponseBody(const QByteArray &body)
     responseBody = body;
 }
 
+void Http2Server::enableSendEarlyError(bool enable)
+{
+    sendEarlyError = enable;
+}
+
 void Http2Server::setContentEncoding(const QByteArray &encoding)
 {
     contentEncoding = encoding;
@@ -128,11 +133,18 @@ void Http2Server::setSendTrailingHEADERS(bool enable)
     sendTrailingHEADERS = enable;
 }
 
-void Http2Server::emulateGOAWAY(int timeout)
+void Http2Server::setSendRedundantEndStreamDATA(bool enable)
+{
+    sendRedundantEndStreamDATA = enable;
+}
+
+void Http2Server::emulateGOAWAY(int code, int timeout, bool disconnectAfter)
 {
     Q_ASSERT(timeout >= 0);
     testingGOAWAY = true;
     goawayTimeout = timeout;
+    goawayCode = code;
+    goawayDisconnect = disconnectAfter;
 }
 
 void Http2Server::redirectOpenStream(quint16 port)
@@ -191,6 +203,9 @@ void Http2Server::sendServerSettings()
         writer.append(it.value());
         if (it.key() == Settings::INITIAL_WINDOW_SIZE_ID)
             streamRecvWindowSize = it.value();
+        if (it.key() == Settings::HEADER_TABLE_SIZE_ID) {
+            pendingMaxTableSizeUpdate = it.value();
+        }
     }
     writer.write(*socket);
     // Now, let's update our peer on a session recv window size:
@@ -278,6 +293,14 @@ void Http2Server::sendDATA(quint32 streamID, quint32 windowSize)
             writer.start(FrameType::DATA, FrameFlag::END_STREAM, streamID);
             writer.setPayloadSize(0);
             writer.write(*socket);
+
+            if (sendRedundantEndStreamDATA) {
+                // Emulate a non-conformant server: send a stray empty DATA
+                // frame with END_STREAM on the now-closed stream.
+                writer.start(FrameType::DATA, FrameFlag::END_STREAM, streamID);
+                writer.setPayloadSize(0);
+                writer.write(*socket);
+            }
         }
         suspendedStreams.erase(it);
         activeRequests.erase(streamID);
@@ -312,7 +335,7 @@ void Http2Server::incomingConnection(qintptr socketDescriptor)
     } else {
 #if QT_CONFIG(ssl)
         socket.reset(new QSslSocket);
-        QSslSocket *sslSocket = static_cast<QSslSocket *>(socket.data());
+        QSslSocket *sslSocket = static_cast<QSslSocket *>(socket.get());
 
         if (connectionType == H2Type::h2Alpn) {
             // Add HTTP2 as supported protocol:
@@ -327,12 +350,17 @@ void Http2Server::incomingConnection(qintptr socketDescriptor)
         sslSocket->setProtocol(QSsl::TlsV1_2OrLater);
         connect(sslSocket, SIGNAL(sslErrors(QList<QSslError>)),
                 this, SLOT(ignoreErrorSlot()));
-        QFile file(QT_TESTCASE_SOURCEDIR "/certs/fluke.key");
+#ifdef BUILTIN_TESTDATA
+        const QString certDir = QStringLiteral(":/");
+#else
+        const QString certDir = QStringLiteral(QT_TESTCASE_SOURCEDIR "/");
+#endif
+        QFile file(certDir + "certs/fluke.key");
         if (!file.open(QIODevice::ReadOnly))
             qFatal("Cannot open certificate file %s", qPrintable(file.fileName()));
         QSslKey key(file.readAll(), QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey);
         sslSocket->setPrivateKey(key);
-        auto localCert = QSslCertificate::fromPath(QT_TESTCASE_SOURCEDIR "/certs/fluke.cert");
+        auto localCert = QSslCertificate::fromPath(certDir + "certs/fluke.cert");
         sslSocket->setLocalCertificateChain(localCert);
         sslSocket->setSocketDescriptor(socketDescriptor, QAbstractSocket::ConnectedState);
         // Stop listening.
@@ -383,7 +411,7 @@ bool Http2Server::readMethodLine()
 
 bool Http2Server::verifyProtocolUpgradeRequest()
 {
-    Q_ASSERT(protocolUpgradeHandler.data());
+    Q_ASSERT(protocolUpgradeHandler);
 
     bool connectionOk = false;
     bool upgradeOk = false;
@@ -406,7 +434,9 @@ void Http2Server::triggerGOAWAYEmulation()
     auto timer = new QTimer(this);
     timer->setSingleShot(true);
     connect(timer, &QTimer::timeout, [this]() {
-        sendGOAWAY(quint32(connectionStreamID), quint32(INTERNAL_ERROR), 0);
+        sendGOAWAY(quint32(connectionStreamID), quint32(goawayCode), 0);
+        if (goawayDisconnect)
+            socket->disconnectFromHost();
     });
     timer->start(goawayTimeout);
 }
@@ -422,7 +452,7 @@ void Http2Server::connectionEstablished()
     // and then continue with whatever logic we have (testingGOAWAY or not),
     // otherwise our 'peer' cannot process HTTP/2 frames yet.
 
-    connect(socket.data(), SIGNAL(readyRead()),
+    connect(socket.get(), SIGNAL(readyRead()),
             this, SLOT(readReady()));
 
     waitingClientPreface = true;
@@ -448,7 +478,7 @@ void Http2Server::connectionEstablished()
 void Http2Server::ignoreErrorSlot()
 {
 #ifndef QT_NO_SSL
-    static_cast<QSslSocket *>(socket.data())->ignoreSslErrors();
+    static_cast<QSslSocket *>(socket.get())->ignoreSslErrors();
 #endif
 }
 
@@ -503,7 +533,7 @@ void Http2Server::handleProtocolUpgrade()
     using ReplyPrivate = QHttpNetworkReplyPrivate;
     Q_ASSERT(upgradeProtocol);
 
-    if (!protocolUpgradeHandler.data())
+    if (!protocolUpgradeHandler)
         protocolUpgradeHandler.reset(new Http11Reply);
 
     QHttpNetworkReplyPrivate *firstRequestReader = protocolUpgradeHandler->d_func();
@@ -527,9 +557,9 @@ void Http2Server::handleProtocolUpgrade()
         return;
 
     if (firstRequestReader->state == ReplyPrivate::ReadingHeaderState)
-        firstRequestReader->readHeader(socket.data());
+        firstRequestReader->readHeader(socket.get());
     else if (firstRequestReader->state == ReplyPrivate::ReadingDataState)
-        firstRequestReader->readBodyFast(socket.data(), &firstRequestReader->responseData);
+        firstRequestReader->readBodyFast(socket.get(), &firstRequestReader->responseData);
 
     switch (firstRequestReader->state) {
     case ReplyPrivate::ReadingHeaderState:
@@ -669,6 +699,13 @@ void Http2Server::handleSETTINGS()
             return;
         }
 
+        // The client ACKed our setting, including the new decoder table size,
+        // so we can update it now:
+        if (pendingMaxTableSizeUpdate) {
+            decoder.setMaxDynamicTableSize(*pendingMaxTableSizeUpdate);
+            pendingMaxTableSizeUpdate.reset();
+        }
+
         waitingClientAck = false;
         emit serverSettingsAcked();
         return;
@@ -714,8 +751,12 @@ void Http2Server::handleDATA()
 
     const auto streamID = inboundFrame.streamID();
 
+    // We need to allow this in the `sendEarlyError` case because it mirrors how
+    // we are required to allow some incoming frames in a grace-period after
+    // sending the peer a RST frame. We don't care about the grace period
+    // though.
     if (!is_valid_client_stream(streamID) ||
-        closedStreams.find(streamID) != closedStreams.end()) {
+        (closedStreams.find(streamID) != closedStreams.end() && !sendEarlyError)) {
         emit invalidFrame();
         connectionError = true;
         sendGOAWAY(connectionStreamID, PROTOCOL_ERROR, connectionStreamID);
@@ -756,6 +797,14 @@ void Http2Server::handleDATA()
 
         sendWINDOW_UPDATE(connectionStreamID, sessionRecvWindowSize / 2);
         sessionCurrRecvWindow += sessionRecvWindowSize / 2;
+    }
+
+    if (sendEarlyError) {
+        if (activeRequests.find(streamID) != activeRequests.end()) {
+            responseBody = "not allowed";
+            sendResponse(streamID, false);
+        }
+        return;
     }
 
     if (inboundFrame.flags().testFlag(FrameFlag::END_STREAM)) {
@@ -894,6 +943,8 @@ void Http2Server::sendResponse(quint32 streamID, bool emptyBody)
         header.push_back(HPack::HeaderField("www-authenticate", authenticationHeader));
     } else if (authenticationRequired) {
         header.push_back({ ":status", "401" });
+    } else if (sendEarlyError) {
+        header.push_back({ ":status", "403" });
     } else {
         header.push_back({":status", "200"});
     }

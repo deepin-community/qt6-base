@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPNETWORKCONNECTIONCHANNEL_H
 #define QHTTPNETWORKCONNECTIONCHANNEL_H
@@ -19,7 +20,6 @@
 #include <QtNetwork/qnetworkrequest.h>
 #include <QtNetwork/qnetworkreply.h>
 #include <QtNetwork/qabstractsocket.h>
-#include <QtNetwork/qlocalsocket.h>
 
 #include <private/qobject_p.h>
 #include <qauthenticator.h>
@@ -40,11 +40,16 @@
 #else
 #   include <QtNetwork/qtcpsocket.h>
 #endif
+#if QT_CONFIG(localserver)
+#   include <QtNetwork/qlocalsocket.h>
+#endif
+
 
 #include <QtCore/qpointer.h>
-#include <QtCore/qscopedpointer.h>
 
 #include <memory>
+#include <optional>
+#include <utility>
 
 QT_REQUIRE_CONFIG(http);
 
@@ -53,12 +58,13 @@ QT_BEGIN_NAMESPACE
 class QHttpNetworkRequest;
 class QHttpNetworkReply;
 class QByteArray;
+class QHttp2ProtocolHandler;
 
 #ifndef HttpMessagePair
-typedef QPair<QHttpNetworkRequest, QHttpNetworkReply*> HttpMessagePair;
+typedef std::pair<QHttpNetworkRequest, QHttpNetworkReply*> HttpMessagePair;
 #endif
 
-class QHttpNetworkConnectionChannel : public QObject {
+class QHttpNetworkConnectionChannel final : public QObject {
     Q_OBJECT
 public:
     // TODO: Refactor this to add an EncryptingState (and remove pendingEncrypt).
@@ -95,17 +101,21 @@ public:
     std::unique_ptr<QAbstractProtocolHandler> protocolHandler;
     QMultiMap<int, HttpMessagePair> h2RequestsToSend;
     bool switchedToHttp2 = false;
+    QHttp2ProtocolHandler *h2ProtocolHandler() const noexcept;
+    bool isPendingReconnect() const noexcept;
+    bool clearPendingReconnect();
+    void requeueHttp2Requests(); // when we wanted HTTP/2 but got HTTP/1.1, or are reconnecting
 #ifndef QT_NO_SSL
     bool ignoreAllSslErrors;
     QList<QSslError> ignoreSslErrorsList;
-    QScopedPointer<QSslConfiguration> sslConfiguration;
+    std::optional<QSslConfiguration> sslConfiguration;
     void ignoreSslErrors();
     void ignoreSslErrors(const QList<QSslError> &errors);
     void setSslConfiguration(const QSslConfiguration &config);
-    void requeueHttp2Requests(); // when we wanted HTTP/2 but got HTTP/1.1
 #endif
     // to emit the signal for all in-flight replies:
     void emitFinishedWithError(QNetworkReply::NetworkError error, const char *message);
+    void emitFinishedWithError(QNetworkReply::NetworkError error, const QString &message);
 
     // HTTP pipelining -> http://en.wikipedia.org/wiki/Http_pipelining
     enum PipeliningSupport {
@@ -137,7 +147,7 @@ public:
     void close();
     void abort();
 
-    bool sendRequest();
+    void sendRequest();
     void sendRequestDelayed();
 
     bool ensureConnection();
@@ -164,7 +174,9 @@ public:
     void _q_readyRead(); // pending data to read
     void _q_disconnected(); // disconnected from host
     void _q_connected_abstract_socket(QAbstractSocket *socket);
+#if QT_CONFIG(localserver)
     void _q_connected_local_socket(QLocalSocket *socket);
+#endif
     void _q_connected(); // start sending request
     void _q_error(QAbstractSocket::SocketError); // error from socket
 #ifndef QT_NO_NETWORKPROXY

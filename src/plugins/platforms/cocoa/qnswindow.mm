@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #if !defined(QNSWINDOW_PROTOCOL_IMPLMENTATION)
 
@@ -13,23 +14,9 @@
 
 #include <qpa/qwindowsysteminterface.h>
 
-Q_LOGGING_CATEGORY(lcQpaEvents, "qt.qpa.events");
+#include <QtGui/private/qhighdpiscaling_p.h>
 
-static bool isMouseEvent(NSEvent *ev)
-{
-    switch ([ev type]) {
-    case NSEventTypeLeftMouseDown:
-    case NSEventTypeLeftMouseUp:
-    case NSEventTypeRightMouseDown:
-    case NSEventTypeRightMouseUp:
-    case NSEventTypeMouseMoved:
-    case NSEventTypeLeftMouseDragged:
-    case NSEventTypeRightMouseDragged:
-        return true;
-    default:
-        return false;
-    }
-}
+Q_STATIC_LOGGING_CATEGORY(lcQpaEvents, "qt.qpa.events");
 
 @implementation NSWindow (FullScreenProperty)
 
@@ -58,6 +45,7 @@ static bool isMouseEvent(NSEvent *ev)
 @end
 
 
+QT_BEGIN_NAMESPACE
 NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
 {
     if ([window conformsToProtocol:@protocol(QNSWindowProtocol)])
@@ -65,6 +53,7 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
     else
         return nil;
 }
+QT_END_NAMESPACE
 
 @implementation QNSWindow
 #define QNSWINDOW_PROTOCOL_IMPLMENTATION 1
@@ -233,9 +222,21 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
     // client geometry based on the QWindow's positionPolicy is a noop.
     // Now that we have a NSWindow to read the frame from we re-apply
     // the QWindow geometry, which will move the NSWindow if needed.
-    m_platformWindow->setGeometry(window->geometry());
+    m_platformWindow->setGeometry(QHighDpi::toNativeWindowGeometry(window->geometry(), window));
+
 
     m_platformWindow->setVisible(window->isVisible());
+}
+
+- (void)setStyleMask:(NSWindowStyleMask)styleMask
+{
+    // Setting the style mask might move the content view between
+    // a NSThemeFrame and a NSNextStepFrame, which results in also
+    // losing the view.window temporarily. We don't want that to
+    // result in dropping our window controller.
+    [[self.windowController retain] autorelease];
+
+    [super setStyleMask:styleMask];
 }
 
 - (NSString *)description
@@ -336,7 +337,7 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
     }
 
     const bool mouseEventInFrameStrut = [theEvent, self]{
-        if (isMouseEvent(theEvent)) {
+        if (qt_mac_isMouseEvent(theEvent)) {
             const NSPoint loc = theEvent.locationInWindow;
             const NSRect windowFrame = [self convertRectFromScreen:self.frame];
             const NSRect contentFrame = self.contentView.frame;
@@ -360,7 +361,7 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
     // not Qt). However, an active popup is expected to grab any mouse event within the
     // application, so we need to handle those explicitly and trust Qt's isWindowBlocked
     // implementation to eat events that shouldn't be delivered anyway.
-    if (isMouseEvent(theEvent) && QGuiApplicationPrivate::instance()->activePopupWindow()
+    if (qt_mac_isMouseEvent(theEvent) && QGuiApplicationPrivate::instance()->activePopupWindow()
         && QGuiApplicationPrivate::instance()->isWindowBlocked(m_platformWindow->window(), nullptr)) {
         qCDebug(lcQpaWindow) << "Mouse event over modally blocked window" << m_platformWindow->window()
                              << "while popup is open - redirecting";
@@ -372,7 +373,7 @@ NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
 
 - (void)miniaturize:(id)sender
 {
-    QBoolBlocker miniaturizeTracker(m_isMinimizing, true);
+    QScopedValueRollback miniaturizeTracker(m_isMinimizing, true);
     [super miniaturize:sender];
 }
 

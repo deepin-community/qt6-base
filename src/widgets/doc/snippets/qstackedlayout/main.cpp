@@ -12,7 +12,7 @@ public:
 Widget::Widget(QWidget *parent)
     : QWidget(parent)
 {
-//! [0]
+    //! [0]
     QWidget *firstPageWidget = new QWidget;
     QWidget *secondPageWidget = new QWidget;
     QWidget *thirdPageWidget = new QWidget;
@@ -22,23 +22,27 @@ Widget::Widget(QWidget *parent)
     stackedLayout->addWidget(secondPageWidget);
     stackedLayout->addWidget(thirdPageWidget);
 
-//! [0] //! [1]
+    //! [0]
+
+    //! [1]
     QComboBox *pageComboBox = new QComboBox;
     pageComboBox->addItem(tr("Page 1"));
     pageComboBox->addItem(tr("Page 2"));
     pageComboBox->addItem(tr("Page 3"));
     connect(pageComboBox, &QComboBox::activated,
             stackedLayout, &QStackedLayout::setCurrentIndex);
-//! [1]
+    //! [1]
 
-//! [2]
+    //! [2]
     QVBoxLayout *mainLayout = new QVBoxLayout;
-//! [2]
+    //! [2]
+
     mainLayout->addWidget(pageComboBox);
-//! [3]
+
+    //! [3]
     mainLayout->addLayout(stackedLayout);
     setLayout(mainLayout);
-//! [3]
+    //! [3]
 }
 
 int main(int argc, char *argv[])

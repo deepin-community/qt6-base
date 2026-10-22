@@ -66,11 +66,9 @@ qt_internal_extend_target(QQnxIntegrationPlugin CONDITION QT_FEATURE_qqnx_pps
         PPS::PPS
 )
 
-qt_internal_extend_target(QQnxIntegrationPlugin CONDITION QT_FEATURE_clipboard AND QT_FEATURE_qqnx_pps
+qt_internal_extend_target(QQnxIntegrationPlugin CONDITION QT_FEATURE_clipboard
     SOURCES
         qqnxclipboard.cpp qqnxclipboard.h
-    LIBRARIES
-        clipboard
 )
 
 qt_internal_extend_target(QQnxIntegrationPlugin CONDITION QT_FEATURE_qqnx_imf AND QT_FEATURE_qqnx_pps
@@ -81,6 +79,12 @@ qt_internal_extend_target(QQnxIntegrationPlugin CONDITION QT_FEATURE_qqnx_imf AN
 qt_internal_extend_target(QQnxIntegrationPlugin CONDITION QT_FEATURE_qqnx_pps AND NOT QT_FEATURE_qqnx_imf
     SOURCES
         qqnxinputcontext_noimf.cpp qqnxinputcontext_noimf.h
+)
+
+qt_internal_extend_target(QQnxIntegrationPlugin CONDITION QT_FEATURE_vulkan
+    SOURCES
+        qqnxvulkaninstance.cpp qqnxvulkaninstance.h
+        qqnxvulkanwindow.cpp qqnxvulkanwindow.h
 )
 
 qt_internal_extend_target(QQnxIntegrationPlugin CONDITION lgmon

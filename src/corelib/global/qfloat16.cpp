@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2016 by Southwest Research Institute (R)
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfloat16.h"
 #include "private/qsimd_p.h"
@@ -10,10 +11,14 @@
 #include <QtCore/qmetatype.h>
 #include <QtCore/qtextstream.h>
 
-QT_DECL_METATYPE_EXTERN(qfloat16, Q_CORE_EXPORT)
 QT_BEGIN_NAMESPACE
 
-QT_IMPL_METATYPE_EXTERN(qfloat16)
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+Q_CORE_EXPORT int qRegisterNormalizedMetaType_qfloat16(const QByteArray &)
+{
+    return QMetaType::Float16;
+}
+#endif
 
 /*!
     \class qfloat16
@@ -119,9 +124,28 @@ QT_IMPL_METATYPE_EXTERN(qfloat16)
 /*!
     \since 5.15
     \fn qfloat16 qfloat16::copySign(qfloat16 sign) const noexcept
+    \obsolete [6.11] Use the copysign() friend function instead.
+*/
+
+/*!
+    \since 6.11
+    \fn bool qfloat16::copysign(qfloat16 x, qfloat16 sign)
 
     Returns a qfloat16 with the sign of \a sign but the rest of its value taken
-    from this qfloat16. Serves as qfloat16's equivalent of std::copysign().
+    from \a{x}. Serves as qfloat16's equivalent of std::copysign().
+
+    \sa signbit()
+*/
+
+/*!
+    \since 6.11
+    \fn bool qfloat16::signbit(qfloat16 x)
+
+    Returns true if qfloat16 \a x is negative, false otherwise. Note this
+    function returns true for negative zero, negative infinity, and negative
+    NaN values.
+
+    \sa copysign()
 */
 
 /*!
@@ -373,11 +397,39 @@ Q_CORE_EXPORT void qFloatFromFloat16(float *out, const qfloat16 *in, qsizetype l
 }
 
 /*!
+    \fn qfloat16 qfloat16::operator++(int) noexcept
+    \since 6.12
+    Post-increments this value by 1 and returns the old value.
+*/
+
+/*!
+    \fn qfloat16 &qfloat16::operator++() noexcept
+    \since 6.12
+    Pre-increments this value by 1 and returns a reference to this value.
+*/
+
+/*!
+    \fn qfloat16 qfloat16::operator--(int) noexcept
+    \since 6.12
+    Post-decrements this value by 1 and returns the old value.
+*/
+
+/*!
+    \fn qfloat16 &qfloat16::operator--() noexcept
+    \since 6.12
+    Pre-decrements this value by 1 and returns a reference to this value.
+*/
+
+/*!
+    \fn qfloat16 qfloat16::operator+(qfloat16 a) noexcept
+    \since 6.12
+    Returns \a a unchanged.
+*/
+
+/*!
     \fn size_t qfloat16::qHash(qfloat16 key, size_t seed)
     \since 6.5.3
-
-    Returns the hash value for the \a key, using \a seed to seed the
-    calculation.
+    \qhash{qfloat16}
 
     \note In Qt versions before 6.5, this operation was provided by the
     qHash(float) overload. In Qt versions 6.5.0 to 6.5.2, this functionality

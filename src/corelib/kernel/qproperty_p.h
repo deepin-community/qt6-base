@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPROPERTY_P_H
 #define QPROPERTY_P_H
@@ -31,6 +32,10 @@ QT_BEGIN_NAMESPACE
 namespace QtPrivate {
     Q_CORE_EXPORT bool isAnyBindingEvaluating();
     struct QBindingStatusAccessToken {};
+
+    namespace BindableWarnings {
+    Q_CORE_EXPORT void printSignalArgumentsWithCustomGetter();
+    }
 }
 
 
@@ -46,11 +51,11 @@ private:
     QPropertyObserver *d = nullptr;
 public:
     QBindingObserverPtr() = default;
-    Q_DISABLE_COPY(QBindingObserverPtr);
+    Q_DISABLE_COPY(QBindingObserverPtr)
     void swap(QBindingObserverPtr &other) noexcept
     { qt_ptr_swap(d, other.d); }
     QBindingObserverPtr(QBindingObserverPtr &&other) noexcept : d(std::exchange(other.d, nullptr)) {}
-    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QBindingObserverPtr);
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QBindingObserverPtr)
 
 
     inline QBindingObserverPtr(QPropertyObserver *observer) noexcept;
@@ -59,7 +64,7 @@ public:
     inline QPropertyObserver *operator ->();
 };
 
-using PendingBindingObserverList = QVarLengthArray<QBindingObserverPtr>;
+using PendingBindingObserverList = QVarLengthArray<QPropertyBindingPrivatePtr>;
 
 // Keep all classes related to QProperty in one compilation unit. Performance of this code is crucial and
 // we need to allow the compiler to inline where it makes sense.
@@ -81,7 +86,7 @@ struct QPropertyBindingDataPointer
         d = reinterpret_cast<quintptr>(observer);
     }
     static void fixupAfterMove(QtPrivate::QPropertyBindingData *ptr);
-    void Q_ALWAYS_INLINE addObserver(QPropertyObserver *observer);
+    Q_ALWAYS_INLINE void addObserver(QPropertyObserver *observer);
     inline void setFirstObserver(QPropertyObserver *observer);
     inline QPropertyObserverPointer firstObserver() const;
     static QPropertyProxyBindingData *proxyData(QtPrivate::QPropertyBindingData *ptr);
@@ -242,21 +247,13 @@ struct CompatPropertySafePoint
 struct CurrentCompatPropertyThief
 {
     Q_DISABLE_COPY_MOVE(CurrentCompatPropertyThief)
+    QScopedValueRollback<CompatPropertySafePoint *> m_guard;
 public:
+    Q_NODISCARD_CTOR
     CurrentCompatPropertyThief(QBindingStatus *status)
-        : status(&status->currentCompatProperty)
-        , stolen(std::exchange(status->currentCompatProperty, nullptr))
+        : m_guard(status->currentCompatProperty, nullptr)
     {
     }
-
-    ~CurrentCompatPropertyThief()
-    {
-        *status = stolen;
-    }
-
-private:
-    CompatPropertySafePoint **status = nullptr;
-    CompatPropertySafePoint *stolen = nullptr;
 };
 
 }
@@ -304,6 +301,12 @@ protected:
        for QQmlPropertyBinding (which stores further binding information there).
        Anything stored in the union must be trivially destructible.
        (checked in qproperty.cpp)
+
+       The discriminator for this union is the isQQmlPropertyBinding flag above. It has nothing to
+       do with custom vtables per se. Depending on what is stored in declarativeExtraData, you may
+       want vtable support for it, but since declarativeExtraData is well inside
+       QPropertyBindingPrivate it can be a regular vtable. In practice, QML bindings have custom
+       vtables because they store additional data _outside_ QPropertyBindingPrivate.
     */
     using DeclarativeErrorCallback = void(*)(QPropertyBindingPrivate *);
     union {
@@ -314,7 +317,7 @@ protected:
         };
     };
 private:
-    QPropertyBindingError error;
+    QPropertyBindingError m_error;
 
     QMetaType metaType;
 
@@ -327,6 +330,7 @@ public:
         return sizeEnsuringAlignment;
     }
 
+    const QtPrivate::BindingFunctionVTable *bindingFunctionVTable() const { return vtable; }
 
     // public because the auto-tests access it, too.
     size_t dependencyObserverCount = 0;
@@ -393,21 +397,23 @@ public:
 
     QPropertyBindingSourceLocation sourceLocation() const
     {
-        if (!hasCustomVTable())
-            return this->location;
-        QPropertyBindingSourceLocation location;
-        constexpr auto msg = "Custom location";
-        location.fileName = msg;
-        return location;
+        if (!isQQmlPropertyBinding)
+            return location;
+        return []() {
+            constexpr auto msg = "Custom location";
+            QPropertyBindingSourceLocation result;
+            result.fileName = msg;
+            return result;
+        }();
     }
-    QPropertyBindingError bindingError() const { return error; }
+    QPropertyBindingError bindingError() const { return m_error; }
     QMetaType valueMetaType() const { return metaType; }
 
     void unlinkAndDeref();
 
     bool evaluateRecursive(PendingBindingObserverList &bindingObservers, QBindingStatus *status = nullptr);
 
-    bool Q_ALWAYS_INLINE evaluateRecursive_inline(PendingBindingObserverList &bindingObservers, QBindingStatus *status);
+    Q_ALWAYS_INLINE bool evaluateRecursive_inline(PendingBindingObserverList &bindingObservers, QBindingStatus *status);
 
     void notifyNonRecursive(const PendingBindingObserverList &bindingObservers);
     enum NotificationState : bool { Delayed, Sent };
@@ -415,9 +421,11 @@ public:
 
     static QPropertyBindingPrivate *get(const QUntypedPropertyBinding &binding)
     { return static_cast<QPropertyBindingPrivate *>(binding.d.data()); }
+    static QUntypedPropertyBinding makeUntyped(QPropertyBindingPrivate *d)
+    { return QUntypedPropertyBinding(static_cast<void *>(d)); }
 
     void setError(QPropertyBindingError &&e)
-    { error = std::move(e); }
+    { m_error = std::move(e); }
 
     void detachFromProperty()
     {
@@ -429,9 +437,24 @@ public:
 
     static QPropertyBindingPrivate *currentlyEvaluatingBinding();
 
+    /* In some cases we want to run the vtable's dtor _in place_ of ~QPropertBindingPrivate() rather
+       than in addition, in order to cater to special memory layouts with extra trailing fields. The
+       vtable's size member acts as flag for this. We call this a "custom" vtable. Note that you
+       could have a QML binding with a regular vtable, as well as a non-QML binding with custom
+       vtable. In practice, QML bindings have custom vtables because they store additional data
+       after QPropertyBindingPrivate.
+     */
     bool hasCustomVTable() const
     {
         return vtable->size == 0;
+    }
+
+    /* Determines whether we have a regular source location or declarativeExtraData + errorCallback.
+     * This has nothing to do with custom vtables per se.
+     */
+    bool isQmlBinding() const
+    {
+        return isQQmlPropertyBinding;
     }
 
     static void destroyAndFreeMemory(QPropertyBindingPrivate *priv) {
@@ -528,13 +551,11 @@ class QObjectCompatProperty : public QPropertyData<T>
     {
         auto *thisData = static_cast<ThisType *>(dataPtr);
         QBindingStorage *storage = qGetBindingStorage(thisData->owner());
-        QPropertyData<T> copy;
+        QPropertyData<T> copy(thisData->valueBypassingBindings());
         {
             QtPrivate::CurrentCompatPropertyThief thief(storage->bindingStatus);
-            binding.vtable->call(type, &copy, binding.functor);
-            if constexpr (QTypeTraits::has_operator_equal_v<T>)
-                if (copy.valueBypassingBindings() == thisData->valueBypassingBindings())
-                    return false;
+            if (!binding.vtable->call(type, &copy, binding.functor))
+                return false;
         }
         // ensure value and setValue know we're currently evaluating our binding
         QtPrivate::CompatPropertySafePoint guardThis(storage->bindingStatus, thisData);
@@ -555,14 +576,37 @@ class QObjectCompatProperty : public QPropertyData<T>
             return (prop->owner()->*Getter)();
     }
 
+    inline static T getPropertyValueBypassingBindings(const QUntypedPropertyData *d) {
+        auto prop = static_cast<const ThisType *>(d);
+        if constexpr (std::is_null_pointer_v<decltype(Getter)>)
+            return prop->valueBypassingBindings();
+        else
+            return (prop->owner()->*Getter)();
+    }
+
+    inline static void warnIfSignalWithArgumentAndCustomGetter()
+    {
+        if constexpr (!std::is_null_pointer_v<decltype(Signal)>
+                      && SignalTakesValue::value
+                      && !std::is_null_pointer_v<decltype(Getter)>) {
+            QtPrivate::BindableWarnings::printSignalArgumentsWithCustomGetter();
+        }
+    }
+
 public:
     using value_type = typename QPropertyData<T>::value_type;
     using parameter_type = typename QPropertyData<T>::parameter_type;
     using arrow_operator_result = typename QPropertyData<T>::arrow_operator_result;
 
-    QObjectCompatProperty() = default;
-    explicit QObjectCompatProperty(const T &initialValue) : QPropertyData<T>(initialValue) {}
-    explicit QObjectCompatProperty(T &&initialValue) : QPropertyData<T>(std::move(initialValue)) {}
+    QObjectCompatProperty() { warnIfSignalWithArgumentAndCustomGetter(); }
+    explicit QObjectCompatProperty(const T &initialValue) : QPropertyData<T>(initialValue)
+    {
+        warnIfSignalWithArgumentAndCustomGetter();
+    }
+    explicit QObjectCompatProperty(T &&initialValue) : QPropertyData<T>(std::move(initialValue))
+    {
+        warnIfSignalWithArgumentAndCustomGetter();
+    }
 
     parameter_type value() const
     {
@@ -670,11 +714,17 @@ public:
                         PendingBindingObserverList bindingObservers;
                         if (bd->notifyObserver_helper(this, storage, observer, bindingObservers)
                                 == QtPrivate::QPropertyBindingData::Evaluated) {
-                            // evaluateBindings() can trash the observers. We need to re-fetch here.
-                            if (QPropertyObserverPointer observer = d.firstObserver())
-                                observer.notify(this);
-                            for (auto&& bindingObserver: bindingObservers)
-                                bindingObserver.binding()->notifyNonRecursive();
+                            // evaluateBindings() can trash the observers.
+                            // It can also reallocate binding data pointer.
+                            // So, we need to re-fetch here.
+                            bd = storage->bindingData(this, false);
+                            QPropertyBindingDataPointer dd{bd};
+                            if (QPropertyObserverPointer obs = dd.firstObserver())
+                                obs.notify(this);
+                            for (auto&& bindingPtr: bindingObservers) {
+                                auto *binding = static_cast<QPropertyBindingPrivate *>(bindingPtr.get());
+                                binding->notifyNonRecursive();
+                            }
                         }
                     }
                 }
@@ -682,7 +732,7 @@ public:
         }
         if constexpr (!std::is_null_pointer_v<decltype(Signal)>) {
             if constexpr (SignalTakesValue::value)
-                (owner()->*Signal)(getPropertyValue(this));
+                (owner()->*Signal)(getPropertyValueBypassingBindings(this));
             else
                 (owner()->*Signal)();
         }
@@ -691,7 +741,8 @@ public:
     QPropertyBinding<T> binding() const
     {
         auto *bd = qGetBindingStorage(owner())->bindingData(this);
-        return static_cast<QPropertyBinding<T> &&>(QUntypedPropertyBinding(bd ? bd->binding() : nullptr));
+        QUntypedPropertyBinding binding = QPropertyBindingPrivate::makeUntyped(bd ? bd->binding() : nullptr);
+        return static_cast<QPropertyBinding<T> &&>(binding);
     }
 
     QPropertyBinding<T> takeBinding()
@@ -834,7 +885,7 @@ struct QUntypedBindablePrivate
 inline bool QPropertyBindingPrivate::evaluateRecursive_inline(PendingBindingObserverList &bindingObservers, QBindingStatus *status)
 {
     if (updating) {
-        error = QPropertyBindingError(QPropertyBindingError::BindingLoop);
+        m_error = QPropertyBindingError(QPropertyBindingError::BindingLoop);
         if (isQQmlPropertyBinding)
             errorCallBack(this);
         return false;

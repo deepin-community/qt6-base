@@ -16,12 +16,14 @@ Window::Window(QRhi::Implementation graphicsApi)
     case QRhi::OpenGLES2:
         setSurfaceType(OpenGLSurface);
         break;
+#if QT_CONFIG(vulkan)
     case QRhi::Vulkan:
         instance.setLayers({ "VK_LAYER_KHRONOS_validation" });
         instance.create();
         setVulkanInstance(&instance);
         setSurfaceType(VulkanSurface);
         break;
+#endif
     case QRhi::D3D11:
     case QRhi::D3D12:
         setSurfaceType(Direct3DSurface);
@@ -74,6 +76,7 @@ void Window::init()
     QRhi::Flags rhiFlags = QRhi::EnableDebugMarkers;
 
     switch (m_graphicsApi) {
+#if QT_CONFIG(vulkan)
     case QRhi::Vulkan:
     {
         QRhiVulkanInitParams params;
@@ -82,6 +85,7 @@ void Window::init()
         m_rhi.reset(QRhi::create(QRhi::Vulkan, &params, rhiFlags));
         break;
     }
+#endif
     case QRhi::Null:
     case QRhi::Metal:
     case QRhi::OpenGLES2:

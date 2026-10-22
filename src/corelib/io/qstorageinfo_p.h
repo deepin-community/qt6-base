@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTORAGEINFO_P_H
 #define QSTORAGEINFO_P_H
@@ -27,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 
-inline Q_LOGGING_CATEGORY(lcStorageInfo, "qt.core.qstorageinfo", QtWarningMsg)
+Q_DECLARE_LOGGING_CATEGORY(lcStorageInfo)
 
 class QStorageInfoPrivate : public QSharedData
 {
@@ -45,7 +46,7 @@ public:
 #else
         return QStorageInfo(QStringLiteral("/"));
 #endif
-    };
+    }
 
 protected:
 #if defined(Q_OS_WIN)
@@ -80,7 +81,7 @@ public:
         subvolume = std::move(info.fsRoot);
     }
 
-    QStorageInfoPrivate(MountInfo &&info)
+    explicit QStorageInfoPrivate(MountInfo &&info)
     {
         setFromMountInfo(std::move(info));
     }
@@ -88,6 +89,18 @@ public:
 #elif defined(Q_OS_UNIX)
     void initRootPath();
     void retrieveVolumeInfo();
+#endif
+
+#ifdef Q_OS_UNIX
+    // Common helper functions
+    template <typename String>
+    static bool isParentOf(const String &parent, const QString &dirName)
+    {
+        return dirName.startsWith(parent) &&
+                (dirName.size() == parent.size() || dirName.at(parent.size()) == u'/' ||
+                 parent.size() == 1);
+    }
+    static inline bool shouldIncludeFs(const QString &mountDir, const QByteArray &fsType);
 #endif
 
 public:
@@ -107,16 +120,8 @@ public:
     bool valid = false;
 };
 
-// Common helper functions
-template <typename String>
-static bool isParentOf(const String &parent, const QString &dirName)
-{
-    return dirName.startsWith(parent) &&
-            (dirName.size() == parent.size() || dirName.at(parent.size()) == u'/' ||
-             parent.size() == 1);
-}
-
-static inline bool shouldIncludeFs(const QString &mountDir, const QByteArray &fsType)
+#ifdef Q_OS_UNIX
+bool QStorageInfoPrivate::shouldIncludeFs(const QString &mountDir, const QByteArray &fsType)
 {
 #if defined(Q_OS_ANDROID)
     // "rootfs" is the filesystem type of "/" on Android
@@ -158,6 +163,7 @@ static inline bool shouldIncludeFs(const QString &mountDir, const QByteArray &fs
     // size checking in QStorageInfo::mountedVolumes()
     return true;
 }
+#endif // Q_OS_UNIX
 
 QT_END_NAMESPACE
 

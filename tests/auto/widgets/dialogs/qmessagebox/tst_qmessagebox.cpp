@@ -40,7 +40,7 @@ private slots:
     void optionsEmptyByDefault();
     void changeNativeOption();
 
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     void shortcut();
 #endif
 
@@ -97,7 +97,11 @@ public:
     {
         m_key = key;
         m_testCandidate = testCandidate;
+#if defined(Q_OS_HARMONY)
+        m_timerId = startTimer(200);
+#else
         m_timerId = startTimer(50);
+#endif
     }
 
     bool done() const { return !m_timerId; }
@@ -173,18 +177,18 @@ void tst_QMessageBox::overrideDone_data()
 {
     QTest::addColumn<QMessageBox::StandardButton>("button");
     QTest::addColumn<int>("closeAction");
-    QTest::addColumn<int>("result");
+    QTest::addColumn<QMessageBox::StandardButton>("result");
 
-    QTest::newRow("close") << QMessageBox::Help << int(ExecCloseHelper::CloseWindow) << 0;
-    QTest::newRow("yes") << QMessageBox::Yes << int(Qt::Key_Enter) << int(QMessageBox::Yes);
-    QTest::newRow("no") << QMessageBox::No << int(Qt::Key_Enter) << int(QMessageBox::No);
+    QTest::newRow("close") << QMessageBox::Help << int(ExecCloseHelper::CloseWindow) << QMessageBox::NoButton;
+    QTest::newRow("yes") << QMessageBox::Yes << int(Qt::Key_Enter) << QMessageBox::Yes;
+    QTest::newRow("no") << QMessageBox::No << int(Qt::Key_Enter) << QMessageBox::No;
 }
 
 void tst_QMessageBox::overrideDone()
 {
     QFETCH(QMessageBox::StandardButton, button);
     QFETCH(int, closeAction);
-    QFETCH(int, result);
+    QFETCH(QMessageBox::StandardButton, result);
 
     OverridingMessageBox messageBox;
     messageBox.addButton(button);
@@ -431,7 +435,7 @@ void tst_QMessageBox::statics()
 }
 
 // shortcuts are not used on OS X
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
 void tst_QMessageBox::shortcut()
 {
     QMessageBox msgBox;
@@ -451,7 +455,7 @@ void tst_QMessageBox::about()
     QMessageBox::about(nullptr, "Caption", "This is an auto test");
     // On Mac, about and aboutQt are not modal, so we need to
     // explicitly run the event loop
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTRY_VERIFY(closeHelper.done());
 #else
     QVERIFY(closeHelper.done());
@@ -461,7 +465,7 @@ void tst_QMessageBox::about()
 
     closeHelper.start(keyToSend);
     QMessageBox::aboutQt(nullptr, "Caption");
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QTRY_VERIFY(closeHelper.done());
 #else
     QVERIFY(closeHelper.done());
@@ -538,7 +542,7 @@ void tst_QMessageBox::instanceSourceCompat()
     QCOMPARE(mb.exec(), int(QMessageBox::Yes));
     closeHelper.start(Qt::Key_Escape, &mb);
     QCOMPARE(mb.exec(), int(QMessageBox::Cancel));
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     // mnemonics are not used on OS X
     closeHelper.start(QKeyCombination(Qt::ALT | Qt::Key_R).toCombined(), &mb);
     QCOMPARE(mb.exec(), 2);
@@ -620,11 +624,41 @@ void tst_QMessageBox::expandDetailsWithoutMoving() // QTBUG-32473
     QCOMPARE(box.geometry().topLeft(), geom.topLeft());
 }
 
+class MessageBox : public QMessageBox
+{
+    Q_OBJECT
+protected:
+    bool event(QEvent *e) override
+    {
+        if (e->type() == QEvent::Polish) {
+            const bool result = QMessageBox::event(e);
+            polished = true;
+            return result;
+        }
+        return QMessageBox::event(e);
+    }
+public:
+    bool polished = false;
+};
+
 void tst_QMessageBox::optionsEmptyByDefault()
 {
     QMessageBox b;
     QCOMPARE(b.options(), QMessageBox::Options());
     QVERIFY(!b.testOption(QMessageBox::Option::DontUseNativeDialog));
+
+    {
+        MessageBox subclassed;
+        QCOMPARE(subclassed.options(), QMessageBox::Options());
+        QTRY_VERIFY(subclassed.testOption(QMessageBox::Option::DontUseNativeDialog));
+    }
+    {
+        MessageBox subclassed;
+        subclassed.setOption(QMessageBox::Option::DontUseNativeDialog, false);
+        QCOMPARE(subclassed.options(), QMessageBox::Options());
+        QTRY_VERIFY(subclassed.polished);
+        QVERIFY(!subclassed.testOption(QMessageBox::Option::DontUseNativeDialog));
+    }
 }
 
 void tst_QMessageBox::changeNativeOption()

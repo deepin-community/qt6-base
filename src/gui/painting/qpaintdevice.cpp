@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qpaintdevice.h"
 
@@ -85,24 +86,36 @@ int QPaintDevice::metric(PaintDeviceMetric m) const
     // have implemented PdmDevicePixelRatio.
     if (m == PdmDevicePixelRatioScaled)
         return this->metric(PdmDevicePixelRatio) * devicePixelRatioFScale();
+    if (m == PdmNumColors)
+        return 0;
+    if (m == PdmDevicePixelRatio)
+        return 1;
 
     qWarning("QPaintDevice::metrics: Device has no metric information");
 
-    if (m == PdmDpiX) {
+    switch (m) {
+    case PdmDevicePixelRatioScaled:
+    case PdmDevicePixelRatio:
+    case PdmNumColors:
+        Q_UNREACHABLE();
+        break;
+    case PdmDpiX:
+    case PdmDpiY:
         return 72;
-    } else if (m == PdmDpiY) {
-        return 72;
-    } else if (m == PdmNumColors) {
-        // FIXME: does this need to be a real value?
-        return 256;
-    } else if (m == PdmDevicePixelRatio) {
-        return 1;
-    } else if (m == PdmDevicePixelRatioF_EncodedA || m == PdmDevicePixelRatioF_EncodedB) {
+    case PdmDevicePixelRatioF_EncodedA:
+    case PdmDevicePixelRatioF_EncodedB:
         return 0;
-    } else {
-        qDebug("Unrecognised metric %d!",m);
+    case PdmWidth:
+    case PdmHeight:
+    case PdmWidthMM:
+    case PdmHeightMM:
+    case PdmDepth:
+    case PdmPhysicalDpiX:
+    case PdmPhysicalDpiY:
         return 0;
     }
+    qDebug("Unrecognized metric %d!", m);
+    return 0;
 }
 
 QT_END_NAMESPACE

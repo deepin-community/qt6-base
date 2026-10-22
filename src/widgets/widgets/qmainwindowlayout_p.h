@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMAINWINDOWLAYOUT_P_H
 #define QMAINWINDOWLAYOUT_P_H
@@ -16,6 +17,7 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include "QtWidgets/private/qwidgetanimator_p.h"
 #include "qmainwindow.h"
 
 #include "QtWidgets/qlayout.h"
@@ -53,7 +55,7 @@ QT_REQUIRE_CONFIG(mainwindow);
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcQpaDockWidgets);
+Q_DECLARE_LOGGING_CATEGORY(lcMainWindowLayout);
 
 class QToolBar;
 class QRubberBand;
@@ -289,7 +291,7 @@ QList<int> QMainWindowLayoutSeparatorHelper<Layout>::findSeparator(const QPoint 
     Layout *layout = const_cast<Layout*>(this->layout());
 #if QT_CONFIG(toolbar)
     QToolBarAreaLayout *toolBarAreaLayout = layout->toolBarAreaLayout();
-    if (!toolBarAreaLayout->isEmpty()) {
+    if (toolBarAreaLayout && !toolBarAreaLayout->isEmpty()) {
         // We might have a toolbar that is currently expanded, covering
         // parts of the dock area, in which case we don't want the dock
         // area layout to treat mouse events for the expanded toolbar as
@@ -363,7 +365,7 @@ public:
     void restore();
     void apply();
     void childEvent(QChildEvent *event) override;
-    void reparent(QDockWidget *dockWidget);
+    void reparentToMainWindow(QDockWidget *dockWidget);
     void destroyIfSingleItemLeft();
     QList<QDockWidget *> dockWidgets() const { return findChildren<QDockWidget *>(); }
 
@@ -427,6 +429,16 @@ private:
 class Q_AUTOTEST_EXPORT QMainWindowLayoutState
 {
 public:
+    enum class StateMarkers {
+        FloatingDockWidgetTab = 0xf9,
+        Tab = 0xfa,
+        Widget = 0xfb,
+        Sequence = 0xfc,
+        ToolBarEx = Sequence, // Extended toolbar marker (same value as Sequence for backward compatibility)
+        DockWidget = 0xfd,
+        ToolBar = 0xfe,
+    };
+
     QRect rect;
     QMainWindow *mainWindow;
 
@@ -443,7 +455,7 @@ public:
     QRect centralWidgetRect;
 #endif
 
-    void apply(bool animated);
+    void apply(QWidgetAnimator::AnimationRule rule);
     void deleteAllLayoutItems();
     void deleteCentralWidgetItem();
 
@@ -477,6 +489,9 @@ public:
     void saveState(QDataStream &stream) const;
     bool checkFormat(QDataStream &stream);
     bool restoreState(QDataStream &stream, const QMainWindowLayoutState &oldState);
+    friend QDebug operator<<(QDebug debug, StateMarkers marker);
+    friend QDataStream &operator<<(QDataStream &stream, StateMarkers marker);
+    friend QDataStream &operator>>(QDataStream &stream, StateMarkers &marker);
 };
 
 class QMainWindowTabBar;
@@ -537,7 +552,7 @@ public:
     void splitDockWidget(QDockWidget *after,
                          QDockWidget *dockwidget,
                          Qt::Orientation orientation);
-    Qt::DockWidgetArea dockWidgetArea(QWidget* widget) const;
+    Qt::DockWidgetArea dockWidgetArea(const QWidget* widget) const;
     bool restoreDockWidget(QDockWidget *dockwidget);
 #if QT_CONFIG(tabbar)
     void tabifyDockWidget(QDockWidget *first, QDockWidget *second);
@@ -550,13 +565,12 @@ public:
     void setDocumentMode(bool enabled);
 
     QTabBar *getTabBar();
+    void unuseTabBar(QTabBar *bar);
     QSet<QTabBar*> usedTabBars;
-    QList<QTabBar*> unusedTabBars;
     bool verticalTabsEnabled;
 
     QWidget *getSeparatorWidget();
     QSet<QWidget*> usedSeparatorWidgets;
-    QList<QWidget*> unusedSeparatorWidgets;
     int sep; // separator extent
 
 #if QT_CONFIG(tabwidget)
@@ -622,13 +636,35 @@ public:
     void revert(QLayoutItem *widgetItem);
     void applyState(QMainWindowLayoutState &newState, bool animate = true);
     void applyRestoredState();
-    void restore(bool keepSavedState = false);
+    void restore(QInternal::SaveStateRule rule);
     void animationFinished(QWidget *widget);
 
 #if QT_CONFIG(draganddrop)
     static bool needsPlatformDrag();
     Qt::DropAction performPlatformWidgetDrag(QLayoutItem *widgetItem, const QPoint &pressPosition);
     QLayoutItem *draggingWidget = nullptr;
+#endif
+
+#if defined(Q_OS_MACOS)
+    void registerUnifiedToolBarArea(QWidget *widget, int upper, int lower);
+    void setUnifiedToolBarAreaEnabled(QWidget *widget, bool enable);
+    Q_WIDGETS_EXPORT bool testUnifiedToolBarAreaPosition(int position) const;
+private:
+    void updateUnifiedToolBarArea();
+    struct UnifiedToolBarRange {
+        UnifiedToolBarRange(QWidget *w, int u, int l) : widget(w), upper(u), lower(l) { }
+        QWidget *widget;
+        int upper;
+        int lower;
+        bool operator<(UnifiedToolBarRange const& right) const {
+              return upper < right.upper;
+        }
+    };
+    QHash<QWidget *, UnifiedToolBarRange> m_unifiedToolBarAreas; // widget -> upper/lower
+    QHash<QWidget *, bool> m_enabledUnifiedToolBarAreas; // widget -> enabled state (true/false)
+    QSize m_unifiedToolBarAreaSize; // Cached total size of area based on areas above
+    friend class QMainWindow;
+public:
 #endif
 
 protected:
@@ -640,10 +676,12 @@ private Q_SLOTS:
 #if QT_CONFIG(tabbar)
     void tabChanged();
     void tabMoved(int from, int to);
+    void tabifyWhileFloating(QDockWidget *first, QDockWidget *second);
 #endif
 #endif
 private:
 #if QT_CONFIG(tabbar)
+    void showTabBars();
     void updateTabBarShapes();
 #endif
     bool isInRestoreState = false;

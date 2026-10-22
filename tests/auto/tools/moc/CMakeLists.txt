@@ -38,7 +38,9 @@ set(JSON_HEADERS
         plugin_metadata.h
         pointery_to_incomplete.h
         pure-virtual-signals.h
+        qflags64object.h
         qinvokable.h
+        qmlmacro.h
         qprivateslots.h
         qtbug-35657-gadget.h
         related-metaobjects-in-gadget.h
@@ -51,28 +53,18 @@ set(JSON_HEADERS
         task234909.h
         task240368.h
         task87883.h
+        tech-preview.h
         trigraphs.h
         using-namespaces.h
+        virtualAndOverride.h
 )
-
-qt_wrap_cpp(comparison_relevant_moc_list ${JSON_HEADERS}
-    TARGET tst_moc
-    OPTIONS
-        "-Muri=com.company.app"
-        "-Muri=com.company.app.private"
-        "-DDEFINE_CMDLINE_EMPTY="
-        "-DDEFINE_CMDLINE_SIGNAL=void cmdlineSignal(const QMap<int, int> &i)"
-        "--output-json"
-)
-
-list(TRANSFORM comparison_relevant_moc_list  APPEND ".json" OUTPUT_VARIABLE moc_json_files)
 
 qt_internal_add_test(tst_moc
     SOURCES
         cxx-attributes.h
         single_function_keyword.h
+        name_collision.h
         tst_moc.cpp
-        ${comparison_relevant_moc_list}
     INCLUDE_DIRECTORIES
         testproject
         testproject/include
@@ -85,12 +77,41 @@ qt_internal_add_test(tst_moc
     EXCEPTIONS
 )
 
+qt_manual_moc(comparison_relevant_moc_list ${JSON_HEADERS}
+    TARGETS
+        tst_moc
+        # This pulls in the framework location for Apple builds.
+        Qt::Core
+    FLAGS
+        "-Muri=com.company.app"
+        "-Muri=com.company.app.private"
+        "-DDEFINE_CMDLINE_EMPTY="
+        "-DDEFINE_CMDLINE_SIGNAL=void cmdlineSignal(const QMap<int, int> &i)"
+        "--output-json"
+    OUTPUT_MOC_JSON_FILES moc_json_files
+)
+target_sources(tst_moc PRIVATE ${comparison_relevant_moc_list})
+
 qt_internal_extend_target(tst_moc LIBRARIES Qt::CorePrivate)
 
 qt_internal_extend_target(tst_moc CONDITION CMAKE_CROSSCOMPILING
     DEFINES
         MOC_CROSS_COMPILED
 )
+
+if (${PROJECT_VERSION_MAJOR} LESS 7)
+    # This file intentional produces a warning, so we use qt_wrap_cpp so we can
+    # suppress it.
+    qt_wrap_cpp(flags_property_moc flags-property-integer-access.h)
+    qt_internal_extend_target(tst_moc SOURCES ${flags_property_moc})
+    if (CLANG OR GCC)
+        set(Wno_deprecated "-Wno-deprecated-declarations")
+    elseif (MSVC)
+        # warning isn't triggering
+        set(Wno_deprecated "-wd4996")
+    endif()
+    set_source_files_properties(${flags_property_moc} COMPILE_FLAGS "${Wno_deprecated}")
+endif()
 
 if (UNIX AND (CLANG OR GCC OR QCC))
     qt_wrap_cpp(os9_moc os9-newlines.h)

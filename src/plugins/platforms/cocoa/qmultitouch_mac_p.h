@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //
 //  W A R N I N G
@@ -15,13 +16,12 @@
 #ifndef QMULTITOUCH_MAC_P_H
 #define QMULTITOUCH_MAC_P_H
 
-#include <QtCore/qglobal.h>
-#include <qpa/qwindowsysteminterface.h>
-#include <qhash.h>
-#include <QtCore>
+#include <QtCore/qhash.h>
+#include <QtCore/private/qcore_mac_p.h>
+
 #include <QtGui/qpointingdevice.h>
 
-#include <QtCore/private/qcore_mac_p.h>
+#include <qpa/qwindowsysteminterface.h>
 
 Q_FORWARD_DECLARE_OBJC_CLASS(NSTouch);
 QT_FORWARD_DECLARE_OBJC_ENUM(NSTouchPhase, unsigned long);

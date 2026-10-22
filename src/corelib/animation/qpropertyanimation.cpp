@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QPropertyAnimation
@@ -20,7 +21,12 @@
     makes it possible to animate many of Qt's widgets. Let's look at
     an example:
 
-    \snippet code/src_corelib_animation_qpropertyanimation.cpp 0
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp includes
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp class_decl
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_impl
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp first_example
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp ctor_close
+    \snippet code/src_corelib_animation_qpropertyanimation.cpp main
 
     \note You can also control an animation's lifespan by choosing a
     \l{QAbstractAnimation::DeletionPolicy}{delete policy} while starting the
@@ -57,6 +63,9 @@
 #include <QtCore/private/qlocking_p.h>
 
 QT_BEGIN_NAMESPACE
+
+QPropertyAnimationPrivate::~QPropertyAnimationPrivate()
+    = default;
 
 void QPropertyAnimationPrivate::updateMetaProperty()
 {
@@ -227,7 +236,7 @@ bool QPropertyAnimation::event(QEvent *event)
 /*!
     This virtual function is called by QVariantAnimation whenever the current value
     changes. \a value is the new, updated value. It updates the current value
-    of the property on the target object.
+    of the property on the target object, unless the animation is stopped.
 
     \sa currentValue, currentTime
  */
@@ -240,7 +249,7 @@ void QPropertyAnimation::updateCurrentValue(const QVariant &value)
 /*!
     \reimp
 
-    If the startValue is not defined when the state of the animation changes from Stopped to Running,
+    If the \l{QVariantAnimation::}{startValue} is not defined when the state of the animation changes from Stopped to Running,
     the current property value is used as the initial value for the animation.
 */
 void QPropertyAnimation::updateState(QAbstractAnimation::State newState,

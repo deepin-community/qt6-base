@@ -10,6 +10,7 @@
 ** Do not edit! All changes made to it will be lost.
 **
 ****************************************************************************/
+// Qt-Security score:significant reason:default
 
 #include "qopenglfunctions_4_0_compatibility.h"
 #include "qopenglcontext.h"
@@ -234,8 +235,8 @@ bool QOpenGLFunctions_4_0_Compatibility::isContextCompatible(QOpenGLContext *con
 {
     Q_ASSERT(context);
     QSurfaceFormat f = context->format();
-    const QPair<int, int> v = qMakePair(f.majorVersion(), f.minorVersion());
-    if (v < qMakePair(4, 0))
+    const auto v = std::pair(f.majorVersion(), f.minorVersion());
+    if (v < std::pair(4, 0))
         return false;
 
     if (f.profile() == QSurfaceFormat::CoreProfile)

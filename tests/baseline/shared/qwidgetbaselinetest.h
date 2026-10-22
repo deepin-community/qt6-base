@@ -5,6 +5,7 @@
 
 #include <QObject>
 #include <QImage>
+#include <QJsonObject>
 
 QT_BEGIN_NAMESPACE
 
@@ -20,20 +21,25 @@ public:
     void takeStandardSnapshots();
     QWidget *testWindow() const { return window; }
 
+    void reportDebugRect(const QString &type, const QColor &color,
+        const QString &label, QRect widgetRect, const QWidget *widget, QPainter *painter);
+
 protected:
     virtual void doInit() {}
     virtual void doCleanup() {}
 
-private slots:
+protected slots:
     void initTestCase();
     void init();
     void cleanup();
+    void cleanupTestCase();
 
 protected:
     void makeVisible();
     QImage takeSnapshot();
     QImage takeScreenSnapshot(const QRect& rect = QRect());
 
+    QJsonObject debugRects;
 private:
     QWidget *background = nullptr;
     QWidget *window = nullptr;

@@ -31,14 +31,52 @@ function(qt_internal_add_executable name)
 
     _qt_internal_create_executable(${name})
     qt_internal_mark_as_internal_target(${name})
-    if(ANDROID)
-        _qt_internal_android_executable_finalizer(${name})
-    endif()
-    if(WASM)
-        qt_internal_wasm_add_finalizers(${name})
+
+    set_target_properties(${name} PROPERTIES
+        _qt_is_test_executable ${arg_QT_TEST}
+        _qt_is_manual_test ${arg_QT_MANUAL_TEST}
+        _qt_is_benchmark_test ${arg_QT_BENCHMARK_TEST}
+    )
+
+    # Opt out to skip the new way of running test finalizers, and instead use the old way for
+    # specific platforms.
+    # TODO: Remove once we confirm that the new way of running test finalizers for all platforms
+    # doesn't cause any issues.
+    if(NOT QT_INTERNAL_SKIP_TEST_FINALIZERS_V2)
+        # We don't run finalizers for all executables on all platforms, because there are still
+        # some unsolved issues there. One of them is trying to run finalizers for the
+        # qmlimportscanner executable would create a circular depenendecy trying to run
+        # qmlimportscanner on itself.
+        #
+        # For now, we only run finalizers for test-like executables on all platforms, and all
+        # android and wasm internal executables.
+        # For android and wasm all executables, to be behavior compatible with the old way of
+        # running finalizers.
+        if(ANDROID
+            OR WASM
+            OR arg_QT_TEST
+            OR arg_QT_MANUAL_TEST
+            OR arg_QT_BENCHMARK_TEST)
+            set(QT_INTERNAL_USE_POOR_MANS_SCOPE_FINALIZER TRUE)
+            _qt_internal_finalize_target_defer("${name}")
+        endif()
+    else()
+        if(ANDROID)
+            # This direct calls the finalizer, which in the v2 way is deferred.
+            _qt_internal_android_executable_finalizer(${name})
+        endif()
+        if(WASM)
+            # This defer calls the finalizer.
+            qt_internal_wasm_add_finalizers(${name})
+        endif()
     endif()
 
-    if(arg_QT_APP AND QT_FEATURE_debug_and_release AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.19.0")
+    get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
+    if(arg_QT_APP
+            AND QT_FEATURE_debug_and_release
+            AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.19.0"
+            AND is_multi_config
+        )
         set_property(TARGET "${name}"
             PROPERTY EXCLUDE_FROM_ALL "$<NOT:$<CONFIG:${QT_MULTI_CONFIG_FIRST_CONFIG}>>")
     endif()
@@ -84,16 +122,18 @@ function(qt_internal_add_executable name)
 
     qt_internal_add_repo_local_defines(${name})
 
-    if(ANDROID)
+    if(ANDROID OR OHOS)
         # The above call to qt_set_common_target_properties() sets the symbol
-        # visibility to hidden, but for Android, we need main() to not be hidden
-        # because it has to be loadable at runtime using dlopen().
+        # visibility to hidden, but for Android or HarmonyOS, we need main()
+        # to not be hidden because it has to be loadable at runtime using
+        # dlopen().
         set_property(TARGET ${name} PROPERTY C_VISIBILITY_PRESET default)
         set_property(TARGET ${name} PROPERTY CXX_VISIBILITY_PRESET default)
     endif()
 
     qt_autogen_tools_initial_setup(${name})
-    qt_skip_warnings_are_errors_when_repo_unclean("${name}")
+
+    qt_internal_default_warnings_are_errors("${name}")
 
     set(extra_libraries "")
     if(arg_CORE_LIBRARY STREQUAL "Bootstrap")
@@ -126,6 +166,7 @@ function(qt_internal_add_executable name)
         NO_PCH_SOURCES ${arg_NO_PCH_SOURCES}
         NO_UNITY_BUILD_SOURCES ${arg_NO_UNITY_BUILD_SOURCES}
         INCLUDE_DIRECTORIES ${private_includes}
+        SYSTEM_INCLUDE_DIRECTORIES ${arg_SYSTEM_INCLUDE_DIRECTORIES}
         DEFINES ${arg_DEFINES}
         LIBRARIES
             ${arg_LIBRARIES}
@@ -145,19 +186,31 @@ function(qt_internal_add_executable name)
     set_target_properties("${name}" PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${arg_OUTPUT_DIRECTORY}"
         LIBRARY_OUTPUT_DIRECTORY "${arg_OUTPUT_DIRECTORY}"
-        WIN32_EXECUTABLE "${arg_GUI}"
-        MACOSX_BUNDLE "${arg_GUI}"
     )
 
-    qt_internal_set_exceptions_flags("${name}" ${arg_EXCEPTIONS})
+    if(arg_GUI)
+        # Only override if GUI is set. Otherwise leave up to
+        # CMake defaults, which may be set by the user elsewhere.
+        set_target_properties("${name}" PROPERTIES
+            MACOSX_BUNDLE ON
+            WIN32_EXECUTABLE ON
+    )
+    endif()
+
+    if(NOT arg_EXCEPTIONS)
+        qt_internal_set_exceptions_flags("${name}" "DEFAULT")
+    else()
+        qt_internal_set_exceptions_flags("${name}" "${arg_EXCEPTIONS}")
+    endif()
 
     # Check if target needs to be excluded from all target. Also affects qt_install.
     # Set by qt_exclude_tool_directories_from_default_target.
     set(exclude_from_all FALSE)
     if(__qt_exclude_tool_directories)
         foreach(absolute_dir ${__qt_exclude_tool_directories})
-            string(FIND "${CMAKE_CURRENT_SOURCE_DIR}" "${absolute_dir}" dir_starting_pos)
-            if(dir_starting_pos EQUAL 0)
+            _qt_internal_path_is_prefix(absolute_dir "${CMAKE_CURRENT_SOURCE_DIR}"
+                in_current_source)
+            if(in_current_source)
                 set(exclude_from_all TRUE)
                 set_target_properties("${name}" PROPERTIES
                     EXCLUDE_FROM_ALL TRUE
@@ -204,28 +257,22 @@ function(qt_internal_add_executable name)
         else()
             unset(separate_debug_info_executable_arg)
         endif()
-        qt_enable_separate_debug_info(${name} "${arg_INSTALL_DIRECTORY}"
-                                      ${separate_debug_info_executable_arg}
-                                      ADDITIONAL_INSTALL_ARGS ${additional_install_args})
+
+        qt_internal_defer_separate_debug_info("${name}"
+            SEPARATE_DEBUG_INFO_ARGS
+                "${arg_INSTALL_DIRECTORY}"
+                ${separate_debug_info_executable_arg}
+                ADDITIONAL_INSTALL_ARGS ${additional_install_args}
+        )
         qt_internal_install_pdb_files(${name} "${arg_INSTALL_DIRECTORY}")
     endif()
 
-    if(QT_GENERATE_SBOM)
-        set(sbom_args "")
-        _qt_internal_forward_function_args(
-            FORWARD_APPEND
-            FORWARD_PREFIX arg
-            FORWARD_OUT_VAR sbom_args
-            FORWARD_OPTIONS
-                ${__qt_internal_sbom_optional_args}
-            FORWARD_SINGLE
-                ${__qt_internal_sbom_single_args}
-            FORWARD_MULTI
-                ${__qt_internal_sbom_multi_args}
-        )
+    qt_add_list_file_finalizer(qt_internal_finalize_executable "${name}")
+endfunction()
 
-        _qt_internal_extend_sbom(${name} ${sbom_args})
-    endif()
+# Finalizer for all generic internal executables.
+function(qt_internal_finalize_executable target)
+    qt_internal_finalize_executable_separate_debug_info("${target}")
 endfunction()
 
 # This function compiles the target at configure time the very first time and creates the custom

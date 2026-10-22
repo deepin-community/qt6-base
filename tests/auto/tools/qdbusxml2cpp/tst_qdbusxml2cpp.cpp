@@ -25,6 +25,8 @@ private slots:
     void missingAnnotation();
     void includeMoc_data();
     void includeMoc();
+    void customNamespace_data();
+    void customNamespace();
 };
 
 struct BasicTypeList {
@@ -201,7 +203,9 @@ void tst_qdbusxml2cpp::process_data()
                    .arg(basicTypeList[i].dbusType)
                 << QRegularExpression(QString("Q_SLOTS:.*\\bQDBusPendingReply<%1> Method\\((const )?%1 ")
                                       .arg(basicTypeList[i].cppType), QRegularExpression::DotMatchesEverythingOption)
-                << QRegularExpression(QString("Q_SLOTS:.*\\b%1 Method\\((const )?%1 ")
+                << QRegularExpression(QString("Q_SLOTS:.*\\b%1 Method\\((const )?%1 &?in0\\);"
+                                              ".*%1 .*::Method\\((const )?%1 &?in0\\)\n{\n"
+                                              ".*%1 out0{};")
                                       .arg(basicTypeList[i].cppType), QRegularExpression::DotMatchesEverythingOption);
     }
 
@@ -224,7 +228,9 @@ void tst_qdbusxml2cpp::process_data()
                "</method>"
             << QRegularExpression("Q_SLOTS:.*\\bQDBusPendingReply<Point> Method\\(PointF ",
                                   QRegularExpression::DotMatchesEverythingOption)
-            << QRegularExpression("Q_SLOTS:.*\\bPoint Method\\(PointF ",
+            << QRegularExpression("Q_SLOTS:.*\\bPoint Method\\(PointF in0\\);"
+                                  ".*Point .*::Method\\(PointF in0\\)\n{\n"
+                                  ".*Point out0{};",
                                   QRegularExpression::DotMatchesEverythingOption);
 
     QTest::newRow("method-ss")
@@ -479,6 +485,51 @@ void tst_qdbusxml2cpp::includeMoc()
     }
     else if ((parts.size() == 2) && !parts.first().isEmpty() && !parts.last().isEmpty()) {
         checkTwoFiles(parts.first(), parts.last(), expected);
+    }
+}
+
+void tst_qdbusxml2cpp::customNamespace_data()
+{
+    QTest::addColumn<QByteArray>("namesp");
+
+    QTest::newRow("simple") << QByteArray("lancetest");
+    QTest::newRow("double") << QByteArray("lance::test");
+}
+
+void tst_qdbusxml2cpp::customNamespace()
+{
+    QFETCH(QByteArray, namesp);
+
+    QProcess process;
+    QStringList flags = {"-", "--namespace", namesp};
+
+    runTool(process,QByteArray{},flags);
+    QCOMPARE(process.exitCode(), 0);
+
+    QByteArray errOutput = process.readAllStandardError();
+    QVERIFY2(errOutput.isEmpty(), errOutput);
+
+    QByteArray fullOutput = process.readAll();
+    QVERIFY(!fullOutput.isEmpty());
+
+    // twice: once in the header, once in the implementation
+    static constexpr qsizetype requiredNameSpaceCount = 2;
+    QCOMPARE(fullOutput.count("namespace " + namesp + " {"), requiredNameSpaceCount);
+
+    static constexpr QByteArrayView endMarker("} // end of namespace ");
+    qsizetype startFrom = 0;
+    for (qsizetype i = 0; i < requiredNameSpaceCount; ++i) {
+        // make sure the namespace is there
+        qsizetype namespaceStart = fullOutput.indexOf("namespace " + namesp + " {", startFrom);
+        qsizetype namespaceEnd = fullOutput.indexOf(endMarker + namesp, namespaceStart);
+        QCOMPARE_GE(namespaceStart, 0);
+        QCOMPARE_GT(namespaceEnd, namespaceStart);
+        startFrom = namespaceEnd + endMarker.size() + namesp.size();
+
+        // make sure we cover a useful part of the source code with the namespace:
+        auto partOutput = QByteArrayView(fullOutput)
+                .slice(namespaceStart, startFrom - namespaceStart);
+        QCOMPARE(partOutput.count("{"), partOutput.count("}"));
     }
 }
 

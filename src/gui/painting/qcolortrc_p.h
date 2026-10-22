@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOLORTRC_P_H
 #define QCOLORTRC_P_H
@@ -115,7 +116,7 @@ public:
     Type m_type;
 
     friend inline bool comparesEqual(const QColorTrc &lhs, const QColorTrc &rhs);
-    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QColorTrc);
+    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QColorTrc)
 
     QColorTransferFunction m_fun;
     QColorTransferTable m_table;

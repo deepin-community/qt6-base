@@ -12,6 +12,9 @@
 #include <qset.h>
 
 #if defined(Q_OS_UNIX)
+#include <errno.h>
+#include <signal.h>
+#include <sys/resource.h>
 #include <unistd.h> // for geteuid
 #endif
 
@@ -52,6 +55,8 @@ class tst_QSaveFile : public QObject
 public slots:
 
 private slots:
+    void basics();
+    void stdfilesystem();
     void transactionalWrite();
     void retryTransactionalWrite();
     void textStreamManualFlush();
@@ -61,9 +66,19 @@ private slots:
     void transactionalWriteNoPermissionsOnDir();
     void transactionalWriteNoPermissionsOnFile();
     void transactionalWriteCanceled();
-    void transactionalWriteErrorRenaming();
+    void transactionalWritePermissionsErrorRenaming();
+    void transactionalWriteTypeErrorRenaming();
     void symlink();
     void directory();
+
+#ifdef Q_OS_UNIX
+    void writeFailToDevFull_data();
+    void writeFailToDevFull();
+#endif
+#if defined(RLIMIT_FSIZE) && (defined(Q_OS_LINUX) || defined(Q_OS_MACOS))
+    void writeFailResourceLimit_data();
+    void writeFailResourceLimit();
+#endif
 
 #ifdef Q_OS_WIN
     void alternateDataStream_data();
@@ -76,6 +91,45 @@ static inline QByteArray msgCannotOpen(const QFileDevice &f)
     QString result = QStringLiteral("Cannot open ") + QDir::toNativeSeparators(f.fileName())
         + QStringLiteral(": ") + f.errorString();
     return result.toLocal8Bit();
+}
+
+void tst_QSaveFile::basics()
+{
+    QSaveFile f;
+    QCOMPARE(f.fileName(), QString());
+    f.setFileName("foobar");
+    QCOMPARE(f.fileName(), "foobar");
+    f.setFileName(QString());
+    QCOMPARE(f.fileName(), QString());
+
+    QString abspath = QDir::currentPath() + "/foobar";
+    QSaveFile f2(abspath);
+    QCOMPARE(f2.fileName(), abspath);
+    f2.setFileName(QString());
+    QCOMPARE(f2.fileName(), QString());
+}
+
+void tst_QSaveFile::stdfilesystem()
+{
+#if QT_CONFIG(cxx17_filesystem)
+    using namespace std::filesystem;
+    QSaveFile f;
+    f.setFileName(path("foobar"));
+    QCOMPARE(f.fileName(), "foobar");
+    QCOMPARE(f.filesystemFileName(), path("foobar"));
+    f.setFileName(path());
+    QCOMPARE(f.fileName(), QString());
+    QVERIFY(f.filesystemFileName().empty());
+
+    path abspath = QDir::current().filesystemAbsolutePath() / "foobar";
+    QSaveFile f2(abspath);
+    QCOMPARE(f2.filesystemFileName(), abspath);
+    f2.setFileName(path());
+    QCOMPARE(f2.fileName(), QString());
+    QVERIFY(f.filesystemFileName().empty());
+#else
+    QSKIP("C++17 std::filesystem support not found.");
+#endif
 }
 
 void tst_QSaveFile::transactionalWrite()
@@ -288,8 +342,8 @@ void tst_QSaveFile::transactionalWriteNoPermissionsOnDir()
         QVERIFY2(file.open(QIODevice::WriteOnly), msgCannotOpen(file).constData());
         QCOMPARE((int)file.error(), (int)QFile::NoError);
         QCOMPARE(file.write("W"), Q_INT64_C(1));
-        file.cancelWriting(); // no effect, as per the documentation
-        QVERIFY(file.commit());
+        file.cancelWriting();
+        QVERIFY(!file.commit());
 
         QVERIFY(reader.open(QIODevice::ReadOnly));
         QCOMPARE(QString::fromLatin1(reader.readAll()), QString::fromLatin1("W"));
@@ -350,7 +404,7 @@ void tst_QSaveFile::transactionalWriteCanceled()
     QCOMPARE(file.fileName(), targetFile);
 }
 
-void tst_QSaveFile::transactionalWriteErrorRenaming()
+void tst_QSaveFile::transactionalWritePermissionsErrorRenaming()
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_VXWORKS)
     if (::geteuid() == 0)
@@ -386,9 +440,36 @@ void tst_QSaveFile::transactionalWriteErrorRenaming()
     QCOMPARE(file.error(), QFile::RenameError);
 }
 
+void tst_QSaveFile::transactionalWriteTypeErrorRenaming()
+{
+    QTemporaryDir dir;
+    QVERIFY2(dir.isValid(), qPrintable(dir.errorString()));
+    const QString targetFile = dir.path() + QString::fromLatin1("/outfile");
+    QSaveFile file(targetFile);
+    QVERIFY2(file.open(QIODevice::WriteOnly), msgCannotOpen(file).constData());
+    QCOMPARE(file.write("Hello"), qint64(5));
+
+    QFileInfo target(targetFile);
+    QVERIFY(!target.exists(targetFile));
+
+    // create a directory with the target file name: one can't replace a
+    // directory with a file through a rename
+    QVERIFY(QDir(dir.path()).mkdir("outfile"));
+
+    // The saving should fail.
+    QVERIFY(!file.commit());
+    QCOMPARE(file.error(), QFile::RenameError);
+#ifdef Q_OS_UNIX
+    QCOMPARE(file.errorString(), qt_error_string(EISDIR));
+#endif
+
+    target.refresh();
+    QVERIFY(target.isDir());
+}
+
 void tst_QSaveFile::symlink()
 {
-#ifdef Q_OS_UNIX
+#if defined(Q_OS_UNIX) && !defined(Q_OS_HARMONY)
     QByteArray someData = "some data";
     QTemporaryDir dir;
     QVERIFY2(dir.isValid(), qPrintable(dir.errorString()));
@@ -404,7 +485,7 @@ void tst_QSaveFile::symlink()
 
     QVERIFY(QFile::link(targetFile, linkFile));
 
-    QString canonical = QFileInfo(linkFile).canonicalFilePath();
+    const QString canonical = QFileInfo(linkFile).canonicalFilePath();
     QCOMPARE(canonical, QFileInfo(targetFile).canonicalFilePath());
 
     // Try saving into it
@@ -412,7 +493,7 @@ void tst_QSaveFile::symlink()
         QSaveFile saveFile(linkFile);
         QVERIFY(saveFile.open(QIODevice::WriteOnly));
         QCOMPARE(saveFile.write(someData), someData.size());
-        saveFile.commit();
+        QVERIFY(saveFile.commit());
 
         //Check that the linkFile is still a link and still has the same canonical path
         QFileInfo info(linkFile);
@@ -431,7 +512,7 @@ void tst_QSaveFile::symlink()
         QSaveFile saveFile(linkFile);
         QVERIFY(saveFile.open(QIODevice::WriteOnly));
         QCOMPARE(saveFile.write(someData), someData.size());
-        saveFile.commit();
+        QVERIFY(saveFile.commit());
 
         QFileInfo info(linkFile);
         QVERIFY(info.isSymLink());
@@ -457,7 +538,7 @@ void tst_QSaveFile::symlink()
         QSaveFile saveFile(linkFile2);
         QVERIFY(saveFile.open(QIODevice::WriteOnly));
         QCOMPARE(saveFile.write(someData), someData.size());
-        saveFile.commit();
+        QVERIFY(saveFile.commit());
         QCOMPARE(saveFile.size(), someData.size());
 
         QFile file(targetFile);
@@ -472,7 +553,7 @@ void tst_QSaveFile::symlink()
         QSaveFile saveFile(cyclicLink);
         QVERIFY(saveFile.open(QIODevice::WriteOnly));
         QCOMPARE(saveFile.write(someData), someData.size());
-        saveFile.commit();
+        QVERIFY(saveFile.commit());
 
         QFile file(cyclicLink);
         QVERIFY2(file.open(QIODevice::ReadOnly), msgCannotOpen(file).constData());
@@ -487,7 +568,7 @@ void tst_QSaveFile::symlink()
         QSaveFile saveFile(cyclicLink + QLatin1Char('1'));
         QVERIFY(saveFile.open(QIODevice::WriteOnly));
         QCOMPARE(saveFile.write(someData), someData.size());
-        saveFile.commit();
+        QVERIFY(saveFile.commit());
         QCOMPARE(saveFile.size(), someData.size());
 
         // the explicit file becomes a file instead of a link
@@ -513,7 +594,7 @@ void tst_QSaveFile::directory()
         QVERIFY(!sf.open(QIODevice::WriteOnly));
     }
 
-#ifdef Q_OS_UNIX
+#if defined(Q_OS_UNIX) && !defined(Q_OS_HARMONY)
     //link to a directory
     const QString linkToDir = dir.path() + QLatin1String("/linkToDir");
     QVERIFY(QFile::link(subdir, linkToDir));
@@ -524,6 +605,123 @@ void tst_QSaveFile::directory()
     }
 #endif
 }
+
+[[maybe_unused]] static void bufferedAndUnbuffered()
+{
+    QTest::addColumn<QIODevice::OpenMode>("mode");
+    QTest::newRow("unbuffered") << QIODevice::OpenMode(QIODevice::Unbuffered);
+    QTest::newRow("buffered") << QIODevice::OpenMode();
+}
+
+#ifdef Q_OS_UNIX
+void tst_QSaveFile::writeFailToDevFull_data()
+{
+    // check if /dev/full exists and is writable
+    if (access("/dev/full", W_OK) != 0)
+        QSKIP("/dev/full either does not exist or is not writable");
+    if (access("/dev", W_OK) == 0)
+        QSKIP("/dev is writable (running as root?): this test would replace /dev/full");
+
+    bufferedAndUnbuffered();
+}
+
+void tst_QSaveFile::writeFailToDevFull()
+{
+    QFETCH(QIODevice::OpenMode, mode);
+    mode |= QIODevice::WriteOnly;
+
+    QSaveFile saveFile("/dev/full");
+    saveFile.setDirectWriteFallback(true);
+
+    QVERIFY2(saveFile.open(mode), msgCannotOpen(saveFile).constData());
+
+    QByteArray data("abc");
+    qint64 written = saveFile.write(data);
+    if (mode & QIODevice::Unbuffered) {
+        // error reported immediately
+        QCOMPARE(written, -1);
+        QCOMPARE(saveFile.error(), QFile::ResourceError);
+        QCOMPARE(saveFile.errorString(), qt_error_string(ENOSPC));
+    } else {
+        // error reported only on .commit()
+        QCOMPARE(written, data.size());
+        QCOMPARE(saveFile.error(), QFile::NoError);
+    }
+    QVERIFY(!saveFile.commit());
+    QCOMPARE(saveFile.error(), QFile::ResourceError);
+}
+#endif // Q_OS_UNIX
+#if defined(RLIMIT_FSIZE) && (defined(Q_OS_LINUX) || defined(Q_OS_MACOS))
+// This test is only enabled on Linux and on macOS because we can verify that
+// those OSes do respect RLIMIT_FSIZE. We can also verify that some other Unix
+// OSes do not.
+
+void tst_QSaveFile::writeFailResourceLimit_data()
+{
+    bufferedAndUnbuffered();
+}
+
+void tst_QSaveFile::writeFailResourceLimit()
+{
+    // don't make it too small because stdout may be a log file!
+    static constexpr qint64 FileSizeLimit = 1024 * 1024;
+    struct RlimitChanger {
+        struct rlimit old;
+        RlimitChanger()
+        {
+            getrlimit(RLIMIT_FSIZE, &old);
+            struct rlimit newLimit = {};
+            newLimit.rlim_cur = FileSizeLimit;
+            newLimit.rlim_max = old.rlim_max;
+            if (setrlimit(RLIMIT_FSIZE, &newLimit) != 0)
+                old.rlim_cur = 0;
+
+            // ignore SIGXFSZ so we get EF2BIG when writing the file
+            signal(SIGXFSZ, SIG_IGN);
+        }
+        ~RlimitChanger()
+        {
+            if (old.rlim_cur)
+                setrlimit(RLIMIT_FSIZE, &old);
+        }
+    };
+
+    QFETCH(QIODevice::OpenMode, mode);
+    mode |= QIODevice::WriteOnly;
+
+    QTemporaryDir dir;
+    QVERIFY2(dir.isValid(), qPrintable(dir.errorString()));
+    const QString targetFile = dir.path() + QString::fromLatin1("/outfile");
+    QFile::remove(targetFile);
+    QSaveFile saveFile(targetFile);
+    QVERIFY2(saveFile.open(mode), msgCannotOpen(saveFile).constData());
+
+    RlimitChanger changer;
+    if (changer.old.rlim_cur == 0)
+        QSKIP("Could not set the file size resource limit");
+
+    QByteArray data(FileSizeLimit + 16, 'a');
+    qint64 written = 0, lastWrite;
+    do {
+        lastWrite = saveFile.write(data.constData() + written, data.size() - written);
+        if (lastWrite > 0)
+            written += lastWrite;
+    } while (lastWrite > 0 && written < data.size());
+    if (mode & QIODevice::Unbuffered) {
+        // error reported immediately
+        QCOMPARE_LT(written, data.size());
+        QCOMPARE(lastWrite, -1);
+        QCOMPARE(saveFile.error(), QFile::WriteError);
+        QCOMPARE(saveFile.errorString(), qt_error_string(EFBIG));
+    } else {
+        // error reported only on .commit()
+        QCOMPARE(written, data.size());
+        QCOMPARE(saveFile.error(), QFile::NoError);
+    }
+    QVERIFY(!saveFile.commit());
+    QCOMPARE(saveFile.error(), QFile::WriteError);
+}
+#endif // RLIMIT_FSIZE && (Linux or macOS)
 
 #ifdef Q_OS_WIN
 void tst_QSaveFile::alternateDataStream_data()

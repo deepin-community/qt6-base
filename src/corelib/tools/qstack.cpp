@@ -8,11 +8,13 @@
 
     \ingroup tools
     \ingroup shared
+    \ingroup containers
 
     \reentrant
 
-    QStack\<T\> is one of Qt's generic \l{container classes}. It implements
-    a stack data structure for items of a same type.
+    QStack\<T\> is one of Qt's generic \l{container classes}, where
+    \a T specifies the element type. It implements a stack data structure
+    for items of the same type.
 
     A stack is a last in, first out (LIFO) structure. Items are added
     to the top of the stack using push() and retrieved from the top
@@ -43,13 +45,22 @@
 /*!
     \fn template<class T> void QStack<T>::swap(QStack<T> &other)
     \since 4.8
-
-    Swaps stack \a other with this stack. This operation is very fast and
-    never fails.
+    \memberswap{stack}
 */
 
 /*!
     \fn template<class T> void QStack<T>::push(const T& t)
+
+    Adds element \a t to the top of the stack.
+
+    This is the same as QList::append().
+
+    \sa pop(), top()
+*/
+
+/*!
+    \fn template<class T> void QStack<T>::push(T&& t)
+    \since 6.11
 
     Adds element \a t to the top of the stack.
 

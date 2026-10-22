@@ -9,6 +9,9 @@
 
     \ingroup thread
 
+    QFuture is a template class where the template parameter \a T specifies
+    the type of results that the asynchronous computation produces.
+
     QFuture allows threads to be synchronized against one or more results
     which will be ready at a later point in time. The result can be of any type
     that has default, copy and possibly move constructors. If
@@ -180,6 +183,8 @@
     Be aware that not all running asynchronous computations can be canceled.
     For example, the future returned by QtConcurrent::run() cannot be canceled;
     but the future returned by QtConcurrent::mappedReduced() can.
+
+    \sa cancelChain()
 */
 
 /*! \fn template <typename T> bool QFuture<T>::isCanceled() const
@@ -191,6 +196,44 @@
     function returns \c true. See cancel() for more details.
 */
 
+/*!
+    \fn template <typename T> void QFuture<T>::cancelChain()
+    \since 6.10
+
+    Cancels the entire continuation chain. All already-finished futures are
+    unchanged and their results are still available. Every pending continuation
+    is canceled, and its \l {onCanceled()} handler is called, if it exists in
+    the continuation chain.
+
+    \snippet code/src_corelib_thread_qfuture.cpp 38
+
+    In the example, if the chain is canceled before the \c {Then 2} continuation
+    is executed, both \c {OnCanceled 1} and \c {OnCanceled 2} cancellation
+    handlers will be invoked.
+
+    If the chain is canceled after \c {Then 2}, but before \c {Then 4}, then
+    only \c {OnCanceled 2} will be invoked.
+
+    \note When called on an already finished future, this method has no effect.
+    It's recommended to use it on the QFuture object that represents the entire
+    continuation chain, like it's shown in the example above.
+
+    If any of the continuations in the chain executes an asynchronous
+    computation and returns a QFuture representing it, the \c cancelChain() call
+    will not be propagated into such nested computation once it is started.
+    The reason for that is that the future will be available in the continuation
+    chain only when the outer future is fulfilled, but the cancellation might
+    happen when both an outer and a nested futures are still waiting for their
+    computations to be finished. In such cases, the nested future needs to be
+    captured and canceled explicitly.
+
+    \snippet code/src_corelib_thread_qfuture.cpp 39
+
+    In this example, if \c runNestedComputation() is already in progress,
+    it can only be canceled by calling \c {nested.cancel()}.
+
+    \sa cancel()
+*/
 
 #if QT_DEPRECATED_SINCE(6, 0)
 /*! \fn template <typename T> void QFuture<T>::setPaused(bool paused)
@@ -399,8 +442,11 @@
     a move-only type, or you don't want to copy the result, use takeResult()
     instead.
 
-    \note Calling \c result() leads to undefined behavior if isValid()
-    returns \c false for this QFuture.
+//! [ub_when_invalid]
+    \note Calling this function leads to undefined behavior if isValid()
+    returns \c false for this QFuture. If this QFuture is not yet started, call
+    waitForFinished() before calling this function to avoid undefiend behavior.
+//! [ub_when_invalid]
 
     \sa resultAt(), results(), takeResult()
 */
@@ -411,8 +457,7 @@
     immediately available, this function will block and wait for the result to
     become available.
 
-    \note Calling resultAt() leads to undefined behavior if isValid()
-    returns \c false for this QFuture.
+    \include qfuture.qdoc ub_when_invalid
 
     \sa result(), results(), takeResult(), resultCount()
 */
@@ -422,8 +467,7 @@
     Returns \c true if the result at \a index is immediately available; otherwise
     returns \c false.
 
-    \note Calling isResultReadyAt() leads to undefined behavior if isValid()
-    returns \c false for this QFuture.
+    \include qfuture.qdoc ub_when_invalid
 
     \sa resultAt(), resultCount(), takeResult()
 */
@@ -437,8 +481,7 @@
     still iterate through the list of move-only results by using \l{STL-style iterators}
     or read-only \l{Java-style iterators}.
 
-    \note Calling \c results() leads to undefined behavior if isValid()
-    returns \c false for this QFuture.
+    \include qfuture.qdoc ub_when_invalid
 
     \sa result(), resultAt(), takeResult(), resultCount(), isValid()
 */
@@ -493,9 +536,16 @@
     \since 6.0
 
     Returns \c true if a result or results can be accessed or taken from this
-    QFuture object. Returns false after the result was taken from the future.
+    QFuture object. Returns \c false if the related QPromise has not yet
+    started or the result has already been collected from the future.
 
-    \sa takeResult(), result(), results(), resultAt()
+    \note The return value of this function only implies whether the future
+    result can be consumed, not if it is ready. This function will return
+    \c true when the related QPromise is started, but the result is not yet
+    ready. To test readiness, call \l isResultReadyAt() or \l isFinished().
+
+    \sa takeResult(), result(), results(), resultAt(), isFinished(),
+        isResultReadyAt()
 */
 
 /*! \fn template<typename T> template<class U = T, typename = QtPrivate::EnableForNonVoid<U>> QFuture<T>::const_iterator QFuture<T>::begin() const
@@ -712,6 +762,9 @@
     \brief The QFutureIterator class provides a Java-style const iterator for
     QFuture.
 
+    QFutureIterator\<T\> is a template class where \a T specifies the result
+    type of the QFuture being iterated over.
+
     QFuture has both \l{Java-style iterators} and \l{STL-style iterators}. The
     Java-style iterators are more high-level and easier to use than the
     STL-style iterators; on the other hand, they are slightly less efficient.
@@ -740,7 +793,8 @@
     between the second and third result, and returns the second result; and
     so on.
 
-    \image javaiterators1.png
+    \image javaiterators1.svg {Iterator positions between four items A, B,
+           C, D with arrows pointing to valid positions}
 
     Here's how to iterate over the elements in reverse order:
 
@@ -910,6 +964,9 @@
     \ingroup thread
     \brief QtFuture::WhenAnyResult is used to represent the result of QtFuture::whenAny().
     \since 6.3
+
+    WhenAnyResult\<T\> is a template struct where \a T specifies the result
+    type of the futures.
 
     The \c {QtFuture::WhenAnyResult<T>} struct is used for packaging the copy and
     the index of the first completed \c QFuture<T> in the sequence of futures
@@ -1137,12 +1194,11 @@
     results of type \c ContainedType initialized from the values of the
     \a container.
 
-    \note This overload only participates in overload resolution if the
-    \c Container has input iterators.
-
     \snippet code/src_corelib_thread_qfuture.cpp 32
     \dots
     \snippet code/src_corelib_thread_qfuture.cpp 34
+
+    \constraints the \c Container has input iterators.
 
     \sa QFuture, QtFuture::makeReadyVoidFuture(),
     QtFuture::makeReadyValueFuture(), QtFuture::makeExceptionalFuture()
@@ -1201,6 +1257,11 @@
     of multiple continuations. For example:
 
     \snippet code/src_corelib_thread_qfuture.cpp 5
+
+    \warning If the previous future contains multiple results of type \c {T},
+    and the continuation takes an argument of type \c {T} as a parameter, only
+    the first result from the previous QFuture will be handled in the
+    continuation!
 
     If the previous future throws an exception and it is not handled inside the
     continuation, the exception will be propagated to the continuation future, to

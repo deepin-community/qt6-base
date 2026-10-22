@@ -80,6 +80,14 @@ QSingleton<SingletonObject> IncrementThread::singleton;
 
 void tst_QThreadOnce::sameThread_data()
 {
+    static bool executedOnce = false;
+    if (executedOnce) {
+        QSKIP("tst_QThreadOnce can only run once");
+        return;
+    }
+    executedOnce = true;
+
+
     SingletonObject::runCount = 0;
     QTest::addColumn<int>("expectedValue");
 
@@ -105,6 +113,14 @@ void tst_QThreadOnce::sameThread()
 
 void tst_QThreadOnce::multipleThreads()
 {
+    static bool executedOnce = false;
+    if (executedOnce) {
+        QSKIP("tst_QThreadOnce can only run once");
+        return;
+    }
+    executedOnce = true;
+
+
 #if defined(Q_OS_VXWORKS)
     const int NumberOfThreads = 20;
 #else
@@ -136,6 +152,13 @@ void tst_QThreadOnce::multipleThreads()
 
 void tst_QThreadOnce::nesting()
 {
+    static bool executedOnce = false;
+    if (executedOnce) {
+        QSKIP("tst_QThreadOnce can only run once");
+        return;
+    }
+    executedOnce = true;
+
     int variable = 0;
     Q_ONCE {
         Q_ONCE {
@@ -148,6 +171,14 @@ void tst_QThreadOnce::nesting()
 
 static void reentrant(int control, int &counter)
 {
+    static bool executedOnce = false;
+    if (executedOnce) {
+        QSKIP("tst_QThreadOnce can only run once");
+        return;
+    }
+    executedOnce = true;
+
+
     Q_ONCE {
         if (counter)
             reentrant(--control, counter);
@@ -159,6 +190,13 @@ static void reentrant(int control, int &counter)
 
 void tst_QThreadOnce::reentering()
 {
+    static bool executedOnce = false;
+    if (executedOnce) {
+        QSKIP("tst_QThreadOnce can only run once");
+        return;
+    }
+    executedOnce = true;
+
     const int WantedRecursions = 5;
     int count = 0;
     SingletonObject::runCount = 0;
@@ -181,6 +219,14 @@ static void exception_helper(int &val)
 #ifndef QT_NO_EXCEPTIONS
 void tst_QThreadOnce::exception()
 {
+    static bool executedOnce = false;
+    if (executedOnce) {
+        QSKIP("tst_QThreadOnce can only run once");
+        return;
+    }
+    executedOnce = true;
+
+
     int count = 0;
 
     try {

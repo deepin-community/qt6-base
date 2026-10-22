@@ -45,7 +45,17 @@ The following table describes the mapping of configure options to CMake argument
 | -device-option <key=value>            | -DQT_QMAKE_DEVICE_OPTIONS=key1=value1;key2=value2 | Only used for generation qmake-compatibility files.             |
 |                                       |                                                   | The device options are written into mkspecs/qdevice.pri.        |
 | -appstore-compliant                   | -DFEATURE_appstore_compliant=ON                   |                                                                 |
-| -sbom                                 | -DQT_GENERATE_SBOM=ON                             | Enables generation and installation of an SBOM                  |
+| -sbom                                 | -DQT_GENERATE_SBOM=ON                             | Enables generation of SBOM documents (multiple formats)         |
+| -sbom-spdx-v2                         | -DQT_SBOM_GENERATE_SPDX_V2=ON                     | Enables generation of SPDX v2.3 SBOM in tag:value format        |
+| -sbom-cyclonedx-v1_6                  | -DQT_SBOM_GENERATE_CYDX_V1_6=ON                   | Enables generation of CycloneDX v1.6 SBOM in JSON format        |
+| -sbom-cyclonedx-v1_6-required         | -DQT_SBOM_REQUIRE_GENERATE_CYDX_V1_6=ON           | Fails the build if Cyclone DX Python deps are not found         |
+| -sbom-cyclonedx-v1_6-verify           | -DQT_SBOM_VERIFY_CYDX_V1_6=ON                     | Enables verification of generated CycloneDX v1.6 SBOMs          |
+| -sbom-cyclonedx-v1_6-verify-required  | -DQT_SBOM_REQUIRE_VERIFY_CYDX_V1_6=ON             | Fails the build if Cyclone DX Python verify deps are not found  |
+| -sbom-json                            | -DQT_SBOM_GENERATE_SPDX_V2_JSON=ON                | Enables generation of SPDX v2.3 SBOM in JSON format             |
+| -sbom-json-required                   | -DQT_SBOM_REQUIRE_GENERATE_SPDX_V2_JSON=ON        | Fails the build if SPDX Python deps are not found               |
+| -sbom-verify                          | -DQT_SBOM_VERIFY_SPDX_V2=ON                       | Enables verification of generated SPDX v2.3 SBOMs               |
+| -sbom-verify-required                 | -DQT_SBOM_REQUIRE_VERIFY_SPDX_V2=ON               | Fails the build if SPDX Python verify deps are not found        |
+| -sbomdir <dir>                        | -DINSTALL_SBOMDIR=<dir>                           | Installation location of SBOM files.                            |
 | -qtinlinenamespace                    | -DQT_INLINE_NAMESPACE=ON                          | Make the namespace specified by -qtnamespace an inline one.     |
 | -qtnamespace <name>                   | -DQT_NAMESPACE=<name>                             |                                                                 |
 | -qtlibinfix <infix>                   | -DQT_LIBINFIX=<infix>                             |                                                                 |
@@ -53,8 +63,10 @@ The following table describes the mapping of configure options to CMake argument
 | -gcov                                 | -DINPUT_coverage=gcov                             | Enables code coverage using the gcov tool.                      |
 | -trace [backend]                      | -DINPUT_trace=yes or -DINPUT_trace=<backend>      |                                                                 |
 |                                       | or -DFEATURE_<backend>                            |                                                                 |
-| -sanitize address -sanitize undefined | -DFEATURE_sanitize_address=ON                     | Directly setting -DECM_ENABLE_SANITIZERS=foo is not supported   |
-|                                       | -DFEATURE_sanitize_undefined=ON                   |                                                                 |
+| -sanitize address                     | -DFEATURE_sanitize_address=ON                     | Directly setting -DECM_ENABLE_SANITIZERS=foo is not supported   |
+| -sanitize undefined                   | -DFEATURE_sanitize_undefined=ON                   | See above.                                                      |
+| -sanitize thread                      | -DFEATURE_sanitize_thread=ON                      | See above.                                                      |
+| -sanitize memory                      | -DFEATURE_sanitize_memory=ON                      | See above.                                                      |
 | -c++std c++20                         | -DFEATURE_cxx20=ON                                |                                                                 |
 | -sse2/-sse3/-ssse3/-sse4.1            | -DFEATURE_sse4=ON                                 |                                                                 |
 | -mips_dsp/-mips_dspr2                 | -DFEATURE_mips_dsp=ON                             |                                                                 |
@@ -93,8 +105,12 @@ The following table describes the mapping of configure options to CMake argument
 | -android-ndk-platform android-28      | -DANDROID_PLATFORM=android-28                     |                                                                 |
 | -android-abis <abi_1>,...,<abi_n>     | -DANDROID_ABI=<abi_1>                             | only one ABI can be specified                                   |
 | -android-style-assets                 | -DFEATURE_android_style_assets=ON                 |                                                                 |
-| -android-javac-source                 | -DQT_ANDROID_JAVAC_SOURCE=7                       | Set the javac build source version.                             |
-| -android-javac-target                 | -DQT_ANDROID_JAVAC_TARGET=7                       | Set the javac build target version.                             |
+| -android-javac-source                 | -DQT_ANDROID_JAVAC_SOURCE=17                       | Set the javac build source version.                             |
+| -android-javac-target                 | -DQT_ANDROID_JAVAC_TARGET=17                       | Set the javac build target version.                             |
+| -ohos-sdk <path>                      | -DOHOS_SDK_ROOT=<path>                            |                                                                 |
+| -ohos-ndk <path>                      | -DCMAKE_TOOLCHAIN_FILE=<toolchain file in NDK>    |                                                                 |
+| -ohos-ndk-platform 20                 | -DOHOS_PLATFORM=20                                |                                                                 |
+| -ohos-arch <arch>                     | -DOHOS_ARCH=<arch>                                | e.g. arm64-v8a or x86_64                                        |
 | -skip <repo>,...,<repo_n>             | -DBUILD_<repo>=OFF                                |                                                                 |
 | -skip-tests <repo>,...,<repo_n>       | -DQT_BUILD_TESTS_PROJECT_<repo>=OFF               |                                                                 |
 | -skip-examples <repo>,...,<repo_n>    | -DQT_BUILD_EXAMPLES_PROJECT_<repo>=OFF            |                                                                 |
@@ -121,7 +137,6 @@ The following table describes the mapping of configure options to CMake argument
 | -glib                                 | -DFEATURE_glib=ON                                 |                                                                 |
 | -inotify                              | -DFEATURE_inotify=ON                              |                                                                 |
 | -icu                                  | -DFEATURE_icu=ON                                  |                                                                 |
-| -pcre                                 | -DFEATURE_pcre2=ON                                |                                                                 |
 | -pcre [system/qt]                     | -DFEATURE_system_pcre2=ON/OFF                     |                                                                 |
 | -pps                                  | n/a                                               | QNX feature. Not available for 6.0.                             |
 | -zlib [system/qt]                     | -DFEATURE_system_zlib=ON/OFF                      |                                                                 |
@@ -173,3 +188,8 @@ The following table describes the mapping of configure options to CMake argument
 | -disable-deprecated-up-to <hex_version> | -DQT_DISABLE_DEPRECATED_UP_TO=<hex_version>     |                                                                 |
 | -mimetype-database-compression <type> | -DINPUT_mimetype_database_compression=<type>      | Sets the compression type for mime type database. Supported     |
 |                                       |                                                   | types: gzip, zstd, none.                                        |
+| -force-bundled-libs                   | -DFEATURE_force_bundled_libs=ON                   |                                                                 |
+| -force-system-libs                    | -DFEATURE_force_system_libs=ON                    |                                                                 |
+| -ffmpeg-dir <dir>                     | -DFFMPEG_DIR=<dir>                                | FFmpeg development libraries directory                          |
+| -ffmpeg-deploy                        | -DQT_DEPLOY_FFMPEG=ON                             | FFmpeg binaries will be copied to Qt's install directory        |
+| -default-media-backend <name>         | -DQT_DEFAULT_MEDIA_BACKEND=<name>                 | Default multimedia decoding&encoding backend                    |

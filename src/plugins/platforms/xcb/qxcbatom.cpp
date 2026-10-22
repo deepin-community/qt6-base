@@ -1,5 +1,7 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #include "qxcbatom.h"
 
 #include <QtCore/qglobal.h>
@@ -7,6 +9,9 @@
 #include <string.h>
 
 #include <algorithm>
+#include <cstdlib>
+
+QT_BEGIN_NAMESPACE
 
 static const char *xcb_atomnames = {
     // window-manager <-> client protocols
@@ -204,6 +209,8 @@ static const char *xcb_atomnames = {
     "EDID_DATA\0"
     "XFree86_DDC_EDID1_RAWDATA\0"
     "_ICC_PROFILE\0"
+    "_KDE_NET_WM_APPMENU_SERVICE_NAME\0"
+    "_KDE_NET_WM_APPMENU_OBJECT_PATH\0"
     // \0\0 terminates loop.
 };
 
@@ -243,3 +250,5 @@ QXcbAtom::Atom QXcbAtom::qatom(xcb_atom_t xatom) const
 {
     return static_cast<QXcbAtom::Atom>(std::find(m_allAtoms, m_allAtoms + QXcbAtom::NAtoms, xatom) - m_allAtoms);
 }
+
+QT_END_NAMESPACE

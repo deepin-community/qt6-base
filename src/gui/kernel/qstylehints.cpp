@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
+#include "qaccessibilityhints_p.h"
 #include <qstylehints.h>
 #include "qstylehints_p.h"
 #include <qpa/qplatformintegration.h>
@@ -53,8 +55,14 @@ static inline QVariant themeableHint(QPlatformTheme::ThemeHint th)
     An object of this class, obtained from QGuiApplication, provides access to certain global
     user interface parameters of the current platform.
 
-    Access to most settings is read only. The platform itself usually provides the user with
-    ways to tune these parameters. Authors of custom user interface components should read
+    The platform provides most of these settings, and they are typically read-only.
+    End users can usually adjust them through platform-specific configuration mechanisms.
+    However, you can also adjust some settings programmatically through dedicated setter
+    functions, (for example, setColorScheme() or setShowShortcutsInContextMenus()),
+    which can be useful for testing or specialized application behavior. Any such adjustments
+    apply only to the current application.
+
+    Authors of custom user interface components should read
     relevant settings to allow the components to exhibit the same behavior and feel as other
     components.
 
@@ -177,6 +185,56 @@ void QStyleHints::setColorScheme(Qt::ColorScheme scheme)
     Restores the color scheme to the system's current color scheme.
 */
 
+
+/*!
+    \property QStyleHints::accessibility
+    \brief The application's accessibility hints.
+
+    The accessibility hints encapsulates platform dependent accessibility settings
+    such as whether the user wishes the application to be in high contrast or not.
+
+    \sa QAccessibilityHints
+    \since 6.10
+*/
+const QAccessibilityHints *QStyleHints::accessibility() const
+{
+    Q_D(const QStyleHints);
+    return d->accessibilityHints();
+}
+
+/*!
+    \property QStyleHints::toolTipWakeUpDelay
+    \brief The delay before tool tips should be shown.
+    \since 6.12
+    \sa QWidget::toolTip, {QtQuick.Controls::ToolTip::delay}
+*/
+std::chrono::milliseconds QStyleHints::toolTipWakeUpDelay() const
+{
+    Q_D(const QStyleHints);
+    return d->m_toolTipWakeUpDelay;
+}
+
+void QStyleHints::setToolTipWakeUpDelay(std::chrono::milliseconds toolTipWakeUpDelay)
+{
+    Q_D(QStyleHints);
+    if (d->m_toolTipWakeUpDelay == toolTipWakeUpDelay)
+        return;
+    d->m_toolTipWakeUpDelay = toolTipWakeUpDelay;
+    emit toolTipWakeUpDelayChanged(toolTipWakeUpDelay);
+    emit toolTipWakeUpDelayAsMSecChanged(toolTipWakeUpDelayAsMSec());
+}
+
+/*!
+    \property QStyleHints::toolTipWakeUpDelayAsMSec
+    \brief The delay, in milliseconds, before tool tips should be shown.
+    \since 6.12
+    \sa toolTipWakeUpDelay, {QtQuick.Controls::ToolTip::delay}
+*/
+int QStyleHints::toolTipWakeUpDelayAsMSec() const
+{
+    Q_D(const QStyleHints);
+    return q26::saturating_cast<int>(d->m_toolTipWakeUpDelay.count());
+}
 
 /*!
     Sets the \a mousePressAndHoldInterval.
@@ -329,7 +387,7 @@ int QStyleHints::keyboardInputInterval() const
     \property QStyleHints::keyboardAutoRepeatRate
     \brief the rate, in events per second,  in which additional repeated key
     presses will automatically be generated if a key is being held down.
-    \deprecated [6.5] Use keyboardAutoRepeatRateF() instead
+    \deprecated [6.5] Use keyboardAutoRepeatRateF() instead.
 */
 int QStyleHints::keyboardAutoRepeatRate() const
 {
@@ -474,6 +532,20 @@ void QStyleHints::setContextMenuTrigger(Qt::ContextMenuTrigger contextMenuTrigge
     d->m_contextMenuTrigger = int(contextMenuTrigger);
     if (currentTrigger != contextMenuTrigger)
         emit contextMenuTriggerChanged(contextMenuTrigger);
+}
+
+/*!
+    \property QStyleHints::menuSelectionWraps
+    \since 6.10
+    \brief menu selection wraps around.
+
+    Returns \c true if menu selection wraps. That is, whether key navigation moves
+    the selection to the first menu item again after the last menu item has been
+    reached, and vice versa.
+*/
+bool QStyleHints::menuSelectionWraps() const
+{
+    return themeableHint(QPlatformTheme::MenuSelectionWraps).toBool();
 }
 
 /*!
@@ -689,6 +761,28 @@ void QStyleHintsPrivate::updateColorScheme(Qt::ColorScheme colorScheme)
     m_colorScheme = colorScheme;
     Q_Q(QStyleHints);
     emit q->colorSchemeChanged(colorScheme);
+}
+
+/*!
+    \internal
+
+    Helper function that updates the style hints when the theme changes
+*/
+void QStyleHintsPrivate::update(const QPlatformTheme *theme)
+{
+    Q_ASSERT(theme);
+    updateColorScheme(theme->colorScheme());
+    auto *accessibilityHintsPrivate = QAccessibilityHintsPrivate::get(accessibilityHints());
+    accessibilityHintsPrivate->updateContrastPreference(theme->contrastPreference());
+    accessibilityHintsPrivate->updateMotionPreference(theme->motionPreference());
+}
+
+QAccessibilityHints *QStyleHintsPrivate::accessibilityHints() const
+{
+    Q_Q(const QStyleHints);
+    if (!m_accessibilityHints)
+        const_cast<QStyleHintsPrivate *>(this)->m_accessibilityHints = new QAccessibilityHints(const_cast<QStyleHints*>(q));
+    return m_accessibilityHints;
 }
 
 QStyleHintsPrivate *QStyleHintsPrivate::get(QStyleHints *q)

@@ -180,8 +180,8 @@ bool HttpTestServer::readUrl(QTcpSocket *socket)
             qWarning("Invalid URL path %s", fragment.constData());
             return false;
         }
-        m_request.url = QStringLiteral("http://127.0.0.1:") + QString::number(m_request.port) +
-                QString::fromUtf8(fragment);
+        m_request.url = QUrl{"http://127.0.0.1:"_L1 + QString::number(m_request.port)
+                             + QString::fromUtf8(fragment)};
         state = State::ReadingStatus;
         if (!m_request.url.isValid()) {
             qWarning("Invalid URL %s", fragment.constData());

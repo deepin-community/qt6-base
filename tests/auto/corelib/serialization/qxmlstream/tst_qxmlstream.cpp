@@ -3,6 +3,7 @@
 
 
 #include <QDirIterator>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -10,6 +11,7 @@
 #include <QTest>
 #include <QtTest/private/qcomparisontesthelper_p.h>
 #include <QUrl>
+#include <QVarLengthArray>
 #include <QXmlStreamReader>
 #include <QBuffer>
 #include <QStack>
@@ -50,26 +52,56 @@ static inline int best(int a, int b, int c)
     return qMin(qMin(a, b), c);
 }
 
-// copied from tst_qmake.cpp
-static void copyDir(const QString &sourceDirPath, const QString &targetDirPath)
+static bool copyDir(const QString &sourceDirPath, const QString &targetDirPath)
 {
-    QDir currentDir;
-    QDirIterator dit(sourceDirPath, QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
-    while (dit.hasNext()) {
-        dit.next();
-        const QString targetPath = targetDirPath + QLatin1Char('/') + dit.fileName();
-        currentDir.mkpath(targetPath);
-        copyDir(dit.filePath(), targetPath);
+    QElapsedTimer timer;
+    timer.start();
+    qDebug() << "copyDir" << sourceDirPath << "->" << targetDirPath;
+
+    QDir sourceDir(sourceDirPath);
+    if (!sourceDir.exists()) {
+        qWarning() << "Source directory does not exist:" << sourceDirPath;
+        return false;
     }
 
-    QDirIterator fit(sourceDirPath, QDir::Files | QDir::Hidden);
-    while (fit.hasNext()) {
-        fit.next();
-        const QString targetPath = targetDirPath + QLatin1Char('/') + fit.fileName();
-        QFile::remove(targetPath);  // allowed to fail
-        QFile src(fit.filePath());
-        QVERIFY2(src.copy(targetPath), qPrintable(src.errorString()));
+    QDir targetDir(targetDirPath);
+    if (!targetDir.mkpath(targetDirPath)) {
+        qWarning() << "Failed to create target directory:" << targetDirPath;
+        return false;
     }
+
+    using F = QDirListing::IteratorFlag;
+    QDirListing dirList(sourceDirPath, QStringList(), F::ResolveSymlinks | F::Recursive);
+
+    for (const auto &dirEntry : dirList) {
+        const QString srcPath = dirEntry.filePath();
+        const QString relativePath = sourceDir.relativeFilePath(srcPath);
+        const QString dstPath = targetDir.filePath(relativePath);
+
+        if (dirEntry.isDir()) {
+            if (!targetDir.mkpath(dstPath)) {
+                qWarning() << "Failed to create directory:" << dstPath;
+                return false;
+            }
+        } else if (dirEntry.isFile()) {
+            QFileInfo dstInfo(dstPath);
+            QDir dstParent = dstInfo.dir();
+            if (!dstParent.exists() && !targetDir.mkpath(dstParent.path())) {
+                qWarning() << "Failed to create parent directory:" << dstParent.path();
+                return false;
+            }
+
+            QFile::remove(dstPath); // allowed to fail
+            if (!QFile::copy(srcPath, dstPath)) {
+                qWarning() << "Failed to copy file:" << srcPath << "to" << dstPath;
+                return false;
+            }
+
+        }
+    }
+
+    qDebug() << "copyDir finished in" << (timer.elapsed() / 1000) << "seconds";
+    return true;
 }
 
 template <typename C>
@@ -235,7 +267,7 @@ public:
      * The first string is the test ID, the second is
      * a description of what went wrong.
      */
-    typedef QPair<QString, QString> GeneralFailure;
+    using GeneralFailure = std::pair<QString, QString>;
 
     /**
      * The string is the test ID.
@@ -376,7 +408,7 @@ public:
             QFile inputFile(inputFilePath);
             if(!inputFile.open(QIODevice::ReadOnly))
             {
-                failures.append(qMakePair(id, QLatin1String("Failed to open input file ") + inputFilePath));
+                failures.append({id, "Failed to open input file "_L1 + inputFilePath});
                 return true;
             }
 
@@ -384,8 +416,8 @@ public:
             {
                 if(isWellformed(&inputFile, ParseSinglePass))
                 {
-                     failures.append(qMakePair(id, QLatin1String("Failed to flag ") + inputFilePath
-                                                   + QLatin1String(" as not well-formed.")));
+                    failures.append({id,
+                                    "Failed to flag %1 as not well-formed."_L1.arg(inputFilePath)});
 
                      /* Exit, the incremental test will fail as well, no need to flood the output. */
                      return true;
@@ -395,8 +427,8 @@ public:
 
                 if(isWellformed(&inputFile, ParseIncrementally))
                 {
-                     failures.append(qMakePair(id, QLatin1String("Failed to flag ") + inputFilePath
-                                                   + QLatin1String(" as not well-formed with incremental parsing.")));
+                     failures.append({id, "Failed to flag %1 as not well-formed with incremental "
+                                          "parsing."_L1.arg(inputFilePath)});
                 }
                 else
                     successes.append(id);
@@ -419,7 +451,7 @@ public:
 
                     if(!expectedFile.open(QIODevice::ReadOnly))
                     {
-                        failures.append(qMakePair(id, QLatin1String("Failed to open baseline ") + expectedFilePath));
+                        failures.append({id, "Failed to open baseline "_L1 + expectedFilePath});
                         return true;
                     }
 
@@ -438,9 +470,9 @@ public:
                     input = makeCanonical(inputFilePath, docType, hasError, (incremental = true));
 
                 if(hasError)
-                    failures.append(qMakePair(id, QString::fromLatin1("Failed to parse %1%2")
-                                              .arg(incremental?"(incremental run only) ":"")
-                                              .arg(inputFilePath)));
+                    failures.append({id, "Failed to parse %1%2"_L1
+                                         .arg(incremental ? "(incremental run only) " : "",
+                                              inputFilePath)});
 
                 if(!expectedFilePath.isEmpty() && input != expected)
                 {
@@ -479,14 +511,16 @@ public:
         ParseSinglePass
     };
 
-    static bool isWellformed(QIODevice *const inputFile, const ParseMode mode)
+    static bool isWellformed(QFile *const inputFile, const ParseMode mode)
     {
         if (!inputFile)
-            qFatal("%s: inputFile must be a valid QIODevice pointer", Q_FUNC_INFO);
+            qFatal("%s: inputFile must be a valid QFile pointer", Q_FUNC_INFO);
         if (!inputFile->isOpen())
             qFatal("%s: inputFile must be opened by the caller", Q_FUNC_INFO);
         if (mode != ParseIncrementally && mode != ParseSinglePass)
             qFatal("%s: mode must be either ParseIncrementally or ParseSinglePass", Q_FUNC_INFO);
+        if (!inputFile->seek(0))
+            qFatal("%s: could not seek to the beginning of the file", Q_FUNC_INFO);
 
         if(mode == ParseIncrementally)
         {
@@ -503,8 +537,8 @@ public:
 
                 if(bufferPos < buffer.size())
                 {
-                    ++bufferPos;
                     reader.addData(QByteArray(buffer.data() + bufferPos, 1));
+                    ++bufferPos;
                 }
                 else
                     break;
@@ -559,14 +593,25 @@ private slots:
     void writerAutoFormattingWithProcessingInstructions() const;
     void writerAutoEmptyTags() const;
     void writeAttributesWithSpace() const;
+    void writerAutoFormattingProcessingInstructionFirst() const;
+    void writerAutoFormattingStartElementFirst() const;
+    void writerAutoFormattingCommentFirst() const;
+    void writerAutoFormattingNamespaceFirst() const;
     void addExtraNamespaceDeclarations();
     void setEntityResolver();
     void readFromQBuffer() const;
     void readFromQBufferInvalid() const;
     void readFromLatin1String() const;
+    void readLatin1Document() const;
+    void appendToRawDocumentWithNonUtf8Encoding_data();
+    void appendToRawDocumentWithNonUtf8Encoding();
+    void appendDifferentEncodingsWithoutXmlProlog_data();
+    void appendDifferentEncodingsWithoutXmlProlog();
     void readNextStartElement() const;
     void readElementText() const;
     void readElementText_data() const;
+    void readRawInnerData() const;
+    void readRawInnerData_data() const;
     void crashInUTF16Codec() const;
     void hasAttributeSignature() const;
     void hasAttribute() const;
@@ -591,7 +636,8 @@ private slots:
     void crashInXmlStreamReader() const;
     void invalidStringCharacters_data() const;
     void invalidStringCharacters() const;
-    void hasError() const;
+    void writerErrors() const;
+    void stopWritingOnError() const;
     void readBack_data() const;
     void readBack() const;
     void roundTrip() const;
@@ -599,15 +645,21 @@ private slots:
     void test_fastScanName_data() const;
     void test_fastScanName() const;
 
+    void entityExpansionLimitRange() const;
     void entityExpansionLimit() const;
+    void entityExpansionLimitExternalResolver() const;
+    void externalEntityResolverRecursion() const;
+    void manyAttributes() const;
 
     void tokenErrorHandling_data() const;
     void tokenErrorHandling() const;
     void checkStreamNotationDeclarations() const;
     void checkStreamEntityDeclarations() const;
+    void readElementTextDeepNesting() const;
 
 private:
     static QByteArray readFile(const QString &filename);
+    void entityExpansionLimitImpl(const QString &xml, QXmlStreamEntityResolver *resolver = nullptr) const;
 
     QTemporaryDir m_tempDir;
     TestSuiteHandler m_handler;
@@ -767,96 +819,154 @@ QByteArray tst_QXmlStream::readFile(const QString &filename)
     writer.setEncoding(QStringConverter::Utf8);
 
     while (!reader.atEnd()) {
-        reader.readNext();
+        const auto tok = reader.readNext();
         writer << reader.tokenString() << '(';
-        if (reader.isWhitespace())
-            writer << " whitespace";
-        if (reader.isCDATA())
-            writer << " CDATA";
-        if (reader.isStartDocument() && reader.isStandaloneDocument())
-            writer << " standalone";
-        if (!reader.text().isEmpty())
-            writer << " text=\"" << reader.text().toString() << '"';
-        if (!reader.processingInstructionTarget().isEmpty())
-            writer << " processingInstructionTarget=\"" << reader.processingInstructionTarget().toString() << '"';
-        if (!reader.processingInstructionData().isEmpty())
-            writer << " processingInstructionData=\"" << reader.processingInstructionData().toString() << '"';
-        if (!reader.dtdName().isEmpty())
-            writer << " dtdName=\"" << reader.dtdName().toString() << '"';
-        if (!reader.dtdPublicId().isEmpty())
-            writer << " dtdPublicId=\"" << reader.dtdPublicId().toString() << '"';
-        if (!reader.dtdSystemId().isEmpty())
-            writer << " dtdSystemId=\"" << reader.dtdSystemId().toString() << '"';
-        if (!reader.documentVersion().isEmpty())
-            writer << " documentVersion=\"" << reader.documentVersion().toString() << '"';
-        if (!reader.documentEncoding().isEmpty())
-            writer << " documentEncoding=\"" << reader.documentEncoding().toString() << '"';
-        if (!reader.name().isEmpty())
-            writer << " name=\"" << reader.name().toString() << '"';
-        if (!reader.namespaceUri().isEmpty())
-            writer << " namespaceUri=\"" << reader.namespaceUri().toString() << '"';
-        if (!reader.qualifiedName().isEmpty())
-            writer << " qualifiedName=\"" << reader.qualifiedName().toString() << '"';
-        if (!reader.prefix().isEmpty())
-            writer << " prefix=\"" << reader.prefix().toString() << '"';
-        const auto attributes = reader.attributes();
-        if (attributes.size()) {
+
+        // Accessors shared by several token types; asked after the switch so
+        // that the field order of the reference files is preserved:
+        bool hasName = false;            // name()
+        bool hasNamespace = false;       // namespaceUri(), qualifiedName(), prefix()
+        bool hasAttributes = false;      // attributes(), namespaceDeclarations()
+        bool hasDtdDeclarations = false; // notationDeclarations(), entityDeclarations()
+
+        switch (tok) {
+        case QXmlStreamReader::NoToken:
+            qFatal("readNext() returned NoToken");
+
+        case QXmlStreamReader::EndDocument:
+            break;
+
+        case QXmlStreamReader::StartDocument:
+            if (reader.isStandaloneDocument())
+                writer << " standalone";
+            if (const auto version = reader.documentVersion(); !version.isEmpty())
+                writer << " documentVersion=\"" << version << '"';
+            if (const auto encoding = reader.documentEncoding(); !encoding.isEmpty())
+                writer << " documentEncoding=\"" << encoding << '"';
+            break;
+
+        case QXmlStreamReader::Characters:
+            // isWhitespace() and isCDATA() are Characters-only by construction
+            if (reader.isWhitespace())
+                writer << " whitespace";
+            if (reader.isCDATA())
+                writer << " CDATA";
+            Q_FALLTHROUGH();
+        case QXmlStreamReader::Comment:
+            if (const auto text = reader.text(); !text.isEmpty())
+                writer << " text=\"" << text << '"';
+            break;
+
+        case QXmlStreamReader::DTD:
+            if (const auto text = reader.text(); !text.isEmpty())
+                writer << " text=\"" << text << '"';
+            if (const auto dtdName = reader.dtdName(); !dtdName.isEmpty())
+                writer << " dtdName=\"" << dtdName << '"';
+            if (const auto publicId = reader.dtdPublicId(); !publicId.isEmpty())
+                writer << " dtdPublicId=\"" << publicId << '"';
+            if (const auto systemId = reader.dtdSystemId(); !systemId.isEmpty())
+                writer << " dtdSystemId=\"" << systemId << '"';
+            hasDtdDeclarations = true;
+            break;
+
+        case QXmlStreamReader::EntityReference:
+            if (const auto text = reader.text(); !text.isEmpty())
+                writer << " text=\"" << text << '"';
+            hasName = true;
+            break;
+
+        // On an error the reader keeps whatever context it had got to, and the
+        // reference files record it: the processing-instruction fields for a
+        // rejected XML declaration, the element ones for a failed element.
+        // Only text() is never set for it.
+        case QXmlStreamReader::Invalid:
+            hasName = hasNamespace = hasAttributes = true;
+            Q_FALLTHROUGH();
+        case QXmlStreamReader::ProcessingInstruction:
+            if (const auto target = reader.processingInstructionTarget(); !target.isEmpty())
+                writer << " processingInstructionTarget=\"" << target << '"';
+            if (const auto data = reader.processingInstructionData(); !data.isEmpty())
+                writer << " processingInstructionData=\"" << data << '"';
+            break;
+
+        case QXmlStreamReader::StartElement:
+            hasAttributes = true;
+            Q_FALLTHROUGH();
+        case QXmlStreamReader::EndElement:
+            hasName = hasNamespace = true;
+            break;
+        }
+
+        if (hasName) {
+            if (const auto name = reader.name(); !name.isEmpty())
+                writer << " name=\"" << name << '"';
+        }
+
+        if (hasNamespace) {
+            if (const auto namespaceUri = reader.namespaceUri(); !namespaceUri.isEmpty())
+                writer << " namespaceUri=\"" << namespaceUri << '"';
+            if (const auto qualifiedName = reader.qualifiedName(); !qualifiedName.isEmpty())
+                writer << " qualifiedName=\"" << qualifiedName << '"';
+            if (const auto prefix = reader.prefix(); !prefix.isEmpty())
+                writer << " prefix=\"" << prefix << '"';
+        }
+
+        if (hasAttributes) {
+            const auto attributes = reader.attributes();
             for (const QXmlStreamAttribute &attribute : attributes) {
                 writer << Qt::endl << "    Attribute(";
-                if (!attribute.name().isEmpty())
-                    writer << " name=\"" << attribute.name().toString() << '"';
-                if (!attribute.namespaceUri().isEmpty())
-                    writer << " namespaceUri=\"" << attribute.namespaceUri().toString() << '"';
-                if (!attribute.qualifiedName().isEmpty())
-                    writer << " qualifiedName=\"" << attribute.qualifiedName().toString() << '"';
-                if (!attribute.prefix().isEmpty())
-                    writer << " prefix=\"" << attribute.prefix().toString() << '"';
-                if (!attribute.value().isEmpty())
-                    writer << " value=\"" << attribute.value().toString() << '"';
+                if (const auto name = attribute.name(); !name.isEmpty())
+                    writer << " name=\"" << name << '"';
+                if (const auto namespaceUri = attribute.namespaceUri(); !namespaceUri.isEmpty())
+                    writer << " namespaceUri=\"" << namespaceUri << '"';
+                if (const auto qualifiedName = attribute.qualifiedName(); !qualifiedName.isEmpty())
+                    writer << " qualifiedName=\"" << qualifiedName << '"';
+                if (const auto prefix = attribute.prefix(); !prefix.isEmpty())
+                    writer << " prefix=\"" << prefix << '"';
+                if (const auto value = attribute.value(); !value.isEmpty())
+                    writer << " value=\"" << value << '"';
                 writer << " )" << Qt::endl;
             }
-        }
-        const auto namespaceDeclarations = reader.namespaceDeclarations();
-        if (namespaceDeclarations.size()) {
+            const auto namespaceDeclarations = reader.namespaceDeclarations();
             for (const QXmlStreamNamespaceDeclaration &namespaceDeclaration : namespaceDeclarations) {
                 writer << Qt::endl << "    NamespaceDeclaration(";
-                if (!namespaceDeclaration.prefix().isEmpty())
-                    writer << " prefix=\"" << namespaceDeclaration.prefix().toString() << '"';
-                if (!namespaceDeclaration.namespaceUri().isEmpty())
-                    writer << " namespaceUri=\"" << namespaceDeclaration.namespaceUri().toString() << '"';
+                if (const auto prefix = namespaceDeclaration.prefix(); !prefix.isEmpty())
+                    writer << " prefix=\"" << prefix << '"';
+                if (const auto namespaceUri = namespaceDeclaration.namespaceUri(); !namespaceUri.isEmpty())
+                    writer << " namespaceUri=\"" << namespaceUri << '"';
                 writer << " )" << Qt::endl;
             }
         }
-        const auto notationDeclarations = reader.notationDeclarations();
-        if (notationDeclarations.size()) {
+
+        if (hasDtdDeclarations) {
+            const auto notationDeclarations = reader.notationDeclarations();
             for (const QXmlStreamNotationDeclaration &notationDeclaration : notationDeclarations) {
                 writer << Qt::endl << "    NotationDeclaration(";
-                if (!notationDeclaration.name().isEmpty())
-                    writer << " name=\"" << notationDeclaration.name().toString() << '"';
-                if (!notationDeclaration.systemId().isEmpty())
-                    writer << " systemId=\"" << notationDeclaration.systemId().toString() << '"';
-                if (!notationDeclaration.publicId().isEmpty())
-                    writer << " publicId=\"" << notationDeclaration.publicId().toString() << '"';
+                if (const auto name = notationDeclaration.name(); !name.isEmpty())
+                    writer << " name=\"" << name << '"';
+                if (const auto systemId = notationDeclaration.systemId(); !systemId.isEmpty())
+                    writer << " systemId=\"" << systemId << '"';
+                if (const auto publicId = notationDeclaration.publicId(); !publicId.isEmpty())
+                    writer << " publicId=\"" << publicId << '"';
                 writer << " )" << Qt::endl;
             }
-        }
-        const auto entityDeclarations = reader.entityDeclarations();
-        if (entityDeclarations.size()) {
+            const auto entityDeclarations = reader.entityDeclarations();
             for (const QXmlStreamEntityDeclaration &entityDeclaration : entityDeclarations) {
                 writer << Qt::endl << "    EntityDeclaration(";
-                if (!entityDeclaration.name().isEmpty())
-                    writer << " name=\"" << entityDeclaration.name().toString() << '"';
-                if (!entityDeclaration.notationName().isEmpty())
-                    writer << " notationName=\"" << entityDeclaration.notationName().toString() << '"';
-                if (!entityDeclaration.systemId().isEmpty())
-                    writer << " systemId=\"" << entityDeclaration.systemId().toString() << '"';
-                if (!entityDeclaration.publicId().isEmpty())
-                    writer << " publicId=\"" << entityDeclaration.publicId().toString() << '"';
-                if (!entityDeclaration.value().isEmpty())
-                    writer << " value=\"" << entityDeclaration.value().toString() << '"';
+                if (const auto name = entityDeclaration.name(); !name.isEmpty())
+                    writer << " name=\"" << name << '"';
+                if (const auto notationName = entityDeclaration.notationName(); !notationName.isEmpty())
+                    writer << " notationName=\"" << notationName << '"';
+                if (const auto systemId = entityDeclaration.systemId(); !systemId.isEmpty())
+                    writer << " systemId=\"" << systemId << '"';
+                if (const auto publicId = entityDeclaration.publicId(); !publicId.isEmpty())
+                    writer << " publicId=\"" << publicId << '"';
+                if (const auto value = entityDeclaration.value(); !value.isEmpty())
+                    writer << " value=\"" << value << '"';
                 writer << " )" << Qt::endl;
             }
         }
+
         writer << " )" << Qt::endl;
     }
     if (reader.hasError())
@@ -891,7 +1001,9 @@ void tst_QXmlStream::testReader_data() const
     const auto fileNames = dir.entryList(QStringList() << "*.xml");
     for (const QString &filename : fileNames) {
         QString reference =  QFileInfo(filename).baseName() + ".ref";
-        QTest::newRow(dir.filePath(filename).toLatin1().data()) << dir.filePath(filename) << dir.filePath(reference);
+        QTest::addRow("data/%s", filename.toLatin1().constData())
+                << dir.filePath(filename)
+                << dir.filePath(reference);
     }
 }
 
@@ -1075,6 +1187,74 @@ void tst_QXmlStream::writeAttributesWithSpace() const
     QCOMPARE(buffer.buffer().data(), s.toUtf8().data());
 }
 
+void tst_QXmlStream::writerAutoFormattingProcessingInstructionFirst() const
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly);
+    QXmlStreamWriter writer(&buffer);
+    writer.setAutoFormatting(true);
+    writer.writeProcessingInstruction("B");
+    writer.writeComment("This is a comment");
+    writer.writeStartElement("A");
+    writer.writeNamespace("http://website.com", "website");
+    writer.writeDefaultNamespace("http://websiteNo2.com");
+    writer.writeEndElement();
+    writer.writeEndDocument();
+    const char *str =
+            "<?B?>\n<!--This is a comment-->\n<A xmlns:website=\"http://website.com\" xmlns=\"http://websiteNo2.com\"/>\n";
+    QCOMPARE(buffer.buffer().data(), str);
+}
+void tst_QXmlStream::writerAutoFormattingStartElementFirst() const
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly);
+    QXmlStreamWriter writer(&buffer);
+    writer.setAutoFormatting(true);
+    writer.writeStartElement("A");
+    writer.writeNamespace("http://website.com", "website");
+    writer.writeComment("This is a comment");
+    writer.writeProcessingInstruction("B");
+    writer.writeDefaultNamespace("http://websiteNo2.com");
+    writer.writeEndElement();
+    writer.writeEndDocument();
+    const char *str = "<A xmlns:website=\"http://website.com\">\n    <!--This is a comment-->\n    <?B?>\n</A>\n";
+    QCOMPARE(buffer.buffer().data(), str);
+}
+
+void tst_QXmlStream::writerAutoFormattingCommentFirst() const
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly);
+    QXmlStreamWriter writer(&buffer);
+    writer.setAutoFormatting(true);
+    writer.writeComment("This is a comment");
+    writer.writeStartElement("A");
+    writer.writeNamespace("http://website.com", "website");
+    writer.writeEndElement();
+    writer.writeDefaultNamespace("http://websiteNo2.com");
+    writer.writeProcessingInstruction("B");
+    writer.writeEndDocument();
+    const char *str = "<!--This is a comment--><A xmlns:website=\"http://website.com\"/>\n<?B?>\n";
+    QCOMPARE(buffer.buffer().data(), str);
+}
+
+void tst_QXmlStream::writerAutoFormattingNamespaceFirst() const
+{
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly);
+    QXmlStreamWriter writer(&buffer);
+    writer.setAutoFormatting(true);
+    writer.writeNamespace("http://website.com", "website");
+    writer.writeStartElement("A");
+    writer.writeDefaultNamespace("http://websiteNo2.com");
+    writer.writeProcessingInstruction("B");
+    writer.writeEndElement();
+    writer.writeComment("This is a comment");
+    writer.writeEndDocument();
+    const char *str = "<A xmlns:website=\"http://website.com\" xmlns=\"http://websiteNo2.com\">\n    <?B?></A>\n<!--This is a comment-->\n";
+    QCOMPARE(buffer.buffer().data(), str);
+}
+
 void tst_QXmlStream::writerAutoEmptyTags() const
 {
     QBuffer buffer;
@@ -1157,6 +1337,280 @@ void tst_QXmlStream::readFromLatin1String() const
     }
 }
 
+void tst_QXmlStream::readLatin1Document() const
+{
+    const auto in = "<?xml version=\"1.0\" encoding=\"iso-8859-1\"?><a>M\xE5rten</a>"_L1;
+    {
+        QXmlStreamReader reader(in);
+        QVERIFY(reader.readNextStartElement());
+        QString text = reader.readElementText();
+        QCOMPARE(text, "M\xE5rten"_L1);
+    }
+    // Same as above, but with addData(), QTBUG-135033
+    {
+        QXmlStreamReader reader;
+        reader.addData(in);
+        QVERIFY(reader.readNextStartElement());
+        QString text = reader.readElementText();
+        QCOMPARE(text, "M\xE5rten"_L1);
+    }
+}
+
+void tst_QXmlStream::appendToRawDocumentWithNonUtf8Encoding_data()
+{
+    QTest::addColumn<QByteArray>("rawDocumentStart");
+    QTest::addColumn<QString>("expectedFirstElementText");
+    QTest::addColumn<QString>("nextData");
+    QTest::addColumn<QStringConverter::Encoding>("nextEncoding");
+    QTest::addColumn<QString>("expectedNextElementText");
+
+    auto row = [](const char *name, const QByteArray &encoding,
+                  const QByteArray &firstData, const QString &expectedFirstString,
+                  QStringConverter::Encoding nextEncoding, const QString &nextString) {
+        const QByteArray docStart = "<?xml version=\"1.0\" encoding=\"" + encoding
+                + "\"?><foo><a>" + firstData + "</a>";
+        const QString nextElement = u"<a>"_s + nextString + u"</a>"_s;
+        QTest::newRow(name) << docStart << expectedFirstString << nextElement
+                            << nextEncoding << nextString;
+    };
+
+    row("l1+utf16", "iso-8859-1"_ba, "M\xE5rten"_ba, QString::fromLatin1("M\xE5rten"),
+        QStringConverter::Utf16, u"M\u00E5rten"_s);
+    row("l1+utf8", "iso-8859-1"_ba, "M\xE5rten"_ba, QString::fromLatin1("M\xE5rten"),
+        QStringConverter::Utf8, QString::fromUtf8("M\xC3\xA5rten"));
+    row("l1+l1", "iso-8859-1"_ba, "M\xE5rten"_ba, QString::fromLatin1("M\xE5rten"),
+        QStringConverter::Latin1, QString::fromLatin1("M\xE5rten"));
+
+    const QString utf16Str = u"<?xml version=\"1.0\" encoding=\"utf-16\"?>"
+                             "<foo><a>M\u00E5rten</a>"_s;
+    const QByteArray utf16Data{reinterpret_cast<const char *>(utf16Str.utf16()),
+                               utf16Str.size() * 2};
+
+    QTest::newRow("utf16+utf16") << utf16Data << u"M\u00E5rten"_s
+                                 << u"<a>M\u00E5rten</a>"_s
+                                 << QStringConverter::Utf16
+                                 << u"M\u00E5rten"_s;
+}
+
+void tst_QXmlStream::appendToRawDocumentWithNonUtf8Encoding()
+{
+    QFETCH(const QByteArray, rawDocumentStart);
+    QFETCH(const QString, expectedFirstElementText);
+    QFETCH(const QString, nextData);
+    QFETCH(const QStringConverter::Encoding, nextEncoding);
+    QFETCH(const QString, expectedNextElementText);
+
+    QXmlStreamReader reader(rawDocumentStart);
+    QVERIFY(reader.readNextStartElement()); // foo
+    QVERIFY(reader.readNextStartElement()); // a
+    QString text = reader.readElementText();
+    QCOMPARE(text, expectedFirstElementText);
+
+    switch (nextEncoding) {
+    case QStringConverter::Utf16:
+        reader.addData(nextData);
+        break;
+    case QStringConverter::Utf8:
+        reader.addData(QUtf8StringView{nextData.toUtf8()});
+        break;
+    case QStringConverter::Latin1:
+        reader.addData(QLatin1StringView{nextData.toLatin1()});
+        break;
+    default:
+        Q_UNREACHABLE();
+    }
+    QVERIFY(reader.readNextStartElement()); // a
+    text = reader.readElementText();
+
+    QCOMPARE(text, expectedNextElementText);
+}
+
+struct DataAndEncoding
+{
+    enum Encoding : quint8 {
+        Raw = 0,
+        Latin1,
+        Utf8,
+        Utf16
+    };
+
+    QByteArray data;
+    Encoding encoding;
+
+    DataAndEncoding(const QByteArray &d, Encoding e)
+        : data(d), encoding(e)
+    {}
+    DataAndEncoding(const QString &str)
+        : data(asUtf16ByteArray(str)), encoding(Encoding::Utf16)
+    {}
+
+    static QByteArray asUtf16ByteArray(const QString &input)
+    {
+        return QByteArray{reinterpret_cast<const char *>(input.utf16()), input.size() * 2};
+    }
+
+    QAnyStringView toAnyStringView() const
+    {
+        switch (encoding) {
+        case Latin1:
+            return QLatin1StringView{data};
+        case Utf8:
+            return QUtf8StringView{data};
+        case Utf16:
+            Q_ASSERT(data.size() % 2 == 0);
+            return QStringView{reinterpret_cast<const char16_t *>(data.data()), data.size() / 2};
+        case Raw:
+            // Impossible to convert to QASV in general case
+            break;
+        }
+        Q_UNREACHABLE_RETURN({});
+    }
+
+    // for next_permutation
+    friend bool operator<(const DataAndEncoding &lhs, const DataAndEncoding &rhs)
+    {
+        return lhs.encoding < rhs.encoding;
+    }
+};
+
+void tst_QXmlStream::appendDifferentEncodingsWithoutXmlProlog_data()
+{
+    QTest::addColumn<QList<DataAndEncoding>>("inputs");
+    QTest::addColumn<QString>("expectedResult");
+
+    const QByteArray u8Str = "ΔΩΘ";
+    const QByteArray l1Str = "\xC4\xD6\xDC"; // ÄÖÜ
+    const QByteArray rawDataUtf8 = "\xf0\x9f\x98\x82"; // FACE WITH TEARS OF JOY (U+1F602)
+    const QString u16Str = u"\U0001F60E"_s; // SMILING FACE WITH SUNGLASSES (U+1F60E)
+
+    using Enc = DataAndEncoding::Encoding;
+
+    QVarLengthArray<DataAndEncoding> inputs{ DataAndEncoding{u8Str, Enc::Utf8},
+                                             DataAndEncoding{l1Str, Enc::Latin1},
+                                             DataAndEncoding{rawDataUtf8, Enc::Raw},
+                                             DataAndEncoding{u16Str} };
+
+    // Helper function to populate test data
+    auto encToName = [](Enc e) -> QByteArray {
+        switch (e) {
+        case Enc::Raw:
+            return "bytes"_ba;
+        case Enc::Latin1:
+            return "l1"_ba;
+        case Enc::Utf8:
+            return "u8"_ba;
+        case Enc::Utf16:
+            return "u16"_ba;
+        }
+        Q_UNREACHABLE_RETURN("");
+    };
+    auto adjustFirst = [](const DataAndEncoding &input) -> DataAndEncoding {
+        QByteArray newData = input.data;
+        if (input.encoding == Enc::Utf16)
+            newData.prepend(DataAndEncoding::asUtf16ByteArray(u"<a>"_s));
+        else
+            newData.prepend("<a>"_ba);
+        return {newData, input.encoding};
+    };
+    auto adjustLast = [](const DataAndEncoding &input) -> DataAndEncoding {
+        QByteArray newData = input.data;
+        if (input.encoding == Enc::Utf16)
+            newData.append(DataAndEncoding::asUtf16ByteArray(u"</a>"_s));
+        else
+            newData.append("</a>"_ba);
+        return {newData, input.encoding};
+    };
+    auto dataToString = [](const DataAndEncoding &input) -> QString {
+        if (input.encoding == Enc::Raw) {
+            // This function treats raw data as UTF-8
+            return QString::fromUtf8(input.data);
+        }
+        return input.toAnyStringView().toString();
+    };
+    // Iterate over all permutations of the list.
+    // Sort the list first, to cover all cases
+    std::sort(inputs.begin(), inputs.end());
+    do {
+        const auto lastIdx = inputs.size() - 1;
+        QByteArray testName;
+        QList<DataAndEncoding> inputData;
+        QString expectedResult;
+        for (qsizetype i = 0; i <= lastIdx; ++i) {
+            const auto &item = inputs[i];
+            testName += encToName(item.encoding);
+            if (i != lastIdx)
+                testName.append('+');
+            if (i == 0)
+                inputData.append(adjustFirst(item));
+            else if (i == lastIdx)
+                inputData.append(adjustLast(item));
+            else
+                inputData.append(item);
+            expectedResult.append(dataToString(item));
+        }
+        QTest::newRow(testName.constData()) << inputData << expectedResult;
+    } while (std::next_permutation(inputs.begin(), inputs.end()));
+
+    // plus add some corner cases
+
+    QTest::newRow("u8+bytes_FACE_WITH_TEARS_OF_JOY")
+            << QList{ DataAndEncoding{"<a>\xf0\x9f"_ba, Enc::Utf8},
+                      DataAndEncoding{"\x98\x82</a>"_ba, Enc::Raw} }
+            << u"\U0001F602"_s;
+
+    // The test tries to read FACE IN CLOUDS emoji.
+    // Its full representation is:
+    // - FACE WITHOUT MOUTH: U+1F636 or \xf0\x9f\x98\xb6;
+    // - ZERO WIDTH JOINER: U+200D or \xe2\x80\x8d;
+    // - FOG: U+1F32B or \xf0\x9f\x8c\xab;
+    // - VARIATION SELECTOR-16: U+FE0F or \xef\xb8\x8f.
+    // This test tries to encode a part of it as UTF-8, and the rest as UTF-16.
+    // Important is that we need to break at the borders of the characters
+    QTest::newRow("u8+u16_FACE_IN_CLOUDS")
+            << QList{ DataAndEncoding{"<a>\xf0\x9f\x98\xb6\xe2\x80\x8d"_ba, Enc::Utf8},
+                      DataAndEncoding{u"\U0001F32B\uFE0F</a>"_s} }
+            << u"\U0001F636\u200D\U0001F32B\uFE0F"_s;
+}
+
+void tst_QXmlStream::appendDifferentEncodingsWithoutXmlProlog()
+{
+    QFETCH(const QList<DataAndEncoding>, inputs);
+    QFETCH(const QString, expectedResult);
+
+    {
+        QXmlStreamReader reader;
+        for (const auto &data : inputs) {
+            if (data.encoding == DataAndEncoding::Raw)
+                reader.addData(data.data);
+            else
+                reader.addData(data.toAnyStringView());
+        }
+        QVERIFY(reader.readNextStartElement());
+        const QString text = reader.readElementText();
+        QCOMPARE(text, expectedResult);
+    }
+    // same with c-tor
+    {
+        std::unique_ptr<QXmlStreamReader> reader = nullptr;
+        for (const auto &data : inputs) {
+            if (!reader) {
+                if (data.encoding == DataAndEncoding::Raw)
+                    reader = std::make_unique<QXmlStreamReader>(data.data);
+                else
+                    reader = std::make_unique<QXmlStreamReader>(data.toAnyStringView());
+            } else {
+                if (data.encoding == DataAndEncoding::Raw)
+                    reader->addData(data.data);
+                else
+                    reader->addData(data.toAnyStringView());
+            }
+        }
+        QVERIFY(reader->readNextStartElement());
+        const QString text = reader->readElementText();
+        QCOMPARE(text, expectedResult);
+    }
+}
+
 void tst_QXmlStream::readNextStartElement() const
 {
     QLatin1String in("<?xml version=\"1.0\"?><A><!-- blah --><B><C/></B><B attr=\"value\"/>text</A>");
@@ -1224,6 +1678,161 @@ void tst_QXmlStream::readElementText_data() const
     QTest::newRow("SkipChildElements Invalid")
             << QXmlStreamReader::SkipChildElements
             << invalidInput << invalidOutput;
+}
+
+void tst_QXmlStream::readRawInnerData() const
+{
+    QFETCH(QString, input);
+    QFETCH(QString, expected);
+    QFETCH(QXmlStreamReader::Error, expectedError);
+    QXmlStreamReader reader(input);
+
+    reader.readNextStartElement();
+    QCOMPARE(reader.readRawInnerData(), expected);
+
+    if (reader.hasError())
+        QCOMPARE(reader.error(), expectedError);
+}
+
+void tst_QXmlStream::readRawInnerData_data() const
+{
+    QTest::addColumn<QString>("input");
+    QTest::addColumn<QString>("expected");
+    QTest::addColumn<QXmlStreamReader::Error>("expectedError");
+    // Valid cases
+    const QString mixedTags =
+            u"<root>\n"
+            "    <!-- A comment -->\n"
+            "    Some text\n"
+            "    <b attr=\"val\">bold <![CDATA[stuff]]></b>\n"
+            "    <?pi info?>\n"
+            "</root>"_s;
+    const QString mixedTagsResult =
+            u"\n    <!-- A comment -->\n"
+            "    Some text\n"
+            "    <b attr=\"val\">bold <![CDATA[stuff]]></b>\n"
+            "    <?pi info?>\n"_s;
+    const QString nestedTokensEntities =
+            u"<root>\n"
+            "    <firstChild attr=\"&quot;attrValue&quot;\">\n"
+            "        <secondChild attr=\"&lt;child&gt;\">Some &amp; text\n"
+            "        </secondChild>\n"
+            "    </firstChild>\n"
+            "</root>"_s;
+    const QString nestedTokensEntitiesResult =
+            u"\n    <firstChild attr=\"&quot;attrValue&quot;\">"
+            "\n        <secondChild attr=\"&lt;child&gt;\">"
+            "Some &amp; text\n"
+            "        </secondChild>\n"
+            "    </firstChild>\n"_s;
+    const QString emptyNested =
+            u"<root>\n"
+            "   <!-- A comment -->\n"
+            "   <empty />\n"
+            "</root>"_s;
+    const QString emptyNestedResult =
+            u"\n   <!-- A comment -->\n"
+            "   <empty></empty>\n"_s;
+
+    const QString plainText = u"<root>Just some text</root>"_s;
+    const QString expectedPlainText = "Just some text";
+
+    const QString cdataInput =
+            u"<root>"
+            "<![CDATA[Some <cdata> content]]>"
+            "</root>"_s;
+    const QString expectedCdata = u"<![CDATA[Some <cdata> content]]>"_s;
+
+    const QString commentInput = u"<root><!-- A comment --></root>"_s;
+    const QString expectedComment = u"<!-- A comment -->"_s;
+
+    const QString PIInput =u"<root>\n    <?pi data?>\n</root>"_s;
+    const QString expectedPI =u"\n    <?pi data?>\n"_s;
+
+    const QString nestedInput = u"<root>\n"
+                          "    <outer>\n    <inner>text</inner>\n"
+                          "    </outer>\n</root>"_s;
+    const QString expectedNested = u"\n    <outer>\n"
+                             "    <inner>text</inner>\n"
+                             "    </outer>\n"_s;
+    const QString customEntity =
+            u"<!DOCTYPE root [<!ENTITY ent \"Resolved entity\">]>\n"
+            "<root>\n"
+            "    <child>Some text and &ent;</child>\n"
+            "</root>"_s;
+    const QString customEntityResult =
+            u"\n    <child>Some text and Resolved entity</child>\n"_s;
+
+    //Invalid cases
+    const QString noTokensText = u"Just text without tokens"_s;
+    const QString mismatchedTags = u"<root>\n    <child></differentChild>\n</root>"_s;
+    const QString mismatchedTagsResult = u"\n    <child>"_s;
+    const QString unclosedComment = u"<root>\n    <!-- Comment starts\n"
+                              "    <child>Text</child>\n"
+                              "</root>"_s;
+    const QString nestedComment =
+            u"<root>\n"
+            "    <!-- A comment <!-- Nested comment --> -->\n"
+            "</root>"_s;
+    const QString unclosedCDATA = u" <root>\n    <![CDATA[ Unclosed CDATA\n"
+                            "    <child>Text</child>\n"
+                            "</root>"_s;
+    const QString missingClosingTag = u"<root>\n    <child>Text\n</root>"_s;
+    const QString missingClosingTagResult = u"\n    <child>Text\n"_s;
+    const QString noValueAttr = u"<root>\n    <child attr=>text</child>\n</root>"_s;
+    const QString invalidAttrName =
+            u"<root>\n"
+            "    <child 123attr=\"value\"></child>\n"
+            "</root>"_s;
+    const QString invalidChars = u"<root>\n    <ch@ld></ch@ld>\n</root>"_s;
+    const QString tooManyElements = u"<first></first><second></second>"_s;
+    const QString misplacedDecl =
+            u"<root>\n    <?xml version=\"1.0\"?>\n"
+            "<child>Text</child></root>"_s;
+
+    const QString emptyResult = u"\n    "_s;
+
+    QTest::newRow("allTokens")            << mixedTags             << mixedTagsResult
+                                          << QXmlStreamReader::NoError;
+    QTest::newRow("plainTextOnly")        << plainText             << expectedPlainText
+                                          << QXmlStreamReader::NoError;
+    QTest::newRow("CDATAOnly")            << cdataInput            << expectedCdata
+                                          << QXmlStreamReader::NoError;
+    QTest::newRow("commentOnly")          << commentInput          << expectedComment
+                                          << QXmlStreamReader::NoError;
+    QTest::newRow("PIOnly")               << PIInput               << expectedPI
+                                          << QXmlStreamReader::NoError;
+    QTest::newRow("nestedElements")       << nestedInput           << expectedNested
+                                          << QXmlStreamReader::NoError;
+    QTest::newRow("nestedTokensEntities") << nestedTokensEntities  << nestedTokensEntitiesResult
+                                          << QXmlStreamReader::NoError;
+    QTest::newRow("emptyNested")          << emptyNested           << emptyNestedResult
+                                          << QXmlStreamReader::NoError;
+    QTest::newRow("customEntity")         << customEntity          << customEntityResult
+                                          << QXmlStreamReader::NoError;
+
+    QTest::newRow("noTokensText")       << noTokensText      << QString()
+                                        << QXmlStreamReader::NotWellFormedError;
+    QTest::newRow("mismatchedTags")     << mismatchedTags    << mismatchedTagsResult
+                                        << QXmlStreamReader::NotWellFormedError;
+    QTest::newRow("unclosedComment")    << unclosedComment   << emptyResult
+                                        << QXmlStreamReader::PrematureEndOfDocumentError;
+    QTest::newRow("nestedComment")      << nestedComment     << emptyResult
+                                        << QXmlStreamReader::NotWellFormedError;
+    QTest::newRow("unclosedCDATA")      << unclosedCDATA     << emptyResult
+                                        << QXmlStreamReader::PrematureEndOfDocumentError;
+    QTest::newRow("missingClosingTag")  << missingClosingTag << missingClosingTagResult
+                                        << QXmlStreamReader::NotWellFormedError;
+    QTest::newRow("noValueAttr")        << noValueAttr       << emptyResult
+                                        << QXmlStreamReader::NotWellFormedError;
+    QTest::newRow("invalidAttrName")    << invalidAttrName   << emptyResult
+                                        << QXmlStreamReader::NotWellFormedError;
+    QTest::newRow("invalidChars")       << invalidChars      << emptyResult
+                                        << QXmlStreamReader::NotWellFormedError;
+    QTest::newRow("tooManyElements")    << tooManyElements   << QString()
+                                        << QXmlStreamReader::NotWellFormedError;
+    QTest::newRow("misplacedDecl")      << misplacedDecl     << emptyResult
+                                        << QXmlStreamReader::NotWellFormedError;
 }
 
 void tst_QXmlStream::crashInUTF16Codec() const
@@ -1532,6 +2141,7 @@ void tst_QXmlStream::writeBadCharactersUtf8() const
     QXmlStreamWriter writer(&target);
     writer.writeTextElement("a", QUtf8StringView(input));
     QVERIFY(writer.hasError());
+    QCOMPARE(writer.error(), QXmlStreamWriter::Error::Encoding);
 }
 
 void tst_QXmlStream::writeBadCharactersUtf16_data() const
@@ -1550,6 +2160,8 @@ void tst_QXmlStream::writeBadCharactersUtf16() const
     QXmlStreamWriter writer(&target);
     writer.writeTextElement("a", input);
     QVERIFY(writer.hasError());
+    QCOMPARE(writer.error(), QXmlStreamWriter::Error::Encoding);
+
 }
 
 void tst_QXmlStream::entitiesAndWhitespace_1() const
@@ -1741,10 +2353,10 @@ protected:
 public:
     void setCapacity(int capacity) { m_capacity = capacity; }
 private:
-    qint64 m_capacity;
+    qint64 m_capacity = 0;
 };
 
-void tst_QXmlStream::hasError() const
+void tst_QXmlStream::writerErrors() const
 {
     {
         FakeBuffer fb;
@@ -1754,6 +2366,8 @@ void tst_QXmlStream::hasError() const
         writer.writeStartDocument();
         writer.writeEndDocument();
         QVERIFY(!writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::None);
+        QVERIFY(writer.errorString().isEmpty());
         QCOMPARE(fb.data(), QByteArray("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"));
     }
 
@@ -1766,6 +2380,8 @@ void tst_QXmlStream::hasError() const
         QXmlStreamWriter writer(&fb);
         writer.writeStartDocument();
         QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::IO);
+        QVERIFY(!writer.errorString().isEmpty());
         QCOMPARE(fb.data(), expected);
     }
 
@@ -1778,6 +2394,8 @@ void tst_QXmlStream::hasError() const
         QXmlStreamWriter writer(&fb);
         writer.writeStartDocument();
         QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::IO);
+        QVERIFY(!writer.errorString().isEmpty());
         QCOMPARE(fb.data(), expected);
     }
 
@@ -1785,13 +2403,16 @@ void tst_QXmlStream::hasError() const
         // Failure caused by write(QStringRef)
         FakeBuffer fb;
         QVERIFY(fb.open(QBuffer::ReadWrite));
-        const QByteArray expected = QByteArrayLiteral("<?xml version=\"1.0\" encoding=\"UTF-8\"?><test xmlns:");
+        const QByteArray expected =
+                QByteArrayLiteral("<?xml version=\"1.0\" encoding=\"UTF-8\"?><test xmlns:");
         fb.setCapacity(expected.size());
         QXmlStreamWriter writer(&fb);
         writer.writeStartDocument();
         writer.writeStartElement("test");
         writer.writeNamespace("http://foo.bar", "foo");
         QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::IO);
+        QVERIFY(!writer.errorString().isEmpty());
         QCOMPARE(fb.data(), expected);
     }
 
@@ -1803,14 +2424,280 @@ void tst_QXmlStream::hasError() const
         QXmlStreamWriter writer(&fb);
         writer.writeStartDocument();
         QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::IO);
         QCOMPARE(fb.data(), QByteArray("<?xml vers"));
         fb.setCapacity(1000);
         writer.writeStartElement("test"); // literal & qstring
         writer.writeNamespace("http://foo.bar", "foo"); // literal & qstringref
         QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::IO);
+        QVERIFY(!writer.errorString().isEmpty());
         QCOMPARE(fb.data(), QByteArray("<?xml vers"));
     }
 
+    {
+        // Encoding error: lone high surrogate
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.writeStartDocument();
+        writer.writeStartElement("root");
+        writer.writeCharacters(QChar(0xD800));
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::Encoding);
+        QVERIFY(!writer.errorString().isEmpty());
+    }
+
+    {
+        // Invalid character error: invalid character for XML 1.0 in text content
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.writeStartDocument();
+        writer.writeStartElement("root"_L1);
+        writer.writeCharacters("Invalid \v character"_L1); // \v is invalid in XML 1.0
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::InvalidCharacter);
+        QVERIFY(!writer.errorString().isEmpty());
+    }
+
+    {
+        // Invalid character error: forbidden control character for XML 1.0 U+0001
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.writeStartDocument();
+        writer.writeStartElement("root"_L1);
+        writer.writeCharacters("Invalid \x01 character"_L1);
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::InvalidCharacter);
+        QVERIFY(!writer.errorString().isEmpty());
+    }
+
+    {
+        // '\0' is an InvalidCharacter, not an EncodingError
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.writeStartDocument();
+        writer.writeStartElement("root"_L1);
+        writer.writeCharacters("Invalid \0 character"_L1);
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::InvalidCharacter);
+        QVERIFY(!writer.errorString().isEmpty());
+    }
+
+    {
+        // Custom error raised by user
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.writeStartDocument();
+        writer.writeStartElement("root"_L1);
+        writer.raiseError("Custom error");
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::Custom);
+        QCOMPARE(writer.errorString(), "Custom error"_L1);
+    }
+}
+
+void tst_QXmlStream::stopWritingOnError() const
+{
+    {
+        // Default - stopWritingOnError(false)
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.writeStartDocument();
+        writer.writeStartElement(u"root");
+        writer.writeCharacters(u"Invalid \x01 character");
+        writer.writeTextElement(u"text", u"element");
+        writer.writeComment(u"A comment");
+        writer.writeEmptyElement(u"emptyElement");
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::InvalidCharacter);
+        QVERIFY(!writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                         "<root>Invalid  character<text>element</text>"
+                         "<!--A comment--><emptyElement"_ba);
+
+        writer.writeCharacters(u"Let's raise another error!");
+        writer.raiseError(u"Custom error"_s);
+        writer.writeEndElement();
+        writer.writeTextElement(u"text", u"element");
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::Custom);
+        QVERIFY(!writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                         "<root>Invalid  character<text>element</text>"
+                         "<!--A comment--><emptyElement/>"
+                         "Let's raise another error!</root>"
+                         "<text>element</text>"_ba);
+
+        writer.writeStartElement(u"child");
+        writer.writeCharacters(QChar(0xDC00));
+        writer.writeCharacters(u"I'm still standin' better than I ever did!");
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::Encoding);
+        QVERIFY(!writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                         "<root>Invalid  character<text>element</text>"
+                         "<!--A comment--><emptyElement/>"
+                         "Let's raise another error!</root><text>element</text>"
+                         "<child>I'm still standin' better than I ever did!</child>\n"_ba);
+    }
+
+    {
+        // Only IOError prevents further writing
+        QByteArray buffer;
+        QBuffer device(&buffer);
+        device.open(QIODevice::WriteOnly);
+        device.close();
+        QXmlStreamWriter writer(&device);
+        writer.setStopWritingOnError(false);
+        writer.writeStartDocument();
+        writer.writeStartElement(u"root");
+        writer.writeCharacters(u"Some characters");
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::IO);
+        QVERIFY(!writer.errorString().isEmpty());
+        QVERIFY(buffer.isEmpty());
+    }
+
+    {
+        // Valid input
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.setStopWritingOnError(true);
+        writer.writeStartDocument();
+        writer.writeStartElement(u"root");
+        writer.writeCharacters(u"Valid & possible to <escape> \"characters\"");
+        writer.writeTextElement(u"text", u"element");
+        writer.writeComment(u"A comment");
+        writer.writeEmptyElement(u"emptyElement");
+        writer.writeEndDocument();
+        QVERIFY(!writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::None);
+        QVERIFY(writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                         "<root>Valid &amp; possible to &lt;escape&gt; &quot;characters&quot;"
+                         "<text>element</text><!--A comment--><emptyElement/>"
+                         "</root>\n"_ba);
+    }
+
+    {
+        // Invalid character error: invalid \x01 character
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.setStopWritingOnError(true);
+        writer.writeStartDocument();
+        writer.writeStartElement(u"root");
+        writer.writeCharacters(u"Invalid \x01 character"); // Stop writing from here
+        writer.writeTextElement(u"text", u"element");
+        writer.writeComment(u"A comment");
+        writer.writeEmptyElement(u"emptyElement");
+        writer.writeCDATA(u"CDATA");
+        writer.writeEntityReference(u"entityReference");
+        writer.writeProcessingInstruction(u"PI");
+        writer.writeCharacters(u"Characters");
+        writer.writeDTD(u"DTD");
+        writer.writeDefaultNamespace(u"defaultNamespace");
+        writer.writeNamespace(u"namespace");
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::InvalidCharacter);
+        QVERIFY(!writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><root>"_ba);
+    }
+
+    {
+        // Invalid character error: invalid \v character
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.setStopWritingOnError(true);
+        writer.writeStartDocument();
+        writer.writeStartElement(u"root");
+        writer.writeTextElement(u"text", u"element");
+        writer.writeComment(u"A comment");
+        writer.writeEmptyElement(u"emptyElement");
+        writer.writeCDATA(u"CDATA");
+        writer.writeEntityReference(u"entityReference");
+        writer.writeProcessingInstruction(u"PI");
+        writer.writeCharacters(u"Characters");
+        writer.writeCharacters(u"Invalid \v character"); // Stop writing from here
+        writer.writeCharacters(u"More valid characters");
+        writer.writeDTD(u"DTD");
+        writer.writeDefaultNamespace(u"defaultNamespace");
+        writer.writeNamespace(u"namespace");
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::InvalidCharacter);
+        QVERIFY(!writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                         "<root><text>element</text><!--A comment--><emptyElement/>"
+                         "<![CDATA[CDATA]]>&entityReference;<?PI?>Characters"_ba);
+    }
+
+    {
+        // Encoding error: lone low surrogate
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.writeStartDocument();
+        writer.setStopWritingOnError(true);
+        writer.writeStartElement(u"root");
+        writer.writeCharacters(QChar(0xDC00));  // Stop writing from here
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::Encoding);
+        QVERIFY(!writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><root>"_ba);
+
+        writer.writeCharacters(u"I am a valid sentence");
+        writer.writeCharacters(u"But I won't be written until the setting is changed.");
+        writer.setStopWritingOnError(false);
+        writer.writeCharacters(u"Resume writing!");
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        // Changing the flag doesn't clear the error; it just allows writing again.
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::Encoding);
+        QVERIFY(!writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                         "<root>Resume writing!</root>\n"_ba);
+
+        writer.setStopWritingOnError(true);
+        writer.writeCharacters(u"Valid characters rules!");
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::Encoding);
+        QVERIFY(!writer.errorString().isEmpty());
+        // Re-enabling stopWritingOnError does not clear the error state.
+        // Since the writer is still in error, further writes are ignored even if valid.
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                         "<root>Resume writing!</root>\n"_ba);
+    }
+
+    {
+        QByteArray buffer;
+        QXmlStreamWriter writer(&buffer);
+        writer.setStopWritingOnError(true);
+        writer.writeStartDocument();
+        writer.writeStartElement(u"root");
+        writer.writeCharacters(u"Some characters");
+        writer.raiseError(u"Raising custom error"_s);
+        writer.writeCharacters(u"No more writing for you.");
+        writer.writeEndElement();
+        writer.writeEndDocument();
+        QVERIFY(writer.hasError());
+        QCOMPARE(writer.error(), QXmlStreamWriter::Error::Custom);
+        QVERIFY(!writer.errorString().isEmpty());
+        QCOMPARE(buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><root>Some characters"_ba);
+    }
 }
 
 void tst_QXmlStream::invalidStringCharacters() const
@@ -1978,34 +2865,164 @@ void tst_QXmlStream::entityExpansionLimit() const
                                  "<!ENTITY d \"&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;\" >"
                                  "]>"
                                  "<foo>&d;&d;&d;</foo>");
+    entityExpansionLimitImpl(xml);
+}
+
+void tst_QXmlStream::entityExpansionLimitExternalResolver() const
+{
+    const auto xml = u"<?xml version='1.0'?>"
+                      "<foo>&d;&d;&d;</foo>"_s;
+    struct Resolver : QXmlStreamEntityResolver {
+        QString resolveUndeclaredEntity(const QString &name) override {
+            if (name.size() == 1) {
+                switch (name[0].unicode()) {
+                case u'a': return u"0123456789"_s;
+                case u'b': return u"&a;"_s.repeated(10);
+                case u'c': return u"&b;"_s.repeated(10);
+                case u'd': return u"&c;"_s.repeated(10);
+                }
+            }
+            return QString();
+        }
+    };
+
+    Resolver r;
+    entityExpansionLimitImpl(xml, &r);
+}
+
+void tst_QXmlStream::externalEntityResolverRecursion() const
+{
+    const auto xml = u"<?xml version='1.0'?>"
+                      "<foo>&a;</foo>"_s;
+    struct Resolver : QXmlStreamEntityResolver {
+        QString resolveUndeclaredEntity(const QString &name) override {
+            if (name == "a"_L1) {
+                if (++count == 10) // limit recursion in case it's unbounded
+                    return ""_L1;  // QString() would raise an error
+                return u"&a;"_s;
+            }
+            return QString();
+        }
+        int count = 0;
+    };
+
+    Resolver r;
+    QXmlStreamReader reader(xml);
+    reader.setEntityResolver(&r);
+    do {
+        reader.readNext();
+    } while (!reader.atEnd());
+    // QTBUG-147324: Won't Fix.
+    // Recursion is not detected at the QXmlStreamReader level on purpose.
+    QCOMPARE(reader.error(), QXmlStreamReader::NoError);
+    QCOMPARE(r.count, 10);
+}
+
+void tst_QXmlStream::entityExpansionLimitImpl(const QString &xml,
+                                              QXmlStreamEntityResolver *resolver) const
+{
     {
         QXmlStreamReader reader(xml);
+        if (resolver)
+            reader.setEntityResolver(resolver);
         QCOMPARE(reader.entityExpansionLimit(), 4096);
         do {
             reader.readNext();
         } while (!reader.atEnd());
+        if (resolver)
+            QEXPECT_FAIL("", "QTBUG-147323", Continue);
         QCOMPARE(reader.error(), QXmlStreamReader::NotWellFormedError);
     }
 
-    // &d; expands to 10k characters, minus the 3 removed (&d;) means it should fail
-    // with a limit of 9996 chars and pass with 9997
+    // &d; expands to 10k characters, so it should fail with a limit of 9999
+    // chars and pass with 10000
     {
         QXmlStreamReader reader(xml);
-        reader.setEntityExpansionLimit(9996);
+        if (resolver)
+            reader.setEntityResolver(resolver);
+        reader.setEntityExpansionLimit(9999);
         do {
             reader.readNext();
         } while (!reader.atEnd());
 
+        if (resolver)
+            QEXPECT_FAIL("", "QTBUG-147323", Continue);
         QCOMPARE(reader.error(), QXmlStreamReader::NotWellFormedError);
     }
     {
         QXmlStreamReader reader(xml);
-        reader.setEntityExpansionLimit(9997);
+        if (resolver)
+            reader.setEntityResolver(resolver);
+        reader.setEntityExpansionLimit(10000);
         do {
             reader.readNext();
         } while (!reader.atEnd());
         QCOMPARE(reader.error(), QXmlStreamReader::NoError);
     }
+}
+
+constexpr const char L1NameStartCharsExCOLON[] = {
+    // https://www.w3.org/TR/REC-xml/#NT-NameStartChar - COLON - [#x100-#xEFFFF]:
+    // [A-Z]
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    // "_"
+    '_',
+    // [a-z]
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+    'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+    // [#xC0-#xD6]
+    '\xC0', '\xC1', '\xC2', '\xC3', '\xC4', '\xC5', '\xC6', '\xC7',
+    '\xC8', '\xC9', '\xCA', '\xCB', '\xCC', '\xCD', '\xCE', '\xCF',
+    '\xD0', '\xD1', '\xD2', '\xD3', '\xD4', '\xD5', '\xD6',
+    // [#xD8-#xF6]
+    '\xD8', '\xD9', '\xDA', '\xDB', '\xDC', '\xDD', '\xDE', '\xDF',
+    '\xE0', '\xE1', '\xE2', '\xE3', '\xE4', '\xE5', '\xE6', '\xE7',
+    '\xE8', '\xE9', '\xEA', '\xEB', '\xEC', '\xED', '\xEE', '\xEF',
+    '\xF0', '\xF1', '\xF2', '\xF3', '\xF4', '\xF5', '\xF6',
+    // [#xF8-#x2FF] (truncated to L1 range)
+    '\xF8', '\xF9', '\xFA', '\xFB', '\xFC', '\xFD', '\xFE', '\xFF',
+};
+
+void tst_QXmlStream::manyAttributes() const
+{
+
+    constexpr qsizetype numDigits = sizeof L1NameStartCharsExCOLON;
+    static_assert(numDigits == 115); // FYI
+    constexpr auto numAttributes = numDigits * numDigits * numDigits;
+
+    constexpr auto opening = "<?xml version='1.0'?>\n"
+                             "<e"_L1;
+    constexpr auto closing = "></e>"_L1;
+    char attr[] = { ' ', 'a', 'b', 'c', '=', '"', '"' };
+
+    QString xml;
+    xml.reserve(opening.size() + closing.size() + numAttributes * sizeof attr);
+
+    xml += opening;
+    for (char i : L1NameStartCharsExCOLON) {
+        attr[1] = i;
+        for (char j : L1NameStartCharsExCOLON) {
+            attr[2] = j;
+            for (char k : L1NameStartCharsExCOLON) {
+                attr[3] = k;
+                xml += QLatin1StringView(attr, sizeof attr);
+            }
+        }
+    }
+    xml += closing;
+
+    QXmlStreamReader r(xml);
+    while (!r.atEnd()) {
+        r.readNext();
+        if (!r.isStartElement())
+            continue;
+        QCOMPARE(r.name(), "e"_L1);
+        const auto attrs = r.attributes();
+        QCOMPARE(attrs.size(), numAttributes);
+        return; // success
+    }
+    QFAIL("Did not find expected StartElement");
 }
 
 void tst_QXmlStream::roundTrip() const
@@ -2060,6 +3077,29 @@ void tst_QXmlStream::test_fastScanName() const
 
     QCOMPARE(tokenType, QXmlStreamReader::Invalid);
     QCOMPARE(reader.error(), errorType);
+}
+
+void tst_QXmlStream::entityExpansionLimitRange() const
+{
+    static const auto warningRX
+            = QRegularExpression(R"(QXmlStreamReader::setEntityExpansionLimit\(\): )"
+                                 R"(limit -?[0-9]+ is out of range \[1:INT_MAX\], clamping to 1.)");
+
+    // rejected:
+    for (int limit : {INT_MIN, -42, -1, 0}) {
+        QXmlStreamReader r;
+        QTest::ignoreMessage(QtWarningMsg, warningRX);
+        r.setEntityExpansionLimit(limit);
+        QCOMPARE(r.entityExpansionLimit(), 1);
+    }
+
+    // accepted:
+    for (int limit : {1, 2, INT_MAX}) {
+        QXmlStreamReader r;
+        QTest::failOnWarning(warningRX);
+        r.setEntityExpansionLimit(limit);
+        QCOMPARE(r.entityExpansionLimit(), limit);
+    }
 }
 
 void tst_QXmlStream::tokenErrorHandling_data() const
@@ -2147,4 +3187,28 @@ void tst_QXmlStream::checkStreamEntityDeclarations() const
         QT_TEST_EQUALITY_OPS(entity, entityDeclarations.at(1), true);
     }
 }
+
+void tst_QXmlStream::readElementTextDeepNesting() const
+{
+    // readElementText(IncludeChildElements) must not recurse per nested element: deep nesting
+    // would otherwise exhaust the stack.
+    constexpr qsizetype depth = 300'000;
+
+    QByteArray xml;
+    xml.reserve(depth * 7 + 8);
+    for (qsizetype i = 0; i < depth; ++i)
+        xml += "<a>";
+    xml += 'x';
+    for (qsizetype i = 0; i < depth; ++i)
+        xml += "</a>";
+
+    QString result;
+    QXmlStreamReader reader(xml);
+    if (reader.readNextStartElement())
+        result = reader.readElementText(QXmlStreamReader::IncludeChildElements);
+    QVERIFY(!reader.hasError());
+
+    QCOMPARE(result, "x"_L1);
+}
+
 #include "tst_qxmlstream.moc"

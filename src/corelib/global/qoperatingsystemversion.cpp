@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qoperatingsystemversion.h"
 
@@ -19,6 +20,11 @@
 #include <QJniObject>
 #endif
 
+#if defined(Q_OS_HARMONY)
+#include <QtCore/private/qcore_ohos_p.h>
+#include <array>
+#endif
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -35,7 +41,7 @@ QT_BEGIN_NAMESPACE
     marketing version).
 
     Presently, Android, Apple Platforms (iOS, macOS, tvOS, watchOS, and visionOS),
-    and Windows are supported.
+    OpenHarmony (HarmonyOS), and Windows are supported.
 
     The \a majorVersion(), \a minorVersion(), and \a microVersion() functions
     return the parts of the operating system version number based on:
@@ -100,6 +106,7 @@ QT_BEGIN_NAMESPACE
     \value WatchOS      The Apple watchOS operating system.
     \value VisionOS     The Apple visionOS operating system.
     \value Windows      The Microsoft Windows operating system.
+    \value [since 6.12] HarmonyOS The HarmonyOS operating system.
 
     \value Unknown      An unknown or unsupported operating system.
 */
@@ -112,7 +119,8 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn QOperatingSystemVersion::current()
+    \fn QOperatingSystemVersion QOperatingSystemVersion::current()
+
     Returns a QOperatingSystemVersion indicating the current OS and its version number.
 
     \sa currentType()
@@ -191,6 +199,20 @@ QOperatingSystemVersionBase QOperatingSystemVersionBase::current_impl()
 
     // API level 6 was exactly version 2.0.1
     version.m_micro = versionIdx == 5 ? 1 : -1;
+#elif defined(Q_OS_HARMONY)
+    static auto ohosVersionProps = QOhosJsThreadGateway::eval(
+        [](QOhosJsState &jsState) {
+            auto deviceInfoObj = jsState.eval<QNapi::Object>("@ohos.deviceInfo");
+            return std::array<int, 3>{{
+                deviceInfoObj.get<QNapi::Number>("majorVersion"),
+                deviceInfoObj.get<QNapi::Number>("seniorVersion"),
+                deviceInfoObj.get<QNapi::Number>("featureVersion"),
+            }};
+        });
+
+    version.m_major = ohosVersionProps[0];
+    version.m_minor = ohosVersionProps[1];
+    version.m_micro = ohosVersionProps[2];
 #else
     version.m_major = -1;
     version.m_minor = -1;
@@ -330,6 +352,8 @@ QString QOperatingSystemVersionBase::name(QOperatingSystemVersionBase osversion)
         return QStringLiteral("visionOS");
     case QOperatingSystemVersionBase::Android:
         return QStringLiteral("Android");
+    case QOperatingSystemVersionBase::HarmonyOS:
+        return QStringLiteral("HarmonyOS");
     case QOperatingSystemVersionBase::Unknown:
     default:
         return QString();
@@ -480,6 +504,18 @@ const QOperatingSystemVersionBase QOperatingSystemVersion::Windows11_22H2;
  */
 
 /*!
+    \variable QOperatingSystemVersion::Windows11_24H2
+    \brief a version corresponding to Windows 11 Version 24H2 (version 10.0.26100).
+    \since 6.8.1
+ */
+
+/*!
+    \variable QOperatingSystemVersion::Windows11_25H2
+    \brief a version corresponding to Windows 11 Version 25H2 (version 10.0.26200).
+    \since 6.11
+ */
+
+/*!
     \variable QOperatingSystemVersion::OSXMavericks
     \brief a version corresponding to OS X Mavericks (version 10.9).
     \since 5.9
@@ -541,7 +577,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::MacOSCatalina =
     \since 6.0
  */
 const QOperatingSystemVersion QOperatingSystemVersion::MacOSBigSur =
-    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 11, 0);
+    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 11);
 
 /*!
     \variable QOperatingSystemVersion::MacOSMonterey
@@ -549,7 +585,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::MacOSBigSur =
     \since 6.3
  */
 const QOperatingSystemVersion QOperatingSystemVersion::MacOSMonterey =
-    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 12, 0);
+    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 12);
 
 /*!
     \variable QOperatingSystemVersion::MacOSVentura
@@ -568,6 +604,18 @@ const QOperatingSystemVersionBase QOperatingSystemVersion::MacOSVentura;
     \variable QOperatingSystemVersion::MacOSSequoia
     \brief a version corresponding to macOS Sequoia (version 15).
     \since 6.8
+*/
+
+/*!
+    \variable QOperatingSystemVersion::MacOSTahoe
+    \brief a version corresponding to macOS Tahoe (version 26).
+    \since 6.10
+*/
+
+/*!
+    \variable QOperatingSystemVersion::MacOSGoldenGate
+    \brief a version corresponding to macOS Golden Gate (version 27).
+    \since 6.12
 */
 
 /*!

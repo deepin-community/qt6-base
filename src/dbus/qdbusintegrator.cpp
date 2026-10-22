@@ -1,17 +1,18 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusintegrator_p.h"
 
 #include <qcoreapplication.h>
 #include <qelapsedtimer.h>
+#include <private/qlatch_p.h>
 #include <qloggingcategory.h>
 #include <qmetaobject.h>
 #include <qobject.h>
 #include <qsocketnotifier.h>
 #include <qstringlist.h>
-#include <qtimer.h>
 #include <qthread.h>
 #include <private/qlocking_p.h>
 #include <QtCore/qset.h>
@@ -50,7 +51,7 @@ QT_IMPL_METATYPE_EXTERN(QDBusSlotCache)
 // used with dbus_server_allocate_data_slot
 static dbus_int32_t server_slot = -1;
 
-Q_LOGGING_CATEGORY(dbusIntegration, "qt.dbus.integration", QtWarningMsg)
+Q_STATIC_LOGGING_CATEGORY(dbusIntegration, "qt.dbus.integration", QtWarningMsg)
 
 Q_CONSTINIT static QBasicAtomicInt isDebugging = Q_BASIC_ATOMIC_INITIALIZER(-1);
 #define qDBusDebug              if (::isDebugging.loadRelaxed() == 0); else qDebug
@@ -560,7 +561,7 @@ bool QDBusConnectionPrivate::handleMessage(const QDBusMessage &amsg)
         // run it through the spy filters (if any) before the regular processing:
         // a) if it's a local message, we're in the caller's thread, so invoke the filter directly
         // b) if it's an external message, post to the main thread
-        if (Q_UNLIKELY(qDBusSpyHookList.exists()) && qApp) {
+        if (Q_UNLIKELY(qDBusSpyHookList.exists()) && QCoreApplication::instanceExists()) {
             if (isLocal) {
                 Q_ASSERT(QThread::currentThread() != thread());
                 qDBusDebug() << this << "invoking message spies directly";
@@ -1131,7 +1132,7 @@ void QDBusConnectionPrivate::closeConnection()
         }
     }
 
-    for (QDBusPendingCallPrivate *call : pendingCalls) {
+    for (QDBusPendingCallPrivate *call : std::as_const(pendingCalls)) {
         if (!call->ref.deref())
             delete call;
     }
@@ -1412,17 +1413,30 @@ bool QDBusConnectionPrivate::activateInternalFilters(const ObjectTreeNode &node,
     if (node.obj && (interface.isEmpty() ||
                      interface == QDBusUtil::dbusInterfaceProperties())) {
         //qDebug() << "QDBusConnectionPrivate::activateInternalFilters properties" << msg.d_ptr->msg;
+
+        QDBusContextPrivate context(QDBusConnection(this), msg);
+        QDBusContextPrivate *old = QDBusContextPrivate::set(node.obj, &context);
+        auto guard = qScopeGuard([&node, old]{
+            QDBusContextPrivate::set(node.obj, old);
+        });
+
         if (msg.member() == "Get"_L1 && msg.signature() == "ss"_L1) {
             QDBusMessage reply = qDBusPropertyGet(node, msg);
-            send(reply);
+            if (!msg.isDelayedReply()) {
+                send(reply);
+            }
             return true;
         } else if (msg.member() == "Set"_L1 && msg.signature() == "ssv"_L1) {
             QDBusMessage reply = qDBusPropertySet(node, msg);
-            send(reply);
+            if (!msg.isDelayedReply()) {
+                send(reply);
+            }
             return true;
         } else if (msg.member() == "GetAll"_L1 && msg.signature() == "s"_L1) {
             QDBusMessage reply = qDBusPropertyGetAll(node, msg);
-            send(reply);
+            if (!msg.isDelayedReply()) {
+                send(reply);
+            }
             return true;
         }
 
@@ -1531,8 +1545,8 @@ void QDBusConnectionPrivate::handleObjectCall(const QDBusMessage &msg)
     ObjectTreeNode result;
     int usedLength;
     QThread *objThread = nullptr;
-    QSemaphore sem;
-    bool semWait;
+    QLatch latch(1);
+    bool latchWait;
 
     {
         QDBusReadLocker locker(HandleObjectCallAction, this);
@@ -1570,16 +1584,16 @@ void QDBusConnectionPrivate::handleObjectCall(const QDBusMessage &msg)
             // synchronize with it
             postEventToThread(HandleObjectCallPostEventAction, result.obj,
                               new QDBusActivateObjectEvent(QDBusConnection(this), this, result,
-                                                           usedLength, msg, &sem));
-            semWait = true;
+                                                           usedLength, msg, &latch));
+            latchWait = true;
         } else {
             // looped-back message, targeting current thread
-            semWait = false;
+            latchWait = false;
         }
     } // release the lock
 
-    if (semWait)
-        SEM_ACQUIRE(HandleObjectCallSemaphoreAction, sem);
+    if (latchWait)
+        latch.wait();
     else
         activateObject(result, msg, usedLength);
 }
@@ -2029,7 +2043,7 @@ public:
         // if this call is running on the main thread, we have a much lower
         // tolerance for delay because any long-term delay will wreck user
         // interactivity.
-        if (qApp && qApp->thread() == QThread::currentThread())
+        if (QThread::isMainThread())
             m_maxCallTimeoutMs = mainThreadWarningAmount;
         else
             m_maxCallTimeoutMs = otherThreadWarningAmount;
@@ -2592,12 +2606,14 @@ QString QDBusConnectionPrivate::getNameOwnerNoCache(const QString &serviceName)
     msg << serviceName;
 
     QDBusPendingCallPrivate *pcall = sendWithReplyAsync(msg, nullptr, nullptr, nullptr);
-    if (thread() == QThread::currentThread()) {
-        // this function may be called in our own thread and
-        // QDBusPendingCallPrivate::waitForFinished() would deadlock there
-        q_dbus_pending_call_block(pcall->pending);
+    if (pcall->replyMessage.type() == QDBusMessage::InvalidMessage) {
+        if (thread() == QThread::currentThread()) {
+            // this function may be called in our own thread and
+            // QDBusPendingCallPrivate::waitForFinished() would deadlock there
+            q_dbus_pending_call_block(pcall->pending);
+        }
+        pcall->waitForFinished();
     }
-    pcall->waitForFinished();
     msg = pcall->replyMessage;
 
     if (!pcall->ref.deref())

@@ -9,6 +9,6 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     ControllerWindow controller;
-    controller.show();
+    controller.showNormal();
     return app.exec();
 }

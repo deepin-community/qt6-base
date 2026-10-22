@@ -1,5 +1,6 @@
 // Copyright (C) 2020 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORVALUE_P_H
 #define QCBORVALUE_P_H
@@ -89,7 +90,8 @@ struct ByteData
     QStringView asStringView() const{ return QStringView(utf16(), len / 2); }
     QString asQStringRaw() const    { return QString::fromRawData(utf16(), len / 2); }
 };
-static_assert(std::is_trivial<ByteData>::value);
+static_assert(std::is_trivially_default_constructible<ByteData>::value);
+static_assert(std::is_trivially_copyable<ByteData>::value);
 static_assert(std::is_standard_layout<ByteData>::value);
 } // namespace QtCbor
 
@@ -101,9 +103,18 @@ class QCborContainerPrivate : public QSharedData
     ~QCborContainerPrivate();
 
 public:
+    QCborContainerPrivate() = default;
+    QCborContainerPrivate(const QCborContainerPrivate &) = default;
+    QCborContainerPrivate(QCborContainerPrivate &&) = default;
+    QCborContainerPrivate &operator=(const QCborContainerPrivate &) = delete;
+    QCborContainerPrivate &operator=(QCborContainerPrivate &&) = delete;
+
     enum ContainerDisposition { CopyContainer, MoveContainer };
 
-    QByteArray::size_type usedData = 0;
+    union {
+        QByteArray::size_type usedData = 0;
+        QCborContainerPrivate *nextToDelete; // only used in d-tor
+    };
     QByteArray data;
     QList<QtCbor::Element> elements;
 
@@ -216,7 +227,6 @@ public:
         elements.append(QtCbor::Element(addByteData(data, len), type,
                                         QtCbor::Element::HasByteData | extraFlags));
     }
-    void appendAsciiString(const QString &s);
     void appendAsciiString(const char *str, qsizetype len)
     {
         appendByteData(str, len, QCborValue::String, QtCbor::Element::StringIsAscii);
@@ -253,6 +263,12 @@ public:
     {
         insertAt(elements.size(), v);
     }
+    void append(QCborValue &&v)
+    {
+        insertAt(elements.size(), v, MoveContainer);
+        v.container = nullptr;
+        v.t = QCborValue::Undefined;
+    }
 
     QByteArray byteArrayAt(qsizetype idx) const
     {
@@ -273,6 +289,18 @@ public:
         if (e.flags & QtCbor::Element::StringIsAscii)
             return data->asLatin1();
         return data->toUtf8String();
+    }
+    QAnyStringView anyStringViewAt(qsizetype idx) const
+    {
+        const auto &e = elements.at(idx);
+        const auto data = byteData(e);
+        if (!data)
+            return nullptr;
+        if (e.flags & QtCbor::Element::StringIsUtf16)
+            return data->asStringView();
+        if (e.flags & QtCbor::Element::StringIsAscii)
+            return data->asLatin1();
+        return data->asUtf8StringView();
     }
 
     static void resetValue(QCborValue &v)
@@ -362,8 +390,8 @@ public:
 
         if (e.flags & QtCbor::Element::StringIsUtf16) {
             if (mode == QtCbor::Comparison::ForEquality)
-                return QtPrivate::equalStrings(b->asStringView(), s) ? 0 : 1;
-            return QtPrivate::compareStrings(b->asStringView(), s);
+                return b->asStringView() == s ? 0 : 1;
+            return b->asStringView().compare(s);
         }
         return compareUtf8(b, s);
     }

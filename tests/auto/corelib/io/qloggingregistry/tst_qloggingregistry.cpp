@@ -20,6 +20,10 @@ class tst_QLoggingRegistry : public QObject
 {
     Q_OBJECT
 
+#ifdef BUILTIN_TESTDATA
+    QSharedPointer<QTemporaryDir> m_dataDir;
+#endif
+
 private slots:
 
     void initTestCase()
@@ -29,6 +33,20 @@ private slots:
         qputenv("XDG_CONFIG_DIRS", "/does/not/exist");
         qunsetenv("QT_LOGGING_CONF");
         qunsetenv("QT_LOGGING_RULES");
+
+#ifdef BUILTIN_TESTDATA
+        m_dataDir = QEXTRACTTESTDATA("/");
+        QVERIFY2(!m_dataDir.isNull(), "Failed to extract test data");
+        QVERIFY2(QDir::setCurrent(m_dataDir->path()),
+                 qPrintable("Could not chdir to " + m_dataDir->path()));
+#endif
+    }
+
+    void cleanupTestCase()
+    {
+#ifdef BUILTIN_TESTDATA
+        QDir::setCurrent(QCoreApplication::applicationDirPath());
+#endif
     }
 
     void QLoggingRule_parse_data()
@@ -186,19 +204,34 @@ private slots:
 
         Q_ASSERT(!qApp); // Rules should not require an app to resolve
 
+        static bool calledOnce = false;
+        if (calledOnce)
+            QSKIP("QLoggingRegistry_environment can only run once");
+
+        calledOnce = true;
+
         qputenv("QT_LOGGING_RULES", "qt.foo.bar=true");
         QLoggingCategory qtEnabledByLoggingRule("qt.foo.bar");
+#if defined(Q_OS_HARMONY)
+        QEXPECT_FAIL("", "QT_LOGGING_RULES is not automatically applied without "
+                         "qApp on OHOS (intentional behavior)", Continue);
+#endif
         QCOMPARE(qtEnabledByLoggingRule.isDebugEnabled(), true);
         QLoggingCategory qtDisabledByDefault("qt.foo.baz");
         QCOMPARE(qtDisabledByDefault.isDebugEnabled(), false);
 
         QLoggingRegistry &registry = *QLoggingRegistry::instance();
+        registry.initializeRules();
         QCOMPARE(registry.ruleSets[QLoggingRegistry::ApiRules].size(), 0);
         QCOMPARE(registry.ruleSets[QLoggingRegistry::ConfigRules].size(), 0);
         QCOMPARE(registry.ruleSets[QLoggingRegistry::EnvironmentRules].size(), 1);
 
         qunsetenv("QT_LOGGING_RULES");
+#ifdef BUILTIN_TESTDATA
+        qputenv("QT_LOGGING_CONF", (m_dataDir->path() + "/qtlogging.ini").toLocal8Bit());
+#else
         qputenv("QT_LOGGING_CONF", QFINDTESTDATA("qtlogging.ini").toLocal8Bit());
+#endif
         registry.initializeRules();
 
         QCOMPARE(registry.ruleSets[QLoggingRegistry::ApiRules].size(), 0);
@@ -232,12 +265,14 @@ private slots:
         out << "Digia.*=false\n";
         file.close();
 
-        QLoggingRegistry registry;
+        QLoggingRegistry &registry = *QLoggingRegistry::instance();
+        auto cleanup = qScopeGuard([&] {
+            file.remove();
+            registry.initializeRules(); // reset rules
+        });
+
         registry.initializeRules();
         QCOMPARE(registry.ruleSets[QLoggingRegistry::ConfigRules].size(), 1);
-
-        // remove file again
-        QVERIFY(file.remove());
     }
 
     void QLoggingRegistry_rulePriorities()

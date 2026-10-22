@@ -1,12 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtTest/qtest.h>
 
-#include <QtNetwork>
-#include <QTest>
-
-#include <QNetworkProxy>
-#include <QAuthenticator>
+#include <QtNetwork/qsslsocket.h>
+#include <QtNetwork/qnetworkproxy.h>
+#include <QtNetwork/qauthenticator.h>
 
 #ifdef QT_BUILD_INTERNAL
 #  include "private/qhostinfo_p.h"
@@ -231,7 +230,7 @@ void tst_QSslSocket_onDemandCertificates_member::onDemandRootCertLoadingMemberMe
     const bool works = QSslSocketPrivate::rootCertOnDemandLoadingSupported();
 #if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
     QVERIFY2(works, ERR(socket4));
-#elif defined(Q_OS_MAC)
+#elif defined(Q_OS_APPLE)
     QVERIFY2(!works, ERR(socket4));
 #endif // other platforms: undecided.
     // When we *allow* on-demand loading, we enable it by default; so, on Unix,

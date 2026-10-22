@@ -1,12 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstandarditemmodel.h"
 
 #include <QtCore/qdatetime.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qmap.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qbitarray.h>
@@ -19,11 +19,6 @@
 
 QT_BEGIN_NAMESPACE
 
-// Used internally to store the flags
-namespace {
-constexpr auto DataFlagsRole = Qt::ItemDataRole(Qt::UserRole - 1);
-}
-
 static inline QString qStandardItemModelDataListMimeType()
 {
     return QStringLiteral("application/x-qstandarditemmodeldatalist");
@@ -35,8 +30,8 @@ public:
     inline QStandardItemModelLessThan()
         { }
 
-    inline bool operator()(const QPair<QStandardItem*, int> &l,
-                           const QPair<QStandardItem*, int> &r) const
+    inline bool operator()(const std::pair<QStandardItem*, int> &l,
+                           const std::pair<QStandardItem*, int> &r) const
     {
         return *(l.first) < *(r.first);
     }
@@ -48,8 +43,8 @@ public:
     inline QStandardItemModelGreaterThan()
         { }
 
-    inline bool operator()(const QPair<QStandardItem*, int> &l,
-                           const QPair<QStandardItem*, int> &r) const
+    inline bool operator()(const std::pair<QStandardItem*, int> &l,
+                           const std::pair<QStandardItem*, int> &r) const
     {
         return *(r.first) < *(l.first);
     }
@@ -58,16 +53,16 @@ public:
 /*!
   \internal
 */
-QPair<int, int> QStandardItemPrivate::position() const
+std::pair<int, int> QStandardItemPrivate::position() const
 {
     if (QStandardItem *par = parent) {
         int idx = par->d_func()->childIndex(q_func());
         if (idx == -1)
-            return QPair<int, int>(-1, -1);
-        return QPair<int, int>(idx / par->columnCount(), idx % par->columnCount());
+            return std::pair<int, int>(-1, -1);
+        return std::pair<int, int>(idx / par->columnCount(), idx % par->columnCount());
     }
     // ### support header items?
-    return QPair<int, int>(-1, -1);
+    return std::pair<int, int>(-1, -1);
 }
 
 /*!
@@ -284,7 +279,7 @@ QMap<int, QVariant> QStandardItemPrivate::itemData() const
 {
     QMap<int, QVariant> result;
     for (const auto &data : values) {
-        if (data.role != DataFlagsRole)
+        if (data.role != Qt::StandardItemFlagsRole)
             result.insert(data.role, data.value);
     }
     return result;
@@ -299,7 +294,7 @@ void QStandardItemPrivate::sortChildren(int column, Qt::SortOrder order)
     if (column >= columnCount())
         return;
 
-    QList<QPair<QStandardItem*, int> > sortable;
+    QList<std::pair<QStandardItem*, int> > sortable;
     QList<int> unsortable;
 
     sortable.reserve(rowCount());
@@ -308,7 +303,7 @@ void QStandardItemPrivate::sortChildren(int column, Qt::SortOrder order)
     for (int row = 0; row < rowCount(); ++row) {
         QStandardItem *itm = q->child(row, column);
         if (itm)
-            sortable.append(QPair<QStandardItem*,int>(itm, row));
+            sortable.emplace_back(itm, row);
         else
             unsortable.append(row);
     }
@@ -451,8 +446,7 @@ bool QStandardItemPrivate::insertRows(int row, const QList<QStandardItem*> &item
     }
     for (int i = 0; i < items.size(); ++i) {
         QStandardItem *item = items.at(i);
-        item->d_func()->model = model;
-        item->d_func()->parent = q;
+        item->d_func()->setParentAndModel(q, model);
         int index = childIndex(i + row, 0);
         children.replace(index, item);
         if (item)
@@ -998,7 +992,7 @@ void QStandardItem::emitDataChanged()
 */
 void QStandardItem::setFlags(Qt::ItemFlags flags)
 {
-    setData((int)flags, DataFlagsRole);
+    setData((int)flags, Qt::StandardItemFlagsRole);
 }
 
 /*!
@@ -1013,7 +1007,7 @@ void QStandardItem::setFlags(Qt::ItemFlags flags)
 */
 Qt::ItemFlags QStandardItem::flags() const
 {
-    QVariant v = data(DataFlagsRole);
+    QVariant v = data(Qt::StandardItemFlagsRole);
     if (!v.isValid())
         return (Qt::ItemIsSelectable|Qt::ItemIsEnabled|Qt::ItemIsEditable
                 |Qt::ItemIsDragEnabled|Qt::ItemIsDropEnabled);
@@ -1486,7 +1480,7 @@ void QStandardItem::setDropEnabled(bool dropEnabled)
 int QStandardItem::row() const
 {
     Q_D(const QStandardItem);
-    QPair<int, int> pos = d->position();
+    std::pair<int, int> pos = d->position();
     return pos.first;
 }
 
@@ -1499,7 +1493,7 @@ int QStandardItem::row() const
 int QStandardItem::column() const
 {
     Q_D(const QStandardItem);
-    QPair<int, int> pos = d->position();
+    std::pair<int, int> pos = d->position();
     return pos.second;
 }
 
@@ -1988,7 +1982,7 @@ bool QStandardItem::operator<(const QStandardItem &other) const
 {
     const int role = model() ? model()->sortRole() : Qt::DisplayRole;
     const QVariant l = data(role), r = other.data(role);
-    return QAbstractItemModelPrivate::isVariantLessThan(l, r);
+    return QStandardItemModel::compareData(l, r) < 0;
 }
 
 /*!
@@ -2182,7 +2176,7 @@ QDataStream &operator<<(QDataStream &out, const QStandardItem &item)
     instead rely entirely on the QAbstractItemModel interface when working with
     the model, or use a combination of the two as appropriate.
 
-    \sa QStandardItem, {Model/View Programming}, QAbstractItemModel,
+    \sa QStandardItem, {Model/View Programming}, QAbstractItemModel, QRangeModel,
     {itemviews/simpletreemodel}{Simple Tree Model example},
     {Item View Convenience Classes}
 */
@@ -2253,7 +2247,7 @@ void QStandardItemModel::setItemRoleNames(const QHash<int,QByteArray> &roleNames
 }
 
 /*!
-  reimp
+  \reimp
 */
 QHash<int, QByteArray> QStandardItemModel::roleNames() const
 {
@@ -2332,7 +2326,7 @@ QStandardItem *QStandardItemModel::itemFromIndex(const QModelIndex &index) const
 QModelIndex QStandardItemModel::indexFromItem(const QStandardItem *item) const
 {
     if (item && item->d_func()->parent) {
-        QPair<int, int> pos = item->d_func()->position();
+        std::pair<int, int> pos = item->d_func()->position();
         return createIndex(pos.first, pos.second, item->d_func()->parent);
     }
     return QModelIndex();

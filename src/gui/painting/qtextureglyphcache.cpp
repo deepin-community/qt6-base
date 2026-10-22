@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qmath.h>
 
@@ -210,12 +211,13 @@ void QTextureGlyphCache::fillInPendingGlyphs()
 
     int requiredHeight = m_h;
     int requiredWidth = m_w; // Use a minimum size to avoid a lot of initial reallocations
+    const int padding = glyphPadding();
     {
         QHash<GlyphAndSubPixelPosition, Coord>::iterator iter = m_pendingGlyphs.begin();
         while (iter != m_pendingGlyphs.end()) {
             Coord c = iter.value();
-            requiredHeight = qMax(requiredHeight, c.y + c.h);
-            requiredWidth = qMax(requiredWidth, c.x + c.w);
+            requiredHeight = qMax(requiredHeight, c.y + c.h + padding);
+            requiredWidth = qMax(requiredWidth, c.x + c.w + padding);
             ++iter;
         }
     }
@@ -301,6 +303,8 @@ void QImageTextureGlyphCache::fillTexture(const Coord &c,
                                           const QFixedPoint &subPixelPosition)
 {
     QImage mask = textureMapForGlyph(g, subPixelPosition);
+    if (mask.isNull())
+        return;
 
 #ifdef CACHE_DEBUG
     printf("fillTexture of %dx%d at %d,%d in the cache of %dx%d\n", c.w, c.h, c.x, c.y, m_image.width(), m_image.height());
@@ -309,8 +313,6 @@ void QImageTextureGlyphCache::fillTexture(const Coord &c,
         return;
     }
 #endif
-    Q_ASSERT(mask.width() <= c.w && mask.height() <= c.h);
-
     if (m_format == QFontEngine::Format_A32
         || m_format == QFontEngine::Format_ARGB) {
         QImage ref(m_image.bits() + (c.x * 4 + c.y * m_image.bytesPerLine()),

@@ -46,14 +46,13 @@ static QStringList findPluginNames(const QDir &pluginDir, const PluginDetection 
         plugin = plugin.first(dotIndex);
 
         if (libraryType == PluginDetection::DebugAndRelease) {
-            bool isDebugDll{};
-            if (!readPeExecutable(dllFi.absoluteFilePath(), &errorMessage, 0, 0, &isDebugDll,
-                                  (platform == WindowsDesktopMinGW))) {
+            PeHeaderInfoStruct info;
+            if (!readPeExecutableInfo(dllFi.absoluteFilePath(), &errorMessage, &info)) {
                 std::wcerr << "Warning: Unable to read "
                            << QDir::toNativeSeparators(dllFi.absoluteFilePath()) << ": "
                            << errorMessage;
             }
-            if (isDebugDll && platformHasDebugSuffix(platform))
+            if (info.isDebug && platformHasDebugSuffix(platform))
                 plugin.removeLast();
         }
         else if (libraryType == PluginDetection::DebugOnly)

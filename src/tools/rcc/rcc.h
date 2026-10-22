@@ -1,6 +1,7 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// Qt-Security score:significant reason:default
 
 // Note: A copy of this file is used in Qt Widgets Designer (qttools/src/designer/src/lib/shared/rcc_p.h)
 
@@ -10,8 +11,6 @@
 #include <qstringlist.h>
 #include <qhash.h>
 #include <qstring.h>
-
-typedef struct ZSTD_CCtx_s ZSTD_CCtx;
 
 QT_BEGIN_NAMESPACE
 
@@ -124,10 +123,6 @@ private:
     void writeByteArray(const QByteArray &);
     void write(const char *, int len);
     void writeString(const char *s) { write(s, static_cast<int>(strlen(s))); }
-
-#if QT_CONFIG(zstd)
-    ZSTD_CCtx *m_zstdCCtx;
-#endif
 
     const Strings m_strings;
     RCCFileInfo *m_root;

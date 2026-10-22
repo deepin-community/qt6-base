@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtypes.h"
 
@@ -503,10 +504,10 @@ static_assert(sizeof(size_t) == sizeof(qsizetype)); // implied by the definition
 static_assert((std::is_same<qsizetype, qptrdiff>::value));
 static_assert(std::is_same_v<std::size_t, size_t>);
 
-#ifdef QT_COMPILER_SUPPORTS_INT128
+#if defined(QT_COMPILER_SUPPORTS_INT128) && !defined(QT_NO_INT128)
 # ifndef QT_SUPPORTS_INT128
 #  error Qt needs to be compiled in a mode that enables INT128 \
-    if the compiler supports it in principle.
+    if the compiler supports it in principle and QT_NO_INT128 is not defined.
 # endif
 #endif
 

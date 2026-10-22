@@ -1,5 +1,6 @@
 // Copyright (C) 2011 - 2013 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QQNXWINDOW_H
 #define QQNXWINDOW_H
@@ -41,8 +42,9 @@ public:
 
     bool isExposed() const override;
 
-    WId winId() const override { return window()->type() == Qt::Desktop ? -1 : (WId)m_window; }
+    WId winId() const override { return (WId)m_window; }
     screen_window_t nativeHandle() const { return m_window; }
+    screen_context_t screenContext() const { return m_screenContext; }
 
     void setBufferSize(const QSize &size);
     QSize bufferSize() const { return m_bufferSize; }
@@ -75,6 +77,11 @@ public:
     void windowPosted();
     void handleActivationEvent();
 
+    void setWindowTitle(const QString &title);
+
+    void requestUpdate() override;
+    void handlePostEvent();
+
 protected:
     virtual int pixelFormat() const = 0;
     virtual void resetBuffers() = 0;
@@ -95,6 +102,7 @@ private:
     void setFocus(screen_window_t newFocusWindow);
     bool showWithoutActivating() const;
     bool focusable() const;
+    void notifyManager(const QString &msg);
 
     void addContextPermission();
     void removeContextPermission();
@@ -119,6 +127,18 @@ private:
 
     bool m_isTopLevel;
     bool m_firstActivateHandled;
+    int m_desktopNotify;
+
+    enum {
+        DesktopNotifyTitle = 0x1,
+        DesktopNotifyPosition = 0x2,
+        DesktopNotifyVisible = 0x2
+    };
+
+    QAtomicInt m_waitingForPost = 0;
+    QAtomicInt m_fallbackQueued = 0;
+    bool m_postEventRegistered = false;
+    QSharedPointer<bool> m_alive { new bool(true) };
 };
 
 QT_END_NAMESPACE

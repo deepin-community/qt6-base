@@ -8,6 +8,8 @@
 #include <QPixmap>
 #include <QPoint>
 
+QT_BEGIN_NAMESPACE
+
 class QLabel;
 class QLineEdit;
 class QMouseEvent;
@@ -30,5 +32,7 @@ private:
     QPoint dragStartPosition;
     QTextEdit *commentEdit;
 };
+
+QT_END_NAMESPACE
 
 #endif

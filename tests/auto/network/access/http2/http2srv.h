@@ -12,7 +12,6 @@
 
 #include <QtNetwork/qabstractsocket.h>
 #include <QtCore/qsharedpointer.h>
-#include <QtCore/qscopedpointer.h>
 #include <QtNetwork/qtcpserver.h>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qatomic.h>
@@ -21,6 +20,7 @@
 
 #include <vector>
 #include <map>
+#include <memory>
 #include <set>
 
 QT_BEGIN_NAMESPACE
@@ -63,6 +63,7 @@ public:
     // To be called before server started:
     void enablePushPromise(bool enabled, const QByteArray &path = QByteArray());
     void setResponseBody(const QByteArray &body);
+    void enableSendEarlyError(bool enable);
     // No content encoding is actually performed, call setResponseBody with already encoded data
     void setContentEncoding(const QByteArray &contentEncoding);
     // No authentication data is generated for the method, the full header value must be set
@@ -74,7 +75,10 @@ public:
     void setRedirect(const QByteArray &redirectUrl, int count);
     // Send a trailing HEADERS frame with PRIORITY and END_STREAM flag
     void setSendTrailingHEADERS(bool enable);
-    void emulateGOAWAY(int timeout);
+    // Emulate a non-conformant server that sends a stray, empty DATA frame with END_STREAM set
+    // after the stream was already closed by a previous END_STREAM.
+    void setSendRedundantEndStreamDATA(bool enable);
+    void emulateGOAWAY(int goawayCode, int timeout, bool disconnectAfter = false);
     void redirectOpenStream(quint16 targetPort);
 
     bool isClearText() const;
@@ -134,7 +138,7 @@ private:
     bool verifyProtocolUpgradeRequest();
     void triggerGOAWAYEmulation();
 
-    QScopedPointer<QAbstractSocket> socket;
+    std::unique_ptr<QAbstractSocket> socket;
 
     H2Type connectionType = H2Type::h2Alpn;
     // Connection preface:
@@ -147,6 +151,7 @@ private:
     RawSettings expectedClientSettings;
 
     bool connectionError = false;
+    bool sendEarlyError = false;
 
     Http2::FrameReader reader;
     Http2::Frame inboundFrame;
@@ -184,6 +189,8 @@ private:
 
     bool testingGOAWAY = false;
     int goawayTimeout = 0;
+    int goawayCode = 0;
+    bool goawayDisconnect = false; // set via emulateGOAWAY disconnectAfter parameter
 
     // Clear text HTTP/2, we have to deal with the protocol upgrade request
     // from the initial HTTP/1.1 request.
@@ -193,7 +200,7 @@ private:
     // We need QHttpNetworkReply (actually its private d-object) to handle the
     // first HTTP/1.1 request. QHttpNetworkReplyPrivate does parsing + in case
     // of POST it is also reading the body for us.
-    QScopedPointer<Http11Reply> protocolUpgradeHandler;
+    std::unique_ptr<Http11Reply> protocolUpgradeHandler;
     // We need it for PUSH_PROMISE, with the correct port number appended,
     // when replying to essentially 1.1 request.
     QByteArray authority;
@@ -212,7 +219,10 @@ private:
     int redirectCount = 0;
 
     bool sendTrailingHEADERS = false;
+    bool sendRedundantEndStreamDATA = false;
     int informationalStatusCode = 0;
+
+    std::optional<quint32> pendingMaxTableSizeUpdate;
 protected slots:
     void ignoreErrorSlot();
 };

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // Gui types
+// Qt-Security score:significant reason:default
 #include "qbitmap.h"
 #include "qbrush.h"
 #include "qcolor.h"
@@ -27,26 +28,23 @@
 #include "qicon.h"
 
 // Core types
-#include "qvariant.h"
 #include "qbitarray.h"
 #include "qbytearray.h"
 #include "qdatastream.h"
-#include "qdebug.h"
-#include "qmap.h"
 #include "qdatetime.h"
+#include "qdebug.h"
+#include "qline.h"
 #include "qlist.h"
+#include "qlocale.h"
+#include "qmap.h"
+#include "qpoint.h"
+#include "qrect.h"
+#include "qsize.h"
 #include "qstring.h"
 #include "qstringlist.h"
 #include "qurl.h"
-#include "qlocale.h"
 #include "quuid.h"
-
-#ifndef QT_NO_GEOM_VARIANT
-#include "qsize.h"
-#include "qpoint.h"
-#include "qrect.h"
-#include "qline.h"
-#endif
+#include "qvariant.h"
 
 #include <float.h>
 
@@ -55,14 +53,13 @@
 QT_BEGIN_NAMESPACE
 
 namespace {
-
-// NOLINTNEXTLINE(cppcoreguidelines-virtual-class-destructor): this is not a base class
 struct QVariantGuiHelper : QMetaTypeModuleHelper
 {
 #define QT_IMPL_METATYPEINTERFACE_GUI_TYPES(MetaTypeName, MetaTypeId, RealName) \
     QT_METATYPE_INTERFACE_INIT(RealName),
 
-    const QtPrivate::QMetaTypeInterface *interfaceForType(int type) const override {
+    static const QtPrivate::QMetaTypeInterface *interfaceForType(int type)
+    {
         switch (type) {
             QT_FOR_EACH_STATIC_GUI_CLASS(QT_METATYPE_CONVERT_ID_TO_TYPE)
             default: return nullptr;
@@ -70,7 +67,7 @@ struct QVariantGuiHelper : QMetaTypeModuleHelper
     }
 #undef QT_IMPL_METATYPEINTERFACE_GUI_TYPES
 
-    bool convert(const void *from, int fromTypeId, void *to, int toTypeId) const override
+    static bool convert(const void *from, int fromTypeId, void *to, int toTypeId)
     {
         Q_ASSERT(fromTypeId != toTypeId);
 
@@ -136,14 +133,14 @@ struct QVariantGuiHelper : QMetaTypeModuleHelper
         return false;
     }
 };
-
-static constexpr QVariantGuiHelper qVariantGuiHelper;
-
 } // namespace used to hide QVariant handler
 
 void qRegisterGuiVariant()
 {
-    qMetaTypeGuiHelper = &qVariantGuiHelper;
+    qMetaTypeGuiHelper = QMetaTypeModuleHelper{
+        &QVariantGuiHelper::interfaceForType,
+        &QVariantGuiHelper::convert,
+    };
 }
 Q_CONSTRUCTOR_FUNCTION(qRegisterGuiVariant)
 

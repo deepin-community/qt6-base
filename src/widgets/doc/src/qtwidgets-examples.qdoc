@@ -4,10 +4,9 @@
 /*!
     \title Qt Widgets Examples
     \brief Lots of examples of how to use different kinds of widgets.
-    \ingroup all-examples
     \group examples-widgets
 
-    \image widget-examples.png
+    \image widget-examples.png {Gallery of various widgets}
 
     Qt comes with a large range of standard widgets that users of modern
     applications have come to expect.
@@ -22,12 +21,12 @@
 */
 
 /*!
-    \ingroup all-examples
     \title Painting Examples
     \brief How to use the Qt painting system.
     \group examples-painting
 
     \image painting-examples.png
+           {Application showing different geometric shapes and styles}
 
     Qt's painting system is able to render vector graphics, images,
     and outline font-based text with sub-pixel accuracy using
@@ -40,12 +39,12 @@
 */
 
 /*!
-    \ingroup all-examples
     \title Rich Text Examples
     \brief Using the document-oriented rich text engine.
     \group examples-richtext
 
     \image richtext-examples.png
+           {Application showing various rich text widgets}
 
     Qt provides powerful document-oriented rich text engine that supports Unicode
     and right-to-left scripts. Documents can be manipulated using a cursor-based
@@ -55,12 +54,13 @@
  */
 
 /*!
-    \ingroup all-examples
     \title Desktop Examples
     \brief Integrating your Qt application with your favorite desktop.
     \group examples-desktop
 
     \image desktop-examples.png
+           {Application showing widgets for desktop environments}
+
 
     Qt provides features to enable applications to integrate with the user's
     preferred desktop environment.
@@ -73,11 +73,11 @@
 
 /*!
     \group examples-dialogs
-    \ingroup all-examples
     \title Dialog Examples
     \brief Using Qt's standard dialogs and building and using custom dialogs.
 
     \image dialog-examples.png
+           {Application showing a dialog}
 
     Qt includes standard dialogs for many common operations, such as file
     selection, printing, and color selection.
@@ -87,12 +87,12 @@
 */
 
 /*!
-    \ingroup all-examples
     \title Item Views Examples
     \brief Using the model/view framework.
     \group examples-itemviews
 
     \image itemviews-examples.png
+           {Application showing a tree model editor}
 
     Qt provides a lot of capabalities to display pre- and user-defined item models
     in different ways.
@@ -102,13 +102,13 @@
 */
 
 /*!
-    \ingroup all-examples
     \keyword Graphicsview Examples
     \title Graphics View Examples
     \brief Using the Graphics View framework.
     \page examples-graphicsview.html
 
     \image graphicsview-examples.png
+    {Application showing various graphics options and views}
 
     Qt provides powerful graphics engine that supports easy visualization of items, with
     support for rotation and zooming.
@@ -129,16 +129,42 @@
 
 /*!
     \group examples-mainwindow
-    \ingroup all-examples
     \title Main Window Examples
     \brief Building applications around a main window.
 
     \image mainwindow-examples.png
+           {Application showing various widgets in a main window}
 
     All the standard features of application main windows are provided by Qt.
 
     Main windows can have pull down menus, tool bars, and dock windows. These
     separate forms of user input are unified in an integrated action system that
     also supports keyboard shortcuts and accelerator keys in menu items.
+
+*/
+
+/*!
+    \group examples-widgets-tools
+    \ingroup all-examples
+    \title Widget Tools Examples
+    \brief Using autocomplete features, regular expressions, and undo framework.
+
+    \image completer-example.png
+           {Application showing different completer options and tools}
+
+    Qt provides the functionality for autocomplete, Undo/Redo actions, and
+    regular expressions for the Widget-based applications.
+
+*/
+/*!
+    \group examples-user-input
+    \ingroup all-examples
+    \title User Input Examples
+    \brief Using user input in Qt Widgets applications.
+
+    \image imagegestures-example.png {Application handling touch gestures}
+
+    Qt provides the functionality for handling user input and drag-and-drop in
+    widget-based applications.
 
 */
