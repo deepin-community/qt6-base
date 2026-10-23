@@ -70,3 +70,9 @@ CVE-2026-105946_qauthenticator-fix-ntlm-phase2-bounds-overflow.patch
 CVE-2026-105946_qauthenticator-fix-digest-parser-pointer.patch
 CVE-2026-105943_qauthenticator-pass-spn-to-sspi-for-ntlm.patch
 CVE-2026-108081_limit-glyph-sizes.patch
+
+# QTBUG-124496: QFreeList: return timer IDs with the serial included
+# Backport of upstream commit 21e9875d62414306fde9738ab255e55f22d1c8ed
+# (Gerrit 582239, cherry-picked to 6.8 as 597305). Prerequisite for
+# fix-orphaned-timer-on-threadchange.patch (QTBUG-151772).
+QFreeList-return-timer-IDs-with-the-serial-included.patch

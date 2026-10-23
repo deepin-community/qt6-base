@@ -1,0 +1,41 @@
+Description: QFreeList: return timer IDs with the serial included
+ Backport of upstream commit 21e9875d62414306fde9738ab255e55f22d1c8ed
+ (Gerrit change 582239, Fixes: QTBUG-124496, picked to 6.8 as 597305).
+ .
+ When a timer gets unregistered there is a chance that a new timer is
+ registered again immediately and gets the same ID. On Windows this is a
+ problem because there may be WM_TIMER messages remaining in the native
+ event loop that have not been processed. This may result in unexpected
+ timeouts for newly started timers.
+ .
+ By not masking away the serial/generation from the ID we generate we will
+ no longer return the same ID that was just freed. This is also a
+ prerequisite for the orphaned-timer-on-threadchange fix: the queued timer
+ re-registration after moveToThread() checks the id against the object's
+ runningTimers list, which is only sound if a freed id is not immediately
+ reissued with the same numeric value.
+Author: Mårten Nordheim <marten.nordheim@qt.io>
+Origin: backport, https://codereview.qt-project.org/c/qt/qtbase/+/582239
+Last-Update: 2026-10-23
+---
+Index: qt6-base/src/corelib/tools/qfreelist_p.h
+===================================================================
+--- qt6-base.orig/src/corelib/tools/qfreelist_p.h
++++ qt6-base/src/corelib/tools/qfreelist_p.h
+@@ -118,6 +118,7 @@ class QFreeList
+     // return which block the index \a x falls in, and modify \a x to be the index into that block
+     static inline int blockfor(int &x)
+     {
++        x = x & ConstantsType::IndexMask;
+         for (int i = 0; i < ConstantsType::BlockCount; ++i) {
+             int size = ConstantsType::Sizes[i];
+             if (x < size)
+@@ -223,7 +224,7 @@ inline int QFreeList<T, ConstantsType>::next()
+     //        id & ConstantsType::IndexMask,
+     //        newid & ConstantsType::IndexMask,
+     //        (newid & ~ConstantsType::IndexMask) >> 24);
+-    return id & ConstantsType::IndexMask;
++    return id;
+ }
+ 
+ template <typename T, typename ConstantsType>
