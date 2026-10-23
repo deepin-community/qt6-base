@@ -76,3 +76,9 @@ CVE-2026-108081_limit-glyph-sizes.patch
 # (Gerrit 582239, cherry-picked to 6.8 as 597305). Prerequisite for
 # fix-orphaned-timer-on-threadchange.patch (QTBUG-151772).
 QFreeList-return-timer-IDs-with-the-serial-included.patch
+
+# QTBUG-151772: only re-register timers the object still owns after
+# moveToThread(); the queued re-registration functor checks runningTimers
+# so a timer stopped inside the migration window stays stopped.
+# Requires QFreeList-return-timer-IDs-with-the-serial-included.patch.
+fix-orphaned-timer-on-threadchange.patch

@@ -1,3 +1,13 @@
+qt6-base (6.8.0+dfsg-0deepin42) unstable; urgency=medium
+
+  * Backport QFreeList timer id serial (QTBUG-124496) so a just-freed
+    timer id is not immediately reused.
+  * Keep timers stopped when killed inside the moveToThread migration
+    window, preventing the orphaned timer registration that led to a
+    use-after-free (QTBUG-151772).
+
+ -- Fangxun Zhao <zhaofangxun@uniontech.com>  Mon, 26 Oct 2026 18:29:59 +0800
+
 qt6-base (6.8.0+dfsg-0deepin41) unstable; urgency=medium
 
   * Add CVE-2026-105943 and CVE-2026-108081 security patches.

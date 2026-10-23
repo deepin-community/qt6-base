@@ -1,0 +1,53 @@
+Description: QObject: only re-register timers the object still owns after moveToThread()
+ QObject::moveToThread() unregisters the object's active timers from the old
+ thread's dispatcher and queues a functor that re-registers them in the target
+ thread. If killTimer() is called for one of those timers inside the migration
+ window (after QEvent::ThreadChange, before the queued functor runs), the
+ functor used to re-register it unconditionally. The object no longer tracks
+ that timer (its id was removed from runningTimers and returned to the pool),
+ so the registration becomes orphaned: ~QObjectPrivate() sees an empty
+ runningTimers list and skips unregisterTimers(), leaving a {timerId, freed
+ object} entry in the dispatcher. When the timer fires, the event is delivered
+ to the freed object and the process crashes (use-after-free, QTBUG-151772).
+ .
+ Fix: the queued functor now checks the object's runningTimers list before
+ re-registering each timer and skips ids the object no longer owns, so a
+ timer stopped inside the migration window stays stopped. Also guard against
+ a null dispatcher (moveToThread(nullptr)).
+ .
+ Requires the timer id serial fix (QTBUG-124496, upstream commit 21e9875d,
+ packaged as QFreeList-return-timer-IDs-with-the-serial-included.patch):
+ without it, a timer restarted inside the window could reuse the freed id
+ and be wrongly re-registered by the stale functor.
+Author: deepin
+Origin: deepin, https://qt-project.atlassian.net/browse/QTBUG-151772
+Last-Update: 2026-10-23
+---
+--- qt6-base.orig/src/corelib/kernel/qobject.cpp
++++ qt6-base/src/corelib/kernel/qobject.cpp
+@@ -1432,11 +1432,22 @@
+                 Q_ASSERT_X(res, Q_FUNC_INFO,
+                            "QAbstractEventDispatcher::unregisterTimers() returned false,"
+                            " but there are timers associated with this object.");
+-                auto reRegisterTimers = [this, timers = std::move(timers)]() {
++                auto reRegisterTimers = [this, d, timers = std::move(timers)]() {
+                     QAbstractEventDispatcher *eventDispatcher =
+-                            d_func()->threadData.loadRelaxed()->eventDispatcher.loadRelaxed();
+-                    for (const auto &ti : timers)
++                            d->threadData.loadRelaxed()->eventDispatcher.loadRelaxed();
++                    if (!eventDispatcher)
++                        return;
++                    for (const auto &ti : timers) {
++                        // The timer may have been stopped (killTimer()) while this
++                        // functor was queued in the migration window. Only
++                        // re-register timers the object still owns; a stopped
++                        // timer must stay stopped.
++                        if (!d->extraData
++                            || !d->extraData->runningTimers.contains(ti.timerId)) {
++                            continue;
++                        }
+                         eventDispatcher->registerTimer(ti.timerId, ti.interval, ti.timerType, this);
++                    }
+                 };
+                 QMetaObject::invokeMethod(this, std::move(reRegisterTimers), Qt::QueuedConnection);
+             }
