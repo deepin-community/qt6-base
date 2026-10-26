@@ -93,8 +93,6 @@ Build-Depends: debhelper-compat (= 13),
                qt6-base-dev:native <cross>,
                unixodbc-dev,
                zlib1g-dev,
-Build-Depends-Indep: qt6-base-dev (>= 6.11~) <!nodoc>,
-                     qt6-documentation-tools (>= 6.11~) <!nodoc>,
 Standards-Version: 4.7.4
 Section: libs
 Homepage: https://www.qt.io/developers/

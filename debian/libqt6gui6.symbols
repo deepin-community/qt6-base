@@ -109,7 +109,6 @@ libQt6Gui.so.6 libqt6gui6 #MINVER#
  _Z31QT_DISTANCEFIELD_HIGHGLYPHCOUNTv@Qt_6 6.12.0
  _Z32qGamma_correct_back_to_linear_csP6QImage@Qt_6 6.12.0
  _Z32qglx_surfaceFormatFromVisualInfoP14QSurfaceFormatP9_XDisplayP11XVisualInfoi@Qt_6 6.12.0
- _Z32qt_convert_rgb888_to_rgb32_ssse3PjPKhi@Qt_6 6.12.0
  _Z33hb_qt_font_get_use_design_metricsP9hb_font_t@Qt_6 6.12.0
  _Z33hb_qt_font_set_use_design_metricsP9hb_font_tj@Qt_6 6.12.0
  _Z33qglx_surfaceFormatFromGLXFBConfigP14QSurfaceFormatP9_XDisplayP16__GLXFBConfigReci@Qt_6 6.12.0
