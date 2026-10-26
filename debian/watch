@@ -1,0 +1,7 @@
+Version: 5
+
+Source: https://download.qt.io/archive/qt/([\d\.]*)/([\d\.]*)/submodules/
+Matching-Pattern: qtbase-everywhere-src-(.*)\.tar\.xz
+Dversionmangle: s/\+dfsg//
+Repacksuffix: +dfsg
+Uversionmangle: s/-/~/

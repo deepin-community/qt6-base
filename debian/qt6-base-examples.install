@@ -1,0 +1,14 @@
+#!/usr/bin/dh-exec
+[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/network/multistreamclient/*
+[linux-any] usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/network/multistreamserver/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/corelib/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/dbus/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/gui/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/network/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/opengl/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/qtconcurrent/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/qtestlib/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/sql/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/vulkan/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/widgets/*
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/examples/xml/*

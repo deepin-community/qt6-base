@@ -1,0 +1,18 @@
+# Fixed in 6.12.1
+fix_sparc64_detection.patch
+
+# Fixed in 6.12.0
+
+# Fixed in 6.11.3
+
+# Needs to be fixed upstream.
+Add-SH-detection.patch
+
+# Debian specific
+remove_privacy_breaches.diff
+build_path_embedded_qtbuildinternalsextra_cmake.patch
+cross.patch
+cross2.patch
+remove_rpath_from_examples.patch
+forkfd_grow_stack_upwards_on_hppa.patch
+enable_skip_plugins.patch

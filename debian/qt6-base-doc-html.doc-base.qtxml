@@ -1,0 +1,9 @@
+Document: qt6-xml
+Title: Qt 6 XML module
+Author: The Qt Company Ltd
+Abstract: This is the HTML documentation for Qt 6 XML
+Section: Programming/C++
+
+Format: HTML
+Index: /usr/share/doc/qt6-base-doc-html/html/qtxml/qtxml-index.html
+Files: /usr/share/doc/qt6-base-doc-html/html/qtxml/*.html

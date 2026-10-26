@@ -1,0 +1,7 @@
+qt6-base (6.12.0-1) unstable; urgency=medium
+
+  * Cleanroom rebuild against Qt 6.12.0 upstream tarball
+    (reproduce per qt6.12-build/docs/Qt6.12净室打包记录.md).
+
+ -- Qt 6.12 Cleanroom <root@localhost>  Mon, 19 Oct 2026 12:00:00 +0800
+

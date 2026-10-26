@@ -1,0 +1,13 @@
+# Binary data crafted to be used during tests
+binary-with-bad-dynamic-table [tests/auto/corelib/plugin/qpluginloader/elftest/debugobj.so]
+source-contains-prebuilt-binary [tests/auto/corelib/plugin/qpluginloader/elftest/debugobj.so]
+source-is-missing [tests/auto/corelib/plugin/qpluginloader/elftest/debugobj.so]
+
+# dh-exec is actually needed
+dh-exec-useless-usage usr/lib/${DEB_HOST_MULTIARCH}/*
+
+# test data
+source-is-missing [tests/auto/corelib/text/qtextboundaryfinder/data/WordBreakTest.html]
+source-is-missing [tests/baseline/text/data/emoji*.html]
+source-is-missing [tests/manual/examples/widgets/richtext/textedit/example.html]
+very-long-line-length-in-source-file * [tests/*]

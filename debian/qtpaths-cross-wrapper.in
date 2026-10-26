@@ -1,0 +1,5 @@
+#!/bin/sh
+
+exec /usr/lib/qt6/bin/qtpaths6 \
+	-qtconf /usr/lib/@DEB_HOST_MULTIARCH@/qt6/qt6.conf \
+	"$@"

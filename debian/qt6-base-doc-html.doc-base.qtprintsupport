@@ -1,0 +1,9 @@
+Document: qt6-printsupport
+Title: Qt 6 Print Support module
+Author: The Qt Company Ltd
+Abstract: This is the HTML documentation for Qt 6 Print Support
+Section: Programming/C++
+
+Format: HTML
+Index: /usr/share/doc/qt6-base-doc-html/html/qtprintsupport/qtprintsupport-index.html
+Files: /usr/share/doc/qt6-base-doc-html/html/qtprintsupport/*.html

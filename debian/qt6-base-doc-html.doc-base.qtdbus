@@ -1,0 +1,9 @@
+Document: qt6-dbus
+Title: Qt 6 D-Bus module
+Author: The Qt Company Ltd
+Abstract: This is the HTML documentation for Qt 6 D-Bus
+Section: Programming/C++
+
+Format: HTML
+Index: /usr/share/doc/qt6-base-doc-html/html/qtdbus/qtdbus-index.html
+Files: /usr/share/doc/qt6-base-doc-html/html/qtdbus/*.html

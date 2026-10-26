@@ -1,0 +1,26 @@
+---
+ examples/sql/CMakeLists.txt                         |    2 +-
+ src/tools/configure.cmake                           |    2 +-
+ 3 files changed, 2 insertions(+), 4 deletions(-)
+ 
+--- a/src/tools/configure.cmake
++++ b/src/tools/configure.cmake
+@@ -5,7 +5,7 @@ qt_feature("androiddeployqt" PRIVATE
+     SECTION "Deployment"
+     LABEL "Android deployment tool"
+     PURPOSE "The Android deployment tool automates the process of creating Android packages."
+-    CONDITION NOT CMAKE_CROSSCOMPILING AND QT_FEATURE_regularexpression AND QT_FEATURE_settings)
++    CONDITION (QT_FORCE_BUILD_TOOLS OR NOT CMAKE_CROSSCOMPILING) AND QT_FEATURE_regularexpression)
+ 
+ qt_feature("macdeployqt" PRIVATE
+     SECTION "Deployment"
+--- a/examples/sql/CMakeLists.txt
++++ b/examples/sql/CMakeLists.txt
+@@ -15,6 +15,6 @@ if(TARGET Qt6::Xml)
+     qt_internal_add_example(masterdetail)
+ endif()
+ 
+-if(NOT CMAKE_CROSSCOMPILING)
++if(QT_FORCE_BUILD_TOOLS OR NOT CMAKE_CROSSCOMPILING)
+     qt_internal_add_example(sqlbrowser)
+ endif()

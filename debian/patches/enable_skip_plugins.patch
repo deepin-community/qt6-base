@@ -1,0 +1,41 @@
+Description: Enable skipping plugins search at build time.
+ This patch sets
+ QT_SKIP_AUTO_PLUGIN_INCLUSION and QT_SKIP_AUTO_QML_PLUGIN_INCLUSION to ON
+ by default, thus avoiding unnecesary build dependencies on plugins.
+ .
+ The variables can still be set to OFF by the user at build time, allowing
+ them to find the packages if necessary. But if you need so for a Debian
+ package please reach the Qt maintainers first. We want to know why you
+ need to do so. Thanks in advance!
+Author: Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>
+Forwarded: not-needed
+
+---
+ cmake/QtPlugins.cmake.in         |    2 +-
+ cmake/QtPostProcessHelpers.cmake |    2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+--- a/cmake/QtPlugins.cmake.in
++++ b/cmake/QtPlugins.cmake.in
+@@ -6,7 +6,7 @@ include_guard(DIRECTORY)
+
+ # Distributions should probably change this default.
+ if(NOT DEFINED QT_SKIP_AUTO_PLUGIN_INCLUSION)
+-    set(QT_SKIP_AUTO_PLUGIN_INCLUSION OFF)
++    set(QT_SKIP_AUTO_PLUGIN_INCLUSION ON)
+ endif()
+
+ if(__qt_@QT_MODULE@_targets_file_included AND NOT QT_SKIP_AUTO_PLUGIN_INCLUSION)
+diff --git a/cmake/QtPublicPluginHelpers.cmake b/cmake/QtPublicPluginHelpers.cmake
+index 749e40e3f2a..912808814fe 100644
+--- a/cmake/QtPublicPluginHelpers.cmake
++++ b/cmake/QtPublicPluginHelpers.cmake
+@@ -607,7 +607,7 @@ macro(__qt_internal_include_qml_plugin_packages)
+ 
+     # Distributions should probably change this default.
+     if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
+-        set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION OFF)
++        set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION ON)
+     endif()
+ 
+     set(__qt_qml_plugins_config_file_list "")
