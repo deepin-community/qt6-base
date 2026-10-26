@@ -20,7 +20,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  Qt_6_PRIVATE_API@Qt_6_PRIVATE_API 6.12.0
  _Z10qLocalTimelP2tm@Qt_6 6.12.0
  _Z10qTerminatev@Qt_6 6.12.0
- _Z10qvsnprintfPcmPKcP13__va_list_tag@Qt_6 6.12.0
  _Z11qFpClassifyd@Qt_6 6.12.0
  _Z11qFpClassifyf@Qt_6 6.12.0
  _Z11qUncompressPKhx@Qt_6 6.12.0
@@ -3335,17 +3334,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN7QBufferD0Ev@Qt_6 6.12.0
  _ZN7QBufferD1Ev@Qt_6 6.12.0
  _ZN7QBufferD2Ev@Qt_6 6.12.0
- _ZN7QIORing14sharedInstanceEv@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORing14submitRequestsEv@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORing14waitForRequestEPNS_16RequestHandleTagE14QDeadlineTimer@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORing16initializeIORingEv@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORing17supportsOperationEN9QtPrivate9OperationE@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORing18GenericRequestType12cleanupExtraEN9QtPrivate9OperationEPv@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORing20queueRequestInternalERNS_18GenericRequestTypeE@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORingC1Ejj@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORingC2Ejj@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORingD1Ev@Qt_6_PRIVATE_API 6.12.0
- _ZN7QIORingD2Ev@Qt_6_PRIVATE_API 6.12.0
  _ZN7QLatin118convertFromUnicodeEPc11QStringView@Qt_6_PRIVATE_API 6.12.0
  _ZN7QLocale10setDefaultERKS_@Qt_6 6.12.0
  _ZN7QLocale12codeToScriptE11QStringView@Qt_6 6.12.0
@@ -3511,7 +3499,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN7QString8fromUtf8E14QByteArrayView@Qt_6 6.12.0
  _ZN7QString8truncateEx@Qt_6 6.12.0
  _ZN7QString9fromUtf16EPKDsx@Qt_6 6.12.0
- _ZN7QString9vasprintfEPKcP13__va_list_tag@Qt_6 6.12.0
  _ZN7QStringC1E5QChar@Qt_6 6.12.0
  _ZN7QStringC1EPK5QCharx@Qt_6 6.12.0
  _ZN7QStringC1Ex5QChar@Qt_6 6.12.0
@@ -3828,12 +3815,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN8QVariantD2Ev@Qt_6 6.12.0
  _ZN8QVariantaSERKS_@Qt_6 6.12.0
  _ZN8QtFuture19makeReadyVoidFutureEv@Qt_6 6.12.0
- _ZN8qfloat1610roundtableE@Qt_6 6.12.0
- _ZN8qfloat1610shifttableE@Qt_6 6.12.0
- _ZN8qfloat1611offsettableE@Qt_6 6.12.0
- _ZN8qfloat1613exponenttableE@Qt_6 6.12.0
- _ZN8qfloat1613mantissatableE@Qt_6 6.12.0
- _ZN8qfloat169basetableE@Qt_6 6.12.0
  _ZN9QBitArray4fillEbxx@Qt_6 6.12.0
  _ZN9QBitArray6resizeEx@Qt_6 6.12.0
  _ZN9QBitArray8fromBitsEPKcx@Qt_6 6.12.0
@@ -4796,7 +4777,6 @@ libQt6Core.so.6 libqt6core6 #MINVER#
  _ZN9QtPrivate19QStringList_indexOfERK5QListI7QStringE13QLatin1StringxN2Qt15CaseSensitivityE@Qt_6 6.12.0
  _ZN9QtPrivate19QVariantTypeCoercer6coerceERK8QVariantRK9QMetaType@Qt_6 6.12.0
  _ZN9QtPrivate19QVariantTypeCoercer7convertERK8QVariantRK9QMetaType@Qt_6 6.12.0
- _ZN9QtPrivate19testMaxReadWriteLenE@Qt_6 6.12.0
  _ZN9QtPrivate20QPropertyBindingData10setBindingERK23QUntypedPropertyBindingP20QUntypedPropertyDataPFvS5_EPFb9QMetaTypeS5_NS_24QPropertyBindingFunctionEE@Qt_6 6.12.0
  _ZN9QtPrivate20QPropertyBindingData20removeBinding_helperEv@Qt_6 6.12.0
  _ZN9QtPrivate20QPropertyBindingDataC1EOS0_@Qt_6 6.12.0
