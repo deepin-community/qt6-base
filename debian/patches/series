@@ -16,3 +16,4 @@ cross2.patch
 remove_rpath_from_examples.patch
 forkfd_grow_stack_upwards_on_hppa.patch
 enable_skip_plugins.patch
+0001-deepin-sw_64-support.patch
