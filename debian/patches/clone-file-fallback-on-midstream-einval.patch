@@ -1,0 +1,50 @@
+diff --git a/src/corelib/io/qfilesystemengine_unix.cpp b/src/corelib/io/qfilesystemengine_unix.cpp
+index a812e36d..314d2433 100644
+--- a/src/corelib/io/qfilesystemengine_unix.cpp
++++ b/src/corelib/io/qfilesystemengine_unix.cpp
+@@ -1191,9 +1191,23 @@ auto QFileSystemEngine::cloneFile(int srcfd, int dstfd, const QFileSystemMetaDat
+     if (copied == 0)
+         return TriStateResult::Success;         // EOF -> success
+     if (srcoffset) {
+-        // some bytes were copied, so this is a real error (like ENOSPC).
+-        copied = ftruncate(dstfd, 0);
+-        return TriStateResult::Failed;
++        // some bytes were copied. This is normally a real error (like ENOSPC),
++        // but some kernel/filesystem combinations (e.g. overlayfs, ecryptfs)
++        // fail with EINVAL/EXDEV/ENOSYS mid-stream; reset and let sendfile()
++        // or the copy pump retry from the beginning in those cases.
++        switch (errno) {
++        case EINVAL:
++        case EXDEV:
++        case ENOSYS:
++            ftruncate(dstfd, 0);
++            lseek(srcfd, 0, SEEK_SET);
++            lseek(dstfd, 0, SEEK_SET);
++            break;
++
++        default:
++            ftruncate(dstfd, 0);
++            return TriStateResult::Failed;
++        }
+     }
+ 
+     // We failed with no bytes copied, so is this a real filesystem failure
+@@ -1231,10 +1245,14 @@ auto QFileSystemEngine::cloneFile(int srcfd, int dstfd, const QFileSystemMetaDat
+         n = ::sendfile(dstfd, srcfd, nullptr, SendfileSize);
+         if (n == -1) {
+             // uh oh, this is probably a real error (like ENOSPC)
+-            n = ftruncate(dstfd, 0);
+-            n = lseek(srcfd, 0, SEEK_SET);
+-            n = lseek(dstfd, 0, SEEK_SET);
+-            return TriStateResult::Failed;
++            ftruncate(dstfd, 0);
++            lseek(srcfd, 0, SEEK_SET);
++            lseek(dstfd, 0, SEEK_SET);
++            if (errno == ENOSPC || errno == EIO)
++                return TriStateResult::Failed;
++            // kernel/filesystem quirk mid-stream (e.g. EINVAL on some
++            // combinations): fall back to the copy pump
++            return TriStateResult::NotSupported;
+         }
+     }
+ 
