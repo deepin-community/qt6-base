@@ -19,3 +19,6 @@ usr/include/${DEB_HOST_MULTIARCH}/qt6/QtSql/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtTest/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtWidgets/6.*/*
 usr/include/${DEB_HOST_MULTIARCH}/qt6/QtXml/6.*/*
+
+# QtXcb private headers (installed from plugin sources via debian/rules)
+usr/include/${DEB_HOST_MULTIARCH}/qt6/QtXcb/6.*/*
