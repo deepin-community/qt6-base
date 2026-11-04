@@ -3271,3 +3271,35 @@ usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtBuildCMakeFromSourcesScript.cmake
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtCMakePackageVersionFileOverride.cmake.in
 usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/QtModuleMapHelpers.cmake
 usr/share/qt6/wayland/protocols/linux-dmabuf/linux-dmabuf-v1.xml
+
+# vxworks / visionos mkspecs (restored, present in 6.8 packaging)
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/common/vxworks/qplatformdefs.h
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/Info.plist.app
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/Info.plist.dSYM.in
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/Info.plist.lib
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/qmake.conf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/macx-visionos-clang/qplatformdefs.h
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/vxworks-clang/qplatformdefs.h
+
+# complete the staged mkspecs dropped from the repack install lists
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/vxworks-clang/qmake.conf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/ohos-clang/qmake.conf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/ohos-clang/qplatformdefs.h
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/win32-arm64ec-msvc/qmake.conf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/win32-arm64ec-msvc/qplatformdefs.h
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/ohos/ohos.prf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/ohos/resolve_target.prf
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/features/uikit/qt.prf
+
+# module plugin cmake files staged by the 6.12 build (Qt6PrintSupportPlugins
+# was already shipped by 6.8; Gui/Network/Sql are newly generated upstream)
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Gui/Qt6GuiPlugins.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Network/Qt6NetworkPlugins.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6PrintSupport/Qt6PrintSupportPlugins.cmake
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Sql/Qt6SqlPlugins.cmake
+
+# 3rdparty cmake metadata (restored, present in 6.8 packaging)
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/3rdparty/extra-cmake-modules/COPYING-CMAKE-SCRIPTS
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/3rdparty/extra-cmake-modules/qt_attribution.json
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/3rdparty/kwin/COPYING-CMAKE-SCRIPTS
+usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6/3rdparty/kwin/qt_attribution.json

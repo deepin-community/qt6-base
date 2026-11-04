@@ -7,6 +7,7 @@ export DEB_BUILD_PROFILES
 
 # Use already defined DEB_HOST_* variables.
 include /usr/share/dpkg/architecture.mk
+include /usr/share/dpkg/pkg-info.mk
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 sslpkgname := $(shell dpkg-query --show '--showformat=$${Depends}' libssl-dev | cut -d ' ' -f1)
@@ -99,6 +100,11 @@ execute_after_dh_auto_install-arch:
 	sed -i -e '/^QMAKE_PRL_BUILD_DIR/d' debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libQt6*.prl
 	# Reproducible builds: remove kernel version from build artifacts
 	sed -i '/^[[:space:]]*"version":.*deb/d' debian/tmp/usr/lib/${DEB_HOST_MULTIARCH}/qt6/modules/*.json
+
+	# Install QtXcb private headers from the xcb platform plugin sources
+	# (consumed e.g. by dde-qt6xcb-plugin); mirrors deepin 6.8 packaging.
+	install -Dv -t debian/tmp/usr/include/$(DEB_HOST_MULTIARCH)/qt6/QtXcb/$(DEB_VERSION_UPSTREAM:+dfsg=)/QtXcb/private \
+		src/plugins/platforms/xcb/*.h
 
 	# Fix shebang
 	sed -i -e 's#/bin/env python#/usr/bin/python#' debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/qt6/examples/corelib/serialization/cbordump/cbortag.py
