@@ -103,7 +103,13 @@ execute_after_dh_auto_install-arch:
 
 	# Install QtXcb private headers from the xcb platform plugin sources
 	# (consumed e.g. by dde-qt6xcb-plugin); mirrors deepin 6.8 packaging.
-	install -Dv -t debian/tmp/usr/include/$(DEB_HOST_MULTIARCH)/qt6/QtXcb/$(DEB_VERSION_UPSTREAM:+dfsg=)/QtXcb/private \
+	# The directory version MUST match the upstream Qt version because
+	# consumers resolve QtXcb/${Qt6_VERSION}; deriving it from
+	# DEB_VERSION_UPSTREAM breaks whenever the Debian version deviates
+	# from the upstream one (e.g. the 6.12.0.2-1 respin installed to
+	# QtXcb/6.12.0.2 while consumers look in QtXcb/6.12.0).
+	QT_XCB_QT_VERSION := $(shell sed -n 's/^set(QT_REPO_MODULE_VERSION "\(.*\)")/\1/p' .cmake.conf)
+	install -Dv -t debian/tmp/usr/include/$(DEB_HOST_MULTIARCH)/qt6/QtXcb/$(QT_XCB_QT_VERSION)/QtXcb/private \
 		src/plugins/platforms/xcb/*.h
 
 	# Fix shebang
