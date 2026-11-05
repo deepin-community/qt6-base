@@ -9,6 +9,13 @@ export DEB_BUILD_PROFILES
 include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/pkg-info.mk
 
+# Upstream Qt version (e.g. 6.12.0) used for the QtXcb private headers
+# install directory. Consumers resolve QtXcb/${Qt6_VERSION}, which comes
+# from this same value, so it must NOT be derived from DEB_VERSION_UPSTREAM
+# (the 6.12.0.2-1 respin installed to QtXcb/6.12.0.2 while consumers look
+# in QtXcb/6.12.0).
+QT_XCB_QT_VERSION := $(shell sed -n 's/^set(QT_REPO_MODULE_VERSION "\(.*\)")/\1/p' .cmake.conf)
+
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 sslpkgname := $(shell dpkg-query --show '--showformat=$${Depends}' libssl-dev | cut -d ' ' -f1)
 
@@ -103,12 +110,6 @@ execute_after_dh_auto_install-arch:
 
 	# Install QtXcb private headers from the xcb platform plugin sources
 	# (consumed e.g. by dde-qt6xcb-plugin); mirrors deepin 6.8 packaging.
-	# The directory version MUST match the upstream Qt version because
-	# consumers resolve QtXcb/${Qt6_VERSION}; deriving it from
-	# DEB_VERSION_UPSTREAM breaks whenever the Debian version deviates
-	# from the upstream one (e.g. the 6.12.0.2-1 respin installed to
-	# QtXcb/6.12.0.2 while consumers look in QtXcb/6.12.0).
-	QT_XCB_QT_VERSION := $(shell sed -n 's/^set(QT_REPO_MODULE_VERSION "\(.*\)")/\1/p' .cmake.conf)
 	install -Dv -t debian/tmp/usr/include/$(DEB_HOST_MULTIARCH)/qt6/QtXcb/$(QT_XCB_QT_VERSION)/QtXcb/private \
 		src/plugins/platforms/xcb/*.h
 
