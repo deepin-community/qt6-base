@@ -1,3 +1,11 @@
+qt6-base (6.8.0+dfsg-0deepin43) unstable; urgency=medium
+
+  * Backport the XRandR 1.5 multi-X11Screen fix (QTBUG-110898,
+    QTBUG-130714), restoring enumeration of non-primary X11 screens
+    and selecting the primary screen before sending screen notifications.
+
+ -- Wu JiangYu <wujiangyu@uniontech.com>  Tue, 10 Nov 2026 10:18:52 +0800
+
 qt6-base (6.8.0+dfsg-0deepin42) unstable; urgency=medium
 
   * Backport QFreeList timer id serial (QTBUG-124496) so a just-freed
