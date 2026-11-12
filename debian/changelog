@@ -1,3 +1,12 @@
+qt6-base (6.8.0+dfsg-0deepin44) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-105924 (unknown) - JSON/CBOR: fix crash
+    converting an empty URL tag to JSON   Upstream:
+    https://github.com/qt/qtbase/commit/9e9988ee57c0210a5ba57435182b094f
+    50b50f28
+
+ -- deepin-ci-robot <packages@deepin.org>  Thu, 12 Nov 2026 11:12:25 +0800
+
 qt6-base (6.8.0+dfsg-0deepin43) unstable; urgency=medium
 
   * Backport the XRandR 1.5 multi-X11Screen fix (QTBUG-110898,
