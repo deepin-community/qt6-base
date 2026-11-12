@@ -86,3 +86,7 @@ fix-orphaned-timer-on-threadchange.patch
 # QTBUG-110898 / QTBUG-130714: fix multi-X11Screen support with XRandR 1.5.
 # https://codereview.qt-project.org/c/qt/qtbase/+/606795
 fix-xcb-multi-X11Screen-xrandr-1.5.patch
+
+# QTBUG-151866: remove the obsolete Mesa threaded OpenGL check.
+# https://codereview.qt-project.org/c/qt/qtbase/+/784759
+remove-obsolete-mesa-threading-check.patch

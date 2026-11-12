@@ -1,3 +1,11 @@
+qt6-base (6.8.0+dfsg-0deepin44) unstable; urgency=medium
+
+  * Backport the removal of the obsolete Mesa threaded OpenGL check
+    (QTBUG-151866), avoiding incorrect disabling of threaded rendering
+    when GL_VERSION does not contain a Mesa version.
+
+ -- Yuanbo Chen <chenyuanbo@uniontech.com>  Thu, 12 Nov 2026 21:28:12 +0800
+
 qt6-base (6.8.0+dfsg-0deepin43) unstable; urgency=medium
 
   * Backport the XRandR 1.5 multi-X11Screen fix (QTBUG-110898,
