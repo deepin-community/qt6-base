@@ -1,3 +1,9 @@
+qt6-base (6.8.0+dfsg-0deepin46) unstable; urgency=medium
+
+  * Add CVE-2026-134930 security patches.
+
+ -- zhanghongyuan <zhanghongyuan@uniontech.com>  Wed, 25 Nov 2026 09:46:08 +0800
+
 qt6-base (6.8.0+dfsg-0deepin45) unstable; urgency=medium
 
   * Add CVE-2026-134929 security patches.
