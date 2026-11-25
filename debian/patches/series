@@ -90,3 +90,12 @@ fix-xcb-multi-X11Screen-xrandr-1.5.patch
 # QTBUG-151866: remove the obsolete Mesa threaded OpenGL check.
 # https://codereview.qt-project.org/c/qt/qtbase/+/784759
 remove-obsolete-mesa-threading-check.patch
+CVE-2026-134930_qdecompresshelper-don-t-decode-with-a-freed-decoder-after-a.patch
+CVE-2026-134929_qdecompresshelper-reset-the-unread-brotli-output-in-clear.patch
+CVE-2026-131915_qxmlstreamreader-don-t-resolve-the-dtd-before-it-is-complete.patch
+CVE-2026-131915_qxmlstreamreader-clear-entityreferencestack-in-init.patch
+CVE-2026-131915_qxmlstreamreader-clear-entitylength-in-init.patch
+CVE-2026-131915_qxmlstreamreader-fix-entities-leaking-from-one-doc-to-the-ne.patch
+CVE-2026-131915_qxmlstreamreader-fix-parameter-entities-leaking-from-one-doc.patch
+CVE-2026-131915_qxmlstreamreader-don-t-leak-dtd-material-from-one-doc-to-the.patch
+CVE-2026-131915_qxmlstreamreader-don-t-leak-attribute-defaults-from-doc-to-d.patch
