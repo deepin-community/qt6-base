@@ -1,3 +1,12 @@
+qt6-base (6.8.0+dfsg-0deepin45) unstable; urgency=medium
+
+  * Backport the xcb fix "do not delete input devices twice on hierarchy
+    changes" (QTBUG-152681): removing a master input device also deleted
+    its slave children through the QObject parent chain, corrupting the
+    heap with a double free during device hot-unplug.
+
+ -- zhanghongyuan <zhanghongyuan@uniontech.com>  Thu, 26 Nov 2026 17:33:47 +0800
+
 qt6-base (6.8.0+dfsg-0deepin44) unstable; urgency=medium
 
   * Backport the removal of the obsolete Mesa threaded OpenGL check

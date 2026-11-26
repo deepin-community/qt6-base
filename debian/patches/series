@@ -90,3 +90,9 @@ fix-xcb-multi-X11Screen-xrandr-1.5.patch
 # QTBUG-151866: remove the obsolete Mesa threaded OpenGL check.
 # https://codereview.qt-project.org/c/qt/qtbase/+/784759
 remove-obsolete-mesa-threading-check.patch
+
+# QTBUG-152681: xcb: do not delete input devices twice on hierarchy changes.
+# Removing a master device also deletes its slave children via the QObject
+# parent chain, so slaves must be dropped from the qDeleteAll list first.
+# https://codereview.qt-project.org/c/qt/qtbase/+/791760
+fix-xcb-do-not-delete-input-devices-twice-on-hierarchy-changes.patch
