@@ -1,0 +1,46 @@
+Description: xcb: do not delete input devices twice on hierarchy changes
+ Slave devices are QObject children of their master, so deleting a removed
+ master deletes its slaves with it. A hierarchy change that removes a master
+ must therefore keep its slaves out of the qDeleteAll list.
+ .
+ This is reachable because slaves that X stops attaching are reported as
+ floating slaves, a type the device query loop below skips, so they stay in
+ the list of devices to delete. Deleting the master frees such a slave
+ through QObjectPrivate::deleteChildren(), and qDeleteAll then deletes the
+ same pointer again, corrupting the heap. The crash happens later, often in
+ an unrelated allocation; under ASAN it is a heap-use-after-free in
+ qDeleteAll.
+ .
+ Filter out entries whose parent is also being removed before deleting.
+ The loop runs backwards so that removeAt() keeps the remaining indices
+ valid; only slaves are ever dropped, because a master's parent is the
+ QXcbConnection object.
+Author: JiDe Zhang <zhangjide@uniontech.com>
+Origin: backport, https://codereview.qt-project.org/c/qt/qtbase/+/791760
+Bug: https://bugreports.qt.io/browse/QTBUG-152681
+Applied-Upstream: commit:00bdf5fabe80dcd0a5fe5679e1d166cdc31a9199
+Last-Update: 2026-11-26
+---
+diff --git a/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp b/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+index 17a24cdbc9c..749e40ed665 100644
+--- a/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
++++ b/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+@@ -544,6 +544,18 @@ void QXcbConnection::xi2SetupDevices()
+         m_xiSlavePointerIds.removeAll(id);
+         m_touchDevices.remove(id);
+     }
++    // A master is the QObject parent of its slaves, so deleting it deletes them
++    // too. Slaves that X no longer attaches stay in previousDevices (the query
++    // loops above skip XCB_INPUT_DEVICE_TYPE_FLOATING_SLAVE), so deleting the
++    // master would destroy them and qDeleteAll would then delete the same
++    // pointers again, corrupting the heap. Drop the children of removed devices
++    // first; walk backwards so that removeAt() does not invalidate the
++    // iteration.
++    for (qsizetype i = previousDevices.size() - 1; i >= 0; --i) {
++        const auto *parentDevice = qobject_cast<const QInputDevice *>(previousDevices.at(i)->parent());
++        if (parentDevice && previousDevices.contains(parentDevice))
++            previousDevices.removeAt(i);
++    }
+     qDeleteAll(previousDevices);
+ 
+     if (m_xiMasterPointerIds.size() > 1)
