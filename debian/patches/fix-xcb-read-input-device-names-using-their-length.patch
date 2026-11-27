@@ -1,0 +1,98 @@
+Description: xcb: read input device names using their length
+ xcb_input_xi_device_info_name() returns a pointer into the QueryDevice
+ reply; the name is not NUL-terminated but exactly name_length bytes long.
+ The master keyboard, master pointer and slave keyboard paths pass that
+ pointer to QString::fromUtf8() as a C string, so the conversion reads past
+ the end of the name. On a stock Xorg or Xvfb this affects every session:
+ "Virtual core pointer" is 20 bytes, so the reply has no zero padding and
+ the byte after the name is the first device class (XIButtonClass = 1);
+ QInputDevice::name() returns "Virtual core pointer\x01".
+ .
+ Pass xcb_input_xi_device_info_name_length() to the conversion, as the
+ tablet and touch paths already do.
+ .
+ tst_qinputdevice checks on xcb that no device name contains a control
+ character.
+Author: JiDe Zhang <zhangjide@uniontech.com>
+Origin: backport, https://codereview.qt-project.org/c/qt/qtbase/+/791786
+Applied-Upstream: commit:39ca1160c1c9a934d5c5ae8326c1ff91a21425e4
+Last-Update: 2026-11-27
+---
+diff --git a/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp b/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+index 749e40ed6659..7256041d6c8b 100644
+--- a/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
++++ b/src/plugins/platforms/xcb/qxcbconnection_xi2.cpp
+@@ -486,7 +486,8 @@ void QXcbConnection::xi2SetupDevices()
+         switch (deviceInfo->type) {
+         case XCB_INPUT_DEVICE_TYPE_MASTER_KEYBOARD: {
+             if (newOrKeep(deviceInfo->deviceid)) {
+-                auto dev = new QInputDevice(QString::fromUtf8(xcb_input_xi_device_info_name(deviceInfo)),
++                auto dev = new QInputDevice(QString::fromUtf8(xcb_input_xi_device_info_name(deviceInfo),
++                                                              xcb_input_xi_device_info_name_length(deviceInfo)),
+                                             deviceInfo->deviceid, QInputDevice::DeviceType::Keyboard,
+                                             QString::number(deviceInfo->deviceid << 16 | deviceInfo->attachment, 16), this);
+                 QWindowSystemInterface::registerInputDevice(dev);
+@@ -495,7 +496,9 @@ void QXcbConnection::xi2SetupDevices()
+         case XCB_INPUT_DEVICE_TYPE_MASTER_POINTER: {
+             m_xiMasterPointerIds.append(deviceInfo->deviceid);
+             if (newOrKeep(deviceInfo->deviceid)) {
+-                auto dev = new QXcbScrollingDevice(QString::fromUtf8(xcb_input_xi_device_info_name(deviceInfo)), deviceInfo->deviceid,
++                auto dev = new QXcbScrollingDevice(QString::fromUtf8(xcb_input_xi_device_info_name(deviceInfo),
++                                                                     xcb_input_xi_device_info_name_length(deviceInfo)),
++                                                   deviceInfo->deviceid,
+                                    QInputDevice::Capability::Position | QInputDevice::Capability::Scroll | QInputDevice::Capability::Hover,
+                                    32, QString::number(deviceInfo->attachment << 16 | deviceInfo->deviceid, 16), this);
+                 QWindowSystemInterface::registerInputDevice(dev);
+@@ -528,7 +531,8 @@ void QXcbConnection::xi2SetupDevices()
+                 QInputDevice *master = const_cast<QInputDevice *>(QInputDevicePrivate::fromId(deviceInfo->attachment));
+                 Q_ASSERT(master);
+                 QWindowSystemInterface::registerInputDevice(new QInputDevice(
+-                    QString::fromUtf8(xcb_input_xi_device_info_name(deviceInfo)), deviceInfo->deviceid,
++                    QString::fromUtf8(xcb_input_xi_device_info_name(deviceInfo),
++                                      xcb_input_xi_device_info_name_length(deviceInfo)), deviceInfo->deviceid,
+                     QInputDevice::DeviceType::Keyboard, master->seatName(), master));
+             }
+         } break;
+diff --git a/tests/auto/gui/kernel/qinputdevice/tst_qinputdevice.cpp b/tests/auto/gui/kernel/qinputdevice/tst_qinputdevice.cpp
+index 8587aebf2a18..aa7d0dbd73e0 100644
+--- a/tests/auto/gui/kernel/qinputdevice/tst_qinputdevice.cpp
++++ b/tests/auto/gui/kernel/qinputdevice/tst_qinputdevice.cpp
+@@ -1,6 +1,7 @@
+ // Copyright (C) 2020 The Qt Company Ltd.
+ // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+ 
++#include <QGuiApplication>
+ #include <QTest>
+ #include <qpa/qwindowsysteminterface.h>
+ #include <QtGui/qinputdevice.h>
+@@ -16,6 +17,7 @@ class tst_QInputDevice : public QObject
+ private slots:
+     void initTestCase();
+     void multiSeatDevices();
++    void deviceNamesHaveNoControlCharacters();
+ 
+ private:
+     const QInputDevice *getPrimaryKeyboard(const QString& seatName = QString());
+@@ -99,5 +101,22 @@ void tst_QInputDevice::multiSeatDevices()
+     QCOMPARE(QPointingDevice::primaryPointingDevice("seat 2")->systemId(), 2010);
+ }
+ 
++void tst_QInputDevice::deviceNamesHaveNoControlCharacters()
++{
++    // On xcb the names come from XIQueryDevice, where they are not
++    // NUL-terminated; reading them as C strings appends bytes from the reply.
++    if (QGuiApplication::platformName().compare(QLatin1String("xcb"), Qt::CaseInsensitive) != 0)
++        QSKIP("xcb-specific: the device names come from XIQueryDevice");
++
++    for (const QInputDevice *dev : QInputDevice::devices()) {
++        for (const QChar ch : dev->name()) {
++            QVERIFY2(ch.category() != QChar::Other_Control,
++                     qPrintable(QStringLiteral("control character 0x%1 in device name \"%2\"")
++                                    .arg(int(ch.unicode()), 2, 16, QLatin1Char('0'))
++                                    .arg(dev->name())));
++        }
++    }
++}
++
+ QTEST_MAIN(tst_QInputDevice)
+ #include "tst_qinputdevice.moc"
