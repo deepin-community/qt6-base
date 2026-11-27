@@ -96,3 +96,10 @@ remove-obsolete-mesa-threading-check.patch
 # parent chain, so slaves must be dropped from the qDeleteAll list first.
 # https://codereview.qt-project.org/c/qt/qtbase/+/791760
 fix-xcb-do-not-delete-input-devices-twice-on-hierarchy-changes.patch
+
+# xcb: read input device names using their length. XIQueryDevice names are
+# not NUL-terminated; the master keyboard/pointer and slave keyboard paths
+# passed them to QString::fromUtf8() as C strings, reading past the name
+# into the reply body.
+# https://codereview.qt-project.org/c/qt/qtbase/+/791786
+fix-xcb-read-input-device-names-using-their-length.patch
